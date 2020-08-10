@@ -1,0 +1,9 @@
+[package]
+name = "parser"
+version = "0.2.0"
+authors = ["Cyberduc-k <cyberduck_@outlook.com>"]
+edition = "2018"
+
+[dependencies]
+diagnostics = { path = "../../../.crates/diagnostics" }
+unicode-xid = "0.2.0"

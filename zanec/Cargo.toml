@@ -1,0 +1,8 @@
+[package]
+name = "zanec"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+driver = { path = "../driver" }
