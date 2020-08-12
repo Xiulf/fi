@@ -37,7 +37,7 @@ pub enum ItemKind {
     },
     Var {
         ty: Option<Type>,
-        value: Expr,
+        val: Option<Expr>,
     },
 }
 
@@ -227,5 +227,18 @@ pub struct Type {
 
 #[derive(Debug)]
 pub enum TypeKind {
-    Path { path: Path },
+    Path {
+        path: Path,
+    },
+    Func {
+        params: Vec<TypeParam>,
+        ret: Box<Type>,
+    },
+}
+
+#[derive(Debug)]
+pub struct TypeParam {
+    pub span: Span,
+    pub name: Ident,
+    pub ty: Type,
 }
