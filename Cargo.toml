@@ -3,4 +3,5 @@ members = [
     "zanec",
     "driver",
     "syntax",
+    "hir",
 ]

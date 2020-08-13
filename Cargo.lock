@@ -23,6 +23,15 @@ name = "driver"
 version = "0.1.0"
 dependencies = [
  "diagnostics",
+ "hir",
+ "syntax",
+]
+
+[[package]]
+name = "hir"
+version = "0.1.0"
+dependencies = [
+ "diagnostics",
  "syntax",
 ]
 

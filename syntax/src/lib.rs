@@ -1,5 +1,6 @@
 pub mod ast;
 mod parsing;
+mod printing;
 pub mod symbol;
 
 pub fn parse(reporter: &diagnostics::Reporter, file: diagnostics::FileId) -> ast::Package {

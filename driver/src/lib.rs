@@ -12,5 +12,7 @@ pub fn build(opts: Opts) {
     let file = diagnostics::FileId::new(&opts.entry, source);
     let package = syntax::parse(&reporter, file);
 
-    println!("{:#?}", package);
+    reporter.report(true);
+
+    println!("{}", package);
 }

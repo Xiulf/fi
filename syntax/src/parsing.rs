@@ -11,6 +11,8 @@ parser::token![ident "gc" TGc];
 parser::token![ident "deref" TDeref];
 parser::token![ident "type" TType];
 parser::token![ident "while" TWhile];
+parser::token![ident "if" TIf];
+parser::token![ident "else" TElse];
 parser::token![ident "loop" TLoop];
 parser::token![ident "break" TBreak];
 parser::token![ident "continue" TContinue];
@@ -33,7 +35,8 @@ parser::token![punct "." TDot/1];
 parser::token![punct "=" TEquals/1];
 parser::token![punct "`" TTick/1];
 parser::token![punct "->" TArrow/2];
-parser::token![punct "::" TPathSep/2];
+parser::token![punct ".." TDblDot/2];
+parser::token![punct "#" TPathSep/1];
 
 parser::token![punct "+" TAdd/1];
 parser::token![punct "-" TSub/1];
@@ -199,7 +202,7 @@ impl Parse for Item {
                     let _ = input.parse::<TLParen>()?;
                     let mut params = Vec::new();
 
-                    while !input.is_empty() && input.peek::<TRParen>() {
+                    while !input.is_empty() && !input.peek::<TRParen>() {
                         params.push(input.parse()?);
 
                         if !input.peek::<TRParen>() {
@@ -215,12 +218,8 @@ impl Parse for Item {
                         None
                     };
 
-                    let semi = input.peek::<TDo>();
                     let body = input.parse()?;
-
-                    if semi {
-                        input.parse::<TSemi>()?;
-                    }
+                    let _ = input.parse::<TSemi>()?;
 
                     Ok(Item {
                         span: start.to(input.prev_span()),
@@ -354,21 +353,33 @@ impl Parse for PathSeg {
 
 impl Parse for Expr {
     fn parse(input: ParseStream) -> Result<Self> {
-        Expr::assign(input, true)
+        Expr::assign(input)
     }
 }
 
 impl Expr {
-    fn assign(input: ParseStream, allow_init: bool) -> Result<Self> {
+    fn assign(input: ParseStream) -> Result<Self> {
         let start = input.span();
-        let expr = Expr::infix(input, 1, allow_init)?;
+        let expr = Expr::infix(input, 1)?;
 
-        Ok(expr)
+        if let Ok(_) = input.parse::<TEquals>() {
+            let rhs = Expr::assign(input)?;
+
+            Ok(Expr {
+                span: start.to(input.prev_span()),
+                kind: ExprKind::Assign {
+                    lhs: Box::new(expr),
+                    rhs: Box::new(rhs),
+                },
+            })
+        } else {
+            Ok(expr)
+        }
     }
 
-    fn infix(input: ParseStream, prec_in: usize, allow_init: bool) -> Result<Self> {
+    fn infix(input: ParseStream, prec_in: usize) -> Result<Self> {
         let start = input.span();
-        let mut expr = Expr::prefix(input, allow_init)?;
+        let mut expr = Expr::prefix(input)?;
         let prec = input.fork().parse::<BinOp>().map(BinOp::prec).unwrap_or(0);
 
         for prec in (prec_in..=prec).rev() {
@@ -380,7 +391,7 @@ impl Expr {
                 }
 
                 let op = input.parse()?;
-                let rhs = Expr::infix(input, prec + 1, allow_init)?;
+                let rhs = Expr::infix(input, prec + 1)?;
 
                 expr = Expr {
                     span: start.to(input.prev_span()),
@@ -396,11 +407,11 @@ impl Expr {
         Ok(expr)
     }
 
-    fn prefix(input: ParseStream, allow_init: bool) -> Result<Self> {
+    fn prefix(input: ParseStream) -> Result<Self> {
         let start = input.span();
 
         if let Ok(op) = input.parse::<UnOp>() {
-            let rhs = Expr::prefix(input, allow_init)?;
+            let rhs = Expr::prefix(input)?;
 
             Ok(Expr {
                 span: start.to(input.prev_span()),
@@ -410,13 +421,120 @@ impl Expr {
                 },
             })
         } else {
-            Expr::postfix(input, allow_init)
+            Expr::postfix(input)
         }
     }
 
-    fn postfix(input: ParseStream, allow_init: bool) -> Result<Self> {
+    fn postfix(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let mut expr = Expr::atom(input)?;
+
+        while !input.is_empty() {
+            if let Ok(_) = input.parse::<TLParen>() {
+                let mut args = Vec::new();
+
+                while !input.is_empty() && !input.peek::<TRParen>() {
+                    args.push(input.parse()?);
+
+                    while !input.peek::<TRParen>() {
+                        input.parse::<TComma>()?;
+                    }
+                }
+
+                input.parse::<TRParen>()?;
+
+                expr = Expr {
+                    span: start.to(input.prev_span()),
+                    kind: ExprKind::Call {
+                        func: Box::new(expr),
+                        args,
+                    },
+                };
+            } else if let Ok(_) = input.parse::<TLBracket>() {
+                if let Ok(_) = input.parse::<TDblDot>() {
+                    let high = if !input.peek::<TRBracket>() {
+                        Some(input.parse()?)
+                    } else {
+                        None
+                    };
+
+                    expr = Expr {
+                        span: start.to(input.prev_span()),
+                        kind: ExprKind::Slice {
+                            list: Box::new(expr),
+                            low: None,
+                            high,
+                        },
+                    };
+                } else {
+                    let index = input.parse()?;
+
+                    if let Ok(_) = input.parse::<TDblDot>() {
+                        let high = if !input.peek::<TRBracket>() {
+                            Some(input.parse()?)
+                        } else {
+                            None
+                        };
+
+                        expr = Expr {
+                            span: start.to(input.prev_span()),
+                            kind: ExprKind::Slice {
+                                list: Box::new(expr),
+                                low: Some(index),
+                                high,
+                            },
+                        };
+                    } else {
+                        input.parse::<TRBracket>()?;
+
+                        expr = Expr {
+                            span: start.to(input.prev_span()),
+                            kind: ExprKind::Index {
+                                list: Box::new(expr),
+                                index,
+                            },
+                        };
+                    }
+                }
+            } else if input.peek::<TDot>() && !input.peek::<TDblDot>() {
+                input.parse::<TDot>()?;
+
+                if let Ok(_) = input.parse::<TRef>() {
+                    expr = Expr {
+                        span: start.to(input.prev_span()),
+                        kind: ExprKind::Ref {
+                            expr: Box::new(expr),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TDeref>() {
+                    expr = Expr {
+                        span: start.to(input.prev_span()),
+                        kind: ExprKind::Deref {
+                            expr: Box::new(expr),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TType>() {
+                    expr = Expr {
+                        span: start.to(input.prev_span()),
+                        kind: ExprKind::TypeOf {
+                            expr: Box::new(expr),
+                        },
+                    };
+                } else if let Ok(name) = input.parse::<Ident>() {
+                    expr = Expr {
+                        span: start.to(input.prev_span()),
+                        kind: ExprKind::Field {
+                            obj: Box::new(expr),
+                            field: name,
+                        },
+                    };
+                } else {
+                    return input.error("expected 'ref', 'deref', 'type' or an identifier", 0001);
+                }
+            } else {
+                break;
+            }
+        }
 
         Ok(expr)
     }
@@ -425,18 +543,132 @@ impl Expr {
         let start = input.span();
         let kind = if let Ok(lit) = input.parse() {
             ExprKind::Literal { lit }
+        } else if let Ok(_) = input.parse::<TTick>() {
+            let ty = input.parse()?;
+            let _ = input.parse::<TTick>()?;
+
+            ExprKind::Type { ty }
+        } else if input.peek::<TLBrace>() || input.peek::<TDo>() {
+            ExprKind::Block {
+                block: input.parse()?,
+            }
+        } else if let Ok(_) = input.parse::<TLBracket>() {
+            let mut exprs = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TRBracket>() {
+                exprs.push(input.parse()?);
+
+                if !input.peek::<TRBracket>() {
+                    input.parse::<TComma>()?;
+                }
+            }
+
+            input.parse::<TRBracket>()?;
+
+            ExprKind::Array { exprs }
+        } else if let Ok(_) = input.parse::<TLParen>() {
+            let mut exprs = Vec::new();
+            let mut tuple = false;
+
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                exprs.push(input.parse()?);
+
+                if !input.peek::<TRParen>() {
+                    input.parse::<TComma>()?;
+                    tuple = true;
+                }
+            }
+
+            input.parse::<TRParen>()?;
+
+            if exprs.len() == 1 && !tuple {
+                ExprKind::Parens {
+                    inner: Box::new(exprs.pop().unwrap()),
+                }
+            } else {
+                ExprKind::Tuple { exprs }
+            }
+        } else if let Ok(_) = input.parse::<TIf>() {
+            let cond = input.parse()?;
+            let then = input.parse()?;
+            let else_ = if let Ok(_) = input.parse::<TElse>() {
+                Some(input.parse()?)
+            } else {
+                None
+            };
+
+            ExprKind::IfElse { cond, then, else_ }
+        } else if let Ok(_) = input.parse::<TWhile>() {
+            let cond = input.parse()?;
+            let body = input.parse()?;
+
+            ExprKind::While {
+                label: None,
+                cond,
+                body,
+            }
+        } else if let Ok(_) = input.parse::<TLoop>() {
+            let body = input.parse()?;
+
+            ExprKind::Loop { label: None, body }
+        } else if let Ok(_) = input.parse::<TBreak>() {
+            let label = if let Ok(_) = input.parse::<TColon>() {
+                Some(input.parse()?)
+            } else {
+                None
+            };
+
+            let expr = if Expr::peek(input) {
+                Some(input.parse()?)
+            } else {
+                None
+            };
+
+            ExprKind::Break { label, expr }
+        } else if let Ok(_) = input.parse::<TContinue>() {
+            let label = if let Ok(_) = input.parse::<TColon>() {
+                Some(input.parse()?)
+            } else {
+                None
+            };
+
+            ExprKind::Continue { label }
+        } else if let Ok(_) = input.parse::<TReturn>() {
+            let expr = if Expr::peek(input) {
+                Some(input.parse()?)
+            } else {
+                None
+            };
+
+            ExprKind::Return { expr }
+        } else if let Ok(_) = input.parse::<TDefer>() {
+            let expr = input.parse()?;
+
+            ExprKind::Defer { expr }
         } else if input.peek::<Ident>() {
             ExprKind::Path {
                 path: input.parse()?,
             }
         } else {
-            return input.error("expected a literal or an identifier", 0001);
+            return input.error("expected '(', '{', '[', 'do', 'if', 'while', 'loop', 'break', 'continue', 'return', 'defer', a label, a literal or an identifier", 0001);
         };
 
         Ok(Expr {
             span: start.to(input.prev_span()),
             kind,
         })
+    }
+
+    fn peek(input: ParseStream) -> bool {
+        input.peek::<Ident>()
+            || input.peek::<TLParen>()
+            || input.peek::<TLBrace>()
+            || input.peek::<TLBracket>()
+            || input.peek::<TColon>()
+            || input.peek::<Literal>()
+            || input.peek::<TNeg>()
+            || input.peek::<TNot>()
+            || input.peek::<TTick>()
     }
 }
 
@@ -570,6 +802,14 @@ impl Parse for Type {
             let ret = input.parse()?;
 
             TypeKind::Func { params, ret }
+        } else if let Ok(_) = input.parse::<TRef>() {
+            let ty = input.parse()?;
+
+            TypeKind::Ref { ty }
+        } else if let Ok(_) = input.parse::<TGc>() {
+            let ty = input.parse()?;
+
+            TypeKind::Gc { ty }
         } else if input.peek::<Ident>() {
             TypeKind::Path {
                 path: input.parse()?,

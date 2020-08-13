@@ -117,13 +117,22 @@ pub enum ExprKind {
         args: Vec<Arg>,
     },
     MethodCall {
-        func: Box<Expr>,
+        obj: Box<Expr>,
         method: Ident,
         args: Vec<Arg>,
     },
     Field {
         obj: Box<Expr>,
         field: Ident,
+    },
+    Index {
+        list: Box<Expr>,
+        index: Box<Expr>,
+    },
+    Slice {
+        list: Box<Expr>,
+        low: Option<Box<Expr>>,
+        high: Option<Box<Expr>>,
     },
     Ref {
         expr: Box<Expr>,
@@ -137,6 +146,10 @@ pub enum ExprKind {
     Cast {
         expr: Box<Expr>,
         ty: Type,
+    },
+    Assign {
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
     },
     BinOp {
         op: BinOp,
@@ -233,6 +246,12 @@ pub enum TypeKind {
     Func {
         params: Vec<TypeParam>,
         ret: Box<Type>,
+    },
+    Ref {
+        ty: Box<Type>,
+    },
+    Gc {
+        ty: Box<Type>,
     },
 }
 
