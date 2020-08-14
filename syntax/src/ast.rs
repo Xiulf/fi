@@ -204,7 +204,7 @@ pub struct Arg {
     pub value: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinOp {
     And,
     Or,
@@ -226,7 +226,7 @@ pub enum BinOp {
     Shr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnOp {
     Neg,
     Not,
