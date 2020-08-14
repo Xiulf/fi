@@ -96,12 +96,55 @@ impl<'a> Resolver<'a> {
         self.module()[ns].pop().unwrap();
     }
 
-    pub fn get_path(&self, path: &syntax::ast::Path) -> Res {
+    pub fn get_path(&self, ns: Ns, path: &syntax::ast::Path) -> Res {
         let mut res = Res::Err;
 
-        for seg in &path.segs {}
+        for (i, seg) in path.segs.iter().enumerate() {
+            let last = i == path.segs.len() - 1;
+
+            match res {
+                Res::Err if i == 0 => {
+                    res = self
+                        .get_seg(
+                            if !last { Ns::Modules } else { ns },
+                            self.current_module,
+                            seg,
+                        )
+                        .0;
+                }
+                Res::Err => return res,
+                Res::Module(id) => {
+                    res = self
+                        .get_seg(if !last { Ns::Modules } else { ns }, id, seg)
+                        .0;
+                }
+                Res::Item(_) if last => break,
+                Res::Local(_) if i == 0 => break,
+                Res::Item(_) => {
+                    // TODO: error: {..seg} is not a module
+                }
+                Res::Local(_) => {
+                    // TODO: error: a local can only be referenced directly
+                }
+            }
+        }
 
         res
+    }
+
+    pub fn get_seg(&self, ns: Ns, module: Id, seg: &syntax::ast::PathSeg) -> (Res, bool) {
+        let ribs = &self.modules[&module][ns];
+        let mut is_local = false;
+        let mut res = Res::Err;
+
+        for rib in ribs {
+            if let Some(r) = rib.get(&seg.name.symbol) {
+                res = r;
+                is_local = rib.kind == RibKind::Local;
+            }
+        }
+
+        (res, is_local)
     }
 }
 
