@@ -1,5 +1,5 @@
 use crate::{Id, Symbol};
-use diagnostics::Reporter;
+use diagnostics::{Diagnostic, Reporter, Severity, Span};
 use std::collections::HashMap;
 
 pub struct Resolver<'a> {
@@ -76,8 +76,10 @@ impl<'a> Resolver<'a> {
             .expect("undefined module")
     }
 
-    pub fn define(&mut self, ns: Ns, name: Symbol, res: Res) {
-        self.module()[ns].last_mut().unwrap().insert(name, res);
+    pub fn define(&mut self, ns: Ns, name: Symbol, span: Span, res: Res) {
+        if self.check_duplicate(ns, &name, span) {
+            self.module()[ns].last_mut().unwrap().insert(name, res);
+        }
     }
 
     pub fn define_super(&mut self, ns: Ns, name: Symbol, res: Res) {
@@ -86,6 +88,25 @@ impl<'a> Resolver<'a> {
         let rib = &mut module[len - 2];
 
         rib.insert(name, res);
+    }
+
+    fn check_duplicate(&self, ns: Ns, name: &Symbol, span: Span) -> bool {
+        let last_rib = self.modules[&self.current_module][ns].last().unwrap();
+
+        if last_rib.contains(name) {
+            self.reporter.add(
+                Diagnostic::new(
+                    Severity::Error,
+                    0002,
+                    format!("duplicate declaration '{}'", name),
+                )
+                .label(Severity::Error, span, None::<String>),
+            );
+
+            false
+        } else {
+            true
+        }
     }
 
     pub fn push_rib(&mut self, ns: Ns, kind: RibKind) {

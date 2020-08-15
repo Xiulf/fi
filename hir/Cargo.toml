@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 diagnostics = { path = "../../.crates/diagnostics" }
 syntax = { path = "../syntax" }
+seahash = "4.0.0"

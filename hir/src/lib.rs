@@ -1,11 +1,13 @@
+pub mod convert;
 pub mod resolve;
 
 pub use diagnostics::Span;
 use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
 pub use syntax::ast::{BinOp, Ident, Literal, Symbol, UnOp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Id(pub(crate) u64);
+pub struct Id(u64);
 
 #[derive(Debug)]
 pub struct Package {
@@ -22,7 +24,7 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum ItemKind {
     Extern {
         abi: Abi,
@@ -43,7 +45,7 @@ pub enum ItemKind {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Abi {
     None,
     C,
@@ -61,7 +63,7 @@ pub struct Stmt {
     pub kind: StmtKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum StmtKind {
     Item(Id),
     Semi(Id),
@@ -75,13 +77,22 @@ pub struct Expr {
     pub kind: ExprKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum ExprKind {
     Item {
         id: Id,
     },
-    Literal {
-        lit: Literal,
+    Int {
+        val: u128,
+    },
+    Float {
+        bits: u64,
+    },
+    Char {
+        val: char,
+    },
+    String {
+        val: String,
     },
     Type {
         ty: Id,
@@ -186,7 +197,7 @@ pub struct Type {
     pub kind: TypeKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum TypeKind {
     Never,
     Bool,
@@ -207,4 +218,65 @@ pub struct TypeParam {
     pub span: Span,
     pub name: Ident,
     pub ty: Id,
+}
+
+impl Id {
+    pub fn new<T: Hash>(src: &T) -> Self {
+        let mut hasher = seahash::SeaHasher::new();
+
+        src.hash(&mut hasher);
+
+        Id(hasher.finish())
+    }
+}
+
+impl Hash for Item {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.name.symbol.hash(state);
+        self.kind.hash(state);
+    }
+}
+
+impl Hash for Block {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.stmts.hash(state);
+    }
+}
+
+impl Hash for Stmt {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+    }
+}
+
+impl Hash for Expr {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+    }
+}
+
+impl Hash for Arg {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(&self.name).hash(state);
+
+        if let Some(name) = &self.name {
+            name.symbol.hash(state);
+        }
+
+        self.value.hash(state);
+    }
+}
+
+impl Hash for Type {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+    }
+}
+
+impl Hash for TypeParam {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.symbol.hash(state);
+        self.ty.hash(state);
+    }
 }

@@ -32,6 +32,7 @@ name = "hir"
 version = "0.1.0"
 dependencies = [
  "diagnostics",
+ "seahash",
  "syntax",
 ]
 
@@ -60,6 +61,12 @@ checksum = "aa563d17ecb180e500da1cfd2b028310ac758de548efdd203e18f283af693f37"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "seahash"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39ee459cae272d224928ca09a1df5406da984f263dc544f9f8bde92a8c3dc916"
 
 [[package]]
 name = "serde"
