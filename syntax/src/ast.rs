@@ -2,96 +2,133 @@ pub use crate::symbol::{Ident, Symbol};
 pub use diagnostics::Span;
 pub use parser::literal::*;
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Package {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
     pub module: Module,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Module {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
     pub items: Vec<Item>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Item {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub kind: ItemKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum ItemKind {
     Module {
         module: Module,
     },
     Extern {
-        abi: StringLiteral,
+        abi: Abi,
         ty: Type,
     },
     Func {
         params: Vec<Param>,
-        ret: Option<Type>,
+        ret: Type,
         body: Block,
     },
     Var {
-        ty: Option<Type>,
+        ty: Type,
         val: Option<Expr>,
     },
 }
 
-#[derive(Debug)]
-pub struct Param {
-    pub span: Span,
-    pub name: Ident,
-    pub ty: Option<Type>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Abi {
+    None,
+    C,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct Param {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
+    pub ty: Type,
+}
+
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Block {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
     pub stmts: Vec<Stmt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Stmt {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
     pub kind: StmtKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum StmtKind {
     Item(Item),
     Semi(Expr),
     Expr(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Path {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
+    pub root: bool,
     pub segs: Vec<PathSeg>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct PathSeg {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Expr {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
     pub kind: ExprKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum ExprKind {
     Path {
         path: Path,
     },
-    Literal {
-        lit: Literal,
+    Int {
+        val: u128,
+    },
+    Float {
+        bits: u64,
+    },
+    Char {
+        val: char,
+    },
+    String {
+        val: String,
     },
     Parens {
         inner: Box<Expr>,
@@ -190,16 +227,22 @@ pub enum ExprKind {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct InitField {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub value: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Arg {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
+    #[derivative(Hash(hash_with = "hash_option_ident"))]
     pub name: Option<Ident>,
     pub value: Expr,
 }
@@ -232,14 +275,17 @@ pub enum UnOp {
     Not,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Type {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
     pub kind: TypeKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum TypeKind {
+    Infer,
     Path {
         path: Path,
     },
@@ -255,9 +301,24 @@ pub enum TypeKind {
     },
 }
 
-#[derive(Debug)]
+#[derive(derivative::Derivative, Debug)]
+#[derivative(Hash)]
 pub struct TypeParam {
+    #[derivative(Hash = "ignore")]
     pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub ty: Type,
+}
+
+fn hash_ident<H: std::hash::Hasher>(ident: &Ident, state: &mut H) {
+    std::hash::Hash::hash(&*ident.symbol, state);
+}
+
+fn hash_option_ident<H: std::hash::Hasher>(ident: &Option<Ident>, state: &mut H) {
+    std::hash::Hash::hash(&std::mem::discriminant(ident), state);
+
+    if let Some(ident) = ident {
+        std::hash::Hash::hash(&*ident.symbol, state);
+    }
 }

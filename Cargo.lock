@@ -10,6 +10,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "check"
+version = "0.1.0"
+dependencies = [
+ "diagnostics",
+ "hir",
+]
+
+[[package]]
+name = "derivative"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb582b60359da160a9477ee80f15c8d784c477e69c217ef2cdd4169c24ea380f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "diagnostics"
 version = "0.1.0"
 dependencies = [
@@ -31,6 +50,7 @@ dependencies = [
 name = "hir"
 version = "0.1.0"
 dependencies = [
+ "derivative",
  "diagnostics",
  "seahash",
  "syntax",
@@ -103,6 +123,7 @@ dependencies = [
 name = "syntax"
 version = "0.1.0"
 dependencies = [
+ "derivative",
  "diagnostics",
  "parser",
 ]

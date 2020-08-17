@@ -8,3 +8,4 @@ edition = "2018"
 diagnostics = { path = "../../.crates/diagnostics" }
 syntax = { path = "../syntax" }
 seahash = "4.0.0"
+derivative = "2.1.1"

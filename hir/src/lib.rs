@@ -1,10 +1,12 @@
 pub mod convert;
+mod printing;
 pub mod resolve;
 
 pub use diagnostics::Span;
+pub use resolve::{PrimTy, Res};
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
-pub use syntax::ast::{BinOp, Ident, Literal, Symbol, UnOp};
+pub use syntax::ast::{Abi, BinOp, Ident, Literal, Symbol, UnOp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Id(u64);
@@ -34,21 +36,15 @@ pub enum ItemKind {
         params: Vec<Id>,
         ret: Id,
         body: Block,
-        captures: Vec<Id>,
     },
     Param {
         ty: Id,
     },
     Var {
-        ty: Option<Id>,
+        global: bool,
+        ty: Id,
         val: Option<Id>,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Abi {
-    None,
-    C,
 }
 
 #[derive(Debug)]
@@ -79,8 +75,9 @@ pub struct Expr {
 
 #[derive(Debug, Hash)]
 pub enum ExprKind {
-    Item {
-        id: Id,
+    Err,
+    Path {
+        res: Res,
     },
     Int {
         val: u128,
@@ -199,10 +196,9 @@ pub struct Type {
 
 #[derive(Debug, Hash)]
 pub enum TypeKind {
-    Never,
-    Bool,
-    Int { bits: u8 },
-    Float { bits: u8 },
+    Err,
+    Infer,
+    Path { res: Res },
     Ptr { gc: bool, to: Id },
     Func { params: Vec<TypeParam>, ret: Id },
     Tuple { tys: Vec<Id> },
@@ -227,6 +223,10 @@ impl Id {
         src.hash(&mut hasher);
 
         Id(hasher.finish())
+    }
+
+    pub const fn is_null(&self) -> bool {
+        self.0 == 0
     }
 }
 

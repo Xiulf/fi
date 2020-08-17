@@ -14,5 +14,9 @@ pub fn build(opts: Opts) {
 
     reporter.report(true);
 
+    let package = hir::convert::convert(&reporter, &package);
+
+    reporter.report(true);
+
     println!("{}", package);
 }

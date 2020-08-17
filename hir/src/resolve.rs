@@ -2,9 +2,12 @@ use crate::{Id, Symbol};
 use diagnostics::{Diagnostic, Reporter, Severity, Span};
 use std::collections::HashMap;
 
+#[derive(derivative::Derivative)]
+#[derivative(Debug)]
 pub struct Resolver<'a> {
+    #[derivative(Debug = "ignore")]
     reporter: &'a Reporter,
-    current_module: Id,
+    pub(crate) current_module: Id,
     modules: HashMap<Id, PerNs<Vec<Rib>>>,
 }
 
@@ -37,21 +40,33 @@ pub enum RibKind {
     Local,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash)]
 pub enum Res {
     Module(Id),
     Item(Id),
     Local(Id),
-    Err,
+    PrimTy(PrimTy),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+pub enum PrimTy {
+    Never,
+    Bool,
+    Str,
+    Int(u8, bool),
+    Float(u8),
 }
 
 impl<'a> Resolver<'a> {
     pub fn new(reporter: &'a Reporter) -> Self {
-        Resolver {
+        let mut resolver = Resolver {
             reporter,
             current_module: Id(0),
             modules: HashMap::new(),
-        }
+        };
+
+        resolver.add_root();
+        resolver
     }
 
     pub fn add_module(&mut self, id: Id) {
@@ -82,14 +97,6 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    pub fn define_super(&mut self, ns: Ns, name: Symbol, res: Res) {
-        let module = &mut self.module()[ns];
-        let len = module.len();
-        let rib = &mut module[len - 2];
-
-        rib.insert(name, res);
-    }
-
     fn check_duplicate(&self, ns: Ns, name: &Symbol, span: Span) -> bool {
         let last_rib = self.modules[&self.current_module][ns].last().unwrap();
 
@@ -97,7 +104,7 @@ impl<'a> Resolver<'a> {
             self.reporter.add(
                 Diagnostic::new(
                     Severity::Error,
-                    0002,
+                    0003,
                     format!("duplicate declaration '{}'", name),
                 )
                 .label(Severity::Error, span, None::<String>),
@@ -117,55 +124,186 @@ impl<'a> Resolver<'a> {
         self.module()[ns].pop().unwrap();
     }
 
-    pub fn get_path(&self, ns: Ns, path: &syntax::ast::Path) -> Res {
-        let mut res = Res::Err;
+    pub fn get_path(&self, ns: Ns, path: &syntax::ast::Path) -> Option<Res> {
+        let mut res = None;
 
         for (i, seg) in path.segs.iter().enumerate() {
             let last = i == path.segs.len() - 1;
 
             match res {
-                Res::Err if i == 0 => {
+                None if i == 0 => {
                     res = self
                         .get_seg(
                             if !last { Ns::Modules } else { ns },
-                            self.current_module,
+                            if path.root {
+                                Id(0)
+                            } else {
+                                self.current_module
+                            },
                             seg,
                         )
                         .0;
                 }
-                Res::Err => return res,
-                Res::Module(id) => {
+                None => return res,
+                Some(Res::Module(id)) => {
                     res = self
                         .get_seg(if !last { Ns::Modules } else { ns }, id, seg)
                         .0;
                 }
-                Res::Item(_) if last => break,
-                Res::Local(_) if i == 0 => break,
-                Res::Item(_) => {
+                Some(Res::Item(_)) if last => break,
+                Some(Res::Local(_)) if i == 0 => break,
+                Some(Res::PrimTy(_)) if i == 0 => break,
+                Some(Res::Item(_)) => {
                     // TODO: error: {..seg} is not a module
                 }
-                Res::Local(_) => {
+                Some(Res::Local(_)) => {
                     // TODO: error: a local can only be referenced directly
                 }
+                Some(Res::PrimTy(_)) => unreachable!(),
             }
         }
 
         res
     }
 
-    pub fn get_seg(&self, ns: Ns, module: Id, seg: &syntax::ast::PathSeg) -> (Res, bool) {
+    pub fn get_seg(&self, ns: Ns, module: Id, seg: &syntax::ast::PathSeg) -> (Option<Res>, bool) {
         let ribs = &self.modules[&module][ns];
         let mut is_local = false;
-        let mut res = Res::Err;
+        let mut res = None;
 
         for rib in ribs {
             if let Some(r) = rib.get(&seg.name.symbol) {
-                res = r;
+                res = Some(r);
                 is_local = rib.kind == RibKind::Local;
             }
         }
 
         (res, is_local)
+    }
+
+    fn add_root(&mut self) {
+        self.add_module(Id(0));
+        self.set_module(Id(0));
+        self.define(
+            Ns::Types,
+            Symbol::new("never"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Never),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("bool"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Bool),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("str"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Str),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("uint"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(255, false)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("int"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(255, true)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("float"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Float(255)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("u8"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(8, false)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("u16"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(16, false)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("u32"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(32, false)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("u64"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(64, false)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("u128"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(128, false)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("usize"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(0, false)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("i8"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(8, true)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("i16"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(16, true)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("i32"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(32, true)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("i64"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(64, true)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("i128"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(128, true)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("isize"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Int(0, true)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("f32"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Float(32)),
+        );
+        self.define(
+            Ns::Types,
+            Symbol::new("f64"),
+            Span::default(),
+            Res::PrimTy(PrimTy::Float(64)),
+        );
     }
 }
 

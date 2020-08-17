@@ -1,10 +1,9 @@
 [package]
-name = "syntax"
+name = "check"
 version = "0.1.0"
 authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 diagnostics = { path = "../../.crates/diagnostics" }
-parser = { path = "parser" }
-derivative = "2.1.1"
+hir = { path = "../hir" }

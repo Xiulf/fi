@@ -37,6 +37,7 @@ parser::token![punct "`" TTick/1];
 parser::token![punct "->" TArrow/2];
 parser::token![punct ".." TDblDot/2];
 parser::token![punct "#" TPathSep/1];
+parser::token![ident "_" TWildcard];
 
 parser::token![punct "+" TAdd/1];
 parser::token![punct "-" TSub/1];
@@ -107,7 +108,7 @@ impl Module {
         }
 
         while !input.is_empty() && !balance.is_empty() {
-            if let Ok(_) = input.parse::<TLParen>() {
+            if input.peek::<TLParen>() {
                 balance.push(Balance::Paren);
             } else if input.peek::<TLBrace>() {
                 balance.push(Balance::Brace);
@@ -182,9 +183,12 @@ impl Parse for Item {
             let name = input.parse()?;
             let _ = input.parse::<TColon>()?;
             let ty = if input.peek::<TColon>() || input.peek::<TEquals>() {
-                None
+                Type {
+                    span: input.span(),
+                    kind: TypeKind::Infer,
+                }
             } else {
-                Some(input.parse::<Type>()?)
+                input.parse::<Type>()?
             };
 
             if let Ok(_) = input.parse::<TColon>() {
@@ -213,9 +217,12 @@ impl Parse for Item {
                     input.parse::<TRParen>()?;
 
                     let ret = if let Ok(_) = input.parse::<TArrow>() {
-                        Some(input.parse()?)
+                        input.parse()?
                     } else {
-                        None
+                        Type {
+                            span: input.span(),
+                            kind: TypeKind::Infer,
+                        }
                     };
 
                     let body = input.parse()?;
@@ -250,14 +257,30 @@ impl Parse for Item {
     }
 }
 
+impl Parse for Abi {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if let Ok(lit) = input.parse::<StringLiteral>() {
+            match lit.text.to_lowercase().as_str() {
+                "c" => Ok(Abi::C),
+                _ => input.error_at("invalid abi", lit.span, 0002),
+            }
+        } else {
+            Ok(Abi::None)
+        }
+    }
+}
+
 impl Parse for Param {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let name = input.parse()?;
         let ty = if let Ok(_) = input.parse::<TColon>() {
-            Some(input.parse()?)
+            input.parse()?
         } else {
-            None
+            Type {
+                span: input.span(),
+                kind: TypeKind::Infer,
+            }
         };
 
         Ok(Param {
@@ -327,6 +350,7 @@ impl Parse for Stmt {
 impl Parse for Path {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
+        let root = input.parse::<TPathSep>().is_ok();
         let mut segs = vec![input.parse()?];
 
         while let Ok(_) = input.parse::<TPathSep>() {
@@ -335,6 +359,7 @@ impl Parse for Path {
 
         Ok(Path {
             span: start.to(input.prev_span()),
+            root,
             segs,
         })
     }
@@ -542,7 +567,12 @@ impl Expr {
     fn atom(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let kind = if let Ok(lit) = input.parse() {
-            ExprKind::Literal { lit }
+            match lit {
+                Literal::Int(lit) => ExprKind::Int { val: lit.int },
+                Literal::Float(lit) => ExprKind::Float { bits: lit.float },
+                Literal::Char(lit) => ExprKind::Char { val: lit.ch },
+                Literal::String(lit) => ExprKind::String { val: lit.text },
+            }
         } else if let Ok(_) = input.parse::<TTick>() {
             let ty = input.parse()?;
             let _ = input.parse::<TTick>()?;
@@ -645,12 +675,12 @@ impl Expr {
             let expr = input.parse()?;
 
             ExprKind::Defer { expr }
-        } else if input.peek::<Ident>() {
+        } else if input.peek::<Ident>() || input.peek::<TPathSep>() {
             ExprKind::Path {
                 path: input.parse()?,
             }
         } else {
-            return input.error("expected '(', '{', '[', 'do', 'if', 'while', 'loop', 'break', 'continue', 'return', 'defer', a label, a literal or an identifier", 0001);
+            return input.error("expected '(', '{', '[', 'do', 'if', 'while', 'loop', 'break', 'continue', 'return', 'defer', '#', a label, a literal or an identifier", 0001);
         };
 
         Ok(Expr {
@@ -810,12 +840,17 @@ impl Parse for Type {
             let ty = input.parse()?;
 
             TypeKind::Gc { ty }
-        } else if input.peek::<Ident>() {
+        } else if let Ok(_) = input.parse::<TWildcard>() {
+            TypeKind::Infer
+        } else if input.peek::<Ident>() || input.peek::<TPathSep>() {
             TypeKind::Path {
                 path: input.parse()?,
             }
         } else {
-            return input.error("expected 'fn' or an identifier", 0001);
+            return input.error(
+                "expected 'fn', 'ref', 'gc', '_', '#' or an identifier",
+                0001,
+            );
         };
 
         Ok(Type {
