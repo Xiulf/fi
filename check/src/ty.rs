@@ -43,6 +43,8 @@ impl fmt::Display for Type<'_> {
             Type::VInt(_) => write!(f, "int"),
             Type::VUInt(_) => write!(f, "uint"),
             Type::VFloat(_) => write!(f, "float"),
+            Type::Int(0) => write!(f, "isize"),
+            Type::UInt(0) => write!(f, "usize"),
             Type::Int(bits) => write!(f, "i{}", bits),
             Type::UInt(bits) => write!(f, "u{}", bits),
             Type::Float(bits) => write!(f, "f{}", bits),

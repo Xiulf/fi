@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 diagnostics = { path = "../../.crates/diagnostics" }
 hir = { path = "../hir" }
+bumpalo = "3.4.0"

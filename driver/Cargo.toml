@@ -8,3 +8,4 @@ edition = "2018"
 diagnostics = { path = "../../.crates/diagnostics" }
 syntax = { path = "../syntax" }
 hir = { path = "../hir" }
+check = { path = "../check" }

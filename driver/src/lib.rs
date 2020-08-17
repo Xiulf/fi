@@ -18,5 +18,11 @@ pub fn build(opts: Opts) {
 
     reporter.report(true);
 
-    println!("{}", package);
+    check::with_tcx(&reporter, &package, |tcx| {
+        for (id, item) in &package.items {
+            let ty = tcx.type_of(id);
+
+            println!("{}: {};", item.name, ty);
+        }
+    });
 }
