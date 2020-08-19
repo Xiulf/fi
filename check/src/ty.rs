@@ -3,6 +3,7 @@ use hir::Symbol;
 use std::fmt;
 
 pub type Ty<'tcx> = &'tcx Type<'tcx>;
+pub type Layout<'tcx> = crate::layout::TyLayout<'tcx, Ty<'tcx>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type<'tcx> {
@@ -18,7 +19,7 @@ pub enum Type<'tcx> {
     Int(u8),
     UInt(u8),
     Float(u8),
-    Ptr(bool, Ty<'tcx>),
+    Ref(bool, Ty<'tcx>),
     Tuple(&'tcx [Ty<'tcx>]),
     Func(&'tcx [Param<'tcx>], Ty<'tcx>),
 }
@@ -58,6 +59,20 @@ impl<'tcx> Type<'tcx> {
             _ => Vec::new(),
         }
     }
+
+    pub fn pointee(&self) -> Ty<'tcx> {
+        match self {
+            Type::Ref(_, to) => to,
+            _ => panic!("type is not a reference"),
+        }
+    }
+
+    pub fn idx(&self, tcx: &crate::tcx::Tcx<'tcx>) -> Ty<'tcx> {
+        match self {
+            Type::Str => tcx.builtin.u8,
+            _ => panic!("type can't be indexed"),
+        }
+    }
 }
 
 impl fmt::Display for Type<'_> {
@@ -77,8 +92,8 @@ impl fmt::Display for Type<'_> {
             Type::Int(bits) => write!(f, "i{}", bits),
             Type::UInt(bits) => write!(f, "u{}", bits),
             Type::Float(bits) => write!(f, "f{}", bits),
-            Type::Ptr(true, to) => write!(f, "gc {}", to),
-            Type::Ptr(false, to) => write!(f, "ref {}", to),
+            Type::Ref(true, to) => write!(f, "ref mut {}", to),
+            Type::Ref(false, to) => write!(f, "ref {}", to),
             Type::Tuple(tys) => write!(
                 f,
                 "({})",

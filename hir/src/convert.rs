@@ -354,12 +354,8 @@ impl<'a> Converter<'a> {
                     TypeKind::Err
                 }
             }
-            ast::TypeKind::Ref { ty } => TypeKind::Ptr {
-                gc: false,
-                to: self.trans_ty(ty),
-            },
-            ast::TypeKind::Gc { ty } => TypeKind::Ptr {
-                gc: true,
+            ast::TypeKind::Ref { ty, mut_ } => TypeKind::Ref {
+                mut_: *mut_,
                 to: self.trans_ty(ty),
             },
             ast::TypeKind::Func { params, ret } => {

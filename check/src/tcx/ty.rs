@@ -35,17 +35,17 @@ impl<'tcx> Tcx<'tcx> {
                 },
                 _ => unreachable!(),
             },
-            hir::TypeKind::Ptr { gc, to } => {
+            hir::TypeKind::Ref { mut_, to } => {
                 let to = self.type_of(to);
 
-                self.arena.alloc(Type::Ptr(*gc, to))
+                self.intern_ty(Type::Ref(*mut_, to))
             }
             hir::TypeKind::Tuple { tys } => {
                 let tys = self
                     .arena
                     .alloc_slice_fill_iter(tys.iter().map(|ty| self.type_of(ty)));
 
-                self.arena.alloc(Type::Tuple(tys))
+                self.intern_ty(Type::Tuple(tys))
             }
             hir::TypeKind::Func { params, ret } => {
                 let params = self
@@ -57,7 +57,7 @@ impl<'tcx> Tcx<'tcx> {
 
                 let ret = self.type_of(ret);
 
-                self.arena.alloc(Type::Func(params, ret))
+                self.intern_ty(Type::Func(params, ret))
             }
         }
     }

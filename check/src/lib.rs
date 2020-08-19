@@ -1,4 +1,5 @@
 pub mod constraint;
+pub mod layout;
 pub mod subst;
 pub mod tcx;
 pub mod ty;
@@ -9,7 +10,8 @@ pub fn with_tcx<T>(
     f: impl FnOnce(tcx::Tcx) -> T,
 ) -> T {
     let arena = bumpalo::Bump::new();
-    let tcx = tcx::Tcx::new(reporter, &arena, package);
+    let target = target_lexicon::Triple::host();
+    let tcx = tcx::Tcx::new(reporter, &arena, &target, package);
 
     for (id, _) in &package.items {
         tcx.type_of(id);

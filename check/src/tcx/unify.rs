@@ -50,7 +50,9 @@ impl<'tcx> Tcx<'tcx> {
                 (Type::VFloat(tvar), Type::Float(_)) => vec![(*tvar, b)].into_iter().collect(),
                 (Type::VFloat(tvar), Type::VFloat(_)) => vec![(*tvar, b)].into_iter().collect(),
                 (Type::Float(_), Type::VFloat(tvar)) => vec![(*tvar, a)].into_iter().collect(),
-                (Type::Ptr(a_gc, a), Type::Ptr(b_gc, b)) if a_gc == b_gc => {
+                (Type::Ref(a_mut, a), Type::Ref(b_mut, b))
+                    if a_mut == b_mut || (!*b_mut && *a_mut) =>
+                {
                     self.unify_one(Constraint::Equal(a, a_span, b, b_span))
                 }
                 (Type::Tuple(a_tys), Type::Tuple(b_tys)) => {
@@ -94,14 +96,14 @@ impl<'tcx> Tcx<'tcx> {
                 }
             },
             Constraint::PtrArith(a, a_span, b, b_span) => match (a, b) {
-                (Type::Ptr(false, a), Type::Ptr(false, b)) => {
+                (Type::Ref(_, a), Type::Ref(_, b)) => {
                     self.unify_one(Constraint::Equal(a, a_span, b, b_span))
                 }
-                (Type::Ptr(false, _), Type::Int(0)) | (Type::Ptr(false, _), Type::UInt(0)) => {
+                (Type::Ref(_, _), Type::Int(0)) | (Type::Ref(_, _), Type::UInt(0)) => {
                     Subst::empty()
                 }
-                (Type::Ptr(false, _), Type::VInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
-                (Type::Ptr(false, _), Type::VUInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
+                (Type::Ref(_, _), Type::VInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
+                (Type::Ref(_, _), Type::VUInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
                 (_, _) => {
                     let mut cs = Constraints::new();
 

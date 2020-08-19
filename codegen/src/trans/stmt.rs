@@ -1,0 +1,16 @@
+use crate::FunctionCtx;
+use cranelift::codegen::ir::{self, InstBuilder};
+use cranelift_module::Backend;
+
+impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
+    pub fn trans_stmt(&mut self, stmt: &mir::Stmt<'tcx>) {
+        match stmt {
+            mir::Stmt::Nop => {}
+            mir::Stmt::Assign(place, rvalue) => {
+                let place = self.trans_place(place);
+
+                self.trans_rvalue(place, rvalue);
+            }
+        }
+    }
+}

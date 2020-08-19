@@ -199,14 +199,9 @@ pub enum TypeKind {
     Err,
     Infer,
     Path { res: Res },
-    Ptr { gc: bool, to: Id },
+    Ref { mut_: bool, to: Id },
     Func { params: Vec<TypeParam>, ret: Id },
     Tuple { tys: Vec<Id> },
-}
-
-impl TypeKind {
-    pub const SIGN_MASK: u8 = 0b10000000;
-    pub const BITS_MASK: u8 = 0b01111111;
 }
 
 #[derive(Debug)]
@@ -227,6 +222,10 @@ impl Id {
 
     pub const fn is_null(&self) -> bool {
         self.0 == 0
+    }
+
+    pub const fn as_u32(&self) -> u32 {
+        (self.0 >> 32) as u32 & (self.0 & 0x00000000FFFFFFFF) as u32
     }
 }
 

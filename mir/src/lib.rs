@@ -2,16 +2,17 @@ pub mod convert;
 mod printing;
 
 pub use check::ty::{Ident, Param, Ty, Type};
+pub use hir::Id;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct Package<'tcx> {
-    pub items: BTreeMap<hir::Id, Item<'tcx>>,
+    pub items: BTreeMap<Id, Item<'tcx>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Item<'tcx> {
-    pub id: hir::Id,
+    pub id: Id,
     pub name: Ident,
     pub kind: ItemKind<'tcx>,
 }
@@ -68,7 +69,6 @@ pub enum Term<'tcx> {
     Abort,
     Return,
     Jump(BlockId),
-    Call(Vec<Place>, Operand<'tcx>, Vec<Operand<'tcx>>, BlockId),
     Switch(Operand<'tcx>, Vec<u128>, Vec<BlockId>),
 }
 
@@ -81,7 +81,7 @@ pub struct Place {
 #[derive(Debug, Clone)]
 pub enum PlaceBase {
     Local(LocalId),
-    Global(hir::Id),
+    Global(Id),
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +101,7 @@ pub enum Operand<'tcx> {
 pub enum Const<'tcx> {
     Unit,
     Scalar(u128, Ty<'tcx>),
-    FuncAddr(hir::Id),
+    FuncAddr(Id),
     Bytes(Box<[u8]>),
     Type(Ty<'tcx>),
 }
@@ -111,6 +111,7 @@ pub enum RValue<'tcx> {
     Use(Operand<'tcx>),
     Ref(Place),
     Cast(Ty<'tcx>, Operand<'tcx>),
+    Call(Operand<'tcx>, Vec<Operand<'tcx>>),
     BinOp(BinOp, Operand<'tcx>, Operand<'tcx>),
     UnOp(UnOp, Operand<'tcx>),
     Init(Ty<'tcx>, Vec<Operand<'tcx>>),
@@ -217,8 +218,16 @@ impl<'tcx> Package<'tcx> {
 }
 
 impl<'tcx> Body<'tcx> {
-    pub fn params(&self) -> impl Iterator<Item = &Local> {
+    pub fn params(&self) -> impl Iterator<Item = &Local<'tcx>> {
         self.locals.values().filter(|v| v.kind == LocalKind::Arg)
+    }
+}
+
+impl LocalId {
+    pub const RET: Self = LocalId(0);
+
+    pub const fn as_u32(self) -> u32 {
+        self.0 as u32
     }
 }
 
@@ -350,6 +359,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             .push(Stmt::Assign(place, RValue::Cast(ty, op)));
     }
 
+    pub fn call(&mut self, place: Place, func: Operand<'tcx>, args: Vec<Operand<'tcx>>) {
+        self.block()
+            .stmts
+            .push(Stmt::Assign(place, RValue::Call(func, args)));
+    }
+
     pub fn binop(&mut self, place: Place, op: BinOp, lhs: Operand<'tcx>, rhs: Operand<'tcx>) {
         self.block()
             .stmts
@@ -383,18 +398,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     pub fn jump(&mut self, target: BlockId) {
         if let Term::Unset = self.block().term {
             self.block().term = Term::Jump(target);
-        }
-    }
-
-    pub fn call(
-        &mut self,
-        places: Vec<Place>,
-        func: Operand<'tcx>,
-        args: Vec<Operand<'tcx>>,
-        target: BlockId,
-    ) {
-        if let Term::Unset = self.block().term {
-            self.block().term = Term::Call(places, func, args, target);
         }
     }
 

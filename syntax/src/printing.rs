@@ -280,8 +280,8 @@ impl Display for Type {
             TypeKind::Infer => write!(f, "_"),
             TypeKind::Path { path } => path.fmt(f),
             TypeKind::Func { params, ret } => write!(f, "fn ({}) -> {}", list(params, ", "), ret),
-            TypeKind::Ref { ty } => write!(f, "ref {}", ty),
-            TypeKind::Gc { ty } => write!(f, "gc {}", ty),
+            TypeKind::Ref { mut_: true, ty } => write!(f, "ref mut {}", ty),
+            TypeKind::Ref { mut_: false, ty } => write!(f, "ref {}", ty),
         }
     }
 }

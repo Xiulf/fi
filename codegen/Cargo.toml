@@ -1,13 +1,14 @@
 [package]
-name = "driver"
+name = "codegen"
 version = "0.1.0"
 authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-diagnostics = { path = "../../.crates/diagnostics" }
-syntax = { path = "../syntax" }
-hir = { path = "../hir" }
 check = { path = "../check" }
 mir = { path = "../mir" }
-codegen = { path = "../codegen" }
+cranelift = "^0.66.0"
+cranelift-module = "^0.66.0"
+cranelift-object = "^0.66.0"
+target-lexicon = "^0.10.0"
+object = "^0.20.0"

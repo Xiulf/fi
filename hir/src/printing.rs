@@ -219,8 +219,8 @@ impl Display for Type {
             TypeKind::Err => write!(f, "[error]"),
             TypeKind::Infer => write!(f, "_"),
             TypeKind::Path { res } => res.fmt(f),
-            TypeKind::Ptr { gc: true, to } => write!(f, "gc {}", to),
-            TypeKind::Ptr { gc: false, to } => write!(f, "ref {}", to),
+            TypeKind::Ref { mut_: true, to } => write!(f, "ref mut {}", to),
+            TypeKind::Ref { mut_: false, to } => write!(f, "ref {}", to),
             TypeKind::Tuple { tys } => write!(
                 f,
                 "({})",

@@ -273,7 +273,6 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         let (param_tys, ret_ty) = self.tcx.type_of(func).func().unwrap();
         let res = self.builder.create_tmp(ret_ty);
         let res = Place::local(res);
-        let next = self.builder.create_block();
         let func = self.trans_expr(func);
         let mut call_args = Vec::with_capacity(args.len());
         let mut skip = Vec::with_capacity(args.len());
@@ -303,8 +302,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
         }
 
-        self.builder.call(vec![res.clone()], func, call_args, next);
-        self.builder.use_block(next);
+        self.builder.call(res.clone(), func, call_args);
 
         Operand::Place(res)
     }

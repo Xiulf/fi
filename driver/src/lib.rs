@@ -22,5 +22,7 @@ pub fn build(opts: Opts) {
         let mir = mir::convert::convert(&tcx, &hir);
 
         println!("{}", mir);
+
+        codegen::trans::translate(&tcx, &mir);
     });
 }

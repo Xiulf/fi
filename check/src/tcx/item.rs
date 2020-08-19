@@ -24,7 +24,7 @@ impl<'tcx> Tcx<'tcx> {
 
                 let ret = self.type_of(ret);
 
-                self.arena.alloc(Type::Func(params, ret))
+                self.intern_ty(Type::Func(params, ret))
             }
             hir::ItemKind::Param { ty } => self.type_of(ty),
             hir::ItemKind::Var { ty, .. } => self.type_of(ty),

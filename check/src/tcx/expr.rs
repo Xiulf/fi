@@ -85,7 +85,7 @@ impl<'tcx> Tcx<'tcx> {
             }
             hir::ExprKind::Deref { expr: inner } => {
                 let ty = self.new_var();
-                let ref_ty = self.arena.alloc(Type::Ptr(false, ty));
+                let ref_ty = self.intern_ty(Type::Ref(false, ty));
                 let inner_ty = self.type_of(inner);
                 let inner_span = self.span_of(inner);
 

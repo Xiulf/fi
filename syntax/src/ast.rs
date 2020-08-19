@@ -295,9 +295,7 @@ pub enum TypeKind {
     },
     Ref {
         ty: Box<Type>,
-    },
-    Gc {
-        ty: Box<Type>,
+        mut_: bool,
     },
 }
 

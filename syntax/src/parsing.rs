@@ -7,7 +7,7 @@ parser::token![ident "extern" TExtern];
 parser::token![ident "fn" TFn];
 parser::token![ident "do" TDo];
 parser::token![ident "ref" TRef];
-parser::token![ident "gc" TGc];
+parser::token![ident "mut" TMut];
 parser::token![ident "deref" TDeref];
 parser::token![ident "type" TType];
 parser::token![ident "while" TWhile];
@@ -833,13 +833,10 @@ impl Parse for Type {
 
             TypeKind::Func { params, ret }
         } else if let Ok(_) = input.parse::<TRef>() {
+            let mut_ = input.parse::<TMut>().is_ok();
             let ty = input.parse()?;
 
-            TypeKind::Ref { ty }
-        } else if let Ok(_) = input.parse::<TGc>() {
-            let ty = input.parse()?;
-
-            TypeKind::Gc { ty }
+            TypeKind::Ref { mut_, ty }
         } else if let Ok(_) = input.parse::<TWildcard>() {
             TypeKind::Infer
         } else if input.peek::<Ident>() || input.peek::<TPathSep>() {

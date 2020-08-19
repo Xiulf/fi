@@ -5,6 +5,8 @@ mod unify;
 mod verify;
 
 use crate::constraint::*;
+use crate::layout::Layout;
+use crate::layout::*;
 use crate::ty::*;
 use diagnostics::{Reporter, Span};
 use std::cell::{Cell, RefCell};
@@ -14,7 +16,9 @@ pub struct Tcx<'tcx> {
     reporter: &'tcx Reporter,
     arena: &'tcx bumpalo::Bump,
     package: &'tcx hir::Package,
+    target: &'tcx target_lexicon::Triple,
     types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
+    layouts: RefCell<BTreeMap<*const Type<'tcx>, TyLayout<'tcx, Ty<'tcx>>>>,
     constraints: RefCell<Constraints<'tcx>>,
     ty_vars: Cell<usize>,
     pub builtin: BuiltinTypes<'tcx>,
@@ -69,7 +73,7 @@ impl<'tcx> BuiltinTypes<'tcx> {
             isize: arena.alloc(Type::Int(0)),
             f32: arena.alloc(Type::Float(32)),
             f64: arena.alloc(Type::Float(64)),
-            ref_u8: arena.alloc(Type::Ptr(false, u8)),
+            ref_u8: arena.alloc(Type::Ref(false, u8)),
         }
     }
 }
@@ -78,13 +82,16 @@ impl<'tcx> Tcx<'tcx> {
     pub fn new(
         reporter: &'tcx Reporter,
         arena: &'tcx bumpalo::Bump,
+        target: &'tcx target_lexicon::Triple,
         package: &'tcx hir::Package,
     ) -> Self {
         Tcx {
             reporter,
             arena,
+            target,
             package,
             types: RefCell::new(BTreeMap::new()),
+            layouts: RefCell::new(BTreeMap::new()),
             constraints: RefCell::new(Constraints::new()),
             builtin: BuiltinTypes::new(arena),
             ty_vars: Cell::new(0),
@@ -140,27 +147,215 @@ impl<'tcx> Tcx<'tcx> {
         let var = self.ty_vars.get();
 
         self.ty_vars.set(var + 1);
-        self.arena.alloc(Type::Var(TypeVar(var)))
+        self.intern_ty(Type::Var(TypeVar(var)))
     }
 
     pub fn new_int(&self) -> Ty<'tcx> {
         let var = self.ty_vars.get();
 
         self.ty_vars.set(var + 1);
-        self.arena.alloc(Type::VInt(TypeVar(var)))
+        self.intern_ty(Type::VInt(TypeVar(var)))
     }
 
     pub fn new_uint(&self) -> Ty<'tcx> {
         let var = self.ty_vars.get();
 
         self.ty_vars.set(var + 1);
-        self.arena.alloc(Type::VUInt(TypeVar(var)))
+        self.intern_ty(Type::VUInt(TypeVar(var)))
     }
 
     pub fn new_float(&self) -> Ty<'tcx> {
         let var = self.ty_vars.get();
 
         self.ty_vars.set(var + 1);
-        self.arena.alloc(Type::VFloat(TypeVar(var)))
+        self.intern_ty(Type::VFloat(TypeVar(var)))
+    }
+
+    pub fn layout_of(&self, id: &hir::Id) -> TyLayout<'tcx, Ty<'tcx>> {
+        self.layout(self.type_of(id))
+    }
+
+    pub fn layout(&self, ty: Ty<'tcx>) -> TyLayout<'tcx, Ty<'tcx>> {
+        let layouts = self.layouts.borrow();
+
+        if let Some(layout) = layouts.get(&(ty as *const _)) {
+            return *layout;
+        }
+
+        std::mem::drop(layouts);
+
+        let scalar_unit = |value: Primitive| {
+            let bits = value.size(self.target).bits();
+            assert!(bits <= 128);
+            Scalar {
+                value,
+                valid_range: 0..=(!0 >> (128 - bits)),
+            }
+        };
+
+        let scalar =
+            |value: Primitive| self.intern_layout(Layout::scalar(scalar_unit(value), self.target));
+
+        let layout = match ty {
+            Type::Error => unreachable!(),
+            Type::Var(_) => unreachable!(),
+            Type::VInt(_) => unreachable!(),
+            Type::VUInt(_) => unreachable!(),
+            Type::VFloat(_) => unreachable!(),
+            Type::Never => self.intern_layout(Layout {
+                fields: FieldsShape::Primitive,
+                abi: Abi::Uninhabited,
+                size: Size::ZERO,
+                align: Align::from_bits(8),
+            }),
+            Type::Bool => self.intern_layout(Layout::scalar(
+                Scalar {
+                    value: Primitive::Int(Integer::I8, false),
+                    valid_range: 0..=1,
+                },
+                self.target,
+            )),
+            Type::Int(0) => match self.target.pointer_width() {
+                Ok(target_lexicon::PointerWidth::U16) => scalar(Primitive::Int(Integer::I16, true)),
+                Ok(target_lexicon::PointerWidth::U32) => scalar(Primitive::Int(Integer::I32, true)),
+                Ok(target_lexicon::PointerWidth::U64) => scalar(Primitive::Int(Integer::I64, true)),
+                Err(_) => scalar(Primitive::Int(Integer::I32, true)),
+            },
+            Type::UInt(0) => match self.target.pointer_width() {
+                Ok(target_lexicon::PointerWidth::U16) => {
+                    scalar(Primitive::Int(Integer::I16, false))
+                }
+                Ok(target_lexicon::PointerWidth::U32) => {
+                    scalar(Primitive::Int(Integer::I32, false))
+                }
+                Ok(target_lexicon::PointerWidth::U64) => {
+                    scalar(Primitive::Int(Integer::I64, false))
+                }
+                Err(_) => scalar(Primitive::Int(Integer::I32, false)),
+            },
+            Type::Float(0) => match self.target.pointer_width() {
+                Ok(target_lexicon::PointerWidth::U32) => scalar(Primitive::F32),
+                Ok(target_lexicon::PointerWidth::U64) => scalar(Primitive::F64),
+                _ => scalar(Primitive::F32),
+            },
+            Type::Int(8) => scalar(Primitive::Int(Integer::I8, true)),
+            Type::Int(16) => scalar(Primitive::Int(Integer::I16, true)),
+            Type::Int(32) => scalar(Primitive::Int(Integer::I32, true)),
+            Type::Int(64) => scalar(Primitive::Int(Integer::I64, true)),
+            Type::Int(128) => scalar(Primitive::Int(Integer::I128, true)),
+            Type::Int(_) => unreachable!(),
+            Type::UInt(8) => scalar(Primitive::Int(Integer::I8, false)),
+            Type::UInt(16) => scalar(Primitive::Int(Integer::I16, false)),
+            Type::UInt(32) => scalar(Primitive::Int(Integer::I32, false)),
+            Type::UInt(64) => scalar(Primitive::Int(Integer::I64, false)),
+            Type::UInt(128) => scalar(Primitive::Int(Integer::I128, false)),
+            Type::UInt(_) => unreachable!(),
+            Type::Float(32) => scalar(Primitive::F32),
+            Type::Float(64) => scalar(Primitive::F64),
+            Type::Float(_) => unreachable!(),
+            Type::Str => {
+                let mut data_ptr = scalar_unit(Primitive::Pointer);
+
+                data_ptr.valid_range = 1..=*data_ptr.valid_range.end();
+
+                let metadata = scalar_unit(Primitive::Int(Integer::ptr_sized(self.target), false));
+
+                self.intern_layout(self.scalar_pair(data_ptr, metadata))
+            }
+            Type::TypeId => match self.target.pointer_width() {
+                Ok(target_lexicon::PointerWidth::U16) => {
+                    scalar(Primitive::Int(Integer::I16, false))
+                }
+                Ok(target_lexicon::PointerWidth::U32) => {
+                    scalar(Primitive::Int(Integer::I32, false))
+                }
+                Ok(target_lexicon::PointerWidth::U64) => {
+                    scalar(Primitive::Int(Integer::I64, false))
+                }
+                Err(_) => scalar(Primitive::Int(Integer::I32, false)),
+            },
+            Type::Ref(_, _) => {
+                let data_ptr = scalar_unit(Primitive::Pointer);
+
+                self.intern_layout(Layout::scalar(data_ptr, self.target))
+            }
+            Type::Tuple(tys) => self.intern_layout(self.struct_layout(
+                ty,
+                &tys.iter().map(|ty| self.layout(ty)).collect::<Vec<_>>(),
+            )),
+            Type::Func(_, _) => {
+                let mut ptr = scalar_unit(Primitive::Pointer);
+
+                ptr.valid_range = 1..=*ptr.valid_range.end();
+                self.intern_layout(Layout::scalar(ptr, self.target))
+            }
+        };
+
+        let layout = TyLayout { ty, layout };
+
+        self.layouts.borrow_mut().insert(ty as *const _, layout);
+
+        layout
+    }
+
+    fn scalar_pair(&self, a: Scalar, b: Scalar) -> Layout {
+        let b_align = b.value.align(self.target);
+        let b_offset = a.value.size(self.target).align_to(b_align);
+        let align = a.value.align(self.target).max(b_align);
+        let size = (b_offset + b.value.size(self.target)).align_to(align);
+
+        Layout {
+            fields: FieldsShape::Arbitrary {
+                offsets: vec![Size::ZERO, b_offset],
+            },
+            abi: Abi::ScalarPair(a, b),
+            align,
+            size,
+        }
+    }
+
+    fn struct_layout(&self, ty: Ty<'tcx>, fields: &[TyLayout<'tcx, Ty<'tcx>>]) -> Layout {
+        // TODO: optimize layout
+        let mut align = Align::from_bytes(1);
+        let mut sized = true;
+        let mut offsets = vec![Size::ZERO; fields.len()];
+        let mut offset = Size::ZERO;
+
+        for i in 0..fields.len() {
+            let field = fields[i];
+
+            if !sized {
+                panic!("field {} of `{}` comes after unsized field", i, ty);
+            }
+
+            if field.is_unsized() {
+                sized = false;
+            }
+
+            let field_align = field.align;
+
+            offset = offset.align_to(field_align);
+            align = align.max(field_align);
+            offsets[i] = offset;
+            offset = offset + field.size;
+        }
+
+        let size = offset.align_to(align);
+        let abi = Abi::Aggregate { sized };
+
+        Layout {
+            fields: FieldsShape::Arbitrary { offsets },
+            abi,
+            align,
+            size,
+        }
+    }
+
+    pub fn intern_ty(&self, ty: Type<'tcx>) -> Ty<'tcx> {
+        self.arena.alloc(ty)
+    }
+
+    fn intern_layout(&self, layout: Layout) -> &'tcx Layout {
+        self.arena.alloc(layout)
     }
 }

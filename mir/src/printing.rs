@@ -89,14 +89,6 @@ impl Display for Term<'_> {
             Term::Abort => write!(f, "abort"),
             Term::Return => write!(f, "return"),
             Term::Jump(to) => write!(f, "jump {}", to),
-            Term::Call(rets, func, args, target) => write!(
-                f,
-                "call {} = {}({}), {}",
-                list(rets, ", "),
-                func,
-                list(args, ", "),
-                target
-            ),
             Term::Switch(op, vals, targets) => {
                 write!(f, "switch {} [", op)?;
 
@@ -156,6 +148,7 @@ impl Display for RValue<'_> {
             RValue::Use(op) => op.fmt(f),
             RValue::Ref(place) => write!(f, "ref {}", place),
             RValue::Cast(ty, op) => write!(f, "{}.({})", op, ty),
+            RValue::Call(func, args) => write!(f, "{}({})", func, list(args, ", ")),
             RValue::BinOp(op, lhs, rhs) => write!(f, "{:?} {} {}", op, lhs, rhs),
             RValue::UnOp(op, rhs) => write!(f, "{:?} {}", op, rhs),
             RValue::Init(ty, ops) => write!(f, "{} {{ {} }}", ty, list(ops, ", ")),
