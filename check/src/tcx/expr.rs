@@ -1,6 +1,7 @@
 use crate::constraint::Constraint;
 use crate::tcx::Tcx;
 use crate::ty::*;
+use diagnostics::Span;
 
 impl<'tcx> Tcx<'tcx> {
     pub fn infer_block(&self, block: &hir::Block) -> Ty<'tcx> {
@@ -107,7 +108,11 @@ impl<'tcx> Tcx<'tcx> {
                 let rhs_span = self.span_of(rhs);
 
                 match op {
-                    hir::BinOp::Add | hir::BinOp::Sub | hir::BinOp::Mul | hir::BinOp::Div => {
+                    hir::BinOp::Add | hir::BinOp::Sub => {
+                        self.constrain(Constraint::PtrArith(lhs_ty, lhs_span, rhs_ty, rhs_span));
+                        lhs_ty
+                    }
+                    hir::BinOp::Mul | hir::BinOp::Div => {
                         self.constrain(Constraint::Equal(rhs_ty, rhs_span, lhs_ty, lhs_span));
                         self.constrain(Constraint::IsNum(lhs_ty, lhs_span));
                         self.constrain(Constraint::IsNum(rhs_ty, rhs_span));
@@ -125,9 +130,7 @@ impl<'tcx> Tcx<'tcx> {
                         lhs_ty
                     }
                     hir::BinOp::Lt | hir::BinOp::Le | hir::BinOp::Gt | hir::BinOp::Ge => {
-                        self.constrain(Constraint::Equal(rhs_ty, rhs_span, lhs_ty, lhs_span));
-                        self.constrain(Constraint::IsNum(lhs_ty, lhs_span));
-                        self.constrain(Constraint::IsNum(rhs_ty, rhs_span));
+                        self.constrain(Constraint::PtrArith(rhs_ty, rhs_span, lhs_ty, lhs_span));
                         self.builtin.bool
                     }
                     hir::BinOp::Eq | hir::BinOp::Ne => {
@@ -153,7 +156,7 @@ impl<'tcx> Tcx<'tcx> {
                     }
                 }
             }
-            hir::ExprKind::While { cond, body, .. } => {
+            hir::ExprKind::While { label, cond, body } => {
                 let cond_ty = self.type_of(cond);
                 let cond_span = self.span_of(cond);
                 let _ = self.infer_block(body);
@@ -165,9 +168,61 @@ impl<'tcx> Tcx<'tcx> {
                     cond_span,
                 ));
 
-                self.builtin.unit
+                let mut breaks = Vec::new();
+
+                self.find_breaks(body, label.as_ref(), &mut breaks);
+
+                if breaks.is_empty() {
+                    self.builtin.unit
+                } else {
+                    let ret = self.new_var();
+
+                    for (ty, span) in breaks {
+                        self.constrain(Constraint::Equal(ty, span, ret, expr.span));
+                    }
+
+                    ret
+                }
             }
             _ => unimplemented!("{}", expr),
+        }
+    }
+
+    fn find_breaks(
+        &self,
+        block: &hir::Block,
+        lbl: Option<&hir::Id>,
+        breaks: &mut Vec<(Ty<'tcx>, Span)>,
+    ) {
+        for stmt in &block.stmts {
+            match &stmt.kind {
+                hir::StmtKind::Semi(expr) | hir::StmtKind::Expr(expr) => {
+                    self.find_breaks_expr(expr, lbl, breaks);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn find_breaks_expr(
+        &self,
+        id: &hir::Id,
+        lbl: Option<&hir::Id>,
+        breaks: &mut Vec<(Ty<'tcx>, Span)>,
+    ) {
+        let expr = &self.package.exprs[id];
+
+        match &expr.kind {
+            hir::ExprKind::Break { label, expr: e } if label.as_ref() == lbl => {
+                let (ty, span) = if let Some(e) = e {
+                    (self.type_of(e), self.span_of(e))
+                } else {
+                    (self.builtin.unit, expr.span)
+                };
+
+                breaks.push((ty, span));
+            }
+            _ => {}
         }
     }
 }

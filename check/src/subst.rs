@@ -27,6 +27,9 @@ impl<'tcx> Subst<'tcx> {
                 Constraint::Equal(a, a_span, b, b_span) => {
                     Constraint::Equal(self.apply_ty(a), *a_span, self.apply_ty(b), *b_span)
                 }
+                Constraint::PtrArith(a, a_span, b, b_span) => {
+                    Constraint::PtrArith(self.apply_ty(a), *a_span, self.apply_ty(b), *b_span)
+                }
                 Constraint::IsNum(ty, span) => Constraint::IsNum(self.apply_ty(ty), *span),
                 Constraint::IsInt(ty, span) => Constraint::IsInt(self.apply_ty(ty), *span),
                 Constraint::Call(func, f_span, params, ret, r_span) => {

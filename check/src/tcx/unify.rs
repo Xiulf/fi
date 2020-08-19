@@ -93,6 +93,25 @@ impl<'tcx> Tcx<'tcx> {
                     Subst::empty()
                 }
             },
+            Constraint::PtrArith(a, a_span, b, b_span) => match (a, b) {
+                (Type::Ptr(false, a), Type::Ptr(false, b)) => {
+                    self.unify_one(Constraint::Equal(a, a_span, b, b_span))
+                }
+                (Type::Ptr(false, _), Type::Int(0)) | (Type::Ptr(false, _), Type::UInt(0)) => {
+                    Subst::empty()
+                }
+                (Type::Ptr(false, _), Type::VInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
+                (Type::Ptr(false, _), Type::VUInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
+                (_, _) => {
+                    let mut cs = Constraints::new();
+
+                    cs.push(Constraint::Equal(b, b_span, a, a_span));
+                    cs.push(Constraint::IsNum(a, a_span));
+                    cs.push(Constraint::IsNum(b, b_span));
+
+                    self.unify_all(&cs)
+                }
+            },
             Constraint::IsNum(ty, span) => match ty {
                 Type::VInt(_)
                 | Type::VUInt(_)

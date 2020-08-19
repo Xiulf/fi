@@ -1,4 +1,5 @@
 pub use hir::Ident;
+use hir::Symbol;
 use std::fmt;
 
 pub type Ty<'tcx> = &'tcx Type<'tcx>;
@@ -29,6 +30,34 @@ pub struct TypeVar(pub(crate) usize);
 pub struct Param<'tcx> {
     pub name: Ident,
     pub ty: Ty<'tcx>,
+}
+
+impl<'tcx> Type<'tcx> {
+    pub fn func(&self) -> Option<(&'tcx [Param<'tcx>], Ty<'tcx>)> {
+        match self {
+            Type::Func(params, ret) => Some((params, ret)),
+            _ => None,
+        }
+    }
+
+    pub fn fields(&self, tcx: &crate::tcx::Tcx<'tcx>) -> Vec<(Symbol, Ty<'tcx>)> {
+        match self {
+            Type::Str => vec![
+                (Symbol::new("ptr"), tcx.builtin.ref_u8),
+                (Symbol::new("len"), tcx.builtin.usize),
+            ],
+            Type::TypeId => vec![
+                (Symbol::new("size"), tcx.builtin.usize),
+                (Symbol::new("align"), tcx.builtin.usize),
+            ],
+            Type::Tuple(tys) => tys
+                .iter()
+                .enumerate()
+                .map(|(i, ty)| (Symbol::new(i.to_string()), *ty))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 impl fmt::Display for Type<'_> {

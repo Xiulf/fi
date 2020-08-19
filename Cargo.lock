@@ -51,6 +51,7 @@ dependencies = [
  "check",
  "diagnostics",
  "hir",
+ "mir",
  "syntax",
 ]
 
@@ -62,6 +63,15 @@ dependencies = [
  "diagnostics",
  "seahash",
  "syntax",
+]
+
+[[package]]
+name = "mir"
+version = "0.1.0"
+dependencies = [
+ "check",
+ "diagnostics",
+ "hir",
 ]
 
 [[package]]

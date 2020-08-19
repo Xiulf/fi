@@ -41,10 +41,13 @@ pub struct BuiltinTypes<'tcx> {
     pub isize: Ty<'tcx>,
     pub f32: Ty<'tcx>,
     pub f64: Ty<'tcx>,
+    pub ref_u8: Ty<'tcx>,
 }
 
 impl<'tcx> BuiltinTypes<'tcx> {
     pub fn new(arena: &'tcx bumpalo::Bump) -> Self {
+        let u8 = arena.alloc(Type::UInt(8));
+
         BuiltinTypes {
             error: arena.alloc(Type::Error),
             never: arena.alloc(Type::Never),
@@ -52,7 +55,7 @@ impl<'tcx> BuiltinTypes<'tcx> {
             bool: arena.alloc(Type::Bool),
             str: arena.alloc(Type::Str),
             typeid: arena.alloc(Type::TypeId),
-            u8: arena.alloc(Type::UInt(8)),
+            u8,
             u16: arena.alloc(Type::UInt(16)),
             u32: arena.alloc(Type::UInt(32)),
             u64: arena.alloc(Type::UInt(64)),
@@ -66,6 +69,7 @@ impl<'tcx> BuiltinTypes<'tcx> {
             isize: arena.alloc(Type::Int(0)),
             f32: arena.alloc(Type::Float(32)),
             f64: arena.alloc(Type::Float(64)),
+            ref_u8: arena.alloc(Type::Ptr(false, u8)),
         }
     }
 }
