@@ -1,4 +1,4 @@
-use crate::{Id, Symbol};
+use crate::{Id, ItemId, Symbol};
 use diagnostics::{Diagnostic, Reporter, Severity, Span};
 use std::collections::HashMap;
 
@@ -7,8 +7,8 @@ use std::collections::HashMap;
 pub struct Resolver<'a> {
     #[derivative(Debug = "ignore")]
     reporter: &'a Reporter,
-    pub(crate) current_module: Id,
-    modules: HashMap<Id, PerNs<Vec<Rib>>>,
+    pub(crate) current_module: ItemId,
+    modules: HashMap<ItemId, PerNs<Vec<Rib>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,9 +42,10 @@ pub enum RibKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 pub enum Res {
-    Module(Id),
-    Item(Id),
-    Local(Id),
+    Module(ItemId),
+    Item(ItemId),
+    Local(ItemId),
+    Label(Id),
     PrimTy(PrimTy),
 }
 
@@ -61,7 +62,7 @@ impl<'a> Resolver<'a> {
     pub fn new(reporter: &'a Reporter) -> Self {
         let mut resolver = Resolver {
             reporter,
-            current_module: Id(0),
+            current_module: ItemId(0),
             modules: HashMap::new(),
         };
 
@@ -69,7 +70,7 @@ impl<'a> Resolver<'a> {
         resolver
     }
 
-    pub fn add_module(&mut self, id: Id) {
+    pub fn add_module(&mut self, id: ItemId) {
         self.modules.insert(
             id,
             PerNs {
@@ -81,7 +82,7 @@ impl<'a> Resolver<'a> {
         );
     }
 
-    pub fn set_module(&mut self, id: Id) {
+    pub fn set_module(&mut self, id: ItemId) {
         self.current_module = id;
     }
 
@@ -136,7 +137,7 @@ impl<'a> Resolver<'a> {
                         .get_seg(
                             if !last { Ns::Modules } else { ns },
                             if path.root {
-                                Id(0)
+                                ItemId(0)
                             } else {
                                 self.current_module
                             },
@@ -152,12 +153,16 @@ impl<'a> Resolver<'a> {
                 }
                 Some(Res::Item(_)) if last => break,
                 Some(Res::Local(_)) if i == 0 => break,
+                Some(Res::Label(_)) if i == 0 => break,
                 Some(Res::PrimTy(_)) if i == 0 => break,
                 Some(Res::Item(_)) => {
                     // TODO: error: {..seg} is not a module
                 }
                 Some(Res::Local(_)) => {
                     // TODO: error: a local can only be referenced directly
+                }
+                Some(Res::Label(_)) => {
+                    // TODO: error: a label can only be referenced directly
                 }
                 Some(Res::PrimTy(_)) => unreachable!(),
             }
@@ -166,7 +171,12 @@ impl<'a> Resolver<'a> {
         res
     }
 
-    pub fn get_seg(&self, ns: Ns, module: Id, seg: &syntax::ast::PathSeg) -> (Option<Res>, bool) {
+    pub fn get_seg(
+        &self,
+        ns: Ns,
+        module: ItemId,
+        seg: &syntax::ast::PathSeg,
+    ) -> (Option<Res>, bool) {
         let ribs = &self.modules[&module][ns];
         let mut is_local = false;
         let mut res = None;
@@ -182,8 +192,8 @@ impl<'a> Resolver<'a> {
     }
 
     fn add_root(&mut self) {
-        self.add_module(Id(0));
-        self.set_module(Id(0));
+        self.add_module(ItemId(0));
+        self.set_module(ItemId(0));
         self.define(
             Ns::Types,
             Symbol::new("never"),

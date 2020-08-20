@@ -9,11 +9,14 @@ use std::hash::{Hash, Hasher};
 pub use syntax::ast::{Abi, BinOp, Ident, Literal, Symbol, UnOp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Id(u64);
+pub struct ItemId(u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Id(ItemId, u64);
 
 #[derive(Debug)]
 pub struct Package {
-    pub items: BTreeMap<Id, Item>,
+    pub items: BTreeMap<ItemId, Item>,
     pub exprs: BTreeMap<Id, Expr>,
     pub types: BTreeMap<Id, Type>,
 }
@@ -21,7 +24,7 @@ pub struct Package {
 #[derive(Debug)]
 pub struct Item {
     pub span: Span,
-    pub id: Id,
+    pub id: ItemId,
     pub name: Ident,
     pub kind: ItemKind,
 }
@@ -33,7 +36,7 @@ pub enum ItemKind {
         ty: Id,
     },
     Func {
-        params: Vec<Id>,
+        params: Vec<ItemId>,
         ret: Id,
         body: Block,
     },
@@ -61,7 +64,7 @@ pub struct Stmt {
 
 #[derive(Debug, Hash)]
 pub enum StmtKind {
-    Item(Id),
+    Item(ItemId),
     Semi(Id),
     Expr(Id),
 }
@@ -211,13 +214,13 @@ pub struct TypeParam {
     pub ty: Id,
 }
 
-impl Id {
+impl ItemId {
     pub fn new<T: Hash>(src: &T) -> Self {
         let mut hasher = seahash::SeaHasher::new();
 
         src.hash(&mut hasher);
 
-        Id(hasher.finish())
+        ItemId(hasher.finish())
     }
 
     pub const fn is_null(&self) -> bool {
@@ -226,6 +229,16 @@ impl Id {
 
     pub const fn as_u32(&self) -> u32 {
         (self.0 >> 32) as u32 & (self.0 & 0x00000000FFFFFFFF) as u32
+    }
+}
+
+impl Id {
+    pub const fn item(item_id: ItemId) -> Self {
+        Id(item_id, 0)
+    }
+
+    pub const fn item_id(&self) -> ItemId {
+        self.0
     }
 }
 

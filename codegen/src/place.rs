@@ -2,7 +2,7 @@ use crate::ptr::Pointer;
 use crate::value::{Value, ValueKind};
 use crate::FunctionCtx;
 use check::layout::{Abi, Scalar};
-use check::ty::Layout;
+use check::ty::{Layout, Type};
 use cranelift::codegen::ir::{self as cir, InstBuilder};
 use cranelift::frontend::Variable;
 use cranelift_module::Backend;
@@ -116,17 +116,18 @@ impl<'tcx> Place<'tcx> {
 
     pub fn index<'a>(self, fx: &mut FunctionCtx<'a, 'tcx, impl Backend>, idx: cir::Value) -> Self {
         let layout = fx.tcx.layout(self.layout.ty.idx(fx.tcx));
-        let new_idx = fx.builder.ins().imul_imm(idx, layout.size.bytes() as i64);
+        let new_idx = fx.builder.ins().imul_imm(idx, layout.stride.bytes() as i64);
 
         match &*self.layout.ty {
-            // Type::Array(..) => {
-            //     let ptr = self.as_ptr(fx);
-            //     let new_ptr = ptr.offset_value(fx, new_idx);
-            //     Place {
-            //         kind: PlaceKind::Addr(new_ptr),
-            //         layout,
-            //     }
-            // }
+            Type::Array(..) => {
+                let ptr = self.as_ptr();
+                let new_ptr = ptr.offset_value(fx, new_idx);
+
+                Place {
+                    kind: PlaceKind::Addr(new_ptr, None),
+                    layout,
+                }
+            }
             _ => {
                 let ptr = self.field(fx, 0).deref(fx).as_ptr();
                 let new_ptr = ptr.offset_value(fx, new_idx);

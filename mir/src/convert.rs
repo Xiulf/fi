@@ -18,7 +18,7 @@ struct BodyConverter<'a, 'tcx> {
     tcx: &'a Tcx<'tcx>,
     hir: &'a hir::Package,
     builder: Builder<'a, 'tcx>,
-    locals: HashMap<hir::Id, LocalId>,
+    locals: HashMap<ItemId, LocalId>,
     loops: Vec<(Option<&'a hir::Id>, BlockId, BlockId)>,
 }
 
@@ -47,7 +47,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                     .declare_extern(item.id, item.name, self.tcx.type_of(ty))
             }
             hir::ItemKind::Func { params, ret, body } => {
-                let (param_tys, ret_ty) = self.tcx.type_of(&item.id).func().unwrap();
+                let (param_tys, ret_ty) = self.tcx.type_of(&hir::Id::item(item.id)).func().unwrap();
 
                 self.package
                     .declare_body(item.id, item.name, param_tys, ret_ty);
@@ -68,7 +68,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
-    fn convert(&mut self, params: &[hir::Id], _ret: &hir::Id, body: &hir::Block) {
+    fn convert(&mut self, params: &[ItemId], _ret: &hir::Id, body: &hir::Block) {
         let entry = self.builder.create_block();
 
         self.builder.use_block(entry);
@@ -91,7 +91,9 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                         global: false, val, ..
                     } = &self.hir.items[id].kind
                     {
-                        let var = self.builder.create_var(self.tcx.type_of(id));
+                        let var = self
+                            .builder
+                            .create_var(self.tcx.type_of(&hir::Id::item(*id)));
 
                         self.locals.insert(*id, var);
 
@@ -125,6 +127,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             hir::ExprKind::Err => unreachable!(),
             hir::ExprKind::Path { res } => match res {
                 hir::Res::Module(_) => unreachable!(),
+                hir::Res::Label(_) => unreachable!(),
                 hir::Res::PrimTy(_) => unreachable!(),
                 hir::Res::Item(id) => match &self.hir.items[id].kind {
                     hir::ItemKind::Func { .. } => Operand::Const(Const::FuncAddr(*id)),
@@ -149,6 +152,26 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
             hir::ExprKind::String { val } => Operand::Const(Const::Bytes(val.as_bytes().into())),
             hir::ExprKind::Type { ty } => Operand::Const(Const::Type(self.tcx.type_of(ty))),
+            hir::ExprKind::Array { exprs } => {
+                let ty = self.tcx.type_of(id);
+                let res = self.builder.create_tmp(ty);
+                let res = Place::local(res);
+                let ops = exprs.iter().map(|e| self.trans_expr(e)).collect();
+
+                self.builder.init(res.clone(), ty, ops);
+
+                Operand::Place(res)
+            }
+            hir::ExprKind::Tuple { exprs } => {
+                let ty = self.tcx.type_of(id);
+                let res = self.builder.create_tmp(ty);
+                let res = Place::local(res);
+                let ops = exprs.iter().map(|e| self.trans_expr(e)).collect();
+
+                self.builder.init(res.clone(), ty, ops);
+
+                Operand::Place(res)
+            }
             hir::ExprKind::Block { block } => {
                 let var = self.builder.create_tmp(self.tcx.type_of(id));
 
@@ -156,6 +179,15 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
             hir::ExprKind::Call { func, args } => self.trans_call(func, args),
             hir::ExprKind::Field { obj, field } => self.trans_field(obj, field),
+            hir::ExprKind::Index { list, index } => {
+                let list_ty = self.tcx.type_of(list);
+                let list = self.trans_expr(list);
+                let list = self.builder.placed(list, list_ty);
+                let index = self.trans_expr(index);
+                let index = self.builder.placed(index, self.tcx.builtin.usize);
+
+                Operand::Place(list.index(index))
+            }
             hir::ExprKind::Deref { expr } => {
                 let expr_ty = self.tcx.type_of(expr);
                 let expr = self.trans_expr(expr);
@@ -325,7 +357,13 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     self.tcx.builtin.usize,
                 ))
             } else {
-                unreachable!()
+                unreachable!();
+            }
+        } else if let Type::Array(_, len) = obj_ty {
+            if &**field.symbol == "len" {
+                Operand::Const(Const::Scalar(*len as u128, self.tcx.builtin.usize))
+            } else {
+                unreachable!();
             }
         } else {
             let obj = self.builder.placed(obj, obj_ty);

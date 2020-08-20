@@ -385,20 +385,41 @@ impl Parse for Expr {
 impl Expr {
     fn assign(input: ParseStream) -> Result<Self> {
         let start = input.span();
-        let expr = Expr::infix(input, 1)?;
 
-        if let Ok(_) = input.parse::<TEquals>() {
-            let rhs = Expr::assign(input)?;
+        if {
+            let fork = input.fork();
+
+            Expr::prefix(&fork).is_ok() && fork.parse::<BinOp>().is_ok() && fork.peek::<TEquals>()
+        } {
+            let lhs = Expr::prefix(input)?;
+            let op = input.parse::<BinOp>()?;
+            let _ = input.parse::<TEquals>()?;
+            let rhs = Expr::infix(input, 1)?;
 
             Ok(Expr {
                 span: start.to(input.prev_span()),
-                kind: ExprKind::Assign {
-                    lhs: Box::new(expr),
+                kind: ExprKind::AssignOp {
+                    op,
+                    lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
                 },
             })
         } else {
-            Ok(expr)
+            let expr = Expr::infix(input, 1)?;
+
+            if let Ok(_) = input.parse::<TEquals>() {
+                let rhs = Expr::assign(input)?;
+
+                Ok(Expr {
+                    span: start.to(input.prev_span()),
+                    kind: ExprKind::Assign {
+                        lhs: Box::new(expr),
+                        rhs: Box::new(rhs),
+                    },
+                })
+            } else {
+                Ok(expr)
+            }
         }
     }
 

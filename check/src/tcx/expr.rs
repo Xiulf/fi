@@ -10,7 +10,7 @@ impl<'tcx> Tcx<'tcx> {
         for (i, stmt) in block.stmts.iter().enumerate() {
             match &stmt.kind {
                 hir::StmtKind::Item(id) => {
-                    self.type_of(id);
+                    self.type_of(&hir::Id::item(*id));
                 }
                 hir::StmtKind::Semi(id) => {
                     self.type_of(id);
@@ -42,8 +42,8 @@ impl<'tcx> Tcx<'tcx> {
         match &expr.kind {
             hir::ExprKind::Err => self.builtin.error,
             hir::ExprKind::Path { res } => match res {
-                hir::Res::Item(id) => self.type_of(id),
-                hir::Res::Local(id) => self.type_of(id),
+                hir::Res::Item(id) => self.type_of(&hir::Id::item(*id)),
+                hir::Res::Local(id) => self.type_of(&hir::Id::item(*id)),
                 _ => unreachable!(),
             },
             hir::ExprKind::Int { .. } => self.new_int(),
@@ -53,6 +53,24 @@ impl<'tcx> Tcx<'tcx> {
             hir::ExprKind::Type { ty } => {
                 self.type_of(ty);
                 self.builtin.typeid
+            }
+            hir::ExprKind::Array { exprs } => {
+                let ty = self.new_var();
+
+                for exp in exprs {
+                    let exp_ty = self.type_of(exp);
+                    let exp_span = self.span_of(exp);
+
+                    self.constrain(Constraint::Equal(exp_ty, exp_span, ty, expr.span));
+                }
+
+                self.intern_ty(Type::Array(ty, exprs.len()))
+            }
+            hir::ExprKind::Tuple { exprs } => {
+                let tys = exprs.iter().map(|e| self.type_of(e));
+                let tys = self.arena.alloc_slice_fill_iter(tys);
+
+                self.intern_ty(Type::Tuple(tys))
             }
             hir::ExprKind::Call { func, args } => {
                 let ret_ty = self.new_var();
@@ -81,6 +99,24 @@ impl<'tcx> Tcx<'tcx> {
                 let obj_span = self.span_of(obj);
 
                 self.constrain(Constraint::Field(obj_ty, obj_span, *field, ty, expr.span));
+                ty
+            }
+            hir::ExprKind::Index { list, index } => {
+                let ty = self.new_var();
+                let list_ty = self.type_of(list);
+                let list_span = self.span_of(list);
+                let index_ty = self.type_of(index);
+                let index_span = self.span_of(index);
+
+                self.constrain(Constraint::Equal(
+                    index_ty,
+                    index_span,
+                    self.builtin.usize,
+                    index_span,
+                ));
+
+                self.constrain(Constraint::Index(list_ty, list_span, ty, expr.span));
+
                 ty
             }
             hir::ExprKind::Deref { expr: inner } => {

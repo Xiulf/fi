@@ -10,7 +10,7 @@ pub struct Package {
     pub module: Module,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Module {
     #[derivative(Hash = "ignore")]
@@ -18,7 +18,7 @@ pub struct Module {
     pub items: Vec<Item>,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Item {
     #[derivative(Hash = "ignore")]
@@ -28,7 +28,7 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
-#[derive(Debug, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub enum ItemKind {
     Module {
         module: Module,
@@ -54,7 +54,7 @@ pub enum Abi {
     C,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Param {
     #[derivative(Hash = "ignore")]
@@ -64,7 +64,7 @@ pub struct Param {
     pub ty: Type,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Block {
     #[derivative(Hash = "ignore")]
@@ -72,7 +72,7 @@ pub struct Block {
     pub stmts: Vec<Stmt>,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Stmt {
     #[derivative(Hash = "ignore")]
@@ -80,14 +80,14 @@ pub struct Stmt {
     pub kind: StmtKind,
 }
 
-#[derive(Debug, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub enum StmtKind {
     Item(Item),
     Semi(Expr),
     Expr(Expr),
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Path {
     #[derivative(Hash = "ignore")]
@@ -96,7 +96,7 @@ pub struct Path {
     pub segs: Vec<PathSeg>,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct PathSeg {
     #[derivative(Hash = "ignore")]
@@ -105,7 +105,7 @@ pub struct PathSeg {
     pub name: Ident,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Expr {
     #[derivative(Hash = "ignore")]
@@ -113,7 +113,7 @@ pub struct Expr {
     pub kind: ExprKind,
 }
 
-#[derive(Debug, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub enum ExprKind {
     Path {
         path: Path,
@@ -188,6 +188,11 @@ pub enum ExprKind {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
+    AssignOp {
+        op: BinOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
     BinOp {
         op: BinOp,
         lhs: Box<Expr>,
@@ -227,7 +232,7 @@ pub enum ExprKind {
     },
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct InitField {
     #[derivative(Hash = "ignore")]
@@ -237,7 +242,7 @@ pub struct InitField {
     pub value: Expr,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Arg {
     #[derivative(Hash = "ignore")]
@@ -275,7 +280,7 @@ pub enum UnOp {
     Not,
 }
 
-#[derive(Debug, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Type {
     #[derivative(Hash = "ignore")]
@@ -283,7 +288,7 @@ pub struct Type {
     pub kind: TypeKind,
 }
 
-#[derive(Debug, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub enum TypeKind {
     Infer,
     Path {
@@ -299,7 +304,7 @@ pub enum TypeKind {
     },
 }
 
-#[derive(derivative::Derivative, Debug)]
+#[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct TypeParam {
     #[derivative(Hash = "ignore")]

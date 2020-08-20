@@ -3,7 +3,7 @@ use crate::tcx::Tcx;
 use crate::ty::*;
 
 impl<'tcx> Tcx<'tcx> {
-    pub fn infer_item(&self, id: &hir::Id) -> Ty<'tcx> {
+    pub fn infer_item(&self, id: &hir::ItemId) -> Ty<'tcx> {
         let item = &self.package.items[id];
 
         match &item.kind {
@@ -18,7 +18,7 @@ impl<'tcx> Tcx<'tcx> {
 
                     Param {
                         name: param.name,
-                        ty: self.type_of(id),
+                        ty: self.type_of(&hir::Id::item(*id)),
                     }
                 }));
 
@@ -31,7 +31,7 @@ impl<'tcx> Tcx<'tcx> {
         }
     }
 
-    pub fn check_item(&self, id: &hir::Id) {
+    pub fn check_item(&self, id: &hir::ItemId) {
         let item = &self.package.items[id];
 
         match &item.kind {

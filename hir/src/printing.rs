@@ -1,26 +1,36 @@
 use crate::*;
 use std::fmt::{Display, Formatter, Result, Write};
 
+impl Display for ItemId {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(
+            f,
+            "#{:0>8X}",
+            (self.0 & 0x00000000FFFFFFFF) & (self.0 >> 32)
+        )
+    }
+}
+
 impl Display for Id {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "#{:0>16X}", self.0)
+        write!(f, "{}:{:0>8}", self.0, self.1)
     }
 }
 
 impl Display for Package {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "                  | ####### ITEMS #######")?;
+        write!(f, "                   | ####### ITEMS #######")?;
 
         for (id, item) in &self.items {
             write!(f, "\n{} | ", id)?;
             write!(
                 f,
                 "{}",
-                list(item.to_string().lines(), "\n                  | ")
+                list(item.to_string().lines(), "\n                   | ")
             )?;
         }
 
-        write!(f, "\n                  | ####### EXPRS #######")?;
+        write!(f, "\n                   | ####### EXPRS #######")?;
 
         for (id, expr) in &self.exprs {
             write!(f, "\n{} | ", id)?;
@@ -31,14 +41,14 @@ impl Display for Package {
             )?;
         }
 
-        write!(f, "\n                  | ####### TYPES #######")?;
+        write!(f, "\n                   | ####### TYPES #######")?;
 
         for (id, ty) in &self.types {
             write!(f, "\n{} | ", id)?;
             write!(
                 f,
                 "{}",
-                list(ty.to_string().lines(), "\n                  | ")
+                list(ty.to_string().lines(), "\n                   | ")
             )?;
         }
 
@@ -246,6 +256,7 @@ impl Display for Res {
             Res::Module(id) => id.fmt(f),
             Res::Item(id) => id.fmt(f),
             Res::Local(id) => id.fmt(f),
+            Res::Label(id) => id.fmt(f),
             Res::PrimTy(prim) => prim.fmt(f),
         }
     }

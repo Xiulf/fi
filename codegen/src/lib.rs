@@ -42,6 +42,7 @@ pub fn link(obj_file: &std::path::Path, out_file: &std::path::Path) {
         .arg(obj_file)
         .arg("-o")
         .arg(out_file)
+        // .arg("-lc")
         .status()
         .unwrap();
 }
@@ -53,8 +54,8 @@ pub struct FunctionCtx<'a, 'tcx, B: Backend> {
     pub tcx: &'a Tcx<'tcx>,
     pub package: &'a mir::Package<'tcx>,
     pub body: &'a mir::Body<'tcx>,
-    pub func_ids: &'a BTreeMap<mir::Id, (FuncId, cir::Signature, Layout<'tcx>)>,
-    pub data_ids: &'a BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
+    pub func_ids: &'a BTreeMap<mir::ItemId, (FuncId, cir::Signature, Layout<'tcx>)>,
+    pub data_ids: &'a BTreeMap<mir::ItemId, (DataId, Layout<'tcx>)>,
     pub blocks: BTreeMap<mir::BlockId, cir::Block>,
     pub locals: BTreeMap<mir::LocalId, place::Place<'tcx>>,
     bytes_count: &'a mut usize,

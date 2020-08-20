@@ -106,17 +106,17 @@ impl<'tcx> Tcx<'tcx> {
         } else {
             std::mem::drop(types);
 
-            let ty = if let Some(_) = self.package.items.get(id) {
-                let ty = self.infer_item(id);
-
-                self.types.borrow_mut().insert(*id, ty);
-                self.check_item(id);
-
-                return ty;
-            } else if let Some(_) = self.package.exprs.get(id) {
+            let ty = if let Some(_) = self.package.exprs.get(id) {
                 self.infer_expr(id)
             } else if let Some(_) = self.package.types.get(id) {
                 self.infer_type(id)
+            } else if let Some(_) = self.package.items.get(&id.item_id()) {
+                let ty = self.infer_item(&id.item_id());
+
+                self.types.borrow_mut().insert(*id, ty);
+                self.check_item(&id.item_id());
+
+                return ty;
             } else {
                 panic!("unused id {}", id);
             };
@@ -128,12 +128,12 @@ impl<'tcx> Tcx<'tcx> {
     }
 
     pub fn span_of(&self, id: &hir::Id) -> Span {
-        if let Some(item) = self.package.items.get(id) {
-            item.span
-        } else if let Some(expr) = self.package.exprs.get(id) {
+        if let Some(expr) = self.package.exprs.get(id) {
             expr.span
         } else if let Some(ty) = self.package.types.get(id) {
             ty.span
+        } else if let Some(item) = self.package.items.get(&id.item_id()) {
+            item.span
         } else {
             panic!("unused id {}", id);
         }
@@ -207,6 +207,7 @@ impl<'tcx> Tcx<'tcx> {
                 abi: Abi::Uninhabited,
                 size: Size::ZERO,
                 align: Align::from_bits(8),
+                stride: Size::ZERO,
             }),
             Type::Bool => self.intern_layout(Layout::scalar(
                 Scalar {
@@ -279,6 +280,30 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.intern_layout(Layout::scalar(data_ptr, self.target))
             }
+            Type::Array(of, len) => {
+                let of_layout = self.layout(of);
+                let size = of_layout.stride * (*len as u64);
+
+                self.intern_layout(Layout {
+                    size,
+                    align: of_layout.align,
+                    stride: size,
+                    abi: Abi::Aggregate { sized: true },
+                    fields: FieldsShape::Array {
+                        stride: of_layout.stride,
+                        count: *len as u64,
+                    },
+                })
+            }
+            Type::Slice(_) => {
+                let mut data_ptr = scalar_unit(Primitive::Pointer);
+
+                data_ptr.valid_range = 1..=*data_ptr.valid_range.end();
+
+                let metadata = scalar_unit(Primitive::Int(Integer::ptr_sized(self.target), false));
+
+                self.intern_layout(self.scalar_pair(data_ptr, metadata))
+            }
             Type::Tuple(tys) => self.intern_layout(self.struct_layout(
                 ty,
                 &tys.iter().map(|ty| self.layout(ty)).collect::<Vec<_>>(),
@@ -302,7 +327,8 @@ impl<'tcx> Tcx<'tcx> {
         let b_align = b.value.align(self.target);
         let b_offset = a.value.size(self.target).align_to(b_align);
         let align = a.value.align(self.target).max(b_align);
-        let size = (b_offset + b.value.size(self.target)).align_to(align);
+        let size = a.value.size(self.target) + b.value.size(self.target);
+        let stride = (b_offset + b.value.size(self.target)).align_to(align);
 
         Layout {
             fields: FieldsShape::Arbitrary {
@@ -311,6 +337,7 @@ impl<'tcx> Tcx<'tcx> {
             abi: Abi::ScalarPair(a, b),
             align,
             size,
+            stride,
         }
     }
 
@@ -340,7 +367,8 @@ impl<'tcx> Tcx<'tcx> {
             offset = offset + field.size;
         }
 
-        let size = offset.align_to(align);
+        let size = offset;
+        let stride = offset.align_to(align);
         let abi = Abi::Aggregate { sized };
 
         Layout {
@@ -348,6 +376,7 @@ impl<'tcx> Tcx<'tcx> {
             abi,
             align,
             size,
+            stride,
         }
     }
 

@@ -11,6 +11,7 @@ pub struct TyLayout<'a, Ty> {
 pub struct Layout {
     pub size: Size,
     pub align: Align,
+    pub stride: Size,
     pub abi: Abi,
     pub fields: FieldsShape,
 }
@@ -90,12 +91,20 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
             | Type::UInt(_)
             | Type::Float(_)
             | Type::Ref(_, _)
-            | Type::Func(..) => unreachable!(),
+            | Type::Array(_, _)
+            | Type::Func(..) => unreachable!("{}.{}", self.ty, idx),
             Type::Str => {
                 if idx == 0 {
                     tcx.builtin.ref_u8
                 } else {
-                    tcx.new_uint()
+                    tcx.builtin.usize
+                }
+            }
+            Type::Slice(of) => {
+                if idx == 0 {
+                    tcx.intern_ty(Type::Ref(false, of))
+                } else {
+                    tcx.builtin.usize
                 }
             }
             Type::Tuple(tys) => tys[idx],
@@ -113,6 +122,7 @@ impl Layout {
             abi: Abi::Scalar(scalar),
             size,
             align,
+            stride: size,
         }
     }
 

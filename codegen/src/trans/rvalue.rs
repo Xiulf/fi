@@ -1,7 +1,7 @@
 use crate::place::Place;
 use crate::value::Value;
 use crate::FunctionCtx;
-use check::ty::Layout;
+use check::ty::{Layout, Type};
 use cranelift::codegen::ir::{self, InstBuilder};
 use cranelift_module::Backend;
 
@@ -45,10 +45,21 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                     unimplemented!()
                 };
 
-                if let None = ret_ptr {
-                    let val = self.builder.inst_results(inst)[0];
+                match ret_mode {
+                    crate::pass::PassMode::NoPass => {}
+                    crate::pass::PassMode::ByRef { .. } => {}
+                    crate::pass::PassMode::ByVal(_) => {
+                        let ret_val = self.builder.inst_results(inst)[0];
+                        let ret_val = Value::new_val(ret_val, place.layout);
 
-                    place.store(self, Value::new_val(val, place.layout));
+                        place.store(self, ret_val);
+                    }
+                    crate::pass::PassMode::ByPair(_, _) => {
+                        let ret_val = self.builder.inst_results(inst);
+                        let ret_val = Value::new_pair(ret_val[0], ret_val[1], place.layout);
+
+                        place.store(self, ret_val);
+                    }
                 }
             }
             mir::RValue::BinOp(op, lhs, rhs) => {
@@ -62,6 +73,17 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                 place.store(self, val);
             }
+            mir::RValue::Init(ty, ops) => match ty {
+                Type::Array(_, _) => {
+                    for (i, op) in ops.iter().enumerate() {
+                        let val = self.trans_operand(op);
+                        let idx = self.builder.ins().iconst(self.pointer_type, i as i64);
+
+                        place.index(self, idx).store(self, val);
+                    }
+                }
+                _ => unimplemented!(),
+            },
             _ => unimplemented!("{}", rvalue),
         }
     }

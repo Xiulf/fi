@@ -42,6 +42,7 @@ impl<'tcx> Tcx<'tcx> {
                 (Type::UInt(a), Type::UInt(b)) if a == b => Subst::empty(),
                 (Type::Float(a), Type::Float(b)) if a == b => Subst::empty(),
                 (Type::VInt(tvar), Type::Int(_)) => vec![(*tvar, b)].into_iter().collect(),
+                (Type::VInt(tvar), Type::UInt(_)) => vec![(*tvar, b)].into_iter().collect(),
                 (Type::VInt(tvar), Type::VInt(_)) => vec![(*tvar, b)].into_iter().collect(),
                 (Type::Int(_), Type::VInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
                 (Type::VUInt(tvar), Type::UInt(_)) => vec![(*tvar, b)].into_iter().collect(),
@@ -53,6 +54,12 @@ impl<'tcx> Tcx<'tcx> {
                 (Type::Ref(a_mut, a), Type::Ref(b_mut, b))
                     if a_mut == b_mut || (!*b_mut && *a_mut) =>
                 {
+                    self.unify_one(Constraint::Equal(a, a_span, b, b_span))
+                }
+                (Type::Array(a, a_len), Type::Array(b, b_len)) if a_len == b_len => {
+                    self.unify_one(Constraint::Equal(a, a_span, b, b_span))
+                }
+                (Type::Slice(a), Type::Slice(b)) => {
                     self.unify_one(Constraint::Equal(a, a_span, b, b_span))
                 }
                 (Type::Tuple(a_tys), Type::Tuple(b_tys)) => {
@@ -234,6 +241,32 @@ impl<'tcx> Tcx<'tcx> {
                     Subst::empty()
                 }
             }
+            Constraint::Index(list_ty, list_span, ret_ty, ret_span) => match list_ty {
+                Type::Str => self.unify_one(Constraint::Equal(
+                    ret_ty,
+                    ret_span,
+                    self.builtin.u8,
+                    list_span,
+                )),
+                Type::Array(of, _) => {
+                    self.unify_one(Constraint::Equal(ret_ty, ret_span, of, list_span))
+                }
+                Type::Slice(of) => {
+                    self.unify_one(Constraint::Equal(ret_ty, ret_span, of, list_span))
+                }
+                _ => {
+                    self.reporter.add(
+                        Diagnostic::new(
+                            Severity::Error,
+                            0014,
+                            format!("type `{}` cannot be indexed", list_ty),
+                        )
+                        .label(Severity::Error, list_span, None::<String>),
+                    );
+
+                    Subst::empty()
+                }
+            },
             Constraint::Field(obj_ty, obj_span, field, ret_ty, ret_span) => {
                 let fields = match obj_ty {
                     Type::TypeId => vec![
@@ -247,6 +280,45 @@ impl<'tcx> Tcx<'tcx> {
                         (
                             Ident {
                                 symbol: hir::Symbol::new("align"),
+                                span: obj_span,
+                            },
+                            self.builtin.usize,
+                        ),
+                    ],
+                    Type::Str => vec![
+                        (
+                            Ident {
+                                symbol: hir::Symbol::new("ptr"),
+                                span: obj_span,
+                            },
+                            self.builtin.ref_u8,
+                        ),
+                        (
+                            Ident {
+                                symbol: hir::Symbol::new("len"),
+                                span: obj_span,
+                            },
+                            self.builtin.usize,
+                        ),
+                    ],
+                    Type::Array(_, _) => vec![(
+                        Ident {
+                            symbol: hir::Symbol::new("len"),
+                            span: obj_span,
+                        },
+                        self.builtin.usize,
+                    )],
+                    Type::Slice(of) => vec![
+                        (
+                            Ident {
+                                symbol: hir::Symbol::new("ptr"),
+                                span: obj_span,
+                            },
+                            self.intern_ty(Type::Ref(false, of)),
+                        ),
+                        (
+                            Ident {
+                                symbol: hir::Symbol::new("len"),
                                 span: obj_span,
                             },
                             self.builtin.usize,

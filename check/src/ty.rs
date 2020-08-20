@@ -20,6 +20,8 @@ pub enum Type<'tcx> {
     UInt(u8),
     Float(u8),
     Ref(bool, Ty<'tcx>),
+    Array(Ty<'tcx>, usize),
+    Slice(Ty<'tcx>),
     Tuple(&'tcx [Ty<'tcx>]),
     Func(&'tcx [Param<'tcx>], Ty<'tcx>),
 }
@@ -70,6 +72,8 @@ impl<'tcx> Type<'tcx> {
     pub fn idx(&self, tcx: &crate::tcx::Tcx<'tcx>) -> Ty<'tcx> {
         match self {
             Type::Str => tcx.builtin.u8,
+            Type::Array(of, _) => of,
+            Type::Slice(of) => of,
             _ => panic!("type can't be indexed"),
         }
     }
@@ -94,6 +98,8 @@ impl fmt::Display for Type<'_> {
             Type::Float(bits) => write!(f, "f{}", bits),
             Type::Ref(true, to) => write!(f, "ref mut {}", to),
             Type::Ref(false, to) => write!(f, "ref {}", to),
+            Type::Array(of, len) => write!(f, "[{}; {}]", of, len),
+            Type::Slice(of) => write!(f, "[{}]", of),
             Type::Tuple(tys) => write!(
                 f,
                 "({})",

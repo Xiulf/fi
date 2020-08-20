@@ -95,6 +95,8 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
         | Type::UInt(_)
         | Type::Float(_) => {}
         Type::Ref(_, to) => subst_var(to, tvar, repl),
+        Type::Array(of, _) => subst_var(of, tvar, repl),
+        Type::Slice(of) => subst_var(of, tvar, repl),
         Type::Tuple(tys) => {
             for ty in *tys {
                 subst_var(ty, tvar, repl);

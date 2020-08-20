@@ -3,17 +3,17 @@ mod printing;
 pub mod visit;
 
 pub use check::ty::{Ident, Param, Ty, Type};
-pub use hir::Id;
+pub use hir::{Id, ItemId};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct Package<'tcx> {
-    pub items: BTreeMap<Id, Item<'tcx>>,
+    pub items: BTreeMap<ItemId, Item<'tcx>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Item<'tcx> {
-    pub id: Id,
+    pub id: ItemId,
     pub name: Ident,
     pub kind: ItemKind<'tcx>,
 }
@@ -82,7 +82,7 @@ pub struct Place {
 #[derive(Debug, Clone)]
 pub enum PlaceBase {
     Local(LocalId),
-    Global(Id),
+    Global(ItemId),
 }
 
 #[derive(Debug, Clone)]
@@ -102,7 +102,7 @@ pub enum Operand<'tcx> {
 pub enum Const<'tcx> {
     Unit,
     Scalar(u128, Ty<'tcx>),
-    FuncAddr(Id),
+    FuncAddr(ItemId),
     Bytes(Box<[u8]>),
     Type(Ty<'tcx>),
 }
@@ -151,7 +151,7 @@ impl<'tcx> Package<'tcx> {
         }
     }
 
-    pub fn declare_extern(&mut self, id: hir::Id, name: Ident, ty: Ty<'tcx>) {
+    pub fn declare_extern(&mut self, id: ItemId, name: Ident, ty: Ty<'tcx>) {
         self.items.insert(
             id,
             Item {
@@ -162,13 +162,7 @@ impl<'tcx> Package<'tcx> {
         );
     }
 
-    pub fn declare_body(
-        &mut self,
-        id: hir::Id,
-        name: Ident,
-        params: &[Param<'tcx>],
-        ret: Ty<'tcx>,
-    ) {
+    pub fn declare_body(&mut self, id: ItemId, name: Ident, params: &[Param<'tcx>], ret: Ty<'tcx>) {
         let mut locals = BTreeMap::new();
 
         locals.insert(
@@ -206,7 +200,7 @@ impl<'tcx> Package<'tcx> {
         );
     }
 
-    pub fn define_body<'a>(&'a mut self, id: hir::Id) -> Builder<'a, 'tcx> {
+    pub fn define_body<'a>(&'a mut self, id: ItemId) -> Builder<'a, 'tcx> {
         if let ItemKind::Body(body) = &mut self.items.get_mut(&id).unwrap().kind {
             Builder {
                 body,
@@ -240,7 +234,7 @@ impl Place {
         }
     }
 
-    pub fn global(id: hir::Id) -> Self {
+    pub fn global(id: ItemId) -> Self {
         Place {
             base: PlaceBase::Global(id),
             elems: Vec::new(),

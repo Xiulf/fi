@@ -6,7 +6,7 @@ use syntax::ast;
 
 pub fn convert(reporter: &Reporter, ast: &ast::Package) -> Package {
     let mut converter = Converter::new(reporter);
-    let root = Id::new(&ast.module);
+    let root = ItemId::new(&ast.module);
     let package_name = Ident {
         symbol: Symbol::new(ast.span.file.name.file_stem().unwrap().to_str().unwrap()),
         span: Span::empty(ast.span.file),
@@ -20,9 +20,11 @@ pub fn convert(reporter: &Reporter, ast: &ast::Package) -> Package {
 pub struct Converter<'a> {
     reporter: &'a Reporter,
     resolver: Resolver<'a>,
-    items: BTreeMap<Id, Item>,
+    items: BTreeMap<ItemId, Item>,
     exprs: BTreeMap<Id, Expr>,
     types: BTreeMap<Id, Type>,
+    current_item: ItemId,
+    local_id: u64,
 }
 
 impl<'a> Converter<'a> {
@@ -33,6 +35,8 @@ impl<'a> Converter<'a> {
             items: BTreeMap::new(),
             exprs: BTreeMap::new(),
             types: BTreeMap::new(),
+            current_item: ItemId(0),
+            local_id: 0,
         }
     }
 
@@ -44,7 +48,13 @@ impl<'a> Converter<'a> {
         }
     }
 
-    pub fn register_module(&mut self, module: &ast::Module, name: &Ident, id: Id) {
+    fn next_id(&mut self) -> Id {
+        self.local_id += 1;
+
+        Id(self.current_item, self.local_id)
+    }
+
+    pub fn register_module(&mut self, module: &ast::Module, name: &Ident, id: ItemId) {
         let parent = self.resolver.current_module;
 
         self.resolver
@@ -71,8 +81,8 @@ impl<'a> Converter<'a> {
         self.resolver.set_module(parent);
     }
 
-    pub fn register_item(&mut self, item: &ast::Item, top_level: bool) -> Id {
-        let id = Id::new(&item.kind);
+    pub fn register_item(&mut self, item: &ast::Item, top_level: bool) -> ItemId {
+        let id = ItemId::new(item);
 
         match &item.kind {
             ast::ItemKind::Module { module } => {
@@ -103,7 +113,7 @@ impl<'a> Converter<'a> {
         id
     }
 
-    pub fn trans_module(&mut self, module: &ast::Module, id: Id) {
+    pub fn trans_module(&mut self, module: &ast::Module, id: ItemId) {
         let parent = self.resolver.current_module;
 
         self.resolver.set_module(id);
@@ -115,8 +125,10 @@ impl<'a> Converter<'a> {
         self.resolver.set_module(parent);
     }
 
-    pub fn trans_item(&mut self, item: &ast::Item, top_level: bool) -> Id {
-        let id = Id::new(&item.kind);
+    pub fn trans_item(&mut self, item: &ast::Item, top_level: bool) -> ItemId {
+        let id = ItemId::new(item);
+
+        self.current_item = id;
 
         match &item.kind {
             ast::ItemKind::Module { module } => {
@@ -143,7 +155,7 @@ impl<'a> Converter<'a> {
                 let params = params
                     .iter()
                     .map(|param| {
-                        let id = Id::new(param);
+                        let id = ItemId::new(param);
                         let ty = self.trans_ty(&param.ty);
 
                         self.resolver.define(
@@ -256,7 +268,7 @@ impl<'a> Converter<'a> {
     }
 
     pub fn trans_expr(&mut self, expr: &ast::Expr) -> Id {
-        let id = Id::new(expr);
+        let id = self.next_id();
         let kind = match &expr.kind {
             ast::ExprKind::Parens { inner } => return self.trans_expr(inner),
             ast::ExprKind::Path { path } => {
@@ -277,6 +289,12 @@ impl<'a> Converter<'a> {
             ast::ExprKind::Type { ty } => ExprKind::Type {
                 ty: self.trans_ty(ty),
             },
+            ast::ExprKind::Array { exprs } => ExprKind::Array {
+                exprs: exprs.iter().map(|e| self.trans_expr(e)).collect(),
+            },
+            ast::ExprKind::Tuple { exprs } => ExprKind::Tuple {
+                exprs: exprs.iter().map(|e| self.trans_expr(e)).collect(),
+            },
             ast::ExprKind::Call { func, args } => {
                 let func = self.trans_expr(func);
                 let args = args
@@ -294,6 +312,10 @@ impl<'a> Converter<'a> {
                 obj: self.trans_expr(obj),
                 field: *field,
             },
+            ast::ExprKind::Index { list, index } => ExprKind::Index {
+                list: self.trans_expr(list),
+                index: self.trans_expr(index),
+            },
             ast::ExprKind::Deref { expr } => ExprKind::Deref {
                 expr: self.trans_expr(expr),
             },
@@ -301,6 +323,19 @@ impl<'a> Converter<'a> {
                 lhs: self.trans_expr(lhs),
                 rhs: self.trans_expr(rhs),
             },
+            ast::ExprKind::AssignOp { op, lhs, rhs } => {
+                let lhs_ = self.trans_expr(lhs);
+                let rhs = self.trans_expr(&ast::Expr {
+                    span: expr.span,
+                    kind: ast::ExprKind::BinOp {
+                        op: *op,
+                        lhs: lhs.clone(),
+                        rhs: rhs.clone(),
+                    },
+                });
+
+                ExprKind::Assign { lhs: lhs_, rhs }
+            }
             ast::ExprKind::BinOp { op, lhs, rhs } => ExprKind::BinOp {
                 op: *op,
                 lhs: self.trans_expr(lhs),
@@ -308,10 +343,10 @@ impl<'a> Converter<'a> {
             },
             ast::ExprKind::While { label, cond, body } => {
                 let label = if let Some(label) = label {
-                    let id = Id::new(label);
+                    let id = self.next_id();
 
                     self.resolver
-                        .define(Ns::Labels, label.symbol, label.span, Res::Item(id));
+                        .define(Ns::Labels, label.symbol, label.span, Res::Label(id));
 
                     Some(id)
                 } else {
@@ -339,7 +374,7 @@ impl<'a> Converter<'a> {
     }
 
     pub fn trans_ty(&mut self, ty: &ast::Type) -> Id {
-        let id = Id::new(ty);
+        let id = self.next_id();
         let kind = match &ty.kind {
             ast::TypeKind::Infer => TypeKind::Infer,
             ast::TypeKind::Path { path } => {

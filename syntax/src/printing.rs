@@ -172,6 +172,7 @@ impl Display for Expr {
             ExprKind::TypeOf { expr } => write!(f, "{}.type", expr),
             ExprKind::Cast { expr, ty } => write!(f, "{}.({})", expr, ty),
             ExprKind::Assign { lhs, rhs } => write!(f, "{} = {}", lhs, rhs),
+            ExprKind::AssignOp { op, lhs, rhs } => write!(f, "{} {}= {}", lhs, op, rhs),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
             ExprKind::UnOp { op, rhs } => write!(f, "{}{}", op, rhs),
             ExprKind::IfElse {

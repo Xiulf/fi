@@ -60,8 +60,8 @@ pub fn declare<'tcx>(
     module: &mut Module<impl Backend>,
     tcx: &Tcx<'tcx>,
     item: &mir::Item<'tcx>,
-    func_ids: &mut BTreeMap<mir::Id, (FuncId, Signature, Layout<'tcx>)>,
-    data_ids: &mut BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
+    func_ids: &mut BTreeMap<mir::ItemId, (FuncId, Signature, Layout<'tcx>)>,
+    data_ids: &mut BTreeMap<mir::ItemId, (DataId, Layout<'tcx>)>,
 ) -> ModuleResult<()> {
     match &item.kind {
         mir::ItemKind::Extern(ty) => {
@@ -156,8 +156,8 @@ pub fn define<'tcx>(
     tcx: &Tcx<'tcx>,
     package: &mir::Package<'tcx>,
     item: &mir::Item<'tcx>,
-    func_ids: &BTreeMap<mir::Id, (FuncId, Signature, Layout<'tcx>)>,
-    data_ids: &BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
+    func_ids: &BTreeMap<mir::ItemId, (FuncId, Signature, Layout<'tcx>)>,
+    data_ids: &BTreeMap<mir::ItemId, (DataId, Layout<'tcx>)>,
     bytes_count: &mut usize,
 ) -> ModuleResult<()> {
     if let mir::ItemKind::Body(body) = &item.kind {
