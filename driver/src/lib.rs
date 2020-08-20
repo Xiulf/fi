@@ -21,8 +21,8 @@ pub fn build(opts: Opts) {
     check::with_tcx(&reporter, &hir, |tcx| {
         let mir = mir::convert::convert(&tcx, &hir);
 
-        println!("{}", mir);
+        // println!("{}", mir);
 
-        codegen::trans::translate(&tcx, &mir);
+        codegen::compile(&tcx, &mir, format!("{}/main", opts.target_dir.display()));
     });
 }

@@ -71,7 +71,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
         op: &mir::BinOp,
         lhs: ir::Value,
         rhs: ir::Value,
-        layout: Layout<'tcx>,
+        _layout: Layout<'tcx>,
     ) -> ir::Value {
         match op {
             mir::BinOp::Add => self.builder.ins().iadd(lhs, rhs),

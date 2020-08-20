@@ -1,6 +1,6 @@
 use crate::value::Value;
 use crate::FunctionCtx;
-use cranelift::codegen::ir::{self, InstBuilder};
+use cranelift::codegen::ir::InstBuilder;
 use cranelift_module::Backend;
 
 impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {

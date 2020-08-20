@@ -310,13 +310,32 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
     fn trans_field(&mut self, obj: &hir::Id, field: &hir::Ident) -> Operand<'tcx> {
         let obj_ty = self.tcx.type_of(obj);
         let obj = self.trans_expr(obj);
-        let obj = self.builder.placed(obj, obj_ty);
-        let fields = obj_ty.fields(self.tcx);
-        let idx = fields
-            .into_iter()
-            .position(|(name, _)| name == field.symbol)
-            .unwrap();
 
-        Operand::Place(obj.field(idx))
+        if let Operand::Const(Const::Type(ty)) = obj {
+            let layout = self.tcx.layout(ty);
+
+            if &**field.symbol == "size" {
+                Operand::Const(Const::Scalar(
+                    layout.size.bytes() as u128,
+                    self.tcx.builtin.usize,
+                ))
+            } else if &**field.symbol == "align" {
+                Operand::Const(Const::Scalar(
+                    layout.align.bytes() as u128,
+                    self.tcx.builtin.usize,
+                ))
+            } else {
+                unreachable!()
+            }
+        } else {
+            let obj = self.builder.placed(obj, obj_ty);
+            let fields = obj_ty.fields(self.tcx);
+            let idx = fields
+                .into_iter()
+                .position(|(name, _)| name == field.symbol)
+                .unwrap();
+
+            Operand::Place(obj.field(idx))
+        }
     }
 }

@@ -1,5 +1,6 @@
 pub mod convert;
 mod printing;
+pub mod visit;
 
 pub use check::ty::{Ident, Param, Ty, Type};
 pub use hir::Id;

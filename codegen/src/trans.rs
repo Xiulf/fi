@@ -8,16 +8,15 @@ use crate::FunctionCtx;
 use check::tcx::Tcx;
 use check::ty::Layout;
 use cranelift::codegen::ir::{AbiParam, ExternalName, InstBuilder, Signature};
-use cranelift::codegen::isa::TargetIsa;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{Backend, DataContext, DataId, FuncId, Linkage, Module, ModuleResult};
+use cranelift_module::{Backend, DataId, FuncId, Linkage, Module, ModuleResult};
 use std::collections::BTreeMap;
 
 pub fn translate<'tcx>(
     // target: target_lexicon::Triple,
     tcx: &Tcx<'tcx>,
     package: &mir::Package<'tcx>,
-) {
+) -> cranelift_object::ObjectProduct {
     let target = target_lexicon::Triple::host();
     let flags_builder = cranelift::codegen::settings::builder();
     let flags = cranelift::codegen::settings::Flags::new(flags_builder);
@@ -53,6 +52,8 @@ pub fn translate<'tcx>(
         )
         .unwrap();
     }
+
+    module.finish()
 }
 
 pub fn declare<'tcx>(
@@ -141,7 +142,7 @@ pub fn declare<'tcx>(
                 }
             }
 
-            let func = module.declare_function(&*item.name.symbol, Linkage::Local, &sig)?;
+            let func = module.declare_function(&*item.name.symbol, Linkage::Export, &sig)?;
 
             func_ids.insert(item.id, (func, sig, ret));
         }
@@ -269,7 +270,7 @@ pub fn define<'tcx>(
         fx.builder.seal_all_blocks();
         fx.builder.finalize();
 
-        println!("{}", fx.builder.func);
+        // println!("{}", fx.builder.func);
 
         module.define_function(
             *func,

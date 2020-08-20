@@ -13,6 +13,39 @@ use cranelift::prelude::*;
 use cranelift_module::{Backend, DataId, FuncId, Module};
 use std::collections::BTreeMap;
 
+pub fn compile<'tcx>(
+    tcx: &Tcx<'tcx>,
+    package: &mir::Package<'tcx>,
+    out_file: impl AsRef<std::path::Path>,
+) {
+    let out_file = out_file.as_ref();
+    let product = trans::translate(tcx, package);
+    let mut tmp_name = out_file.to_owned();
+    tmp_name.set_extension("o");
+
+    assemble(product, tmp_name.as_ref());
+    link(tmp_name.as_ref(), out_file.as_ref());
+}
+
+pub fn assemble(product: cranelift_object::ObjectProduct, out_file: &std::path::Path) {
+    use std::io::Write;
+    let bytes = product.emit().unwrap();
+
+    std::fs::File::create(out_file)
+        .unwrap()
+        .write_all(&bytes)
+        .unwrap();
+}
+
+pub fn link(obj_file: &std::path::Path, out_file: &std::path::Path) {
+    let _status = std::process::Command::new("cc")
+        .arg(obj_file)
+        .arg("-o")
+        .arg(out_file)
+        .status()
+        .unwrap();
+}
+
 pub struct FunctionCtx<'a, 'tcx, B: Backend> {
     pub module: &'a mut Module<B>,
     pub builder: FunctionBuilder<'a>,
