@@ -188,12 +188,39 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 Operand::Place(list.index(index))
             }
+            hir::ExprKind::Ref { expr } => {
+                let ty = self.tcx.type_of(id);
+                let expr_ty = self.tcx.type_of(expr);
+                let expr = self.trans_expr(expr);
+                let expr = self.builder.placed(expr, expr_ty);
+                let res = self.builder.create_tmp(ty);
+                let res = Place::local(res);
+
+                self.builder.ref_(res.clone(), expr);
+
+                Operand::Place(res)
+            }
             hir::ExprKind::Deref { expr } => {
                 let expr_ty = self.tcx.type_of(expr);
                 let expr = self.trans_expr(expr);
                 let place = self.builder.placed(expr, expr_ty);
 
                 Operand::Place(place.deref())
+            }
+            hir::ExprKind::TypeOf { expr } => {
+                let expr_ty = self.tcx.type_of(expr);
+
+                Operand::Const(Const::Type(expr_ty))
+            }
+            hir::ExprKind::Cast { expr, ty } => {
+                let ty = self.tcx.type_of(ty);
+                let expr = self.trans_expr(expr);
+                let res = self.builder.create_tmp(ty);
+                let res = Place::local(res);
+
+                self.builder.cast(res.clone(), ty, expr);
+
+                Operand::Place(res)
             }
             hir::ExprKind::Assign { lhs, rhs } => {
                 let lhs_ty = self.tcx.type_of(lhs);

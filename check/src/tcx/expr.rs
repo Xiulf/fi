@@ -16,19 +16,7 @@ impl<'tcx> Tcx<'tcx> {
                     self.type_of(id);
                 }
                 hir::StmtKind::Expr(id) => {
-                    if i == block.stmts.len() - 1 {
-                        ty = self.type_of(id);
-                    } else {
-                        let expr_ty = self.type_of(id);
-                        let expr_span = self.span_of(id);
-
-                        self.constrain(Constraint::Equal(
-                            expr_ty,
-                            expr_span,
-                            self.builtin.unit,
-                            expr_span,
-                        ));
-                    }
+                    ty = self.type_of(id);
                 }
             }
         }
@@ -119,6 +107,11 @@ impl<'tcx> Tcx<'tcx> {
 
                 ty
             }
+            hir::ExprKind::Ref { expr: inner } => {
+                let inner_ty = self.type_of(inner);
+
+                self.intern_ty(Type::Ref(false, inner_ty))
+            }
             hir::ExprKind::Deref { expr: inner } => {
                 let ty = self.new_var();
                 let ref_ty = self.intern_ty(Type::Ref(false, ty));
@@ -127,6 +120,14 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.constrain(Constraint::Equal(inner_ty, inner_span, ref_ty, expr.span));
                 ty
+            }
+            hir::ExprKind::TypeOf { expr: inner } => {
+                self.type_of(inner);
+                self.builtin.typeid
+            }
+            hir::ExprKind::Cast { expr, ty } => {
+                self.type_of(expr);
+                self.type_of(ty)
             }
             hir::ExprKind::Assign { lhs, rhs } => {
                 let lhs_ty = self.type_of(lhs);

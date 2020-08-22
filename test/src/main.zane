@@ -1,20 +1,14 @@
-main :: fn (argc: #i32, argv: ref ref #u8) -> #i32 {
-    arrays()
-};
+extern "C" write: fn (fd: i32, buf: ref u8, count: usize) -> isize
 
-arrays :: fn () -> #i32 {
-    arr := [1, 2, 4, 8, 16, 32];
-    sum := 0;
-    i := 0;
+fn main(argc: i32, argv: ref ref u8) -> i32
+    println("Hello World!");
+end
 
-    while i < arr.len {
-        sum += arr[i];
-        i += 1;
-    }
+fn print(string: str)
+    write(0, string.ptr, string.len);
+end
 
-    sum
-};
-
-mod c {
-    puts :: extern "C" fn (string: ref #u8) -> #i32;
-}
+fn println(string: str)
+    write(0, string.ptr, string.len);
+    write(0, 10.ref, 1);
+end

@@ -13,6 +13,12 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                 place.store(self, value);
             }
+            mir::RValue::Ref(val) => {}
+            mir::RValue::Cast(ty, op) => {
+                let op = self.trans_operand(op);
+
+                place.store(self, op.cast(self.tcx.layout(ty)));
+            }
             mir::RValue::Call(func, args) => {
                 let args = args
                     .iter()

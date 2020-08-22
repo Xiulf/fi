@@ -126,6 +126,14 @@ impl<'a> Resolver<'a> {
     }
 
     pub fn get_path(&self, ns: Ns, path: &syntax::ast::Path) -> Option<Res> {
+        match self.get_path_inner(ns, path, self.current_module) {
+            Some(res) => Some(res),
+            None if path.root => None,
+            None => self.get_path_inner(ns, path, ItemId(0)),
+        }
+    }
+
+    fn get_path_inner(&self, ns: Ns, path: &syntax::ast::Path, module: ItemId) -> Option<Res> {
         let mut res = None;
 
         for (i, seg) in path.segs.iter().enumerate() {
@@ -136,11 +144,7 @@ impl<'a> Resolver<'a> {
                     res = self
                         .get_seg(
                             if !last { Ns::Modules } else { ns },
-                            if path.root {
-                                ItemId(0)
-                            } else {
-                                self.current_module
-                            },
+                            if path.root { ItemId(0) } else { module },
                             seg,
                         )
                         .0;

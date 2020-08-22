@@ -129,6 +129,7 @@ impl<'a> Converter<'a> {
         let id = ItemId::new(item);
 
         self.current_item = id;
+        self.local_id = 0;
 
         match &item.kind {
             ast::ItemKind::Module { module } => {
@@ -316,8 +317,18 @@ impl<'a> Converter<'a> {
                 list: self.trans_expr(list),
                 index: self.trans_expr(index),
             },
+            ast::ExprKind::Ref { expr } => ExprKind::Ref {
+                expr: self.trans_expr(expr),
+            },
             ast::ExprKind::Deref { expr } => ExprKind::Deref {
                 expr: self.trans_expr(expr),
+            },
+            ast::ExprKind::TypeOf { expr } => ExprKind::TypeOf {
+                expr: self.trans_expr(expr),
+            },
+            ast::ExprKind::Cast { expr, ty } => ExprKind::Cast {
+                expr: self.trans_expr(expr),
+                ty: self.trans_ty(ty),
             },
             ast::ExprKind::Assign { lhs, rhs } => ExprKind::Assign {
                 lhs: self.trans_expr(lhs),

@@ -2,17 +2,20 @@ use crate::ast::*;
 use parser::error::Result;
 use parser::parse::{Parse, ParseStream};
 
+parser::token![ident "end" TEnd];
 parser::token![ident "mod" TMod];
+parser::token![ident "where" TWhere];
 parser::token![ident "extern" TExtern];
 parser::token![ident "fn" TFn];
+parser::token![ident "var" TVar];
 parser::token![ident "do" TDo];
 parser::token![ident "ref" TRef];
 parser::token![ident "mut" TMut];
 parser::token![ident "deref" TDeref];
 parser::token![ident "type" TType];
-parser::token![ident "while" TWhile];
 parser::token![ident "if" TIf];
 parser::token![ident "else" TElse];
+parser::token![ident "while" TWhile];
 parser::token![ident "loop" TLoop];
 parser::token![ident "break" TBreak];
 parser::token![ident "continue" TContinue];
@@ -75,13 +78,14 @@ impl Parse for Module {
         let start = input.span();
         let mut items = Vec::new();
 
-        while !input.is_empty() {
+        while !input.is_empty() && !input.peek::<TEnd>() {
             match input.parse() {
                 Ok(item) => items.push(item),
                 Err(e) => {
                     input.reporter.add(e);
+                    input.bump();
 
-                    while !input.is_empty() && !input.peek::<Ident>() && !input.peek::<TMod>() {
+                    while !input.is_empty() && !input.peek::<parser::ident::Ident>() {
                         input.bump();
                     }
                 }
@@ -96,41 +100,6 @@ impl Parse for Module {
 }
 
 impl Module {
-    fn parse_inline(input: ParseStream) -> Result<Self> {
-        let start = input.span();
-        let mut tokens = Vec::new();
-        let mut balance = vec![Balance::Brace];
-
-        enum Balance {
-            Paren,
-            Brace,
-            Bracket,
-        }
-
-        while !input.is_empty() && !balance.is_empty() {
-            if input.peek::<TLParen>() {
-                balance.push(Balance::Paren);
-            } else if input.peek::<TLBrace>() {
-                balance.push(Balance::Brace);
-            } else if input.peek::<TLBracket>() {
-                balance.push(Balance::Bracket);
-            } else if input.peek::<TRParen>() {
-                balance.pop().unwrap(); // TODO: validate
-            } else if input.peek::<TRBrace>() {
-                balance.pop().unwrap(); // TODO: validate
-            } else if input.peek::<TRBracket>() {
-                balance.pop().unwrap(); // TODO: validate
-            }
-
-            tokens.push(input.parse::<parser::buffer::Entry>()?);
-        }
-
-        let tokens = parser::buffer::TokenBuffer::new(tokens);
-        let buffer = parser::parse::ParseBuffer::new(tokens.begin(), input.reporter, (), start);
-
-        Module::parse(&buffer)
-    }
-
     fn parse_file(input: ParseStream, name: &Ident) -> Result<Self> {
         let file_name = name.span.file.name.file_stem().unwrap();
         let file_path = name.span.file.name.parent().unwrap();
@@ -161,8 +130,9 @@ impl Parse for Item {
         if let Ok(_) = input.parse::<TMod>() {
             let name = input.parse()?;
 
-            if let Ok(_) = input.parse::<TLBrace>() {
-                let module = Module::parse_inline(input)?;
+            if let Ok(_) = input.parse::<TWhere>() {
+                let module = input.parse::<Module>()?;
+                let _ = input.parse::<TEnd>()?;
 
                 Ok(Item {
                     span: start.to(input.prev_span()),
@@ -170,7 +140,6 @@ impl Parse for Item {
                     kind: ItemKind::Module { module },
                 })
             } else {
-                let _ = input.parse::<TSemi>()?;
                 let module = Module::parse_file(input, &name)?;
 
                 Ok(Item {
@@ -179,81 +148,82 @@ impl Parse for Item {
                     kind: ItemKind::Module { module },
                 })
             }
-        } else {
+        } else if let Ok(_) = input.parse::<TExtern>() {
+            let abi = input.parse()?;
             let name = input.parse()?;
             let _ = input.parse::<TColon>()?;
-            let ty = if input.peek::<TColon>() || input.peek::<TEquals>() {
+            let ty = input.parse()?;
+
+            Ok(Item {
+                span: start.to(input.prev_span()),
+                name,
+                kind: ItemKind::Extern { abi, ty },
+            })
+        } else if let Ok(_) = input.parse::<TFn>() {
+            let name = input.parse()?;
+            let _ = input.parse::<TLParen>()?;
+            let mut params = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                params.push(input.parse()?);
+
+                if !input.peek::<TRParen>() {
+                    input.parse::<TComma>()?;
+                }
+            }
+
+            input.parse::<TRParen>()?;
+
+            let ret = if let Ok(_) = input.parse::<TArrow>() {
+                input.parse()?
+            } else {
                 Type {
                     span: input.span(),
                     kind: TypeKind::Infer,
                 }
-            } else {
-                input.parse::<Type>()?
             };
 
-            if let Ok(_) = input.parse::<TColon>() {
-                if let Ok(_) = input.parse::<TExtern>() {
-                    let abi = input.parse()?;
-                    let ty = input.parse()?;
-                    let _ = input.parse::<TSemi>()?;
+            let body = input.parse()?;
 
-                    Ok(Item {
-                        span: start.to(input.prev_span()),
-                        name,
-                        kind: ItemKind::Extern { abi, ty },
-                    })
-                } else if let Ok(_) = input.parse::<TFn>() {
-                    let _ = input.parse::<TLParen>()?;
-                    let mut params = Vec::new();
-
-                    while !input.is_empty() && !input.peek::<TRParen>() {
-                        params.push(input.parse()?);
-
-                        if !input.peek::<TRParen>() {
-                            input.parse::<TComma>()?;
-                        }
-                    }
-
-                    input.parse::<TRParen>()?;
-
-                    let ret = if let Ok(_) = input.parse::<TArrow>() {
-                        input.parse()?
-                    } else {
-                        Type {
-                            span: input.span(),
-                            kind: TypeKind::Infer,
-                        }
-                    };
-
-                    let body = input.parse()?;
-                    let _ = input.parse::<TSemi>()?;
-
-                    Ok(Item {
-                        span: start.to(input.prev_span()),
-                        name,
-                        kind: ItemKind::Func { params, ret, body },
-                    })
-                } else {
-                    input.error("expected 'extern' or 'fn'", 0001)
-                }
-            } else if let Ok(_) = input.parse::<TEquals>() {
-                let val = if input.peek::<TSemi>() {
-                    None
-                } else {
-                    Some(input.parse::<Expr>()?)
-                };
-
-                input.parse::<TSemi>()?;
-
-                Ok(Item {
-                    span: start.to(input.prev_span()),
-                    name,
-                    kind: ItemKind::Var { ty, val },
-                })
+            Ok(Item {
+                span: start.to(input.prev_span()),
+                name,
+                kind: ItemKind::Func { params, ret, body },
+            })
+        } else if let Ok(_) = input.parse::<TVar>() {
+            let name = input.parse()?;
+            let ty = if let Ok(_) = input.parse::<TColon>() {
+                input.parse::<Type>()?
             } else {
-                input.error("expected ':' or '='", 0001)
-            }
+                Type {
+                    span: input.span(),
+                    kind: TypeKind::Infer,
+                }
+            };
+
+            let val = if let Ok(_) = input.parse::<TEquals>() {
+                Some(input.parse::<Expr>()?)
+            } else {
+                None
+            };
+
+            Ok(Item {
+                span: start.to(input.prev_span()),
+                name,
+                kind: ItemKind::Var { ty, val },
+            })
+        } else {
+            input.error("expected 'mod', 'extern', 'fn' or 'var'", 0001)
         }
+    }
+}
+
+impl Item {
+    fn peek(input: ParseStream) -> bool {
+        input.peek::<TMod>()
+            || input.peek::<TExtern>()
+            || input.peek::<TFn>()
+            || input.peek::<TVar>()
     }
 }
 
@@ -293,42 +263,26 @@ impl Parse for Param {
 
 impl Parse for Block {
     fn parse(input: ParseStream) -> Result<Self> {
-        let start = input.span();
+        let start = input.prev_span();
         let mut stmts = Vec::new();
 
-        if let Ok(_) = input.parse::<TDo>() {
-            let expr = input.parse::<Expr>()?;
-
-            stmts.push(Stmt {
-                span: expr.span,
-                kind: StmtKind::Expr(expr),
-            });
-
-            Ok(Block {
-                span: start.to(input.prev_span()),
-                stmts,
-            })
-        } else if let Ok(_) = input.parse::<TLBrace>() {
-            while !input.is_empty() && !input.peek::<TRBrace>() {
-                stmts.push(input.parse()?);
-            }
-
-            input.parse::<TRBrace>()?;
-
-            Ok(Block {
-                span: start.to(input.prev_span()),
-                stmts,
-            })
-        } else {
-            input.error("expected 'do' or '{'", 0001)
+        while !input.is_empty() && !input.peek::<TEnd>() {
+            stmts.push(input.parse()?);
         }
+
+        input.parse::<TEnd>()?;
+
+        Ok(Block {
+            span: start.to(input.prev_span()),
+            stmts,
+        })
     }
 }
 
 impl Parse for Stmt {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
-        let kind = if input.peek::<TMod>() || (input.peek::<Ident>() && input.peek2::<TColon>()) {
+        let kind = if Item::peek(input) {
             StmtKind::Item(input.parse()?)
         } else {
             let expr = input.parse()?;
@@ -482,7 +436,7 @@ impl Expr {
                 while !input.is_empty() && !input.peek::<TRParen>() {
                     args.push(input.parse()?);
 
-                    while !input.peek::<TRParen>() {
+                    if !input.peek::<TRParen>() {
                         input.parse::<TComma>()?;
                     }
                 }
@@ -545,7 +499,18 @@ impl Expr {
             } else if input.peek::<TDot>() && !input.peek::<TDblDot>() {
                 input.parse::<TDot>()?;
 
-                if let Ok(_) = input.parse::<TRef>() {
+                if let Ok(_) = input.parse::<TLParen>() {
+                    let ty = input.parse()?;
+                    let _ = input.parse::<TRParen>()?;
+
+                    expr = Expr {
+                        span: start.to(input.prev_span()),
+                        kind: ExprKind::Cast {
+                            expr: Box::new(expr),
+                            ty,
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TRef>() {
                     expr = Expr {
                         span: start.to(input.prev_span()),
                         kind: ExprKind::Ref {
@@ -844,7 +809,7 @@ impl Parse for Type {
                 params.push(input.parse()?);
 
                 if !input.peek::<TRParen>() {
-                    input.parse::<TColon>()?;
+                    input.parse::<TComma>()?;
                 }
             }
 
