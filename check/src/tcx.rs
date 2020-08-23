@@ -110,11 +110,11 @@ impl<'tcx> Tcx<'tcx> {
                 self.infer_expr(id)
             } else if let Some(_) = self.package.types.get(id) {
                 self.infer_type(id)
-            } else if let Some(_) = self.package.items.get(&id.item_id()) {
-                let ty = self.infer_item(&id.item_id());
+            } else if let Some(_) = self.package.items.get(id) {
+                let ty = self.infer_item(id);
 
                 self.types.borrow_mut().insert(*id, ty);
-                self.check_item(&id.item_id());
+                self.check_item(id);
 
                 return ty;
             } else {
@@ -132,7 +132,7 @@ impl<'tcx> Tcx<'tcx> {
             expr.span
         } else if let Some(ty) = self.package.types.get(id) {
             ty.span
-        } else if let Some(item) = self.package.items.get(&id.item_id()) {
+        } else if let Some(item) = self.package.items.get(id) {
             item.span
         } else {
             panic!("unused id {}", id);
@@ -199,7 +199,12 @@ impl<'tcx> Tcx<'tcx> {
         let layout = match ty {
             Type::Error => unreachable!(),
             Type::Var(_) => unreachable!(),
-            Type::VInt(_) => unreachable!(),
+            Type::VInt(_) => match self.target.pointer_width() {
+                Ok(target_lexicon::PointerWidth::U16) => scalar(Primitive::Int(Integer::I16, true)),
+                Ok(target_lexicon::PointerWidth::U32) => scalar(Primitive::Int(Integer::I32, true)),
+                Ok(target_lexicon::PointerWidth::U64) => scalar(Primitive::Int(Integer::I64, true)),
+                Err(_) => scalar(Primitive::Int(Integer::I32, true)),
+            },
             Type::VUInt(_) => unreachable!(),
             Type::VFloat(_) => unreachable!(),
             Type::Never => self.intern_layout(Layout {

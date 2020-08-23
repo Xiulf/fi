@@ -110,6 +110,14 @@ macro_rules! make_visitor{
                     Term::Return => {},
                     Term::Jump(_) => {},
                     Term::Switch(pred, _, _) => self.visit_op(pred),
+                    Term::Call(place, func, args, _) => {
+                        self.visit_place(place);
+                        self.visit_op(func);
+
+                        for arg in args {
+                            self.visit_op(arg);
+                        }
+                    },
                 }
             }
 
@@ -136,13 +144,6 @@ macro_rules! make_visitor{
                     RValue::Ref(place) => self.visit_place(place),
                     RValue::Cast(_, op) => {
                         self.visit_op(op);
-                    },
-                    RValue::Call(func, args) => {
-                        self.visit_op(func);
-
-                        for arg in args {
-                            self.visit_op(arg);
-                        }
                     },
                     // RValue::Slice(place, lo, hi) => {
                     //     self.visit_place(place);

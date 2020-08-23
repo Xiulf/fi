@@ -18,7 +18,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                     let func = self.module.declare_func_in_func(func, self.builder.func);
                     let func = self.builder.ins().func_addr(self.pointer_type, func);
 
-                    Value::new_val(func, self.tcx.layout_of(&mir::Id::item(*id)))
+                    Value::new_val(func, self.tcx.layout_of(id))
                 }
                 mir::Const::Type(_) => unimplemented!(),
                 mir::Const::Bytes(bytes) => {

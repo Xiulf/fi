@@ -8,23 +8,30 @@ impl<'tcx> Tcx<'tcx> {
     pub fn unify(&self) {
         let mut cs = self.constraints.replace(Constraints::new());
 
-        // while !cs.is_empty() {
-        let subst = self.unify_all(cs);
+        while !cs.is_empty() {
+            let subst = self.unify_all(cs);
 
-        for (_, ty) in self.types.borrow_mut().iter_mut() {
-            subst.apply_ty(ty);
+            for (_, ty) in self.types.borrow_mut().iter_mut() {
+                subst.apply_ty(ty);
+            }
+
+            cs = self.constraints.replace(Constraints::new());
+            subst.apply_cs(&mut cs);
         }
-
-        // cs = self.constraints.replace(Constraints::new());
-        // cs = subst.apply_cs(cs);
-        // }
     }
 
-    fn unify_all(&self, cs: Constraints<'tcx>) -> Subst<'tcx> {
+    fn unify_all(&self, mut cs: Constraints<'tcx>) -> Subst<'tcx> {
         let mut subst = Subst::empty();
+        let mut i = 0;
 
-        for c in cs {
-            subst = subst.compose(self.unify_one(c));
+        cs.reverse();
+
+        while let Some(c) = cs.pop() {
+            // println!("{}: {}", i, c);
+            i += 1;
+
+            subst.compose(self.unify_one(c));
+            subst.apply_cs(&mut cs);
         }
 
         subst
@@ -51,6 +58,7 @@ impl<'tcx> Tcx<'tcx> {
                 (Type::Int(_), Type::VInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
                 (Type::VUInt(tvar), Type::UInt(_)) => vec![(*tvar, b)].into_iter().collect(),
                 (Type::VUInt(tvar), Type::VUInt(_)) => vec![(*tvar, b)].into_iter().collect(),
+                (Type::UInt(_), Type::VInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
                 (Type::UInt(_), Type::VUInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
                 (Type::VFloat(tvar), Type::Float(_)) => vec![(*tvar, b)].into_iter().collect(),
                 (Type::VFloat(tvar), Type::VFloat(_)) => vec![(*tvar, b)].into_iter().collect(),
@@ -353,7 +361,22 @@ impl<'tcx> Tcx<'tcx> {
 
                         return Subst::empty();
                     }
-                    _ => unimplemented!(),
+                    _ => {
+                        self.reporter.add(
+                            Diagnostic::new(
+                                Severity::Error,
+                                0015,
+                                format!("type `{}` does not have any fields", obj_ty),
+                            )
+                            .label(
+                                Severity::Error,
+                                obj_span,
+                                None::<String>,
+                            ),
+                        );
+
+                        return Subst::empty();
+                    }
                 };
 
                 if let Some(field) = fields.iter().find(|f| f.0.symbol == field.symbol) {

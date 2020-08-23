@@ -99,6 +99,14 @@ impl Display for Term<'_> {
 
                 write!(f, "otherwise {}]", targets.last().unwrap())
             }
+            Term::Call(place, func, args, target) => write!(
+                f,
+                "call {} = {}({}), {}",
+                place,
+                func,
+                list(args, ", "),
+                target
+            ),
         }
     }
 }
@@ -151,7 +159,6 @@ impl Display for RValue<'_> {
             RValue::Use(op) => op.fmt(f),
             RValue::Ref(place) => write!(f, "ref {}", place),
             RValue::Cast(ty, op) => write!(f, "{}.({})", op, ty),
-            RValue::Call(func, args) => write!(f, "{}({})", func, list(args, ", ")),
             RValue::BinOp(op, lhs, rhs) => write!(f, "{:?} {} {}", op, lhs, rhs),
             RValue::UnOp(op, rhs) => write!(f, "{:?} {}", op, rhs),
             RValue::Init(ty, ops) => write!(f, "{} {{ {} }}", ty, list(ops, ", ")),

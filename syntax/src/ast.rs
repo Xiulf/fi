@@ -83,7 +83,6 @@ pub struct Stmt {
 #[derive(Debug, Clone, Hash)]
 pub enum StmtKind {
     Item(Item),
-    Semi(Expr),
     Expr(Expr),
 }
 

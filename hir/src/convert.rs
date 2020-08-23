@@ -20,7 +20,7 @@ pub fn convert(reporter: &Reporter, ast: &ast::Package) -> Package {
 pub struct Converter<'a> {
     reporter: &'a Reporter,
     resolver: Resolver<'a>,
-    items: BTreeMap<ItemId, Item>,
+    items: BTreeMap<Id, Item>,
     exprs: BTreeMap<Id, Expr>,
     types: BTreeMap<Id, Type>,
     current_item: ItemId,
@@ -89,24 +89,30 @@ impl<'a> Converter<'a> {
                 self.register_module(module, &item.name, id);
             }
             ast::ItemKind::Extern { .. } => {
-                self.resolver
-                    .define(Ns::Values, item.name.symbol, item.name.span, Res::Item(id));
-            }
-            ast::ItemKind::Func { .. } => {
-                self.resolver
-                    .define(Ns::Values, item.name.symbol, item.name.span, Res::Item(id));
-            }
-            ast::ItemKind::Var { .. } => {
                 self.resolver.define(
                     Ns::Values,
                     item.name.symbol,
                     item.name.span,
-                    if top_level {
-                        Res::Item(id)
-                    } else {
-                        Res::Local(id)
-                    },
+                    Res::Item(Id::item(id)),
                 );
+            }
+            ast::ItemKind::Func { .. } => {
+                self.resolver.define(
+                    Ns::Values,
+                    item.name.symbol,
+                    item.name.span,
+                    Res::Item(Id::item(id)),
+                );
+            }
+            ast::ItemKind::Var { .. } => {
+                if top_level {
+                    self.resolver.define(
+                        Ns::Values,
+                        item.name.symbol,
+                        item.name.span,
+                        Res::Item(Id::item(id)),
+                    );
+                }
             }
         }
 
@@ -125,15 +131,15 @@ impl<'a> Converter<'a> {
         self.resolver.set_module(parent);
     }
 
-    pub fn trans_item(&mut self, item: &ast::Item, top_level: bool) -> ItemId {
-        let id = ItemId::new(item);
+    pub fn trans_item(&mut self, item: &ast::Item, top_level: bool) -> Id {
+        let id = Id::item(ItemId::new(item));
 
-        self.current_item = id;
+        self.current_item = id.item_id();
         self.local_id = 0;
 
         match &item.kind {
             ast::ItemKind::Module { module } => {
-                self.trans_module(module, id);
+                self.trans_module(module, id.item_id());
             }
             ast::ItemKind::Extern { abi, ty } => {
                 let ty = self.trans_ty(ty);
@@ -156,7 +162,7 @@ impl<'a> Converter<'a> {
                 let params = params
                     .iter()
                     .map(|param| {
-                        let id = ItemId::new(param);
+                        let id = self.next_id();
                         let ty = self.trans_ty(&param.ty);
 
                         self.resolver.define(
@@ -237,14 +243,41 @@ impl<'a> Converter<'a> {
         for stmt in &block.stmts {
             let kind = match &stmt.kind {
                 ast::StmtKind::Item(item) => {
-                    if let ast::ItemKind::Var { .. } = &item.kind {
-                        self.resolver.push_rib(Ns::Values, RibKind::Local);
-                        scopes += 1;
-                    }
+                    if let ast::ItemKind::Var { ty, val } = &item.kind {
+                        let id = self.next_id();
 
-                    StmtKind::Item(self.trans_item(item, false))
+                        self.resolver.push_rib(Ns::Values, RibKind::Local);
+                        self.resolver.define(
+                            Ns::Values,
+                            item.name.symbol,
+                            item.name.span,
+                            Res::Local(id),
+                        );
+
+                        let ty = self.trans_ty(ty);
+                        let val = val.as_ref().map(|expr| self.trans_expr(expr));
+
+                        self.items.insert(
+                            id,
+                            Item {
+                                span: item.span,
+                                id,
+                                name: item.name,
+                                kind: ItemKind::Var {
+                                    ty,
+                                    val,
+                                    global: false,
+                                },
+                            },
+                        );
+
+                        scopes += 1;
+
+                        StmtKind::Item(id)
+                    } else {
+                        StmtKind::Item(self.trans_item(item, false))
+                    }
                 }
-                ast::StmtKind::Semi(expr) => StmtKind::Semi(self.trans_expr(expr)),
                 ast::StmtKind::Expr(expr) => StmtKind::Expr(self.trans_expr(expr)),
             };
 

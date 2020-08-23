@@ -43,8 +43,8 @@ pub enum RibKind {
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 pub enum Res {
     Module(ItemId),
-    Item(ItemId),
-    Local(ItemId),
+    Item(Id),
+    Local(Id),
     Label(Id),
     PrimVal(PrimVal),
     PrimTy(PrimTy),

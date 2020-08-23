@@ -56,8 +56,8 @@ pub struct FunctionCtx<'a, 'tcx, B: Backend> {
     pub tcx: &'a Tcx<'tcx>,
     pub package: &'a mir::Package<'tcx>,
     pub body: &'a mir::Body<'tcx>,
-    pub func_ids: &'a BTreeMap<mir::ItemId, (FuncId, cir::Signature, Layout<'tcx>)>,
-    pub data_ids: &'a BTreeMap<mir::ItemId, (DataId, Layout<'tcx>)>,
+    pub func_ids: &'a BTreeMap<mir::Id, (FuncId, cir::Signature, Layout<'tcx>)>,
+    pub data_ids: &'a BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
     pub blocks: BTreeMap<mir::BlockId, cir::Block>,
     pub locals: BTreeMap<mir::LocalId, place::Place<'tcx>>,
     bytes_count: &'a mut usize,
@@ -83,12 +83,14 @@ pub fn clif_type<'tcx>(module: &Module<impl Backend>, layout: Layout<'tcx>) -> O
     match layout.ty {
         Type::Bool => Some(types::I8),
         Type::TypeId => Some(module.target_config().pointer_type()),
-        Type::Int(0) | Type::UInt(0) => match module.target_config().pointer_width {
-            target_lexicon::PointerWidth::U16 => Some(types::I16),
-            target_lexicon::PointerWidth::U32 => Some(types::I32),
-            target_lexicon::PointerWidth::U64 => Some(types::I64),
-        },
-        Type::Float(0) => match module.target_config().pointer_width {
+        Type::VInt(_) | Type::VUInt(_) | Type::Int(0) | Type::UInt(0) => {
+            match module.target_config().pointer_width {
+                target_lexicon::PointerWidth::U16 => Some(types::I16),
+                target_lexicon::PointerWidth::U32 => Some(types::I32),
+                target_lexicon::PointerWidth::U64 => Some(types::I64),
+            }
+        }
+        Type::VFloat(_) | Type::Float(0) => match module.target_config().pointer_width {
             target_lexicon::PointerWidth::U16 => Some(types::F32),
             target_lexicon::PointerWidth::U32 => Some(types::F32),
             target_lexicon::PointerWidth::U64 => Some(types::F64),

@@ -9,52 +9,51 @@ impl<'tcx> Subst<'tcx> {
         Subst(BTreeMap::new())
     }
 
-    pub fn compose(self, other: Self) -> Self {
-        let mut self_subst = self
-            .0
-            .into_iter()
-            .map(|(k, s)| (k, other.apply_ty(&s)))
-            .collect::<BTreeMap<TypeVar, Ty<'tcx>>>();
-
-        self_subst.extend(other.0);
-
-        Subst(self_subst)
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
-    pub fn apply_cs(&self, cs: Constraints<'tcx>) -> Constraints<'tcx> {
-        cs.into_iter()
-            .map(|c| match c {
-                Constraint::Equal(a, a_span, b, b_span) => {
-                    Constraint::Equal(self.apply_ty(a), a_span, self.apply_ty(b), b_span)
-                }
-                Constraint::PtrArith(a, a_span, b, b_span) => {
-                    Constraint::PtrArith(self.apply_ty(a), a_span, self.apply_ty(b), b_span)
-                }
-                Constraint::IsNum(ty, span) => Constraint::IsNum(self.apply_ty(ty), span),
-                Constraint::IsInt(ty, span) => Constraint::IsInt(self.apply_ty(ty), span),
-                Constraint::Call(func, f_span, params, ret, r_span) => {
-                    let params = params.clone();
+    pub fn compose(&mut self, other: Self) {
+        self.0.iter_mut().for_each(|(_, s)| {
+            other.apply_ty(s);
+        });
 
-                    for param in &params {
-                        self.apply_ty(param.ty);
-                    }
+        self.0.extend(other.0);
+    }
 
-                    Constraint::Call(
-                        self.apply_ty(func),
-                        f_span,
-                        params,
-                        self.apply_ty(ret),
-                        r_span,
-                    )
+    pub fn apply_cs(&self, cs: &mut Constraints<'tcx>) {
+        cs.iter_mut().for_each(|c| match c {
+            Constraint::Equal(a, _, b, _) => {
+                *a = self.apply_ty(a);
+                *b = self.apply_ty(b);
+            }
+            Constraint::PtrArith(a, _, b, _) => {
+                *a = self.apply_ty(a);
+                *b = self.apply_ty(b);
+            }
+            Constraint::IsNum(ty, _) => {
+                *ty = self.apply_ty(ty);
+            }
+            Constraint::IsInt(ty, _) => {
+                *ty = self.apply_ty(ty);
+            }
+            Constraint::Call(func, _, params, ret, _) => {
+                *func = self.apply_ty(func);
+                *ret = self.apply_ty(ret);
+
+                for param in params {
+                    param.ty = self.apply_ty(param.ty);
                 }
-                Constraint::Field(obj, o_span, field, ty, t_span) => {
-                    Constraint::Field(self.apply_ty(obj), o_span, field, self.apply_ty(ty), t_span)
-                }
-                Constraint::Index(list, l_span, ty, t_span) => {
-                    Constraint::Index(self.apply_ty(list), l_span, self.apply_ty(ty), t_span)
-                }
-            })
-            .collect()
+            }
+            Constraint::Field(obj, _, _, ty, _) => {
+                *obj = self.apply_ty(obj);
+                *ty = self.apply_ty(ty);
+            }
+            Constraint::Index(list, _, ty, _) => {
+                *list = self.apply_ty(list);
+                *ty = self.apply_ty(ty);
+            }
+        })
     }
 
     pub fn apply_ty(&self, ty: Ty<'tcx>) -> Ty<'tcx> {

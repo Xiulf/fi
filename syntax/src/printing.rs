@@ -105,7 +105,6 @@ impl Display for Stmt {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
             StmtKind::Item(item) => item.fmt(f),
-            StmtKind::Semi(expr) => write!(f, "{};", expr),
             StmtKind::Expr(expr) => expr.fmt(f),
         }
     }

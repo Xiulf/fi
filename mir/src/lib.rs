@@ -1,5 +1,8 @@
+#![feature(drain_filter)]
+
 pub mod constant;
 pub mod convert;
+pub mod optimize;
 mod printing;
 pub mod visit;
 
@@ -9,12 +12,12 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct Package<'tcx> {
-    pub items: BTreeMap<ItemId, Item<'tcx>>,
+    pub items: BTreeMap<Id, Item<'tcx>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Item<'tcx> {
-    pub id: ItemId,
+    pub id: Id,
     pub name: Ident,
     pub kind: ItemKind<'tcx>,
 }
@@ -73,6 +76,7 @@ pub enum Term<'tcx> {
     Return,
     Jump(BlockId),
     Switch(Operand<'tcx>, Vec<u128>, Vec<BlockId>),
+    Call(Place, Operand<'tcx>, Vec<Operand<'tcx>>, BlockId),
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +88,7 @@ pub struct Place {
 #[derive(Debug, Clone)]
 pub enum PlaceBase {
     Local(LocalId),
-    Global(ItemId),
+    Global(Id),
 }
 
 #[derive(Debug, Clone)]
@@ -106,7 +110,7 @@ pub enum Const<'tcx> {
     Tuple(Vec<Const<'tcx>>),
     Array(Vec<Const<'tcx>>),
     Scalar(u128, Ty<'tcx>),
-    FuncAddr(ItemId),
+    FuncAddr(Id),
     Bytes(Box<[u8]>),
     Type(Ty<'tcx>),
 }
@@ -116,7 +120,6 @@ pub enum RValue<'tcx> {
     Use(Operand<'tcx>),
     Ref(Place),
     Cast(Ty<'tcx>, Operand<'tcx>),
-    Call(Operand<'tcx>, Vec<Operand<'tcx>>),
     BinOp(BinOp, Operand<'tcx>, Operand<'tcx>),
     UnOp(UnOp, Operand<'tcx>),
     Init(Ty<'tcx>, Vec<Operand<'tcx>>),
@@ -155,7 +158,7 @@ impl<'tcx> Package<'tcx> {
         }
     }
 
-    pub fn declare_extern(&mut self, id: ItemId, name: Ident, ty: Ty<'tcx>) {
+    pub fn declare_extern(&mut self, id: Id, name: Ident, ty: Ty<'tcx>) {
         self.items.insert(
             id,
             Item {
@@ -166,7 +169,7 @@ impl<'tcx> Package<'tcx> {
         );
     }
 
-    pub fn declare_global(&mut self, id: ItemId, name: Ident, ty: Ty<'tcx>) {
+    pub fn declare_global(&mut self, id: Id, name: Ident, ty: Ty<'tcx>) {
         self.items.insert(
             id,
             Item {
@@ -177,7 +180,7 @@ impl<'tcx> Package<'tcx> {
         );
     }
 
-    pub fn declare_body(&mut self, id: ItemId, name: Ident, params: &[Param<'tcx>], ret: Ty<'tcx>) {
+    pub fn declare_body(&mut self, id: Id, name: Ident, params: &[Param<'tcx>], ret: Ty<'tcx>) {
         let mut locals = BTreeMap::new();
 
         locals.insert(
@@ -215,7 +218,7 @@ impl<'tcx> Package<'tcx> {
         );
     }
 
-    pub fn define_global(&mut self, id: ItemId, f: impl FnOnce(Builder<'_, 'tcx>)) {
+    pub fn define_global(&mut self, id: Id, f: impl FnOnce(Builder<'_, 'tcx>)) {
         let ty = match self.items.get(&id).unwrap().kind {
             ItemKind::Global(ty, _) => ty,
             _ => unreachable!(),
@@ -249,7 +252,7 @@ impl<'tcx> Package<'tcx> {
         }
     }
 
-    pub fn define_body<'a>(&'a mut self, id: ItemId) -> Builder<'a, 'tcx> {
+    pub fn define_body<'a>(&'a mut self, id: Id) -> Builder<'a, 'tcx> {
         if let ItemKind::Body(body) = &mut self.items.get_mut(&id).unwrap().kind {
             Builder {
                 body,
@@ -283,7 +286,7 @@ impl Place {
         }
     }
 
-    pub fn global(id: ItemId) -> Self {
+    pub fn global(id: Id) -> Self {
         Place {
             base: PlaceBase::Global(id),
             elems: Vec::new(),
@@ -403,12 +406,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             .push(Stmt::Assign(place, RValue::Cast(ty, op)));
     }
 
-    pub fn call(&mut self, place: Place, func: Operand<'tcx>, args: Vec<Operand<'tcx>>) {
-        self.block()
-            .stmts
-            .push(Stmt::Assign(place, RValue::Call(func, args)));
-    }
-
     pub fn binop(&mut self, place: Place, op: BinOp, lhs: Operand<'tcx>, rhs: Operand<'tcx>) {
         self.block()
             .stmts
@@ -448,6 +445,18 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     pub fn switch(&mut self, op: Operand<'tcx>, vals: Vec<u128>, targets: Vec<BlockId>) {
         if let Term::Unset = self.block().term {
             self.block().term = Term::Switch(op, vals, targets);
+        }
+    }
+
+    pub fn call(
+        &mut self,
+        place: Place,
+        func: Operand<'tcx>,
+        args: Vec<Operand<'tcx>>,
+        target: BlockId,
+    ) {
+        if let Term::Unset = self.block().term {
+            self.block().term = Term::Call(place, func, args, target);
         }
     }
 }

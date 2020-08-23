@@ -14,7 +14,7 @@ pub fn with_tcx<T>(
     let tcx = tcx::Tcx::new(reporter, &arena, &target, package);
 
     for (id, _) in &package.items {
-        tcx.type_of(&hir::Id::item(*id));
+        tcx.type_of(id);
     }
 
     tcx.unify();
@@ -24,6 +24,10 @@ pub fn with_tcx<T>(
     }
 
     reporter.report(true);
+
+    // for (id, ty) in tcx.types.borrow().iter() {
+    //     println!("{}: {}", id, ty);
+    // }
 
     f(tcx)
 }

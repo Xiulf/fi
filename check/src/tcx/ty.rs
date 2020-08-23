@@ -9,7 +9,7 @@ impl<'tcx> Tcx<'tcx> {
             hir::TypeKind::Err => self.builtin.error,
             hir::TypeKind::Infer => self.new_var(),
             hir::TypeKind::Path { res } => match res {
-                hir::Res::Item(id) => self.type_of(&hir::Id::item(*id)),
+                hir::Res::Item(id) => self.type_of(id),
                 hir::Res::PrimTy(prim) => match prim {
                     hir::PrimTy::Never => self.builtin.never,
                     hir::PrimTy::Bool => self.builtin.bool,

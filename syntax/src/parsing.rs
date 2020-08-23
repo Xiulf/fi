@@ -286,12 +286,9 @@ impl Parse for Stmt {
             StmtKind::Item(input.parse()?)
         } else {
             let expr = input.parse()?;
+            let _ = input.parse::<TSemi>();
 
-            if let Ok(_) = input.parse::<TSemi>() {
-                StmtKind::Semi(expr)
-            } else {
-                StmtKind::Expr(expr)
-            }
+            StmtKind::Expr(expr)
         };
 
         Ok(Stmt {

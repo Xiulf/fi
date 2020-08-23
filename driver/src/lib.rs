@@ -18,6 +18,8 @@ pub fn build(opts: Opts) {
 
     reporter.report(true);
 
+    // println!("{}", package);
+
     check::with_tcx(&reporter, &hir, |tcx| {
         let mir = mir::convert::convert(&tcx, &hir);
 

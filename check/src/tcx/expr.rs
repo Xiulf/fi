@@ -10,9 +10,6 @@ impl<'tcx> Tcx<'tcx> {
         for stmt in &block.stmts {
             match &stmt.kind {
                 hir::StmtKind::Item(id) => {
-                    self.type_of(&hir::Id::item(*id));
-                }
-                hir::StmtKind::Semi(id) => {
                     self.type_of(id);
                 }
                 hir::StmtKind::Expr(id) => {
@@ -30,8 +27,8 @@ impl<'tcx> Tcx<'tcx> {
         match &expr.kind {
             hir::ExprKind::Err => self.builtin.error,
             hir::ExprKind::Path { res } => match res {
-                hir::Res::Item(id) => self.type_of(&hir::Id::item(*id)),
-                hir::Res::Local(id) => self.type_of(&hir::Id::item(*id)),
+                hir::Res::Item(id) => self.type_of(id),
+                hir::Res::Local(id) => self.type_of(id),
                 hir::Res::PrimVal(prim) => match prim {
                     hir::PrimVal::True => self.builtin.bool,
                     hir::PrimVal::False => self.builtin.bool,
@@ -210,6 +207,7 @@ impl<'tcx> Tcx<'tcx> {
             hir::ExprKind::IfElse { cond, then, else_ } => {
                 let cond_ty = self.type_of(cond);
                 let cond_span = self.span_of(cond);
+                let then_ty = self.infer_block(then);
 
                 self.constrain(Constraint::Equal(
                     cond_ty,
@@ -220,7 +218,6 @@ impl<'tcx> Tcx<'tcx> {
 
                 if let Some(else_) = else_ {
                     let ty = self.new_var();
-                    let then_ty = self.infer_block(then);
                     let else_ty = self.infer_block(else_);
 
                     self.constrain(Constraint::Equal(then_ty, then.span, ty, expr.span));
@@ -271,7 +268,7 @@ impl<'tcx> Tcx<'tcx> {
     ) {
         for stmt in &block.stmts {
             match &stmt.kind {
-                hir::StmtKind::Semi(expr) | hir::StmtKind::Expr(expr) => {
+                hir::StmtKind::Expr(expr) => {
                     self.find_breaks_expr(expr, lbl, breaks);
                 }
                 _ => {}

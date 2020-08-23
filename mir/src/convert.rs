@@ -18,7 +18,7 @@ struct BodyConverter<'a, 'tcx> {
     tcx: &'a Tcx<'tcx>,
     hir: &'a hir::Package,
     builder: Builder<'a, 'tcx>,
-    locals: HashMap<ItemId, LocalId>,
+    locals: HashMap<hir::Id, LocalId>,
     loops: Vec<(Option<&'a hir::Id>, BlockId, BlockId)>,
 }
 
@@ -30,7 +30,8 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
         }
     }
 
-    pub fn finish(self) -> Package<'tcx> {
+    pub fn finish(mut self) -> Package<'tcx> {
+        crate::optimize::optimize(&mut self.package);
         self.package
     }
 
@@ -47,7 +48,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                     .declare_extern(item.id, item.name, self.tcx.type_of(ty))
             }
             hir::ItemKind::Func { params, ret, body } => {
-                let (param_tys, ret_ty) = self.tcx.type_of(&hir::Id::item(item.id)).func().unwrap();
+                let (param_tys, ret_ty) = self.tcx.type_of(&item.id).func().unwrap();
 
                 self.package
                     .declare_body(item.id, item.name, param_tys, ret_ty);
@@ -100,7 +101,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
-    fn convert(&mut self, params: &[ItemId], _ret: &hir::Id, body: &hir::Block) {
+    fn convert(&mut self, params: &[Id], _ret: &hir::Id, body: &hir::Block) {
         let entry = self.builder.create_block();
 
         self.builder.use_block(entry);
@@ -123,9 +124,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                         global: false, val, ..
                     } = &self.hir.items[id].kind
                     {
-                        let var = self
-                            .builder
-                            .create_var(self.tcx.type_of(&hir::Id::item(*id)));
+                        let var = self.builder.create_var(self.tcx.type_of(id));
 
                         self.locals.insert(*id, var);
 
@@ -135,9 +134,6 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                             self.builder.use_(Place::local(var), val);
                         }
                     }
-                }
-                hir::StmtKind::Semi(id) => {
-                    self.trans_expr(id);
                 }
                 hir::StmtKind::Expr(id) => {
                     let op = self.trans_expr(id);
@@ -446,7 +442,10 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
         }
 
-        self.builder.call(res.clone(), func, call_args);
+        let next_block = self.builder.create_block();
+
+        self.builder.call(res.clone(), func, call_args, next_block);
+        self.builder.use_block(next_block);
 
         Operand::Place(res)
     }

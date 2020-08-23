@@ -60,8 +60,8 @@ pub fn declare<'tcx>(
     module: &mut Module<impl Backend>,
     tcx: &Tcx<'tcx>,
     item: &mir::Item<'tcx>,
-    func_ids: &mut BTreeMap<mir::ItemId, (FuncId, Signature, Layout<'tcx>)>,
-    data_ids: &mut BTreeMap<mir::ItemId, (DataId, Layout<'tcx>)>,
+    func_ids: &mut BTreeMap<mir::Id, (FuncId, Signature, Layout<'tcx>)>,
+    data_ids: &mut BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
 ) -> ModuleResult<()> {
     match &item.kind {
         mir::ItemKind::Extern(ty) => {
@@ -168,8 +168,8 @@ pub fn define<'tcx>(
     tcx: &Tcx<'tcx>,
     package: &mir::Package<'tcx>,
     item: &mir::Item<'tcx>,
-    func_ids: &BTreeMap<mir::ItemId, (FuncId, Signature, Layout<'tcx>)>,
-    data_ids: &BTreeMap<mir::ItemId, (DataId, Layout<'tcx>)>,
+    func_ids: &BTreeMap<mir::Id, (FuncId, Signature, Layout<'tcx>)>,
+    data_ids: &BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
     bytes_count: &mut usize,
 ) -> ModuleResult<()> {
     if let mir::ItemKind::Global(ty, expr) = &item.kind {
@@ -185,7 +185,7 @@ pub fn define<'tcx>(
         let mut func_ctx = FunctionBuilderContext::new();
 
         ctx.func.signature = sig.clone();
-        ctx.func.name = ExternalName::user(0, item.id.as_u32());
+        ctx.func.name = ExternalName::user(0, item.id.item_id().as_u32());
 
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
         let start_block = builder.create_block();

@@ -16,7 +16,7 @@ pub struct Id(ItemId, u64);
 
 #[derive(Debug)]
 pub struct Package {
-    pub items: BTreeMap<ItemId, Item>,
+    pub items: BTreeMap<Id, Item>,
     pub exprs: BTreeMap<Id, Expr>,
     pub types: BTreeMap<Id, Type>,
 }
@@ -24,7 +24,7 @@ pub struct Package {
 #[derive(Debug)]
 pub struct Item {
     pub span: Span,
-    pub id: ItemId,
+    pub id: Id,
     pub name: Ident,
     pub kind: ItemKind,
 }
@@ -36,7 +36,7 @@ pub enum ItemKind {
         ty: Id,
     },
     Func {
-        params: Vec<ItemId>,
+        params: Vec<Id>,
         ret: Id,
         body: Block,
     },
@@ -64,8 +64,7 @@ pub struct Stmt {
 
 #[derive(Debug, Hash)]
 pub enum StmtKind {
-    Item(ItemId),
-    Semi(Id),
+    Item(Id),
     Expr(Id),
 }
 
