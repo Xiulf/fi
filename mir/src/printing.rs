@@ -21,6 +21,7 @@ impl Display for Item<'_> {
 
         match &self.kind {
             ItemKind::Extern(ty) => write!(f, "extern {}", ty),
+            ItemKind::Global(ty, val) => write!(f, "var {} = {}", ty, val),
             ItemKind::Body(body) => body.fmt(f),
         }
     }
@@ -133,7 +134,9 @@ impl Display for Place {
 impl Display for Const<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
-            Const::Unit => write!(f, "()"),
+            Const::Undefined => write!(f, "undefined"),
+            Const::Tuple(vals) => write!(f, "({})", list(vals, ", ")),
+            Const::Array(vals) => write!(f, "[{}]", list(vals, ", ")),
             Const::Scalar(val, ty) => write!(f, "({}: {})", val, ty),
             Const::FuncAddr(id) => write!(f, "{}", id),
             Const::Type(ty) => write!(f, "`{}`", ty),

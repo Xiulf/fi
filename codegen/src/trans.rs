@@ -9,7 +9,7 @@ use check::tcx::Tcx;
 use check::ty::Layout;
 use cranelift::codegen::ir::{AbiParam, ExternalName, InstBuilder, Signature};
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{Backend, DataId, FuncId, Linkage, Module, ModuleResult};
+use cranelift_module::{Backend, DataContext, DataId, FuncId, Linkage, Module, ModuleResult};
 use std::collections::BTreeMap;
 
 pub fn translate<'tcx>(
@@ -111,6 +111,18 @@ pub fn declare<'tcx>(
                 data_ids.insert(item.id, (data, layout));
             }
         }
+        mir::ItemKind::Global(ty, expr) => {
+            let layout = tcx.layout(ty);
+            let data = module.declare_data(
+                &*item.name.symbol,
+                Linkage::Export,
+                true,
+                false,
+                Some(layout.align.bytes() as u8),
+            )?;
+
+            data_ids.insert(item.id, (data, layout));
+        }
         mir::ItemKind::Body(body) => {
             let mut sig = module.make_signature();
             let ret = &body.locals[&mir::LocalId::RET];
@@ -160,7 +172,14 @@ pub fn define<'tcx>(
     data_ids: &BTreeMap<mir::ItemId, (DataId, Layout<'tcx>)>,
     bytes_count: &mut usize,
 ) -> ModuleResult<()> {
-    if let mir::ItemKind::Body(body) = &item.kind {
+    if let mir::ItemKind::Global(ty, expr) = &item.kind {
+        let (data_id, layout) = &data_ids[&item.id];
+        let mut ctx = DataContext::new();
+
+        ctx.define_zeroinit(layout.size.bytes() as usize);
+
+        module.define_data(*data_id, &ctx)?;
+    } else if let mir::ItemKind::Body(body) = &item.kind {
         let (func, sig, _) = &func_ids[&item.id];
         let mut ctx = module.make_context();
         let mut func_ctx = FunctionBuilderContext::new();
@@ -191,7 +210,10 @@ pub fn define<'tcx>(
             blocks,
             locals: BTreeMap::new(),
             bytes_count,
+            ssa_vars: 0,
         };
+
+        let ssa_map = crate::analyze::analyze(&fx);
 
         {
             let ret = body.locals[&mir::LocalId::RET].ty;
@@ -203,8 +225,7 @@ pub fn define<'tcx>(
                         .insert(mir::LocalId::RET, crate::place::Place::no_place(layout));
                 }
                 crate::pass::PassMode::ByVal(_) | crate::pass::PassMode::ByPair(_, _) => {
-                    let ssa = crate::analyze::analyze(&fx, mir::LocalId::RET)
-                        == crate::analyze::SsaKind::Ssa;
+                    let ssa = ssa_map[&mir::LocalId::RET] == crate::analyze::SsaKind::Ssa;
 
                     local_place(&mut fx, mir::LocalId::RET, layout, ssa);
                 }
@@ -232,7 +253,7 @@ pub fn define<'tcx>(
             .collect::<Vec<_>>();
 
         for (param, (value, layout)) in body.params().zip(values) {
-            let ssa = crate::analyze::analyze(&fx, param.id) == crate::analyze::SsaKind::Ssa;
+            let ssa = ssa_map[&param.id] == crate::analyze::SsaKind::Ssa;
             let place = local_place(&mut fx, param.id, layout, ssa);
 
             if let Some(value) = value {
@@ -243,8 +264,7 @@ pub fn define<'tcx>(
         for local in body.locals.values() {
             match &local.kind {
                 mir::LocalKind::Var | mir::LocalKind::Tmp => {
-                    let ssa =
-                        crate::analyze::analyze(&fx, local.id) == crate::analyze::SsaKind::Ssa;
+                    let ssa = ssa_map[&local.id] == crate::analyze::SsaKind::Ssa;
                     let layout = tcx.layout(local.ty);
 
                     local_place(&mut fx, local.id, layout, ssa);
@@ -291,7 +311,11 @@ fn local_place<'a, 'tcx>(
     ssa: bool,
 ) -> crate::place::Place<'tcx> {
     let place = if ssa {
-        crate::place::Place::new_var(fx, id, layout)
+        if let check::layout::Abi::ScalarPair(_, _) = layout.abi {
+            crate::place::Place::new_pair(fx, layout)
+        } else {
+            crate::place::Place::new_var(fx, layout)
+        }
     } else {
         crate::place::Place::new_stack(fx, layout)
     };

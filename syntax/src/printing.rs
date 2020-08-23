@@ -283,6 +283,8 @@ impl Display for Type {
             TypeKind::Func { params, ret } => write!(f, "fn ({}) -> {}", list(params, ", "), ret),
             TypeKind::Ref { mut_: true, ty } => write!(f, "ref mut {}", ty),
             TypeKind::Ref { mut_: false, ty } => write!(f, "ref {}", ty),
+            TypeKind::Array { of, len } => write!(f, "[{}; {}]", of, len),
+            TypeKind::Slice { of } => write!(f, "[{}]", of),
         }
     }
 }

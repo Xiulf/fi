@@ -1,3 +1,4 @@
+pub mod constant;
 pub mod convert;
 mod printing;
 pub mod visit;
@@ -21,6 +22,7 @@ pub struct Item<'tcx> {
 #[derive(Debug, Clone)]
 pub enum ItemKind<'tcx> {
     Extern(Ty<'tcx>),
+    Global(Ty<'tcx>, Const<'tcx>),
     Body(Body<'tcx>),
 }
 
@@ -100,7 +102,9 @@ pub enum Operand<'tcx> {
 
 #[derive(Debug, Clone)]
 pub enum Const<'tcx> {
-    Unit,
+    Undefined,
+    Tuple(Vec<Const<'tcx>>),
+    Array(Vec<Const<'tcx>>),
     Scalar(u128, Ty<'tcx>),
     FuncAddr(ItemId),
     Bytes(Box<[u8]>),
@@ -162,6 +166,17 @@ impl<'tcx> Package<'tcx> {
         );
     }
 
+    pub fn declare_global(&mut self, id: ItemId, name: Ident, ty: Ty<'tcx>) {
+        self.items.insert(
+            id,
+            Item {
+                id,
+                name,
+                kind: ItemKind::Global(ty, Const::Undefined),
+            },
+        );
+    }
+
     pub fn declare_body(&mut self, id: ItemId, name: Ident, params: &[Param<'tcx>], ret: Ty<'tcx>) {
         let mut locals = BTreeMap::new();
 
@@ -198,6 +213,40 @@ impl<'tcx> Package<'tcx> {
                 }),
             },
         );
+    }
+
+    pub fn define_global(&mut self, id: ItemId, f: impl FnOnce(Builder<'_, 'tcx>)) {
+        let ty = match self.items.get(&id).unwrap().kind {
+            ItemKind::Global(ty, _) => ty,
+            _ => unreachable!(),
+        };
+
+        let mut body = Body {
+            locals: BTreeMap::new(),
+            blocks: BTreeMap::new(),
+        };
+
+        body.locals.insert(
+            LocalId::RET,
+            Local {
+                id: LocalId::RET,
+                ty,
+                kind: LocalKind::Ret,
+            },
+        );
+
+        let builder = Builder {
+            body: &mut body,
+            current_block: None,
+        };
+
+        f(builder);
+
+        let value = crate::constant::eval(body, self);
+
+        if let ItemKind::Global(_, val) = &mut self.items.get_mut(&id).unwrap().kind {
+            *val = value;
+        }
     }
 
     pub fn define_body<'a>(&'a mut self, id: ItemId) -> Builder<'a, 'tcx> {

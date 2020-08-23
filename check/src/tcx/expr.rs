@@ -7,7 +7,7 @@ impl<'tcx> Tcx<'tcx> {
     pub fn infer_block(&self, block: &hir::Block) -> Ty<'tcx> {
         let mut ty = self.builtin.unit;
 
-        for (i, stmt) in block.stmts.iter().enumerate() {
+        for stmt in &block.stmts {
             match &stmt.kind {
                 hir::StmtKind::Item(id) => {
                     self.type_of(&hir::Id::item(*id));
@@ -32,6 +32,10 @@ impl<'tcx> Tcx<'tcx> {
             hir::ExprKind::Path { res } => match res {
                 hir::Res::Item(id) => self.type_of(&hir::Id::item(*id)),
                 hir::Res::Local(id) => self.type_of(&hir::Id::item(*id)),
+                hir::Res::PrimVal(prim) => match prim {
+                    hir::PrimVal::True => self.builtin.bool,
+                    hir::PrimVal::False => self.builtin.bool,
+                },
                 _ => unreachable!(),
             },
             hir::ExprKind::Int { .. } => self.new_int(),
@@ -191,6 +195,40 @@ impl<'tcx> Tcx<'tcx> {
 
                         self.builtin.bool
                     }
+                }
+            }
+            hir::ExprKind::UnOp { op, rhs } => match op {
+                hir::UnOp::Not => self.type_of(rhs),
+                hir::UnOp::Neg => {
+                    let rhs_ty = self.type_of(rhs);
+                    let rhs_span = self.span_of(rhs);
+
+                    self.constrain(Constraint::IsNum(rhs_ty, rhs_span));
+                    rhs_ty
+                }
+            },
+            hir::ExprKind::IfElse { cond, then, else_ } => {
+                let cond_ty = self.type_of(cond);
+                let cond_span = self.span_of(cond);
+
+                self.constrain(Constraint::Equal(
+                    cond_ty,
+                    cond_span,
+                    self.builtin.bool,
+                    cond_span,
+                ));
+
+                if let Some(else_) = else_ {
+                    let ty = self.new_var();
+                    let then_ty = self.infer_block(then);
+                    let else_ty = self.infer_block(else_);
+
+                    self.constrain(Constraint::Equal(then_ty, then.span, ty, expr.span));
+                    self.constrain(Constraint::Equal(else_ty, else_.span, ty, expr.span));
+
+                    ty
+                } else {
+                    self.builtin.unit
                 }
             }
             hir::ExprKind::While { label, cond, body } => {

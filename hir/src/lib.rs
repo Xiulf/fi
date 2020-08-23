@@ -3,7 +3,7 @@ mod printing;
 pub mod resolve;
 
 pub use diagnostics::Span;
-pub use resolve::{PrimTy, Res};
+pub use resolve::{PrimTy, PrimVal, Res};
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 pub use syntax::ast::{Abi, BinOp, Ident, Literal, Symbol, UnOp};
@@ -205,6 +205,8 @@ pub enum TypeKind {
     Ref { mut_: bool, to: Id },
     Func { params: Vec<TypeParam>, ret: Id },
     Tuple { tys: Vec<Id> },
+    Array { of: Id, len: usize },
+    Slice { of: Id },
 }
 
 #[derive(Debug)]

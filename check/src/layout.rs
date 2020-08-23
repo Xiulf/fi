@@ -156,6 +156,17 @@ impl Abi {
             _ => false,
         }
     }
+
+    pub fn is_float(&self) -> bool {
+        match self {
+            Abi::Scalar(scalar) => match scalar.value {
+                Primitive::F32 => true,
+                Primitive::F64 => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
 }
 
 impl FieldsShape {

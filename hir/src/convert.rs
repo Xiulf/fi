@@ -352,6 +352,15 @@ impl<'a> Converter<'a> {
                 lhs: self.trans_expr(lhs),
                 rhs: self.trans_expr(rhs),
             },
+            ast::ExprKind::UnOp { op, rhs } => ExprKind::UnOp {
+                op: *op,
+                rhs: self.trans_expr(rhs),
+            },
+            ast::ExprKind::IfElse { cond, then, else_ } => ExprKind::IfElse {
+                cond: self.trans_expr(cond),
+                then: self.trans_block(then),
+                else_: else_.as_ref().map(|e| self.trans_block(e)),
+            },
             ast::ExprKind::While { label, cond, body } => {
                 let label = if let Some(label) = label {
                     let id = self.next_id();
@@ -403,6 +412,13 @@ impl<'a> Converter<'a> {
             ast::TypeKind::Ref { ty, mut_ } => TypeKind::Ref {
                 mut_: *mut_,
                 to: self.trans_ty(ty),
+            },
+            ast::TypeKind::Array { of, len } => TypeKind::Array {
+                of: self.trans_ty(of),
+                len: *len,
+            },
+            ast::TypeKind::Slice { of } => TypeKind::Slice {
+                of: self.trans_ty(of),
             },
             ast::TypeKind::Func { params, ret } => {
                 let params = params

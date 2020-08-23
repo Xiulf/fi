@@ -823,6 +823,22 @@ impl Parse for Type {
             let ty = input.parse()?;
 
             TypeKind::Ref { mut_, ty }
+        } else if let Ok(_) = input.parse::<TLBracket>() {
+            let of = input.parse()?;
+
+            if let Ok(_) = input.parse::<TSemi>() {
+                let len = input.parse::<IntLiteral>()?;
+                let _ = input.parse::<TRBracket>()?;
+
+                TypeKind::Array {
+                    of,
+                    len: len.int as usize,
+                }
+            } else {
+                input.parse::<TRBracket>()?;
+
+                TypeKind::Slice { of }
+            }
         } else if let Ok(_) = input.parse::<TWildcard>() {
             TypeKind::Infer
         } else if input.peek::<Ident>() || input.peek::<TPathSep>() {
@@ -830,10 +846,7 @@ impl Parse for Type {
                 path: input.parse()?,
             }
         } else {
-            return input.error(
-                "expected 'fn', 'ref', 'gc', '_', '#' or an identifier",
-                0001,
-            );
+            return input.error("expected 'fn', 'ref', '[', '_', '#' or an identifier", 0001);
         };
 
         Ok(Type {

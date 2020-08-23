@@ -3,35 +3,47 @@ use crate::value::{Value, ValueKind};
 use crate::FunctionCtx;
 use check::layout::{Abi, Scalar};
 use check::ty::{Layout, Type};
+use cranelift::codegen::entity::EntityRef;
 use cranelift::codegen::ir::{self as cir, InstBuilder};
 use cranelift::frontend::Variable;
 use cranelift_module::Backend;
 use std::convert::{TryFrom, TryInto};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Place<'tcx> {
     pub kind: PlaceKind,
     pub layout: Layout<'tcx>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum PlaceKind {
     Var(Variable),
+    VarPair(Variable, Variable),
     Addr(Pointer, Option<cir::Value>),
 }
 
 impl<'tcx> Place<'tcx> {
-    pub fn new_var<'a>(
-        fx: &mut FunctionCtx<'a, 'tcx, impl Backend>,
-        id: mir::LocalId,
-        layout: Layout<'tcx>,
-    ) -> Self {
-        let var = Variable::with_u32(id.as_u32());
+    pub fn new_var<'a>(fx: &mut FunctionCtx<'a, 'tcx, impl Backend>, layout: Layout<'tcx>) -> Self {
+        let var = Variable::with_u32(fx.next_ssa_var());
 
         fx.builder.declare_var(var, fx.clif_type(layout).unwrap());
 
         Place {
             kind: PlaceKind::Var(var),
+            layout,
+        }
+    }
+
+    pub fn new_pair(fx: &mut FunctionCtx<'_, 'tcx, impl Backend>, layout: Layout<'tcx>) -> Self {
+        let var1 = Variable::with_u32(fx.next_ssa_var());
+        let var2 = Variable::with_u32(fx.next_ssa_var());
+        let (ty1, ty2) = fx.clif_pair_type(layout).unwrap();
+
+        fx.builder.declare_var(var1, ty1);
+        fx.builder.declare_var(var2, ty2);
+
+        Place {
+            kind: PlaceKind::VarPair(var1, var2),
             layout,
         }
     }
@@ -74,6 +86,7 @@ impl<'tcx> Place<'tcx> {
         }
     }
 
+    #[track_caller]
     pub fn as_ptr(self) -> Pointer {
         match self.as_ptr_maybe_unsized() {
             (ptr, None) => ptr,
@@ -81,10 +94,11 @@ impl<'tcx> Place<'tcx> {
         }
     }
 
+    #[track_caller]
     pub fn as_ptr_maybe_unsized(self) -> (Pointer, Option<cir::Value>) {
         match self.kind {
             PlaceKind::Addr(ptr, meta) => (ptr, meta),
-            PlaceKind::Var(_) => unreachable!(),
+            PlaceKind::Var(_) | PlaceKind::VarPair(_, _) => unreachable!(),
         }
     }
 
@@ -94,6 +108,19 @@ impl<'tcx> Place<'tcx> {
                 let val = fx.builder.use_var(var);
 
                 Value::new_val(val, self.layout)
+            }
+            PlaceKind::VarPair(var1, var2) => {
+                let val1 = fx.builder.use_var(var1);
+
+                fx.builder
+                    .set_val_label(val1, cir::ValueLabel::new(var1.index()));
+
+                let val2 = fx.builder.use_var(var2);
+
+                fx.builder
+                    .set_val_label(val2, cir::ValueLabel::new(var2.index()));
+
+                Value::new_pair(val1, val2, self.layout)
             }
             PlaceKind::Addr(ptr, meta) => {
                 if let Some(meta) = meta {
@@ -141,18 +168,66 @@ impl<'tcx> Place<'tcx> {
     }
 
     pub fn field(self, fx: &mut FunctionCtx<'_, 'tcx, impl Backend>, idx: usize) -> Self {
-        let offset = self.layout.fields.offset(idx);
         let layout = self.layout.field(fx.tcx, idx);
-        let ptr = self.as_ptr();
-        let new_ptr = ptr.offset_i64(fx, i64::try_from(offset.bytes()).unwrap());
+
+        match self.kind {
+            PlaceKind::Var(_var) => {
+                // TODO: handle vector types
+            }
+            PlaceKind::VarPair(var1, var2) => match idx {
+                0 => {
+                    return Place {
+                        kind: PlaceKind::Var(var1),
+                        layout,
+                    }
+                }
+                1 => {
+                    return Place {
+                        kind: PlaceKind::Var(var2),
+                        layout,
+                    }
+                }
+                _ => unreachable!(),
+            },
+            _ => {}
+        }
+
+        let (base, extra) = self.as_ptr_maybe_unsized();
+        let offset = self.layout.fields.offset(idx);
+        let ptr = base.offset_i64(fx, i64::try_from(offset.bytes()).unwrap());
 
         Place {
-            kind: PlaceKind::Addr(new_ptr, None),
+            kind: PlaceKind::Addr(ptr, extra),
             layout,
         }
     }
 
     pub fn store<'a>(self, fx: &mut FunctionCtx<'a, 'tcx, impl Backend>, from: Value<'tcx>) {
+        fn transmute_value<'tcx>(
+            fx: &mut FunctionCtx<'_, 'tcx, impl Backend>,
+            var: Variable,
+            data: cir::Value,
+            dst_ty: cir::Type,
+        ) {
+            let src_ty = fx.builder.func.dfg.value_type(data);
+            let data = match (src_ty, dst_ty) {
+                (_, _) if src_ty == dst_ty => data,
+
+                // This is a `write_cvalue_transmute`.
+                (cir::types::I32, cir::types::F32)
+                | (cir::types::F32, cir::types::I32)
+                | (cir::types::I64, cir::types::F64)
+                | (cir::types::F64, cir::types::I64) => fx.builder.ins().bitcast(dst_ty, data),
+                _ if src_ty.is_vector() && dst_ty.is_vector() => {
+                    fx.builder.ins().raw_bitcast(dst_ty, data)
+                }
+                _ => unreachable!("write_cvalue_transmute: {:?} -> {:?}", src_ty, dst_ty),
+            };
+            fx.builder
+                .set_val_label(data, cir::ValueLabel::new(var.index()));
+            fx.builder.def_var(var, data);
+        }
+
         let dst_layout = self.layout;
         let to_ptr = match self.kind {
             PlaceKind::Var(var) => {
@@ -162,21 +237,23 @@ impl<'tcx> Place<'tcx> {
                 }
                 .load_scalar(fx);
 
-                let src_ty = fx.builder.func.dfg.value_type(data);
-                let dst_ty = fx.clif_type(dst_layout).unwrap();
-                let data = match (src_ty, dst_ty) {
-                    (_, _) if src_ty == dst_ty => data,
-                    (cir::types::I32, cir::types::F32)
-                    | (cir::types::F32, cir::types::I32)
-                    | (cir::types::I64, cir::types::F64)
-                    | (cir::types::F64, cir::types::I64) => fx.builder.ins().bitcast(dst_ty, data),
-                    _ if src_ty.is_vector() && dst_ty.is_vector() => {
-                        fx.builder.ins().raw_bitcast(dst_ty, data)
-                    }
-                    _ => unreachable!("{} != {}", src_ty, dst_ty),
-                };
+                let dst_ty = fx.clif_type(self.layout).unwrap();
 
-                fx.builder.def_var(var, data);
+                transmute_value(fx, var, data, dst_ty);
+
+                return;
+            }
+            PlaceKind::VarPair(var1, var2) => {
+                let (data1, data2) = Value {
+                    kind: from.kind,
+                    layout: dst_layout,
+                }
+                .load_scalar_pair(fx);
+
+                let (dst_ty1, dst_ty2) = fx.clif_pair_type(self.layout).unwrap();
+
+                transmute_value(fx, var1, data1, dst_ty1);
+                transmute_value(fx, var2, data2, dst_ty2);
 
                 return;
             }
@@ -236,6 +313,19 @@ impl<'tcx> Place<'tcx> {
                 );
             }
             ValueKind::Ref(_, Some(_)) => unimplemented!(),
+        }
+    }
+
+    pub fn write_place_ref(self, fx: &mut FunctionCtx<'_, 'tcx, impl Backend>, dest: Place<'tcx>) {
+        if let Abi::ScalarPair(_, _) = self.layout.abi {
+            let (ptr, extra) = self.as_ptr_maybe_unsized();
+            let ptr = Value::new_pair(ptr.get_addr(fx), extra.unwrap(), dest.layout);
+
+            dest.store(fx, ptr);
+        } else {
+            let ptr = Value::new_val(self.as_ptr().get_addr(fx), dest.layout);
+
+            dest.store(fx, ptr);
         }
     }
 }

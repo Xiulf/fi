@@ -1,3 +1,5 @@
+#![feature(track_caller)]
+
 pub mod analyze;
 pub mod pass;
 pub mod place;
@@ -59,11 +61,21 @@ pub struct FunctionCtx<'a, 'tcx, B: Backend> {
     pub blocks: BTreeMap<mir::BlockId, cir::Block>,
     pub locals: BTreeMap<mir::LocalId, place::Place<'tcx>>,
     bytes_count: &'a mut usize,
+    ssa_vars: u32,
 }
 
 impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
+    pub fn next_ssa_var(&mut self) -> u32 {
+        self.ssa_vars += 1;
+        self.ssa_vars
+    }
+
     pub fn clif_type(&self, layout: Layout<'tcx>) -> Option<types::Type> {
         self::clif_type(self.module, layout)
+    }
+
+    pub fn clif_pair_type(&self, layout: Layout<'tcx>) -> Option<(types::Type, types::Type)> {
+        self::clif_pair_type(self.module, layout)
     }
 }
 
@@ -112,5 +124,18 @@ pub fn scalar_clif_type(module: &Module<impl Backend>, scalar: &Scalar) -> types
         Primitive::F32 => types::F32,
         Primitive::F64 => types::F64,
         Primitive::Pointer => module.target_config().pointer_type(),
+    }
+}
+
+pub fn clif_pair_type(
+    module: &Module<impl Backend>,
+    layout: Layout,
+) -> Option<(types::Type, types::Type)> {
+    let ptr_ty = module.target_config().pointer_type();
+
+    match layout.ty {
+        Type::Str => Some((ptr_ty, ptr_ty)),
+        Type::Slice(_) => Some((ptr_ty, ptr_ty)),
+        _ => None,
     }
 }

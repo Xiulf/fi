@@ -21,17 +21,17 @@ impl<'tcx> Subst<'tcx> {
         Subst(self_subst)
     }
 
-    pub fn apply_cs(&self, cs: &Constraints<'tcx>) -> Constraints<'tcx> {
-        cs.iter()
+    pub fn apply_cs(&self, cs: Constraints<'tcx>) -> Constraints<'tcx> {
+        cs.into_iter()
             .map(|c| match c {
                 Constraint::Equal(a, a_span, b, b_span) => {
-                    Constraint::Equal(self.apply_ty(a), *a_span, self.apply_ty(b), *b_span)
+                    Constraint::Equal(self.apply_ty(a), a_span, self.apply_ty(b), b_span)
                 }
                 Constraint::PtrArith(a, a_span, b, b_span) => {
-                    Constraint::PtrArith(self.apply_ty(a), *a_span, self.apply_ty(b), *b_span)
+                    Constraint::PtrArith(self.apply_ty(a), a_span, self.apply_ty(b), b_span)
                 }
-                Constraint::IsNum(ty, span) => Constraint::IsNum(self.apply_ty(ty), *span),
-                Constraint::IsInt(ty, span) => Constraint::IsInt(self.apply_ty(ty), *span),
+                Constraint::IsNum(ty, span) => Constraint::IsNum(self.apply_ty(ty), span),
+                Constraint::IsInt(ty, span) => Constraint::IsInt(self.apply_ty(ty), span),
                 Constraint::Call(func, f_span, params, ret, r_span) => {
                     let params = params.clone();
 
@@ -41,21 +41,17 @@ impl<'tcx> Subst<'tcx> {
 
                     Constraint::Call(
                         self.apply_ty(func),
-                        *f_span,
+                        f_span,
                         params,
                         self.apply_ty(ret),
-                        *r_span,
+                        r_span,
                     )
                 }
-                Constraint::Field(obj, o_span, field, ty, t_span) => Constraint::Field(
-                    self.apply_ty(obj),
-                    *o_span,
-                    *field,
-                    self.apply_ty(ty),
-                    *t_span,
-                ),
+                Constraint::Field(obj, o_span, field, ty, t_span) => {
+                    Constraint::Field(self.apply_ty(obj), o_span, field, self.apply_ty(ty), t_span)
+                }
                 Constraint::Index(list, l_span, ty, t_span) => {
-                    Constraint::Index(self.apply_ty(list), *l_span, self.apply_ty(ty), *t_span)
+                    Constraint::Index(self.apply_ty(list), l_span, self.apply_ty(ty), t_span)
                 }
             })
             .collect()

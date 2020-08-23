@@ -64,6 +64,7 @@ macro_rules! make_visitor{
 
                 match kind {
                     ItemKind::Extern(_) => {},
+                    ItemKind::Global(_, _) => {},
                     ItemKind::Body(body) => self.visit_body(body),
                 }
             }

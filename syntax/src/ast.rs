@@ -302,6 +302,13 @@ pub enum TypeKind {
         ty: Box<Type>,
         mut_: bool,
     },
+    Array {
+        of: Box<Type>,
+        len: usize,
+    },
+    Slice {
+        of: Box<Type>,
+    },
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]

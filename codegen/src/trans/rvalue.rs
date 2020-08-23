@@ -13,7 +13,11 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                 place.store(self, value);
             }
-            mir::RValue::Ref(val) => {}
+            mir::RValue::Ref(val) => {
+                let val = self.trans_place(val);
+
+                val.write_place_ref(self, place);
+            }
             mir::RValue::Cast(ty, op) => {
                 let op = self.trans_operand(op);
 
@@ -79,6 +83,15 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                 place.store(self, val);
             }
+            mir::RValue::UnOp(op, rhs) => {
+                let rhs = self.trans_operand(rhs);
+                let layout = rhs.layout;
+                let rhs = rhs.load_scalar(self);
+                let val = self.trans_unop(op, rhs, layout);
+                let val = Value::new_val(val, place.layout);
+
+                place.store(self, val);
+            }
             mir::RValue::Init(ty, ops) => match ty {
                 Type::Array(_, _) => {
                     for (i, op) in ops.iter().enumerate() {
@@ -103,6 +116,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
     ) -> ir::Value {
         match op {
             mir::BinOp::Add => self.builder.ins().iadd(lhs, rhs),
+            mir::BinOp::Sub => self.builder.ins().isub(lhs, rhs),
             mir::BinOp::Lt => {
                 let val = self
                     .builder
@@ -111,7 +125,22 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                 self.builder.ins().bint(ir::types::I8, val)
             }
+            mir::BinOp::Gt => {
+                let val =
+                    self.builder
+                        .ins()
+                        .icmp(ir::condcodes::IntCC::SignedGreaterThan, lhs, rhs);
+
+                self.builder.ins().bint(ir::types::I8, val)
+            }
             _ => unimplemented!("{:?}", op),
+        }
+    }
+
+    fn trans_unop(&mut self, op: &mir::UnOp, rhs: ir::Value, _layout: Layout<'tcx>) -> ir::Value {
+        match op {
+            mir::UnOp::Not => self.builder.ins().bnot(rhs),
+            _ => unimplemented!(),
         }
     }
 }

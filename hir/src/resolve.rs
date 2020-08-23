@@ -46,7 +46,14 @@ pub enum Res {
     Item(ItemId),
     Local(ItemId),
     Label(Id),
+    PrimVal(PrimVal),
     PrimTy(PrimTy),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+pub enum PrimVal {
+    True,
+    False,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
@@ -168,6 +175,7 @@ impl<'a> Resolver<'a> {
                 Some(Res::Label(_)) => {
                     // TODO: error: a label can only be referenced directly
                 }
+                Some(Res::PrimVal(_)) => unreachable!(),
                 Some(Res::PrimTy(_)) => unreachable!(),
             }
         }
@@ -198,6 +206,18 @@ impl<'a> Resolver<'a> {
     fn add_root(&mut self) {
         self.add_module(ItemId(0));
         self.set_module(ItemId(0));
+        self.define(
+            Ns::Values,
+            Symbol::new("true"),
+            Span::default(),
+            Res::PrimVal(PrimVal::True),
+        );
+        self.define(
+            Ns::Values,
+            Symbol::new("false"),
+            Span::default(),
+            Res::PrimVal(PrimVal::False),
+        );
         self.define(
             Ns::Types,
             Symbol::new("never"),

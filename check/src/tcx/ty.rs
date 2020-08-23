@@ -40,6 +40,16 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.intern_ty(Type::Ref(*mut_, to))
             }
+            hir::TypeKind::Array { of, len } => {
+                let of = self.type_of(of);
+
+                self.intern_ty(Type::Array(of, *len))
+            }
+            hir::TypeKind::Slice { of } => {
+                let of = self.type_of(of);
+
+                self.intern_ty(Type::Slice(of))
+            }
             hir::TypeKind::Tuple { tys } => {
                 let tys = self
                     .arena

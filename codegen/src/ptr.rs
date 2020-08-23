@@ -4,13 +4,13 @@ use cranelift::codegen::ir::{self as cir, immediates::Offset32, InstBuilder};
 use cranelift_module::Backend;
 use std::convert::TryFrom;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Pointer {
     pub kind: PointerKind,
     pub offset: Offset32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum PointerKind {
     Addr(cir::Value),
     Stack(cir::StackSlot),

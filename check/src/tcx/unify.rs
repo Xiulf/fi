@@ -6,24 +6,28 @@ use diagnostics::{Diagnostic, Severity};
 
 impl<'tcx> Tcx<'tcx> {
     pub fn unify(&self) {
-        let subst = self.unify_all(&*self.constraints.borrow());
+        let mut cs = self.constraints.replace(Constraints::new());
+
+        // while !cs.is_empty() {
+        let subst = self.unify_all(cs);
 
         for (_, ty) in self.types.borrow_mut().iter_mut() {
             subst.apply_ty(ty);
         }
+
+        // cs = self.constraints.replace(Constraints::new());
+        // cs = subst.apply_cs(cs);
+        // }
     }
 
-    fn unify_all(&self, cs: &Constraints<'tcx>) -> Subst<'tcx> {
-        if cs.is_empty() {
-            Subst::empty()
-        } else {
-            let mut it = cs.clone().into_iter();
-            let subst = self.unify_one(it.next().unwrap());
-            let subst_tail = subst.apply_cs(&it.collect());
-            let subst_tail = self.unify_all(&subst_tail);
+    fn unify_all(&self, cs: Constraints<'tcx>) -> Subst<'tcx> {
+        let mut subst = Subst::empty();
 
-            subst.compose(subst_tail)
+        for c in cs {
+            subst = subst.compose(self.unify_one(c));
         }
+
+        subst
     }
 
     fn unify_one(&self, cs: Constraint<'tcx>) -> Subst<'tcx> {
@@ -69,7 +73,7 @@ impl<'tcx> Tcx<'tcx> {
                         cs.push(Constraint::Equal(a, a_span, b, b_span));
                     }
 
-                    self.unify_all(&cs)
+                    self.unify_all(cs)
                 }
                 (Type::Func(a_params, a_ret), Type::Func(b_params, b_ret))
                     if a_params.len() != b_params.len() =>
@@ -82,7 +86,7 @@ impl<'tcx> Tcx<'tcx> {
 
                     cs.push(Constraint::Equal(a_ret, a_span, b_ret, b_span));
 
-                    self.unify_all(&cs)
+                    self.unify_all(cs)
                 }
                 (_, _) => {
                     self.reporter.add(
@@ -118,7 +122,7 @@ impl<'tcx> Tcx<'tcx> {
                     cs.push(Constraint::IsNum(a, a_span));
                     cs.push(Constraint::IsNum(b, b_span));
 
-                    self.unify_all(&cs)
+                    self.unify_all(cs)
                 }
             },
             Constraint::IsNum(ty, span) => match ty {
@@ -127,7 +131,13 @@ impl<'tcx> Tcx<'tcx> {
                 | Type::VFloat(_)
                 | Type::Int(_)
                 | Type::UInt(_)
-                | Type::Float(_) => Subst::empty(),
+                | Type::Float(_)
+                | Type::Error => Subst::empty(),
+                Type::Var(_) => {
+                    self.constrain(Constraint::IsNum(ty, span));
+
+                    Subst::empty()
+                }
                 _ => {
                     self.reporter.add(
                         Diagnostic::new(
@@ -142,7 +152,14 @@ impl<'tcx> Tcx<'tcx> {
                 }
             },
             Constraint::IsInt(ty, span) => match ty {
-                Type::VInt(_) | Type::VUInt(_) | Type::Int(_) | Type::UInt(_) => Subst::empty(),
+                Type::VInt(_) | Type::VUInt(_) | Type::Int(_) | Type::UInt(_) | Type::Error => {
+                    Subst::empty()
+                }
+                Type::Var(_) => {
+                    self.constrain(Constraint::IsInt(ty, span));
+
+                    Subst::empty()
+                }
                 _ => {
                     self.reporter.add(
                         Diagnostic::new(
@@ -225,7 +242,7 @@ impl<'tcx> Tcx<'tcx> {
 
                     cs.push(Constraint::Equal(b_ret, ret_span, a_ret, fn_span));
 
-                    self.unify_all(&cs)
+                    self.unify_all(cs)
                 } else if let Type::Error = fn_ty {
                     Subst::empty()
                 } else {
@@ -253,6 +270,11 @@ impl<'tcx> Tcx<'tcx> {
                 }
                 Type::Slice(of) => {
                     self.unify_one(Constraint::Equal(ret_ty, ret_span, of, list_span))
+                }
+                Type::Var(_) => {
+                    self.constrain(Constraint::Index(list_ty, list_span, ret_ty, ret_span));
+
+                    Subst::empty()
                 }
                 _ => {
                     self.reporter.add(
@@ -324,6 +346,13 @@ impl<'tcx> Tcx<'tcx> {
                             self.builtin.usize,
                         ),
                     ],
+                    Type::Var(_) => {
+                        self.constrain(Constraint::Field(
+                            obj_ty, obj_span, field, ret_ty, ret_span,
+                        ));
+
+                        return Subst::empty();
+                    }
                     _ => unimplemented!(),
                 };
 
@@ -342,7 +371,6 @@ impl<'tcx> Tcx<'tcx> {
                     Subst::empty()
                 }
             }
-            _ => unimplemented!(),
         }
     }
 

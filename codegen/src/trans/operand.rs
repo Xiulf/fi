@@ -9,7 +9,9 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
         match operand {
             mir::Operand::Place(place) => self.trans_place(place).to_value(self),
             mir::Operand::Const(c) => match c {
-                mir::Const::Unit => Value::new_unit(self.tcx.layout(self.tcx.builtin.unit)),
+                mir::Const::Tuple(vals) if vals.len() == 0 => {
+                    Value::new_unit(self.tcx.layout(self.tcx.builtin.unit))
+                }
                 mir::Const::Scalar(val, ty) => Value::new_const(self, *val, self.tcx.layout(ty)),
                 mir::Const::FuncAddr(id) => {
                     let func = self.func_ids[id].0;
@@ -24,6 +26,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                     self.trans_bytes(place, bytes)
                 }
+                _ => unimplemented!(),
             },
         }
     }

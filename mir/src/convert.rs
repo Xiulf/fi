@@ -62,6 +62,38 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
 
                 converter.convert(params, ret, body);
             }
+            hir::ItemKind::Var {
+                global: true,
+                ty,
+                val,
+            } => {
+                let ty = self.tcx.type_of(ty);
+
+                self.package.declare_global(item.id, item.name, ty);
+
+                if let Some(val) = val {
+                    let tcx = self.tcx;
+
+                    self.package.define_global(item.id, |builder| {
+                        let mut converter = BodyConverter {
+                            tcx,
+                            hir: package,
+                            builder,
+                            locals: HashMap::new(),
+                            loops: Vec::new(),
+                        };
+
+                        let entry = converter.builder.create_block();
+
+                        converter.builder.use_block(entry);
+
+                        let res = converter.trans_expr(val);
+
+                        converter.builder.use_(Place::local(LocalId::RET), res);
+                        converter.builder.return_();
+                    });
+                }
+            }
             _ => {}
         }
     }
@@ -142,6 +174,10 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     _ => unreachable!(),
                 },
                 hir::Res::Local(id) => Operand::Place(Place::local(self.locals[id])),
+                hir::Res::PrimVal(prim) => match prim {
+                    hir::PrimVal::True => Operand::Const(Const::Scalar(1, self.tcx.builtin.bool)),
+                    hir::PrimVal::False => Operand::Const(Const::Scalar(0, self.tcx.builtin.bool)),
+                },
             },
             hir::ExprKind::Int { val } => Operand::Const(Const::Scalar(*val, self.tcx.type_of(id))),
             hir::ExprKind::Float { bits } => {
@@ -300,6 +336,55 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 Operand::Place(res)
             }
+            hir::ExprKind::UnOp { op, rhs } => {
+                let ty = self.tcx.type_of(id);
+                let rhs = self.trans_expr(rhs);
+                let res = self.builder.create_tmp(ty);
+                let res = Place::local(res);
+                let op = match op {
+                    hir::UnOp::Neg => UnOp::Neg,
+                    hir::UnOp::Not => UnOp::Not,
+                };
+
+                self.builder.unop(res.clone(), op, rhs);
+
+                Operand::Place(res)
+            }
+            hir::ExprKind::IfElse { cond, then, else_ } => {
+                let cond = self.trans_expr(cond);
+                let then_block = self.builder.create_block();
+                let exit_block = self.builder.create_block();
+
+                if let Some(else_) = else_ {
+                    let else_block = self.builder.create_block();
+                    let res = self.builder.create_tmp(self.tcx.type_of(id));
+
+                    self.builder
+                        .switch(cond, vec![0], vec![else_block, then_block]);
+                    self.builder.use_block(then_block);
+                    self.trans_block(then, res);
+                    self.builder.jump(exit_block);
+                    self.builder.use_block(else_block);
+                    self.trans_block(else_, res);
+                    self.builder.jump(exit_block);
+                    self.builder.use_block(exit_block);
+
+                    Operand::Place(Place::local(res))
+                } else {
+                    self.builder
+                        .switch(cond, vec![0], vec![exit_block, then_block]);
+                    self.builder.use_block(then_block);
+
+                    let then_ty = self.tcx.infer_block(then);
+                    let then_ = self.builder.create_tmp(then_ty);
+
+                    self.trans_block(then, then_);
+                    self.builder.jump(exit_block);
+                    self.builder.use_block(exit_block);
+
+                    Operand::Const(Const::Tuple(Vec::new()))
+                }
+            }
             hir::ExprKind::While { label, cond, body } => {
                 let cond_block = self.builder.create_block();
                 let body_block = self.builder.create_block();
@@ -322,7 +407,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.use_block(exit_block);
                 self.loops.pop().unwrap();
 
-                Operand::Const(Const::Unit)
+                Operand::Const(Const::Tuple(Vec::new()))
             }
             _ => unimplemented!("{}", expr),
         }

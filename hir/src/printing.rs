@@ -231,6 +231,8 @@ impl Display for Type {
             TypeKind::Path { res } => res.fmt(f),
             TypeKind::Ref { mut_: true, to } => write!(f, "ref mut {}", to),
             TypeKind::Ref { mut_: false, to } => write!(f, "ref {}", to),
+            TypeKind::Array { of, len } => write!(f, "[{}; {}]", of, len),
+            TypeKind::Slice { of } => write!(f, "[{}]", of),
             TypeKind::Tuple { tys } => write!(
                 f,
                 "({})",
@@ -257,7 +259,17 @@ impl Display for Res {
             Res::Item(id) => id.fmt(f),
             Res::Local(id) => id.fmt(f),
             Res::Label(id) => id.fmt(f),
+            Res::PrimVal(prim) => prim.fmt(f),
             Res::PrimTy(prim) => prim.fmt(f),
+        }
+    }
+}
+
+impl Display for PrimVal {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            PrimVal::True => write!(f, "true"),
+            PrimVal::False => write!(f, "false"),
         }
     }
 }
