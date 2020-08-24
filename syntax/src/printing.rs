@@ -25,9 +25,9 @@ impl Display for Item {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
             ItemKind::Module { module } => {
-                writeln!(f, "mod {} {{", self.name)?;
-                writeln!(f, "{}", module)?;
-                write!(f, "}}")
+                writeln!(f, "mod {} where", self.name)?;
+                writeln!(indent(f), "{}", module)?;
+                write!(f, "end")
             }
             ItemKind::Extern { abi, ty } => write!(f, "{} :: extern {}{};", self.name, abi, ty),
             ItemKind::Func { params, ret, body } => {
@@ -105,6 +105,7 @@ impl Display for Stmt {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
             StmtKind::Item(item) => item.fmt(f),
+            StmtKind::Semi(expr) => write!(f, "{};", expr),
             StmtKind::Expr(expr) => expr.fmt(f),
         }
     }
@@ -113,16 +114,21 @@ impl Display for Stmt {
 impl Display for Path {
     fn fmt(&self, f: &mut Formatter) -> Result {
         if self.root {
-            write!(f, "#")?;
+            write!(f, "/")?;
         }
 
-        write!(f, "{}", list(&self.segs, "#"))
+        write!(f, "{}", list(&self.segs, "/"))
     }
 }
 
 impl Display for PathSeg {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        self.name.fmt(f)
+        match self {
+            PathSeg::Name(name) => name.fmt(f),
+            PathSeg::Current => write!(f, "."),
+            PathSeg::Parent => write!(f, ".."),
+            PathSeg::Package => write!(f, "~"),
+        }
     }
 }
 
@@ -278,12 +284,14 @@ impl Display for Type {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
             TypeKind::Infer => write!(f, "_"),
+            TypeKind::Parens { inner } => write!(f, "({})", inner),
             TypeKind::Path { path } => path.fmt(f),
             TypeKind::Func { params, ret } => write!(f, "fn ({}) -> {}", list(params, ", "), ret),
             TypeKind::Ref { mut_: true, ty } => write!(f, "ref mut {}", ty),
             TypeKind::Ref { mut_: false, ty } => write!(f, "ref {}", ty),
             TypeKind::Array { of, len } => write!(f, "[{}; {}]", of, len),
             TypeKind::Slice { of } => write!(f, "[{}]", of),
+            TypeKind::Tuple { tys } => write!(f, "({})", list(tys, ", ")),
         }
     }
 }

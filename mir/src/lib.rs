@@ -107,6 +107,7 @@ pub enum Operand<'tcx> {
 #[derive(Debug, Clone)]
 pub enum Const<'tcx> {
     Undefined,
+    Ref(Box<Const<'tcx>>),
     Tuple(Vec<Const<'tcx>>),
     Array(Vec<Const<'tcx>>),
     Scalar(u128, Ty<'tcx>),
@@ -218,7 +219,12 @@ impl<'tcx> Package<'tcx> {
         );
     }
 
-    pub fn define_global(&mut self, id: Id, f: impl FnOnce(Builder<'_, 'tcx>)) {
+    pub fn define_global(
+        &mut self,
+        tcx: &check::tcx::Tcx<'tcx>,
+        id: Id,
+        f: impl FnOnce(Builder<'_, 'tcx>),
+    ) {
         let ty = match self.items.get(&id).unwrap().kind {
             ItemKind::Global(ty, _) => ty,
             _ => unreachable!(),
@@ -245,7 +251,7 @@ impl<'tcx> Package<'tcx> {
 
         f(builder);
 
-        let value = crate::constant::eval(body, self);
+        let value = crate::constant::eval(tcx, body, self);
 
         if let ItemKind::Global(_, val) = &mut self.items.get_mut(&id).unwrap().kind {
             *val = value;
@@ -458,5 +464,51 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         if let Term::Unset = self.block().term {
             self.block().term = Term::Call(place, func, args, target);
         }
+    }
+}
+
+impl<'tcx> Const<'tcx> {
+    pub fn to_bytes(&self, stride: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(stride);
+
+        match self {
+            Const::Undefined => {}
+            Const::Array(vals) => {
+                for val in vals {
+                    bytes.append(&mut val.to_bytes(stride / vals.len()));
+                }
+            }
+            Const::Scalar(val, ty) => match ty {
+                Type::Int(0) => match stride {
+                    2 => bytes.extend(&(*val as i16).to_le_bytes()),
+                    4 => bytes.extend(&(*val as i32).to_le_bytes()),
+                    8 => bytes.extend(&(*val as i64).to_le_bytes()),
+                    _ => unreachable!(),
+                },
+                Type::UInt(0) => match stride {
+                    2 => bytes.extend(&(*val as u16).to_le_bytes()),
+                    4 => bytes.extend(&(*val as u32).to_le_bytes()),
+                    8 => bytes.extend(&(*val as u64).to_le_bytes()),
+                    _ => unreachable!(),
+                },
+                Type::Int(8) => bytes.extend(&(*val as i8).to_le_bytes()),
+                Type::Int(16) => bytes.extend(&(*val as i16).to_le_bytes()),
+                Type::Int(32) => bytes.extend(&(*val as i32).to_le_bytes()),
+                Type::Int(64) => bytes.extend(&(*val as i64).to_le_bytes()),
+                Type::Int(128) => bytes.extend(&(*val as i128).to_le_bytes()),
+                Type::UInt(8) => bytes.extend(&(*val as u8).to_le_bytes()),
+                Type::UInt(16) => bytes.extend(&(*val as u16).to_le_bytes()),
+                Type::UInt(32) => bytes.extend(&(*val as u32).to_le_bytes()),
+                Type::UInt(64) => bytes.extend(&(*val as u64).to_le_bytes()),
+                Type::UInt(128) => bytes.extend(&(*val as u128).to_le_bytes()),
+                Type::Float(32) => bytes.extend(&(*val as u32).to_be_bytes()),
+                Type::Float(64) => bytes.extend(&(*val as u32).to_be_bytes()),
+                _ => unimplemented!(),
+            },
+            _ => unimplemented!(),
+        }
+
+        bytes.resize(stride, 0);
+        bytes
     }
 }

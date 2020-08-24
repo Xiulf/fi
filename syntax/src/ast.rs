@@ -83,6 +83,7 @@ pub struct Stmt {
 #[derive(Debug, Clone, Hash)]
 pub enum StmtKind {
     Item(Item),
+    Semi(Expr),
     Expr(Expr),
 }
 
@@ -97,11 +98,11 @@ pub struct Path {
 
 #[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
-pub struct PathSeg {
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-    #[derivative(Hash(hash_with = "hash_ident"))]
-    pub name: Ident,
+pub enum PathSeg {
+    Name(Ident),
+    Current,
+    Parent,
+    Package,
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]
@@ -290,6 +291,9 @@ pub struct Type {
 #[derive(Debug, Clone, Hash)]
 pub enum TypeKind {
     Infer,
+    Parens {
+        inner: Box<Type>,
+    },
     Path {
         path: Path,
     },
@@ -308,6 +312,9 @@ pub enum TypeKind {
     Slice {
         of: Box<Type>,
     },
+    Tuple {
+        tys: Vec<Type>,
+    },
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]
@@ -318,6 +325,12 @@ pub struct TypeParam {
     #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub ty: Type,
+}
+
+impl PathSeg {
+    pub fn is_parent(&self) -> bool {
+        matches!(self, PathSeg::Parent | PathSeg::Current | PathSeg::Package)
+    }
 }
 
 fn hash_ident<H: std::hash::Hasher>(ident: &Ident, state: &mut H) {

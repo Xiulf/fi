@@ -12,6 +12,9 @@ impl<'tcx> Tcx<'tcx> {
                 hir::StmtKind::Item(id) => {
                     self.type_of(id);
                 }
+                hir::StmtKind::Semi(id) => {
+                    self.type_of(id);
+                }
                 hir::StmtKind::Expr(id) => {
                     ty = self.type_of(id);
                 }

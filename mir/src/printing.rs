@@ -143,6 +143,7 @@ impl Display for Const<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
             Const::Undefined => write!(f, "undefined"),
+            Const::Ref(to) => write!(f, "ref {}", to),
             Const::Tuple(vals) => write!(f, "({})", list(vals, ", ")),
             Const::Array(vals) => write!(f, "[{}]", list(vals, ", ")),
             Const::Scalar(val, ty) => write!(f, "({}: {})", val, ty),

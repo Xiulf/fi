@@ -192,9 +192,15 @@ impl<'a> Resolver<'a> {
         let ribs = &self.modules[&module][ns];
         let mut is_local = false;
         let mut res = None;
+        let symbol = match seg {
+            syntax::ast::PathSeg::Name(name) => name.symbol,
+            syntax::ast::PathSeg::Parent => Symbol::new("@super"),
+            syntax::ast::PathSeg::Current => Symbol::new("@self"),
+            syntax::ast::PathSeg::Package => Symbol::new("@package"),
+        };
 
         for rib in ribs {
-            if let Some(r) = rib.get(&seg.name.symbol) {
+            if let Some(r) = rib.get(&symbol) {
                 res = Some(r);
                 is_local = rib.kind == RibKind::Local;
             }

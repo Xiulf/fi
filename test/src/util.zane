@@ -1,0 +1,27 @@
+fn print(string: str)
+    ~/libc/write(0, string.ptr, string.len);
+end
+
+fn println(string: str)
+    ~/libc/write(0, string.ptr, string.len);
+    ~/libc/write(0, ref 10, 1);
+end
+
+fn print_usize(val: usize, base: usize)
+    var buf: [u8; 64];
+    var i = 32;
+
+    if val == 0
+        i -= 1;
+        buf[i] = 48;
+    else
+        while val > 0
+            i -= 1;
+            buf[i] = "0123456789ABCDEF"[val % base];
+            val /= base;
+        end
+    end
+
+    ~/libc/write(0, ref buf[i], 32 - i);
+    ~/libc/write(0, ref 10, 1);
+end

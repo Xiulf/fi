@@ -65,6 +65,7 @@ pub struct Stmt {
 #[derive(Debug, Hash)]
 pub enum StmtKind {
     Item(Id),
+    Semi(Id),
     Expr(Id),
 }
 

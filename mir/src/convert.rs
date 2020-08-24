@@ -75,7 +75,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                 if let Some(val) = val {
                     let tcx = self.tcx;
 
-                    self.package.define_global(item.id, |builder| {
+                    self.package.define_global(tcx, item.id, |builder| {
                         let mut converter = BodyConverter {
                             tcx,
                             hir: package,
@@ -134,6 +134,9 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                             self.builder.use_(Place::local(var), val);
                         }
                     }
+                }
+                hir::StmtKind::Semi(id) => {
+                    self.trans_expr(id);
                 }
                 hir::StmtKind::Expr(id) => {
                     let op = self.trans_expr(id);

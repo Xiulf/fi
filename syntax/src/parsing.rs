@@ -39,8 +39,11 @@ parser::token![punct "=" TEquals/1];
 parser::token![punct "`" TTick/1];
 parser::token![punct "->" TArrow/2];
 parser::token![punct ".." TDblDot/2];
-parser::token![punct "#" TPathSep/1];
 parser::token![ident "_" TWildcard];
+parser::token![punct "/" TPathSep/1];
+parser::token![punct "./" TPathCur/2];
+parser::token![punct "~/" TPathPack/2];
+parser::token![punct "../" TPathPrev/3];
 
 parser::token![punct "+" TAdd/1];
 parser::token![punct "-" TSub/1];
@@ -140,6 +143,7 @@ impl Parse for Item {
                     kind: ItemKind::Module { module },
                 })
             } else {
+                let _ = input.parse::<TSemi>();
                 let module = Module::parse_file(input, &name)?;
 
                 Ok(Item {
@@ -183,7 +187,7 @@ impl Parse for Item {
                 }
             };
 
-            let body = input.parse()?;
+            let body = Block::parse(input, TEnd::parse)?;
 
             Ok(Item {
                 span: start.to(input.prev_span()),
@@ -206,6 +210,8 @@ impl Parse for Item {
             } else {
                 None
             };
+
+            let _ = input.parse::<TSemi>();
 
             Ok(Item {
                 span: start.to(input.prev_span()),
@@ -261,16 +267,16 @@ impl Parse for Param {
     }
 }
 
-impl Parse for Block {
-    fn parse(input: ParseStream) -> Result<Self> {
+impl Block {
+    fn parse<T>(input: ParseStream, term: impl Fn(ParseStream) -> Result<T>) -> Result<Self> {
         let start = input.prev_span();
         let mut stmts = Vec::new();
 
-        while !input.is_empty() && !input.peek::<TEnd>() {
+        while !input.is_empty() && !term(&input.fork()).is_ok() {
             stmts.push(input.parse()?);
         }
 
-        input.parse::<TEnd>()?;
+        term(input)?;
 
         Ok(Block {
             span: start.to(input.prev_span()),
@@ -286,9 +292,12 @@ impl Parse for Stmt {
             StmtKind::Item(input.parse()?)
         } else {
             let expr = input.parse()?;
-            let _ = input.parse::<TSemi>();
 
-            StmtKind::Expr(expr)
+            if let Ok(_) = input.parse::<TSemi>() {
+                StmtKind::Semi(expr)
+            } else {
+                StmtKind::Expr(expr)
+            }
         };
 
         Ok(Stmt {
@@ -302,10 +311,20 @@ impl Parse for Path {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let root = input.parse::<TPathSep>().is_ok();
-        let mut segs = vec![input.parse()?];
+        let mut segs = vec![input.parse::<PathSeg>()?];
+        let mut col = input.cursor().prev().unwrap().span().end.col;
 
-        while let Ok(_) = input.parse::<TPathSep>() {
-            segs.push(input.parse()?);
+        while !input.is_empty() {
+            if segs.last().unwrap().is_parent() && PathSeg::peek_parent(input, col) {
+                segs.push(input.parse()?);
+                col = input.cursor().prev().unwrap().span().end.col;
+            } else if PathSeg::peek(input, col) {
+                input.parse::<TPathSep>()?;
+                segs.push(input.parse()?);
+                col = input.cursor().prev().unwrap().span().end.col;
+            } else {
+                break;
+            }
         }
 
         Ok(Path {
@@ -316,14 +335,60 @@ impl Parse for Path {
     }
 }
 
+impl Path {
+    fn peek(input: ParseStream) -> bool {
+        let input = input.fork();
+
+        if let Ok(_) = input.parse::<TPathSep>() {
+            PathSeg::peek_parent(&input, input.prev_span().end.col)
+        } else {
+            input.peek::<Ident>()
+                || input.peek::<TPathPack>()
+                || input.peek::<TPathCur>()
+                || input.peek::<TPathPrev>()
+        }
+    }
+}
+
 impl Parse for PathSeg {
     fn parse(input: ParseStream) -> Result<Self> {
-        let ident = input.parse::<Ident>()?;
+        if let Ok(name) = input.parse::<Ident>() {
+            Ok(PathSeg::Name(name))
+        } else if let Ok(_) = input.parse::<TPathCur>() {
+            Ok(PathSeg::Current)
+        } else if let Ok(_) = input.parse::<TPathPack>() {
+            Ok(PathSeg::Package)
+        } else if let Ok(_) = input.parse::<TPathPrev>() {
+            Ok(PathSeg::Parent)
+        } else {
+            input.error("expected '~/', './', '../' or an identifier", 0001)
+        }
+    }
+}
 
-        Ok(PathSeg {
-            span: ident.span,
-            name: ident,
-        })
+impl PathSeg {
+    fn peek(input: ParseStream, mut col: usize) -> bool {
+        let input = input.fork();
+
+        if input.cursor().span().start.col == col && input.parse::<TPathSep>().is_ok() {
+            col = input.prev_span().end.col;
+
+            input.cursor().span().start.col == col
+                && (input.peek::<Ident>()
+                    || input.peek::<TPathPack>()
+                    || input.peek::<TPathCur>()
+                    || input.peek::<TPathPrev>())
+        } else {
+            false
+        }
+    }
+
+    fn peek_parent(input: ParseStream, col: usize) -> bool {
+        input.cursor().span().start.col == col
+            && (input.peek::<Ident>()
+                || input.peek::<TPathPack>()
+                || input.peek::<TPathCur>()
+                || input.peek::<TPathPrev>())
     }
 }
 
@@ -417,6 +482,15 @@ impl Expr {
                     rhs: Box::new(rhs),
                 },
             })
+        } else if let Ok(_) = input.parse::<TRef>() {
+            let rhs = Expr::prefix(input)?;
+
+            Ok(Expr {
+                span: start.to(input.prev_span()),
+                kind: ExprKind::Ref {
+                    expr: Box::new(rhs),
+                },
+            })
         } else {
             Expr::postfix(input)
         }
@@ -507,13 +581,6 @@ impl Expr {
                             ty,
                         },
                     };
-                } else if let Ok(_) = input.parse::<TRef>() {
-                    expr = Expr {
-                        span: start.to(input.prev_span()),
-                        kind: ExprKind::Ref {
-                            expr: Box::new(expr),
-                        },
-                    };
                 } else if let Ok(_) = input.parse::<TDeref>() {
                     expr = Expr {
                         span: start.to(input.prev_span()),
@@ -561,9 +628,9 @@ impl Expr {
             let _ = input.parse::<TTick>()?;
 
             ExprKind::Type { ty }
-        } else if input.peek::<TLBrace>() || input.peek::<TDo>() {
+        } else if let Ok(_) = input.parse::<TDo>() {
             ExprKind::Block {
-                block: input.parse()?,
+                block: Block::parse(input, TEnd::parse)?,
             }
         } else if let Ok(_) = input.parse::<TLBracket>() {
             let mut exprs = Vec::new();
@@ -603,9 +670,17 @@ impl Expr {
             }
         } else if let Ok(_) = input.parse::<TIf>() {
             let cond = input.parse()?;
-            let then = input.parse()?;
+            let _ = input.parse::<TSemi>();
+            let then = Block::parse(input, |i| {
+                if i.peek::<TElse>() {
+                    Ok(())
+                } else {
+                    i.parse::<TEnd>().map(|_| ())
+                }
+            })?;
+
             let else_ = if let Ok(_) = input.parse::<TElse>() {
-                Some(input.parse()?)
+                Some(Block::parse(input, TEnd::parse)?)
             } else {
                 None
             };
@@ -613,7 +688,8 @@ impl Expr {
             ExprKind::IfElse { cond, then, else_ }
         } else if let Ok(_) = input.parse::<TWhile>() {
             let cond = input.parse()?;
-            let body = input.parse()?;
+            let _ = input.parse::<TSemi>();
+            let body = Block::parse(input, TEnd::parse)?;
 
             ExprKind::While {
                 label: None,
@@ -621,7 +697,7 @@ impl Expr {
                 body,
             }
         } else if let Ok(_) = input.parse::<TLoop>() {
-            let body = input.parse()?;
+            let body = Block::parse(input, TEnd::parse)?;
 
             ExprKind::Loop { label: None, body }
         } else if let Ok(_) = input.parse::<TBreak>() {
@@ -658,12 +734,12 @@ impl Expr {
             let expr = input.parse()?;
 
             ExprKind::Defer { expr }
-        } else if input.peek::<Ident>() || input.peek::<TPathSep>() {
+        } else if Path::peek(input) {
             ExprKind::Path {
                 path: input.parse()?,
             }
         } else {
-            return input.error("expected '(', '{', '[', 'do', 'if', 'while', 'loop', 'break', 'continue', 'return', 'defer', '#', a label, a literal or an identifier", 0001);
+            return input.error("expected '(', '{', '[', 'do', 'if', 'while', 'loop', 'break', 'continue', 'return', 'defer', '/', '..', a label, a literal or an identifier", 0001);
         };
 
         Ok(Expr {
@@ -673,7 +749,7 @@ impl Expr {
     }
 
     fn peek(input: ParseStream) -> bool {
-        input.peek::<Ident>()
+        Path::peek(input)
             || input.peek::<TLParen>()
             || input.peek::<TLBrace>()
             || input.peek::<TLBracket>()
@@ -835,6 +911,28 @@ impl Parse for Type {
                 input.parse::<TRBracket>()?;
 
                 TypeKind::Slice { of }
+            }
+        } else if let Ok(_) = input.parse::<TLParen>() {
+            let mut tys = Vec::new();
+            let mut tuple = false;
+
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                tys.push(input.parse()?);
+
+                if !input.peek::<TRParen>() {
+                    input.parse::<TComma>()?;
+                    tuple = true;
+                }
+            }
+
+            input.parse::<TRParen>()?;
+
+            if tuple || tys.is_empty() {
+                TypeKind::Tuple { tys }
+            } else {
+                TypeKind::Parens {
+                    inner: Box::new(tys.pop().unwrap()),
+                }
             }
         } else if let Ok(_) = input.parse::<TWildcard>() {
             TypeKind::Infer

@@ -14,11 +14,13 @@ pub fn build(opts: Opts) {
 
     reporter.report(true);
 
+    // println!("{}", package);
+
     let hir = hir::convert::convert(&reporter, &package);
 
     reporter.report(true);
 
-    // println!("{}", package);
+    // println!("{}", hir);
 
     check::with_tcx(&reporter, &hir, |tcx| {
         let mir = mir::convert::convert(&tcx, &hir);

@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use syntax::ast;
 
 pub fn convert(reporter: &Reporter, ast: &ast::Package) -> Package {
-    let mut converter = Converter::new(reporter);
     let root = ItemId::new(&ast.module);
+    let mut converter = Converter::new(reporter, root);
     let package_name = Ident {
         symbol: Symbol::new(ast.span.file.name.file_stem().unwrap().to_str().unwrap()),
         span: Span::empty(ast.span.file),
@@ -23,18 +23,20 @@ pub struct Converter<'a> {
     items: BTreeMap<Id, Item>,
     exprs: BTreeMap<Id, Expr>,
     types: BTreeMap<Id, Type>,
+    package_id: ItemId,
     current_item: ItemId,
     local_id: u64,
 }
 
 impl<'a> Converter<'a> {
-    pub fn new(reporter: &'a Reporter) -> Self {
+    pub fn new(reporter: &'a Reporter, package_id: ItemId) -> Self {
         Converter {
             reporter,
             resolver: Resolver::new(reporter),
             items: BTreeMap::new(),
             exprs: BTreeMap::new(),
             types: BTreeMap::new(),
+            package_id,
             current_item: ItemId(0),
             local_id: 0,
         }
@@ -62,13 +64,25 @@ impl<'a> Converter<'a> {
 
         self.resolver.add_module(id);
         self.resolver.set_module(id);
-        self.resolver
-            .define(Ns::Modules, Symbol::new("self"), name.span, Res::Module(id));
+
+        self.resolver.define(
+            Ns::Modules,
+            Symbol::new("@package"),
+            name.span,
+            Res::Module(self.package_id),
+        );
+
+        self.resolver.define(
+            Ns::Modules,
+            Symbol::new("@self"),
+            name.span,
+            Res::Module(id),
+        );
 
         if !parent.is_null() {
             self.resolver.define(
                 Ns::Modules,
-                Symbol::new("super"),
+                Symbol::new("@super"),
                 name.span,
                 Res::Module(parent),
             );
@@ -278,6 +292,7 @@ impl<'a> Converter<'a> {
                         StmtKind::Item(self.trans_item(item, false))
                     }
                 }
+                ast::StmtKind::Semi(expr) => StmtKind::Semi(self.trans_expr(expr)),
                 ast::StmtKind::Expr(expr) => StmtKind::Expr(self.trans_expr(expr)),
             };
 
@@ -429,6 +444,7 @@ impl<'a> Converter<'a> {
     pub fn trans_ty(&mut self, ty: &ast::Type) -> Id {
         let id = self.next_id();
         let kind = match &ty.kind {
+            ast::TypeKind::Parens { inner } => return self.trans_ty(inner),
             ast::TypeKind::Infer => TypeKind::Infer,
             ast::TypeKind::Path { path } => {
                 if let Some(res) = self.resolver.get_path(Ns::Types, path) {
@@ -461,6 +477,11 @@ impl<'a> Converter<'a> {
                 let ret = self.trans_ty(ret);
 
                 TypeKind::Func { params, ret }
+            }
+            ast::TypeKind::Tuple { tys } => {
+                let tys = tys.iter().map(|ty| self.trans_ty(ty)).collect();
+
+                TypeKind::Tuple { tys }
             }
         };
 

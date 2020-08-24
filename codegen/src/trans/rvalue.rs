@@ -61,7 +61,6 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                 }
                 _ => unimplemented!(),
             },
-            _ => unimplemented!("{}", rvalue),
         }
     }
 

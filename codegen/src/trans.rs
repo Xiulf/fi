@@ -111,7 +111,7 @@ pub fn declare<'tcx>(
                 data_ids.insert(item.id, (data, layout));
             }
         }
-        mir::ItemKind::Global(ty, expr) => {
+        mir::ItemKind::Global(ty, _) => {
             let layout = tcx.layout(ty);
             let data = module.declare_data(
                 &*item.name.symbol,
@@ -172,11 +172,12 @@ pub fn define<'tcx>(
     data_ids: &BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
     bytes_count: &mut usize,
 ) -> ModuleResult<()> {
-    if let mir::ItemKind::Global(ty, expr) = &item.kind {
+    if let mir::ItemKind::Global(_, val) = &item.kind {
         let (data_id, layout) = &data_ids[&item.id];
         let mut ctx = DataContext::new();
+        let bytes = val.to_bytes(layout.stride.bytes() as usize);
 
-        ctx.define_zeroinit(layout.size.bytes() as usize);
+        ctx.define(bytes.into());
 
         module.define_data(*data_id, &ctx)?;
     } else if let mir::ItemKind::Body(body) = &item.kind {

@@ -1,52 +1,25 @@
-extern "C" write: fn (fd: i32, buf: ref u8, count: usize) -> isize
+mod libc
+mod util
 
 fn main(argc: i32, argv: ref ref u8) -> i32
-    sort(toSort.ref)
+    sort(ref toSort)
     var i = 0
     
     while i < toSort.len
-        print_usize(toSort[i], 10)
+        util/print_usize(toSort[i], 10)
         i += 1
     end
 
     0
 end
 
-fn print(string: str)
-    write(0, string.ptr, string.len)
-end
-
-fn println(string: str)
-    write(0, string.ptr, string.len)
-    write(0, 10.ref, 1)
-end
-
-fn print_usize(val: usize, base: usize)
-    var buf: [u8; 32]
-    var i = 31
-
-    if val == 0
-        buf[i] = 48;
-        ()
-    end else
-        while val > 0
-            buf[i] = "0123456789ABCDEF"[val % base]
-            i -= 1
-            val /= base
-        end
-    end
-
-    write(0, buf[i].ref, 32 - i)
-    write(0, 10.ref, 1)
-end
-
-var toSort = [1, 5, 2, 12, 0, 4]
+var toSort = [1, 5, 2, 12, 0, 4];
 
 fn sort(l: ref [usize; 6])
-    var i = 0
+    var i = 0;
     
     while i < l.deref.len - 1
-        var j = 0
+        var j = 0;
 
         while j < l.deref.len - i - 1
             if l.deref[j] > l.deref[j + 1]

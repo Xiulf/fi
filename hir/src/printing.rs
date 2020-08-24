@@ -111,6 +111,7 @@ impl Display for Stmt {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
             StmtKind::Item(id) => id.fmt(f),
+            StmtKind::Semi(id) => write!(f, "{};", id),
             StmtKind::Expr(id) => id.fmt(f),
         }
     }

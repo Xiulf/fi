@@ -168,6 +168,23 @@ impl Spanned for Entry {
     }
 }
 
+impl std::fmt::Display for Entry {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Entry::Empty => Ok(()),
+            Entry::Ident(id) => id.name.fmt(f),
+            Entry::Punct(p) => p.ch.fmt(f),
+            Entry::Literal(l) => match l {
+                Literal::Int(i) => i.int.fmt(f),
+                Literal::Float(v) => v.float.fmt(f),
+                Literal::Char(c) => write!(f, "{:?}", c.ch),
+                Literal::String(s) => write!(f, "{:?}", s.text),
+            },
+            Entry::Attr(attr) => write!(f, "({})", attr),
+        }
+    }
+}
+
 impl std::fmt::Display for TokenBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for entry in &self.tokens {
