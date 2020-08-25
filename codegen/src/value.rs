@@ -13,7 +13,7 @@ pub struct Value<'tcx> {
     pub layout: Layout<'tcx>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum ValueKind {
     Ref(Pointer, Option<cir::Value>),
     Val(cir::Value),
@@ -121,7 +121,10 @@ impl<'tcx> Value<'tcx> {
 
                 (val1, val2)
             }
-            ValueKind::Ref(_, Some(_)) => unreachable!(),
+            ValueKind::Ref(ptr, Some(meta)) => {
+                // TODO: test if this always works as expected
+                (ptr.get_addr(fx), meta)
+            }
             ValueKind::Val(_) => unreachable!(),
             ValueKind::Pair(a, b) => (a, b),
         }

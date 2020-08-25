@@ -567,6 +567,8 @@ impl Expr {
                         None
                     };
 
+                    input.parse::<TRBracket>()?;
+
                     expr = Expr {
                         span: start.to(input.prev_span()),
                         kind: ExprKind::Slice {

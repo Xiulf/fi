@@ -4,7 +4,7 @@ mod util
 --| @no_mangle
 fn main(argc: i32, argv: ref ref u8) -> i32
     var arr = [2, 4, 8, 16, 32, 64];
-    var slice = arr[2..];
+    var slice = arr[..];
     var i = 0;
 
     while i < slice.len
@@ -15,3 +15,9 @@ fn main(argc: i32, argv: ref ref u8) -> i32
 
     0
 end
+
+-- iface Index(Idx)
+--     type Target
+-- 
+--     fn index(ref self, idx: Idx) -> ref Target
+-- end
