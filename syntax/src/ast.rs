@@ -20,9 +20,23 @@ pub struct Module {
 
 #[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
+pub struct Attribute {
+    pub span: Span,
+    pub kind: AttrKind,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub enum AttrKind {
+    Doc(String),
+    NoMangle,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
 pub struct Item {
     #[derivative(Hash = "ignore")]
     pub span: Span,
+    pub attrs: Vec<Attribute>,
     #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub kind: ItemKind,

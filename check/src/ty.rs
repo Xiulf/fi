@@ -53,6 +53,10 @@ impl<'tcx> Type<'tcx> {
                 (Symbol::new("size"), tcx.builtin.usize),
                 (Symbol::new("align"), tcx.builtin.usize),
             ],
+            Type::Slice(of) => vec![
+                (Symbol::new("ptr"), tcx.intern_ty(Type::Ref(false, of))),
+                (Symbol::new("len"), tcx.builtin.usize),
+            ],
             Type::Tuple(tys) => tys
                 .iter()
                 .enumerate()

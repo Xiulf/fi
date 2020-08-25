@@ -21,6 +21,26 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
             mir::RValue::Cast(ty, op) => {
                 let op = self.trans_operand(op);
 
+                match (
+                    self.clif_type(op.layout),
+                    self.clif_type(self.tcx.layout(ty)),
+                ) {
+                    (Some(_), Some(to_ty)) => {
+                        let from = op.load_scalar(self);
+                        let value = self.trans_cast(
+                            from,
+                            op.layout.abi.is_signed(),
+                            to_ty,
+                            self.tcx.layout(ty).abi.is_signed(),
+                        );
+
+                        place.store(self, Value::new_val(value, place.layout));
+
+                        return;
+                    }
+                    _ => {}
+                }
+
                 place.store(self, op.cast(self.tcx.layout(ty)));
             }
             mir::RValue::BinOp(op, lhs, rhs) => {
@@ -69,45 +89,146 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
         op: &mir::BinOp,
         lhs: ir::Value,
         rhs: ir::Value,
-        _layout: Layout<'tcx>,
+        layout: Layout<'tcx>,
     ) -> ir::Value {
+        use ir::condcodes::{FloatCC, IntCC};
+
         match op {
-            mir::BinOp::Add => self.builder.ins().iadd(lhs, rhs),
-            mir::BinOp::Sub => self.builder.ins().isub(lhs, rhs),
-            mir::BinOp::Div => self.builder.ins().udiv(lhs, rhs),
-            mir::BinOp::Rem => self.builder.ins().urem(lhs, rhs),
+            mir::BinOp::Add => {
+                if layout.abi.is_float() {
+                    self.builder.ins().fadd(lhs, rhs)
+                } else {
+                    self.builder.ins().iadd(lhs, rhs)
+                }
+            }
+            mir::BinOp::Sub => {
+                if layout.abi.is_float() {
+                    self.builder.ins().fsub(lhs, rhs)
+                } else {
+                    self.builder.ins().isub(lhs, rhs)
+                }
+            }
+            mir::BinOp::Mul => {
+                if layout.abi.is_float() {
+                    self.builder.ins().fmul(lhs, rhs)
+                } else {
+                    self.builder.ins().imul(lhs, rhs)
+                }
+            }
+            mir::BinOp::Div => {
+                if layout.abi.is_float() {
+                    self.builder.ins().fdiv(lhs, rhs)
+                } else if layout.abi.is_signed() {
+                    self.builder.ins().sdiv(lhs, rhs)
+                } else {
+                    self.builder.ins().udiv(lhs, rhs)
+                }
+            }
+            mir::BinOp::Rem => {
+                if layout.abi.is_signed() {
+                    self.builder.ins().srem(lhs, rhs)
+                } else {
+                    self.builder.ins().urem(lhs, rhs)
+                }
+            }
+            mir::BinOp::BitAnd => self.builder.ins().band(lhs, rhs),
+            mir::BinOp::BitOr => self.builder.ins().bor(lhs, rhs),
+            mir::BinOp::BitXOr => self.builder.ins().bxor(lhs, rhs),
+            mir::BinOp::Shl => self.builder.ins().ishl(lhs, rhs),
+            mir::BinOp::Shr => {
+                if layout.abi.is_signed() {
+                    self.builder.ins().sshr(lhs, rhs)
+                } else {
+                    self.builder.ins().ushr(lhs, rhs)
+                }
+            }
             mir::BinOp::Lt => {
-                let val = self
-                    .builder
-                    .ins()
-                    .icmp(ir::condcodes::IntCC::SignedLessThan, lhs, rhs);
+                let val = if layout.abi.is_float() {
+                    self.builder.ins().fcmp(FloatCC::LessThan, lhs, rhs)
+                } else if layout.abi.is_signed() {
+                    self.builder.ins().icmp(IntCC::SignedLessThan, lhs, rhs)
+                } else {
+                    self.builder.ins().icmp(IntCC::UnsignedLessThan, lhs, rhs)
+                };
+
+                self.builder.ins().bint(ir::types::I8, val)
+            }
+            mir::BinOp::Le => {
+                let val = if layout.abi.is_float() {
+                    self.builder.ins().fcmp(FloatCC::LessThanOrEqual, lhs, rhs)
+                } else if layout.abi.is_signed() {
+                    self.builder
+                        .ins()
+                        .icmp(IntCC::SignedLessThanOrEqual, lhs, rhs)
+                } else {
+                    self.builder
+                        .ins()
+                        .icmp(IntCC::UnsignedLessThanOrEqual, lhs, rhs)
+                };
 
                 self.builder.ins().bint(ir::types::I8, val)
             }
             mir::BinOp::Gt => {
-                let val =
+                let val = if layout.abi.is_float() {
+                    self.builder.ins().fcmp(FloatCC::GreaterThan, lhs, rhs)
+                } else if layout.abi.is_signed() {
+                    self.builder.ins().icmp(IntCC::SignedGreaterThan, lhs, rhs)
+                } else {
                     self.builder
                         .ins()
-                        .icmp(ir::condcodes::IntCC::SignedGreaterThan, lhs, rhs);
+                        .icmp(IntCC::UnsignedGreaterThan, lhs, rhs)
+                };
+
+                self.builder.ins().bint(ir::types::I8, val)
+            }
+            mir::BinOp::Ge => {
+                let val = if layout.abi.is_float() {
+                    self.builder
+                        .ins()
+                        .fcmp(FloatCC::GreaterThanOrEqual, lhs, rhs)
+                } else if layout.abi.is_signed() {
+                    self.builder
+                        .ins()
+                        .icmp(IntCC::SignedGreaterThanOrEqual, lhs, rhs)
+                } else {
+                    self.builder
+                        .ins()
+                        .icmp(IntCC::UnsignedGreaterThanOrEqual, lhs, rhs)
+                };
 
                 self.builder.ins().bint(ir::types::I8, val)
             }
             mir::BinOp::Eq => {
-                let val = self
-                    .builder
-                    .ins()
-                    .icmp(ir::condcodes::IntCC::Equal, lhs, rhs);
+                let val = if layout.abi.is_float() {
+                    self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
+                } else {
+                    self.builder.ins().icmp(IntCC::Equal, lhs, rhs)
+                };
 
                 self.builder.ins().bint(ir::types::I8, val)
             }
-            _ => unimplemented!("{:?}", op),
+            mir::BinOp::Ne => {
+                let val = if layout.abi.is_float() {
+                    self.builder.ins().fcmp(FloatCC::NotEqual, lhs, rhs)
+                } else {
+                    self.builder.ins().icmp(IntCC::NotEqual, lhs, rhs)
+                };
+
+                self.builder.ins().bint(ir::types::I8, val)
+            }
         }
     }
 
-    fn trans_unop(&mut self, op: &mir::UnOp, rhs: ir::Value, _layout: Layout<'tcx>) -> ir::Value {
+    fn trans_unop(&mut self, op: &mir::UnOp, rhs: ir::Value, layout: Layout<'tcx>) -> ir::Value {
         match op {
             mir::UnOp::Not => self.builder.ins().bnot(rhs),
-            _ => unimplemented!(),
+            mir::UnOp::Neg => {
+                if layout.abi.is_float() {
+                    self.builder.ins().fneg(rhs)
+                } else {
+                    self.builder.ins().ineg(rhs)
+                }
+            }
         }
     }
 }

@@ -12,6 +12,13 @@ pub struct Resolver<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct ModuleStructure {
+    pub name: Symbol,
+    pub items: HashMap<Symbol, Id>,
+    pub children: Vec<ModuleStructure>,
+}
+
+#[derive(Debug, Clone)]
 pub struct PerNs<T> {
     modules: T,
     values: T,
@@ -209,6 +216,34 @@ impl<'a> Resolver<'a> {
         (res, is_local)
     }
 
+    pub fn module_structure(&self, name: Symbol, module: &ItemId) -> ModuleStructure {
+        let modules = &self.modules[module][Ns::Modules][0];
+        let values = &self.modules[module][Ns::Values][0];
+        let types = &self.modules[module][Ns::Types][0];
+        let items = values
+            .iter()
+            .chain(types.iter())
+            .filter_map(|(name, res)| match res {
+                Res::Item(id) => Some((*name, *id)),
+                _ => None,
+            })
+            .collect();
+
+        let children = modules
+            .iter()
+            .filter_map(|(name, res)| match res {
+                Res::Module(id) => Some(self.module_structure(*name, id)),
+                _ => None,
+            })
+            .collect();
+
+        ModuleStructure {
+            name,
+            items,
+            children,
+        }
+    }
+
     fn add_root(&mut self) {
         self.add_module(ItemId(0));
         self.set_module(ItemId(0));
@@ -365,6 +400,10 @@ impl Rib {
 
     pub fn contains(&self, name: &Symbol) -> bool {
         self.names.contains_key(name)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Symbol, &Res)> {
+        self.names.iter()
     }
 }
 

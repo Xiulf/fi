@@ -7,7 +7,7 @@ mod printing;
 pub mod visit;
 
 pub use check::ty::{Ident, Param, Ty, Type};
-pub use hir::{Id, ItemId};
+pub use hir::{AttrKind, Attribute, Id, ItemId};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -18,6 +18,7 @@ pub struct Package<'tcx> {
 #[derive(Debug, Clone)]
 pub struct Item<'tcx> {
     pub id: Id,
+    pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub kind: ItemKind<'tcx>,
 }
@@ -66,7 +67,7 @@ pub struct Block<'tcx> {
 #[derive(Debug, Clone)]
 pub enum Stmt<'tcx> {
     Nop,
-    Assign(Place, RValue<'tcx>),
+    Assign(Place<'tcx>, RValue<'tcx>),
 }
 
 #[derive(Debug, Clone)]
@@ -76,13 +77,13 @@ pub enum Term<'tcx> {
     Return,
     Jump(BlockId),
     Switch(Operand<'tcx>, Vec<u128>, Vec<BlockId>),
-    Call(Place, Operand<'tcx>, Vec<Operand<'tcx>>, BlockId),
+    Call(Place<'tcx>, Operand<'tcx>, Vec<Operand<'tcx>>, BlockId),
 }
 
 #[derive(Debug, Clone)]
-pub struct Place {
+pub struct Place<'tcx> {
     pub base: PlaceBase,
-    pub elems: Vec<PlaceElem>,
+    pub elems: Vec<PlaceElem<'tcx>>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,15 +93,16 @@ pub enum PlaceBase {
 }
 
 #[derive(Debug, Clone)]
-pub enum PlaceElem {
+pub enum PlaceElem<'tcx> {
     Deref,
     Field(usize),
-    Index(Place),
+    Index(Operand<'tcx>),
+    Slice(Operand<'tcx>, Operand<'tcx>),
 }
 
 #[derive(Debug, Clone)]
 pub enum Operand<'tcx> {
-    Place(Place),
+    Place(Place<'tcx>),
     Const(Const<'tcx>),
 }
 
@@ -119,7 +121,7 @@ pub enum Const<'tcx> {
 #[derive(Debug, Clone)]
 pub enum RValue<'tcx> {
     Use(Operand<'tcx>),
-    Ref(Place),
+    Ref(Place<'tcx>),
     Cast(Ty<'tcx>, Operand<'tcx>),
     BinOp(BinOp, Operand<'tcx>, Operand<'tcx>),
     UnOp(UnOp, Operand<'tcx>),
@@ -159,29 +161,38 @@ impl<'tcx> Package<'tcx> {
         }
     }
 
-    pub fn declare_extern(&mut self, id: Id, name: Ident, ty: Ty<'tcx>) {
+    pub fn declare_extern(&mut self, id: Id, attrs: Vec<Attribute>, name: Ident, ty: Ty<'tcx>) {
         self.items.insert(
             id,
             Item {
                 id,
+                attrs,
                 name,
                 kind: ItemKind::Extern(ty),
             },
         );
     }
 
-    pub fn declare_global(&mut self, id: Id, name: Ident, ty: Ty<'tcx>) {
+    pub fn declare_global(&mut self, id: Id, attrs: Vec<Attribute>, name: Ident, ty: Ty<'tcx>) {
         self.items.insert(
             id,
             Item {
                 id,
+                attrs,
                 name,
                 kind: ItemKind::Global(ty, Const::Undefined),
             },
         );
     }
 
-    pub fn declare_body(&mut self, id: Id, name: Ident, params: &[Param<'tcx>], ret: Ty<'tcx>) {
+    pub fn declare_body(
+        &mut self,
+        id: Id,
+        attrs: Vec<Attribute>,
+        name: Ident,
+        params: &[Param<'tcx>],
+        ret: Ty<'tcx>,
+    ) {
         let mut locals = BTreeMap::new();
 
         locals.insert(
@@ -210,6 +221,7 @@ impl<'tcx> Package<'tcx> {
             id,
             Item {
                 id,
+                attrs,
                 name,
                 kind: ItemKind::Body(Body {
                     locals,
@@ -270,6 +282,14 @@ impl<'tcx> Package<'tcx> {
     }
 }
 
+impl<'tcx> Item<'tcx> {
+    pub fn no_mangle(&self) -> bool {
+        self.attrs
+            .iter()
+            .any(|attr| matches!(&attr.kind, AttrKind::NoMangle))
+    }
+}
+
 impl<'tcx> Body<'tcx> {
     pub fn params(&self) -> impl Iterator<Item = &Local<'tcx>> {
         self.locals.values().filter(|v| v.kind == LocalKind::Arg)
@@ -284,7 +304,7 @@ impl LocalId {
     }
 }
 
-impl Place {
+impl<'tcx> Place<'tcx> {
     pub fn local(id: LocalId) -> Self {
         Place {
             base: PlaceBase::Local(id),
@@ -309,8 +329,13 @@ impl Place {
         self
     }
 
-    pub fn index(mut self, idx: Place) -> Self {
+    pub fn index(mut self, idx: Operand<'tcx>) -> Self {
         self.elems.push(PlaceElem::Index(idx));
+        self
+    }
+
+    pub fn slice(mut self, low: Operand<'tcx>, high: Operand<'tcx>) -> Self {
+        self.elems.push(PlaceElem::Slice(low, high));
         self
     }
 }
@@ -377,7 +402,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         id
     }
 
-    pub fn placed(&mut self, op: Operand<'tcx>, ty: Ty<'tcx>) -> Place {
+    pub fn placed(&mut self, op: Operand<'tcx>, ty: Ty<'tcx>) -> Place<'tcx> {
         match op {
             Operand::Place(place) => place,
             _ => {
@@ -394,37 +419,37 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         self.current_block = Some(id);
     }
 
-    pub fn use_(&mut self, place: Place, op: Operand<'tcx>) {
+    pub fn use_(&mut self, place: Place<'tcx>, op: Operand<'tcx>) {
         self.block()
             .stmts
             .push(Stmt::Assign(place, RValue::Use(op)));
     }
 
-    pub fn ref_(&mut self, place: Place, to: Place) {
+    pub fn ref_(&mut self, place: Place<'tcx>, to: Place<'tcx>) {
         self.block()
             .stmts
             .push(Stmt::Assign(place, RValue::Ref(to)));
     }
 
-    pub fn cast(&mut self, place: Place, ty: Ty<'tcx>, op: Operand<'tcx>) {
+    pub fn cast(&mut self, place: Place<'tcx>, ty: Ty<'tcx>, op: Operand<'tcx>) {
         self.block()
             .stmts
             .push(Stmt::Assign(place, RValue::Cast(ty, op)));
     }
 
-    pub fn binop(&mut self, place: Place, op: BinOp, lhs: Operand<'tcx>, rhs: Operand<'tcx>) {
+    pub fn binop(&mut self, place: Place<'tcx>, op: BinOp, lhs: Operand<'tcx>, rhs: Operand<'tcx>) {
         self.block()
             .stmts
             .push(Stmt::Assign(place, RValue::BinOp(op, lhs, rhs)));
     }
 
-    pub fn unop(&mut self, place: Place, op: UnOp, rhs: Operand<'tcx>) {
+    pub fn unop(&mut self, place: Place<'tcx>, op: UnOp, rhs: Operand<'tcx>) {
         self.block()
             .stmts
             .push(Stmt::Assign(place, RValue::UnOp(op, rhs)));
     }
 
-    pub fn init(&mut self, place: Place, ty: Ty<'tcx>, ops: Vec<Operand<'tcx>>) {
+    pub fn init(&mut self, place: Place<'tcx>, ty: Ty<'tcx>, ops: Vec<Operand<'tcx>>) {
         self.block()
             .stmts
             .push(Stmt::Assign(place, RValue::Init(ty, ops)));
@@ -456,7 +481,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
     pub fn call(
         &mut self,
-        place: Place,
+        place: Place<'tcx>,
         func: Operand<'tcx>,
         args: Vec<Operand<'tcx>>,
         target: BlockId,

@@ -1,10 +1,22 @@
 fn print(string: str)
-    ~/libc/write(0, string.ptr, string.len);
+    write(string);
 end
 
 fn println(string: str)
-    ~/libc/write(0, string.ptr, string.len);
+    print(string);
     ~/libc/write(0, ref 10, 1);
+end
+
+fn write(string: str)
+    ~/libc/write(0, string.ptr, string.len);
+end
+
+fn print_bool(val: bool)
+    if val
+        write("true");
+    else
+        write("false");
+    end
 end
 
 fn print_usize(val: usize, base: usize)
@@ -23,5 +35,4 @@ fn print_usize(val: usize, base: usize)
     end
 
     ~/libc/write(0, ref buf[i], 32 - i);
-    ~/libc/write(0, ref 10, 1);
 end

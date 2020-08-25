@@ -6,7 +6,7 @@ pub use diagnostics::Span;
 pub use resolve::{PrimTy, PrimVal, Res};
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
-pub use syntax::ast::{Abi, BinOp, Ident, Literal, Symbol, UnOp};
+pub use syntax::ast::{Abi, AttrKind, Attribute, BinOp, Ident, Literal, Symbol, UnOp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ItemId(u64);
@@ -25,6 +25,7 @@ pub struct Package {
 pub struct Item {
     pub span: Span,
     pub id: Id,
+    pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub kind: ItemKind,
 }

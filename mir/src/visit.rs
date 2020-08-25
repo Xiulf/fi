@@ -28,7 +28,7 @@ macro_rules! make_visitor{
                 self.super_stmt(stmt)
             }
 
-            fn visit_assign(&mut self, place: & $($mut)? Place, rvalue: & $($mut)? RValue<'tcx>) {
+            fn visit_assign(&mut self, place: & $($mut)? Place<'tcx>, rvalue: & $($mut)? RValue<'tcx>) {
                 self.super_assign(place, rvalue)
             }
 
@@ -36,7 +36,7 @@ macro_rules! make_visitor{
                 self.super_term(term)
             }
 
-            fn visit_place(&mut self, place: & $($mut)? Place) {
+            fn visit_place(&mut self, place: & $($mut)? Place<'tcx>) {
                 self.super_place(place)
             }
 
@@ -60,7 +60,7 @@ macro_rules! make_visitor{
             }
 
             fn super_item(&mut self, item: & $($mut)? Item<'tcx>) {
-                let Item { id: _, name: _, kind } = item;
+                let Item { id: _, attrs: _, name: _, kind } = item;
 
                 match kind {
                     ItemKind::Extern(_) => {},
@@ -98,7 +98,7 @@ macro_rules! make_visitor{
                 }
             }
 
-            fn super_assign(&mut self, place: & $($mut)? Place, rvalue: & $($mut)? RValue<'tcx>) {
+            fn super_assign(&mut self, place: & $($mut)? Place<'tcx>, rvalue: & $($mut)? RValue<'tcx>) {
                 self.visit_place(place);
                 self.visit_rvalue(rvalue);
             }
@@ -121,7 +121,7 @@ macro_rules! make_visitor{
                 }
             }
 
-            fn super_place(&mut self, place: & $($mut)? Place) {
+            fn super_place(&mut self, place: & $($mut)? Place<'tcx>) {
                 let Place { base, elems } = place;
 
                 match base {
@@ -133,7 +133,11 @@ macro_rules! make_visitor{
                     match elem {
                         PlaceElem::Deref => {},
                         PlaceElem::Field(_) => {},
-                        PlaceElem::Index(place) => self.visit_place(place),
+                        PlaceElem::Index(idx) => self.visit_op(idx),
+                        PlaceElem::Slice(lo, hi) => {
+                            self.visit_op(lo);
+                            self.visit_op(hi);
+                        },
                     }
                 }
             }

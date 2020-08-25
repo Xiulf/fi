@@ -1,4 +1,5 @@
 use crate::ast::*;
+use parser::attr::Attr;
 use parser::error::Result;
 use parser::parse::{Parse, ParseStream};
 
@@ -40,6 +41,7 @@ parser::token![punct "`" TTick/1];
 parser::token![punct "->" TArrow/2];
 parser::token![punct ".." TDblDot/2];
 parser::token![ident "_" TWildcard];
+parser::token![punct "@" TAt/1];
 parser::token![punct "/" TPathSep/1];
 parser::token![punct "./" TPathCur/2];
 parser::token![punct "~/" TPathPack/2];
@@ -88,7 +90,7 @@ impl Parse for Module {
                     input.reporter.add(e);
                     input.bump();
 
-                    while !input.is_empty() && !input.peek::<parser::ident::Ident>() {
+                    while !input.is_empty() && !Item::peek(input) {
                         input.bump();
                     }
                 }
@@ -126,9 +128,39 @@ impl Module {
     }
 }
 
+impl Parse for Attribute {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let attr = input.parse::<Attr>()?;
+        let mut lexer = parser::lexer::Lexer::new(&attr.text, attr.span.file, input.reporter);
+        let tokens = lexer.run();
+        let buffer = parser::parse::ParseBuffer::new(tokens.begin(), input.reporter, (), attr.span);
+        let kind = if buffer.peek::<TAt>() && buffer.peek2::<Ident>() {
+            let _ = buffer.parse::<TAt>()?;
+            let name = buffer.parse::<Ident>()?;
+
+            match &**name.symbol {
+                "no_mangle" => AttrKind::NoMangle,
+                _ => return buffer.error_at("unknown attribute", name.span, 0001),
+            }
+        } else {
+            AttrKind::Doc(attr.text)
+        };
+
+        Ok(Attribute {
+            span: attr.span,
+            kind,
+        })
+    }
+}
+
 impl Parse for Item {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
+        let mut attrs = Vec::new();
+
+        while !input.is_empty() && input.peek::<Attr>() {
+            attrs.push(input.parse()?);
+        }
 
         if let Ok(_) = input.parse::<TMod>() {
             let name = input.parse()?;
@@ -139,6 +171,7 @@ impl Parse for Item {
 
                 Ok(Item {
                     span: start.to(input.prev_span()),
+                    attrs,
                     name,
                     kind: ItemKind::Module { module },
                 })
@@ -148,6 +181,7 @@ impl Parse for Item {
 
                 Ok(Item {
                     span: start.to(input.prev_span()),
+                    attrs,
                     name,
                     kind: ItemKind::Module { module },
                 })
@@ -160,6 +194,7 @@ impl Parse for Item {
 
             Ok(Item {
                 span: start.to(input.prev_span()),
+                attrs,
                 name,
                 kind: ItemKind::Extern { abi, ty },
             })
@@ -191,6 +226,7 @@ impl Parse for Item {
 
             Ok(Item {
                 span: start.to(input.prev_span()),
+                attrs,
                 name,
                 kind: ItemKind::Func { params, ret, body },
             })
@@ -215,6 +251,7 @@ impl Parse for Item {
 
             Ok(Item {
                 span: start.to(input.prev_span()),
+                attrs,
                 name,
                 kind: ItemKind::Var { ty, val },
             })
@@ -226,7 +263,8 @@ impl Parse for Item {
 
 impl Item {
     fn peek(input: ParseStream) -> bool {
-        input.peek::<TMod>()
+        input.peek::<Attr>()
+            || input.peek::<TMod>()
             || input.peek::<TExtern>()
             || input.peek::<TFn>()
             || input.peek::<TVar>()
@@ -546,6 +584,8 @@ impl Expr {
                         } else {
                             None
                         };
+
+                        input.parse::<TRBracket>()?;
 
                         expr = Expr {
                             span: start.to(input.prev_span()),

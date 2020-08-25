@@ -127,7 +127,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
     }
 }
 
-impl<'tcx> Place {
+impl<'tcx> Place<'tcx> {
     fn load(&self, ecx: &Ecx<'_, 'tcx>) -> Const<'tcx> {
         let mut val = match &self.base {
             PlaceBase::Local(id) => ecx.locals[id].clone(),
@@ -149,7 +149,11 @@ impl<'tcx> Place {
                     _ => unimplemented!(),
                 },
                 PlaceElem::Index(idx) => {
-                    let idx = idx.load(ecx).scalar() as usize;
+                    let idx = match idx {
+                        Operand::Place(idx) => idx.load(ecx),
+                        Operand::Const(idx) => idx.clone(),
+                    }
+                    .scalar() as usize;
 
                     match val {
                         Const::Array(vals) => {
@@ -163,6 +167,7 @@ impl<'tcx> Place {
                         _ => unimplemented!(),
                     }
                 }
+                PlaceElem::Slice(lo, hi) => unimplemented!(),
             }
         }
 
@@ -191,7 +196,11 @@ impl<'tcx> Place {
                     _ => unimplemented!(),
                 },
                 PlaceElem::Index(idx) => {
-                    let idx = idx.load(ecx_clone).scalar() as usize;
+                    let idx = match idx {
+                        Operand::Place(idx) => idx.load(ecx_clone),
+                        Operand::Const(idx) => idx.clone(),
+                    }
+                    .scalar() as usize;
 
                     match ptr {
                         Const::Array(vals) => {
@@ -200,6 +209,7 @@ impl<'tcx> Place {
                         _ => unimplemented!(),
                     }
                 }
+                PlaceElem::Slice(lo, hi) => unimplemented!(),
             }
         }
 

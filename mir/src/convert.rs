@@ -42,16 +42,18 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
     }
 
     pub fn convert_item(&mut self, package: &hir::Package, item: &hir::Item) {
+        let attrs = item.attrs.clone();
+
         match &item.kind {
             hir::ItemKind::Extern { abi: _, ty } => {
                 self.package
-                    .declare_extern(item.id, item.name, self.tcx.type_of(ty))
+                    .declare_extern(item.id, attrs, item.name, self.tcx.type_of(ty))
             }
             hir::ItemKind::Func { params, ret, body } => {
                 let (param_tys, ret_ty) = self.tcx.type_of(&item.id).func().unwrap();
 
                 self.package
-                    .declare_body(item.id, item.name, param_tys, ret_ty);
+                    .declare_body(item.id, attrs, item.name, param_tys, ret_ty);
 
                 let mut converter = BodyConverter {
                     tcx: self.tcx,
@@ -70,7 +72,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
             } => {
                 let ty = self.tcx.type_of(ty);
 
-                self.package.declare_global(item.id, item.name, ty);
+                self.package.declare_global(item.id, attrs, item.name, ty);
 
                 if let Some(val) = val {
                     let tcx = self.tcx;
@@ -219,9 +221,28 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let list = self.trans_expr(list);
                 let list = self.builder.placed(list, list_ty);
                 let index = self.trans_expr(index);
-                let index = self.builder.placed(index, self.tcx.builtin.usize);
 
                 Operand::Place(list.index(index))
+            }
+            hir::ExprKind::Slice { list, low, high } => {
+                let list_ty = self.tcx.type_of(list);
+                let list = self.trans_expr(list);
+                let list = self.builder.placed(list, list_ty);
+                let low = if let Some(low) = low {
+                    self.trans_expr(low)
+                } else {
+                    Operand::Const(Const::Scalar(0, self.tcx.builtin.usize))
+                };
+
+                let high = if let Some(high) = high {
+                    self.trans_expr(high)
+                } else if let Type::Array(_, len) = list_ty {
+                    Operand::Const(Const::Scalar(*len as u128, self.tcx.builtin.usize))
+                } else {
+                    Operand::Place(list.clone().field(1))
+                };
+
+                Operand::Place(list.slice(low, high))
             }
             hir::ExprKind::Ref { expr } => {
                 let ty = self.tcx.type_of(id);

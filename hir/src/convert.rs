@@ -147,6 +147,7 @@ impl<'a> Converter<'a> {
 
     pub fn trans_item(&mut self, item: &ast::Item, top_level: bool) -> Id {
         let id = Id::item(ItemId::new(item));
+        let attrs = item.attrs.clone();
 
         self.current_item = id.item_id();
         self.local_id = 0;
@@ -163,6 +164,7 @@ impl<'a> Converter<'a> {
                     Item {
                         span: item.span,
                         id,
+                        attrs,
                         name: item.name,
                         kind: ItemKind::Extern { abi: *abi, ty },
                     },
@@ -191,6 +193,7 @@ impl<'a> Converter<'a> {
                             Item {
                                 span: param.span,
                                 id,
+                                attrs: Vec::new(),
                                 name: param.name,
                                 kind: ItemKind::Param { ty },
                             },
@@ -212,6 +215,7 @@ impl<'a> Converter<'a> {
                     Item {
                         span: item.span,
                         id,
+                        attrs,
                         name: item.name,
                         kind: ItemKind::Func { params, ret, body },
                     },
@@ -226,6 +230,7 @@ impl<'a> Converter<'a> {
                     Item {
                         span: item.span,
                         id,
+                        attrs,
                         name: item.name,
                         kind: ItemKind::Var {
                             ty,
@@ -276,6 +281,7 @@ impl<'a> Converter<'a> {
                             Item {
                                 span: item.span,
                                 id,
+                                attrs: item.attrs.clone(),
                                 name: item.name,
                                 kind: ItemKind::Var {
                                     ty,
@@ -364,6 +370,11 @@ impl<'a> Converter<'a> {
             ast::ExprKind::Index { list, index } => ExprKind::Index {
                 list: self.trans_expr(list),
                 index: self.trans_expr(index),
+            },
+            ast::ExprKind::Slice { list, low, high } => ExprKind::Slice {
+                list: self.trans_expr(list),
+                low: low.as_ref().map(|l| self.trans_expr(l)),
+                high: high.as_ref().map(|h| self.trans_expr(h)),
             },
             ast::ExprKind::Ref { expr } => ExprKind::Ref {
                 expr: self.trans_expr(expr),

@@ -111,6 +111,39 @@ impl<'tcx> Tcx<'tcx> {
 
                 ty
             }
+            hir::ExprKind::Slice { list, low, high } => {
+                let ty = self.new_var();
+                let list_ty = self.type_of(list);
+                let list_span = self.span_of(list);
+
+                if let Some(low) = low {
+                    let low_ty = self.type_of(low);
+                    let low_span = self.span_of(low);
+
+                    self.constrain(Constraint::Equal(
+                        low_ty,
+                        low_span,
+                        self.builtin.usize,
+                        low_span,
+                    ));
+                }
+
+                if let Some(high) = high {
+                    let high_ty = self.type_of(high);
+                    let high_span = self.span_of(high);
+
+                    self.constrain(Constraint::Equal(
+                        high_ty,
+                        high_span,
+                        self.builtin.usize,
+                        high_span,
+                    ));
+                }
+
+                self.constrain(Constraint::Index(list_ty, list_span, ty, expr.span));
+
+                self.intern_ty(Type::Slice(ty))
+            }
             hir::ExprKind::Ref { expr: inner } => {
                 let inner_ty = self.type_of(inner);
 

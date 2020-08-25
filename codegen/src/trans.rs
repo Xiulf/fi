@@ -1,3 +1,4 @@
+mod cast;
 mod operand;
 mod place;
 mod rvalue;
@@ -63,6 +64,12 @@ pub fn declare<'tcx>(
     func_ids: &mut BTreeMap<mir::Id, (FuncId, Signature, Layout<'tcx>)>,
     data_ids: &mut BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
 ) -> ModuleResult<()> {
+    let name = if item.no_mangle() {
+        item.name.to_string()
+    } else {
+        mangling::mangle(item.name.symbol.bytes())
+    };
+
     match &item.kind {
         mir::ItemKind::Extern(ty) => {
             if let Some((params, ret)) = ty.func() {
@@ -114,7 +121,7 @@ pub fn declare<'tcx>(
         mir::ItemKind::Global(ty, _) => {
             let layout = tcx.layout(ty);
             let data = module.declare_data(
-                &*item.name.symbol,
+                &name,
                 Linkage::Export,
                 true,
                 false,
@@ -154,7 +161,7 @@ pub fn declare<'tcx>(
                 }
             }
 
-            let func = module.declare_function(&*item.name.symbol, Linkage::Export, &sig)?;
+            let func = module.declare_function(&name, Linkage::Export, &sig)?;
 
             func_ids.insert(item.id, (func, sig, ret));
         }

@@ -120,7 +120,7 @@ impl Display for Operand<'_> {
     }
 }
 
-impl Display for Place {
+impl Display for Place<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.base {
             PlaceBase::Local(id) => id.fmt(f)?,
@@ -131,7 +131,8 @@ impl Display for Place {
             match elem {
                 PlaceElem::Deref => write!(f, ".deref")?,
                 PlaceElem::Field(idx) => write!(f, ".{}", idx)?,
-                PlaceElem::Index(place) => write!(f, "[{}]", place)?,
+                PlaceElem::Index(idx) => write!(f, "[{}]", idx)?,
+                PlaceElem::Slice(lo, hi) => write!(f, "[{}..{}]", lo, hi)?,
             }
         }
 
