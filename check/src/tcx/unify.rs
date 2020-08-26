@@ -22,16 +22,18 @@ impl<'tcx> Tcx<'tcx> {
 
     fn unify_all(&self, mut cs: Constraints<'tcx>) -> Subst<'tcx> {
         let mut subst = Subst::empty();
-        let mut i = 0;
+        // let mut i = 0;
 
         cs.reverse();
 
         while let Some(c) = cs.pop() {
             // println!("{}: {}", i, c);
-            i += 1;
+            // i += 1;
 
-            subst.compose(self.unify_one(c));
-            subst.apply_cs(&mut cs);
+            let s = self.unify_one(c);
+
+            s.apply_cs(&mut cs);
+            subst.compose(s);
         }
 
         subst
@@ -354,6 +356,7 @@ impl<'tcx> Tcx<'tcx> {
                             self.builtin.usize,
                         ),
                     ],
+                    Type::Struct(_, fields) => fields.iter().map(|f| (f.name, f.ty)).collect(),
                     Type::Var(_) => {
                         self.constrain(Constraint::Field(
                             obj_ty, obj_span, field, ret_ty, ret_span,

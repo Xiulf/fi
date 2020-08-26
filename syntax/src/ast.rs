@@ -29,6 +29,7 @@ pub struct Attribute {
 pub enum AttrKind {
     Doc(String),
     NoMangle,
+    Lang(StringLiteral),
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]
@@ -60,6 +61,9 @@ pub enum ItemKind {
         ty: Type,
         val: Option<Expr>,
     },
+    Struct {
+        fields: Vec<StructField>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -71,6 +75,16 @@ pub enum Abi {
 #[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
 pub struct Param {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
+    pub ty: Type,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct StructField {
     #[derivative(Hash = "ignore")]
     pub span: Span,
     #[derivative(Hash(hash_with = "hash_ident"))]

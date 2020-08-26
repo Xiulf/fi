@@ -14,9 +14,9 @@ impl<'tcx> Subst<'tcx> {
     }
 
     pub fn compose(&mut self, other: Self) {
-        self.0.iter_mut().for_each(|(_, s)| {
-            other.apply_ty(s);
-        });
+        // self.0.iter_mut().for_each(|(_, s)| {
+        //     other.apply_ty(s);
+        // });
 
         self.0.extend(other.0);
     }
@@ -95,6 +95,11 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
         Type::Tuple(tys) => {
             for ty in *tys {
                 subst_var(ty, tvar, repl);
+            }
+        }
+        Type::Struct(_, fields) => {
+            for field in *fields {
+                subst_var(field.ty, tvar, repl);
             }
         }
         Type::Func(params, ret) => {

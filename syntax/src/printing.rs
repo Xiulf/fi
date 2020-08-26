@@ -56,6 +56,15 @@ impl Display for Item {
             } => write!(f, "{} := {};", self.name, val),
             ItemKind::Var { ty, val: Some(val) } => write!(f, "{} : {} = {};", self.name, ty, val),
             ItemKind::Var { ty, val: None } => write!(f, "{} : {};", self.name, ty),
+            ItemKind::Struct { fields } => {
+                writeln!(f, "struct {}", self.name)?;
+
+                for field in fields {
+                    writeln!(indent(f), "{}", field)?;
+                }
+
+                write!(f, "end")
+            }
         }
     }
 }
@@ -70,6 +79,18 @@ impl Display for Abi {
 }
 
 impl Display for Param {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        self.name.fmt(f)?;
+
+        if !matches!(&self.ty.kind, TypeKind::Infer) {
+            write!(f, ": {}", self.ty)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for StructField {
     fn fmt(&self, f: &mut Formatter) -> Result {
         self.name.fmt(f)?;
 
@@ -172,8 +193,8 @@ impl Display for Expr {
                 low: None,
                 high: None,
             } => write!(f, "{}[..]", list),
-            ExprKind::Ref { expr } => write!(f, "{}.ref", expr),
-            ExprKind::Deref { expr } => write!(f, "{}.deref", expr),
+            ExprKind::Ref { expr } => write!(f, "&{}", expr),
+            ExprKind::Deref { expr } => write!(f, "{}.*", expr),
             ExprKind::TypeOf { expr } => write!(f, "{}.type", expr),
             ExprKind::Cast { expr, ty } => write!(f, "{}.({})", expr, ty),
             ExprKind::Assign { lhs, rhs } => write!(f, "{} = {}", lhs, rhs),
@@ -287,8 +308,8 @@ impl Display for Type {
             TypeKind::Parens { inner } => write!(f, "({})", inner),
             TypeKind::Path { path } => path.fmt(f),
             TypeKind::Func { params, ret } => write!(f, "fn ({}) -> {}", list(params, ", "), ret),
-            TypeKind::Ref { mut_: true, ty } => write!(f, "ref mut {}", ty),
-            TypeKind::Ref { mut_: false, ty } => write!(f, "ref {}", ty),
+            TypeKind::Ref { mut_: true, ty } => write!(f, "*mut {}", ty),
+            TypeKind::Ref { mut_: false, ty } => write!(f, "*{}", ty),
             TypeKind::Array { of, len } => write!(f, "[{}; {}]", of, len),
             TypeKind::Slice { of } => write!(f, "[{}]", of),
             TypeKind::Tuple { tys } => write!(f, "({})", list(tys, ", ")),

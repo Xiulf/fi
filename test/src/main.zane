@@ -1,17 +1,20 @@
 mod libc
 mod util
+mod core
 
 --| @no_mangle
-fn main(argc: i32, argv: ref ref u8) -> i32
-    var arr = [2, 4, 8, 16, 32, 64];
-    var slice = arr[..];
-    var i = 0;
+fn main(argc: i32, argv: **u8) -> i32
+    var ptr = libc/malloc(72).(*core/TypeInfoInt);
+    var base = ptr.(*core/TypeInfo);
 
-    while i < slice.len
-        util/print_usize(slice[i], 10);
-        libc/write(0, ref 10, 1);
-        i += 1;
-    end
+    base.*.kind = 5;
+    base.*.size = 2;
+    base.*.align = 2;
+    base.*.stride = 2;
+    ptr.*.bits = 16;
+    ptr.*.sign = true;
+
+    libc/free(ptr.(_));
 
     0
 end

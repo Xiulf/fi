@@ -1,2 +1,3 @@
-extern "C" write: fn (fd: i32, buf: ref u8, count: usize) -> isize
-extern "C" alloca: fn (size: usize) -> ref ()
+extern "C" write: fn (fd: i32, buf: *u8, count: usize) -> isize
+extern "C" malloc: fn (size: usize) -> *()
+extern "C" free: fn (ptr: *()) -> ()

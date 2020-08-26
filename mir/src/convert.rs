@@ -437,7 +437,6 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         let (param_tys, ret_ty) = self.tcx.type_of(func).func().unwrap();
         let res = self.builder.create_tmp(ret_ty);
         let res = Place::local(res);
-        let func = self.trans_expr(func);
         let mut call_args = Vec::with_capacity(args.len());
         let mut skip = Vec::with_capacity(args.len());
 
@@ -466,6 +465,18 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
         }
 
+        if let hir::ExprKind::Path {
+            res: hir::Res::Item(item),
+        } = &self.hir.exprs[func].kind
+        {
+            if let hir::ItemKind::Cons { .. } = &self.hir.items[item].kind {
+                self.builder.init(res.clone(), ret_ty, call_args);
+
+                return Operand::Place(res);
+            }
+        }
+
+        let func = self.trans_expr(func);
         let next_block = self.builder.create_block();
 
         self.builder.call(res.clone(), func, call_args, next_block);

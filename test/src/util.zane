@@ -4,7 +4,7 @@ end
 
 fn println(string: str)
     print(string);
-    ~/libc/write(0, ref 10, 1);
+    ~/libc/write(0, &10, 1);
 end
 
 fn write(string: str)
@@ -34,5 +34,5 @@ fn print_usize(val: usize, base: usize)
         end
     end
 
-    ~/libc/write(0, ref buf[i], 32 - i);
+    ~/libc/write(0, &buf[i], 32 - i);
 end

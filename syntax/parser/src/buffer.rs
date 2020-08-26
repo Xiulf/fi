@@ -156,6 +156,23 @@ impl TokenBuffer {
     }
 }
 
+impl Entry {
+    pub fn span_mut(&mut self) -> &mut Span {
+        match self {
+            Entry::Ident(e) => &mut e.span,
+            Entry::Punct(e) => &mut e.span,
+            Entry::Literal(e) => match e {
+                Literal::Int(e) => &mut e.span,
+                Literal::Float(e) => &mut e.span,
+                Literal::Char(e) => &mut e.span,
+                Literal::String(e) => &mut e.span,
+            },
+            Entry::Attr(e) => &mut e.span,
+            Entry::Empty => unreachable!(),
+        }
+    }
+}
+
 impl Spanned for Entry {
     fn span(&self) -> Span {
         match self {

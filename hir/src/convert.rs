@@ -128,6 +128,21 @@ impl<'a> Converter<'a> {
                     );
                 }
             }
+            ast::ItemKind::Struct { .. } => {
+                self.resolver.define(
+                    Ns::Types,
+                    item.name.symbol,
+                    item.name.span,
+                    Res::Item(Id::item(id)),
+                );
+
+                self.resolver.define(
+                    Ns::Values,
+                    item.name.symbol,
+                    item.name.span,
+                    Res::Item(Id(id, 1)),
+                );
+            }
         }
 
         id
@@ -236,6 +251,44 @@ impl<'a> Converter<'a> {
                             ty,
                             val,
                             global: top_level,
+                        },
+                    },
+                );
+            }
+            ast::ItemKind::Struct { fields } => {
+                let cons_id = self.next_id();
+                let fields = fields
+                    .iter()
+                    .map(|f| StructField {
+                        span: f.span,
+                        name: f.name,
+                        ty: self.trans_ty(&f.ty),
+                    })
+                    .collect::<Vec<_>>();
+
+                self.items.insert(
+                    id,
+                    Item {
+                        span: item.span,
+                        id,
+                        attrs,
+                        name: item.name,
+                        kind: ItemKind::Struct {
+                            fields: fields.clone(),
+                        },
+                    },
+                );
+
+                self.items.insert(
+                    cons_id,
+                    Item {
+                        span: item.span,
+                        id: cons_id,
+                        attrs: Vec::new(),
+                        name: item.name,
+                        kind: ItemKind::Cons {
+                            item: id,
+                            params: fields,
                         },
                     },
                 );

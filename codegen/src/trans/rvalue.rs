@@ -79,6 +79,13 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                         place.field(self, i).store(self, val);
                     }
                 }
+                Type::Struct(_, _) => {
+                    for (i, op) in ops.iter().enumerate() {
+                        let val = self.trans_operand(op);
+
+                        place.field(self, i).store(self, val);
+                    }
+                }
                 _ => unimplemented!(),
             },
         }

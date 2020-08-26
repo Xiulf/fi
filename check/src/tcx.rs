@@ -313,6 +313,10 @@ impl<'tcx> Tcx<'tcx> {
                 ty,
                 &tys.iter().map(|ty| self.layout(ty)).collect::<Vec<_>>(),
             )),
+            Type::Struct(_, fields) => self.intern_layout(self.struct_layout(
+                ty,
+                &fields.iter().map(|f| self.layout(f.ty)).collect::<Vec<_>>(),
+            )),
             Type::Func(_, _) => {
                 let mut ptr = scalar_unit(Primitive::Pointer);
 

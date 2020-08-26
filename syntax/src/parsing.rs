@@ -9,10 +9,9 @@ parser::token![ident "where" TWhere];
 parser::token![ident "extern" TExtern];
 parser::token![ident "fn" TFn];
 parser::token![ident "var" TVar];
+parser::token![ident "struct" TStruct];
 parser::token![ident "do" TDo];
-parser::token![ident "ref" TRef];
 parser::token![ident "mut" TMut];
-parser::token![ident "deref" TDeref];
 parser::token![ident "type" TType];
 parser::token![ident "if" TIf];
 parser::token![ident "else" TElse];
@@ -42,6 +41,8 @@ parser::token![punct "->" TArrow/2];
 parser::token![punct ".." TDblDot/2];
 parser::token![ident "_" TWildcard];
 parser::token![punct "@" TAt/1];
+parser::token![punct "&" TAmp/1];
+parser::token![punct "*" TStar/1];
 parser::token![punct "/" TPathSep/1];
 parser::token![punct "./" TPathCur/2];
 parser::token![punct "~/" TPathPack/2];
@@ -132,7 +133,21 @@ impl Parse for Attribute {
     fn parse(input: ParseStream) -> Result<Self> {
         let attr = input.parse::<Attr>()?;
         let mut lexer = parser::lexer::Lexer::new(&attr.text, attr.span.file, input.reporter);
-        let tokens = lexer.run();
+        let mut tokens = lexer.run();
+
+        for token in &mut tokens.tokens {
+            if !matches!(token, parser::buffer::Entry::Empty) {
+                let span = token.span_mut();
+
+                span.start.line += attr.span.start.line;
+                span.start.col += attr.span.start.col + 3;
+                span.start.offset += attr.span.start.offset + 3;
+                span.end.line += attr.span.start.line;
+                span.end.col += attr.span.start.col + 3;
+                span.end.offset += attr.span.start.offset + 3;
+            }
+        }
+
         let buffer = parser::parse::ParseBuffer::new(tokens.begin(), input.reporter, (), attr.span);
         let kind = if buffer.peek::<TAt>() && buffer.peek2::<Ident>() {
             let _ = buffer.parse::<TAt>()?;
@@ -140,6 +155,7 @@ impl Parse for Attribute {
 
             match &**name.symbol {
                 "no_mangle" => AttrKind::NoMangle,
+                "lang" => AttrKind::Lang(buffer.parse()?),
                 _ => return buffer.error_at("unknown attribute", name.span, 0001),
             }
         } else {
@@ -255,8 +271,24 @@ impl Parse for Item {
                 name,
                 kind: ItemKind::Var { ty, val },
             })
+        } else if let Ok(_) = input.parse::<TStruct>() {
+            let name = input.parse()?;
+            let mut fields = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TEnd>() {
+                fields.push(input.parse()?);
+            }
+
+            input.parse::<TEnd>()?;
+
+            Ok(Item {
+                span: start.to(input.prev_span()),
+                attrs,
+                name,
+                kind: ItemKind::Struct { fields },
+            })
         } else {
-            input.error("expected 'mod', 'extern', 'fn' or 'var'", 0001)
+            input.error("expected 'mod', 'extern', 'fn', 'var' or 'struct'", 0001)
         }
     }
 }
@@ -268,6 +300,7 @@ impl Item {
             || input.peek::<TExtern>()
             || input.peek::<TFn>()
             || input.peek::<TVar>()
+            || input.peek::<TStruct>()
     }
 }
 
@@ -298,6 +331,27 @@ impl Parse for Param {
         };
 
         Ok(Param {
+            span: start.to(input.prev_span()),
+            name,
+            ty,
+        })
+    }
+}
+
+impl Parse for StructField {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let name = input.parse()?;
+        let ty = if let Ok(_) = input.parse::<TColon>() {
+            input.parse()?
+        } else {
+            Type {
+                span: input.span(),
+                kind: TypeKind::Infer,
+            }
+        };
+
+        Ok(StructField {
             span: start.to(input.prev_span()),
             name,
             ty,
@@ -520,7 +574,7 @@ impl Expr {
                     rhs: Box::new(rhs),
                 },
             })
-        } else if let Ok(_) = input.parse::<TRef>() {
+        } else if let Ok(_) = input.parse::<TAmp>() {
             let rhs = Expr::prefix(input)?;
 
             Ok(Expr {
@@ -623,7 +677,7 @@ impl Expr {
                             ty,
                         },
                     };
-                } else if let Ok(_) = input.parse::<TDeref>() {
+                } else if let Ok(_) = input.parse::<TStar>() {
                     expr = Expr {
                         span: start.to(input.prev_span()),
                         kind: ExprKind::Deref {
@@ -933,7 +987,7 @@ impl Parse for Type {
             let ret = input.parse()?;
 
             TypeKind::Func { params, ret }
-        } else if let Ok(_) = input.parse::<TRef>() {
+        } else if let Ok(_) = input.parse::<TStar>() {
             let mut_ = input.parse::<TMut>().is_ok();
             let ty = input.parse()?;
 

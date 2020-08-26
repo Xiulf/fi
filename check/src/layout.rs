@@ -108,6 +108,7 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
                 }
             }
             Type::Tuple(tys) => tys[idx],
+            Type::Struct(_, fields) => fields[idx].ty,
         })
     }
 }

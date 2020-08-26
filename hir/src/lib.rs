@@ -1,3 +1,5 @@
+#![feature(label_break_value)]
+
 pub mod convert;
 mod printing;
 pub mod resolve;
@@ -49,6 +51,20 @@ pub enum ItemKind {
         ty: Id,
         val: Option<Id>,
     },
+    Struct {
+        fields: Vec<StructField>,
+    },
+    Cons {
+        item: Id,
+        params: Vec<StructField>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct StructField {
+    pub span: Span,
+    pub name: Ident,
+    pub ty: Id,
 }
 
 #[derive(Debug)]
@@ -250,6 +266,13 @@ impl Hash for Item {
         self.id.hash(state);
         self.name.symbol.hash(state);
         self.kind.hash(state);
+    }
+}
+
+impl Hash for StructField {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.symbol.hash(state);
+        self.ty.hash(state);
     }
 }
 

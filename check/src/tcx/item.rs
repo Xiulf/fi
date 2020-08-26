@@ -28,6 +28,19 @@ impl<'tcx> Tcx<'tcx> {
             }
             hir::ItemKind::Param { ty } => self.type_of(ty),
             hir::ItemKind::Var { ty, .. } => self.type_of(ty),
+            hir::ItemKind::Struct { .. } => self.new_var(),
+            hir::ItemKind::Cons { item, params } => {
+                let params = self
+                    .arena
+                    .alloc_slice_fill_iter(params.iter().map(|field| Param {
+                        name: field.name,
+                        ty: self.type_of(&field.ty),
+                    }));
+
+                let ret = self.type_of(item);
+
+                self.intern_ty(Type::Func(params, ret))
+            }
         }
     }
 
@@ -51,6 +64,18 @@ impl<'tcx> Tcx<'tcx> {
                 let ty_span = self.span_of(ty);
 
                 self.constrain(Constraint::Equal(val_ty, val_span, ty_ty, ty_span));
+            }
+            hir::ItemKind::Struct { fields } => {
+                let ty = self.type_of(id);
+                let fields = fields.iter().map(|f| Field {
+                    name: f.name,
+                    ty: self.type_of(&f.ty),
+                });
+
+                let fields = self.arena.alloc_slice_fill_iter(fields);
+                let new_ty = self.intern_ty(Type::Struct(*id, fields));
+
+                self.constrain(Constraint::Equal(ty, item.span, new_ty, item.span));
             }
             _ => {}
         }

@@ -79,7 +79,25 @@ impl Display for Item {
                 val: None,
                 global: _,
             } => write!(f, "{} : {};", self.name, ty),
+            ItemKind::Struct { fields } => {
+                writeln!(f, "struct {}", self.name)?;
+
+                for field in fields {
+                    writeln!(indent(f), "{}", field)?;
+                }
+
+                write!(f, "end")
+            }
+            ItemKind::Cons { item, params } => {
+                write!(f, "cons {}({}) -> {}", self.name, list(params, ", "), item)
+            }
         }
+    }
+}
+
+impl Display for StructField {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{}: {}", self.name, self.ty)
     }
 }
 

@@ -23,6 +23,7 @@ pub enum Type<'tcx> {
     Array(Ty<'tcx>, usize),
     Slice(Ty<'tcx>),
     Tuple(&'tcx [Ty<'tcx>]),
+    Struct(hir::Id, &'tcx [Field<'tcx>]),
     Func(&'tcx [Param<'tcx>], Ty<'tcx>),
 }
 
@@ -31,6 +32,12 @@ pub struct TypeVar(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Param<'tcx> {
+    pub name: Ident,
+    pub ty: Ty<'tcx>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Field<'tcx> {
     pub name: Ident,
     pub ty: Ty<'tcx>,
 }
@@ -62,6 +69,7 @@ impl<'tcx> Type<'tcx> {
                 .enumerate()
                 .map(|(i, ty)| (Symbol::new(i.to_string()), *ty))
                 .collect(),
+            Type::Struct(_, fields) => fields.iter().map(|f| (f.name.symbol, f.ty)).collect(),
             _ => Vec::new(),
         }
     }
@@ -112,6 +120,15 @@ impl fmt::Display for Type<'_> {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
+            Type::Struct(_, fields) => write!(
+                f,
+                "struct {{ {} }}",
+                fields
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Type::Func(params, ret) => write!(
                 f,
                 "fn ({}) -> {}",
@@ -133,6 +150,12 @@ impl fmt::Display for TypeVar {
 }
 
 impl fmt::Display for Param<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.ty)
+    }
+}
+
+impl fmt::Display for Field<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", self.name, self.ty)
     }
