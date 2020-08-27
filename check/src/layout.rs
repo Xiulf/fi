@@ -14,6 +14,8 @@ pub struct Layout {
     pub stride: Size,
     pub abi: Abi,
     pub fields: FieldsShape,
+    pub variants: Variants,
+    pub largest_niche: Option<Niche>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +32,33 @@ pub enum FieldsShape {
     // Union(usize),
     Array { stride: Size, count: u64 },
     Arbitrary { offsets: Vec<Size> },
+}
+
+#[derive(Debug, Clone)]
+pub enum Variants {
+    Single,
+    Multiple {
+        tag: Scalar,
+        tag_encoding: TagEncoding,
+        tag_field: usize,
+        variants: Vec<Layout>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum TagEncoding {
+    Direct,
+    Niche {
+        dataful_variant: usize,
+        niche_variants: RangeInclusive<usize>,
+        niche_start: u128,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct Niche {
+    pub offset: Size,
+    pub scalar: Scalar,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +121,7 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
             | Type::Float(_)
             | Type::Ref(_, _)
             | Type::Array(_, _)
+            | Type::Enum(_, _)
             | Type::Func(..) => unreachable!("{}.{}", self.ty, idx),
             Type::Str => {
                 if idx == 0 {
@@ -117,9 +147,12 @@ impl Layout {
     pub fn scalar(scalar: Scalar, triple: &target_lexicon::Triple) -> Self {
         let size = scalar.value.size(triple);
         let align = Align::from_bytes(size.bytes());
+        let largest_niche = Niche::from_scalar(triple, Size::ZERO, scalar.clone());
 
         Layout {
             fields: FieldsShape::Primitive,
+            variants: Variants::Single,
+            largest_niche,
             abi: Abi::Scalar(scalar),
             size,
             align,
@@ -188,6 +221,72 @@ impl FieldsShape {
                 *stride * i
             }
             FieldsShape::Arbitrary { offsets } => offsets[idx],
+        }
+    }
+}
+
+impl Niche {
+    pub fn from_scalar(
+        triple: &target_lexicon::Triple,
+        offset: Size,
+        scalar: Scalar,
+    ) -> Option<Self> {
+        let niche = Niche { offset, scalar };
+
+        if niche.available(triple) > 0 {
+            Some(niche)
+        } else {
+            None
+        }
+    }
+
+    pub fn available(&self, triple: &target_lexicon::Triple) -> u128 {
+        let Scalar {
+            value,
+            valid_range: ref v,
+        } = self.scalar;
+        let bits = value.size(triple).bits();
+        assert!(bits <= 128);
+        let max_value = !0u128 >> (128 - bits);
+        let niche = v.end().wrapping_add(1)..*v.start();
+
+        niche.end.wrapping_sub(niche.start) & max_value
+    }
+
+    pub fn reserve(&self, triple: &target_lexicon::Triple, count: u128) -> Option<(u128, Scalar)> {
+        assert!(count > 0);
+        let Scalar {
+            value,
+            valid_range: ref v,
+        } = self.scalar;
+        let bits = value.size(triple).bits();
+        assert!(bits <= 128);
+        let max_value = !0u128 >> (128 - bits);
+
+        if count > max_value {
+            return None;
+        }
+
+        let start = v.end().wrapping_add(1) & max_value;
+        let end = v.end().wrapping_add(count) & max_value;
+        let valid_range_contains = |x| {
+            if v.start() <= v.end() {
+                *v.start() <= x && x <= *v.end()
+            } else {
+                *v.start() <= x || x <= *v.end()
+            }
+        };
+
+        if valid_range_contains(end) {
+            None
+        } else {
+            Some((
+                start,
+                Scalar {
+                    value,
+                    valid_range: *v.start()..=end,
+                },
+            ))
         }
     }
 }

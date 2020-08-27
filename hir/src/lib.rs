@@ -54,9 +54,13 @@ pub enum ItemKind {
     Struct {
         fields: Vec<StructField>,
     },
+    Enum {
+        variants: Vec<EnumVariant>,
+    },
     Cons {
         item: Id,
-        params: Vec<StructField>,
+        variant: usize,
+        params: Option<Vec<StructField>>,
     },
 }
 
@@ -65,6 +69,14 @@ pub struct StructField {
     pub span: Span,
     pub name: Ident,
     pub ty: Id,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumVariant {
+    pub span: Span,
+    pub name: Ident,
+    pub ctor: Id,
+    pub fields: Option<Vec<StructField>>,
 }
 
 #[derive(Debug)]
@@ -273,6 +285,14 @@ impl Hash for StructField {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.symbol.hash(state);
         self.ty.hash(state);
+    }
+}
+
+impl Hash for EnumVariant {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.symbol.hash(state);
+        self.ctor.hash(state);
+        self.fields.hash(state);
     }
 }
 

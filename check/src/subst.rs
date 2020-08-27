@@ -102,6 +102,13 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
                 subst_var(field.ty, tvar, repl);
             }
         }
+        Type::Enum(_, variants) => {
+            for variant in *variants {
+                for field in variant.fields {
+                    subst_var(field.ty, tvar, repl);
+                }
+            }
+        }
         Type::Func(params, ret) => {
             for param in *params {
                 subst_var(param.ty, tvar, repl);

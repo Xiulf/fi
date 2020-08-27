@@ -64,6 +64,9 @@ pub enum ItemKind {
     Struct {
         fields: Vec<StructField>,
     },
+    Enum {
+        variants: Vec<EnumVariant>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,6 +93,16 @@ pub struct StructField {
     #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub ty: Type,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct EnumVariant {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
+    pub fields: Option<Vec<StructField>>,
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]

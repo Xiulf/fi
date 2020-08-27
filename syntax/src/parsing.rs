@@ -10,6 +10,7 @@ parser::token![ident "extern" TExtern];
 parser::token![ident "fn" TFn];
 parser::token![ident "var" TVar];
 parser::token![ident "struct" TStruct];
+parser::token![ident "enum" TEnum];
 parser::token![ident "do" TDo];
 parser::token![ident "mut" TMut];
 parser::token![ident "type" TType];
@@ -287,8 +288,27 @@ impl Parse for Item {
                 name,
                 kind: ItemKind::Struct { fields },
             })
+        } else if let Ok(_) = input.parse::<TEnum>() {
+            let name = input.parse()?;
+            let mut variants = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TEnd>() {
+                variants.push(input.parse()?);
+            }
+
+            input.parse::<TEnd>()?;
+
+            Ok(Item {
+                span: start.to(input.prev_span()),
+                attrs,
+                name,
+                kind: ItemKind::Enum { variants },
+            })
         } else {
-            input.error("expected 'mod', 'extern', 'fn', 'var' or 'struct'", 0001)
+            input.error(
+                "expected 'mod', 'extern', 'fn', 'var', 'struct' or 'enum'",
+                0001,
+            )
         }
     }
 }
@@ -355,6 +375,36 @@ impl Parse for StructField {
             span: start.to(input.prev_span()),
             name,
             ty,
+        })
+    }
+}
+
+impl Parse for EnumVariant {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let name = input.parse()?;
+        let fields = if let Ok(_) = input.parse::<TLParen>() {
+            let mut fields = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                fields.push(input.parse()?);
+
+                if !input.peek::<TRParen>() {
+                    input.parse::<TComma>()?;
+                }
+            }
+
+            input.parse::<TRParen>()?;
+
+            Some(fields)
+        } else {
+            None
+        };
+
+        Ok(EnumVariant {
+            span: start.to(input.prev_span()),
+            name,
+            fields,
         })
     }
 }

@@ -24,6 +24,7 @@ pub enum Type<'tcx> {
     Slice(Ty<'tcx>),
     Tuple(&'tcx [Ty<'tcx>]),
     Struct(hir::Id, &'tcx [Field<'tcx>]),
+    Enum(hir::Id, &'tcx [Variant<'tcx>]),
     Func(&'tcx [Param<'tcx>], Ty<'tcx>),
 }
 
@@ -40,6 +41,12 @@ pub struct Param<'tcx> {
 pub struct Field<'tcx> {
     pub name: Ident,
     pub ty: Ty<'tcx>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Variant<'tcx> {
+    pub name: Ident,
+    pub fields: &'tcx [Field<'tcx>],
 }
 
 impl<'tcx> Type<'tcx> {
@@ -120,15 +127,8 @@ impl fmt::Display for Type<'_> {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
-            Type::Struct(_, fields) => write!(
-                f,
-                "struct {{ {} }}",
-                fields
-                    .iter()
-                    .map(|f| f.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+            Type::Struct(id, _) => write!(f, "struct {}", id),
+            Type::Enum(id, _) => write!(f, "enum {}", id),
             Type::Func(params, ret) => write!(
                 f,
                 "fn ({}) -> {}",
@@ -158,5 +158,24 @@ impl fmt::Display for Param<'_> {
 impl fmt::Display for Field<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", self.name, self.ty)
+    }
+}
+
+impl fmt::Display for Variant<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.fields.is_empty() {
+            write!(f, "{}", self.name)
+        } else {
+            write!(
+                f,
+                "{}({})",
+                self.name,
+                self.fields
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
     }
 }

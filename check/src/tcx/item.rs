@@ -29,7 +29,12 @@ impl<'tcx> Tcx<'tcx> {
             hir::ItemKind::Param { ty } => self.type_of(ty),
             hir::ItemKind::Var { ty, .. } => self.type_of(ty),
             hir::ItemKind::Struct { .. } => self.new_var(),
-            hir::ItemKind::Cons { item, params } => {
+            hir::ItemKind::Enum { .. } => self.new_var(),
+            hir::ItemKind::Cons {
+                item,
+                variant: _,
+                params: Some(params),
+            } => {
                 let params = self
                     .arena
                     .alloc_slice_fill_iter(params.iter().map(|field| Param {
@@ -41,6 +46,11 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.intern_ty(Type::Func(params, ret))
             }
+            hir::ItemKind::Cons {
+                item,
+                variant: _,
+                params: None,
+            } => self.type_of(item),
         }
     }
 
@@ -74,6 +84,31 @@ impl<'tcx> Tcx<'tcx> {
 
                 let fields = self.arena.alloc_slice_fill_iter(fields);
                 let new_ty = self.intern_ty(Type::Struct(*id, fields));
+
+                self.constrain(Constraint::Equal(ty, item.span, new_ty, item.span));
+            }
+            hir::ItemKind::Enum { variants } => {
+                let ty = self.type_of(id);
+                let variants = variants.iter().map(|v| {
+                    let fields = v.fields.as_ref().map(|fields| {
+                        fields.iter().map(|f| Field {
+                            name: f.name,
+                            ty: self.type_of(&f.ty),
+                        })
+                    });
+
+                    let fields = fields
+                        .map(|fields| self.arena.alloc_slice_fill_iter(fields))
+                        .unwrap_or(&mut []);
+
+                    Variant {
+                        name: v.name,
+                        fields,
+                    }
+                });
+
+                let variants = self.arena.alloc_slice_fill_iter(variants);
+                let new_ty = self.intern_ty(Type::Enum(*id, variants));
 
                 self.constrain(Constraint::Equal(ty, item.span, new_ty, item.span));
             }

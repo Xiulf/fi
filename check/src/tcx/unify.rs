@@ -42,8 +42,8 @@ impl<'tcx> Tcx<'tcx> {
     fn unify_one(&self, cs: Constraint<'tcx>) -> Subst<'tcx> {
         match cs {
             Constraint::Equal(a, a_span, b, b_span) => match (a, b) {
-                (Type::Var(tvar), _) => self.unify_var(*tvar, b),
-                (_, Type::Var(tvar)) => self.unify_var(*tvar, a),
+                (Type::Var(tvar), _) => self.unify_var(*tvar, b, b_span),
+                (_, Type::Var(tvar)) => self.unify_var(*tvar, a, a_span),
                 (Type::Error, _)
                 | (_, Type::Error)
                 | (Type::Never, _)
@@ -400,15 +400,46 @@ impl<'tcx> Tcx<'tcx> {
         }
     }
 
-    fn unify_var(&self, tvar: TypeVar, ty: Ty<'tcx>) -> Subst<'tcx> {
+    fn unify_var(&self, tvar: TypeVar, ty: Ty<'tcx>, span: diagnostics::Span) -> Subst<'tcx> {
         if let Type::Var(tvar2) = ty {
             if tvar == *tvar2 {
                 Subst::empty()
             } else {
                 vec![(tvar, ty)].into_iter().collect()
             }
+        } else if occurs(ty, tvar) {
+            self.reporter.add(
+                Diagnostic::new(Severity::Error, 0016, format!("Recursive type `{}`", ty)).label(
+                    Severity::Error,
+                    span,
+                    None::<String>,
+                ),
+            );
+
+            let ptr = ty as *const _ as *mut _;
+            unsafe {
+                *ptr = Type::Error;
+            }
+
+            Subst::empty()
         } else {
             vec![(tvar, ty)].into_iter().collect()
         }
+    }
+}
+
+fn occurs(ty: Ty<'_>, tvar: TypeVar) -> bool {
+    match ty {
+        Type::Var(tvar2) if *tvar2 == tvar => true,
+        Type::Ref(_, to) => occurs(to, tvar),
+        Type::Array(of, _) => occurs(of, tvar),
+        Type::Slice(of) => occurs(of, tvar),
+        Type::Func(params, ret) => params.iter().any(|p| occurs(p.ty, tvar)) || occurs(ret, tvar),
+        Type::Tuple(tys) => tys.iter().any(|t| occurs(t, tvar)),
+        Type::Struct(_, fields) => fields.iter().any(|f| occurs(f.ty, tvar)),
+        Type::Enum(_, variants) => variants
+            .iter()
+            .any(|v| v.fields.iter().any(|f| occurs(f.ty, tvar))),
+        _ => false,
     }
 }

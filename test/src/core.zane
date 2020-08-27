@@ -5,36 +5,16 @@ struct Range
 end
 
 --| @lang "type_info"
-struct TypeInfo
-    kind: u8
-    size: usize
-    align: usize
-    stride: usize
-end
-
-struct TypeInfoInt
-    base: TypeInfo
-    bits: u8
-    sign: bool
-end
-
-struct TypeInfoFloat
-    base: TypeInfo
-    bits: u8
-end
-
-struct TypeInfoPtr
-    base: TypeInfo
-    to: *TypeInfo
-end
-
-struct TypeInfoSlice
-    base: TypeInfo
-    of: *TypeInfo
-end
-
-struct TypeInfoArray
-    base: TypeInfo
-    of: *TypeInfo
-    len: usize
+enum TypeInfo
+    Never
+    Bool
+    Str
+    Type
+    Int(bits: u8)
+    UInt(bits: u8)
+    Float(bits: u8)
+    Ptr(to: *TypeInfo)
+    Array(of: *TypeInfo, len: usize)
+    Slice(of: *TypeInfo)
+    Tuple(tys: [TypeInfo])
 end

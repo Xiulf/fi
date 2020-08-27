@@ -88,9 +88,25 @@ impl Display for Item {
 
                 write!(f, "end")
             }
-            ItemKind::Cons { item, params } => {
-                write!(f, "cons {}({}) -> {}", self.name, list(params, ", "), item)
+            ItemKind::Enum { variants } => {
+                writeln!(f, "enum {}", self.name)?;
+
+                for variant in variants {
+                    writeln!(indent(f), "{}", variant)?;
+                }
+
+                write!(f, "end")
             }
+            ItemKind::Cons {
+                item,
+                variant: _,
+                params: Some(params),
+            } => write!(f, "cons {}({}) -> {}", self.name, list(params, ", "), item),
+            ItemKind::Cons {
+                item,
+                variant: _,
+                params: None,
+            } => write!(f, "cons {} -> {}", self.name, item),
         }
     }
 }
@@ -98,6 +114,18 @@ impl Display for Item {
 impl Display for StructField {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}: {}", self.name, self.ty)
+    }
+}
+
+impl Display for EnumVariant {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{} {}", self.name, self.ctor)?;
+
+        if let Some(fields) = &self.fields {
+            write!(f, "({})", list(fields, ", "))?;
+        }
+
+        Ok(())
     }
 }
 

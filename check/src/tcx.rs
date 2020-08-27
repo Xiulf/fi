@@ -209,6 +209,8 @@ impl<'tcx> Tcx<'tcx> {
             Type::VFloat(_) => unreachable!(),
             Type::Never => self.intern_layout(Layout {
                 fields: FieldsShape::Primitive,
+                variants: Variants::Single,
+                largest_niche: None,
                 abi: Abi::Uninhabited,
                 size: Size::ZERO,
                 align: Align::from_bits(8),
@@ -288,6 +290,11 @@ impl<'tcx> Tcx<'tcx> {
             Type::Array(of, len) => {
                 let of_layout = self.layout(of);
                 let size = of_layout.stride * (*len as u64);
+                let largest_niche = if *len != 0 {
+                    of_layout.largest_niche.clone()
+                } else {
+                    None
+                };
 
                 self.intern_layout(Layout {
                     size,
@@ -298,6 +305,8 @@ impl<'tcx> Tcx<'tcx> {
                         stride: of_layout.stride,
                         count: *len as u64,
                     },
+                    variants: Variants::Single,
+                    largest_niche,
                 })
             }
             Type::Slice(_) => {
@@ -323,6 +332,9 @@ impl<'tcx> Tcx<'tcx> {
                 ptr.valid_range = 1..=*ptr.valid_range.end();
                 self.intern_layout(Layout::scalar(ptr, self.target))
             }
+            Type::Enum(_, variants) => {
+                unimplemented!();
+            }
         };
 
         let layout = TyLayout { ty, layout };
@@ -343,6 +355,8 @@ impl<'tcx> Tcx<'tcx> {
             fields: FieldsShape::Arbitrary {
                 offsets: vec![Size::ZERO, b_offset],
             },
+            variants: Variants::Single,
+            largest_niche: None,
             abi: Abi::ScalarPair(a, b),
             align,
             size,
@@ -382,6 +396,8 @@ impl<'tcx> Tcx<'tcx> {
 
         Layout {
             fields: FieldsShape::Arbitrary { offsets },
+            variants: Variants::Single,
+            largest_niche: None,
             abi,
             align,
             size,

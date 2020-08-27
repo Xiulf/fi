@@ -143,6 +143,23 @@ impl<'a> Converter<'a> {
                     Res::Item(Id(id, 1)),
                 );
             }
+            ast::ItemKind::Enum { variants } => {
+                self.resolver.define(
+                    Ns::Types,
+                    item.name.symbol,
+                    item.name.span,
+                    Res::Item(Id::item(id)),
+                );
+
+                for (i, variant) in variants.iter().enumerate() {
+                    self.resolver.define(
+                        Ns::Values,
+                        variant.name.symbol,
+                        variant.name.span,
+                        Res::Item(Id(id, i as u64 + 1)),
+                    );
+                }
+            }
         }
 
         id
@@ -288,8 +305,62 @@ impl<'a> Converter<'a> {
                         name: item.name,
                         kind: ItemKind::Cons {
                             item: id,
-                            params: fields,
+                            variant: 0,
+                            params: Some(fields),
                         },
+                    },
+                );
+            }
+            ast::ItemKind::Enum { variants } => {
+                let variant_ids = variants.iter().map(|_| self.next_id()).collect::<Vec<_>>();
+                let variants = variants
+                    .iter()
+                    .zip(variant_ids)
+                    .enumerate()
+                    .map(|(i, (v, cons_id))| {
+                        let fields = v.fields.as_ref().map(|fields| {
+                            fields
+                                .iter()
+                                .map(|f| StructField {
+                                    span: f.span,
+                                    name: f.name,
+                                    ty: self.trans_ty(&f.ty),
+                                })
+                                .collect()
+                        });
+
+                        self.items.insert(
+                            cons_id,
+                            Item {
+                                span: v.span,
+                                id: cons_id,
+                                attrs: Vec::new(),
+                                name: v.name,
+                                kind: ItemKind::Cons {
+                                    item: id,
+                                    variant: i,
+                                    params: fields.clone(),
+                                },
+                            },
+                        );
+
+                        EnumVariant {
+                            span: v.span,
+                            name: v.name,
+                            ctor: cons_id,
+                            fields,
+                        }
+                    })
+                    .collect();
+
+                self.items.insert(
+                    id,
+                    Item {
+                        span: item.span,
+                        id,
+                        attrs,
+                        name: item.name,
+                        kind: ItemKind::Enum { variants },
                     },
                 );
             }

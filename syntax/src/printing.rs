@@ -65,6 +65,15 @@ impl Display for Item {
 
                 write!(f, "end")
             }
+            ItemKind::Enum { variants } => {
+                writeln!(f, "enum {}", self.name)?;
+
+                for variant in variants {
+                    writeln!(indent(f), "{}", variant)?;
+                }
+
+                write!(f, "end")
+            }
         }
     }
 }
@@ -96,6 +105,18 @@ impl Display for StructField {
 
         if !matches!(&self.ty.kind, TypeKind::Infer) {
             write!(f, ": {}", self.ty)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for EnumVariant {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        self.name.fmt(f)?;
+
+        if let Some(fields) = &self.fields {
+            write!(f, "({})", list(fields, ", "))?;
         }
 
         Ok(())
