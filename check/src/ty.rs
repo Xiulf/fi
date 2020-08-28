@@ -1,5 +1,5 @@
-pub use hir::Ident;
 use hir::Symbol;
+pub use hir::{Ident, Span};
 use std::fmt;
 
 pub type Ty<'tcx> = &'tcx Type<'tcx>;
@@ -8,6 +8,7 @@ pub type Layout<'tcx> = crate::layout::TyLayout<'tcx, Ty<'tcx>>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type<'tcx> {
     Error,
+    TypeOf(hir::Id),
     Var(TypeVar),
     Never,
     Bool,
@@ -33,18 +34,21 @@ pub struct TypeVar(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Param<'tcx> {
+    pub span: Span,
     pub name: Ident,
     pub ty: Ty<'tcx>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Field<'tcx> {
+    pub span: Span,
     pub name: Ident,
     pub ty: Ty<'tcx>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Variant<'tcx> {
+    pub span: Span,
     pub name: Ident,
     pub fields: &'tcx [Field<'tcx>],
 }
@@ -102,6 +106,7 @@ impl fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Error => write!(f, "[type error]"),
+            Type::TypeOf(id) => write!(f, "{}.type", id),
             Type::Var(var) => var.fmt(f),
             Type::Never => write!(f, "never"),
             Type::Bool => write!(f, "bool"),

@@ -4,17 +4,14 @@ struct Range
     high: usize
 end
 
---| @lang "type_info"
-enum TypeInfo
-    Never
-    Bool
-    Str
-    Type
-    Int(bits: u8)
-    UInt(bits: u8)
-    Float(bits: u8)
-    Ptr(to: *TypeInfo)
-    Array(of: *TypeInfo, len: usize)
-    Slice(of: *TypeInfo)
-    Tuple(tys: [TypeInfo])
+enum Option
+    None
+    Some(val: *usize)
+end
+
+--| @lang "type_layout"
+struct TypeLayout
+    size: usize
+    align: usize
+    stride: usize
 end

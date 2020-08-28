@@ -163,7 +163,9 @@ impl Display for RValue<'_> {
             RValue::Cast(ty, op) => write!(f, "{}.({})", op, ty),
             RValue::BinOp(op, lhs, rhs) => write!(f, "{:?} {} {}", op, lhs, rhs),
             RValue::UnOp(op, rhs) => write!(f, "{:?} {}", op, rhs),
-            RValue::Init(ty, ops) => write!(f, "{} {{ {} }}", ty, list(ops, ", ")),
+            RValue::Init(ty, variant, ops) => {
+                write!(f, "{}.{} {{ {} }}", ty, variant, list(ops, ", "))
+            }
         }
     }
 }

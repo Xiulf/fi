@@ -1,6 +1,7 @@
 use crate::place::Place;
 use crate::value::Value;
 use crate::FunctionCtx;
+use check::layout::{TagEncoding, Variants};
 use check::ty::{Layout, Type};
 use cranelift::codegen::ir::{self, InstBuilder};
 use cranelift_module::Backend;
@@ -63,7 +64,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                 place.store(self, val);
             }
-            mir::RValue::Init(ty, ops) => match ty {
+            mir::RValue::Init(ty, variant, ops) => match ty {
                 Type::Array(_, _) => {
                     for (i, op) in ops.iter().enumerate() {
                         let val = self.trans_operand(op);
@@ -86,8 +87,59 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                         place.field(self, i).store(self, val);
                     }
                 }
-                _ => unimplemented!(),
+                Type::Enum(_, _) => {
+                    self.set_discr(place, *variant);
+
+                    let var = place.downcast_variant(self, *variant);
+
+                    for (i, op) in ops.iter().enumerate() {
+                        let val = self.trans_operand(op);
+
+                        var.field(self, i).store(self, val);
+                    }
+                }
+                _ => unimplemented!("{}", ty),
             },
+        }
+    }
+
+    fn set_discr(&mut self, place: Place<'tcx>, variant: usize) {
+        match place.layout.variants {
+            Variants::Single { index } => {
+                assert_eq!(index, variant);
+            }
+            Variants::Multiple {
+                tag: _,
+                tag_field,
+                tag_encoding: TagEncoding::Direct,
+                variants: _,
+            } => {
+                let ptr = place.field(self, tag_field);
+                let discr = variant as u128;
+                let discr = Value::new_const(self, discr, ptr.layout);
+
+                ptr.store(self, discr);
+            }
+            Variants::Multiple {
+                tag: _,
+                tag_field,
+                tag_encoding:
+                    TagEncoding::Niche {
+                        dataful_variant,
+                        ref niche_variants,
+                        niche_start,
+                    },
+                variants: _,
+            } => {
+                if variant != dataful_variant {
+                    let niche = place.field(self, tag_field);
+                    let niche_value = variant as u32 - *niche_variants.start() as u32;
+                    let niche_value = u128::from(niche_value).wrapping_add(niche_start);
+                    let niche_val = Value::new_const(self, niche_value, niche.layout);
+
+                    niche.store(self, niche_val);
+                }
+            }
         }
     }
 

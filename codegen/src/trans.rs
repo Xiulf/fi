@@ -298,7 +298,7 @@ pub fn define<'tcx>(
         fx.builder.seal_all_blocks();
         fx.builder.finalize();
 
-        // println!("{}", fx.builder.func);
+        println!("{}", fx.builder.func);
 
         module.define_function(
             *func,

@@ -1,8 +1,12 @@
-mod libc
-mod util
+-- mod libc
+-- mod util
 mod core
 
 --| @no_mangle
 fn main(argc: i32, argv: **u8) -> i32
-    0
+    var val = 14;
+    var val = core/Some(&val);
+    var val = (&val).(*[usize; 2]);
+
+    val.*[1].(_)
 end

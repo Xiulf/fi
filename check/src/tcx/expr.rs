@@ -71,6 +71,7 @@ impl<'tcx> Tcx<'tcx> {
                 let args = args
                     .iter()
                     .map(|a| Param {
+                        span: a.span,
                         name: a.name.unwrap_or_else(|| Ident {
                             span: a.span,
                             symbol: hir::Symbol::dummy(),

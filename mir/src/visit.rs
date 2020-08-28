@@ -154,7 +154,7 @@ macro_rules! make_visitor{
                     //     self.visit_op(lo);
                     //     self.visit_op(hi);
                     // },
-                    RValue::Init(_, ops) => {
+                    RValue::Init(_, _, ops) => {
                         for op in ops {
                             self.visit_op(op);
                         }

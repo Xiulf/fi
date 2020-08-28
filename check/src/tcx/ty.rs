@@ -61,6 +61,7 @@ impl<'tcx> Tcx<'tcx> {
                 let params = self
                     .arena
                     .alloc_slice_fill_iter(params.iter().map(|p| Param {
+                        span: p.span,
                         name: p.name,
                         ty: self.type_of(&p.ty),
                     }));

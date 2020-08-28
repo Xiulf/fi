@@ -16,7 +16,7 @@ pub struct Tcx<'tcx> {
     reporter: &'tcx Reporter,
     arena: &'tcx bumpalo::Bump,
     package: &'tcx hir::Package,
-    target: &'tcx target_lexicon::Triple,
+    pub(crate) target: &'tcx target_lexicon::Triple,
     types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
     layouts: RefCell<BTreeMap<*const Type<'tcx>, TyLayout<'tcx, Ty<'tcx>>>>,
     constraints: RefCell<Constraints<'tcx>>,
@@ -115,8 +115,7 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.types.borrow_mut().insert(*id, ty);
                 self.check_item(id);
-
-                return ty;
+                self.types.borrow()[id]
             } else {
                 panic!("unused id {}", id);
             };
@@ -199,6 +198,7 @@ impl<'tcx> Tcx<'tcx> {
         let layout = match ty {
             Type::Error => unreachable!(),
             Type::Var(_) => unreachable!(),
+            Type::TypeOf(id) => return self.layout_of(id),
             Type::VInt(_) => match self.target.pointer_width() {
                 Ok(target_lexicon::PointerWidth::U16) => scalar(Primitive::Int(Integer::I16, true)),
                 Ok(target_lexicon::PointerWidth::U32) => scalar(Primitive::Int(Integer::I32, true)),
@@ -209,7 +209,7 @@ impl<'tcx> Tcx<'tcx> {
             Type::VFloat(_) => unreachable!(),
             Type::Never => self.intern_layout(Layout {
                 fields: FieldsShape::Primitive,
-                variants: Variants::Single,
+                variants: Variants::Single { index: 0 },
                 largest_niche: None,
                 abi: Abi::Uninhabited,
                 size: Size::ZERO,
@@ -283,7 +283,7 @@ impl<'tcx> Tcx<'tcx> {
                 Err(_) => scalar(Primitive::Int(Integer::I32, false)),
             },
             Type::Ref(_, _) => {
-                let data_ptr = scalar_unit(Primitive::Pointer);
+                let mut data_ptr = scalar_unit(Primitive::Pointer);
 
                 self.intern_layout(Layout::scalar(data_ptr, self.target))
             }
@@ -305,7 +305,7 @@ impl<'tcx> Tcx<'tcx> {
                         stride: of_layout.stride,
                         count: *len as u64,
                     },
-                    variants: Variants::Single,
+                    variants: Variants::Single { index: 0 },
                     largest_niche,
                 })
             }
@@ -318,14 +318,11 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.intern_layout(self.scalar_pair(data_ptr, metadata))
             }
-            Type::Tuple(tys) => self.intern_layout(self.struct_layout(
-                ty,
-                &tys.iter().map(|ty| self.layout(ty)).collect::<Vec<_>>(),
-            )),
-            Type::Struct(_, fields) => self.intern_layout(self.struct_layout(
-                ty,
-                &fields.iter().map(|f| self.layout(f.ty)).collect::<Vec<_>>(),
-            )),
+            Type::Tuple(tys) => self
+                .intern_layout(self.struct_layout(tys.iter().map(|ty| self.layout(ty)).collect())),
+            Type::Struct(_, fields) => self.intern_layout(
+                self.struct_layout(fields.iter().map(|f| self.layout(f.ty)).collect()),
+            ),
             Type::Func(_, _) => {
                 let mut ptr = scalar_unit(Primitive::Pointer);
 
@@ -333,7 +330,19 @@ impl<'tcx> Tcx<'tcx> {
                 self.intern_layout(Layout::scalar(ptr, self.target))
             }
             Type::Enum(_, variants) => {
-                unimplemented!();
+                let variants = variants
+                    .iter()
+                    .map(|v| {
+                        self.struct_layout(
+                            v.fields
+                                .iter()
+                                .map(|f| self.layout(f.ty))
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect();
+
+                self.intern_layout(self.enum_layout(variants))
             }
         };
 
@@ -350,13 +359,17 @@ impl<'tcx> Tcx<'tcx> {
         let align = a.value.align(self.target).max(b_align);
         let size = a.value.size(self.target) + b.value.size(self.target);
         let stride = (b_offset + b.value.size(self.target)).align_to(align);
+        let largest_niche = Niche::from_scalar(self.target, b_offset, b.clone())
+            .into_iter()
+            .chain(Niche::from_scalar(self.target, Size::ZERO, a.clone()))
+            .max_by_key(|niche| niche.available(self.target));
 
         Layout {
             fields: FieldsShape::Arbitrary {
                 offsets: vec![Size::ZERO, b_offset],
             },
-            variants: Variants::Single,
-            largest_niche: None,
+            variants: Variants::Single { index: 0 },
+            largest_niche,
             abi: Abi::ScalarPair(a, b),
             align,
             size,
@@ -364,22 +377,18 @@ impl<'tcx> Tcx<'tcx> {
         }
     }
 
-    fn struct_layout(&self, ty: Ty<'tcx>, fields: &[TyLayout<'tcx, Ty<'tcx>>]) -> Layout {
+    fn struct_layout(&self, fields: Vec<TyLayout<'tcx, Ty<'tcx>>>) -> Layout {
         // TODO: optimize layout
         let mut align = Align::from_bytes(1);
-        let mut sized = true;
         let mut offsets = vec![Size::ZERO; fields.len()];
         let mut offset = Size::ZERO;
+        let mut niches = Vec::new();
 
         for i in 0..fields.len() {
             let field = fields[i];
 
-            if !sized {
-                panic!("field {} of `{}` comes after unsized field", i, ty);
-            }
-
-            if field.is_unsized() {
-                sized = false;
+            if let Some(niche) = field.largest_niche.clone() {
+                niches.push(niche);
             }
 
             let field_align = field.align;
@@ -392,12 +401,15 @@ impl<'tcx> Tcx<'tcx> {
 
         let size = offset;
         let stride = offset.align_to(align);
-        let abi = Abi::Aggregate { sized };
+        let abi = Abi::Aggregate { sized: true };
+        let largest_niche = niches
+            .into_iter()
+            .max_by_key(|niche| niche.available(self.target));
 
         Layout {
             fields: FieldsShape::Arbitrary { offsets },
-            variants: Variants::Single,
-            largest_niche: None,
+            variants: Variants::Single { index: 0 },
+            largest_niche,
             abi,
             align,
             size,
@@ -405,11 +417,103 @@ impl<'tcx> Tcx<'tcx> {
         }
     }
 
+    fn enum_layout(&self, mut variants: Vec<Layout>) -> Layout {
+        if variants.is_empty() {
+            Layout {
+                fields: FieldsShape::Arbitrary {
+                    offsets: Vec::new(),
+                },
+                variants: Variants::Single { index: 0 },
+                largest_niche: None,
+                abi: Abi::Aggregate { sized: true },
+                size: Size::ZERO,
+                align: Align::from_bytes(1),
+                stride: Size::ZERO,
+            }
+        } else if variants.len() == 1 {
+            variants.pop().unwrap()
+        } else {
+            let largest_niche = variants
+                .iter()
+                .filter_map(|v| v.largest_niche.clone())
+                .max_by_key(|niche| niche.available(self.target));
+
+            for (i, variant) in variants.iter_mut().enumerate() {
+                variant.variants = Variants::Single { index: i };
+            }
+
+            let largest = variants.iter().max_by_key(|v| v.size).unwrap();
+            let align = largest.align;
+            let mut size = largest.size;
+            let mut no_niche = |mut variants: Vec<Layout>| {
+                let tag_size = Size::from_bits(variants.len()).align_to(align);
+                let offsets = vec![Size::ZERO, tag_size];
+                let tag = Scalar {
+                    value: Primitive::Int(
+                        match tag_size.bytes() {
+                            1 => Integer::I8,
+                            2 => Integer::I16,
+                            4 => Integer::I32,
+                            8 => Integer::I64,
+                            _ => Integer::I128,
+                        },
+                        false,
+                    ),
+                    valid_range: 0..=u128::max_value(),
+                };
+
+                let tag_encoding = TagEncoding::Direct;
+
+                size = size + tag_size;
+
+                for variant in &mut variants {
+                    if let FieldsShape::Arbitrary { offsets } = &mut variant.fields {
+                        for offset in offsets {
+                            *offset = *offset + tag_size;
+                        }
+                    }
+                }
+
+                (
+                    FieldsShape::Arbitrary { offsets },
+                    Variants::Multiple {
+                        tag,
+                        tag_encoding,
+                        tag_field: 0,
+                        variants,
+                    },
+                )
+            };
+
+            let (fields, variants) = if let Some(niche) = largest_niche {
+                if niche.available(self.target) >= variants.len() as u128 {
+                    unimplemented!();
+                } else {
+                    no_niche(variants)
+                }
+            } else {
+                no_niche(variants)
+            };
+
+            let stride = size.align_to(align);
+
+            Layout {
+                fields,
+                variants,
+                largest_niche: None,
+                abi: Abi::Aggregate { sized: true },
+                size,
+                align,
+                stride,
+            }
+        }
+    }
+
     pub fn intern_ty(&self, ty: Type<'tcx>) -> Ty<'tcx> {
         self.arena.alloc(ty)
     }
 
-    fn intern_layout(&self, layout: Layout) -> &'tcx Layout {
+    pub(crate) fn intern_layout(&self, layout: Layout) -> &'tcx Layout {
         self.arena.alloc(layout)
     }
 }

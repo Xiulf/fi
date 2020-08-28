@@ -44,6 +44,12 @@ impl<'tcx> Tcx<'tcx> {
             Constraint::Equal(a, a_span, b, b_span) => match (a, b) {
                 (Type::Var(tvar), _) => self.unify_var(*tvar, b, b_span),
                 (_, Type::Var(tvar)) => self.unify_var(*tvar, a, a_span),
+                (Type::TypeOf(id), _) => {
+                    self.unify_one(Constraint::Equal(self.type_of(id), a_span, b, b_span))
+                }
+                (_, Type::TypeOf(id)) => {
+                    self.unify_one(Constraint::Equal(a, a_span, self.type_of(id), b_span))
+                }
                 (Type::Error, _)
                 | (_, Type::Error)
                 | (Type::Never, _)
@@ -91,13 +97,15 @@ impl<'tcx> Tcx<'tcx> {
                     let mut cs = Constraints::new();
 
                     for (a, b) in a_params.iter().zip(b_params.iter()) {
-                        cs.push(Constraint::Equal(a.ty, a_span, b.ty, b_span));
+                        cs.push(Constraint::Equal(a.ty, a.span, b.ty, b.span));
                     }
 
                     cs.push(Constraint::Equal(a_ret, a_span, b_ret, b_span));
 
                     self.unify_all(cs)
                 }
+                (Type::Struct(a, _), Type::Struct(b, _)) if a == b => Subst::empty(),
+                (Type::Enum(a, _), Type::Enum(b, _)) if a == b => Subst::empty(),
                 (_, _) => {
                     self.reporter.add(
                         Diagnostic::new(
@@ -207,12 +215,7 @@ impl<'tcx> Tcx<'tcx> {
                                 let param = &a_params[i];
 
                                 skip.push(i);
-                                cs.push(Constraint::Equal(
-                                    arg.ty,
-                                    arg.name.span,
-                                    param.ty,
-                                    param.name.span,
-                                ));
+                                cs.push(Constraint::Equal(arg.ty, arg.span, param.ty, param.span));
                             } else {
                                 self.reporter.add(
                                     Diagnostic::new(
@@ -241,12 +244,7 @@ impl<'tcx> Tcx<'tcx> {
                             let param = &a_params[i];
 
                             skip.push(i);
-                            cs.push(Constraint::Equal(
-                                arg.ty,
-                                arg.name.span,
-                                param.ty,
-                                param.name.span,
-                            ));
+                            cs.push(Constraint::Equal(arg.ty, arg.span, param.ty, param.span));
                         }
                     }
 

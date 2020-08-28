@@ -388,6 +388,8 @@ impl<'a> Converter<'a> {
                 ast::StmtKind::Item(item) => {
                     if let ast::ItemKind::Var { ty, val } = &item.kind {
                         let id = self.next_id();
+                        let ty = self.trans_ty(ty);
+                        let val = val.as_ref().map(|expr| self.trans_expr(expr));
 
                         self.resolver.push_rib(Ns::Values, RibKind::Local);
                         self.resolver.define(
@@ -396,9 +398,6 @@ impl<'a> Converter<'a> {
                             item.name.span,
                             Res::Local(id),
                         );
-
-                        let ty = self.trans_ty(ty);
-                        let val = val.as_ref().map(|expr| self.trans_expr(expr));
 
                         self.items.insert(
                             id,

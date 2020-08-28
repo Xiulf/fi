@@ -26,17 +26,19 @@ pub enum Abi {
     Aggregate { sized: bool },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FieldsShape {
     Primitive,
-    // Union(usize),
+    Union(usize),
     Array { stride: Size, count: u64 },
     Arbitrary { offsets: Vec<Size> },
 }
 
 #[derive(Debug, Clone)]
 pub enum Variants {
-    Single,
+    Single {
+        index: usize,
+    },
     Multiple {
         tag: Scalar,
         tag_encoding: TagEncoding,
@@ -110,6 +112,7 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
 
         tcx.layout(match self.ty {
             Type::Error | Type::Var(_) => unreachable!(),
+            Type::TypeOf(id) => return tcx.layout_of(id).field(tcx, idx),
             Type::Never
             | Type::Bool
             | Type::TypeId
@@ -121,7 +124,6 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
             | Type::Float(_)
             | Type::Ref(_, _)
             | Type::Array(_, _)
-            | Type::Enum(_, _)
             | Type::Func(..) => unreachable!("{}.{}", self.ty, idx),
             Type::Str => {
                 if idx == 0 {
@@ -139,7 +141,56 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
             }
             Type::Tuple(tys) => tys[idx],
             Type::Struct(_, fields) => fields[idx].ty,
+            Type::Enum(_, variants) => match self.variants {
+                Variants::Single { index } => variants[index].fields[idx].ty,
+                Variants::Multiple { ref tag, .. } => {
+                    assert_eq!(idx, 0);
+
+                    return TyLayout {
+                        layout: tcx.intern_layout(Layout::scalar(tag.clone(), tcx.target)),
+                        ty: tag.value.ty(tcx),
+                    };
+                }
+            },
         })
+    }
+
+    pub fn for_variant(self, tcx: &crate::tcx::Tcx<'tcx>, variant: usize) -> Self {
+        let layout = match self.variants {
+            Variants::Single { index }
+                if variant == index && self.fields != FieldsShape::Primitive =>
+            {
+                self.layout
+            }
+            Variants::Single { index } => {
+                let fields = match self.ty {
+                    crate::ty::Type::Enum(_, variants) => variants.len(),
+                    _ => unreachable!(),
+                };
+
+                tcx.intern_layout(Layout {
+                    variants: Variants::Single { index },
+                    fields: if fields == 0 {
+                        FieldsShape::Arbitrary {
+                            offsets: Vec::new(),
+                        }
+                    } else {
+                        FieldsShape::Union(fields)
+                    },
+                    abi: Abi::Uninhabited,
+                    largest_niche: None,
+                    align: Align::from_bytes(1),
+                    size: Size::ZERO,
+                    stride: Size::ZERO,
+                })
+            }
+            Variants::Multiple { ref variants, .. } => &variants[variant],
+        };
+
+        TyLayout {
+            layout,
+            ty: self.ty,
+        }
     }
 }
 
@@ -151,7 +202,7 @@ impl Layout {
 
         Layout {
             fields: FieldsShape::Primitive,
-            variants: Variants::Single,
+            variants: Variants::Single { index: 0 },
             largest_niche,
             abi: Abi::Scalar(scalar),
             size,
@@ -207,6 +258,7 @@ impl FieldsShape {
     pub fn count(&self) -> usize {
         match self {
             FieldsShape::Primitive => 0,
+            FieldsShape::Union(count) => *count,
             FieldsShape::Array { count, .. } => *count as usize,
             FieldsShape::Arbitrary { offsets } => offsets.len(),
         }
@@ -215,6 +267,7 @@ impl FieldsShape {
     pub fn offset(&self, idx: usize) -> Size {
         match self {
             FieldsShape::Primitive => unreachable!(),
+            FieldsShape::Union(_) => Size::ZERO,
             FieldsShape::Array { stride, count: _ } => {
                 let i = u64::try_from(idx).unwrap();
 
@@ -401,6 +454,24 @@ impl Primitive {
 
     pub fn align(&self, triple: &target_lexicon::Triple) -> Align {
         Align::from_bytes(self.size(triple).bytes())
+    }
+
+    pub fn ty<'tcx>(&self, tcx: &crate::tcx::Tcx<'tcx>) -> crate::ty::Ty<'tcx> {
+        match self {
+            Primitive::Int(Integer::I8, false) => tcx.builtin.u8,
+            Primitive::Int(Integer::I16, false) => tcx.builtin.u16,
+            Primitive::Int(Integer::I32, false) => tcx.builtin.u32,
+            Primitive::Int(Integer::I64, false) => tcx.builtin.u64,
+            Primitive::Int(Integer::I128, false) => tcx.builtin.u128,
+            Primitive::Int(Integer::I8, true) => tcx.builtin.i8,
+            Primitive::Int(Integer::I16, true) => tcx.builtin.i16,
+            Primitive::Int(Integer::I32, true) => tcx.builtin.i32,
+            Primitive::Int(Integer::I64, true) => tcx.builtin.i64,
+            Primitive::Int(Integer::I128, true) => tcx.builtin.i128,
+            Primitive::F32 => tcx.builtin.f32,
+            Primitive::F64 => tcx.builtin.f64,
+            _ => unreachable!(),
+        }
     }
 }
 

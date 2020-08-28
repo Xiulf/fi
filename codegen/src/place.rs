@@ -328,6 +328,19 @@ impl<'tcx> Place<'tcx> {
             dest.store(fx, ptr);
         }
     }
+
+    pub fn downcast_variant(
+        self,
+        fx: &FunctionCtx<'_, 'tcx, impl Backend>,
+        variant: usize,
+    ) -> Self {
+        let layout = self.layout.for_variant(fx.tcx, variant);
+
+        Place {
+            kind: self.kind,
+            layout,
+        }
+    }
 }
 
 fn scalar_pair_calculate_b_offset(

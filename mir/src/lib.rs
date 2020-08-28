@@ -125,7 +125,7 @@ pub enum RValue<'tcx> {
     Cast(Ty<'tcx>, Operand<'tcx>),
     BinOp(BinOp, Operand<'tcx>, Operand<'tcx>),
     UnOp(UnOp, Operand<'tcx>),
-    Init(Ty<'tcx>, Vec<Operand<'tcx>>),
+    Init(Ty<'tcx>, usize, Vec<Operand<'tcx>>),
 }
 
 #[derive(Debug, Clone)]
@@ -449,10 +449,16 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             .push(Stmt::Assign(place, RValue::UnOp(op, rhs)));
     }
 
-    pub fn init(&mut self, place: Place<'tcx>, ty: Ty<'tcx>, ops: Vec<Operand<'tcx>>) {
+    pub fn init(
+        &mut self,
+        place: Place<'tcx>,
+        ty: Ty<'tcx>,
+        variant: usize,
+        ops: Vec<Operand<'tcx>>,
+    ) {
         self.block()
             .stmts
-            .push(Stmt::Assign(place, RValue::Init(ty, ops)));
+            .push(Stmt::Assign(place, RValue::Init(ty, variant, ops)));
     }
 
     pub fn abort(&mut self) {

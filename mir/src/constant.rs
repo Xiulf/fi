@@ -107,7 +107,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
             }
             RValue::BinOp(op, lhs, rhs) => unimplemented!(),
             RValue::UnOp(op, rhs) => unimplemented!(),
-            RValue::Init(ty, ops) => {
+            RValue::Init(ty, _variant, ops) => {
                 let vals = ops.into_iter().map(|op| self.eval_op(op)).collect();
 
                 match ty {

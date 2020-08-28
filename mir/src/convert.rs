@@ -172,6 +172,19 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                         }
                     }
                     hir::ItemKind::Var { global: true, .. } => Operand::Place(Place::global(*id)),
+                    hir::ItemKind::Cons {
+                        item,
+                        variant,
+                        params: None,
+                    } => {
+                        let ty = self.tcx.type_of(item);
+                        let res = self.builder.create_tmp(ty);
+                        let res = Place::local(res);
+
+                        self.builder.init(res.clone(), ty, *variant, Vec::new());
+
+                        Operand::Place(res)
+                    }
                     _ => unreachable!(),
                 },
                 hir::Res::Local(id) => Operand::Place(Place::local(self.locals[id])),
@@ -195,7 +208,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let res = Place::local(res);
                 let ops = exprs.iter().map(|e| self.trans_expr(e)).collect();
 
-                self.builder.init(res.clone(), ty, ops);
+                self.builder.init(res.clone(), ty, 0, ops);
 
                 Operand::Place(res)
             }
@@ -205,7 +218,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let res = Place::local(res);
                 let ops = exprs.iter().map(|e| self.trans_expr(e)).collect();
 
-                self.builder.init(res.clone(), ty, ops);
+                self.builder.init(res.clone(), ty, 0, ops);
 
                 Operand::Place(res)
             }
@@ -469,8 +482,8 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             res: hir::Res::Item(item),
         } = &self.hir.exprs[func].kind
         {
-            if let hir::ItemKind::Cons { .. } = &self.hir.items[item].kind {
-                self.builder.init(res.clone(), ret_ty, call_args);
+            if let hir::ItemKind::Cons { variant, .. } = &self.hir.items[item].kind {
+                self.builder.init(res.clone(), ret_ty, *variant, call_args);
 
                 return Operand::Place(res);
             }

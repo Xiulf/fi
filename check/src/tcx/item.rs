@@ -17,6 +17,7 @@ impl<'tcx> Tcx<'tcx> {
                     let param = &self.package.items[id];
 
                     Param {
+                        span: param.span,
                         name: param.name,
                         ty: self.type_of(id),
                     }
@@ -28,8 +29,8 @@ impl<'tcx> Tcx<'tcx> {
             }
             hir::ItemKind::Param { ty } => self.type_of(ty),
             hir::ItemKind::Var { ty, .. } => self.type_of(ty),
-            hir::ItemKind::Struct { .. } => self.new_var(),
-            hir::ItemKind::Enum { .. } => self.new_var(),
+            hir::ItemKind::Struct { .. } => self.intern_ty(Type::TypeOf(*id)),
+            hir::ItemKind::Enum { .. } => self.intern_ty(Type::TypeOf(*id)),
             hir::ItemKind::Cons {
                 item,
                 variant: _,
@@ -38,6 +39,7 @@ impl<'tcx> Tcx<'tcx> {
                 let params = self
                     .arena
                     .alloc_slice_fill_iter(params.iter().map(|field| Param {
+                        span: field.span,
                         name: field.name,
                         ty: self.type_of(&field.ty),
                     }));
@@ -76,8 +78,8 @@ impl<'tcx> Tcx<'tcx> {
                 self.constrain(Constraint::Equal(val_ty, val_span, ty_ty, ty_span));
             }
             hir::ItemKind::Struct { fields } => {
-                let ty = self.type_of(id);
                 let fields = fields.iter().map(|f| Field {
+                    span: f.span,
                     name: f.name,
                     ty: self.type_of(&f.ty),
                 });
@@ -85,13 +87,13 @@ impl<'tcx> Tcx<'tcx> {
                 let fields = self.arena.alloc_slice_fill_iter(fields);
                 let new_ty = self.intern_ty(Type::Struct(*id, fields));
 
-                self.constrain(Constraint::Equal(ty, item.span, new_ty, item.span));
+                self.types.borrow_mut().insert(*id, new_ty);
             }
             hir::ItemKind::Enum { variants } => {
-                let ty = self.type_of(id);
                 let variants = variants.iter().map(|v| {
                     let fields = v.fields.as_ref().map(|fields| {
                         fields.iter().map(|f| Field {
+                            span: f.span,
                             name: f.name,
                             ty: self.type_of(&f.ty),
                         })
@@ -102,6 +104,7 @@ impl<'tcx> Tcx<'tcx> {
                         .unwrap_or(&mut []);
 
                     Variant {
+                        span: v.span,
                         name: v.name,
                         fields,
                     }
@@ -110,7 +113,7 @@ impl<'tcx> Tcx<'tcx> {
                 let variants = self.arena.alloc_slice_fill_iter(variants);
                 let new_ty = self.intern_ty(Type::Enum(*id, variants));
 
-                self.constrain(Constraint::Equal(ty, item.span, new_ty, item.span));
+                self.types.borrow_mut().insert(*id, new_ty);
             }
             _ => {}
         }
