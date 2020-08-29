@@ -77,7 +77,8 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
                 *ptr_mut = (*repl).clone();
             }
         }
-        Type::Var(_)
+        Type::Param(_)
+        | Type::Var(_)
         | Type::VInt(_)
         | Type::VUInt(_)
         | Type::VFloat(_)
@@ -117,6 +118,7 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
 
             subst_var(ret, tvar, repl);
         }
+        Type::Forall(_, ty) => subst_var(ty, tvar, repl),
     }
 }
 

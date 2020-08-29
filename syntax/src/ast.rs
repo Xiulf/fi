@@ -53,6 +53,7 @@ pub enum ItemKind {
         ty: Type,
     },
     Func {
+        generics: Generics,
         params: Vec<Param>,
         ret: Type,
         body: Block,
@@ -62,9 +63,11 @@ pub enum ItemKind {
         val: Option<Expr>,
     },
     Struct {
+        generics: Generics,
         fields: Vec<StructField>,
     },
     Enum {
+        generics: Generics,
         variants: Vec<EnumVariant>,
     },
 }
@@ -73,6 +76,23 @@ pub enum ItemKind {
 pub enum Abi {
     None,
     C,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct Generics {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    pub params: Vec<Generic>,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct Generic {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]
@@ -355,6 +375,10 @@ pub enum TypeKind {
     },
     Tuple {
         tys: Vec<Type>,
+    },
+    Subst {
+        ty: Box<Type>,
+        args: Vec<Type>,
     },
 }
 

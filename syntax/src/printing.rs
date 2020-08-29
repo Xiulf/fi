@@ -30,7 +30,12 @@ impl Display for Item {
                 write!(f, "end")
             }
             ItemKind::Extern { abi, ty } => write!(f, "{} :: extern {}{};", self.name, abi, ty),
-            ItemKind::Func { params, ret, body } => {
+            ItemKind::Func {
+                generics,
+                params,
+                ret,
+                body,
+            } => {
                 let ret = if let TypeKind::Infer = &ret.kind {
                     String::new()
                 } else {
@@ -39,8 +44,9 @@ impl Display for Item {
 
                 write!(
                     f,
-                    "{} :: fn ({}) {}{};",
+                    "{} :: fn{} ({}) {}{};",
                     self.name,
+                    generics,
                     list(params, ", "),
                     ret,
                     body
@@ -56,8 +62,8 @@ impl Display for Item {
             } => write!(f, "{} := {};", self.name, val),
             ItemKind::Var { ty, val: Some(val) } => write!(f, "{} : {} = {};", self.name, ty, val),
             ItemKind::Var { ty, val: None } => write!(f, "{} : {};", self.name, ty),
-            ItemKind::Struct { fields } => {
-                writeln!(f, "struct {}", self.name)?;
+            ItemKind::Struct { generics, fields } => {
+                writeln!(f, "struct {}{}", self.name, generics)?;
 
                 for field in fields {
                     writeln!(indent(f), "{}", field)?;
@@ -65,8 +71,8 @@ impl Display for Item {
 
                 write!(f, "end")
             }
-            ItemKind::Enum { variants } => {
-                writeln!(f, "enum {}", self.name)?;
+            ItemKind::Enum { generics, variants } => {
+                writeln!(f, "enum {}{}", self.name, generics)?;
 
                 for variant in variants {
                     writeln!(indent(f), "{}", variant)?;
@@ -84,6 +90,22 @@ impl Display for Abi {
             Abi::None => Ok(()),
             Abi::C => write!(f, "\"C\" "),
         }
+    }
+}
+
+impl Display for Generics {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if self.params.is_empty() {
+            Ok(())
+        } else {
+            write!(f, "({})", list(&self.params, ", "))
+        }
+    }
+}
+
+impl Display for Generic {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        self.name.fmt(f)
     }
 }
 
@@ -334,6 +356,7 @@ impl Display for Type {
             TypeKind::Array { of, len } => write!(f, "[{}; {}]", of, len),
             TypeKind::Slice { of } => write!(f, "[{}]", of),
             TypeKind::Tuple { tys } => write!(f, "({})", list(tys, ", ")),
+            TypeKind::Subst { ty, args } => write!(f, "{}({})", ty, list(args, ", ")),
         }
     }
 }

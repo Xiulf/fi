@@ -49,21 +49,32 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                 self.package
                     .declare_extern(item.id, attrs, item.name, self.tcx.type_of(ty))
             }
-            hir::ItemKind::Func { params, ret, body } => {
-                let (param_tys, ret_ty) = self.tcx.type_of(&item.id).func().unwrap();
+            hir::ItemKind::Func {
+                params,
+                ret,
+                body,
+                generics: _,
+            } => {
+                let func_ty = self.tcx.type_of(&item.id);
 
-                self.package
-                    .declare_body(item.id, attrs, item.name, param_tys, ret_ty);
+                if let Type::Forall(_params, _func_ty) = func_ty {
+                    unimplemented!("generic functions");
+                } else {
+                    let (param_tys, ret_ty) = func_ty.func().unwrap();
 
-                let mut converter = BodyConverter {
-                    tcx: self.tcx,
-                    hir: package,
-                    builder: self.package.define_body(item.id),
-                    locals: HashMap::new(),
-                    loops: Vec::new(),
-                };
+                    self.package
+                        .declare_body(item.id, attrs, item.name, param_tys, ret_ty);
 
-                converter.convert(params, ret, body);
+                    let mut converter = BodyConverter {
+                        tcx: self.tcx,
+                        hir: package,
+                        builder: self.package.define_body(item.id),
+                        locals: HashMap::new(),
+                        loops: Vec::new(),
+                    };
+
+                    converter.convert(params, ret, body);
+                }
             }
             hir::ItemKind::Var {
                 global: true,

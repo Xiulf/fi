@@ -9,6 +9,7 @@ pub type Layout<'tcx> = crate::layout::TyLayout<'tcx, Ty<'tcx>>;
 pub enum Type<'tcx> {
     Error,
     TypeOf(hir::Id),
+    Param(hir::Id),
     Var(TypeVar),
     Never,
     Bool,
@@ -27,6 +28,7 @@ pub enum Type<'tcx> {
     Struct(hir::Id, &'tcx [Field<'tcx>]),
     Enum(hir::Id, &'tcx [Variant<'tcx>]),
     Func(&'tcx [Param<'tcx>], Ty<'tcx>),
+    Forall(&'tcx [hir::Id], Ty<'tcx>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -100,6 +102,123 @@ impl<'tcx> Type<'tcx> {
             _ => panic!("type can't be indexed"),
         }
     }
+
+    pub fn mono(&'tcx self, tcx: &crate::tcx::Tcx<'tcx>, args: Vec<Ty<'tcx>>) -> Ty<'tcx> {
+        if let Type::Forall(params, ty) = self {
+            let mut args = args.into_iter();
+            let args = params
+                .iter()
+                .map(|id| {
+                    if let Some(ty) = args.next() {
+                        (*id, ty)
+                    } else {
+                        (*id, tcx.new_var())
+                    }
+                })
+                .collect();
+
+            ty.replace(&args, tcx)
+        } else {
+            self
+        }
+    }
+
+    pub fn replace(
+        &'tcx self,
+        args: &std::collections::HashMap<hir::Id, Ty<'tcx>>,
+        tcx: &crate::tcx::Tcx<'tcx>,
+    ) -> Ty<'tcx> {
+        match self {
+            Type::Param(id) if args.contains_key(id) => args[id],
+            Type::Ref(mut_, to) => {
+                let new_to = to.replace(args, tcx);
+
+                if new_to != *to {
+                    tcx.intern_ty(Type::Ref(*mut_, new_to))
+                } else {
+                    self
+                }
+            }
+            Type::Array(of, len) => {
+                let new_of = of.replace(args, tcx);
+
+                if new_of != *of {
+                    tcx.intern_ty(Type::Array(new_of, *len))
+                } else {
+                    self
+                }
+            }
+            Type::Slice(of) => {
+                let new_of = of.replace(args, tcx);
+
+                if new_of != *of {
+                    tcx.intern_ty(Type::Slice(new_of))
+                } else {
+                    self
+                }
+            }
+            Type::Tuple(tys) => {
+                let tys = tys.iter().map(|t| t.replace(args, tcx));
+                let tys = tcx.arena.alloc_slice_fill_iter(tys);
+
+                tcx.intern_ty(Type::Tuple(tys))
+            }
+            Type::Struct(id, fields) => {
+                let fields = fields.iter().map(|f| Field {
+                    span: f.span,
+                    name: f.name,
+                    ty: f.ty.replace(args, tcx),
+                });
+
+                let fields = tcx.arena.alloc_slice_fill_iter(fields);
+
+                tcx.intern_ty(Type::Struct(*id, fields))
+            }
+            Type::Enum(id, variants) => {
+                let variants = variants.iter().map(|v| {
+                    let fields = v.fields.iter().map(|f| Field {
+                        span: f.span,
+                        name: f.name,
+                        ty: f.ty.replace(args, tcx),
+                    });
+
+                    let fields = tcx.arena.alloc_slice_fill_iter(fields);
+
+                    Variant {
+                        span: v.span,
+                        name: v.name,
+                        fields,
+                    }
+                });
+
+                let variants = tcx.arena.alloc_slice_fill_iter(variants);
+
+                tcx.intern_ty(Type::Enum(*id, variants))
+            }
+            Type::Func(params, ret) => {
+                let params = params.iter().map(|p| Param {
+                    span: p.span,
+                    name: p.name,
+                    ty: p.ty.replace(args, tcx),
+                });
+
+                let params = tcx.arena.alloc_slice_fill_iter(params);
+                let ret = ret.replace(args, tcx);
+
+                tcx.intern_ty(Type::Func(params, ret))
+            }
+            Type::Forall(a, ty) => {
+                let new_ty = ty.replace(args, tcx);
+
+                if new_ty != *ty {
+                    tcx.intern_ty(Type::Forall(*a, new_ty))
+                } else {
+                    self
+                }
+            }
+            _ => self,
+        }
+    }
 }
 
 impl fmt::Display for Type<'_> {
@@ -107,6 +226,7 @@ impl fmt::Display for Type<'_> {
         match self {
             Type::Error => write!(f, "[type error]"),
             Type::TypeOf(id) => write!(f, "{}.type", id),
+            Type::Param(id) => write!(f, "{}", id),
             Type::Var(var) => var.fmt(f),
             Type::Never => write!(f, "never"),
             Type::Bool => write!(f, "bool"),
@@ -143,6 +263,15 @@ impl fmt::Display for Type<'_> {
                     .collect::<Vec<_>>()
                     .join(", "),
                 ret
+            ),
+            Type::Forall(args, ty) => write!(
+                f,
+                "for {}. {}",
+                args.iter()
+                    .map(|a| a.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ty
             ),
         }
     }

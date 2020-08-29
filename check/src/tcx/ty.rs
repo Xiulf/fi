@@ -9,7 +9,8 @@ impl<'tcx> Tcx<'tcx> {
             hir::TypeKind::Err => self.builtin.error,
             hir::TypeKind::Infer => self.new_var(),
             hir::TypeKind::Path { res } => match res {
-                hir::Res::Item(id) => self.type_of(id),
+                hir::Res::Item(id) => self.type_of(id).mono(self, Vec::new()),
+                hir::Res::Local(id) => self.intern_ty(Type::Param(*id)),
                 hir::Res::PrimTy(prim) => match prim {
                     hir::PrimTy::Never => self.builtin.never,
                     hir::PrimTy::Bool => self.builtin.bool,
@@ -69,6 +70,24 @@ impl<'tcx> Tcx<'tcx> {
                 let ret = self.type_of(ret);
 
                 self.intern_ty(Type::Func(params, ret))
+            }
+            hir::TypeKind::Subst { ty, args } => {
+                if let hir::TypeKind::Path {
+                    res: hir::Res::Item(id),
+                } = &self.package.types[ty].kind
+                {
+                    let ty = self.type_of(id);
+
+                    if let Type::Forall(_, ty) = ty {
+                        let args = args.iter().map(|a| self.type_of(a)).collect();
+
+                        ty.mono(self, args)
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    unreachable!();
+                }
             }
         }
     }

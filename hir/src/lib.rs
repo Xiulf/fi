@@ -39,6 +39,7 @@ pub enum ItemKind {
         ty: Id,
     },
     Func {
+        generics: Generics,
         params: Vec<Id>,
         ret: Id,
         body: Block,
@@ -52,9 +53,11 @@ pub enum ItemKind {
         val: Option<Id>,
     },
     Struct {
+        generics: Generics,
         fields: Vec<StructField>,
     },
     Enum {
+        generics: Generics,
         variants: Vec<EnumVariant>,
     },
     Cons {
@@ -62,6 +65,19 @@ pub enum ItemKind {
         variant: usize,
         params: Option<Vec<StructField>>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct Generics {
+    pub span: Span,
+    pub params: Vec<Generic>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Generic {
+    pub span: Span,
+    pub id: Id,
+    pub name: Ident,
 }
 
 #[derive(Debug, Clone)]
@@ -236,6 +252,7 @@ pub enum TypeKind {
     Tuple { tys: Vec<Id> },
     Array { of: Id, len: usize },
     Slice { of: Id },
+    Subst { ty: Id, args: Vec<Id> },
 }
 
 #[derive(Debug)]
@@ -278,6 +295,19 @@ impl Hash for Item {
         self.id.hash(state);
         self.name.symbol.hash(state);
         self.kind.hash(state);
+    }
+}
+
+impl Hash for Generics {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.params.hash(state);
+    }
+}
+
+impl Hash for Generic {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.name.symbol.hash(state);
     }
 }
 

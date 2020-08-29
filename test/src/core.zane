@@ -1,12 +1,15 @@
+mod vec;
+
 --| @lang "range"
 struct Range
     low: usize
     high: usize
 end
 
-enum Option
+--| @lang "option"
+enum Option(T)
     None
-    Some(val: *usize)
+    Some(val: T)
 end
 
 --| @lang "type_layout"

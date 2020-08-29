@@ -60,10 +60,16 @@ impl Display for Item {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
             ItemKind::Extern { abi, ty } => write!(f, "{} :: extern {}{};", self.name, abi, ty),
-            ItemKind::Func { params, ret, body } => write!(
+            ItemKind::Func {
+                generics,
+                params,
+                ret,
+                body,
+            } => write!(
                 f,
-                "{} :: fn ({}) -> {} {}",
+                "{} :: fn{} ({}) -> {} {}",
                 self.name,
+                generics,
                 list(params, ", "),
                 ret,
                 body
@@ -79,8 +85,8 @@ impl Display for Item {
                 val: None,
                 global: _,
             } => write!(f, "{} : {};", self.name, ty),
-            ItemKind::Struct { fields } => {
-                writeln!(f, "struct {}", self.name)?;
+            ItemKind::Struct { generics, fields } => {
+                writeln!(f, "struct {}{}", self.name, generics)?;
 
                 for field in fields {
                     writeln!(indent(f), "{}", field)?;
@@ -88,8 +94,8 @@ impl Display for Item {
 
                 write!(f, "end")
             }
-            ItemKind::Enum { variants } => {
-                writeln!(f, "enum {}", self.name)?;
+            ItemKind::Enum { generics, variants } => {
+                writeln!(f, "enum {}{}", self.name, generics)?;
 
                 for variant in variants {
                     writeln!(indent(f), "{}", variant)?;
@@ -108,6 +114,22 @@ impl Display for Item {
                 params: None,
             } => write!(f, "cons {} -> {}", self.name, item),
         }
+    }
+}
+
+impl Display for Generics {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if self.params.is_empty() {
+            Ok(())
+        } else {
+            write!(f, "({})", list(&self.params, ", "))
+        }
+    }
+}
+
+impl Display for Generic {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        self.name.fmt(f)
     }
 }
 
@@ -288,6 +310,7 @@ impl Display for Type {
                     .join(" ")
             ),
             TypeKind::Func { params, ret } => write!(f, "fn ({}) -> {}", list(params, ", "), ret),
+            TypeKind::Subst { ty, args } => write!(f, "{}({})", ty, list(args, ", ")),
         }
     }
 }

@@ -9,6 +9,7 @@ impl<'tcx> Tcx<'tcx> {
         match &item.kind {
             hir::ItemKind::Extern { abi: _, ty } => self.type_of(ty),
             hir::ItemKind::Func {
+                generics,
                 params,
                 ret,
                 body: _,
@@ -24,8 +25,16 @@ impl<'tcx> Tcx<'tcx> {
                 }));
 
                 let ret = self.type_of(ret);
+                let mut ty = self.intern_ty(Type::Func(params, ret));
 
-                self.intern_ty(Type::Func(params, ret))
+                if !generics.params.is_empty() {
+                    let args = generics.params.iter().map(|g| g.id);
+                    let args = self.arena.alloc_slice_fill_iter(args);
+
+                    ty = self.intern_ty(Type::Forall(args, ty));
+                }
+
+                ty
             }
             hir::ItemKind::Param { ty } => self.type_of(ty),
             hir::ItemKind::Var { ty, .. } => self.type_of(ty),
@@ -46,7 +55,13 @@ impl<'tcx> Tcx<'tcx> {
 
                 let ret = self.type_of(item);
 
-                self.intern_ty(Type::Func(params, ret))
+                if let Type::Forall(args, ret) = ret {
+                    let ty = self.intern_ty(Type::Func(params, ret));
+
+                    self.intern_ty(Type::Forall(*args, ty))
+                } else {
+                    self.intern_ty(Type::Func(params, ret))
+                }
             }
             hir::ItemKind::Cons {
                 item,
@@ -77,7 +92,7 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.constrain(Constraint::Equal(val_ty, val_span, ty_ty, ty_span));
             }
-            hir::ItemKind::Struct { fields } => {
+            hir::ItemKind::Struct { generics, fields } => {
                 let fields = fields.iter().map(|f| Field {
                     span: f.span,
                     name: f.name,
@@ -85,11 +100,18 @@ impl<'tcx> Tcx<'tcx> {
                 });
 
                 let fields = self.arena.alloc_slice_fill_iter(fields);
-                let new_ty = self.intern_ty(Type::Struct(*id, fields));
+                let mut new_ty = self.intern_ty(Type::Struct(*id, fields));
+
+                if !generics.params.is_empty() {
+                    let args = generics.params.iter().map(|g| g.id);
+                    let args = self.arena.alloc_slice_fill_iter(args);
+
+                    new_ty = self.intern_ty(Type::Forall(args, new_ty));
+                }
 
                 self.types.borrow_mut().insert(*id, new_ty);
             }
-            hir::ItemKind::Enum { variants } => {
+            hir::ItemKind::Enum { generics, variants } => {
                 let variants = variants.iter().map(|v| {
                     let fields = v.fields.as_ref().map(|fields| {
                         fields.iter().map(|f| Field {
@@ -111,7 +133,14 @@ impl<'tcx> Tcx<'tcx> {
                 });
 
                 let variants = self.arena.alloc_slice_fill_iter(variants);
-                let new_ty = self.intern_ty(Type::Enum(*id, variants));
+                let mut new_ty = self.intern_ty(Type::Enum(*id, variants));
+
+                if !generics.params.is_empty() {
+                    let args = generics.params.iter().map(|g| g.id);
+                    let args = self.arena.alloc_slice_fill_iter(args);
+
+                    new_ty = self.intern_ty(Type::Forall(args, new_ty));
+                }
 
                 self.types.borrow_mut().insert(*id, new_ty);
             }

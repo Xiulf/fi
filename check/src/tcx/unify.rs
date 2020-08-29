@@ -57,6 +57,7 @@ impl<'tcx> Tcx<'tcx> {
                 | (Type::Bool, Type::Bool)
                 | (Type::Str, Type::Str)
                 | (Type::TypeId, Type::TypeId) => Subst::empty(),
+                (Type::Param(a), Type::Param(b)) if a == b => Subst::empty(),
                 (Type::Int(a), Type::Int(b)) if a == b => Subst::empty(),
                 (Type::UInt(a), Type::UInt(b)) if a == b => Subst::empty(),
                 (Type::Float(a), Type::Float(b)) if a == b => Subst::empty(),

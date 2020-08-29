@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 pub struct Tcx<'tcx> {
     reporter: &'tcx Reporter,
-    arena: &'tcx bumpalo::Bump,
+    pub(crate) arena: &'tcx bumpalo::Bump,
     package: &'tcx hir::Package,
     pub(crate) target: &'tcx target_lexicon::Triple,
     types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
@@ -170,6 +170,10 @@ impl<'tcx> Tcx<'tcx> {
         self.intern_ty(Type::VFloat(TypeVar(var)))
     }
 
+    pub fn get_full_name(&self, id: &hir::Id) -> String {
+        unimplemented!();
+    }
+
     pub fn layout_of(&self, id: &hir::Id) -> TyLayout<'tcx, Ty<'tcx>> {
         self.layout(self.type_of(id))
     }
@@ -198,6 +202,8 @@ impl<'tcx> Tcx<'tcx> {
         let layout = match ty {
             Type::Error => unreachable!(),
             Type::Var(_) => unreachable!(),
+            Type::Param(_) => unreachable!(),
+            Type::Forall(_, _) => unimplemented!(),
             Type::TypeOf(id) => return self.layout_of(id),
             Type::VInt(_) => match self.target.pointer_width() {
                 Ok(target_lexicon::PointerWidth::U16) => scalar(Primitive::Int(Integer::I16, true)),
@@ -283,7 +289,7 @@ impl<'tcx> Tcx<'tcx> {
                 Err(_) => scalar(Primitive::Int(Integer::I32, false)),
             },
             Type::Ref(_, _) => {
-                let mut data_ptr = scalar_unit(Primitive::Pointer);
+                let data_ptr = scalar_unit(Primitive::Pointer);
 
                 self.intern_layout(Layout::scalar(data_ptr, self.target))
             }
@@ -487,7 +493,8 @@ impl<'tcx> Tcx<'tcx> {
 
             let (fields, variants) = if let Some(niche) = largest_niche {
                 if niche.available(self.target) >= variants.len() as u128 {
-                    unimplemented!();
+                    // unimplemented!();
+                    no_niche(variants) // TODO: implement niches
                 } else {
                     no_niche(variants)
                 }

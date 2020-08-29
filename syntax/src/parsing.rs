@@ -216,6 +216,7 @@ impl Parse for Item {
                 kind: ItemKind::Extern { abi, ty },
             })
         } else if let Ok(_) = input.parse::<TFn>() {
+            let generics = input.parse()?;
             let name = input.parse()?;
             let _ = input.parse::<TLParen>()?;
             let mut params = Vec::new();
@@ -245,7 +246,12 @@ impl Parse for Item {
                 span: start.to(input.prev_span()),
                 attrs,
                 name,
-                kind: ItemKind::Func { params, ret, body },
+                kind: ItemKind::Func {
+                    generics,
+                    params,
+                    ret,
+                    body,
+                },
             })
         } else if let Ok(_) = input.parse::<TVar>() {
             let name = input.parse()?;
@@ -274,6 +280,7 @@ impl Parse for Item {
             })
         } else if let Ok(_) = input.parse::<TStruct>() {
             let name = input.parse()?;
+            let generics = input.parse()?;
             let mut fields = Vec::new();
 
             while !input.is_empty() && !input.peek::<TEnd>() {
@@ -286,10 +293,11 @@ impl Parse for Item {
                 span: start.to(input.prev_span()),
                 attrs,
                 name,
-                kind: ItemKind::Struct { fields },
+                kind: ItemKind::Struct { generics, fields },
             })
         } else if let Ok(_) = input.parse::<TEnum>() {
             let name = input.parse()?;
+            let generics = input.parse()?;
             let mut variants = Vec::new();
 
             while !input.is_empty() && !input.peek::<TEnd>() {
@@ -302,7 +310,7 @@ impl Parse for Item {
                 span: start.to(input.prev_span()),
                 attrs,
                 name,
-                kind: ItemKind::Enum { variants },
+                kind: ItemKind::Enum { generics, variants },
             })
         } else {
             input.error(
@@ -334,6 +342,47 @@ impl Parse for Abi {
         } else {
             Ok(Abi::None)
         }
+    }
+}
+
+impl Parse for Generics {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if let Ok(_) = input.parse::<TLParen>() {
+            let start = input.prev_span();
+            let mut params = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                params.push(input.parse()?);
+
+                if !input.peek::<TRParen>() {
+                    input.parse::<TComma>()?;
+                }
+            }
+
+            input.parse::<TRParen>()?;
+
+            Ok(Generics {
+                span: start.to(input.prev_span()),
+                params,
+            })
+        } else {
+            Ok(Generics {
+                span: input.span(),
+                params: Vec::new(),
+            })
+        }
+    }
+}
+
+impl Parse for Generic {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let name = input.parse()?;
+
+        Ok(Generic {
+            span: start.to(input.prev_span()),
+            name,
+        })
     }
 }
 
@@ -1019,6 +1068,38 @@ impl Parse for UnOp {
 
 impl Parse for Type {
     fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let mut ty = Type::atom(input)?;
+
+        while !input.is_empty() && input.peek::<TLParen>() {
+            let _ = input.parse::<TLParen>()?;
+            let mut args = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                args.push(input.parse()?);
+
+                if !input.peek::<TRParen>() {
+                    input.parse::<TComma>()?;
+                }
+            }
+
+            input.parse::<TRParen>()?;
+
+            ty = Type {
+                span: start.to(input.prev_span()),
+                kind: TypeKind::Subst {
+                    ty: Box::new(ty),
+                    args,
+                },
+            };
+        }
+
+        Ok(ty)
+    }
+}
+
+impl Type {
+    fn atom(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let kind = if let Ok(_) = input.parse::<TFn>() {
             let _ = input.parse::<TLParen>()?;

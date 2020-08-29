@@ -143,7 +143,7 @@ impl<'a> Converter<'a> {
                     Res::Item(Id(id, 1)),
                 );
             }
-            ast::ItemKind::Enum { variants } => {
+            ast::ItemKind::Enum { variants, .. } => {
                 self.resolver.define(
                     Ns::Types,
                     item.name.symbol,
@@ -202,11 +202,17 @@ impl<'a> Converter<'a> {
                     },
                 );
             }
-            ast::ItemKind::Func { params, ret, body } => {
+            ast::ItemKind::Func {
+                generics,
+                params,
+                ret,
+                body,
+            } => {
                 self.resolver.push_rib(Ns::Values, RibKind::Block);
                 self.resolver.push_rib(Ns::Types, RibKind::Block);
                 self.resolver.push_rib(Ns::Labels, RibKind::Block);
 
+                let generics = self.trans_generics(generics);
                 let params = params
                     .iter()
                     .map(|param| {
@@ -249,7 +255,12 @@ impl<'a> Converter<'a> {
                         id,
                         attrs,
                         name: item.name,
-                        kind: ItemKind::Func { params, ret, body },
+                        kind: ItemKind::Func {
+                            generics,
+                            params,
+                            ret,
+                            body,
+                        },
                     },
                 );
             }
@@ -272,8 +283,12 @@ impl<'a> Converter<'a> {
                     },
                 );
             }
-            ast::ItemKind::Struct { fields } => {
+            ast::ItemKind::Struct { generics, fields } => {
                 let cons_id = self.next_id();
+
+                self.resolver.push_rib(Ns::Types, RibKind::Block);
+
+                let generics = self.trans_generics(generics);
                 let fields = fields
                     .iter()
                     .map(|f| StructField {
@@ -283,6 +298,8 @@ impl<'a> Converter<'a> {
                     })
                     .collect::<Vec<_>>();
 
+                self.resolver.pop_rib(Ns::Types);
+
                 self.items.insert(
                     id,
                     Item {
@@ -291,6 +308,7 @@ impl<'a> Converter<'a> {
                         attrs,
                         name: item.name,
                         kind: ItemKind::Struct {
+                            generics,
                             fields: fields.clone(),
                         },
                     },
@@ -311,8 +329,12 @@ impl<'a> Converter<'a> {
                     },
                 );
             }
-            ast::ItemKind::Enum { variants } => {
+            ast::ItemKind::Enum { generics, variants } => {
                 let variant_ids = variants.iter().map(|_| self.next_id()).collect::<Vec<_>>();
+
+                self.resolver.push_rib(Ns::Types, RibKind::Block);
+
+                let generics = self.trans_generics(generics);
                 let variants = variants
                     .iter()
                     .zip(variant_ids)
@@ -353,6 +375,8 @@ impl<'a> Converter<'a> {
                     })
                     .collect();
 
+                self.resolver.pop_rib(Ns::Types);
+
                 self.items.insert(
                     id,
                     Item {
@@ -360,13 +384,39 @@ impl<'a> Converter<'a> {
                         id,
                         attrs,
                         name: item.name,
-                        kind: ItemKind::Enum { variants },
+                        kind: ItemKind::Enum { generics, variants },
                     },
                 );
             }
         }
 
         id
+    }
+
+    pub fn trans_generics(&mut self, generics: &ast::Generics) -> Generics {
+        Generics {
+            span: generics.span,
+            params: generics
+                .params
+                .iter()
+                .map(|generic| {
+                    let id = self.next_id();
+
+                    self.resolver.define(
+                        Ns::Types,
+                        generic.name.symbol,
+                        generic.name.span,
+                        Res::Local(id),
+                    );
+
+                    Generic {
+                        span: generic.span,
+                        id,
+                        name: generic.name,
+                    }
+                })
+                .collect(),
+        }
     }
 
     pub fn trans_block(&mut self, block: &ast::Block) -> Block {
@@ -616,6 +666,12 @@ impl<'a> Converter<'a> {
                 let tys = tys.iter().map(|ty| self.trans_ty(ty)).collect();
 
                 TypeKind::Tuple { tys }
+            }
+            ast::TypeKind::Subst { ty, args } => {
+                let ty = self.trans_ty(ty);
+                let args = args.iter().map(|a| self.trans_ty(a)).collect();
+
+                TypeKind::Subst { ty, args }
             }
         };
 

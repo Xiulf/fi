@@ -30,7 +30,7 @@ impl<'tcx> Tcx<'tcx> {
         match &expr.kind {
             hir::ExprKind::Err => self.builtin.error,
             hir::ExprKind::Path { res } => match res {
-                hir::Res::Item(id) => self.type_of(id),
+                hir::Res::Item(id) => self.type_of(id).mono(self, Vec::new()),
                 hir::Res::Local(id) => self.type_of(id),
                 hir::Res::PrimVal(prim) => match prim {
                     hir::PrimVal::True => self.builtin.bool,

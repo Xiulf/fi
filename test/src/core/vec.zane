@@ -1,0 +1,12 @@
+struct Vec(T)
+    ptr: *T
+    cap: usize
+    len: usize
+end
+
+fn(T) new() -> Vec(T)
+    var ptr = 0.(*T);
+    var cap = if `T`.size == 0; !0 else 0 end;
+
+    Vec(ptr, cap, 0)
+end
