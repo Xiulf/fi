@@ -68,6 +68,8 @@ pub struct Block<'tcx> {
 pub enum Stmt<'tcx> {
     Nop,
     Assign(Place<'tcx>, RValue<'tcx>),
+    VarLive(LocalId),
+    VarDead(LocalId),
 }
 
 #[derive(Debug, Clone)]

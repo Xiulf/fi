@@ -10,6 +10,8 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                 self.trans_rvalue(place, rvalue);
             }
+            mir::Stmt::VarLive(_) => {}
+            mir::Stmt::VarDead(_) => {}
         }
     }
 }

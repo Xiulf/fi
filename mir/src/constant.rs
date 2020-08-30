@@ -63,6 +63,8 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
 
                 place.store(self, value);
             }
+            Stmt::VarLive(_) => {}
+            Stmt::VarDead(_) => {}
         }
     }
 

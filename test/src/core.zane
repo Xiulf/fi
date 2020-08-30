@@ -12,7 +12,7 @@ enum Option(T)
     Some(val: T)
 end
 
---| @lang "type_layout"
+--| @lang "type-layout"
 struct TypeLayout
     size: usize
     align: usize

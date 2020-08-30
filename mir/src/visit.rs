@@ -93,8 +93,10 @@ macro_rules! make_visitor{
 
             fn super_stmt(&mut self, stmt: & $($mut)? Stmt<'tcx>) {
                 match stmt {
-                    Stmt::Assign(place, rvalue) => self.visit_assign(place, rvalue),
                     Stmt::Nop => {},
+                    Stmt::Assign(place, rvalue) => self.visit_assign(place, rvalue),
+                    Stmt::VarLive(_) => {},
+                    Stmt::VarDead(_) => {},
                 }
             }
 

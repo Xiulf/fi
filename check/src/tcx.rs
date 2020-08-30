@@ -202,9 +202,17 @@ impl<'tcx> Tcx<'tcx> {
         let layout = match ty {
             Type::Error => unreachable!(),
             Type::Var(_) => unreachable!(),
-            Type::Param(_) => unreachable!(),
             Type::Forall(_, _) => unimplemented!(),
             Type::TypeOf(id) => return self.layout_of(id),
+            Type::Param(_) => self.intern_layout(Layout {
+                fields: FieldsShape::Primitive,
+                variants: Variants::Single { index: 0 },
+                largest_niche: None,
+                abi: Abi::Aggregate { sized: false },
+                size: Size::ZERO,
+                align: Align::from_bits(8),
+                stride: Size::ZERO,
+            }),
             Type::VInt(_) => match self.target.pointer_width() {
                 Ok(target_lexicon::PointerWidth::U16) => scalar(Primitive::Int(Integer::I16, true)),
                 Ok(target_lexicon::PointerWidth::U32) => scalar(Primitive::Int(Integer::I32, true)),

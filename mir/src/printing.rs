@@ -79,6 +79,8 @@ impl Display for Stmt<'_> {
         match self {
             Stmt::Nop => write!(f, "nop"),
             Stmt::Assign(place, rvalue) => write!(f, "{} = {}", place, rvalue),
+            Stmt::VarLive(var) => write!(f, "VarLive({})", var),
+            Stmt::VarDead(var) => write!(f, "VarDead({})", var),
         }
     }
 }
