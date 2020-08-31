@@ -370,6 +370,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "shadow"
+version = "0.1.0"
+dependencies = [
+ "driver",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -486,11 +493,4 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe5c30ade05e61656247b2e334a031dfd0cc466fadef865bdcdea8d537951bf1"
 dependencies = [
  "winapi",
-]
-
-[[package]]
-name = "zanec"
-version = "0.1.0"
-dependencies = [
- "driver",
 ]

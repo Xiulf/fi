@@ -32,10 +32,16 @@ impl<'tcx> Visitor<'tcx> for Usage {
         self.0.insert(local.id, 0);
     }
 
-    fn visit_place(&mut self, place: &Place) {
-        if let PlaceBase::Local(id) = &place.base {
+    fn visit_op(&mut self, op: &Operand<'tcx>) {
+        if let Operand::Place(Place {
+            base: PlaceBase::Local(id),
+            ..
+        }) = op
+        {
             *self.0.get_mut(id).unwrap() += 1;
         }
+
+        self.super_op(op);
     }
 }
 

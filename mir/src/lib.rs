@@ -2,6 +2,7 @@
 
 pub mod constant;
 pub mod convert;
+pub mod lifetime;
 pub mod optimize;
 mod printing;
 pub mod visit;
@@ -192,7 +193,7 @@ impl<'tcx> Package<'tcx> {
         id: Id,
         attrs: Vec<Attribute>,
         name: Ident,
-        params: &[Param<'tcx>],
+        params: &[Ty<'tcx>],
         ret: Ty<'tcx>,
     ) {
         let mut locals = BTreeMap::new();
@@ -214,7 +215,7 @@ impl<'tcx> Package<'tcx> {
                 Local {
                     id,
                     kind: LocalKind::Arg,
-                    ty: param.ty,
+                    ty: param,
                 },
             );
         }
@@ -304,6 +305,10 @@ impl LocalId {
     pub const fn as_u32(self) -> u32 {
         self.0 as u32
     }
+}
+
+impl BlockId {
+    pub const ENTRY: Self = BlockId(0);
 }
 
 impl<'tcx> Place<'tcx> {

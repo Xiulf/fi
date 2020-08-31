@@ -10,7 +10,7 @@ use crate::layout::*;
 use crate::ty::*;
 use diagnostics::{Reporter, Span};
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub struct Tcx<'tcx> {
     reporter: &'tcx Reporter,
@@ -18,10 +18,12 @@ pub struct Tcx<'tcx> {
     package: &'tcx hir::Package,
     pub(crate) target: &'tcx target_lexicon::Triple,
     types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
-    layouts: RefCell<BTreeMap<*const Type<'tcx>, TyLayout<'tcx, Ty<'tcx>>>>,
+    layouts: RefCell<HashMap<*const Type<'tcx>, TyLayout<'tcx, Ty<'tcx>>>>,
     constraints: RefCell<Constraints<'tcx>>,
+    pub(crate) substs: RefCell<HashMap<*const Type<'tcx>, HashMap<hir::Id, Ty<'tcx>>>>,
     ty_vars: Cell<usize>,
     pub builtin: BuiltinTypes<'tcx>,
+    pub lang_items: hir::lang::LangItems,
 }
 
 pub struct BuiltinTypes<'tcx> {
@@ -90,9 +92,11 @@ impl<'tcx> Tcx<'tcx> {
             arena,
             target,
             package,
+            lang_items: hir::lang::LangItems::collect(package),
             types: RefCell::new(BTreeMap::new()),
-            layouts: RefCell::new(BTreeMap::new()),
+            layouts: RefCell::new(HashMap::new()),
             constraints: RefCell::new(Constraints::new()),
+            substs: RefCell::new(HashMap::new()),
             builtin: BuiltinTypes::new(arena),
             ty_vars: Cell::new(0),
         }
@@ -136,6 +140,18 @@ impl<'tcx> Tcx<'tcx> {
         } else {
             panic!("unused id {}", id);
         }
+    }
+
+    pub fn subst_of(&self, ty: Ty<'tcx>) -> std::cell::Ref<HashMap<hir::Id, Ty<'tcx>>> {
+        let ty = ty as *const Type<'tcx> as usize;
+
+        std::cell::Ref::map(
+            self.substs.borrow(),
+            move |substs: &HashMap<*const Type<'tcx>, HashMap<hir::Id, Ty<'tcx>>>| {
+                let ty = ty as *const Type;
+                substs.get(&ty).unwrap()
+            },
+        )
     }
 
     pub fn constrain(&self, cs: Constraint<'tcx>) {

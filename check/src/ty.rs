@@ -117,7 +117,10 @@ impl<'tcx> Type<'tcx> {
                 })
                 .collect();
 
-            ty.replace(&args, tcx)
+            let new_ty = ty.replace(&args, tcx);
+
+            tcx.substs.borrow_mut().insert(new_ty, args);
+            new_ty
         } else {
             self
         }

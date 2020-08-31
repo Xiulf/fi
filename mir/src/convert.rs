@@ -32,6 +32,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
 
     pub fn finish(mut self) -> Package<'tcx> {
         crate::optimize::optimize(&mut self.package);
+        crate::lifetime::mark_lifetimes(&mut self.package);
         self.package
     }
 
@@ -57,14 +58,24 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
             } => {
                 let mut func_ty = self.tcx.type_of(&item.id);
 
-                if let Type::Forall(_params, new_ty) = func_ty {
-                    func_ty = new_ty;
-                }
+                let (param_tys, ret_ty) = if let Type::Forall(params, new_ty) = func_ty {
+                    let ty_layout = self.tcx.lang_items.type_layout().unwrap();
+                    let ty_layout = self.tcx.type_of(&ty_layout);
+                    let ty_layout = self.tcx.intern_ty(Type::Ref(false, ty_layout));
+                    let mut param_tys = params.iter().map(|_| ty_layout).collect::<Vec<_>>();
+                    let (params, ret) = new_ty.func().unwrap();
 
-                let (param_tys, ret_ty) = func_ty.func().unwrap();
+                    param_tys.extend(params.iter().map(|p| p.ty));
+
+                    (param_tys, ret)
+                } else {
+                    let (params, ret) = func_ty.func().unwrap();
+
+                    (params.iter().map(|p| p.ty).collect(), ret)
+                };
 
                 self.package
-                    .declare_body(item.id, attrs, item.name, param_tys, ret_ty);
+                    .declare_body(item.id, attrs, item.name, &param_tys, ret_ty);
 
                 let mut converter = BodyConverter {
                     tcx: self.tcx,
@@ -497,6 +508,10 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.init(res.clone(), ret_ty, *variant, call_args);
 
                 return Operand::Place(res);
+            } else if let Type::Forall(params, _) = self.tcx.type_of(item) {
+                let subst = self.tcx.subst_of(self.tcx.type_of(func));
+
+                println!("{:?}", subst);
             }
         }
 

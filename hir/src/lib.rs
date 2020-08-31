@@ -1,6 +1,7 @@
 #![feature(label_break_value)]
 
 pub mod convert;
+pub mod lang;
 mod printing;
 pub mod resolve;
 
