@@ -105,7 +105,15 @@ impl<'tcx> Tcx<'tcx> {
 
                     self.unify_all(cs)
                 }
-                (Type::Struct(a, _), Type::Struct(b, _)) if a == b => Subst::empty(),
+                (Type::Struct(a, a_fields), Type::Struct(b, b_fields)) if a == b => {
+                    let mut cs = Constraints::new();
+
+                    for (a, b) in a_fields.iter().zip(b_fields.iter()) {
+                        cs.push(Constraint::Equal(a.ty, a_span, b.ty, b_span));
+                    }
+
+                    self.unify_all(cs)
+                }
                 (Type::Enum(a, _), Type::Enum(b, _)) if a == b => Subst::empty(),
                 (_, _) => {
                     self.reporter.add(

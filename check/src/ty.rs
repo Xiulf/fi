@@ -255,8 +255,17 @@ impl fmt::Display for Type<'_> {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
-            Type::Struct(id, _) => write!(f, "struct {}", id),
+            // Type::Struct(id, _) => write!(f, "struct {}", id),
             Type::Enum(id, _) => write!(f, "enum {}", id),
+            Type::Struct(_, fields) => write!(
+                f,
+                "struct {{ {} }}",
+                fields
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Type::Func(params, ret) => write!(
                 f,
                 "fn ({}) -> {}",
@@ -269,7 +278,7 @@ impl fmt::Display for Type<'_> {
             ),
             Type::Forall(args, ty) => write!(
                 f,
-                "for {}. {}",
+                "forall {}. {}",
                 args.iter()
                     .map(|a| a.to_string())
                     .collect::<Vec<_>>()

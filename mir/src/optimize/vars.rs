@@ -3,60 +3,114 @@ use crate::*;
 use std::collections::HashMap;
 
 pub fn optimize(package: &mut Package) {
-    for (_, item) in &mut package.items {
-        if let ItemKind::Body(body) = &mut item.kind {
-            let mut usage = Usage::new();
+    VarReplacer { repl: None }.visit_package(package);
 
-            usage.visit_body(body);
+    VarRemover {
+        count: HashMap::new(),
+    }
+    .visit_package(package);
+}
 
-            for (id, count) in usage.0 {
-                if count == 0 && body.locals[&id].kind == LocalKind::Tmp {
-                    body.locals.remove(&id);
-                    Remover(id).visit_body(body);
-                }
+struct VarRemover {
+    count: HashMap<LocalId, usize>,
+}
+
+struct VarReplacer {
+    repl: Option<(LocalId, LocalId)>,
+}
+
+struct Replacer {
+    with: HashMap<LocalId, LocalId>,
+}
+
+impl<'tcx> VisitorMut<'tcx> for VarRemover {
+    fn visit_body(&mut self, body: &mut Body<'tcx>) {
+        self.count.clear();
+        self.count.insert(LocalId::RET, 1);
+
+        for param in body.params() {
+            self.count.insert(param.id, 1);
+        }
+
+        self.super_body(body);
+
+        for (id, count) in &self.count {
+            if *count == 0 {
+                body.locals.remove(id);
             }
         }
     }
-}
 
-struct Usage(HashMap<LocalId, usize>);
-
-impl Usage {
-    fn new() -> Self {
-        Usage(HashMap::new())
-    }
-}
-
-impl<'tcx> Visitor<'tcx> for Usage {
-    fn visit_local(&mut self, local: &Local<'tcx>) {
-        self.0.insert(local.id, 0);
+    #[inline]
+    fn visit_local(&mut self, local: &mut Local<'tcx>) {
+        if !self.count.contains_key(&local.id) {
+            self.count.insert(local.id, 0);
+        }
     }
 
-    fn visit_op(&mut self, op: &Operand<'tcx>) {
-        if let Operand::Place(Place {
-            base: PlaceBase::Local(id),
-            ..
-        }) = op
-        {
-            *self.0.get_mut(id).unwrap() += 1;
+    #[inline]
+    fn visit_place(&mut self, place: &mut Place<'tcx>) {
+        if let PlaceBase::Local(id) = &place.base {
+            *self.count.get_mut(id).unwrap() += 1;
         }
 
-        self.super_op(op);
+        self.super_place(place);
     }
 }
 
-struct Remover(LocalId);
+impl<'tcx> VisitorMut<'tcx> for VarReplacer {
+    fn visit_body(&mut self, body: &mut Body<'tcx>) {
+        self.super_body(body);
 
-impl<'tcx> VisitorMut<'tcx> for Remover {
+        while let Some((a, b)) = self.repl {
+            Replacer {
+                with: vec![(a, b)].into_iter().collect(),
+            }
+            .visit_body(body);
+
+            self.repl = None;
+            self.super_body(body);
+        }
+    }
+
     fn visit_block(&mut self, block: &mut Block<'tcx>) {
-        block.stmts.drain_filter(|stmt| {
-            if let Stmt::Assign(place, _) = stmt {
-                if let PlaceBase::Local(id) = &place.base {
-                    return *id == self.0;
+        let mut rem = None;
+
+        for (i, stmt) in block.stmts.iter().enumerate() {
+            if let None = self.repl {
+                if let Stmt::Assign(place, rvalue) = stmt {
+                    if let PlaceBase::Local(a) = &place.base {
+                        if place.elems.is_empty() {
+                            if let RValue::Use(Operand::Place(r)) = rvalue {
+                                if let PlaceBase::Local(b) = &r.base {
+                                    if r.elems.is_empty() {
+                                        self.repl = Some((*b, *a));
+                                        rem = Some(i);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        }
 
-            false
-        });
+        if let Some(i) = rem {
+            block.stmts.remove(i);
+        }
+    }
+}
+
+impl<'tcx> VisitorMut<'tcx> for Replacer {
+    #[inline]
+    fn visit_place(&mut self, place: &mut Place<'tcx>) {
+        if let PlaceBase::Local(id) = &mut place.base {
+            if let Some(new) = self.with.get(id) {
+                *id = *new;
+            }
+        }
+
+        self.super_place(place);
     }
 }

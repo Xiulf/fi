@@ -78,7 +78,7 @@ impl<'tcx> Tcx<'tcx> {
                 {
                     let ty = self.type_of(id);
 
-                    if let Type::Forall(_, ty) = ty {
+                    if let Type::Forall(_, _) = ty {
                         let args = args.iter().map(|a| self.type_of(a)).collect();
 
                         ty.mono(self, args)

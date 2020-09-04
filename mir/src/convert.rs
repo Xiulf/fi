@@ -56,7 +56,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                 body,
                 generics: _,
             } => {
-                let mut func_ty = self.tcx.type_of(&item.id);
+                let func_ty = self.tcx.type_of(&item.id);
 
                 let (param_tys, ret_ty) = if let Type::Forall(params, new_ty) = func_ty {
                     let ty_layout = self.tcx.lang_items.type_layout().unwrap();

@@ -4,7 +4,7 @@ mod core
 
 --| @no_mangle
 fn main(argc: i32, argv: **u8) -> i32
-    var x = core/vec/new();
+    var x: core/vec/Vec(bool) = core/vec/new();
 
     0
 end

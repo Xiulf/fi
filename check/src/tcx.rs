@@ -142,16 +142,22 @@ impl<'tcx> Tcx<'tcx> {
         }
     }
 
-    pub fn subst_of(&self, ty: Ty<'tcx>) -> std::cell::Ref<HashMap<hir::Id, Ty<'tcx>>> {
-        let ty = ty as *const Type<'tcx> as usize;
+    pub fn subst_of(&self, ty: Ty<'tcx>) -> Option<std::cell::Ref<HashMap<hir::Id, Ty<'tcx>>>> {
+        let substs = self.substs.borrow();
 
-        std::cell::Ref::map(
-            self.substs.borrow(),
-            move |substs: &HashMap<*const Type<'tcx>, HashMap<hir::Id, Ty<'tcx>>>| {
-                let ty = ty as *const Type;
-                substs.get(&ty).unwrap()
-            },
-        )
+        if substs.contains_key(&(ty as *const _)) {
+            let ty = ty as *const Type<'tcx> as usize;
+
+            Some(std::cell::Ref::map(
+                self.substs.borrow(),
+                move |substs: &HashMap<*const Type<'tcx>, HashMap<hir::Id, Ty<'tcx>>>| {
+                    let ty = ty as *const Type;
+                    substs.get(&ty).unwrap()
+                },
+            ))
+        } else {
+            None
+        }
     }
 
     pub fn constrain(&self, cs: Constraint<'tcx>) {

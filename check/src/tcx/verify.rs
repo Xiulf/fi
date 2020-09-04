@@ -23,6 +23,18 @@ impl<'tcx> Tcx<'tcx> {
                 subst.push((*tvar, self.builtin.usize));
             } else if let Type::VFloat(tvar) = ty {
                 subst.push((*tvar, self.builtin.f32));
+            } else if let Some(substs) = self.subst_of(ty) {
+                for (_, ty) in substs.iter() {
+                    if let Type::Var(_) = ty {
+                        self.reporter.add(
+                            Diagnostic::new(Severity::Error, 0006, "type annotation needed").label(
+                                Severity::Error,
+                                self.span_of(id),
+                                None::<String>,
+                            ),
+                        );
+                    }
+                }
             }
         }
 
