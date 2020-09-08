@@ -109,7 +109,7 @@ pub enum Operand<'tcx> {
     Const(Const<'tcx>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Const<'tcx> {
     Undefined,
     Ref(Box<Const<'tcx>>),
@@ -266,7 +266,8 @@ impl<'tcx> Package<'tcx> {
 
         f(builder);
 
-        let value = crate::constant::eval(tcx, body, self);
+        let subst = Default::default();
+        let value = crate::constant::eval(tcx, body, &subst);
 
         if let ItemKind::Global(_, val) = &mut self.items.get_mut(&id).unwrap().kind {
             *val = value;

@@ -57,7 +57,14 @@ impl Display for BlockId {
 
 impl Display for Local<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{}: {}", self.id, self.ty)
+        match self.kind {
+            LocalKind::Ret => write!(f, "ret")?,
+            LocalKind::Arg => write!(f, "arg")?,
+            LocalKind::Tmp => write!(f, "tmp")?,
+            LocalKind::Var => write!(f, "var")?,
+        }
+
+        write!(f, " {}: {}", self.id, self.ty)
     }
 }
 
@@ -131,7 +138,7 @@ impl Display for Place<'_> {
 
         for elem in &self.elems {
             match elem {
-                PlaceElem::Deref => write!(f, ".deref")?,
+                PlaceElem::Deref => write!(f, ".*")?,
                 PlaceElem::Field(idx) => write!(f, ".{}", idx)?,
                 PlaceElem::Index(idx) => write!(f, "[{}]", idx)?,
                 PlaceElem::Slice(lo, hi) => write!(f, "[{}..{}]", lo, hi)?,
@@ -146,7 +153,7 @@ impl Display for Const<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
             Const::Undefined => write!(f, "undefined"),
-            Const::Ref(to) => write!(f, "ref {}", to),
+            Const::Ref(to) => write!(f, "&{}", to),
             Const::Tuple(vals) => write!(f, "({})", list(vals, ", ")),
             Const::Array(vals) => write!(f, "[{}]", list(vals, ", ")),
             Const::Scalar(val, ty) => write!(f, "({}: {})", val, ty),
@@ -161,7 +168,7 @@ impl Display for RValue<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
             RValue::Use(op) => op.fmt(f),
-            RValue::Ref(place) => write!(f, "ref {}", place),
+            RValue::Ref(place) => write!(f, "&{}", place),
             RValue::Cast(ty, op) => write!(f, "{}.({})", op, ty),
             RValue::BinOp(op, lhs, rhs) => write!(f, "{:?} {} {}", op, lhs, rhs),
             RValue::UnOp(op, rhs) => write!(f, "{:?} {}", op, rhs),

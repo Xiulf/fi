@@ -14,10 +14,10 @@ pub struct Converter<'a, 'tcx> {
     package: Package<'tcx>,
 }
 
-struct BodyConverter<'a, 'tcx> {
+pub(crate) struct BodyConverter<'a, 'tcx> {
     tcx: &'a Tcx<'tcx>,
     hir: &'a hir::Package,
-    builder: Builder<'a, 'tcx>,
+    pub(crate) builder: Builder<'a, 'tcx>,
     locals: HashMap<hir::Id, LocalId>,
     loops: Vec<(Option<&'a hir::Id>, BlockId, BlockId)>,
 }
@@ -56,16 +56,18 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                 body,
                 generics: _,
             } => {
+                let mut params = params.clone();
                 let func_ty = self.tcx.type_of(&item.id);
 
-                let (param_tys, ret_ty) = if let Type::Forall(params, new_ty) = func_ty {
+                let (param_tys, ret_ty) = if let Type::Forall(gparams, new_ty) = func_ty {
                     let ty_layout = self.tcx.lang_items.type_layout().unwrap();
                     let ty_layout = self.tcx.type_of(&ty_layout);
                     let ty_layout = self.tcx.intern_ty(Type::Ref(false, ty_layout));
-                    let mut param_tys = params.iter().map(|_| ty_layout).collect::<Vec<_>>();
-                    let (params, ret) = new_ty.func().unwrap();
+                    let mut param_tys = gparams.iter().map(|_| ty_layout).collect::<Vec<_>>();
+                    let (tparams, ret) = new_ty.func().unwrap();
 
-                    param_tys.extend(params.iter().map(|p| p.ty));
+                    params = gparams.iter().copied().chain(params).collect();
+                    param_tys.extend(tparams.iter().map(|p| p.ty));
 
                     (param_tys, ret)
                 } else {
@@ -85,7 +87,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                     loops: Vec::new(),
                 };
 
-                converter.convert(params, ret, body);
+                converter.convert(&params, ret, body);
             }
             hir::ItemKind::Var {
                 global: true,
@@ -125,6 +127,20 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
+    pub(crate) fn new(
+        tcx: &'a Tcx<'tcx>,
+        hir: &'a hir::Package,
+        builder: Builder<'a, 'tcx>,
+    ) -> Self {
+        BodyConverter {
+            tcx,
+            hir,
+            builder,
+            locals: HashMap::new(),
+            loops: Vec::new(),
+        }
+    }
+
     fn convert(&mut self, params: &[Id], _ret: &hir::Id, body: &hir::Block) {
         let entry = self.builder.create_block();
 
@@ -175,7 +191,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         Operand::Place(res)
     }
 
-    fn trans_expr(&mut self, id: &hir::Id) -> Operand<'tcx> {
+    pub(crate) fn trans_expr(&mut self, id: &hir::Id) -> Operand<'tcx> {
         let expr = &self.hir.exprs[id];
 
         match &expr.kind {
@@ -207,12 +223,24 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                         Operand::Place(res)
                     }
+                    hir::ItemKind::Const { val, .. } => {
+                        let ty = self.tcx.type_of(&expr.id);
+
+                        Operand::Const(crate::constant::eval_expr(
+                            self.tcx,
+                            self.hir,
+                            val,
+                            ty,
+                            &*self.tcx.subst_of(ty).unwrap(),
+                        ))
+                    }
                     _ => unreachable!(),
                 },
                 hir::Res::Local(id) => Operand::Place(Place::local(self.locals[id])),
                 hir::Res::PrimVal(prim) => match prim {
                     hir::PrimVal::True => Operand::Const(Const::Scalar(1, self.tcx.builtin.bool)),
                     hir::PrimVal::False => Operand::Const(Const::Scalar(0, self.tcx.builtin.bool)),
+                    hir::PrimVal::Undefined => Operand::Const(Const::Undefined),
                 },
             },
             hir::ExprKind::Int { val } => Operand::Const(Const::Scalar(*val, self.tcx.type_of(id))),
@@ -529,20 +557,36 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         let obj = self.trans_expr(obj);
 
         if let Operand::Const(Const::Type(ty)) = obj {
-            let layout = self.tcx.layout(ty);
+            if let Type::Param(id) = ty {
+                let param_id = self.locals[id];
+                let param = Place::local(param_id).deref();
+                let param = if &**field.symbol == "size" {
+                    param.field(0)
+                } else if &**field.symbol == "align" {
+                    param.field(1)
+                } else if &**field.symbol == "stride" {
+                    param.field(2)
+                } else {
+                    unreachable!();
+                };
 
-            if &**field.symbol == "size" {
-                Operand::Const(Const::Scalar(
-                    layout.size.bytes() as u128,
-                    self.tcx.builtin.usize,
-                ))
-            } else if &**field.symbol == "align" {
-                Operand::Const(Const::Scalar(
-                    layout.align.bytes() as u128,
-                    self.tcx.builtin.usize,
-                ))
+                Operand::Place(param)
             } else {
-                unreachable!();
+                let layout = self.tcx.layout(ty);
+
+                if &**field.symbol == "size" {
+                    Operand::Const(Const::Scalar(
+                        layout.size.bytes() as u128,
+                        self.tcx.builtin.usize,
+                    ))
+                } else if &**field.symbol == "align" {
+                    Operand::Const(Const::Scalar(
+                        layout.align.bytes() as u128,
+                        self.tcx.builtin.usize,
+                    ))
+                } else {
+                    unreachable!();
+                }
             }
         } else if let Type::Array(_, len) = obj_ty {
             if &**field.symbol == "len" {

@@ -61,6 +61,7 @@ pub enum Res {
 pub enum PrimVal {
     True,
     False,
+    Undefined,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
@@ -258,6 +259,12 @@ impl<'a> Resolver<'a> {
             Symbol::new("false"),
             Span::default(),
             Res::PrimVal(PrimVal::False),
+        );
+        self.define(
+            Ns::Values,
+            Symbol::new("undefined"),
+            Span::default(),
+            Res::PrimVal(PrimVal::Undefined),
         );
         self.define(
             Ns::Types,

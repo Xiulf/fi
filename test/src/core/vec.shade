@@ -10,3 +10,7 @@ fn(T) new() -> Vec(T)
 
     Vec(ptr, cap, 0)
 end
+
+fn(T) push(self: *Vec(T), item: T)
+    
+end

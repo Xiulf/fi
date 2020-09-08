@@ -74,17 +74,18 @@ impl Display for Item {
                 ret,
                 body
             ),
-            ItemKind::Param { ty } => write!(f, "{} :: param {};", self.name, ty),
+            ItemKind::Param { ty } => write!(f, "param {}: {};", self.name, ty),
             ItemKind::Var {
                 ty,
                 val: Some(val),
                 global: _,
-            } => write!(f, "{} : {} = {};", self.name, ty, val),
+            } => write!(f, "var {}: {} = {};", self.name, ty, val),
             ItemKind::Var {
                 ty,
                 val: None,
                 global: _,
-            } => write!(f, "{} : {};", self.name, ty),
+            } => write!(f, "var {}: {};", self.name, ty),
+            ItemKind::Const { ty, val } => write!(f, "const {}: {} = {};", self.name, ty, val),
             ItemKind::Struct { generics, fields } => {
                 writeln!(f, "struct {}{}", self.name, generics)?;
 
@@ -311,6 +312,7 @@ impl Display for Type {
             ),
             TypeKind::Func { params, ret } => write!(f, "fn ({}) -> {}", list(params, ", "), ret),
             TypeKind::Subst { ty, args } => write!(f, "{}({})", ty, list(args, ", ")),
+            TypeKind::Forall { gen, ty } => write!(f, "forall {}. {}", gen, ty),
         }
     }
 }
@@ -339,6 +341,7 @@ impl Display for PrimVal {
         match self {
             PrimVal::True => write!(f, "true"),
             PrimVal::False => write!(f, "false"),
+            PrimVal::Undefined => write!(f, "undefined"),
         }
     }
 }

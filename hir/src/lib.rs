@@ -53,6 +53,10 @@ pub enum ItemKind {
         ty: Id,
         val: Option<Id>,
     },
+    Const {
+        ty: Id,
+        val: Id,
+    },
     Struct {
         generics: Generics,
         fields: Vec<StructField>,
@@ -254,6 +258,7 @@ pub enum TypeKind {
     Array { of: Id, len: usize },
     Slice { of: Id },
     Subst { ty: Id, args: Vec<Id> },
+    Forall { gen: Generics, ty: Id },
 }
 
 #[derive(Debug)]

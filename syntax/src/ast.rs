@@ -62,6 +62,10 @@ pub enum ItemKind {
         ty: Type,
         val: Option<Expr>,
     },
+    Const {
+        ty: Type,
+        val: Expr,
+    },
     Struct {
         generics: Generics,
         fields: Vec<StructField>,
@@ -379,6 +383,10 @@ pub enum TypeKind {
     Subst {
         ty: Box<Type>,
         args: Vec<Type>,
+    },
+    Forall {
+        gen: Generics,
+        ty: Box<Type>,
     },
 }
 

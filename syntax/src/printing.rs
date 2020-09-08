@@ -29,7 +29,7 @@ impl Display for Item {
                 writeln!(indent(f), "{}", module)?;
                 write!(f, "end")
             }
-            ItemKind::Extern { abi, ty } => write!(f, "{} :: extern {}{};", self.name, abi, ty),
+            ItemKind::Extern { abi, ty } => write!(f, "extern {}{}: {};", self.name, abi, ty),
             ItemKind::Func {
                 generics,
                 params,
@@ -44,7 +44,7 @@ impl Display for Item {
 
                 write!(
                     f,
-                    "{} :: fn{} ({}) {}{};",
+                    "fn{} {}({}) {}{}",
                     self.name,
                     generics,
                     list(params, ", "),
@@ -59,9 +59,20 @@ impl Display for Item {
                         ..
                     },
                 val: Some(val),
-            } => write!(f, "{} := {};", self.name, val),
-            ItemKind::Var { ty, val: Some(val) } => write!(f, "{} : {} = {};", self.name, ty, val),
-            ItemKind::Var { ty, val: None } => write!(f, "{} : {};", self.name, ty),
+            } => write!(f, "var {} = {};", self.name, val),
+            ItemKind::Var { ty, val: Some(val) } => {
+                write!(f, "var {}: {} = {};", self.name, ty, val)
+            }
+            ItemKind::Var { ty, val: None } => write!(f, "var {}: {};", self.name, ty),
+            ItemKind::Const {
+                ty:
+                    Type {
+                        kind: TypeKind::Infer,
+                        ..
+                    },
+                val,
+            } => write!(f, "const {} = {};", self.name, val),
+            ItemKind::Const { ty, val } => write!(f, "const {}: {} = {};", self.name, ty, val),
             ItemKind::Struct { generics, fields } => {
                 writeln!(f, "struct {}{}", self.name, generics)?;
 
@@ -357,6 +368,7 @@ impl Display for Type {
             TypeKind::Slice { of } => write!(f, "[{}]", of),
             TypeKind::Tuple { tys } => write!(f, "({})", list(tys, ", ")),
             TypeKind::Subst { ty, args } => write!(f, "{}({})", ty, list(args, ", ")),
+            TypeKind::Forall { gen, ty } => write!(f, "forall {}. {}", gen, ty),
         }
     }
 }

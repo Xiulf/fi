@@ -89,6 +89,13 @@ impl<'tcx> Tcx<'tcx> {
                     unreachable!();
                 }
             }
+            hir::TypeKind::Forall { gen, ty } => {
+                let ty = self.type_of(ty);
+                let args = gen.params.iter().map(|g| g.id);
+                let args = self.arena.alloc_slice_fill_iter(args);
+
+                self.intern_ty(Type::Forall(args, ty))
+            }
         }
     }
 }

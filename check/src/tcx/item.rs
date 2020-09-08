@@ -38,6 +38,7 @@ impl<'tcx> Tcx<'tcx> {
             }
             hir::ItemKind::Param { ty } => self.type_of(ty),
             hir::ItemKind::Var { ty, .. } => self.type_of(ty),
+            hir::ItemKind::Const { ty, .. } => self.type_of(ty),
             hir::ItemKind::Struct { .. } => self.intern_ty(Type::TypeOf(*id)),
             hir::ItemKind::Enum { .. } => self.intern_ty(Type::TypeOf(*id)),
             hir::ItemKind::Cons {
@@ -85,6 +86,14 @@ impl<'tcx> Tcx<'tcx> {
             hir::ItemKind::Var {
                 ty, val: Some(val), ..
             } => {
+                let val_ty = self.type_of(val);
+                let val_span = self.span_of(val);
+                let ty_ty = self.type_of(ty);
+                let ty_span = self.span_of(ty);
+
+                self.constrain(Constraint::Equal(val_ty, val_span, ty_ty, ty_span));
+            }
+            hir::ItemKind::Const { ty, val } => {
                 let val_ty = self.type_of(val);
                 let val_span = self.span_of(val);
                 let ty_ty = self.type_of(ty);

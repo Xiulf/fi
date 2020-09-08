@@ -9,10 +9,12 @@ parser::token![ident "where" TWhere];
 parser::token![ident "extern" TExtern];
 parser::token![ident "fn" TFn];
 parser::token![ident "var" TVar];
+parser::token![ident "const" TConst];
 parser::token![ident "struct" TStruct];
 parser::token![ident "enum" TEnum];
 parser::token![ident "do" TDo];
 parser::token![ident "mut" TMut];
+parser::token![ident "forall" TForall];
 parser::token![ident "type" TType];
 parser::token![ident "if" TIf];
 parser::token![ident "else" TElse];
@@ -41,6 +43,7 @@ parser::token![punct "`" TTick/1];
 parser::token![punct "->" TArrow/2];
 parser::token![punct ".." TDblDot/2];
 parser::token![ident "_" TWildcard];
+parser::token![punct "∀" TForallS/1];
 parser::token![punct "@" TAt/1];
 parser::token![punct "&" TAmp/1];
 parser::token![punct "*" TStar/1];
@@ -111,11 +114,11 @@ impl Module {
         let file_name = name.span.file.name.file_stem().unwrap();
         let file_path = name.span.file.name.parent().unwrap();
         let path = match file_name.to_str() {
-            Some("main") | Some("lib") => file_path.join(format!("{}.zane", name)),
+            Some("main") | Some("lib") => file_path.join(format!("{}.shade", name)),
             _ => {
                 let path = file_path.join(file_name);
 
-                path.join(format!("{}.zane", name))
+                path.join(format!("{}.shade", name))
             }
         };
 
@@ -278,6 +281,27 @@ impl Parse for Item {
                 name,
                 kind: ItemKind::Var { ty, val },
             })
+        } else if let Ok(_) = input.parse::<TConst>() {
+            let name = input.parse()?;
+            let ty = if let Ok(_) = input.parse::<TColon>() {
+                input.parse()?
+            } else {
+                Type {
+                    span: input.span(),
+                    kind: TypeKind::Infer,
+                }
+            };
+
+            let _ = input.parse::<TEquals>()?;
+            let val = input.parse()?;
+            let _ = input.parse::<TSemi>();
+
+            Ok(Item {
+                span: start.to(input.prev_span()),
+                attrs,
+                name,
+                kind: ItemKind::Const { ty, val },
+            })
         } else if let Ok(_) = input.parse::<TStruct>() {
             let name = input.parse()?;
             let generics = input.parse()?;
@@ -314,7 +338,7 @@ impl Parse for Item {
             })
         } else {
             input.error(
-                "expected 'mod', 'extern', 'fn', 'var', 'struct' or 'enum'",
+                "expected 'mod', 'extern', 'fn', 'var', 'const', 'struct' or 'enum'",
                 0001,
             )
         }
@@ -328,6 +352,7 @@ impl Item {
             || input.peek::<TExtern>()
             || input.peek::<TFn>()
             || input.peek::<TVar>()
+            || input.peek::<TConst>()
             || input.peek::<TStruct>()
     }
 }
@@ -1118,6 +1143,29 @@ impl Type {
             let ret = input.parse()?;
 
             TypeKind::Func { params, ret }
+        } else if input.peek::<TForall>() || input.peek::<TForallS>() {
+            if let Err(_) = input.parse::<TForall>() {
+                input.parse::<TForallS>()?;
+            }
+
+            let gen = if input.peek::<TLParen>() {
+                input.parse()?
+            } else {
+                let name = input.parse::<Ident>()?;
+
+                Generics {
+                    span: name.span,
+                    params: vec![Generic {
+                        span: name.span,
+                        name,
+                    }],
+                }
+            };
+
+            let _ = input.parse::<TDot>()?;
+            let ty = input.parse()?;
+
+            TypeKind::Forall { gen, ty }
         } else if let Ok(_) = input.parse::<TStar>() {
             let mut_ = input.parse::<TMut>().is_ok();
             let ty = input.parse()?;

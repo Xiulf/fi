@@ -243,8 +243,8 @@ impl fmt::Display for Type<'_> {
             Type::Int(bits) => write!(f, "i{}", bits),
             Type::UInt(bits) => write!(f, "u{}", bits),
             Type::Float(bits) => write!(f, "f{}", bits),
-            Type::Ref(true, to) => write!(f, "ref mut {}", to),
-            Type::Ref(false, to) => write!(f, "ref {}", to),
+            Type::Ref(true, to) => write!(f, "*mut {}", to),
+            Type::Ref(false, to) => write!(f, "*{}", to),
             Type::Array(of, len) => write!(f, "[{}; {}]", of, len),
             Type::Slice(of) => write!(f, "[{}]", of),
             Type::Tuple(tys) => write!(

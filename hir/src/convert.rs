@@ -128,6 +128,14 @@ impl<'a> Converter<'a> {
                     );
                 }
             }
+            ast::ItemKind::Const { .. } => {
+                self.resolver.define(
+                    Ns::Values,
+                    item.name.symbol,
+                    item.name.span,
+                    Res::Item(Id::item(id)),
+                );
+            }
             ast::ItemKind::Struct { .. } => {
                 self.resolver.define(
                     Ns::Types,
@@ -280,6 +288,21 @@ impl<'a> Converter<'a> {
                             val,
                             global: top_level,
                         },
+                    },
+                );
+            }
+            ast::ItemKind::Const { ty, val } => {
+                let ty = self.trans_ty(ty);
+                let val = self.trans_expr(val);
+
+                self.items.insert(
+                    id,
+                    Item {
+                        span: item.span,
+                        id,
+                        attrs,
+                        name: item.name,
+                        kind: ItemKind::Const { ty, val },
                     },
                 );
             }
@@ -672,6 +695,16 @@ impl<'a> Converter<'a> {
                 let args = args.iter().map(|a| self.trans_ty(a)).collect();
 
                 TypeKind::Subst { ty, args }
+            }
+            ast::TypeKind::Forall { gen, ty } => {
+                self.resolver.push_rib(Ns::Types, RibKind::Local);
+
+                let gen = self.trans_generics(gen);
+                let ty = self.trans_ty(ty);
+
+                self.resolver.pop_rib(Ns::Types);
+
+                TypeKind::Forall { gen, ty }
             }
         };
 

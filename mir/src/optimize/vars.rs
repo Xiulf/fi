@@ -1,4 +1,4 @@
-use crate::visit::{Visitor, VisitorMut};
+use crate::visit::VisitorMut;
 use crate::*;
 use std::collections::HashMap;
 
@@ -80,7 +80,7 @@ impl<'tcx> VisitorMut<'tcx> for VarReplacer {
             if let None = self.repl {
                 if let Stmt::Assign(place, rvalue) = stmt {
                     if let PlaceBase::Local(a) = &place.base {
-                        if place.elems.is_empty() {
+                        if place.elems.is_empty() && *a != LocalId::RET {
                             if let RValue::Use(Operand::Place(r)) = rvalue {
                                 if let PlaceBase::Local(b) = &r.base {
                                     if r.elems.is_empty() {

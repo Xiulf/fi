@@ -2,25 +2,80 @@
 
 use crate::*;
 use check::tcx::Tcx;
+use std::collections::HashMap;
 
-pub fn eval<'tcx>(tcx: &Tcx<'tcx>, body: Body<'tcx>, package: &Package<'tcx>) -> Const<'tcx> {
-    let mut ecx = Ecx::new(tcx, package, body);
+pub fn eval<'tcx>(
+    tcx: &Tcx<'tcx>,
+    body: Body<'tcx>,
+    subst: &HashMap<hir::Id, Ty<'tcx>>,
+) -> Const<'tcx> {
+    let mut ecx = Ecx::new(tcx, body, subst);
 
     ecx.eval();
     ecx.finish()
 }
 
+pub fn eval_expr<'tcx>(
+    tcx: &Tcx<'tcx>,
+    hir: &hir::Package,
+    expr: &hir::Id,
+    ty: Ty<'tcx>,
+    subst: &HashMap<hir::Id, Ty<'tcx>>,
+) -> Const<'tcx> {
+    let mut body = Body {
+        locals: BTreeMap::new(),
+        blocks: BTreeMap::new(),
+    };
+
+    body.locals.insert(
+        LocalId::RET,
+        Local {
+            id: LocalId::RET,
+            ty,
+            kind: LocalKind::Ret,
+        },
+    );
+
+    let builder = Builder {
+        body: &mut body,
+        current_block: None,
+    };
+
+    let mut converter = crate::convert::BodyConverter::new(tcx, hir, builder);
+    let entry = converter.builder.create_block();
+
+    converter.builder.use_block(entry);
+
+    let res = converter.trans_expr(expr);
+
+    converter.builder.use_(Place::local(LocalId::RET), res);
+    converter.builder.return_();
+
+    eval(tcx, body, subst)
+}
+
 pub struct Ecx<'a, 'tcx> {
     tcx: &'a Tcx<'tcx>,
-    package: &'a Package<'tcx>,
     body: Body<'tcx>,
+    subst: &'a HashMap<hir::Id, Ty<'tcx>>,
     locals: BTreeMap<LocalId, Const<'tcx>>,
     current_block: BlockId,
-    done: bool,
+    status: EvalStatus,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EvalStatus {
+    Busy,
+    Done,
+    Error,
 }
 
 impl<'a, 'tcx> Ecx<'a, 'tcx> {
-    pub fn new(tcx: &'a Tcx<'tcx>, package: &'a Package<'tcx>, body: Body<'tcx>) -> Self {
+    pub fn new(
+        tcx: &'a Tcx<'tcx>,
+        body: Body<'tcx>,
+        subst: &'a HashMap<hir::Id, Ty<'tcx>>,
+    ) -> Self {
         let locals = body
             .locals
             .keys()
@@ -29,11 +84,11 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
 
         Ecx {
             tcx,
-            package,
             body,
+            subst,
             locals,
             current_block: BlockId(0),
-            done: false,
+            status: EvalStatus::Busy,
         }
     }
 
@@ -42,7 +97,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
     }
 
     pub fn eval(&mut self) {
-        while !self.done {
+        while let EvalStatus::Busy = self.status {
             let block = &self.body.blocks[&self.current_block];
             let stmts = block.stmts.clone();
             let term = block.term.clone();
@@ -73,10 +128,10 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
             Term::Unset => unreachable!(),
             Term::Abort => {
                 self.locals.insert(LocalId::RET, Const::Undefined);
-                self.done = true;
+                self.status = EvalStatus::Error;
             }
             Term::Return => {
-                self.done = true;
+                self.status = EvalStatus::Done;
             }
             Term::Jump(block) => {
                 self.current_block = block;
@@ -102,7 +157,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
                 let mut val = self.eval_op(op);
 
                 if let Const::Scalar(_, ty2) = &mut val {
-                    *ty2 = ty;
+                    *ty2 = ty.replace(self.subst, self.tcx);
                 }
 
                 val
@@ -112,7 +167,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
             RValue::Init(ty, _variant, ops) => {
                 let vals = ops.into_iter().map(|op| self.eval_op(op)).collect();
 
-                match ty {
+                match ty.replace(self.subst, self.tcx) {
                     Type::Array(_, _) => Const::Array(vals),
                     Type::Tuple(_) => Const::Tuple(vals),
                     _ => unimplemented!(),

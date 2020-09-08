@@ -1,4 +1,8 @@
-mod vec;
+const NULL: forall T. *T = 0.(*_);
+
+fn(T) identity(x: T) -> T
+    x
+end
 
 --| @lang "range"
 struct Range

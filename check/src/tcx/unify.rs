@@ -115,6 +115,7 @@ impl<'tcx> Tcx<'tcx> {
                     self.unify_all(cs)
                 }
                 (Type::Enum(a, _), Type::Enum(b, _)) if a == b => Subst::empty(),
+                (a, Type::Forall(_, b)) => self.unify_one(Constraint::Equal(a, a_span, b, b_span)),
                 (_, _) => {
                     self.reporter.add(
                         Diagnostic::new(

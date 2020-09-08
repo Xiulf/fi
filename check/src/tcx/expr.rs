@@ -35,6 +35,7 @@ impl<'tcx> Tcx<'tcx> {
                 hir::Res::PrimVal(prim) => match prim {
                     hir::PrimVal::True => self.builtin.bool,
                     hir::PrimVal::False => self.builtin.bool,
+                    hir::PrimVal::Undefined => self.new_var(),
                 },
                 _ => unreachable!(),
             },
