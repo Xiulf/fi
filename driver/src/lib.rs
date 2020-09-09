@@ -27,6 +27,6 @@ pub fn build(opts: Opts) {
 
         println!("{}", mir);
 
-        // codegen::compile(&tcx, &mir, format!("{}/main", opts.target_dir.display()));
+        codegen::compile(&tcx, &mir, format!("{}/main", opts.target_dir.display()));
     });
 }

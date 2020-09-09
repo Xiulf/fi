@@ -153,15 +153,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
 
                 Const::Ref(Box::new(val))
             }
-            RValue::Cast(ty, op) => {
-                let mut val = self.eval_op(op);
-
-                if let Const::Scalar(_, ty2) = &mut val {
-                    *ty2 = ty.replace(self.subst, self.tcx);
-                }
-
-                val
-            }
+            RValue::Cast(ty, op) => self.eval_op(op),
             RValue::BinOp(op, lhs, rhs) => unimplemented!(),
             RValue::UnOp(op, rhs) => unimplemented!(),
             RValue::Init(ty, _variant, ops) => {
@@ -179,7 +171,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
     pub fn eval_op(&mut self, op: Operand<'tcx>) -> Const<'tcx> {
         match op {
             Operand::Place(place) => place.load(self),
-            Operand::Const(c) => c,
+            Operand::Const(c, _) => c,
         }
     }
 }
@@ -208,7 +200,7 @@ impl<'tcx> Place<'tcx> {
                 PlaceElem::Index(idx) => {
                     let idx = match idx {
                         Operand::Place(idx) => idx.load(ecx),
-                        Operand::Const(idx) => idx.clone(),
+                        Operand::Const(idx, _) => idx.clone(),
                     }
                     .scalar() as usize;
 
@@ -219,7 +211,7 @@ impl<'tcx> Place<'tcx> {
                         Const::Bytes(bytes) => {
                             let byte = bytes[idx];
 
-                            val = Const::Scalar(byte as u128, ecx.tcx.builtin.u8);
+                            val = Const::Scalar(byte as u128);
                         }
                         _ => unimplemented!(),
                     }
@@ -255,7 +247,7 @@ impl<'tcx> Place<'tcx> {
                 PlaceElem::Index(idx) => {
                     let idx = match idx {
                         Operand::Place(idx) => idx.load(ecx_clone),
-                        Operand::Const(idx) => idx.clone(),
+                        Operand::Const(idx, _) => idx.clone(),
                     }
                     .scalar() as usize;
 
@@ -277,7 +269,7 @@ impl<'tcx> Place<'tcx> {
 impl<'tcx> Const<'tcx> {
     fn scalar(&self) -> u128 {
         match self {
-            Const::Scalar(val, _) => *val,
+            Const::Scalar(val) => *val,
             _ => unreachable!(),
         }
     }

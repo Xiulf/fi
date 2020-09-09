@@ -124,7 +124,7 @@ impl Display for Operand<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
             Operand::Place(place) => place.fmt(f),
-            Operand::Const(const_) => const_.fmt(f),
+            Operand::Const(const_, _) => const_.fmt(f),
         }
     }
 }
@@ -156,7 +156,7 @@ impl Display for Const<'_> {
             Const::Ref(to) => write!(f, "&{}", to),
             Const::Tuple(vals) => write!(f, "({})", list(vals, ", ")),
             Const::Array(vals) => write!(f, "[{}]", list(vals, ", ")),
-            Const::Scalar(val, ty) => write!(f, "({}: {})", val, ty),
+            Const::Scalar(val) => val.fmt(f),
             Const::FuncAddr(id) => write!(f, "{}", id),
             Const::Type(ty) => write!(f, "`{}`", ty),
             Const::Bytes(bytes) => write!(f, "{:?}", String::from_utf8_lossy(bytes)),

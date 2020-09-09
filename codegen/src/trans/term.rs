@@ -61,7 +61,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                     )
                     .collect::<Vec<_>>();
 
-                let inst = if let mir::Operand::Const(mir::Const::FuncAddr(id)) = func {
+                let inst = if let mir::Operand::Const(mir::Const::FuncAddr(id), _) = func {
                     let func = self.func_ids[id].0;
                     let func = self.module.declare_func_in_func(func, self.builder.func);
 

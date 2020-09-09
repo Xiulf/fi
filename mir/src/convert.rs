@@ -201,10 +201,12 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 hir::Res::Label(_) => unreachable!(),
                 hir::Res::PrimTy(_) => unreachable!(),
                 hir::Res::Item(id) => match &self.hir.items[id].kind {
-                    hir::ItemKind::Func { .. } => Operand::Const(Const::FuncAddr(*id)),
+                    hir::ItemKind::Func { .. } => {
+                        Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
+                    }
                     hir::ItemKind::Extern { ty, .. } => {
                         if self.tcx.type_of(ty).func().is_some() {
-                            Operand::Const(Const::FuncAddr(*id))
+                            Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
                         } else {
                             Operand::Place(Place::global(*id))
                         }
@@ -226,32 +228,41 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     hir::ItemKind::Const { val, .. } => {
                         let ty = self.tcx.type_of(&expr.id);
 
-                        Operand::Const(crate::constant::eval_expr(
-                            self.tcx,
-                            self.hir,
-                            val,
+                        Operand::Const(
+                            crate::constant::eval_expr(
+                                self.tcx,
+                                self.hir,
+                                val,
+                                ty,
+                                &*self.tcx.subst_of(ty).unwrap(),
+                            ),
                             ty,
-                            &*self.tcx.subst_of(ty).unwrap(),
-                        ))
+                        )
                     }
                     _ => unreachable!(),
                 },
                 hir::Res::Local(id) => Operand::Place(Place::local(self.locals[id])),
                 hir::Res::PrimVal(prim) => match prim {
-                    hir::PrimVal::True => Operand::Const(Const::Scalar(1, self.tcx.builtin.bool)),
-                    hir::PrimVal::False => Operand::Const(Const::Scalar(0, self.tcx.builtin.bool)),
-                    hir::PrimVal::Undefined => Operand::Const(Const::Undefined),
+                    hir::PrimVal::True => Operand::Const(Const::Scalar(1), self.tcx.builtin.bool),
+                    hir::PrimVal::False => Operand::Const(Const::Scalar(0), self.tcx.builtin.bool),
+                    hir::PrimVal::Undefined => {
+                        Operand::Const(Const::Undefined, self.tcx.type_of(id))
+                    }
                 },
             },
-            hir::ExprKind::Int { val } => Operand::Const(Const::Scalar(*val, self.tcx.type_of(id))),
+            hir::ExprKind::Int { val } => Operand::Const(Const::Scalar(*val), self.tcx.type_of(id)),
             hir::ExprKind::Float { bits } => {
-                Operand::Const(Const::Scalar(*bits as u128, self.tcx.type_of(id)))
+                Operand::Const(Const::Scalar(*bits as u128), self.tcx.type_of(id))
             }
             hir::ExprKind::Char { val } => {
-                Operand::Const(Const::Scalar(*val as u128, self.tcx.type_of(id)))
+                Operand::Const(Const::Scalar(*val as u128), self.tcx.type_of(id))
             }
-            hir::ExprKind::String { val } => Operand::Const(Const::Bytes(val.as_bytes().into())),
-            hir::ExprKind::Type { ty } => Operand::Const(Const::Type(self.tcx.type_of(ty))),
+            hir::ExprKind::String { val } => {
+                Operand::Const(Const::Bytes(val.as_bytes().into()), self.tcx.builtin.str)
+            }
+            hir::ExprKind::Type { ty } => {
+                Operand::Const(Const::Type(self.tcx.type_of(ty)), self.tcx.builtin.typeid)
+            }
             hir::ExprKind::Array { exprs } => {
                 let ty = self.tcx.type_of(id);
                 let res = self.builder.create_tmp(ty);
@@ -294,13 +305,13 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let low = if let Some(low) = low {
                     self.trans_expr(low)
                 } else {
-                    Operand::Const(Const::Scalar(0, self.tcx.builtin.usize))
+                    Operand::Const(Const::Scalar(0), self.tcx.builtin.usize)
                 };
 
                 let high = if let Some(high) = high {
                     self.trans_expr(high)
                 } else if let Type::Array(_, len) = list_ty {
-                    Operand::Const(Const::Scalar(*len as u128, self.tcx.builtin.usize))
+                    Operand::Const(Const::Scalar(*len as u128), self.tcx.builtin.usize)
                 } else {
                     Operand::Place(list.clone().field(1))
                 };
@@ -329,7 +340,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             hir::ExprKind::TypeOf { expr } => {
                 let expr_ty = self.tcx.type_of(expr);
 
-                Operand::Const(Const::Type(expr_ty))
+                Operand::Const(Const::Type(expr_ty), self.tcx.builtin.typeid)
             }
             hir::ExprKind::Cast { expr, ty } => {
                 let ty = self.tcx.type_of(ty);
@@ -367,7 +378,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                         self.builder.use_block(false_block);
                         self.builder.use_(
                             res.clone(),
-                            Operand::Const(Const::Scalar(0, self.tcx.builtin.bool)),
+                            Operand::Const(Const::Scalar(0), self.tcx.builtin.bool),
                         );
                         self.builder.jump(exit_block);
                         self.builder.use_block(true_block);
@@ -387,7 +398,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                         self.builder.use_block(true_block);
                         self.builder.use_(
                             res.clone(),
-                            Operand::Const(Const::Scalar(1, self.tcx.builtin.bool)),
+                            Operand::Const(Const::Scalar(1), self.tcx.builtin.bool),
                         );
                         self.builder.jump(exit_block);
                         self.builder.use_block(false_block);
@@ -465,7 +476,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     self.builder.jump(exit_block);
                     self.builder.use_block(exit_block);
 
-                    Operand::Const(Const::Tuple(Vec::new()))
+                    Operand::Const(Const::Tuple(Vec::new()), self.tcx.builtin.unit)
                 }
             }
             hir::ExprKind::While { label, cond, body } => {
@@ -490,7 +501,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.use_block(exit_block);
                 self.loops.pop().unwrap();
 
-                Operand::Const(Const::Tuple(Vec::new()))
+                Operand::Const(Const::Tuple(Vec::new()), self.tcx.builtin.unit)
             }
             _ => unimplemented!("{}", expr),
         }
@@ -537,9 +548,13 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 return Operand::Place(res);
             } else if let Type::Forall(params, _) = self.tcx.type_of(item) {
-                let subst = self.tcx.subst_of(self.tcx.type_of(func));
+                let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
+                let subst = params.iter().map(|p| subst[p]);
 
-                println!("{:?}", subst);
+                call_args = subst
+                    .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
+                    .chain(call_args)
+                    .collect();
             }
         }
 
@@ -556,7 +571,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         let obj_ty = self.tcx.type_of(obj);
         let obj = self.trans_expr(obj);
 
-        if let Operand::Const(Const::Type(ty)) = obj {
+        if let Operand::Const(Const::Type(ty), _) = obj {
             if let Type::Param(id) = ty {
                 let param_id = self.locals[id];
                 let param = Place::local(param_id).deref();
@@ -575,22 +590,22 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let layout = self.tcx.layout(ty);
 
                 if &**field.symbol == "size" {
-                    Operand::Const(Const::Scalar(
-                        layout.size.bytes() as u128,
+                    Operand::Const(
+                        Const::Scalar(layout.size.bytes() as u128),
                         self.tcx.builtin.usize,
-                    ))
+                    )
                 } else if &**field.symbol == "align" {
-                    Operand::Const(Const::Scalar(
-                        layout.align.bytes() as u128,
+                    Operand::Const(
+                        Const::Scalar(layout.align.bytes() as u128),
                         self.tcx.builtin.usize,
-                    ))
+                    )
                 } else {
                     unreachable!();
                 }
             }
         } else if let Type::Array(_, len) = obj_ty {
             if &**field.symbol == "len" {
-                Operand::Const(Const::Scalar(*len as u128, self.tcx.builtin.usize))
+                Operand::Const(Const::Scalar(*len as u128), self.tcx.builtin.usize)
             } else {
                 unreachable!();
             }

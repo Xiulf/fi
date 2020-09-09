@@ -106,7 +106,7 @@ pub enum PlaceElem<'tcx> {
 #[derive(Debug, Clone)]
 pub enum Operand<'tcx> {
     Place(Place<'tcx>),
-    Const(Const<'tcx>),
+    Const(Const<'tcx>, Ty<'tcx>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -115,7 +115,7 @@ pub enum Const<'tcx> {
     Ref(Box<Const<'tcx>>),
     Tuple(Vec<Const<'tcx>>),
     Array(Vec<Const<'tcx>>),
-    Scalar(u128, Ty<'tcx>),
+    Scalar(u128),
     FuncAddr(Id),
     Bytes(Box<[u8]>),
     Type(Ty<'tcx>),
@@ -507,17 +507,17 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 }
 
 impl<'tcx> Const<'tcx> {
-    pub fn to_bytes(&self, stride: usize) -> Vec<u8> {
+    pub fn to_bytes(&self, ty: Ty<'tcx>, tcx: &check::tcx::Tcx<'tcx>, stride: usize) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(stride);
 
         match self {
             Const::Undefined => {}
             Const::Array(vals) => {
                 for val in vals {
-                    bytes.append(&mut val.to_bytes(stride / vals.len()));
+                    bytes.append(&mut val.to_bytes(ty.idx(tcx), tcx, stride / vals.len()));
                 }
             }
-            Const::Scalar(val, ty) => match ty {
+            Const::Scalar(val) => match ty {
                 Type::Int(0) => match stride {
                     2 => bytes.extend(&(*val as i16).to_le_bytes()),
                     4 => bytes.extend(&(*val as i32).to_le_bytes()),

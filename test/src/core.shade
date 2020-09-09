@@ -6,8 +6,8 @@ end
 
 --| @lang "range"
 struct Range
-    low: usize
-    high: usize
+    lo: usize
+    hi: usize
 end
 
 --| @lang "option"

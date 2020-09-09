@@ -312,7 +312,7 @@ impl<'tcx> Place<'tcx> {
                     true,
                 );
             }
-            ValueKind::Ref(_, Some(_)) => unimplemented!(),
+            ValueKind::Ref(_, Some(_)) => unimplemented!("{}", from.layout.ty),
         }
     }
 

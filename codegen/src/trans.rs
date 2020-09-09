@@ -179,10 +179,10 @@ pub fn define<'tcx>(
     data_ids: &BTreeMap<mir::Id, (DataId, Layout<'tcx>)>,
     bytes_count: &mut usize,
 ) -> ModuleResult<()> {
-    if let mir::ItemKind::Global(_, val) = &item.kind {
+    if let mir::ItemKind::Global(ty, val) = &item.kind {
         let (data_id, layout) = &data_ids[&item.id];
         let mut ctx = DataContext::new();
-        let bytes = val.to_bytes(layout.stride.bytes() as usize);
+        let bytes = val.to_bytes(ty, tcx, layout.stride.bytes() as usize);
 
         ctx.define(bytes.into());
 

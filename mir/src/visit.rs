@@ -48,7 +48,7 @@ macro_rules! make_visitor{
                 self.super_op(op)
             }
 
-            fn visit_const(&mut self, const_: & $($mut)? Const<'tcx>) {
+            fn visit_const(&mut self, const_: & $($mut)? Const<'tcx>, ty: Ty<'tcx>) {
             }
 
             fn super_package(&mut self, package: & $($mut)? Package<'tcx>) {
@@ -172,7 +172,7 @@ macro_rules! make_visitor{
             fn super_op(&mut self, op: & $($mut)? Operand<'tcx>) {
                 match op {
                     Operand::Place(place) => self.visit_place(place),
-                    Operand::Const(const_) => self.visit_const(const_),
+                    Operand::Const(const_, ty) => self.visit_const(const_, ty),
                 }
             }
         }

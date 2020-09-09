@@ -1,18 +1,26 @@
 use crate::place::Place;
 use crate::value::Value;
 use crate::FunctionCtx;
-use cranelift::codegen::ir::InstBuilder;
+use cranelift::codegen::ir::{self as cir, InstBuilder};
 use cranelift_module::Backend;
 
 impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
     pub fn trans_operand(&mut self, operand: &mir::Operand<'tcx>) -> Value<'tcx> {
         match operand {
             mir::Operand::Place(place) => self.trans_place(place).to_value(self),
-            mir::Operand::Const(c) => match c {
+            mir::Operand::Const(c, ty) => match c {
+                mir::Const::Undefined => {
+                    let slot = self.builder.create_stack_slot(cir::StackSlotData::new(
+                        cir::StackSlotKind::ExplicitSlot,
+                        self.tcx.layout(ty).size.bytes() as u32,
+                    ));
+
+                    Value::new_ref(crate::ptr::Pointer::stack(slot), self.tcx.layout(ty))
+                }
                 mir::Const::Tuple(vals) if vals.len() == 0 => {
                     Value::new_unit(self.tcx.layout(self.tcx.builtin.unit))
                 }
-                mir::Const::Scalar(val, ty) => Value::new_const(self, *val, self.tcx.layout(ty)),
+                mir::Const::Scalar(val) => Value::new_const(self, *val, self.tcx.layout(ty)),
                 mir::Const::FuncAddr(id) => {
                     let func = self.func_ids[id].0;
                     let func = self.module.declare_func_in_func(func, self.builder.func);
