@@ -111,7 +111,7 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
                 }
             }
         }
-        Type::Func(params, ret) => {
+        Type::Func(_, params, ret) => {
             for param in *params {
                 subst_var(param.ty, tvar, repl);
             }

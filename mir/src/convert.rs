@@ -32,7 +32,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
 
     pub fn finish(mut self) -> Package<'tcx> {
         crate::optimize::optimize(&mut self.package);
-        crate::lifetime::mark_lifetimes(&mut self.package);
+        // crate::lifetime::mark_lifetimes(&mut self.package);
         self.package
     }
 
@@ -56,22 +56,24 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                 body,
                 generics: _,
             } => {
-                let mut params = params.clone();
+                let params = params.clone();
                 let func_ty = self.tcx.type_of(&item.id);
 
-                let (param_tys, ret_ty) = if let Type::Forall(gparams, new_ty) = func_ty {
-                    let ty_layout = self.tcx.lang_items.type_layout().unwrap();
-                    let ty_layout = self.tcx.type_of(&ty_layout);
-                    let ty_layout = self.tcx.intern_ty(Type::Ref(false, ty_layout));
-                    let mut param_tys = gparams.iter().map(|_| ty_layout).collect::<Vec<_>>();
-                    let (tparams, ret) = new_ty.func().unwrap();
+                let (param_tys, ret_ty) = if let Type::Forall(_gparams, new_ty) = func_ty {
+                    // let ty_layout = self.tcx.lang_items.type_layout().unwrap();
+                    // let ty_layout = self.tcx.type_of(&ty_layout);
+                    // let ty_layout = self.tcx.intern_ty(Type::Ref(false, ty_layout));
+                    // let mut param_tys = gparams.iter().map(|_| ty_layout).collect::<Vec<_>>();
+                    // let (tparams, ret) = new_ty.func().unwrap();
+                    let (_, param_tys, ret) = new_ty.func().unwrap();
+                    let param_tys = param_tys.iter().map(|p| p.ty).collect::<Vec<_>>();
 
-                    params = gparams.iter().copied().chain(params).collect();
-                    param_tys.extend(tparams.iter().map(|p| p.ty));
+                    // params = gparams.iter().copied().chain(params).collect();
+                    // param_tys.extend(tparams.iter().map(|p| p.ty));
 
                     (param_tys, ret)
                 } else {
-                    let (params, ret) = func_ty.func().unwrap();
+                    let (_, params, ret) = func_ty.func().unwrap();
 
                     (params.iter().map(|p| p.ty).collect(), ret)
                 };
@@ -508,7 +510,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
     }
 
     fn trans_call(&mut self, func: &hir::Id, args: &[hir::Arg]) -> Operand<'tcx> {
-        let (param_tys, ret_ty) = self.tcx.type_of(func).func().unwrap();
+        let (func_id, param_tys, ret_ty) = self.tcx.type_of(func).func().unwrap();
         let res = self.builder.create_tmp(ret_ty);
         let res = Place::local(res);
         let mut call_args = Vec::with_capacity(args.len());
@@ -547,14 +549,14 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.init(res.clone(), ret_ty, *variant, call_args);
 
                 return Operand::Place(res);
-            } else if let Type::Forall(params, _) = self.tcx.type_of(item) {
-                let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
-                let subst = params.iter().map(|p| subst[p]);
+            } else if let Type::Forall(_params, _) = self.tcx.type_of(item) {
+                // let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
+                // let subst = params.iter().map(|p| subst[p]);
 
-                call_args = subst
-                    .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
-                    .chain(call_args)
-                    .collect();
+                // call_args = subst
+                //     .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
+                //     .chain(call_args)
+                //     .collect();
             }
         }
 

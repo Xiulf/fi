@@ -359,7 +359,7 @@ impl<'tcx> Tcx<'tcx> {
             Type::Struct(_, fields) => self.intern_layout(
                 self.struct_layout(fields.iter().map(|f| self.layout(f.ty)).collect()),
             ),
-            Type::Func(_, _) => {
+            Type::Func(_, _, _) => {
                 let mut ptr = scalar_unit(Primitive::Pointer);
 
                 ptr.valid_range = 1..=*ptr.valid_range.end();

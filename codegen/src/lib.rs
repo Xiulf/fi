@@ -109,7 +109,7 @@ pub fn clif_type<'tcx>(module: &Module<impl Backend>, layout: Layout<'tcx>) -> O
             _ => unreachable!(),
         },
         Type::Ref(_, _) => Some(module.target_config().pointer_type()),
-        Type::Func(_, _) => Some(module.target_config().pointer_type()),
+        Type::Func(_, _, _) => Some(module.target_config().pointer_type()),
         _ => None,
     }
 }

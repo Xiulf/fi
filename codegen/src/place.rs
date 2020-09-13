@@ -312,7 +312,30 @@ impl<'tcx> Place<'tcx> {
                     true,
                 );
             }
-            ValueKind::Ref(_, Some(_)) => unimplemented!("{}", from.layout.ty),
+            ValueKind::Ref(val_ptr, Some(val_ty)) => {
+                let val_ty = Pointer::addr(val_ty);
+                let layout = fx.tcx.layout_of(&fx.tcx.lang_items.type_layout().unwrap());
+                let val_ty = Place::new_ref(val_ty, layout);
+                let val_size = val_ty.field(fx, 0).to_value(fx).load_scalar(fx);
+                let from_addr = val_ptr.get_addr(fx);
+                let to_addr = to_ptr.get_addr(fx);
+                let mut memcpy = fx.module.make_signature();
+
+                memcpy.params.push(cir::AbiParam::new(fx.pointer_type));
+                memcpy.params.push(cir::AbiParam::new(fx.pointer_type));
+                memcpy.params.push(cir::AbiParam::new(fx.pointer_type));
+
+                let memcpy = fx
+                    .module
+                    .declare_function("memcpy", cranelift_module::Linkage::Import, &memcpy)
+                    .unwrap();
+
+                let memcpy = fx.module.declare_func_in_func(memcpy, fx.builder.func);
+
+                fx.builder
+                    .ins()
+                    .call(memcpy, &[to_addr, from_addr, val_size]);
+            }
         }
     }
 

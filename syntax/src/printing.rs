@@ -23,6 +23,10 @@ impl Display for Module {
 
 impl Display for Item {
     fn fmt(&self, f: &mut Formatter) -> Result {
+        for attr in &self.attrs {
+            writeln!(f, "{}", attr)?;
+        }
+
         match &self.kind {
             ItemKind::Module { module } => {
                 writeln!(f, "mod {} where", self.name)?;
@@ -45,8 +49,8 @@ impl Display for Item {
                 write!(
                     f,
                     "fn{} {}({}) {}{}",
-                    self.name,
                     generics,
+                    self.name,
                     list(params, ", "),
                     ret,
                     body
@@ -91,6 +95,24 @@ impl Display for Item {
 
                 write!(f, "end")
             }
+        }
+    }
+}
+
+impl Display for Attribute {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match &self.kind {
+            AttrKind::Doc(text) => write!(
+                f,
+                "{}",
+                text.lines()
+                    .enumerate()
+                    .map(|(i, l)| format!("--|{}{}", if i == 0 { "" } else { " " }, l))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+            AttrKind::NoMangle => write!(f, "@no_mangle"),
+            AttrKind::Lang(name) => write!(f, "@lang {}", name),
         }
     }
 }
@@ -159,20 +181,16 @@ impl Display for EnumVariant {
 impl Display for Block {
     fn fmt(&self, f: &mut Formatter) -> Result {
         if self.stmts.is_empty() {
-            return write!(f, "{{}}");
-        } else if self.stmts.len() == 1 {
-            if let StmtKind::Expr(expr) = &self.stmts[0].kind {
-                return write!(f, "do {}", expr);
-            }
+            return write!(f, "end");
         }
 
-        writeln!(f, "{{")?;
+        writeln!(f)?;
 
         for stmt in &self.stmts {
             writeln!(indent(f), "{}", stmt)?;
         }
 
-        write!(f, "}}")
+        write!(f, "end")
     }
 }
 
@@ -220,7 +238,7 @@ impl Display for Expr {
             ExprKind::Array { exprs } => write!(f, "[{}]", list(exprs, ", ")),
             ExprKind::Tuple { exprs } => write!(f, "({})", list(exprs, ", ")),
             ExprKind::Init { fields } => write!(f, "{{ {} }}", list(fields, ", ")),
-            ExprKind::Block { block } => block.fmt(f),
+            ExprKind::Block { block } => write!(f, "do {}", block),
             ExprKind::Call { func, args } => write!(f, "{}({})", func, list(args, ", ")),
             ExprKind::MethodCall { obj, method, args } => {
                 write!(f, "{}.{}({})", obj, method, list(args, ", "))

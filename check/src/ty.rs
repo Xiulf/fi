@@ -27,7 +27,7 @@ pub enum Type<'tcx> {
     Tuple(&'tcx [Ty<'tcx>]),
     Struct(hir::Id, &'tcx [Field<'tcx>]),
     Enum(hir::Id, &'tcx [Variant<'tcx>]),
-    Func(&'tcx [Param<'tcx>], Ty<'tcx>),
+    Func(Option<hir::Id>, &'tcx [Param<'tcx>], Ty<'tcx>),
     Forall(&'tcx [hir::Id], Ty<'tcx>),
 }
 
@@ -56,9 +56,9 @@ pub struct Variant<'tcx> {
 }
 
 impl<'tcx> Type<'tcx> {
-    pub fn func(&self) -> Option<(&'tcx [Param<'tcx>], Ty<'tcx>)> {
+    pub fn func(&self) -> Option<(Option<&hir::Id>, &'tcx [Param<'tcx>], Ty<'tcx>)> {
         match self {
-            Type::Func(params, ret) => Some((params, ret)),
+            Type::Func(id, params, ret) => Some((id.as_ref(), params, ret)),
             _ => None,
         }
     }
@@ -198,7 +198,7 @@ impl<'tcx> Type<'tcx> {
 
                 tcx.intern_ty(Type::Enum(*id, variants))
             }
-            Type::Func(params, ret) => {
+            Type::Func(id, params, ret) => {
                 let params = params.iter().map(|p| Param {
                     span: p.span,
                     name: p.name,
@@ -208,7 +208,7 @@ impl<'tcx> Type<'tcx> {
                 let params = tcx.arena.alloc_slice_fill_iter(params);
                 let ret = ret.replace(args, tcx);
 
-                tcx.intern_ty(Type::Func(params, ret))
+                tcx.intern_ty(Type::Func(*id, params, ret))
             }
             Type::Forall(a, ty) => {
                 let new_ty = ty.replace(args, tcx);
@@ -266,7 +266,18 @@ impl fmt::Display for Type<'_> {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            Type::Func(params, ret) => write!(
+            Type::Func(Some(id), params, ret) => write!(
+                f,
+                "fn ({}) -> {} {{{}}}",
+                params
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ret,
+                id,
+            ),
+            Type::Func(None, params, ret) => write!(
                 f,
                 "fn ({}) -> {}",
                 params
@@ -274,7 +285,7 @@ impl fmt::Display for Type<'_> {
                     .map(|p| p.to_string())
                     .collect::<Vec<_>>()
                     .join(", "),
-                ret
+                ret,
             ),
             Type::Forall(args, ty) => write!(
                 f,

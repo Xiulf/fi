@@ -2,11 +2,12 @@
 
 pub mod constant;
 pub mod convert;
-pub mod lifetime;
+// pub mod lifetime;
 pub mod optimize;
 mod printing;
 pub mod visit;
 
+use check::tcx::Tcx;
 pub use check::ty::{Ident, Param, Ty, Type};
 pub use hir::{AttrKind, Attribute, Id, ItemId};
 use std::collections::BTreeMap;
@@ -234,12 +235,7 @@ impl<'tcx> Package<'tcx> {
         );
     }
 
-    pub fn define_global(
-        &mut self,
-        tcx: &check::tcx::Tcx<'tcx>,
-        id: Id,
-        f: impl FnOnce(Builder<'_, 'tcx>),
-    ) {
+    pub fn define_global(&mut self, tcx: &Tcx<'tcx>, id: Id, f: impl FnOnce(Builder<'_, 'tcx>)) {
         let ty = match self.items.get(&id).unwrap().kind {
             ItemKind::Global(ty, _) => ty,
             _ => unreachable!(),

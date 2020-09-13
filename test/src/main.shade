@@ -1,8 +1,10 @@
--- mod libc
--- mod util
-mod core
-
---| @no_mangle
+@no_mangle
 fn main(argc: i32, argv: **u8) -> i32
-    core/identity(0)
+    -- fn (x: i32) -> i32 {identity}
+    identity(0)
+end
+
+-- forall T. fn (x: T) -> T {identity}
+fn(T) identity(x: T) -> T
+    x
 end

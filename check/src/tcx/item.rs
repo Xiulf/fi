@@ -25,7 +25,7 @@ impl<'tcx> Tcx<'tcx> {
                 }));
 
                 let ret = self.type_of(ret);
-                let mut ty = self.intern_ty(Type::Func(params, ret));
+                let mut ty = self.intern_ty(Type::Func(Some(*id), params, ret));
 
                 if !generics.params.is_empty() {
                     let args = generics.params.iter().map(|g| g.id);
@@ -57,11 +57,11 @@ impl<'tcx> Tcx<'tcx> {
                 let ret = self.type_of(item);
 
                 if let Type::Forall(args, ret) = ret {
-                    let ty = self.intern_ty(Type::Func(params, ret));
+                    let ty = self.intern_ty(Type::Func(Some(*id), params, ret));
 
                     self.intern_ty(Type::Forall(*args, ty))
                 } else {
-                    self.intern_ty(Type::Func(params, ret))
+                    self.intern_ty(Type::Func(Some(*id), params, ret))
                 }
             }
             hir::ItemKind::Cons {

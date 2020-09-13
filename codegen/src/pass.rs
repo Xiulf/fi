@@ -6,6 +6,7 @@ use check::ty::{Layout, Param, Ty};
 use cranelift::codegen::ir as cir;
 use cranelift_module::{Backend, Module};
 
+#[derive(Debug)]
 pub enum PassMode {
     ByRef { sized: bool },
     ByVal(cir::Type),

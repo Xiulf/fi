@@ -135,41 +135,36 @@ impl Module {
 
 impl Parse for Attribute {
     fn parse(input: ParseStream) -> Result<Self> {
-        let attr = input.parse::<Attr>()?;
-        let mut lexer = parser::lexer::Lexer::new(&attr.text, attr.span.file, input.reporter);
-        let mut tokens = lexer.run();
-
-        for token in &mut tokens.tokens {
-            if !matches!(token, parser::buffer::Entry::Empty) {
-                let span = token.span_mut();
-
-                span.start.line += attr.span.start.line;
-                span.start.col += attr.span.start.col + 3;
-                span.start.offset += attr.span.start.offset + 3;
-                span.end.line += attr.span.start.line;
-                span.end.col += attr.span.start.col + 3;
-                span.end.offset += attr.span.start.offset + 3;
-            }
-        }
-
-        let buffer = parser::parse::ParseBuffer::new(tokens.begin(), input.reporter, (), attr.span);
-        let kind = if buffer.peek::<TAt>() && buffer.peek2::<Ident>() {
-            let _ = buffer.parse::<TAt>()?;
-            let name = buffer.parse::<Ident>()?;
-
-            match &**name.symbol {
-                "no_mangle" => AttrKind::NoMangle,
-                "lang" => AttrKind::Lang(buffer.parse()?),
-                _ => return buffer.error_at("unknown attribute", name.span, 0001),
-            }
+        if let Ok(attr) = input.parse::<Attr>() {
+            Ok(Attribute {
+                span: attr.span,
+                kind: AttrKind::Doc(attr.text),
+            })
         } else {
-            AttrKind::Doc(attr.text)
-        };
+            let start = input.span();
+            let _ = input.parse::<TAt>()?;
+            let name = input.parse::<Ident>()?;
+            let kind = match &**name.symbol {
+                "no_mangle" => AttrKind::NoMangle,
+                "lang" => AttrKind::Lang(input.parse()?),
+                _ => return input.error_at("unknown attribute", name.span, 0001),
+            };
 
-        Ok(Attribute {
-            span: attr.span,
-            kind,
-        })
+            Ok(Attribute {
+                span: start.to(input.prev_span()),
+                kind,
+            })
+        }
+    }
+}
+
+impl parser::token::Token for Attribute {
+    fn peek(cursor: parser::buffer::Cursor) -> bool {
+        Attr::peek(cursor) || TAt::peek(cursor)
+    }
+
+    fn display() -> &'static str {
+        "attribute"
     }
 }
 
@@ -178,7 +173,7 @@ impl Parse for Item {
         let start = input.span();
         let mut attrs = Vec::new();
 
-        while !input.is_empty() && input.peek::<Attr>() {
+        while !input.is_empty() && input.peek::<Attribute>() {
             attrs.push(input.parse()?);
         }
 
@@ -347,7 +342,7 @@ impl Parse for Item {
 
 impl Item {
     fn peek(input: ParseStream) -> bool {
-        input.peek::<Attr>()
+        input.peek::<Attribute>()
             || input.peek::<TMod>()
             || input.peek::<TExtern>()
             || input.peek::<TFn>()

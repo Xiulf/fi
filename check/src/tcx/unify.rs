@@ -92,7 +92,7 @@ impl<'tcx> Tcx<'tcx> {
 
                     self.unify_all(cs)
                 }
-                (Type::Func(a_params, a_ret), Type::Func(b_params, b_ret))
+                (Type::Func(_, a_params, a_ret), Type::Func(_, b_params, b_ret))
                     if a_params.len() != b_params.len() =>
                 {
                     let mut cs = Constraints::new();
@@ -202,7 +202,7 @@ impl<'tcx> Tcx<'tcx> {
                 }
             },
             Constraint::Call(fn_ty, fn_span, b_params, b_ret, ret_span) => {
-                if let Type::Func(a_params, a_ret) = fn_ty {
+                if let Type::Func(_, a_params, a_ret) = fn_ty {
                     let mut cs = Constraints::new();
 
                     if a_params.len() != b_params.len() {
@@ -442,7 +442,9 @@ fn occurs(ty: Ty<'_>, tvar: TypeVar) -> bool {
         Type::Ref(_, to) => occurs(to, tvar),
         Type::Array(of, _) => occurs(of, tvar),
         Type::Slice(of) => occurs(of, tvar),
-        Type::Func(params, ret) => params.iter().any(|p| occurs(p.ty, tvar)) || occurs(ret, tvar),
+        Type::Func(_, params, ret) => {
+            params.iter().any(|p| occurs(p.ty, tvar)) || occurs(ret, tvar)
+        }
         Type::Tuple(tys) => tys.iter().any(|t| occurs(t, tvar)),
         Type::Struct(_, fields) => fields.iter().any(|f| occurs(f.ty, tvar)),
         Type::Enum(_, variants) => variants

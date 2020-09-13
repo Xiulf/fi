@@ -72,7 +72,7 @@ pub fn declare<'tcx>(
 
     match &item.kind {
         mir::ItemKind::Extern(ty) => {
-            if let Some((params, ret)) = ty.func() {
+            if let Some((_, params, ret)) = ty.func() {
                 let mut sig = module.make_signature();
                 let ret = tcx.layout(ret);
 
@@ -96,9 +96,15 @@ pub fn declare<'tcx>(
                             sig.params.push(AbiParam::new(a));
                             sig.params.push(AbiParam::new(b));
                         }
-                        crate::pass::PassMode::ByRef { .. } => sig
+                        crate::pass::PassMode::ByRef { sized: true } => sig
                             .params
                             .push(AbiParam::new(module.target_config().pointer_type())),
+                        crate::pass::PassMode::ByRef { sized: false } => {
+                            sig.params
+                                .push(AbiParam::new(module.target_config().pointer_type()));
+                            sig.params
+                                .push(AbiParam::new(module.target_config().pointer_type()));
+                        }
                     }
                 }
 
@@ -155,9 +161,15 @@ pub fn declare<'tcx>(
                         sig.params.push(AbiParam::new(a));
                         sig.params.push(AbiParam::new(b));
                     }
-                    crate::pass::PassMode::ByRef { .. } => sig
+                    crate::pass::PassMode::ByRef { sized: true } => sig
                         .params
                         .push(AbiParam::new(module.target_config().pointer_type())),
+                    crate::pass::PassMode::ByRef { sized: false } => {
+                        sig.params
+                            .push(AbiParam::new(module.target_config().pointer_type()));
+                        sig.params
+                            .push(AbiParam::new(module.target_config().pointer_type()));
+                    }
                 }
             }
 
@@ -298,7 +310,14 @@ pub fn define<'tcx>(
         fx.builder.seal_all_blocks();
         fx.builder.finalize();
 
-        println!("{}", fx.builder.func);
+        verify_func(module.isa(), &ctx.func);
+
+        ctx.compute_cfg();
+        ctx.compute_domtree();
+        ctx.eliminate_unreachable_code(module.isa()).unwrap();
+        ctx.dce(module.isa()).unwrap();
+
+        println!("{}", ctx.func);
 
         module.define_function(
             *func,
@@ -310,6 +329,21 @@ pub fn define<'tcx>(
     }
 
     Ok(())
+}
+
+fn verify_func<'a>(
+    flags: impl Into<cranelift::codegen::settings::FlagsOrIsa<'a>>,
+    func: &cranelift::codegen::ir::Function,
+) {
+    match cranelift::codegen::verify_function(func, flags) {
+        Ok(_) => {}
+        Err(e) => {
+            let pretty_error =
+                cranelift::codegen::print_errors::pretty_verifier_error(func, None, None, e);
+
+            panic!("cranelift verify error:\n{}", pretty_error);
+        }
+    }
 }
 
 fn local_place<'a, 'tcx>(

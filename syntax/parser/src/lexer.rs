@@ -66,6 +66,9 @@ impl<'a> Lexer<'a> {
             '0'..='9' => self.number(),
             'a'..='z' | 'A'..='Z' | '_' => self.ident(),
             c if c.is_xid_start() => self.ident(),
+            '-' if self.peek() == '-' && self.peek_n(1) == '-' && self.peek_n(2) == '|' => {
+                self.ml_attr()
+            }
             '-' if self.peek() == '-' && self.peek_n(1) == '|' => self.attr(),
             '\0' => Ok(Entry::Empty),
             ch => {
@@ -98,7 +101,16 @@ impl<'a> Lexer<'a> {
         while !self.eof() {
             match self.peek() {
                 c if c.is_whitespace() => self.advance(),
-                '-' if self.peek_n(1) == '-' && self.peek_n(2) != '|' => {
+                '-' if self.peek_n(1) == '-' && self.peek_n(2) == '-' && self.peek_n(3) != '|' => {
+                    self.advance();
+
+                    while !self.eof()
+                        && !(self.peek() == '-' && self.peek_n(1) == '-' && self.peek_n(2) == '-')
+                    {
+                        self.advance();
+                    }
+                }
+                '-' if self.peek_n(1) == '-' && !matches!(self.peek_n(2), '|' | '-') => {
                     self.advance();
 
                     while !self.eof() && self.peek() != '\n' {
@@ -120,6 +132,34 @@ impl<'a> Lexer<'a> {
             let c = self.peek();
 
             if let '\r' | '\n' = c {
+                break;
+            } else {
+                text.push(c);
+                self.advance();
+            }
+        }
+
+        Ok(Entry::Attr(Attr {
+            span: self.span(),
+            text,
+        }))
+    }
+
+    fn ml_attr(&mut self) -> Result<Entry> {
+        let mut text = String::new();
+
+        self.advance();
+        self.advance();
+        self.advance();
+
+        while !self.eof() {
+            let c = self.peek();
+
+            if c == '-' && self.peek_n(1) == '-' && self.peek_n(2) == '-' {
+                self.advance();
+                self.advance();
+                self.advance();
+
                 break;
             } else {
                 text.push(c);

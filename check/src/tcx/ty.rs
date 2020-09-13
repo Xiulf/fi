@@ -69,7 +69,7 @@ impl<'tcx> Tcx<'tcx> {
 
                 let ret = self.type_of(ret);
 
-                self.intern_ty(Type::Func(params, ret))
+                self.intern_ty(Type::Func(None, params, ret))
             }
             hir::TypeKind::Subst { ty, args } => {
                 if let hir::TypeKind::Path {

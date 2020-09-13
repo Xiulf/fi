@@ -4,19 +4,19 @@ fn(T) identity(x: T) -> T
     x
 end
 
---| @lang "range"
+@lang "range"
 struct Range
     lo: usize
     hi: usize
 end
 
---| @lang "option"
+@lang "option"
 enum Option(T)
     None
     Some(val: T)
 end
 
---| @lang "type-layout"
+@lang "type-layout"
 struct TypeLayout
     size: usize
     align: usize
