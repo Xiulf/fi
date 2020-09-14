@@ -47,17 +47,19 @@ pub struct BuiltinTypes<'tcx> {
     pub isize: Ty<'tcx>,
     pub f32: Ty<'tcx>,
     pub f64: Ty<'tcx>,
+    pub ref_unit: Ty<'tcx>,
     pub ref_u8: Ty<'tcx>,
 }
 
 impl<'tcx> BuiltinTypes<'tcx> {
     pub fn new(arena: &'tcx bumpalo::Bump) -> Self {
+        let unit = arena.alloc(Type::Tuple(&[]));
         let u8 = arena.alloc(Type::UInt(8));
 
         BuiltinTypes {
             error: arena.alloc(Type::Error),
             never: arena.alloc(Type::Never),
-            unit: arena.alloc(Type::Tuple(&[])),
+            unit,
             bool: arena.alloc(Type::Bool),
             str: arena.alloc(Type::Str),
             typeid: arena.alloc(Type::TypeId),
@@ -75,6 +77,7 @@ impl<'tcx> BuiltinTypes<'tcx> {
             isize: arena.alloc(Type::Int(0)),
             f32: arena.alloc(Type::Float(32)),
             f64: arena.alloc(Type::Float(64)),
+            ref_unit: arena.alloc(Type::Ref(false, unit)),
             ref_u8: arena.alloc(Type::Ref(false, u8)),
         }
     }
@@ -226,15 +229,15 @@ impl<'tcx> Tcx<'tcx> {
             Type::Var(_) => unreachable!(),
             Type::Forall(_, _) => unimplemented!(),
             Type::TypeOf(id) => return self.layout_of(id),
-            Type::Param(_) => self.intern_layout(Layout {
-                fields: FieldsShape::Primitive,
-                variants: Variants::Single { index: 0 },
-                largest_niche: None,
-                abi: Abi::Aggregate { sized: false },
-                size: Size::ZERO,
-                align: Align::from_bits(8),
-                stride: Size::ZERO,
-            }),
+            Type::Param(_) => {
+                let mut data = scalar_unit(Primitive::Pointer);
+                let mut meta = scalar_unit(Primitive::Pointer);
+
+                data.valid_range = 1..=*data.valid_range.start();
+                meta.valid_range = 1..=*data.valid_range.start();
+
+                self.intern_layout(self.scalar_pair(data, meta))
+            }
             Type::VInt(_) => match self.target.pointer_width() {
                 Ok(target_lexicon::PointerWidth::U16) => scalar(Primitive::Int(Integer::I16, true)),
                 Ok(target_lexicon::PointerWidth::U32) => scalar(Primitive::Int(Integer::I32, true)),
@@ -379,6 +382,15 @@ impl<'tcx> Tcx<'tcx> {
                     .collect();
 
                 self.intern_layout(self.enum_layout(variants))
+            }
+            Type::Object => {
+                let mut data = scalar_unit(Primitive::Pointer);
+                let mut meta = scalar_unit(Primitive::Pointer);
+
+                data.valid_range = 1..=*data.valid_range.start();
+                meta.valid_range = 1..=*data.valid_range.start();
+
+                self.intern_layout(self.scalar_pair(data, meta))
             }
         };
 

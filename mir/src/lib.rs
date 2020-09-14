@@ -1,4 +1,4 @@
-#![feature(drain_filter)]
+#![feature(drain_filter, or_patterns)]
 
 pub mod constant;
 pub mod convert;
@@ -126,13 +126,19 @@ pub enum Const<'tcx> {
 pub enum RValue<'tcx> {
     Use(Operand<'tcx>),
     Ref(Place<'tcx>),
-    Cast(Ty<'tcx>, Operand<'tcx>),
+    Cast(Ty<'tcx>, Operand<'tcx>, CastKind),
     BinOp(BinOp, Operand<'tcx>, Operand<'tcx>),
     UnOp(UnOp, Operand<'tcx>),
     Init(Ty<'tcx>, usize, Vec<Operand<'tcx>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
+pub enum CastKind {
+    Misc,
+    Object,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum BinOp {
     Add,
     Sub,
@@ -152,7 +158,7 @@ pub enum BinOp {
     Shr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnOp {
     Neg,
     Not,
@@ -435,10 +441,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             .push(Stmt::Assign(place, RValue::Ref(to)));
     }
 
-    pub fn cast(&mut self, place: Place<'tcx>, ty: Ty<'tcx>, op: Operand<'tcx>) {
+    pub fn cast(&mut self, place: Place<'tcx>, ty: Ty<'tcx>, op: Operand<'tcx>, kind: CastKind) {
         self.block()
             .stmts
-            .push(Stmt::Assign(place, RValue::Cast(ty, op)));
+            .push(Stmt::Assign(place, RValue::Cast(ty, op, kind)));
     }
 
     pub fn binop(&mut self, place: Place<'tcx>, op: BinOp, lhs: Operand<'tcx>, rhs: Operand<'tcx>) {

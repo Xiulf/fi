@@ -21,6 +21,12 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                         vec![ret_val]
                     }
+                    crate::pass::PassMode::ByPair(_, _) => {
+                        let place = self.locals[&mir::LocalId::RET];
+                        let (a, b) = place.to_value(self).load_scalar_pair(self);
+
+                        vec![a, b]
+                    }
                     _ => Vec::new(),
                 };
 

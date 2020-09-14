@@ -114,7 +114,6 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
             Type::Error | Type::Var(_) => unreachable!(),
             Type::TypeOf(id) => return tcx.layout_of(id).field(tcx, idx),
             Type::Never
-            | Type::Param(_)
             | Type::Forall(_, _)
             | Type::Bool
             | Type::TypeId
@@ -154,6 +153,7 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
                     };
                 }
             },
+            Type::Object | Type::Param(_) => tcx.builtin.ref_unit,
         })
     }
 

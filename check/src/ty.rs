@@ -29,6 +29,7 @@ pub enum Type<'tcx> {
     Enum(hir::Id, &'tcx [Variant<'tcx>]),
     Func(Option<hir::Id>, &'tcx [Param<'tcx>], Ty<'tcx>),
     Forall(&'tcx [hir::Id], Ty<'tcx>),
+    Object,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -60,6 +61,16 @@ impl<'tcx> Type<'tcx> {
         match self {
             Type::Func(id, params, ret) => Some((id.as_ref(), params, ret)),
             _ => None,
+        }
+    }
+
+    pub fn is_object(&self) -> bool {
+        match self {
+            Type::Param(_) => true,
+            Type::Object => true,
+            Type::Ref(_, Type::Param(_)) => true,
+            Type::Ref(_, Type::Object) => true,
+            _ => false,
         }
     }
 
@@ -296,6 +307,7 @@ impl fmt::Display for Type<'_> {
                     .join(", "),
                 ty
             ),
+            Type::Object => write!(f, "[object]"),
         }
     }
 }

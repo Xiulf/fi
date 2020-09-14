@@ -103,14 +103,21 @@ impl<'a> Lexer<'a> {
                 c if c.is_whitespace() => self.advance(),
                 '-' if self.peek_n(1) == '-' && self.peek_n(2) == '-' && self.peek_n(3) != '|' => {
                     self.advance();
+                    self.advance();
+                    self.advance();
 
                     while !self.eof()
                         && !(self.peek() == '-' && self.peek_n(1) == '-' && self.peek_n(2) == '-')
                     {
                         self.advance();
                     }
+
+                    self.advance();
+                    self.advance();
+                    self.advance();
                 }
                 '-' if self.peek_n(1) == '-' && !matches!(self.peek_n(2), '|' | '-') => {
+                    self.advance();
                     self.advance();
 
                     while !self.eof() && self.peek() != '\n' {

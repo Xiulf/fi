@@ -349,8 +349,12 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let expr = self.trans_expr(expr);
                 let res = self.builder.create_tmp(ty);
                 let res = Place::local(res);
+                let kind = match ty {
+                    Type::Param(_) | Type::Object => CastKind::Object,
+                    _ => CastKind::Misc,
+                };
 
-                self.builder.cast(res.clone(), ty, expr);
+                self.builder.cast(res.clone(), ty, expr, kind);
 
                 Operand::Place(res)
             }
@@ -512,7 +516,8 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
     fn trans_call(&mut self, func: &hir::Id, args: &[hir::Arg]) -> Operand<'tcx> {
         let (func_id, param_tys, ret_ty) = self.tcx.type_of(func).func().unwrap();
         let res = self.builder.create_tmp(ret_ty);
-        let res = Place::local(res);
+        let res2 = res;
+        let mut res = Place::local(res);
         let mut call_args = Vec::with_capacity(args.len());
         let mut skip = Vec::with_capacity(args.len());
 
@@ -541,6 +546,37 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
         }
 
+        if let Some(func_id) = func_id {
+            let (_, param_tys_orig, ret_ty_orig) = match self.tcx.type_of(func_id) {
+                Type::Func(a, b, c) => (a.as_ref(), *b, *c),
+                Type::Forall(_, ty) => ty.func().unwrap(),
+                _ => unreachable!(),
+            };
+
+            for (i, (curr, orig)) in param_tys.iter().zip(param_tys_orig.iter()).enumerate() {
+                if !curr.ty.is_object() && orig.ty.is_object() {
+                    // param type is an object, but we pass a known type
+                    let obj = self.builder.create_tmp(orig.ty);
+
+                    self.builder.cast(
+                        Place::local(obj),
+                        orig.ty,
+                        call_args[i].clone(),
+                        CastKind::Object,
+                    );
+
+                    call_args[i] = Operand::Place(Place::local(obj));
+                }
+            }
+
+            if !ret_ty.is_object() && ret_ty_orig.is_object() {
+                // return type is an object, but we expect a known type
+                let obj = self.builder.create_tmp(ret_ty_orig);
+
+                res = Place::local(obj);
+            }
+        }
+
         if let hir::ExprKind::Path {
             res: hir::Res::Item(item),
         } = &self.hir.exprs[func].kind
@@ -549,14 +585,6 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.init(res.clone(), ret_ty, *variant, call_args);
 
                 return Operand::Place(res);
-            } else if let Type::Forall(_params, _) = self.tcx.type_of(item) {
-                // let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
-                // let subst = params.iter().map(|p| subst[p]);
-
-                // call_args = subst
-                //     .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
-                //     .chain(call_args)
-                //     .collect();
             }
         }
 
@@ -565,6 +593,22 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
         self.builder.call(res.clone(), func, call_args, next_block);
         self.builder.use_block(next_block);
+
+        if let Some(func_id) = func_id {
+            let (_, _, ret_ty_orig) = match self.tcx.type_of(func_id) {
+                Type::Func(a, b, c) => (a.as_ref(), *b, *c),
+                Type::Forall(_, ty) => ty.func().unwrap(),
+                _ => unreachable!(),
+            };
+
+            if !ret_ty.is_object() && ret_ty_orig.is_object() {
+                // return type is an object, but we expect a known type
+                self.builder
+                    .use_(Place::local(res2), Operand::Place(res.field(0).deref()));
+
+                res = Place::local(res2);
+            }
+        }
 
         Operand::Place(res)
     }
@@ -622,4 +666,6 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             Operand::Place(obj.field(idx))
         }
     }
+
+    fn auto_cast(&mut self) {}
 }

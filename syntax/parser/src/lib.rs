@@ -1,5 +1,3 @@
-#![feature(ptr_offset_from)]
-
 pub mod attr;
 pub mod buffer;
 pub mod error;

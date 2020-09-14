@@ -87,6 +87,7 @@ impl<'tcx> Value<'tcx> {
         }
     }
 
+    #[track_caller]
     pub fn load_scalar<'a>(self, fx: &mut FunctionCtx<'a, 'tcx, impl Backend>) -> cir::Value {
         match self.kind {
             ValueKind::Ref(ptr, None) => {

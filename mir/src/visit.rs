@@ -148,7 +148,7 @@ macro_rules! make_visitor{
                 match rvalue {
                     RValue::Use(op) => self.visit_op(op),
                     RValue::Ref(place) => self.visit_place(place),
-                    RValue::Cast(_, op) => {
+                    RValue::Cast(_, op, _) => {
                         self.visit_op(op);
                     },
                     // RValue::Slice(place, lo, hi) => {

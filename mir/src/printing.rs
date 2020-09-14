@@ -169,7 +169,7 @@ impl Display for RValue<'_> {
         match self {
             RValue::Use(op) => op.fmt(f),
             RValue::Ref(place) => write!(f, "&{}", place),
-            RValue::Cast(ty, op) => write!(f, "{}.({})", op, ty),
+            RValue::Cast(ty, op, _) => write!(f, "{}.({})", op, ty),
             RValue::BinOp(op, lhs, rhs) => write!(f, "{:?} {} {}", op, lhs, rhs),
             RValue::UnOp(op, rhs) => write!(f, "{:?} {}", op, rhs),
             RValue::Init(ty, variant, ops) => {

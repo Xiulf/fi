@@ -153,7 +153,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
 
                 Const::Ref(Box::new(val))
             }
-            RValue::Cast(ty, op) => self.eval_op(op),
+            RValue::Cast(ty, op, _) => self.eval_op(op),
             RValue::BinOp(op, lhs, rhs) => unimplemented!(),
             RValue::UnOp(op, rhs) => unimplemented!(),
             RValue::Init(ty, _variant, ops) => {
