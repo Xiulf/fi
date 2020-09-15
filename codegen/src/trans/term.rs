@@ -68,10 +68,23 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                     .collect::<Vec<_>>();
 
                 let inst = if let mir::Operand::Const(mir::Const::FuncAddr(id), _) = func {
-                    let func = self.func_ids[id].0;
-                    let func = self.module.declare_func_in_func(func, self.builder.func);
+                    if self.package.items[id].is_intrinsic() {
+                        call_intrinsic_match! {
+                            self, &**self.package.items[id].name.symbol, &args[..], place, target,
+                            sqrtf32(f) -> sqrt,
+                            sqrtf64(f) -> sqrt,
+                        }
 
-                    self.builder.ins().call(func, &args)
+                        self.tcx
+                            .bug(None, "unknown intrinsic", self.package.items[id].name.span);
+                        self.tcx.reporter.report(true);
+                        unreachable!();
+                    } else {
+                        let func = self.func_ids[id].0;
+                        let func = self.module.declare_func_in_func(func, self.builder.func);
+
+                        self.builder.ins().call(func, &args)
+                    }
                 } else {
                     let _func = self.trans_operand(func).load_scalar(self);
 
@@ -98,6 +111,27 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                 self.builder.ins().jump(self.blocks[target], &[]);
             }
+        }
+    }
+}
+
+macro call_intrinsic_match {
+    ($fx:expr, $intrinsic:expr, $args:expr, $ret:expr, $next:expr, $(
+        $name:ident($($arg:ident),*) -> $func:ident,
+    )*) => {
+        match $intrinsic {
+            $(
+                stringify!($name) => {
+                    if let [$($arg),*] = $args {
+                        let val = Value::new_val($fx.builder.ins().$func($($arg.clone()),*), $ret.layout);
+
+                        $ret.store($fx, val);
+                        $fx.builder.ins().jump($fx.blocks[$next], &[]);
+                        return;
+                    }
+                }
+            )*
+            _ => {},
         }
     }
 }

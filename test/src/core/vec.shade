@@ -5,7 +5,7 @@ struct Vec<T>
 end
 
 fn new<T>() -> Vec<T>
-    var ptr = ../NULL;
+    var ptr = ../ptr/NULL;
     var cap = if `T`.size == 0; !0 else 0 end;
 
     Vec(ptr, cap, 0)
@@ -27,7 +27,7 @@ fn index<T>(self: *Vec<T>, idx: usize) -> *T
 end
 
 fn reserve<T>(self: *Vec<T>, n: usize)
-    if self.*.ptr == ../NULL
+    if self.*.ptr == ../ptr/NULL
         self.*.ptr = ~/libc/malloc(`T`.stride).(*T);
         self.*.cap += 1;
     end
@@ -40,5 +40,5 @@ end
 
 fn drop<T>(self: *Vec<T>)
     ~/libc/free(self.*.ptr.(*()));
-    self.*.ptr = ../NULL;
+    self.*.ptr = ../ptr/NULL;
 end

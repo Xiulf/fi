@@ -14,6 +14,7 @@ pub struct Resolver<'a> {
 #[derive(Debug, Clone)]
 pub struct ModuleStructure {
     pub name: Symbol,
+    pub id: ItemId,
     pub items: HashMap<Symbol, Id>,
     pub children: Vec<ModuleStructure>,
 }
@@ -232,14 +233,20 @@ impl<'a> Resolver<'a> {
 
         let children = modules
             .iter()
-            .filter_map(|(name, res)| match res {
-                Res::Module(id) => Some(self.module_structure(*name, id)),
-                _ => None,
+            .filter_map(|(name, res)| match &***name {
+                "@package" => None,
+                "@self" => None,
+                "@super" => None,
+                _ => match res {
+                    Res::Module(id) => Some(self.module_structure(*name, id)),
+                    _ => None,
+                },
             })
             .collect();
 
         ModuleStructure {
             name,
+            id: *module,
             items,
             children,
         }
@@ -434,6 +441,29 @@ impl<T> std::ops::IndexMut<Ns> for PerNs<T> {
             Ns::Values => &mut self.values,
             Ns::Types => &mut self.types,
             Ns::Labels => &mut self.labels,
+        }
+    }
+}
+
+impl ModuleStructure {
+    pub fn find_path(&self, id: &Id, path: &mut Vec<Symbol>) -> bool {
+        if let Some(symbol) = self
+            .items
+            .iter()
+            .find_map(|(s, v)| if v == id { Some(*s) } else { None })
+        {
+            path.push(symbol);
+            true
+        } else {
+            for child in &self.children {
+                if child.find_path(id, path) {
+                    path.push(child.name);
+
+                    return true;
+                }
+            }
+
+            false
         }
     }
 }

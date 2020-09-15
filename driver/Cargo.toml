@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 diagnostics = { path = "../../.crates/diagnostics" }
+target-lexicon = "^0.10.0"
 syntax = { path = "../syntax" }
 hir = { path = "../hir" }
 check = { path = "../check" }

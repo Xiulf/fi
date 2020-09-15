@@ -149,6 +149,7 @@ impl Parse for Attribute {
             let kind = match &**name.symbol {
                 "no_mangle" => AttrKind::NoMangle,
                 "lang" => AttrKind::Lang(input.parse()?),
+                "intrinsic" => AttrKind::Intrinsic,
                 _ => return input.error_at("unknown attribute", name.span, 0001),
             };
 
@@ -208,6 +209,7 @@ impl Parse for Item {
             let name = input.parse()?;
             let _ = input.parse::<TColon>()?;
             let ty = input.parse()?;
+            let _ = input.parse::<TSemi>();
 
             Ok(Item {
                 span: start.to(input.prev_span()),

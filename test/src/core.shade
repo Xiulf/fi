@@ -1,19 +1,6 @@
 mod vec;
-
-const NULL: for<T> *T = 0.(*_);
-
-fn identity<T>(x: T) -> T
-    x
-end
-
-@lang "range"
-struct Range
-    lo: usize
-    hi: usize
-end
-
-@lang "option"
-enum Option<T>
-    None
-    Some(val: T)
-end
+mod convert;
+mod option;
+mod range;
+mod ptr;
+mod intrinsic;

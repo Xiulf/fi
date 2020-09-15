@@ -4,7 +4,7 @@ use resolve::{Ns, Res, Resolver, RibKind};
 use std::collections::BTreeMap;
 use syntax::ast;
 
-pub fn convert(reporter: &Reporter, ast: &ast::Package) -> Package {
+pub fn convert(reporter: &Reporter, ast: &ast::Package) -> (Package, resolve::ModuleStructure) {
     let root = ItemId::new(&ast.module);
     let mut converter = Converter::new(reporter, root);
     let package_name = Ident {
@@ -14,7 +14,7 @@ pub fn convert(reporter: &Reporter, ast: &ast::Package) -> Package {
 
     converter.register_module(&ast.module, &package_name, root);
     converter.trans_module(&ast.module, root);
-    converter.finish()
+    converter.finish(package_name, root)
 }
 
 pub struct Converter<'a> {
@@ -42,12 +42,15 @@ impl<'a> Converter<'a> {
         }
     }
 
-    pub fn finish(self) -> Package {
-        Package {
-            items: self.items,
-            exprs: self.exprs,
-            types: self.types,
-        }
+    pub fn finish(self, package: Ident, root: ItemId) -> (Package, resolve::ModuleStructure) {
+        (
+            Package {
+                items: self.items,
+                exprs: self.exprs,
+                types: self.types,
+            },
+            self.resolver.module_structure(package.symbol, &root),
+        )
     }
 
     fn next_id(&mut self) -> Id {

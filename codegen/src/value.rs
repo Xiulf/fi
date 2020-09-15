@@ -58,7 +58,7 @@ impl<'tcx> Value<'tcx> {
 
         let val = match &layout.abi {
             Abi::Scalar(scalar) => match scalar.value {
-                Primitive::F32 => fx.builder.ins().f32const(f32::from_bits(val as u32)),
+                Primitive::F32 => fx.builder.ins().f32const(f64::from_bits(val as u64) as f32),
                 Primitive::F64 => fx.builder.ins().f64const(val as u64),
                 _ => fx.builder.ins().iconst(clif_type, val as i64),
             },

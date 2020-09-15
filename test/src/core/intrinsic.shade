@@ -1,0 +1,2 @@
+@intrinsic extern sqrtf32: fn (f: f32) -> f32;
+@intrinsic extern sqrtf64: fn (f: f64) -> f64;

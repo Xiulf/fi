@@ -7,11 +7,12 @@ pub mod ty;
 pub fn with_tcx<T>(
     reporter: &diagnostics::Reporter,
     package: &hir::Package,
+    module_structure: &hir::resolve::ModuleStructure,
+    target: &target_lexicon::Triple,
     f: impl FnOnce(tcx::Tcx) -> T,
 ) -> T {
     let arena = bumpalo::Bump::new();
-    let target = target_lexicon::Triple::host();
-    let tcx = tcx::Tcx::new(reporter, &arena, &target, package);
+    let tcx = tcx::Tcx::new(reporter, &arena, &target, package, module_structure);
 
     for (id, _) in &package.items {
         tcx.type_of(id);

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 #[derive(Default, Debug)]
 pub struct Opts {
     pub entry: PathBuf,
+    pub target: target_lexicon::Triple,
     pub target_dir: PathBuf,
 }
 
@@ -16,17 +17,28 @@ pub fn build(opts: Opts) {
 
     // println!("{}", package);
 
-    let hir = hir::convert::convert(&reporter, &package);
+    let (hir, module_structure) = hir::convert::convert(&reporter, &package);
 
     reporter.report(true);
 
     // println!("{}", hir);
+    // println!("{:#?}", module_structure);
 
-    check::with_tcx(&reporter, &hir, |tcx| {
+    check::with_tcx(&reporter, &hir, &module_structure, &opts.target, |tcx| {
         let mir = mir::convert::convert(&tcx, &hir);
 
-        println!("{}", mir);
+        let range = tcx.lang_items.range().unwrap();
+        let path = tcx.get_full_name(&range);
 
-        codegen::compile(&tcx, &mir, format!("{}/main", opts.target_dir.display()));
+        println!("{}", path);
+
+        // println!("{}", mir);
+
+        codegen::compile(
+            &tcx,
+            &mir,
+            &opts.target,
+            format!("{}/main", opts.target_dir.display()),
+        );
     });
 }

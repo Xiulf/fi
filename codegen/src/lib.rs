@@ -1,3 +1,5 @@
+#![feature(decl_macro)]
+
 pub mod analyze;
 pub mod pass;
 pub mod place;
@@ -16,13 +18,15 @@ use std::collections::BTreeMap;
 pub fn compile<'tcx>(
     tcx: &Tcx<'tcx>,
     package: &mir::Package<'tcx>,
+    target: &target_lexicon::Triple,
     out_file: impl AsRef<std::path::Path>,
 ) {
     let out_file = out_file.as_ref();
-    let product = trans::translate(tcx, package);
+    let product = trans::translate(target, tcx, package);
     let mut tmp_name = out_file.to_owned();
     tmp_name.set_extension("o");
 
+    std::fs::create_dir_all(out_file.parent().unwrap()).unwrap();
     assemble(product, tmp_name.as_ref());
     link(tmp_name.as_ref(), out_file.as_ref());
 }

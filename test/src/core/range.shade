@@ -1,0 +1,5 @@
+@lang "range"
+struct Range
+    lo: usize
+    hi: usize
+end

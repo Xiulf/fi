@@ -13,9 +13,10 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 
 pub struct Tcx<'tcx> {
-    reporter: &'tcx Reporter,
+    pub reporter: &'tcx Reporter,
     pub(crate) arena: &'tcx bumpalo::Bump,
     package: &'tcx hir::Package,
+    module_structure: &'tcx hir::resolve::ModuleStructure,
     pub(crate) target: &'tcx target_lexicon::Triple,
     types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
     layouts: RefCell<HashMap<*const Type<'tcx>, TyLayout<'tcx, Ty<'tcx>>>>,
@@ -94,12 +95,14 @@ impl<'tcx> Tcx<'tcx> {
         arena: &'tcx bumpalo::Bump,
         target: &'tcx target_lexicon::Triple,
         package: &'tcx hir::Package,
+        module_structure: &'tcx hir::resolve::ModuleStructure,
     ) -> Self {
         Tcx {
             reporter,
             arena,
             target,
             package,
+            module_structure,
             lang_items: hir::lang::LangItems::collect(package),
             types: RefCell::new(BTreeMap::new()),
             layouts: RefCell::new(HashMap::new()),
@@ -201,7 +204,47 @@ impl<'tcx> Tcx<'tcx> {
     }
 
     pub fn get_full_name(&self, id: &hir::Id) -> String {
-        unimplemented!();
+        let mut path = Vec::new();
+
+        if self.module_structure.find_path(id, &mut path) {
+            path.into_iter()
+                .rev()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join("/")
+        } else {
+            self.package.items[id].name.to_string()
+        }
+    }
+
+    pub fn bug(&self, code: impl Into<Option<u16>>, msg: impl Into<String>, span: Span) {
+        self.reporter.add(
+            diagnostics::Diagnostic::new(diagnostics::Severity::Bug, code, msg).label(
+                diagnostics::Severity::Bug,
+                span,
+                None::<String>,
+            ),
+        );
+    }
+
+    pub fn error(&self, code: impl Into<Option<u16>>, msg: impl Into<String>, span: Span) {
+        self.reporter.add(
+            diagnostics::Diagnostic::new(diagnostics::Severity::Warning, code, msg).label(
+                diagnostics::Severity::Warning,
+                span,
+                None::<String>,
+            ),
+        );
+    }
+
+    pub fn warm(&self, code: impl Into<Option<u16>>, msg: impl Into<String>, span: Span) {
+        self.reporter.add(
+            diagnostics::Diagnostic::new(diagnostics::Severity::Warning, code, msg).label(
+                diagnostics::Severity::Warning,
+                span,
+                None::<String>,
+            ),
+        );
     }
 
     pub fn layout_of(&self, id: &hir::Id) -> TyLayout<'tcx, Ty<'tcx>> {

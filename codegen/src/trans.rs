@@ -14,11 +14,10 @@ use cranelift_module::{Backend, DataContext, DataId, FuncId, Linkage, Module, Mo
 use std::collections::BTreeMap;
 
 pub fn translate<'tcx>(
-    // target: target_lexicon::Triple,
+    target: &target_lexicon::Triple,
     tcx: &Tcx<'tcx>,
     package: &mir::Package<'tcx>,
 ) -> cranelift_object::ObjectProduct {
-    let target = target_lexicon::Triple::host();
     let flags_builder = cranelift::codegen::settings::builder();
     let flags = cranelift::codegen::settings::Flags::new(flags_builder);
     let isa = cranelift::codegen::isa::lookup(target.clone())

@@ -30,6 +30,7 @@ pub enum AttrKind {
     Doc(String),
     NoMangle,
     Lang(StringLiteral),
+    Intrinsic,
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]

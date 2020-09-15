@@ -57,4 +57,5 @@ macro_rules! lang_items {
 
 lang_items! {
     TypeLayout, "type-layout", type_layout;
+    Range     , "range"      , range      ;
 }

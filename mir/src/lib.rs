@@ -294,6 +294,12 @@ impl<'tcx> Item<'tcx> {
             .iter()
             .any(|attr| matches!(&attr.kind, AttrKind::NoMangle))
     }
+
+    pub fn is_intrinsic(&self) -> bool {
+        self.attrs
+            .iter()
+            .any(|attr| matches!(&attr.kind, AttrKind::Intrinsic))
+    }
 }
 
 impl<'tcx> Body<'tcx> {
