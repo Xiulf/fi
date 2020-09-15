@@ -1,12 +1,23 @@
+mod core;
+mod libc;
+
 @no_mangle
 fn main(argc: i32, argv: **u8) -> i32
-    size_of.<str>().(i32)
-end
+    var x = core/vec/new();
 
-fn size_of<T>() -> usize
-    `T`.size
-end
+    core/vec/push(&x, 'a');
+    core/vec/push(&x, 'b');
+    core/vec/push(&x, 'c');
+    core/vec/push(&x, 'd');
+    core/vec/push(&x, 'e');
 
-fn identity<T>(x: *T) -> *T
-    x
+    var d = core/vec/index(&x, 3);
+
+    libc/write(0, d.(*u8), 1);
+
+    var res = x.cap + x.len;
+
+    core/vec/drop(&x);
+
+    res.(_)
 end

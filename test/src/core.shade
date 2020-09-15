@@ -1,6 +1,8 @@
-const NULL: forall T. *T = 0.(*_);
+mod vec;
 
-fn(T) identity(x: T) -> T
+const NULL: for<T> *T = 0.(*_);
+
+fn identity<T>(x: T) -> T
     x
 end
 
@@ -11,14 +13,7 @@ struct Range
 end
 
 @lang "option"
-enum Option(T)
+enum Option<T>
     None
     Some(val: T)
-end
-
-@lang "type-layout"
-struct TypeLayout
-    size: usize
-    align: usize
-    stride: usize
 end

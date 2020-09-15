@@ -324,6 +324,13 @@ impl<'tcx> Tcx<'tcx> {
                             },
                             self.builtin.usize,
                         ),
+                        (
+                            Ident {
+                                symbol: hir::Symbol::new("stride"),
+                                span: obj_span,
+                            },
+                            self.builtin.usize,
+                        ),
                     ],
                     Type::Str => vec![
                         (

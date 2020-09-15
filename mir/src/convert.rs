@@ -564,16 +564,6 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 res = Place::local(obj);
             }
-
-            if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
-                let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
-                let subst = params.iter().map(|p| subst[p]);
-
-                call_args = subst
-                    .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
-                    .chain(call_args)
-                    .collect();
-            }
         }
 
         if let hir::ExprKind::Path {
@@ -584,6 +574,18 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.init(res.clone(), ret_ty, *variant, call_args);
 
                 return Operand::Place(res);
+            }
+        }
+
+        if let Some(func_id) = func_id {
+            if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
+                let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
+                let subst = params.iter().map(|p| subst[p]);
+
+                call_args = subst
+                    .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
+                    .chain(call_args)
+                    .collect();
             }
         }
 

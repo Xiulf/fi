@@ -317,7 +317,7 @@ pub fn define<'tcx>(
         ctx.eliminate_unreachable_code(module.isa()).unwrap();
         ctx.dce(module.isa()).unwrap();
 
-        println!("{}", ctx.func);
+        // println!("{}", ctx.func);
 
         module.define_function(
             *func,
