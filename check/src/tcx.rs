@@ -49,12 +49,14 @@ pub struct BuiltinTypes<'tcx> {
     pub f64: Ty<'tcx>,
     pub ref_unit: Ty<'tcx>,
     pub ref_u8: Ty<'tcx>,
+    pub type_layout: Ty<'tcx>,
 }
 
 impl<'tcx> BuiltinTypes<'tcx> {
     pub fn new(arena: &'tcx bumpalo::Bump) -> Self {
         let unit = arena.alloc(Type::Tuple(&[]));
         let u8 = arena.alloc(Type::UInt(8));
+        let usize = arena.alloc(Type::UInt(0));
 
         BuiltinTypes {
             error: arena.alloc(Type::Error),
@@ -68,7 +70,7 @@ impl<'tcx> BuiltinTypes<'tcx> {
             u32: arena.alloc(Type::UInt(32)),
             u64: arena.alloc(Type::UInt(64)),
             u128: arena.alloc(Type::UInt(128)),
-            usize: arena.alloc(Type::UInt(0)),
+            usize,
             i8: arena.alloc(Type::Int(8)),
             i16: arena.alloc(Type::Int(16)),
             i32: arena.alloc(Type::Int(32)),
@@ -79,6 +81,9 @@ impl<'tcx> BuiltinTypes<'tcx> {
             f64: arena.alloc(Type::Float(64)),
             ref_unit: arena.alloc(Type::Ref(false, unit)),
             ref_u8: arena.alloc(Type::Ref(false, u8)),
+            type_layout: arena.alloc(Type::Tuple(
+                arena.alloc_slice_copy(&[&*usize, &*usize, &*usize]),
+            )),
         }
     }
 }
@@ -227,7 +232,7 @@ impl<'tcx> Tcx<'tcx> {
         let layout = match ty {
             Type::Error => unreachable!(),
             Type::Var(_) => unreachable!(),
-            Type::Forall(_, _) => unimplemented!(),
+            Type::Forall(_, of) => return self.layout(of),
             Type::TypeOf(id) => return self.layout_of(id),
             Type::Param(_) => {
                 let mut data = scalar_unit(Primitive::Pointer);

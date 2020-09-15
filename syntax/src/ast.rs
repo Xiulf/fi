@@ -183,6 +183,10 @@ pub enum ExprKind {
     Path {
         path: Path,
     },
+    Apply {
+        expr: Box<Expr>,
+        args: Vec<Type>,
+    },
     Int {
         val: u128,
     },

@@ -39,6 +39,24 @@ impl<'tcx> Tcx<'tcx> {
                 },
                 _ => unreachable!(),
             },
+            hir::ExprKind::Apply { expr, args } => {
+                if let hir::ExprKind::Path {
+                    res: hir::Res::Item(id),
+                } = &self.package.exprs[expr].kind
+                {
+                    let ty = self.type_of(id);
+
+                    if let Type::Forall(_, _) = ty {
+                        let args = args.iter().map(|a| self.type_of(a)).collect();
+
+                        ty.mono(self, args)
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
             hir::ExprKind::Int { .. } => self.new_int(),
             hir::ExprKind::Float { .. } => self.new_float(),
             hir::ExprKind::Char { .. } => self.builtin.u32,

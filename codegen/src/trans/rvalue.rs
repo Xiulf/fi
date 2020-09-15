@@ -23,7 +23,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                 let value = self.trans_operand(op);
                 let layout = value.layout;
                 let value = value.on_stack(self).0.get_addr(self);
-                let meta = self.type_layout(layout);
+                let meta = self.trans_type_layout(layout);
                 let value = Value::new_pair(value, meta, self.tcx.layout(ty));
 
                 place.store(self, value);
@@ -150,37 +150,6 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                 }
             }
         }
-    }
-
-    fn type_layout(&mut self, layout: Layout<'tcx>) -> ir::Value {
-        *self.bytes_count += 1;
-
-        let pointer_width = self.pointer_type.bytes() as usize;
-        let data = self
-            .module
-            .declare_data(
-                &format!("_type_layout_{}", *self.bytes_count),
-                cranelift_module::Linkage::Local,
-                false,
-                false,
-                Some(pointer_width as u8),
-            )
-            .unwrap();
-
-        let mut ctx = cranelift_module::DataContext::new();
-        let mut bytes = Vec::with_capacity(pointer_width * 3);
-
-        bytes.extend(&layout.size.bytes().to_ne_bytes()[..pointer_width]);
-        bytes.extend(&layout.align.bytes().to_ne_bytes()[..pointer_width]);
-        bytes.extend(&layout.stride.bytes().to_ne_bytes()[..pointer_width]);
-
-        ctx.define(bytes.into_boxed_slice());
-
-        self.module.define_data(data, &ctx).unwrap();
-
-        let gv = self.module.declare_data_in_func(data, self.builder.func);
-
-        self.builder.ins().global_value(self.pointer_type, gv)
     }
 
     fn trans_binop(

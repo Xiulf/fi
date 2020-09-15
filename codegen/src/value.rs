@@ -164,7 +164,7 @@ impl<'tcx> Value<'tcx> {
     }
 
     pub fn deref<'a>(self, fx: &mut FunctionCtx<'a, 'tcx, impl Backend>) -> Self {
-        let inner_layout = fx.tcx.layout(self.layout.ty.pointee());
+        let inner_layout = fx.tcx.layout(self.layout.ty.pointee(fx.tcx));
         let ptr = self.load_scalar(fx);
 
         Value::new_val(ptr, inner_layout)

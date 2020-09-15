@@ -56,20 +56,20 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                 body,
                 generics: _,
             } => {
-                let params = params.clone();
+                let mut params = params.clone();
                 let func_ty = self.tcx.type_of(&item.id);
 
-                let (param_tys, ret_ty) = if let Type::Forall(_gparams, new_ty) = func_ty {
-                    // let ty_layout = self.tcx.lang_items.type_layout().unwrap();
-                    // let ty_layout = self.tcx.type_of(&ty_layout);
-                    // let ty_layout = self.tcx.intern_ty(Type::Ref(false, ty_layout));
-                    // let mut param_tys = gparams.iter().map(|_| ty_layout).collect::<Vec<_>>();
-                    // let (tparams, ret) = new_ty.func().unwrap();
-                    let (_, param_tys, ret) = new_ty.func().unwrap();
-                    let param_tys = param_tys.iter().map(|p| p.ty).collect::<Vec<_>>();
+                let (param_tys, ret_ty) = if let Type::Forall(gparams, new_ty) = func_ty {
+                    let mut param_tys = gparams
+                        .iter()
+                        .map(|_| self.tcx.builtin.typeid)
+                        .collect::<Vec<_>>();
+                    let (_, tparams, ret) = new_ty.func().unwrap();
+                    // let (_, param_tys, ret) = new_ty.func().unwrap();
+                    // let param_tys = param_tys.iter().map(|p| p.ty).collect::<Vec<_>>();
 
-                    // params = gparams.iter().copied().chain(params).collect();
-                    // param_tys.extend(tparams.iter().map(|p| p.ty));
+                    params = gparams.iter().copied().chain(params).collect();
+                    param_tys.extend(tparams.iter().map(|p| p.ty));
 
                     (param_tys, ret)
                 } else {
@@ -252,6 +252,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     }
                 },
             },
+            hir::ExprKind::Apply { expr, .. } => self.trans_expr(expr),
             hir::ExprKind::Int { val } => Operand::Const(Const::Scalar(*val), self.tcx.type_of(id)),
             hir::ExprKind::Float { bits } => {
                 Operand::Const(Const::Scalar(*bits as u128), self.tcx.type_of(id))
@@ -554,19 +555,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             };
 
             for (i, (curr, orig)) in param_tys.iter().zip(param_tys_orig.iter()).enumerate() {
-                if !curr.ty.is_object() && orig.ty.is_object() {
-                    // param type is an object, but we pass a known type
-                    let obj = self.builder.create_tmp(orig.ty);
-
-                    self.builder.cast(
-                        Place::local(obj),
-                        orig.ty,
-                        call_args[i].clone(),
-                        CastKind::Object,
-                    );
-
-                    call_args[i] = Operand::Place(Place::local(obj));
-                }
+                self.auto_cast(curr.ty, orig.ty, &mut call_args[i]);
             }
 
             if !ret_ty.is_object() && ret_ty_orig.is_object() {
@@ -574,6 +563,16 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let obj = self.builder.create_tmp(ret_ty_orig);
 
                 res = Place::local(obj);
+            }
+
+            if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
+                let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
+                let subst = params.iter().map(|p| subst[p]);
+
+                call_args = subst
+                    .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
+                    .chain(call_args)
+                    .collect();
             }
         }
 
@@ -667,5 +666,14 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         }
     }
 
-    fn auto_cast(&mut self) {}
+    fn auto_cast(&mut self, a: Ty<'tcx>, b: Ty<'tcx>, value: &mut Operand<'tcx>) {
+        if !a.is_object() && b.is_object() {
+            let obj = self.builder.create_tmp(b);
+
+            self.builder
+                .cast(Place::local(obj), b, value.clone(), CastKind::Object);
+
+            *value = Operand::Place(Place::local(obj));
+        }
+    }
 }

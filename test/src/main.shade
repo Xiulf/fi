@@ -1,15 +1,12 @@
 @no_mangle
 fn main(argc: i32, argv: **u8) -> i32
-    identity(&22).*
+    size_of.<str>().(i32)
 end
 
-fn(T) identity(x: *T) -> *T
+fn size_of<T>() -> usize
+    `T`.size
+end
+
+fn identity<T>(x: *T) -> *T
     x
-end
-
-@lang "type-layout"
-struct TypeLayout
-    size: usize
-    align: usize
-    stride: usize
 end

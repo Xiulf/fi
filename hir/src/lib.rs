@@ -132,6 +132,10 @@ pub enum ExprKind {
     Path {
         res: Res,
     },
+    Apply {
+        expr: Id,
+        args: Vec<Id>,
+    },
     Int {
         val: u128,
     },

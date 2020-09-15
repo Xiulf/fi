@@ -191,6 +191,7 @@ impl Display for Expr {
         match &self.kind {
             ExprKind::Err => write!(f, "[error]"),
             ExprKind::Path { res } => res.fmt(f),
+            ExprKind::Apply { expr, args } => write!(f, "{}.<{}>", expr, list(args, ", ")),
             ExprKind::Int { val } => val.fmt(f),
             ExprKind::Float { bits } => f64::from_bits(*bits).fmt(f),
             ExprKind::Char { val } => write!(f, "{:?}", val),

@@ -1,3 +1,4 @@
+use crate::tcx::Tcx;
 use hir::Symbol;
 pub use hir::{Ident, Span};
 use std::fmt;
@@ -68,13 +69,11 @@ impl<'tcx> Type<'tcx> {
         match self {
             Type::Param(_) => true,
             Type::Object => true,
-            Type::Ref(_, Type::Param(_)) => true,
-            Type::Ref(_, Type::Object) => true,
             _ => false,
         }
     }
 
-    pub fn fields(&self, tcx: &crate::tcx::Tcx<'tcx>) -> Vec<(Symbol, Ty<'tcx>)> {
+    pub fn fields(&self, tcx: &Tcx<'tcx>) -> Vec<(Symbol, Ty<'tcx>)> {
         match self {
             Type::Str => vec![
                 (Symbol::new("ptr"), tcx.builtin.ref_u8),
@@ -98,14 +97,15 @@ impl<'tcx> Type<'tcx> {
         }
     }
 
-    pub fn pointee(&self) -> Ty<'tcx> {
+    pub fn pointee(&self, tcx: &Tcx<'tcx>) -> Ty<'tcx> {
         match self {
             Type::Ref(_, to) => to,
+            Type::TypeId => tcx.builtin.type_layout,
             _ => panic!("type is not a reference"),
         }
     }
 
-    pub fn idx(&self, tcx: &crate::tcx::Tcx<'tcx>) -> Ty<'tcx> {
+    pub fn idx(&self, tcx: &Tcx<'tcx>) -> Ty<'tcx> {
         match self {
             Type::Str => tcx.builtin.u8,
             Type::Array(of, _) => of,
@@ -114,7 +114,7 @@ impl<'tcx> Type<'tcx> {
         }
     }
 
-    pub fn mono(&'tcx self, tcx: &crate::tcx::Tcx<'tcx>, args: Vec<Ty<'tcx>>) -> Ty<'tcx> {
+    pub fn mono(&'tcx self, tcx: &Tcx<'tcx>, args: Vec<Ty<'tcx>>) -> Ty<'tcx> {
         if let Type::Forall(params, ty) = self {
             let mut args = args.into_iter();
             let args = params
@@ -140,7 +140,7 @@ impl<'tcx> Type<'tcx> {
     pub fn replace(
         &'tcx self,
         args: &std::collections::HashMap<hir::Id, Ty<'tcx>>,
-        tcx: &crate::tcx::Tcx<'tcx>,
+        tcx: &Tcx<'tcx>,
     ) -> Ty<'tcx> {
         match self {
             Type::Param(id) if args.contains_key(id) => args[id],

@@ -533,6 +533,10 @@ impl<'a> Converter<'a> {
                     ExprKind::Err
                 }
             }
+            ast::ExprKind::Apply { expr, args } => ExprKind::Apply {
+                expr: self.trans_expr(expr),
+                args: args.iter().map(|a| self.trans_ty(a)).collect(),
+            },
             ast::ExprKind::Int { val } => ExprKind::Int { val: *val },
             ast::ExprKind::Float { bits } => ExprKind::Float { bits: *bits },
             ast::ExprKind::Char { val } => ExprKind::Char { val: *val },

@@ -133,7 +133,7 @@ impl<'tcx> Place<'tcx> {
     }
 
     pub fn deref<'a>(self, fx: &mut FunctionCtx<'a, 'tcx, impl Backend>) -> Self {
-        let inner_layout = fx.tcx.layout(self.layout.ty.pointee());
+        let inner_layout = fx.tcx.layout(self.layout.ty.pointee(fx.tcx));
 
         Place::new_ref(
             Pointer::addr(self.to_value(fx).load_scalar(fx)),

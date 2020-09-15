@@ -14,10 +14,10 @@ parser::token![ident "struct" TStruct];
 parser::token![ident "enum" TEnum];
 parser::token![ident "do" TDo];
 parser::token![ident "mut" TMut];
-parser::token![ident "forall" TForall];
 parser::token![ident "type" TType];
 parser::token![ident "if" TIf];
 parser::token![ident "else" TElse];
+parser::token![ident "for" TFor];
 parser::token![ident "while" TWhile];
 parser::token![ident "loop" TLoop];
 parser::token![ident "break" TBreak];
@@ -33,6 +33,8 @@ parser::token![punct "[" TLBracket/1];
 parser::token![punct "]" TRBracket/1];
 parser::token![punct "{" TLBrace/1];
 parser::token![punct "}" TRBrace/1];
+parser::token![punct "<" TLeft/1];
+parser::token![punct ">" TRight/1];
 
 parser::token![punct ":" TColon/1];
 parser::token![punct ";" TSemi/1];
@@ -214,8 +216,8 @@ impl Parse for Item {
                 kind: ItemKind::Extern { abi, ty },
             })
         } else if let Ok(_) = input.parse::<TFn>() {
-            let generics = input.parse()?;
             let name = input.parse()?;
+            let generics = input.parse()?;
             let _ = input.parse::<TLParen>()?;
             let mut params = Vec::new();
 
@@ -367,19 +369,19 @@ impl Parse for Abi {
 
 impl Parse for Generics {
     fn parse(input: ParseStream) -> Result<Self> {
-        if let Ok(_) = input.parse::<TLParen>() {
+        if let Ok(_) = input.parse::<TLeft>() {
             let start = input.prev_span();
             let mut params = Vec::new();
 
-            while !input.is_empty() && !input.peek::<TRParen>() {
+            while !input.is_empty() && !input.peek::<TRight>() {
                 params.push(input.parse()?);
 
-                if !input.peek::<TRParen>() {
+                if !input.peek::<TRight>() {
                     input.parse::<TComma>()?;
                 }
             }
 
-            input.parse::<TRParen>()?;
+            input.parse::<TRight>()?;
 
             Ok(Generics {
                 span: start.to(input.prev_span()),
@@ -796,6 +798,26 @@ impl Expr {
                             ty,
                         },
                     };
+                } else if let Ok(_) = input.parse::<TLeft>() {
+                    let mut args = Vec::new();
+
+                    while !input.is_empty() && !input.peek::<TRight>() {
+                        args.push(input.parse()?);
+
+                        if !input.peek::<TRight>() {
+                            input.parse::<TComma>()?;
+                        }
+                    }
+
+                    input.parse::<TRight>()?;
+
+                    expr = Expr {
+                        span: start.to(input.prev_span()),
+                        kind: ExprKind::Apply {
+                            expr: Box::new(expr),
+                            args,
+                        },
+                    };
                 } else if let Ok(_) = input.parse::<TStar>() {
                     expr = Expr {
                         span: start.to(input.prev_span()),
@@ -1091,19 +1113,19 @@ impl Parse for Type {
         let start = input.span();
         let mut ty = Type::atom(input)?;
 
-        while !input.is_empty() && input.peek::<TLParen>() {
-            let _ = input.parse::<TLParen>()?;
+        while !input.is_empty() && input.peek::<TLeft>() {
+            let _ = input.parse::<TLeft>()?;
             let mut args = Vec::new();
 
-            while !input.is_empty() && !input.peek::<TRParen>() {
+            while !input.is_empty() && !input.peek::<TRight>() {
                 args.push(input.parse()?);
 
-                if !input.peek::<TRParen>() {
+                if !input.peek::<TRight>() {
                     input.parse::<TComma>()?;
                 }
             }
 
-            input.parse::<TRParen>()?;
+            input.parse::<TRight>()?;
 
             ty = Type {
                 span: start.to(input.prev_span()),
@@ -1138,26 +1160,8 @@ impl Type {
             let ret = input.parse()?;
 
             TypeKind::Func { params, ret }
-        } else if input.peek::<TForall>() || input.peek::<TForallS>() {
-            if let Err(_) = input.parse::<TForall>() {
-                input.parse::<TForallS>()?;
-            }
-
-            let gen = if input.peek::<TLParen>() {
-                input.parse()?
-            } else {
-                let name = input.parse::<Ident>()?;
-
-                Generics {
-                    span: name.span,
-                    params: vec![Generic {
-                        span: name.span,
-                        name,
-                    }],
-                }
-            };
-
-            let _ = input.parse::<TDot>()?;
+        } else if let Ok(_) = input.parse::<TFor>() {
+            let gen = input.parse()?;
             let ty = input.parse()?;
 
             TypeKind::Forall { gen, ty }
@@ -1211,7 +1215,7 @@ impl Type {
                 path: input.parse()?,
             }
         } else {
-            return input.error("expected 'fn', 'ref', '[', '_', '#' or an identifier", 0001);
+            return input.error("expected 'fn', '*', '[', '_', '#' or an identifier", 0001);
         };
 
         Ok(Type {

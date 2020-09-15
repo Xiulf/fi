@@ -1,6 +1,7 @@
 use crate::place::Place;
 use crate::value::Value;
 use crate::FunctionCtx;
+use check::ty::Layout;
 use cranelift::codegen::ir::{self as cir, InstBuilder};
 use cranelift_module::Backend;
 
@@ -28,7 +29,10 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                     Value::new_val(func, self.tcx.layout_of(id))
                 }
-                mir::Const::Type(_) => unimplemented!(),
+                mir::Const::Type(ty) => Value::new_val(
+                    self.trans_type_layout(self.tcx.layout(ty)),
+                    self.tcx.layout(self.tcx.builtin.typeid),
+                ),
                 mir::Const::Bytes(bytes) => {
                     let place = Place::new_stack(self, self.tcx.layout(self.tcx.builtin.str));
 
@@ -37,6 +41,37 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                 _ => unimplemented!(),
             },
         }
+    }
+
+    pub fn trans_type_layout(&mut self, layout: Layout<'tcx>) -> cir::Value {
+        *self.bytes_count += 1;
+
+        let pointer_width = self.pointer_type.bytes() as usize;
+        let data = self
+            .module
+            .declare_data(
+                &format!("_type_layout_{}", *self.bytes_count),
+                cranelift_module::Linkage::Local,
+                false,
+                false,
+                Some(pointer_width as u8),
+            )
+            .unwrap();
+
+        let mut ctx = cranelift_module::DataContext::new();
+        let mut bytes = Vec::with_capacity(pointer_width * 3);
+
+        bytes.extend(&layout.size.bytes().to_ne_bytes()[..pointer_width]);
+        bytes.extend(&layout.align.bytes().to_ne_bytes()[..pointer_width]);
+        bytes.extend(&layout.stride.bytes().to_ne_bytes()[..pointer_width]);
+
+        ctx.define(bytes.into_boxed_slice());
+
+        self.module.define_data(data, &ctx).unwrap();
+
+        let gv = self.module.declare_data_in_func(data, self.builder.func);
+
+        self.builder.ins().global_value(self.pointer_type, gv)
     }
 
     pub fn trans_bytes(&mut self, place: Place<'tcx>, bytes: &Box<[u8]>) -> Value<'tcx> {
