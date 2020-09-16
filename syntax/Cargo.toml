@@ -8,3 +8,4 @@ edition = "2018"
 diagnostics = { path = "../../.crates/diagnostics" }
 parser = { path = "parser" }
 derivative = "2.1.1"
+serde = { version = "1.0.116", features = ["derive"] }

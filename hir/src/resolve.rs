@@ -11,7 +11,7 @@ pub struct Resolver<'a> {
     modules: HashMap<ItemId, PerNs<Vec<Rib>>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ModuleStructure {
     pub name: Symbol,
     pub id: ItemId,

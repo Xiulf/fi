@@ -11,10 +11,14 @@ use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 pub use syntax::ast::{Abi, AttrKind, Attribute, BinOp, Ident, Literal, Symbol, UnOp};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct ItemId(u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct Id(ItemId, u64);
 
 #[derive(Debug)]

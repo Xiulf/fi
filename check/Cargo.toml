@@ -9,3 +9,4 @@ diagnostics = { path = "../../.crates/diagnostics" }
 hir = { path = "../hir" }
 bumpalo = "3.4.0"
 target-lexicon = "^0.10.0"
+serde = { version = "1.0.116", features = ["derive"] }

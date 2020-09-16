@@ -10,7 +10,18 @@ pub struct Symbol(usize);
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SymbolData(Box<str>);
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct Ident {
     pub symbol: Symbol,
     pub span: diagnostics::Span,
@@ -130,5 +141,19 @@ impl std::hash::Hash for Ident {
 impl diagnostics::Spanned for Ident {
     fn span(&self) -> diagnostics::Span {
         self.span
+    }
+}
+
+impl serde::Serialize for Symbol {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&***self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Symbol {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = <&'_ str>::deserialize(d)?;
+
+        Ok(Symbol::new(text))
     }
 }

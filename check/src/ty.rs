@@ -1,6 +1,7 @@
 use crate::tcx::Tcx;
 use hir::Symbol;
 pub use hir::{Ident, Span};
+use std::collections::HashMap;
 use std::fmt;
 
 pub type Ty<'tcx> = &'tcx Type<'tcx>;
@@ -56,6 +57,8 @@ pub struct Variant<'tcx> {
     pub name: Ident,
     pub fields: &'tcx [Field<'tcx>],
 }
+
+pub struct TypeMap<'tcx>(HashMap<hir::Id, Ty<'tcx>>);
 
 impl<'tcx> Type<'tcx> {
     pub fn func(&self) -> Option<(Option<&hir::Id>, &'tcx [Param<'tcx>], Ty<'tcx>)> {
@@ -345,6 +348,220 @@ impl fmt::Display for Variant<'_> {
                     .collect::<Vec<_>>()
                     .join(", ")
             )
+        }
+    }
+}
+
+pub(crate) mod ser {
+    use super::*;
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Index(Vec<SType>);
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Map(HashMap<hir::Id, usize>);
+
+    pub struct Deser<'tcx>(&'tcx bumpalo::Bump);
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    enum SType {
+        Param(hir::Id),
+        Never,
+        Bool,
+        Str,
+        TypeId,
+        Int(u8),
+        UInt(u8),
+        Float(u8),
+        Ref(bool, usize),
+        Array(usize, usize),
+        Slice(usize),
+        Tuple(Vec<usize>),
+        Struct(hir::Id, Vec<(Span, Ident, usize)>),
+        Enum(hir::Id, Vec<(Span, Ident, Vec<(Span, Ident, usize)>)>),
+        Func(Option<hir::Id>, Vec<(Span, Ident, usize)>, usize),
+        Forall(Vec<hir::Id>, usize),
+        Object,
+    }
+
+    impl<'tcx> serde::Serialize for TypeMap<'tcx> {
+        fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            let mut index = Index(Vec::new());
+            let mut index2 = Vec::new();
+            let mut map = Map(HashMap::new());
+
+            fn convert<'tcx>(index: &mut Index, idx2: &mut Vec<Ty<'tcx>>, ty: Ty<'tcx>) -> usize {
+                if let Some(idx) = idx2.iter().position(|t| std::ptr::eq(*t, ty)) {
+                    idx
+                } else {
+                    idx2.push(ty);
+
+                    let sty = match ty {
+                        Type::Error
+                        | Type::TypeOf(_)
+                        | Type::Var(_)
+                        | Type::VInt(_)
+                        | Type::VUInt(_)
+                        | Type::VFloat(_) => unreachable!(),
+                        Type::Param(id) => SType::Param(*id),
+                        Type::Never => SType::Never,
+                        Type::Bool => SType::Bool,
+                        Type::Str => SType::Str,
+                        Type::TypeId => SType::TypeId,
+                        Type::Int(bits) => SType::Int(*bits),
+                        Type::UInt(bits) => SType::UInt(*bits),
+                        Type::Float(bits) => SType::Float(*bits),
+                        Type::Ref(b, ty) => SType::Ref(*b, convert(index, idx2, ty)),
+                        Type::Array(ty, len) => SType::Array(convert(index, idx2, ty), *len),
+                        Type::Slice(ty) => SType::Slice(convert(index, idx2, ty)),
+                        Type::Tuple(tys) => {
+                            SType::Tuple(tys.iter().map(|ty| convert(index, idx2, ty)).collect())
+                        }
+                        Type::Struct(id, fields) => SType::Struct(
+                            *id,
+                            fields
+                                .iter()
+                                .map(|f| (f.span, f.name, convert(index, idx2, f.ty)))
+                                .collect(),
+                        ),
+                        Type::Enum(id, variants) => SType::Enum(
+                            *id,
+                            variants
+                                .iter()
+                                .map(|v| {
+                                    (
+                                        v.span,
+                                        v.name,
+                                        v.fields
+                                            .iter()
+                                            .map(|f| (f.span, f.name, convert(index, idx2, f.ty)))
+                                            .collect(),
+                                    )
+                                })
+                                .collect(),
+                        ),
+                        Type::Func(id, params, ret) => SType::Func(
+                            *id,
+                            params
+                                .iter()
+                                .map(|p| (p.span, p.name, convert(index, idx2, p.ty)))
+                                .collect(),
+                            convert(index, idx2, ret),
+                        ),
+                        Type::Forall(params, ret) => {
+                            SType::Forall(params.to_vec(), convert(index, idx2, ret))
+                        }
+                        Type::Object => SType::Object,
+                    };
+
+                    index.0.push(sty);
+                    index.0.len() - 1
+                }
+            }
+
+            for (id, ty) in &self.0 {
+                map.0.insert(*id, convert(&mut index, &mut index2, ty));
+            }
+
+            (map, index).serialize(s)
+        }
+    }
+
+    impl<'de, 'tcx> serde::de::DeserializeSeed<'de> for Deser<'tcx> {
+        type Value = TypeMap<'tcx>;
+
+        fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+            use serde::de::Deserialize;
+            let (map, index) = <(Map, Index)>::deserialize(d)?;
+            let mut index2 = HashMap::with_capacity(index.0.len());
+            let mut tmap = TypeMap(HashMap::with_capacity(map.0.len()));
+            let arena = self.0;
+
+            fn convert<'tcx>(
+                arena: &'tcx bumpalo::Bump,
+                index: &Index,
+                index2: &mut HashMap<usize, Ty<'tcx>>,
+                idx: usize,
+            ) -> Ty<'tcx> {
+                if let Some(ty) = index2.get(&idx) {
+                    *ty
+                } else {
+                    let sty = &index.0[idx];
+                    let ty = match sty {
+                        SType::Param(id) => Type::Param(*id),
+                        SType::Never => Type::Never,
+                        SType::Bool => Type::Bool,
+                        SType::Str => Type::Str,
+                        SType::TypeId => Type::TypeId,
+                        SType::Int(bits) => Type::Int(*bits),
+                        SType::UInt(bits) => Type::UInt(*bits),
+                        SType::Float(bits) => Type::Float(*bits),
+                        SType::Ref(b, ty) => Type::Ref(*b, convert(arena, index, index2, *ty)),
+                        SType::Array(ty, len) => {
+                            Type::Array(convert(arena, index, index2, *ty), *len)
+                        }
+                        SType::Slice(ty) => Type::Slice(convert(arena, index, index2, *ty)),
+                        SType::Tuple(tys) => Type::Tuple(arena.alloc_slice_fill_iter(
+                            tys.iter().map(|ty| convert(arena, index, index2, *ty)),
+                        )),
+                        SType::Struct(id, fields) => Type::Struct(
+                            *id,
+                            arena.alloc_slice_fill_iter(fields.iter().map(|(span, name, ty)| {
+                                Field {
+                                    span: *span,
+                                    name: *name,
+                                    ty: convert(arena, index, index2, *ty),
+                                }
+                            })),
+                        ),
+                        SType::Enum(id, variants) => Type::Enum(
+                            *id,
+                            arena.alloc_slice_fill_iter(variants.iter().map(
+                                |(span, name, fields)| Variant {
+                                    span: *span,
+                                    name: *name,
+                                    fields: arena.alloc_slice_fill_iter(fields.iter().map(
+                                        |(span, name, ty)| Field {
+                                            span: *span,
+                                            name: *name,
+                                            ty: convert(arena, index, index2, *ty),
+                                        },
+                                    )),
+                                },
+                            )),
+                        ),
+                        SType::Func(id, params, ret) => Type::Func(
+                            *id,
+                            arena.alloc_slice_fill_iter(params.iter().map(|(span, name, ty)| {
+                                Param {
+                                    span: *span,
+                                    name: *name,
+                                    ty: convert(arena, index, index2, *ty),
+                                }
+                            })),
+                            convert(arena, index, index2, *ret),
+                        ),
+                        SType::Forall(params, ret) => Type::Forall(
+                            arena.alloc_slice_fill_iter(params.iter().copied()),
+                            convert(arena, index, index2, *ret),
+                        ),
+                        SType::Object => Type::Object,
+                    };
+
+                    let ty = arena.alloc(ty);
+
+                    index2.insert(idx, ty);
+                    ty
+                }
+            }
+
+            for (id, i) in map.0.into_iter() {
+                let ty = convert(&arena, &index, &mut index2, i);
+
+                tmap.0.insert(id, ty);
+            }
+
+            Ok(tmap)
         }
     }
 }
