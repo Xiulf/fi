@@ -26,7 +26,7 @@ pub fn translate<'tcx>(
 
     let builder = cranelift_object::ObjectBuilder::new(
         isa,
-        "test",
+        &**package.name,
         cranelift_module::default_libcall_names(),
     )
     .unwrap();
@@ -65,8 +65,27 @@ pub fn declare<'tcx>(
 ) -> ModuleResult<()> {
     let name = if item.no_mangle() {
         item.name.to_string()
+    } else if item.is_main() {
+        String::from("main")
     } else {
-        mangling::mangle(item.name.symbol.bytes())
+        let mut path = Vec::new();
+        let found = tcx.module_structure.find_path(&item.id, &mut path);
+
+        if found && path.len() == 1 && &**item.name.symbol == "main" {
+            String::from("main")
+        } else if found {
+            let name = path
+                .into_iter()
+                .chain(std::iter::once(item.name.symbol))
+                .rev()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join("/");
+
+            mangling::mangle(name.bytes())
+        } else {
+            unreachable!();
+        }
     };
 
     match &item.kind {

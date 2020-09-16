@@ -16,7 +16,7 @@ pub struct Tcx<'tcx> {
     pub reporter: &'tcx Reporter,
     pub(crate) arena: &'tcx bumpalo::Bump,
     package: &'tcx hir::Package,
-    module_structure: &'tcx hir::resolve::ModuleStructure,
+    pub module_structure: &'tcx hir::resolve::ModuleStructure,
     pub(crate) target: &'tcx target_lexicon::Triple,
     types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
     layouts: RefCell<HashMap<*const Type<'tcx>, TyLayout<'tcx, Ty<'tcx>>>>,
@@ -203,15 +203,24 @@ impl<'tcx> Tcx<'tcx> {
         self.intern_ty(Type::VFloat(TypeVar(var)))
     }
 
-    pub fn get_full_name(&self, id: &hir::Id) -> String {
+    pub fn get_full_name(&self, id: &hir::Id, base: bool) -> String {
         let mut path = Vec::new();
 
         if self.module_structure.find_path(id, &mut path) {
-            path.into_iter()
-                .rev()
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>()
-                .join("/")
+            if base {
+                path.into_iter()
+                    .chain(std::iter::once(self.module_structure.name))
+                    .rev()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            } else {
+                path.into_iter()
+                    .rev()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            }
         } else {
             self.package.items[id].name.to_string()
         }

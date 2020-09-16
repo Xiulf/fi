@@ -114,6 +114,7 @@ impl Display for Attribute {
             AttrKind::NoMangle => write!(f, "@no_mangle"),
             AttrKind::Lang(name) => write!(f, "@lang {}", name),
             AttrKind::Intrinsic => write!(f, "@intrinsic"),
+            AttrKind::Main => write!(f, "@main"),
         }
     }
 }

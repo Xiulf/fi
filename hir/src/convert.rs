@@ -45,6 +45,7 @@ impl<'a> Converter<'a> {
     pub fn finish(self, package: Ident, root: ItemId) -> (Package, resolve::ModuleStructure) {
         (
             Package {
+                name: package.symbol,
                 items: self.items,
                 exprs: self.exprs,
                 types: self.types,

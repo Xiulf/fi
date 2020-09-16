@@ -150,6 +150,7 @@ impl Parse for Attribute {
                 "no_mangle" => AttrKind::NoMangle,
                 "lang" => AttrKind::Lang(input.parse()?),
                 "intrinsic" => AttrKind::Intrinsic,
+                "main" => AttrKind::Main,
                 _ => return input.error_at("unknown attribute", name.span, 0001),
             };
 
@@ -484,8 +485,13 @@ impl Parse for EnumVariant {
 
 impl Block {
     fn parse<T>(input: ParseStream, term: impl Fn(ParseStream) -> Result<T>) -> Result<Self> {
-        let start = input.prev_span();
+        let mut start = input.prev_span();
         let mut stmts = Vec::new();
+
+        start.start = start.end;
+        start.start.offset += 1;
+        start.start.line += 1;
+        start.start.col = 0;
 
         while !input.is_empty() && !term(&input.fork()).is_ok() {
             stmts.push(input.parse()?);

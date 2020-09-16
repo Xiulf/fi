@@ -27,11 +27,6 @@ pub fn build(opts: Opts) {
     check::with_tcx(&reporter, &hir, &module_structure, &opts.target, |tcx| {
         let mir = mir::convert::convert(&tcx, &hir);
 
-        let range = tcx.lang_items.range().unwrap();
-        let path = tcx.get_full_name(&range);
-
-        println!("{}", path);
-
         // println!("{}", mir);
 
         codegen::compile(

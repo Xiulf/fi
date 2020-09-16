@@ -3,7 +3,7 @@ use check::tcx::Tcx;
 use std::collections::HashMap;
 
 pub fn convert<'tcx>(tcx: &Tcx<'tcx>, package: &hir::Package) -> Package<'tcx> {
-    let mut converter = Converter::new(tcx);
+    let mut converter = Converter::new(tcx, package.name);
 
     converter.convert(package);
     converter.finish()
@@ -23,10 +23,10 @@ pub(crate) struct BodyConverter<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> Converter<'a, 'tcx> {
-    pub fn new(tcx: &'a Tcx<'tcx>) -> Self {
+    pub fn new(tcx: &'a Tcx<'tcx>, name: hir::Symbol) -> Self {
         Converter {
             tcx,
-            package: Package::new(),
+            package: Package::new(name),
         }
     }
 

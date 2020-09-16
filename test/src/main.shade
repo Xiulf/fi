@@ -1,7 +1,6 @@
 mod core;
 mod libc;
 
-@no_mangle
 fn main(argc: i32, argv: **u8) -> i32
     var res = core/intrinsic/sqrtf64(5.0);
 

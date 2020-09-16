@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct Package<'tcx> {
+    pub name: hir::Symbol,
     pub items: BTreeMap<Id, Item<'tcx>>,
 }
 
@@ -165,8 +166,9 @@ pub enum UnOp {
 }
 
 impl<'tcx> Package<'tcx> {
-    pub fn new() -> Self {
+    pub fn new(name: hir::Symbol) -> Self {
         Package {
+            name,
             items: BTreeMap::new(),
         }
     }
@@ -293,6 +295,12 @@ impl<'tcx> Item<'tcx> {
         self.attrs
             .iter()
             .any(|attr| matches!(&attr.kind, AttrKind::NoMangle))
+    }
+
+    pub fn is_main(&self) -> bool {
+        self.attrs
+            .iter()
+            .any(|attr| matches!(&attr.kind, AttrKind::Main))
     }
 
     pub fn is_intrinsic(&self) -> bool {

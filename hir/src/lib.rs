@@ -19,6 +19,7 @@ pub struct Id(ItemId, u64);
 
 #[derive(Debug)]
 pub struct Package {
+    pub name: Symbol,
     pub items: BTreeMap<Id, Item>,
     pub exprs: BTreeMap<Id, Expr>,
     pub types: BTreeMap<Id, Type>,

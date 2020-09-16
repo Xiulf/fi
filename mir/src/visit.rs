@@ -52,7 +52,7 @@ macro_rules! make_visitor{
             }
 
             fn super_package(&mut self, package: & $($mut)? Package<'tcx>) {
-                let Package { items } = package;
+                let Package { name: _, items } = package;
 
                 for (_, item) in items {
                     self.visit_item(item);
