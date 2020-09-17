@@ -1,0 +1,10 @@
+[package]
+name = "mir"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+diagnostics = { path = "../../../.crates/diagnostics" }
+hir = { path = "../hir" }
+check = { path = "../check" }

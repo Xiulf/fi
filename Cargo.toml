@@ -1,10 +1,10 @@
 [workspace]
 members = [
-    "shadow",
-    "driver",
-    "syntax",
-    "hir",
-    "check",
-    "mir",
-    "codegen",
+    "compiler/shadow",
+    "compiler/driver",
+    "compiler/syntax",
+    "compiler/hir",
+    "compiler/check",
+    "compiler/mir",
+    "compiler/codegen",
 ]

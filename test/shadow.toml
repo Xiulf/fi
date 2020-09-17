@@ -1,0 +1,8 @@
+[package]
+name = "test"
+version = "0.1.0"
+authors = ["Tymo Ooijevaar <tttymo@gmail.com>"]
+entry = "src/main"
+
+[dependencies.core]
+path = "../lib/core"

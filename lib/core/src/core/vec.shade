@@ -1,0 +1,44 @@
+struct Vec<T>
+    ptr: *T
+    cap: usize
+    len: usize
+end
+
+fn new<T>() -> Vec<T>
+    var ptr = ~/ptr/NULL;
+    var cap = if `T`.size == 0; !0 else 0 end;
+
+    Vec(ptr, cap, 0)
+end
+
+fn push<T>(self: *Vec<T>, item: T)
+    reserve(self, 1);
+
+    var ptr = self.*.ptr + self.*.len * `T`.stride;
+
+    /libc/memcpy(ptr.(*()), item.(*()), `T`.size);
+    self.*.len += 1;
+end
+
+fn index<T>(self: *Vec<T>, idx: usize) -> *T
+    var ptr = self.*.ptr + idx * `T`.stride;
+
+    ptr.(*T)
+end
+
+fn reserve<T>(self: *Vec<T>, n: usize)
+    if self.*.ptr == ~/ptr/NULL
+        self.*.ptr = /libc/malloc(`T`.stride).(*T);
+        self.*.cap += 1;
+    end
+
+    while self.*.len + n > self.*.cap
+        self.*.cap *= 2;
+        self.*.ptr = /libc/realloc(self.*.ptr.(*()), self.*.cap * `T`.stride).(*T);
+    end
+end
+
+fn drop<T>(self: *Vec<T>)
+    /libc/free(self.*.ptr.(*()));
+    self.*.ptr = ~/ptr/NULL;
+end

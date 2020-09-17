@@ -1,0 +1,16 @@
+[package]
+name = "driver"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+diagnostics = { path = "../../../.crates/diagnostics" }
+syntax = { path = "../syntax" }
+hir = { path = "../hir" }
+check = { path = "../check" }
+mir = { path = "../mir" }
+codegen = { path = "../codegen" }
+target-lexicon = "^0.10.0"
+serde = { version = "1.0.116", features = ["derive"] }
+toml = "0.5.6"
