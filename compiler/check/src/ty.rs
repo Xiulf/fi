@@ -355,15 +355,15 @@ impl fmt::Display for Variant<'_> {
 pub(crate) mod ser {
     use super::*;
 
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     struct Index(Vec<SType>);
 
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     struct Map(HashMap<hir::Id, usize>);
 
     pub struct Deser<'tcx>(pub &'tcx bumpalo::Bump);
 
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     enum SType {
         Param(hir::Id),
         Never,
@@ -391,11 +391,9 @@ pub(crate) mod ser {
             let mut map = Map(HashMap::new());
 
             fn convert<'tcx>(index: &mut Index, idx2: &mut Vec<Ty<'tcx>>, ty: Ty<'tcx>) -> usize {
-                if let Some(idx) = idx2.iter().position(|t| std::ptr::eq(*t, ty)) {
+                if let Some(idx) = idx2.iter().position(|t| *t == ty) {
                     idx
                 } else {
-                    idx2.push(ty);
-
                     let sty = match ty {
                         Type::Error
                         | Type::TypeOf(_)
@@ -455,6 +453,7 @@ pub(crate) mod ser {
                     };
 
                     index.0.push(sty);
+                    idx2.push(ty);
                     index.0.len() - 1
                 }
             }
@@ -463,7 +462,7 @@ pub(crate) mod ser {
                 map.0.insert(*id, convert(&mut index, &mut index2, ty));
             }
 
-            (map, index).serialize(s)
+            <(Map, Index)>::serialize(&(map, index), s)
         }
     }
 

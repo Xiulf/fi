@@ -234,7 +234,7 @@ impl<'tcx> Tcx<'tcx> {
             tmap: &mut TypeMap<'tcx>,
             m: &hir::resolve::ModuleStructure,
         ) {
-            for (_, id) in &m.items {
+            for (_, (id, _)) in &m.items {
                 tmap.0.insert(*id, this.type_of(id));
             }
 
@@ -245,6 +245,7 @@ impl<'tcx> Tcx<'tcx> {
 
         rec(self, &mut tmap, self.module_structure);
 
+        let file = file.as_ref();
         let file = std::fs::File::create(file).unwrap();
 
         bincode::serialize_into(file, &tmap).unwrap();
@@ -252,8 +253,10 @@ impl<'tcx> Tcx<'tcx> {
 
     pub fn load_type_map(&self, file: impl AsRef<std::path::Path>) {
         use bincode::Options;
+        let file = file.as_ref();
         let file = std::fs::File::open(file).unwrap();
-        let tmap: TypeMap = bincode::options()
+        let tmap: TypeMap = bincode::DefaultOptions::new()
+            .with_fixint_encoding()
             .deserialize_from_seed(crate::ty::ser::Deser(self.arena), file)
             .unwrap();
 

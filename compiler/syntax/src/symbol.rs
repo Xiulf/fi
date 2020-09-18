@@ -146,13 +146,13 @@ impl diagnostics::Spanned for Ident {
 
 impl serde::Serialize for Symbol {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&***self)
+        self.to_string().serialize(s)
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Symbol {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let text = <&'_ str>::deserialize(d)?;
+        let text = <String>::deserialize(d)?;
 
         Ok(Symbol::new(text))
     }

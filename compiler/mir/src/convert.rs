@@ -570,10 +570,12 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             res: hir::Res::Item(item),
         } = &self.hir.exprs[func].kind
         {
-            if let hir::ItemKind::Ctor { variant, .. } = &self.hir.items[item].kind {
-                self.builder.init(res.clone(), ret_ty, *variant, call_args);
+            if let Some(item) = self.hir.items.get(item) {
+                if let hir::ItemKind::Ctor { variant, .. } = &item.kind {
+                    self.builder.init(res.clone(), ret_ty, *variant, call_args);
 
-                return Operand::Place(res);
+                    return Operand::Place(res);
+                }
             }
         }
 

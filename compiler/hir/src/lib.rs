@@ -27,6 +27,26 @@ pub struct Package {
     pub items: BTreeMap<Id, Item>,
     pub exprs: BTreeMap<Id, Expr>,
     pub types: BTreeMap<Id, Type>,
+    pub imports: Imports,
+}
+
+#[derive(Debug)]
+pub struct Imports {
+    pub imports: BTreeMap<Id, Import>,
+}
+
+#[derive(Debug)]
+pub struct Import {
+    pub id: Id,
+    pub name: Ident,
+    pub kind: ImportKind,
+}
+
+#[derive(Debug)]
+pub enum ImportKind {
+    Extern { abi: Abi },
+    Func,
+    Var,
 }
 
 #[derive(Debug)]

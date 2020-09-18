@@ -15,7 +15,7 @@ pub struct Resolver<'a> {
 pub struct ModuleStructure {
     pub name: Symbol,
     pub id: ItemId,
-    pub items: HashMap<Symbol, Id>,
+    pub items: HashMap<Symbol, (Id, bool)>,
     pub children: Vec<ModuleStructure>,
 }
 
@@ -75,7 +75,10 @@ pub enum PrimTy {
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(reporter: &'a Reporter) -> Self {
+    pub fn new<'b>(
+        reporter: &'a Reporter,
+        deps: impl Iterator<Item = &'b std::path::Path>,
+    ) -> Self {
         let mut resolver = Resolver {
             reporter,
             current_module: ItemId(0),
@@ -83,7 +86,46 @@ impl<'a> Resolver<'a> {
         };
 
         resolver.add_root();
+
+        for dep in deps {
+            let structure = ModuleStructure::load(dep);
+
+            resolver.add_structure(structure, ItemId(0));
+        }
+
         resolver
+    }
+
+    fn add_structure(&mut self, structure: ModuleStructure, parent: ItemId) {
+        self.set_module(parent);
+        self.add_module(structure.id);
+        self.define(
+            Ns::Modules,
+            structure.name,
+            Span::default(),
+            Res::Module(structure.id),
+        );
+
+        self.set_module(structure.id);
+
+        for (name, (id, is_type)) in structure.items {
+            self.define(
+                if is_type { Ns::Types } else { Ns::Values },
+                name,
+                Span::default(),
+                Res::Item(id),
+            );
+        }
+
+        for child in structure.children {
+            self.define(
+                Ns::Modules,
+                child.name,
+                Span::default(),
+                Res::Module(child.id),
+            );
+            self.add_structure(child, structure.id);
+        }
     }
 
     pub fn add_module(&mut self, id: ItemId) {
@@ -224,11 +266,14 @@ impl<'a> Resolver<'a> {
         let types = &self.modules[module][Ns::Types][0];
         let items = values
             .iter()
-            .chain(types.iter())
             .filter_map(|(name, res)| match res {
-                Res::Item(id) => Some((*name, *id)),
+                Res::Item(id) => Some((*name, (*id, false))),
                 _ => None,
             })
+            .chain(types.iter().filter_map(|(name, res)| match res {
+                Res::Item(id) => Some((*name, (*id, true))),
+                _ => None,
+            }))
             .collect();
 
         let children = modules
@@ -450,7 +495,7 @@ impl ModuleStructure {
         if let Some(symbol) = self
             .items
             .iter()
-            .find_map(|(s, v)| if v == id { Some(*s) } else { None })
+            .find_map(|(s, (v, _))| if v == id { Some(*s) } else { None })
         {
             path.push(symbol);
             true
@@ -465,5 +510,17 @@ impl ModuleStructure {
 
             false
         }
+    }
+
+    pub fn store(&self, path: impl AsRef<std::path::Path>) {
+        let file = std::fs::File::create(path).unwrap();
+
+        bincode::serialize_into(file, self).unwrap();
+    }
+
+    pub fn load(path: impl AsRef<std::path::Path>) -> Self {
+        let file = std::fs::File::open(path).unwrap();
+
+        bincode::deserialize_from(file).unwrap()
     }
 }

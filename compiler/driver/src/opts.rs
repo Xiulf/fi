@@ -14,6 +14,7 @@ pub struct Opts {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Manifest {
     pub package: Package,
+    #[serde(default)]
     pub dependencies: HashMap<String, Dependency>,
 }
 

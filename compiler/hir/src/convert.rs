@@ -4,9 +4,14 @@ use resolve::{Ns, Res, Resolver, RibKind};
 use std::collections::BTreeMap;
 use syntax::ast;
 
-pub fn convert(reporter: &Reporter, ast: &ast::Package) -> (Package, resolve::ModuleStructure) {
+pub fn convert<'a>(
+    reporter: &Reporter,
+    ast: &ast::Package,
+    sdeps: impl Iterator<Item = &'a std::path::Path>,
+    ideps: impl Iterator<Item = &'a std::path::Path>,
+) -> (Package, resolve::ModuleStructure) {
     let root = ItemId::new(&ast.module);
-    let mut converter = Converter::new(reporter, root);
+    let mut converter = Converter::new(reporter, root, sdeps, ideps);
     let package_name = Ident {
         symbol: Symbol::new(ast.span.file.name.file_stem().unwrap().to_str().unwrap()),
         span: Span::empty(ast.span.file),
@@ -23,19 +28,37 @@ pub struct Converter<'a> {
     items: BTreeMap<Id, Item>,
     exprs: BTreeMap<Id, Expr>,
     types: BTreeMap<Id, Type>,
+    imports: Imports,
     package_id: ItemId,
     current_item: ItemId,
     local_id: u64,
 }
 
 impl<'a> Converter<'a> {
-    pub fn new(reporter: &'a Reporter, package_id: ItemId) -> Self {
+    pub fn new<'b>(
+        reporter: &'a Reporter,
+        package_id: ItemId,
+        sdeps: impl Iterator<Item = &'b std::path::Path>,
+        ideps: impl Iterator<Item = &'b std::path::Path>,
+    ) -> Self {
+        let mut imports = Imports {
+            imports: BTreeMap::new(),
+        };
+
+        for dep in ideps {
+            let file = std::fs::File::open(dep).unwrap();
+            let imps: Imports = bincode::deserialize_from(file).unwrap();
+
+            imports.imports.extend(imps.imports);
+        }
+
         Converter {
             reporter,
-            resolver: Resolver::new(reporter),
+            resolver: Resolver::new(reporter, sdeps),
             items: BTreeMap::new(),
             exprs: BTreeMap::new(),
             types: BTreeMap::new(),
+            imports,
             package_id,
             current_item: ItemId(0),
             local_id: 0,
@@ -49,6 +72,7 @@ impl<'a> Converter<'a> {
                 items: self.items,
                 exprs: self.exprs,
                 types: self.types,
+                imports: self.imports,
             },
             self.resolver.module_structure(package.symbol, &root),
         )

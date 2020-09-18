@@ -10,3 +10,4 @@ syntax = { path = "../syntax" }
 seahash = "4.0.0"
 derivative = "2.1.1"
 serde = { version = "1.0.116", features = ["derive"] }
+bincode = "1.3.1"
