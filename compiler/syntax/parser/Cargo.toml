@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 diagnostics = { path = "../../../../.crates/diagnostics" }
 unicode-xid = "0.2.0"
+serde = { version = "1.0.116", features = ["derive"] }

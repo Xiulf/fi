@@ -78,8 +78,8 @@ impl<'tcx> Tcx<'tcx> {
                 self.intern_ty(Type::Array(ty, exprs.len()))
             }
             hir::ExprKind::Tuple { exprs } => {
-                let tys = exprs.iter().map(|e| self.type_of(e));
-                let tys = self.arena.alloc_slice_fill_iter(tys);
+                let tys = exprs.iter().map(|e| self.type_of(e)).collect::<Vec<_>>();
+                let tys = self.intern.intern_ty_list(&tys);
 
                 self.intern_ty(Type::Tuple(tys))
             }

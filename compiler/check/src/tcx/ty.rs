@@ -53,19 +53,22 @@ impl<'tcx> Tcx<'tcx> {
             }
             hir::TypeKind::Tuple { tys } => {
                 let tys = self
-                    .arena
-                    .alloc_slice_fill_iter(tys.iter().map(|ty| self.type_of(ty)));
+                    .intern
+                    .intern_ty_list(&tys.iter().map(|ty| self.type_of(ty)).collect::<Vec<_>>());
 
                 self.intern_ty(Type::Tuple(tys))
             }
             hir::TypeKind::Func { params, ret } => {
-                let params = self
-                    .arena
-                    .alloc_slice_fill_iter(params.iter().map(|p| Param {
-                        span: p.span,
-                        name: p.name,
-                        ty: self.type_of(&p.ty),
-                    }));
+                let params = self.intern.intern_param_list(
+                    &params
+                        .iter()
+                        .map(|p| Param {
+                            span: p.span,
+                            name: p.name,
+                            ty: self.type_of(&p.ty),
+                        })
+                        .collect::<Vec<_>>(),
+                );
 
                 let ret = self.type_of(ret);
 
@@ -91,8 +94,8 @@ impl<'tcx> Tcx<'tcx> {
             }
             hir::TypeKind::Forall { gen, ty } => {
                 let ty = self.type_of(ty);
-                let args = gen.params.iter().map(|g| g.id);
-                let args = self.arena.alloc_slice_fill_iter(args);
+                let args = gen.params.iter().map(|g| g.id).collect::<Vec<_>>();
+                let args = self.intern.intern_id_list(&args);
 
                 self.intern_ty(Type::Forall(args, ty))
             }

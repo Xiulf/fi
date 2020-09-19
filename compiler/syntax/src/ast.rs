@@ -18,14 +18,14 @@ pub struct Module {
     pub items: Vec<Item>,
 }
 
-#[derive(Debug, Clone, derivative::Derivative)]
+#[derive(Debug, Clone, derivative::Derivative, serde::Serialize, serde::Deserialize)]
 #[derivative(Hash)]
 pub struct Attribute {
     pub span: Span,
     pub kind: AttrKind,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AttrKind {
     Doc(String),
     NoMangle,
@@ -78,7 +78,7 @@ pub enum ItemKind {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Abi {
     None,
     C,

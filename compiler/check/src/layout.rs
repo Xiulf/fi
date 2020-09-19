@@ -7,7 +7,7 @@ pub struct TyLayout<'a, Ty> {
     pub layout: &'a Layout,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Layout {
     pub size: Size,
     pub align: Align,
@@ -18,7 +18,7 @@ pub struct Layout {
     pub largest_niche: Option<Niche>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Abi {
     Uninhabited,
     Scalar(Scalar),
@@ -26,7 +26,7 @@ pub enum Abi {
     Aggregate { sized: bool },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FieldsShape {
     Primitive,
     Union(usize),
@@ -34,7 +34,7 @@ pub enum FieldsShape {
     Arbitrary { offsets: Vec<Size> },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Variants {
     Single {
         index: usize,
@@ -47,7 +47,7 @@ pub enum Variants {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TagEncoding {
     Direct,
     Niche {
@@ -57,19 +57,19 @@ pub enum TagEncoding {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Niche {
     pub offset: Size,
     pub scalar: Scalar,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Scalar {
     pub value: Primitive,
     pub valid_range: RangeInclusive<u128>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Primitive {
     Int(Integer, bool),
     F32,
@@ -77,7 +77,7 @@ pub enum Primitive {
     Pointer,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Integer {
     I8,
     I16,
@@ -86,12 +86,12 @@ pub enum Integer {
     I128,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Size {
     raw: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Align {
     pow2: u8,
 }

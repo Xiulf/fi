@@ -1,4 +1,4 @@
-use crate::{AttrKind, Id, Package};
+use crate::{AttrKind, Attribute, Id, Package};
 
 macro_rules! lang_items {
     ($($variant:ident, $name:literal, $method:ident;)*) => {
@@ -21,13 +21,23 @@ macro_rules! lang_items {
 
         impl LangItems {
             pub fn collect(hir: &Package) -> Self {
+                fn attr_filter(a: &Attribute) -> Option<&syntax::ast::StringLiteral> {
+                    if let AttrKind::Lang(l) = &a.kind { Some(l) } else { None }
+                }
+
                 let lang_items = hir.items.iter().filter_map(|(id, item)| {
-                    if let Some(l) = item.attrs.iter().filter_map(|a| if let AttrKind::Lang(l) = &a.kind { Some(l) } else { None }).next() {
+                    if let Some(l) = item.attrs.iter().filter_map(attr_filter).next() {
                         Some((*id, l))
                     } else {
                         None
                     }
-                }).collect::<Vec<_>>();
+                }).chain(hir.imports.0.iter().filter_map(|(id, import)| {
+                    if let Some(l) = import.attrs.iter().filter_map(attr_filter).next() {
+                        Some((*id, l))
+                    } else {
+                        None
+                    }
+                })).collect::<Vec<_>>();
 
                 let find_item = |lang_item: LangItem| -> Option<Id> {
                     lang_items

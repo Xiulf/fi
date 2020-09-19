@@ -41,15 +41,12 @@ impl<'a> Converter<'a> {
         sdeps: impl Iterator<Item = &'b std::path::Path>,
         ideps: impl Iterator<Item = &'b std::path::Path>,
     ) -> Self {
-        let mut imports = Imports {
-            imports: BTreeMap::new(),
-        };
+        let mut imports = Imports(BTreeMap::new());
 
         for dep in ideps {
-            let file = std::fs::File::open(dep).unwrap();
-            let imps: Imports = bincode::deserialize_from(file).unwrap();
+            let import = Imports::load(dep);
 
-            imports.imports.extend(imps.imports);
+            imports.0.extend(import.0);
         }
 
         Converter {

@@ -30,19 +30,20 @@ pub struct Package {
     pub imports: Imports,
 }
 
-#[derive(Debug)]
-pub struct Imports {
-    pub imports: BTreeMap<Id, Import>,
-}
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Imports(pub BTreeMap<Id, Import>);
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Import {
     pub id: Id,
     pub name: Ident,
+    pub path: String,
+    pub attrs: Vec<Attribute>,
     pub kind: ImportKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum ImportKind {
     Extern { abi: Abi },
     Func,
@@ -297,6 +298,45 @@ pub struct TypeParam {
     pub ty: Id,
 }
 
+impl Package {
+    pub fn collect_exports(&self, module_structure: &resolve::ModuleStructure) -> Imports {
+        Imports(
+            self.items
+                .iter()
+                .filter_map(|(id, item)| {
+                    let mut path = Vec::new();
+
+                    module_structure.find_path(id, &mut path);
+
+                    let path = path
+                        .into_iter()
+                        .chain(std::iter::once(module_structure.name))
+                        .rev()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>()
+                        .join("/");
+
+                    Some((
+                        *id,
+                        Import {
+                            id: item.id,
+                            name: item.name,
+                            path,
+                            attrs: item.attrs.clone(),
+                            kind: match item.kind {
+                                ItemKind::Extern { abi, .. } => ImportKind::Extern { abi },
+                                ItemKind::Func { .. } => ImportKind::Func,
+                                ItemKind::Var { global: true, .. } => ImportKind::Var,
+                                _ => return None,
+                            },
+                        },
+                    ))
+                })
+                .collect(),
+        )
+    }
+}
+
 impl ItemId {
     pub fn new<T: Hash>(src: &T) -> Self {
         let mut hasher = seahash::SeaHasher::new();
@@ -322,6 +362,20 @@ impl Id {
 
     pub const fn item_id(&self) -> ItemId {
         self.0
+    }
+}
+
+impl Imports {
+    pub fn store(&self, path: impl AsRef<std::path::Path>) {
+        let file = std::fs::File::create(path).unwrap();
+
+        bincode::serialize_into(file, self).unwrap();
+    }
+
+    pub fn load(path: impl AsRef<std::path::Path>) -> Self {
+        let file = std::fs::File::open(path).unwrap();
+
+        bincode::deserialize_from(file).unwrap()
     }
 }
 

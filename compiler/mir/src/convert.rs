@@ -40,6 +40,10 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
         for (_, item) in &package.items {
             self.convert_item(package, item);
         }
+
+        for (_, import) in &package.imports.0 {
+            self.convert_import(import);
+        }
     }
 
     pub fn convert_item(&mut self, package: &hir::Package, item: &hir::Item) {
@@ -68,7 +72,7 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                     // let (_, param_tys, ret) = new_ty.func().unwrap();
                     // let param_tys = param_tys.iter().map(|p| p.ty).collect::<Vec<_>>();
 
-                    params = gparams.iter().copied().chain(params).collect();
+                    params = gparams.iter().chain(params).collect();
                     param_tys.extend(tparams.iter().map(|p| p.ty));
 
                     (param_tys, ret)
@@ -125,6 +129,13 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
             }
             _ => {}
         }
+    }
+
+    pub fn convert_import(&mut self, import: &hir::Import) {
+        let attrs = import.attrs.clone();
+
+        self.package
+            .declare_extern(import.id, attrs, import.name, self.tcx.type_of(&import.id));
     }
 }
 
@@ -202,47 +213,67 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 hir::Res::Module(_) => unreachable!(),
                 hir::Res::Label(_) => unreachable!(),
                 hir::Res::PrimTy(_) => unreachable!(),
-                hir::Res::Item(id) => match &self.hir.items[id].kind {
-                    hir::ItemKind::Func { .. } => {
-                        Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
-                    }
-                    hir::ItemKind::Extern { ty, .. } => {
-                        if self.tcx.type_of(ty).func().is_some() {
-                            Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
-                        } else {
-                            Operand::Place(Place::global(*id))
+                hir::Res::Item(id) => {
+                    if let Some(item) = self.hir.items.get(id) {
+                        match &item.kind {
+                            hir::ItemKind::Func { .. } => {
+                                Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
+                            }
+                            hir::ItemKind::Extern { ty, .. } => {
+                                if self.tcx.type_of(ty).func().is_some() {
+                                    Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
+                                } else {
+                                    Operand::Place(Place::global(*id))
+                                }
+                            }
+                            hir::ItemKind::Var { global: true, .. } => {
+                                Operand::Place(Place::global(*id))
+                            }
+                            hir::ItemKind::Ctor {
+                                item,
+                                variant,
+                                params: None,
+                            } => {
+                                let ty = self.tcx.type_of(item);
+                                let res = self.builder.create_tmp(ty);
+                                let res = Place::local(res);
+
+                                self.builder.init(res.clone(), ty, *variant, Vec::new());
+
+                                Operand::Place(res)
+                            }
+                            hir::ItemKind::Const { val, .. } => {
+                                let ty = self.tcx.type_of(&expr.id);
+
+                                Operand::Const(
+                                    crate::constant::eval_expr(
+                                        self.tcx,
+                                        self.hir,
+                                        val,
+                                        ty,
+                                        &*self.tcx.subst_of(ty).unwrap(),
+                                    ),
+                                    ty,
+                                )
+                            }
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        match &self.hir.imports.0[id].kind {
+                            hir::ImportKind::Func => {
+                                Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
+                            }
+                            hir::ImportKind::Var => Operand::Place(Place::global(*id)),
+                            hir::ImportKind::Extern { abi: _ } => {
+                                if let Some(_) = self.tcx.type_of(id).func() {
+                                    Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
+                                } else {
+                                    Operand::Place(Place::global(*id))
+                                }
+                            }
                         }
                     }
-                    hir::ItemKind::Var { global: true, .. } => Operand::Place(Place::global(*id)),
-                    hir::ItemKind::Ctor {
-                        item,
-                        variant,
-                        params: None,
-                    } => {
-                        let ty = self.tcx.type_of(item);
-                        let res = self.builder.create_tmp(ty);
-                        let res = Place::local(res);
-
-                        self.builder.init(res.clone(), ty, *variant, Vec::new());
-
-                        Operand::Place(res)
-                    }
-                    hir::ItemKind::Const { val, .. } => {
-                        let ty = self.tcx.type_of(&expr.id);
-
-                        Operand::Const(
-                            crate::constant::eval_expr(
-                                self.tcx,
-                                self.hir,
-                                val,
-                                ty,
-                                &*self.tcx.subst_of(ty).unwrap(),
-                            ),
-                            ty,
-                        )
-                    }
-                    _ => unreachable!(),
-                },
+                }
                 hir::Res::Local(id) => Operand::Place(Place::local(self.locals[id])),
                 hir::Res::PrimVal(prim) => match prim {
                     hir::PrimVal::True => Operand::Const(Const::Scalar(1), self.tcx.builtin.bool),
@@ -582,7 +613,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         if let Some(func_id) = func_id {
             if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
                 let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
-                let subst = params.iter().map(|p| subst[p]);
+                let subst = params.iter().map(|p| subst[&p]);
 
                 call_args = subst
                     .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))

@@ -7,15 +7,18 @@ mod verify;
 use crate::constraint::*;
 use crate::layout::Layout;
 use crate::layout::*;
+use crate::sharded::ShardedHashMap;
 use crate::ty::*;
 use diagnostics::{Reporter, Span};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 
+type InternedSet<'tcx, T> = ShardedHashMap<Interned<'tcx, T>, ()>;
+
 pub struct Tcx<'tcx> {
     pub reporter: &'tcx Reporter,
-    pub(crate) arena: &'tcx bumpalo::Bump,
-    package: &'tcx hir::Package,
+    pub(crate) intern: TcxIntern<'tcx>,
+    pub package: &'tcx hir::Package,
     pub module_structure: &'tcx hir::resolve::ModuleStructure,
     pub(crate) target: &'tcx target_lexicon::Triple,
     types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
@@ -25,6 +28,17 @@ pub struct Tcx<'tcx> {
     ty_vars: Cell<usize>,
     pub builtin: BuiltinTypes<'tcx>,
     pub lang_items: hir::lang::LangItems,
+}
+
+pub(crate) struct TcxIntern<'tcx> {
+    arena: &'tcx bumpalo::Bump,
+    types: InternedSet<'tcx, Type<'tcx>>,
+    type_list: InternedSet<'tcx, List<Ty<'tcx>>>,
+    field_list: InternedSet<'tcx, List<Field<'tcx>>>,
+    variant_list: InternedSet<'tcx, List<Variant<'tcx>>>,
+    param_list: InternedSet<'tcx, List<Param<'tcx>>>,
+    id_list: InternedSet<'tcx, List<hir::Id>>,
+    layout: InternedSet<'tcx, Layout>,
 }
 
 pub struct BuiltinTypes<'tcx> {
@@ -54,38 +68,100 @@ pub struct BuiltinTypes<'tcx> {
 }
 
 impl<'tcx> BuiltinTypes<'tcx> {
-    pub fn new(arena: &'tcx bumpalo::Bump) -> Self {
-        let unit = arena.alloc(Type::Tuple(&[]));
-        let u8 = arena.alloc(Type::UInt(8));
-        let usize = arena.alloc(Type::UInt(0));
+    fn new(intern: &TcxIntern<'tcx>) -> Self {
+        let unit = intern.intern_ty(Type::Tuple(List::empty()));
+        let u8 = intern.intern_ty(Type::UInt(8));
+        let usize = intern.intern_ty(Type::UInt(0));
 
         BuiltinTypes {
-            error: arena.alloc(Type::Error),
-            never: arena.alloc(Type::Never),
+            error: intern.intern_ty(Type::Error),
+            never: intern.intern_ty(Type::Never),
             unit,
-            bool: arena.alloc(Type::Bool),
-            str: arena.alloc(Type::Str),
-            typeid: arena.alloc(Type::TypeId),
+            bool: intern.intern_ty(Type::Bool),
+            str: intern.intern_ty(Type::Str),
+            typeid: intern.intern_ty(Type::TypeId),
             u8,
-            u16: arena.alloc(Type::UInt(16)),
-            u32: arena.alloc(Type::UInt(32)),
-            u64: arena.alloc(Type::UInt(64)),
-            u128: arena.alloc(Type::UInt(128)),
+            u16: intern.intern_ty(Type::UInt(16)),
+            u32: intern.intern_ty(Type::UInt(32)),
+            u64: intern.intern_ty(Type::UInt(64)),
+            u128: intern.intern_ty(Type::UInt(128)),
             usize,
-            i8: arena.alloc(Type::Int(8)),
-            i16: arena.alloc(Type::Int(16)),
-            i32: arena.alloc(Type::Int(32)),
-            i64: arena.alloc(Type::Int(64)),
-            i128: arena.alloc(Type::Int(128)),
-            isize: arena.alloc(Type::Int(0)),
-            f32: arena.alloc(Type::Float(32)),
-            f64: arena.alloc(Type::Float(64)),
-            ref_unit: arena.alloc(Type::Ref(false, unit)),
-            ref_u8: arena.alloc(Type::Ref(false, u8)),
-            type_layout: arena.alloc(Type::Tuple(
-                arena.alloc_slice_copy(&[&*usize, &*usize, &*usize]),
+            i8: intern.intern_ty(Type::Int(8)),
+            i16: intern.intern_ty(Type::Int(16)),
+            i32: intern.intern_ty(Type::Int(32)),
+            i64: intern.intern_ty(Type::Int(64)),
+            i128: intern.intern_ty(Type::Int(128)),
+            isize: intern.intern_ty(Type::Int(0)),
+            f32: intern.intern_ty(Type::Float(32)),
+            f64: intern.intern_ty(Type::Float(64)),
+            ref_unit: intern.intern_ty(Type::Ref(false, unit)),
+            ref_u8: intern.intern_ty(Type::Ref(false, u8)),
+            type_layout: intern.intern_ty(Type::Tuple(
+                intern.intern_ty_list(&[&*usize, &*usize, &*usize]),
             )),
         }
+    }
+}
+
+impl<'tcx> TcxIntern<'tcx> {
+    pub(crate) fn intern_ty(&self, ty: Type<'tcx>) -> Ty<'tcx> {
+        self.types.intern(ty, |ty| Interned(self.arena.alloc(ty))).0
+    }
+
+    pub(crate) fn intern_ty_list(&self, list: &[Ty<'tcx>]) -> &'tcx List<Ty<'tcx>> {
+        if list.is_empty() {
+            List::empty()
+        } else {
+            self.type_list
+                .intern_ref(list, || Interned(List::from_arena(self.arena, list)))
+                .0
+        }
+    }
+
+    pub(crate) fn intern_field_list(&self, list: &[Field<'tcx>]) -> &'tcx List<Field<'tcx>> {
+        if list.is_empty() {
+            List::empty()
+        } else {
+            self.field_list
+                .intern_ref(list, || Interned(List::from_arena(self.arena, list)))
+                .0
+        }
+    }
+
+    pub(crate) fn intern_variant_list(&self, list: &[Variant<'tcx>]) -> &'tcx List<Variant<'tcx>> {
+        if list.is_empty() {
+            List::empty()
+        } else {
+            self.variant_list
+                .intern_ref(list, || Interned(List::from_arena(self.arena, list)))
+                .0
+        }
+    }
+
+    pub(crate) fn intern_param_list(&self, list: &[Param<'tcx>]) -> &'tcx List<Param<'tcx>> {
+        if list.is_empty() {
+            List::empty()
+        } else {
+            self.param_list
+                .intern_ref(list, || Interned(List::from_arena(self.arena, list)))
+                .0
+        }
+    }
+
+    pub(crate) fn intern_id_list(&self, list: &[hir::Id]) -> &'tcx List<hir::Id> {
+        if list.is_empty() {
+            List::empty()
+        } else {
+            self.id_list
+                .intern_ref(list, || Interned(List::from_arena(self.arena, list)))
+                .0
+        }
+    }
+
+    pub(crate) fn intern_layout(&self, layout: Layout) -> &'tcx Layout {
+        self.layout
+            .intern(layout, |layout| Interned(self.arena.alloc(layout)))
+            .0
     }
 }
 
@@ -97,9 +173,21 @@ impl<'tcx> Tcx<'tcx> {
         package: &'tcx hir::Package,
         module_structure: &'tcx hir::resolve::ModuleStructure,
     ) -> Self {
-        Tcx {
-            reporter,
+        let intern = TcxIntern {
             arena,
+            types: InternedSet::default(),
+            type_list: InternedSet::default(),
+            field_list: InternedSet::default(),
+            variant_list: InternedSet::default(),
+            param_list: InternedSet::default(),
+            id_list: InternedSet::default(),
+            layout: InternedSet::default(),
+        };
+
+        Tcx {
+            builtin: BuiltinTypes::new(&intern),
+            reporter,
+            intern,
             target,
             package,
             module_structure,
@@ -108,7 +196,6 @@ impl<'tcx> Tcx<'tcx> {
             layouts: RefCell::new(HashMap::new()),
             constraints: RefCell::new(Constraints::new()),
             substs: RefCell::new(HashMap::new()),
-            builtin: BuiltinTypes::new(arena),
             ty_vars: Cell::new(0),
         }
     }
@@ -257,7 +344,7 @@ impl<'tcx> Tcx<'tcx> {
         let file = std::fs::File::open(file).unwrap();
         let tmap: TypeMap = bincode::DefaultOptions::new()
             .with_fixint_encoding()
-            .deserialize_from_seed(crate::ty::ser::Deser(self.arena), file)
+            .deserialize_from_seed(crate::ty::ser::Deser(&self.intern), file)
             .unwrap();
 
         let mut types = self.types.borrow_mut();
@@ -657,10 +744,79 @@ impl<'tcx> Tcx<'tcx> {
     }
 
     pub fn intern_ty(&self, ty: Type<'tcx>) -> Ty<'tcx> {
-        self.arena.alloc(ty)
+        self.intern.intern_ty(ty)
     }
 
     pub(crate) fn intern_layout(&self, layout: Layout) -> &'tcx Layout {
-        self.arena.alloc(layout)
+        self.intern.intern_layout(layout)
+    }
+}
+
+struct Interned<'tcx, T: ?Sized>(&'tcx T);
+
+impl<'tcx, T: 'tcx + ?Sized> Clone for Interned<'tcx, T> {
+    fn clone(&self) -> Self {
+        Interned(self.0)
+    }
+}
+impl<'tcx, T: 'tcx + ?Sized> Copy for Interned<'tcx, T> {}
+
+impl<'tcx> PartialEq for Interned<'tcx, Type<'tcx>> {
+    fn eq(&self, other: &Interned<'tcx, Type<'tcx>>) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<'tcx> Eq for Interned<'tcx, Type<'tcx>> {}
+
+impl<'tcx> std::hash::Hash for Interned<'tcx, Type<'tcx>> {
+    fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
+        self.0.hash(s)
+    }
+}
+
+impl<'tcx> std::borrow::Borrow<Type<'tcx>> for Interned<'tcx, Type<'tcx>> {
+    fn borrow<'a>(&'a self) -> &'a Type<'tcx> {
+        self.0
+    }
+}
+
+impl<'tcx> PartialEq for Interned<'tcx, Layout> {
+    fn eq(&self, other: &Interned<'tcx, Layout>) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<'tcx> Eq for Interned<'tcx, Layout> {}
+
+impl<'tcx> std::hash::Hash for Interned<'tcx, Layout> {
+    fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
+        self.0.hash(s)
+    }
+}
+
+impl<'tcx> std::borrow::Borrow<Layout> for Interned<'tcx, Layout> {
+    fn borrow<'a>(&'a self) -> &'a Layout {
+        self.0
+    }
+}
+
+impl<'tcx, T: PartialEq> PartialEq for Interned<'tcx, List<T>> {
+    fn eq(&self, other: &Interned<'tcx, List<T>>) -> bool {
+        self.0[..] == other.0[..]
+    }
+}
+
+impl<'tcx, T: Eq> Eq for Interned<'tcx, List<T>> {}
+
+impl<'tcx, T: std::hash::Hash> std::hash::Hash for Interned<'tcx, List<T>> {
+    fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
+        self.0[..].hash(s)
+    }
+}
+
+impl<'tcx, T> std::borrow::Borrow<[T]> for Interned<'tcx, List<T>> {
+    fn borrow<'a>(&'a self) -> &'a [T] {
+        &self.0[..]
     }
 }

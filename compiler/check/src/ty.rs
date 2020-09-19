@@ -1,3 +1,4 @@
+pub use crate::list::List;
 use crate::tcx::Tcx;
 use hir::Symbol;
 pub use hir::{Ident, Span};
@@ -26,11 +27,11 @@ pub enum Type<'tcx> {
     Ref(bool, Ty<'tcx>),
     Array(Ty<'tcx>, usize),
     Slice(Ty<'tcx>),
-    Tuple(&'tcx [Ty<'tcx>]),
-    Struct(hir::Id, &'tcx [Field<'tcx>]),
-    Enum(hir::Id, &'tcx [Variant<'tcx>]),
-    Func(Option<hir::Id>, &'tcx [Param<'tcx>], Ty<'tcx>),
-    Forall(&'tcx [hir::Id], Ty<'tcx>),
+    Tuple(&'tcx List<Ty<'tcx>>),
+    Struct(hir::Id, &'tcx List<Field<'tcx>>),
+    Enum(hir::Id, &'tcx List<Variant<'tcx>>),
+    Func(Option<hir::Id>, &'tcx List<Param<'tcx>>, Ty<'tcx>),
+    Forall(&'tcx List<hir::Id>, Ty<'tcx>),
     Object,
 }
 
@@ -55,13 +56,13 @@ pub struct Field<'tcx> {
 pub struct Variant<'tcx> {
     pub span: Span,
     pub name: Ident,
-    pub fields: &'tcx [Field<'tcx>],
+    pub fields: &'tcx List<Field<'tcx>>,
 }
 
 pub struct TypeMap<'tcx>(pub(crate) HashMap<hir::Id, Ty<'tcx>>);
 
 impl<'tcx> Type<'tcx> {
-    pub fn func(&self) -> Option<(Option<&hir::Id>, &'tcx [Param<'tcx>], Ty<'tcx>)> {
+    pub fn func(&self) -> Option<(Option<&hir::Id>, &'tcx List<Param<'tcx>>, Ty<'tcx>)> {
         match self {
             Type::Func(id, params, ret) => Some((id.as_ref(), params, ret)),
             _ => None,
@@ -93,7 +94,7 @@ impl<'tcx> Type<'tcx> {
             Type::Tuple(tys) => tys
                 .iter()
                 .enumerate()
-                .map(|(i, ty)| (Symbol::new(i.to_string()), *ty))
+                .map(|(i, ty)| (Symbol::new(i.to_string()), ty))
                 .collect(),
             Type::Struct(_, fields) => fields.iter().map(|f| (f.name.symbol, f.ty)).collect(),
             _ => Vec::new(),
@@ -124,9 +125,9 @@ impl<'tcx> Type<'tcx> {
                 .iter()
                 .map(|id| {
                     if let Some(ty) = args.next() {
-                        (*id, ty)
+                        (id, ty)
                     } else {
-                        (*id, tcx.new_var())
+                        (id, tcx.new_var())
                     }
                 })
                 .collect();
@@ -150,76 +151,77 @@ impl<'tcx> Type<'tcx> {
             Type::Ref(mut_, to) => {
                 let new_to = to.replace(args, tcx);
 
-                if new_to != *to {
-                    tcx.intern_ty(Type::Ref(*mut_, new_to))
-                } else {
-                    self
-                }
+                tcx.intern_ty(Type::Ref(*mut_, new_to))
             }
             Type::Array(of, len) => {
                 let new_of = of.replace(args, tcx);
 
-                if new_of != *of {
-                    tcx.intern_ty(Type::Array(new_of, *len))
-                } else {
-                    self
-                }
+                tcx.intern_ty(Type::Array(new_of, *len))
             }
             Type::Slice(of) => {
                 let new_of = of.replace(args, tcx);
 
-                if new_of != *of {
-                    tcx.intern_ty(Type::Slice(new_of))
-                } else {
-                    self
-                }
+                tcx.intern_ty(Type::Slice(new_of))
             }
             Type::Tuple(tys) => {
-                let tys = tys.iter().map(|t| t.replace(args, tcx));
-                let tys = tcx.arena.alloc_slice_fill_iter(tys);
+                let tys = tys.iter().map(|t| t.replace(args, tcx)).collect::<Vec<_>>();
+                let tys = tcx.intern.intern_ty_list(&tys);
 
                 tcx.intern_ty(Type::Tuple(tys))
             }
             Type::Struct(id, fields) => {
-                let fields = fields.iter().map(|f| Field {
-                    span: f.span,
-                    name: f.name,
-                    ty: f.ty.replace(args, tcx),
-                });
+                let fields = fields
+                    .iter()
+                    .map(|f| Field {
+                        span: f.span,
+                        name: f.name,
+                        ty: f.ty.replace(args, tcx),
+                    })
+                    .collect::<Vec<_>>();
 
-                let fields = tcx.arena.alloc_slice_fill_iter(fields);
+                let fields = tcx.intern.intern_field_list(&fields);
 
                 tcx.intern_ty(Type::Struct(*id, fields))
             }
             Type::Enum(id, variants) => {
-                let variants = variants.iter().map(|v| {
-                    let fields = v.fields.iter().map(|f| Field {
-                        span: f.span,
-                        name: f.name,
-                        ty: f.ty.replace(args, tcx),
-                    });
+                let variants = variants
+                    .iter()
+                    .map(|v| {
+                        let fields = v
+                            .fields
+                            .iter()
+                            .map(|f| Field {
+                                span: f.span,
+                                name: f.name,
+                                ty: f.ty.replace(args, tcx),
+                            })
+                            .collect::<Vec<_>>();
 
-                    let fields = tcx.arena.alloc_slice_fill_iter(fields);
+                        let fields = tcx.intern.intern_field_list(&fields);
 
-                    Variant {
-                        span: v.span,
-                        name: v.name,
-                        fields,
-                    }
-                });
+                        Variant {
+                            span: v.span,
+                            name: v.name,
+                            fields,
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
-                let variants = tcx.arena.alloc_slice_fill_iter(variants);
+                let variants = tcx.intern.intern_variant_list(&variants);
 
                 tcx.intern_ty(Type::Enum(*id, variants))
             }
             Type::Func(id, params, ret) => {
-                let params = params.iter().map(|p| Param {
-                    span: p.span,
-                    name: p.name,
-                    ty: p.ty.replace(args, tcx),
-                });
+                let params = params
+                    .iter()
+                    .map(|p| Param {
+                        span: p.span,
+                        name: p.name,
+                        ty: p.ty.replace(args, tcx),
+                    })
+                    .collect::<Vec<_>>();
 
-                let params = tcx.arena.alloc_slice_fill_iter(params);
+                let params = tcx.intern.intern_param_list(&params);
                 let ret = ret.replace(args, tcx);
 
                 tcx.intern_ty(Type::Func(*id, params, ret))
@@ -227,11 +229,7 @@ impl<'tcx> Type<'tcx> {
             Type::Forall(a, ty) => {
                 let new_ty = ty.replace(args, tcx);
 
-                if new_ty != *ty {
-                    tcx.intern_ty(Type::Forall(*a, new_ty))
-                } else {
-                    self
-                }
+                tcx.intern_ty(Type::Forall(*a, new_ty))
             }
             _ => self,
         }
@@ -361,7 +359,7 @@ pub(crate) mod ser {
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
     struct Map(HashMap<hir::Id, usize>);
 
-    pub struct Deser<'tcx>(pub &'tcx bumpalo::Bump);
+    pub struct Deser<'a, 'tcx>(pub(crate) &'a crate::tcx::TcxIntern<'tcx>);
 
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
     enum SType {
@@ -466,7 +464,7 @@ pub(crate) mod ser {
         }
     }
 
-    impl<'de, 'tcx> serde::de::DeserializeSeed<'de> for Deser<'tcx> {
+    impl<'de, 'a, 'tcx> serde::de::DeserializeSeed<'de> for Deser<'a, 'tcx> {
         type Value = TypeMap<'tcx>;
 
         fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
@@ -476,8 +474,8 @@ pub(crate) mod ser {
             let mut tmap = TypeMap(HashMap::with_capacity(map.0.len()));
             let arena = self.0;
 
-            fn convert<'tcx>(
-                arena: &'tcx bumpalo::Bump,
+            fn convert<'a, 'tcx>(
+                arena: &'a crate::tcx::TcxIntern<'tcx>,
                 index: &Index,
                 index2: &mut HashMap<usize, Ty<'tcx>>,
                 idx: usize,
@@ -500,54 +498,70 @@ pub(crate) mod ser {
                             Type::Array(convert(arena, index, index2, *ty), *len)
                         }
                         SType::Slice(ty) => Type::Slice(convert(arena, index, index2, *ty)),
-                        SType::Tuple(tys) => Type::Tuple(arena.alloc_slice_fill_iter(
-                            tys.iter().map(|ty| convert(arena, index, index2, *ty)),
-                        )),
+                        SType::Tuple(tys) => Type::Tuple(
+                            arena.intern_ty_list(
+                                &tys.iter()
+                                    .map(|ty| convert(arena, index, index2, *ty))
+                                    .collect::<Vec<_>>(),
+                            ),
+                        ),
                         SType::Struct(id, fields) => Type::Struct(
                             *id,
-                            arena.alloc_slice_fill_iter(fields.iter().map(|(span, name, ty)| {
-                                Field {
-                                    span: *span,
-                                    name: *name,
-                                    ty: convert(arena, index, index2, *ty),
-                                }
-                            })),
+                            arena.intern_field_list(
+                                &fields
+                                    .iter()
+                                    .map(|(span, name, ty)| Field {
+                                        span: *span,
+                                        name: *name,
+                                        ty: convert(arena, index, index2, *ty),
+                                    })
+                                    .collect::<Vec<_>>(),
+                            ),
                         ),
                         SType::Enum(id, variants) => Type::Enum(
                             *id,
-                            arena.alloc_slice_fill_iter(variants.iter().map(
-                                |(span, name, fields)| Variant {
-                                    span: *span,
-                                    name: *name,
-                                    fields: arena.alloc_slice_fill_iter(fields.iter().map(
-                                        |(span, name, ty)| Field {
-                                            span: *span,
-                                            name: *name,
-                                            ty: convert(arena, index, index2, *ty),
-                                        },
-                                    )),
-                                },
-                            )),
+                            arena.intern_variant_list(
+                                &variants
+                                    .iter()
+                                    .map(|(span, name, fields)| Variant {
+                                        span: *span,
+                                        name: *name,
+                                        fields: arena.intern_field_list(
+                                            &fields
+                                                .iter()
+                                                .map(|(span, name, ty)| Field {
+                                                    span: *span,
+                                                    name: *name,
+                                                    ty: convert(arena, index, index2, *ty),
+                                                })
+                                                .collect::<Vec<_>>(),
+                                        ),
+                                    })
+                                    .collect::<Vec<_>>(),
+                            ),
                         ),
                         SType::Func(id, params, ret) => Type::Func(
                             *id,
-                            arena.alloc_slice_fill_iter(params.iter().map(|(span, name, ty)| {
-                                Param {
-                                    span: *span,
-                                    name: *name,
-                                    ty: convert(arena, index, index2, *ty),
-                                }
-                            })),
+                            arena.intern_param_list(
+                                &params
+                                    .iter()
+                                    .map(|(span, name, ty)| Param {
+                                        span: *span,
+                                        name: *name,
+                                        ty: convert(arena, index, index2, *ty),
+                                    })
+                                    .collect::<Vec<_>>(),
+                            ),
                             convert(arena, index, index2, *ret),
                         ),
                         SType::Forall(params, ret) => Type::Forall(
-                            arena.alloc_slice_fill_iter(params.iter().copied()),
+                            arena.intern_id_list(params.as_ref()),
                             convert(arena, index, index2, *ret),
                         ),
                         SType::Object => Type::Object,
                     };
 
-                    let ty = arena.alloc(ty);
+                    let ty = arena.intern_ty(ty);
 
                     index2.insert(idx, ty);
                     ty

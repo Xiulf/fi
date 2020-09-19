@@ -7,7 +7,7 @@ mod term;
 
 use crate::FunctionCtx;
 use check::tcx::Tcx;
-use check::ty::Layout;
+use check::ty::{Layout, Type};
 use cranelift::codegen::ir::{AbiParam, ExternalName, InstBuilder, Signature};
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{Backend, DataContext, DataId, FuncId, Linkage, Module, ModuleResult};
@@ -76,7 +76,7 @@ pub fn declare<'tcx>(
         } else if found {
             let name = path
                 .into_iter()
-                .chain(std::iter::once(item.name.symbol))
+                .chain(std::iter::once(tcx.module_structure.name))
                 .rev()
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
@@ -84,13 +84,16 @@ pub fn declare<'tcx>(
 
             mangling::mangle(name.bytes())
         } else {
-            unreachable!();
+            // external item
+            let name = &tcx.package.imports.0[&item.id].path;
+
+            mangling::mangle(name.bytes())
         }
     };
 
     match &item.kind {
         mir::ItemKind::Extern(ty) => {
-            if let Some((_, params, ret)) = ty.func() {
+            if let Type::Func(_, params, ret) | Type::Forall(_, Type::Func(_, params, ret)) = ty {
                 let mut sig = module.make_signature();
                 let ret = tcx.layout(ret);
 
@@ -106,7 +109,14 @@ pub fn declare<'tcx>(
                         .push(AbiParam::new(module.target_config().pointer_type())),
                 }
 
-                for arg in params {
+                if let Type::Forall(gparams, _) = ty {
+                    for _ in gparams.iter() {
+                        sig.params
+                            .push(AbiParam::new(module.target_config().pointer_type()));
+                    }
+                }
+
+                for arg in params.iter() {
                     match crate::pass::pass_mode(&module, tcx.layout(arg.ty)) {
                         crate::pass::PassMode::NoPass => {}
                         crate::pass::PassMode::ByVal(ty) => sig.params.push(AbiParam::new(ty)),
@@ -126,13 +136,13 @@ pub fn declare<'tcx>(
                     }
                 }
 
-                let func = module.declare_function(&*item.name.symbol, Linkage::Import, &sig)?;
+                let func = module.declare_function(&name, Linkage::Import, &sig)?;
 
                 func_ids.insert(item.id, (func, sig, ret));
             } else {
                 let layout = tcx.layout(ty);
                 let data = module.declare_data(
-                    &*item.name.symbol,
+                    &name,
                     Linkage::Import,
                     false,
                     false,

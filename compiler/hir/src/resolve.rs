@@ -118,12 +118,6 @@ impl<'a> Resolver<'a> {
         }
 
         for child in structure.children {
-            self.define(
-                Ns::Modules,
-                child.name,
-                Span::default(),
-                Res::Module(child.id),
-            );
             self.add_structure(child, structure.id);
         }
     }

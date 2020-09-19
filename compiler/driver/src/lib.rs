@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 pub struct BuildFiles {
     pub bin: PathBuf,
     pub modules: PathBuf,
+    pub exports: PathBuf,
     pub typemap: PathBuf,
 }
 
@@ -17,6 +18,13 @@ pub fn build(mut opts: Opts) -> BuildFiles {
     let manifest = get_manifest(&reporter, &opts.project_dir);
     let module_dir = format!(
         "{}/{}.shade-modules",
+        manifest.package.target_dir.display(),
+        manifest.package.name
+    )
+    .into();
+
+    let exports_dir = format!(
+        "{}/{}.shade-exports",
         manifest.package.target_dir.display(),
         manifest.package.name
     )
@@ -62,10 +70,14 @@ pub fn build(mut opts: Opts) -> BuildFiles {
         &reporter,
         &package,
         dep_files.iter().map(|d| d.modules.as_ref()),
+        dep_files.iter().map(|d| d.exports.as_ref()),
     );
+
+    let exports = hir.collect_exports(&module_structure);
 
     reporter.report(true);
     module_structure.store(&module_dir);
+    exports.store(&exports_dir);
 
     // println!("{}", hir);
     // println!("{:#?}", module_structure);
@@ -83,13 +95,21 @@ pub fn build(mut opts: Opts) -> BuildFiles {
 
             tcx.store_type_map(&types_dir);
 
-            codegen::compile(&tcx, &mir, &opts.target, opts.out_type, &bin_dir);
+            codegen::compile(
+                &tcx,
+                &mir,
+                &opts.target,
+                opts.out_type,
+                &bin_dir,
+                dep_files.iter().map(|d| d.bin.as_ref()),
+            );
         },
     );
 
     BuildFiles {
         bin: bin_dir,
         modules: module_dir,
+        exports: exports_dir,
         typemap: types_dir,
     }
 }
@@ -178,7 +198,7 @@ pub fn build_dep(opts: &Opts, dir: &Path) -> BuildFiles {
     let opts = Opts {
         project_dir: opts.project_dir.join(dir),
         target: opts.target.clone(),
-        out_type: opts.out_type.clone(),
+        out_type: OutputType::DyLib,
     };
 
     build(opts)

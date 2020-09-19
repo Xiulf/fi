@@ -22,12 +22,13 @@ pub enum OutputType {
     DyLib,
 }
 
-pub fn compile<'tcx>(
+pub fn compile<'a, 'tcx>(
     tcx: &Tcx<'tcx>,
     package: &mir::Package<'tcx>,
     target: &target_lexicon::Triple,
     out_type: OutputType,
     out_file: impl AsRef<std::path::Path>,
+    libs: impl Iterator<Item = &'a std::path::Path>,
 ) {
     let mut out_file = out_file.as_ref().to_owned();
     let product = trans::translate(target, tcx, package);
@@ -38,7 +39,7 @@ pub fn compile<'tcx>(
 
     std::fs::create_dir_all(out_file.parent().unwrap()).unwrap();
     assemble(product, tmp_name.as_ref());
-    link(tmp_name.as_ref(), out_type, out_file.as_ref());
+    link(tmp_name.as_ref(), out_type, out_file.as_ref(), libs);
 }
 
 pub fn assemble(product: cranelift_object::ObjectProduct, out_file: &std::path::Path) {
@@ -51,10 +52,20 @@ pub fn assemble(product: cranelift_object::ObjectProduct, out_file: &std::path::
         .unwrap();
 }
 
-pub fn link(obj_file: &std::path::Path, out_type: OutputType, out_file: &std::path::Path) {
+pub fn link<'a>(
+    obj_file: &std::path::Path,
+    out_type: OutputType,
+    out_file: &std::path::Path,
+    libs: impl Iterator<Item = &'a std::path::Path>,
+) {
     let mut cmd = std::process::Command::new("cc");
 
     cmd.arg(obj_file).arg("-o").arg(out_file);
+
+    for lib in libs {
+        cmd.arg(format!("-L{}", lib.parent().unwrap().display()));
+        cmd.arg(format!("-l:{}", lib.file_name().unwrap().to_str().unwrap()));
+    }
 
     if let OutputType::DyLib = out_type {
         cmd.arg("-shared");

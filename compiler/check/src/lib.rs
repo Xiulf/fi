@@ -1,5 +1,10 @@
+#![feature(extern_types)]
+#![feature(hash_raw_entry)]
+
 pub mod constraint;
 pub mod layout;
+pub mod list;
+mod sharded;
 pub mod subst;
 pub mod tcx;
 pub mod ty;

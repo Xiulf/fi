@@ -14,22 +14,27 @@ impl<'tcx> Tcx<'tcx> {
                 ret,
                 body: _,
             } => {
-                let params = self.arena.alloc_slice_fill_iter(params.iter().map(|id| {
-                    let param = &self.package.items[id];
+                let params = self.intern.intern_param_list(
+                    &params
+                        .iter()
+                        .map(|id| {
+                            let param = &self.package.items[id];
 
-                    Param {
-                        span: param.span,
-                        name: param.name,
-                        ty: self.type_of(id),
-                    }
-                }));
+                            Param {
+                                span: param.span,
+                                name: param.name,
+                                ty: self.type_of(id),
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                );
 
                 let ret = self.type_of(ret);
                 let mut ty = self.intern_ty(Type::Func(Some(*id), params, ret));
 
                 if !generics.params.is_empty() {
-                    let args = generics.params.iter().map(|g| g.id);
-                    let args = self.arena.alloc_slice_fill_iter(args);
+                    let args = generics.params.iter().map(|g| g.id).collect::<Vec<_>>();
+                    let args = self.intern.intern_id_list(&args);
 
                     ty = self.intern_ty(Type::Forall(args, ty));
                 }
@@ -46,13 +51,16 @@ impl<'tcx> Tcx<'tcx> {
                 variant: _,
                 params: Some(params),
             } => {
-                let params = self
-                    .arena
-                    .alloc_slice_fill_iter(params.iter().map(|field| Param {
-                        span: field.span,
-                        name: field.name,
-                        ty: self.type_of(&field.ty),
-                    }));
+                let params = self.intern.intern_param_list(
+                    &params
+                        .iter()
+                        .map(|field| Param {
+                            span: field.span,
+                            name: field.name,
+                            ty: self.type_of(&field.ty),
+                        })
+                        .collect::<Vec<_>>(),
+                );
 
                 let ret = self.type_of(item);
 
@@ -102,18 +110,21 @@ impl<'tcx> Tcx<'tcx> {
                 self.constrain(Constraint::Equal(val_ty, val_span, ty_ty, ty_span));
             }
             hir::ItemKind::Struct { generics, fields } => {
-                let fields = fields.iter().map(|f| Field {
-                    span: f.span,
-                    name: f.name,
-                    ty: self.type_of(&f.ty),
-                });
+                let fields = fields
+                    .iter()
+                    .map(|f| Field {
+                        span: f.span,
+                        name: f.name,
+                        ty: self.type_of(&f.ty),
+                    })
+                    .collect::<Vec<_>>();
 
-                let fields = self.arena.alloc_slice_fill_iter(fields);
+                let fields = self.intern.intern_field_list(&fields);
                 let mut new_ty = self.intern_ty(Type::Struct(*id, fields));
 
                 if !generics.params.is_empty() {
-                    let args = generics.params.iter().map(|g| g.id);
-                    let args = self.arena.alloc_slice_fill_iter(args);
+                    let args = generics.params.iter().map(|g| g.id).collect::<Vec<_>>();
+                    let args = self.intern.intern_id_list(&args);
 
                     new_ty = self.intern_ty(Type::Forall(args, new_ty));
                 }
@@ -121,32 +132,38 @@ impl<'tcx> Tcx<'tcx> {
                 self.types.borrow_mut().insert(*id, new_ty);
             }
             hir::ItemKind::Enum { generics, variants } => {
-                let variants = variants.iter().map(|v| {
-                    let fields = v.fields.as_ref().map(|fields| {
-                        fields.iter().map(|f| Field {
-                            span: f.span,
-                            name: f.name,
-                            ty: self.type_of(&f.ty),
-                        })
-                    });
+                let variants = variants
+                    .iter()
+                    .map(|v| {
+                        let fields = v.fields.as_ref().map(|fields| {
+                            fields
+                                .iter()
+                                .map(|f| Field {
+                                    span: f.span,
+                                    name: f.name,
+                                    ty: self.type_of(&f.ty),
+                                })
+                                .collect::<Vec<_>>()
+                        });
 
-                    let fields = fields
-                        .map(|fields| self.arena.alloc_slice_fill_iter(fields))
-                        .unwrap_or(&mut []);
+                        let fields = fields
+                            .map(|fields| self.intern.intern_field_list(&fields))
+                            .unwrap_or(List::empty());
 
-                    Variant {
-                        span: v.span,
-                        name: v.name,
-                        fields,
-                    }
-                });
+                        Variant {
+                            span: v.span,
+                            name: v.name,
+                            fields,
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
-                let variants = self.arena.alloc_slice_fill_iter(variants);
+                let variants = self.intern.intern_variant_list(&variants);
                 let mut new_ty = self.intern_ty(Type::Enum(*id, variants));
 
                 if !generics.params.is_empty() {
-                    let args = generics.params.iter().map(|g| g.id);
-                    let args = self.arena.alloc_slice_fill_iter(args);
+                    let args = generics.params.iter().map(|g| g.id).collect::<Vec<_>>();
+                    let args = self.intern.intern_id_list(&args);
 
                     new_ty = self.intern_ty(Type::Forall(args, new_ty));
                 }
