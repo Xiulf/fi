@@ -3,8 +3,11 @@ A programming language using Ruby style syntax. This project is still very much 
 
 ## Todo
 - [ ] Windows support
+- [ ] Using items from other modules (e.g. `using <namespace>`)
 - [ ] Pattern matching
-- [ ] Interfaces, similar to Rust traits or Swift protocols.
+- [ ] Methods
+- [ ] Interfaces, similar to Rust traits or Swift protocols
+- [ ] Reference counting garbage collection
 
 ## Building
 To build the compiler you will need `cargo`, the easiest way to install it is via https://rustup.rs. With cargo installed run:
@@ -18,5 +21,9 @@ $ cargo install
 To run the test example:
 ```shell
 $ cargo run -- build test --output-type=bin
+$ ./test/target/test
+
+or when installed:
+$ shadow build test --output-type=bin
 $ ./test/target/test
 ```
