@@ -45,7 +45,6 @@ parser::token![punct "`" TTick/1];
 parser::token![punct "->" TArrow/2];
 parser::token![punct ".." TDblDot/2];
 parser::token![ident "_" TWildcard];
-parser::token![punct "∀" TForallS/1];
 parser::token![punct "@" TAt/1];
 parser::token![punct "&" TAmp/1];
 parser::token![punct "*" TStar/1];
@@ -840,6 +839,17 @@ impl Expr {
                             expr: Box::new(expr),
                         },
                     };
+                } else if let Ok(lit) = input.parse::<IntLiteral>() {
+                    expr = Expr {
+                        span: start.to(input.prev_span()),
+                        kind: ExprKind::Field {
+                            obj: Box::new(expr),
+                            field: Ident {
+                                span: lit.span,
+                                symbol: Symbol::new(lit.int.to_string()),
+                            },
+                        },
+                    };
                 } else if let Ok(name) = input.parse::<Ident>() {
                     expr = Expr {
                         span: start.to(input.prev_span()),
@@ -849,7 +859,10 @@ impl Expr {
                         },
                     };
                 } else {
-                    return input.error("expected 'ref', 'deref', 'type' or an identifier", 0001);
+                    return input.error(
+                        "expected '(', '<', '*', 'type', a number or an identifier",
+                        0001,
+                    );
                 }
             } else {
                 break;

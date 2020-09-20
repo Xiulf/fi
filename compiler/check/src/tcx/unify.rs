@@ -371,6 +371,19 @@ impl<'tcx> Tcx<'tcx> {
                             self.builtin.usize,
                         ),
                     ],
+                    Type::Tuple(tys) => tys
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ty)| {
+                            (
+                                Ident {
+                                    symbol: hir::Symbol::new(i.to_string()),
+                                    span: obj_span,
+                                },
+                                ty,
+                            )
+                        })
+                        .collect(),
                     Type::Struct(_, fields) => fields.iter().map(|f| (f.name, f.ty)).collect(),
                     Type::Var(_) => {
                         self.constrain(Constraint::Field(

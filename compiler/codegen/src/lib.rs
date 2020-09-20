@@ -75,8 +75,6 @@ pub fn link<'a>(
         cmd.arg("-shared");
     }
 
-    println!("{:?}", cmd);
-
     let _status = cmd.status().unwrap();
 }
 
