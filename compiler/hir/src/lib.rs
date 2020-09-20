@@ -39,6 +39,7 @@ pub struct Import {
     pub id: Id,
     pub name: Ident,
     pub path: String,
+    pub symbol: String,
     pub attrs: Vec<Attribute>,
     pub kind: ImportKind,
 }
@@ -316,12 +317,23 @@ impl Package {
                         .collect::<Vec<_>>()
                         .join("/");
 
+                    let symbol = if let ItemKind::Extern { .. } = item.kind {
+                        item.name.to_string()
+                    } else if item.no_mangle() {
+                        item.name.to_string()
+                    } else if item.is_main() {
+                        String::from("main")
+                    } else {
+                        mangling::mangle(path.bytes())
+                    };
+
                     Some((
                         *id,
                         Import {
                             id: item.id,
                             name: item.name,
                             path,
+                            symbol,
                             attrs: item.attrs.clone(),
                             kind: match item.kind {
                                 ItemKind::Extern { abi, .. } => ImportKind::Extern { abi },
@@ -376,6 +388,20 @@ impl Imports {
         let file = std::fs::File::open(path).unwrap();
 
         bincode::deserialize_from(file).unwrap()
+    }
+}
+
+impl Item {
+    pub fn no_mangle(&self) -> bool {
+        self.attrs
+            .iter()
+            .any(|attr| matches!(&attr.kind, AttrKind::NoMangle))
+    }
+
+    pub fn is_main(&self) -> bool {
+        self.attrs
+            .iter()
+            .any(|attr| matches!(&attr.kind, AttrKind::Main))
     }
 }
 

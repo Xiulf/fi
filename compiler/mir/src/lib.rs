@@ -297,6 +297,10 @@ impl<'tcx> Item<'tcx> {
             .any(|attr| matches!(&attr.kind, AttrKind::NoMangle))
     }
 
+    pub fn is_extern(&self) -> bool {
+        matches!(self.kind, ItemKind::Extern(_))
+    }
+
     pub fn is_main(&self) -> bool {
         self.attrs
             .iter()

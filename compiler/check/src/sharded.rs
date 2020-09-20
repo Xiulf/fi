@@ -31,6 +31,7 @@ impl<T: Default> Default for Sharded<T> {
     }
 }
 
+#[allow(dead_code)]
 impl<T> Sharded<T> {
     #[inline]
     pub fn new(mut value: impl FnMut() -> T) -> Self {
@@ -106,6 +107,7 @@ impl<T> Sharded<T> {
 
 pub type ShardedHashMap<K, V> = Sharded<fxhash::FxHashMap<K, V>>;
 
+#[allow(dead_code)]
 impl<K: Eq, V> ShardedHashMap<K, V> {
     pub fn len(&self) -> usize {
         self.lock_shards().iter().map(|shard| shard.len()).sum()

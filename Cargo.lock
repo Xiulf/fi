@@ -312,6 +312,7 @@ dependencies = [
  "bincode",
  "derivative",
  "diagnostics",
+ "mangling",
  "seahash",
  "serde",
  "syntax",

@@ -61,15 +61,21 @@ pub fn link<'a>(
     let mut cmd = std::process::Command::new("cc");
 
     cmd.arg(obj_file).arg("-o").arg(out_file);
+    cmd.arg("-Wl,-R");
 
     for lib in libs {
-        cmd.arg(format!("-L{}", lib.parent().unwrap().display()));
-        cmd.arg(format!("-l:{}", lib.file_name().unwrap().to_str().unwrap()));
+        cmd.arg(format!(
+            "-Wl,{}",
+            lib.parent().unwrap().canonicalize().unwrap().display()
+        ));
+        cmd.arg(lib);
     }
 
     if let OutputType::DyLib = out_type {
         cmd.arg("-shared");
     }
+
+    println!("{:?}", cmd);
 
     let _status = cmd.status().unwrap();
 }

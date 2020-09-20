@@ -67,6 +67,12 @@ pub fn declare<'tcx>(
         item.name.to_string()
     } else if item.is_main() {
         String::from("main")
+    } else if item.is_extern() {
+        if let Some(import) = tcx.package.imports.0.get(&item.id) {
+            import.symbol.clone()
+        } else {
+            item.name.to_string()
+        }
     } else {
         let mut path = Vec::new();
         let found = tcx.module_structure.find_path(&item.id, &mut path);
@@ -84,10 +90,7 @@ pub fn declare<'tcx>(
 
             mangling::mangle(name.bytes())
         } else {
-            // external item
-            let name = &tcx.package.imports.0[&item.id].path;
-
-            mangling::mangle(name.bytes())
+            unreachable!();
         }
     };
 
