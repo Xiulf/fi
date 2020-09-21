@@ -241,6 +241,7 @@ impl Display for Expr {
             ExprKind::Array { exprs } => write!(f, "[{}]", list(exprs, ", ")),
             ExprKind::Tuple { exprs } => write!(f, "({})", list(exprs, ", ")),
             ExprKind::Init { fields } => write!(f, "{{ {} }}", list(fields, ", ")),
+            ExprKind::Range { lo, hi } => write!(f, "{}..{}", lo, hi),
             ExprKind::Block { block } => write!(f, "do {}", block),
             ExprKind::Call { func, args } => write!(f, "{}({})", func, list(args, ", ")),
             ExprKind::MethodCall { obj, method, args } => {

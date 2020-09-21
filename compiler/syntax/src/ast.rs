@@ -216,10 +216,13 @@ pub enum ExprKind {
     Init {
         fields: Vec<InitField>,
     },
+    Range {
+        lo: Box<Expr>,
+        hi: Box<Expr>,
+    },
     Block {
         block: Block,
     },
-
     Call {
         func: Box<Expr>,
         args: Vec<Arg>,
@@ -273,7 +276,6 @@ pub enum ExprKind {
         op: UnOp,
         rhs: Box<Expr>,
     },
-
     IfElse {
         cond: Box<Expr>,
         then: Block,

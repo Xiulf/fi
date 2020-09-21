@@ -791,9 +791,17 @@ impl Expr {
                         };
                     }
                 }
-            } else if input.peek::<TDot>() && !input.peek::<TDblDot>() {
-                input.parse::<TDot>()?;
+            } else if let Ok(_) = input.parse::<TDblDot>() {
+                let hi = input.parse()?;
 
+                expr = Expr {
+                    span: start.to(input.prev_span()),
+                    kind: ExprKind::Range {
+                        lo: Box::new(expr),
+                        hi,
+                    },
+                };
+            } else if let Ok(_) = input.parse::<TDot>() {
                 if let Ok(_) = input.parse::<TLParen>() {
                     let ty = input.parse()?;
                     let _ = input.parse::<TRParen>()?;
@@ -997,7 +1005,7 @@ impl Expr {
                 path: input.parse()?,
             }
         } else {
-            return input.error("expected '(', '{', '[', 'do', 'if', 'while', 'loop', 'break', 'continue', 'return', 'defer', '/', '..', a label, a literal or an identifier", 0001);
+            return input.error("expected '(', '{', '[', 'do', 'if', 'while', 'loop', 'break', 'continue', 'return', 'defer', '/', '../', './', '~/', a label, a literal or an identifier", 0001);
         };
 
         Ok(Expr {

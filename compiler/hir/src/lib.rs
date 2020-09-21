@@ -49,6 +49,8 @@ pub enum ImportKind {
     Extern { abi: Abi },
     Func,
     Var,
+    Struct,
+    Enum,
 }
 
 #[derive(Debug)]
@@ -183,6 +185,10 @@ pub enum ExprKind {
     },
     Tuple {
         exprs: Vec<Id>,
+    },
+    Range {
+        lo: Id,
+        hi: Id,
     },
     Block {
         block: Block,
@@ -339,6 +345,8 @@ impl Package {
                                 ItemKind::Extern { abi, .. } => ImportKind::Extern { abi },
                                 ItemKind::Func { .. } => ImportKind::Func,
                                 ItemKind::Var { global: true, .. } => ImportKind::Var,
+                                ItemKind::Struct { .. } => ImportKind::Struct,
+                                ItemKind::Enum { .. } => ImportKind::Enum,
                                 _ => return None,
                             },
                         },

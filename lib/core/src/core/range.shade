@@ -1,5 +1,5 @@
 @lang "range"
-struct Range
-    lo: usize
-    hi: usize
+struct Range<T>
+    lo: T
+    hi: T
 end

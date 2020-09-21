@@ -271,6 +271,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                                     Operand::Place(Place::global(*id))
                                 }
                             }
+                            hir::ImportKind::Struct | hir::ImportKind::Enum => unreachable!(),
                         }
                     }
                 }
@@ -314,6 +315,17 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let ops = exprs.iter().map(|e| self.trans_expr(e)).collect();
 
                 self.builder.init(res.clone(), ty, 0, ops);
+
+                Operand::Place(res)
+            }
+            hir::ExprKind::Range { lo, hi } => {
+                let ty = self.tcx.type_of(id);
+                let res = self.builder.create_tmp(ty);
+                let res = Place::local(res);
+                let lo = self.trans_expr(lo);
+                let hi = self.trans_expr(hi);
+
+                self.builder.init(res.clone(), ty, 0, vec![lo, hi]);
 
                 Operand::Place(res)
             }

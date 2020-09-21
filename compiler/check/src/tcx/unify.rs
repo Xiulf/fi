@@ -392,6 +392,10 @@ impl<'tcx> Tcx<'tcx> {
 
                         return Subst::empty();
                     }
+                    Type::Forall(_, ty) => {
+                        return self
+                            .unify_one(Constraint::Field(ty, obj_span, field, ret_ty, ret_span));
+                    }
                     _ => {
                         self.reporter.add(
                             Diagnostic::new(

@@ -83,6 +83,21 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.intern_ty(Type::Tuple(tys))
             }
+            hir::ExprKind::Range { lo, hi } => {
+                let lo_ty = self.type_of(lo);
+                let hi_ty = self.type_of(hi);
+
+                self.constrain(Constraint::Equal(
+                    hi_ty,
+                    self.span_of(hi),
+                    lo_ty,
+                    self.span_of(lo),
+                ));
+
+                self.type_of(&self.lang_items.range().unwrap())
+                    .mono(self, vec![lo_ty])
+            }
+            hir::ExprKind::Block { block } => self.infer_block(block),
             hir::ExprKind::Call { func, args } => {
                 let ret_ty = self.new_var();
                 let func_ty = self.type_of(func);

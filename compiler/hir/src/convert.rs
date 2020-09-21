@@ -575,6 +575,13 @@ impl<'a> Converter<'a> {
             ast::ExprKind::Tuple { exprs } => ExprKind::Tuple {
                 exprs: exprs.iter().map(|e| self.trans_expr(e)).collect(),
             },
+            ast::ExprKind::Range { lo, hi } => ExprKind::Range {
+                lo: self.trans_expr(lo),
+                hi: self.trans_expr(hi),
+            },
+            ast::ExprKind::Block { block } => ExprKind::Block {
+                block: self.trans_block(block),
+            },
             ast::ExprKind::Call { func, args } => {
                 let func = self.trans_expr(func);
                 let args = args

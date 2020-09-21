@@ -199,6 +199,7 @@ impl Display for Expr {
             ExprKind::Type { ty } => write!(f, "`{}`", ty),
             ExprKind::Array { exprs } => write!(f, "[{}]", list(exprs, ", ")),
             ExprKind::Tuple { exprs } => write!(f, "({})", list(exprs, ", ")),
+            ExprKind::Range { lo, hi } => write!(f, "{}..{}", lo, hi),
             ExprKind::Block { block } => block.fmt(f),
             ExprKind::Call { func, args } => write!(f, "{}({})", func, list(args, ", ")),
             ExprKind::MethodCall { obj, method, args } => {
