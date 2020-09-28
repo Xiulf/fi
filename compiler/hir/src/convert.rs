@@ -621,6 +621,12 @@ impl<'a> Converter<'a> {
                 expr: self.trans_expr(expr),
                 ty: self.trans_ty(ty),
             },
+            ast::ExprKind::Box { expr } => ExprKind::Box {
+                expr: self.trans_expr(expr),
+            },
+            ast::ExprKind::Unbox { expr } => ExprKind::Unbox {
+                expr: self.trans_expr(expr),
+            },
             ast::ExprKind::Assign { lhs, rhs } => ExprKind::Assign {
                 lhs: self.trans_expr(lhs),
                 rhs: self.trans_expr(rhs),

@@ -3,6 +3,7 @@ name = "test"
 version = "0.1.0"
 authors = ["Tymo Ooijevaar <tttymo@gmail.com>"]
 entry = "src/main"
+link = "gl"
 
 [dependencies.core]
 path = "../lib/core"

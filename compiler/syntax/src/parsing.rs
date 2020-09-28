@@ -26,6 +26,8 @@ parser::token![ident "return" TReturn];
 parser::token![ident "defer" TDefer];
 parser::token![ident "and" TAnd];
 parser::token![ident "or" TOr];
+parser::token![ident "box" TBox];
+parser::token![ident "unbox" TUnbox];
 
 parser::token![punct "(" TLParen/1];
 parser::token![punct ")" TRParen/1];
@@ -708,6 +710,24 @@ impl Expr {
             Ok(Expr {
                 span: start.to(input.prev_span()),
                 kind: ExprKind::Ref {
+                    expr: Box::new(rhs),
+                },
+            })
+        } else if let Ok(_) = input.parse::<TBox>() {
+            let rhs = Expr::prefix(input)?;
+
+            Ok(Expr {
+                span: start.to(input.prev_span()),
+                kind: ExprKind::Box {
+                    expr: Box::new(rhs),
+                },
+            })
+        } else if let Ok(_) = input.parse::<TUnbox>() {
+            let rhs = Expr::prefix(input)?;
+
+            Ok(Expr {
+                span: start.to(input.prev_span()),
+                kind: ExprKind::Unbox {
                     expr: Box::new(rhs),
                 },
             })

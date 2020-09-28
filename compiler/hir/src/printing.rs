@@ -231,6 +231,8 @@ impl Display for Expr {
             ExprKind::Deref { expr } => write!(f, "{}.deref", expr),
             ExprKind::TypeOf { expr } => write!(f, "{}.type", expr),
             ExprKind::Cast { expr, ty } => write!(f, "{}.({})", expr, ty),
+            ExprKind::Box { expr } => write!(f, "box {}", expr),
+            ExprKind::Unbox { expr } => write!(f, "unbox {}", expr),
             ExprKind::Assign { lhs, rhs } => write!(f, "{} = {}", lhs, rhs),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
             ExprKind::UnOp { op, rhs } => write!(f, "{}{}", op, rhs),

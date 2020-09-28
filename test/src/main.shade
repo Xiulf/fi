@@ -1,5 +1,33 @@
 fn main(argc: i32, argv: **u8) -> i32
-    var x = 1..22;
+    var a = box Node('a', NULL, NULL, NULL);
+    var b = box Node('b', NULL, NULL, NULL);
+    var c = box Node('c', NULL, NULL, NULL);
+    var d = box Node('d', NULL, NULL, NULL);
 
-    core/convert/identity(x).hi
+    a.*.left = b;
+    a.*.right = c;
+    b.*.parent = a;
+    b.*.left = d;
+    c.*.parent = a;
+    d.*.parent = b;
+
+    0
+end
+
+const NULL: for<T> *T = 0.(*_);
+
+struct Tree<T>
+    root: *Node<T>
+    len: usize
+end
+
+struct Node<T>
+    data: T
+    left: *Node<T>
+    right: *Node<T>
+    parent: *Node<T>
+end
+
+fn Tree_empty<T>() -> Tree<T>
+    Tree(0.(*Node<T>), 0)
 end

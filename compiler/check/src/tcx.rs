@@ -413,7 +413,9 @@ impl<'tcx> Tcx<'tcx> {
             Type::Error => unreachable!(),
             Type::Var(_) => unreachable!(),
             Type::Forall(_, of) => return self.layout(of),
-            Type::TypeOf(id) => return self.layout_of(id),
+            Type::TypeOf(id, args) => {
+                return self.layout(self.type_of(id).mono(self, args.to_vec()))
+            }
             Type::Param(_) => {
                 let mut data = scalar_unit(Primitive::Pointer);
                 let mut meta = scalar_unit(Primitive::Pointer);

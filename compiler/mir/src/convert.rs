@@ -402,6 +402,49 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 Operand::Place(res)
             }
+            hir::ExprKind::Box { expr } => {
+                let expr = self.trans_expr(expr);
+                let ty = self.tcx.type_of(id);
+                let res = self.builder.create_tmp(ty);
+                let res = Place::local(res);
+                let next = self.builder.create_block();
+                let n = Operand::Const(
+                    Const::Scalar(self.tcx.layout(ty).size.bytes() as u128),
+                    self.tcx.builtin.usize,
+                );
+
+                let box_alloc = self.tcx.lang_items.box_alloc().unwrap();
+                let box_alloc =
+                    Operand::Const(Const::FuncAddr(box_alloc), self.tcx.type_of(&box_alloc));
+
+                self.builder.call(res.clone(), box_alloc, vec![n], next);
+                self.builder.use_block(next);
+                self.builder.use_(res.clone().deref(), expr);
+
+                Operand::Place(res)
+            }
+            hir::ExprKind::Unbox { expr } => {
+                let expr_ty = self.tcx.type_of(expr);
+                let expr = self.trans_expr(expr);
+                let expr = self.builder.placed(expr, expr_ty);
+                let ty = self.tcx.type_of(id);
+                let res = self.builder.create_tmp(ty);
+                let res = Place::local(res);
+                let next = self.builder.create_block();
+                let unit = self.builder.create_tmp(self.tcx.builtin.unit);
+                let unit = Place::local(unit);
+                let box_free = self.tcx.lang_items.box_free().unwrap();
+                let box_free =
+                    Operand::Const(Const::FuncAddr(box_free), self.tcx.type_of(&box_free));
+
+                self.builder
+                    .use_(res.clone(), Operand::Place(expr.clone().deref()));
+                self.builder
+                    .call(unit, box_free, vec![Operand::Place(expr)], next);
+                self.builder.use_block(next);
+
+                Operand::Place(res)
+            }
             hir::ExprKind::Assign { lhs, rhs } => {
                 let lhs_ty = self.tcx.type_of(lhs);
                 let lhs = self.trans_expr(lhs);

@@ -228,6 +228,12 @@ pub enum ExprKind {
         expr: Id,
         ty: Id,
     },
+    Box {
+        expr: Id,
+    },
+    Unbox {
+        expr: Id,
+    },
     Assign {
         lhs: Id,
         rhs: Id,

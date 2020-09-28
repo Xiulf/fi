@@ -11,7 +11,7 @@ pub type Layout<'tcx> = crate::layout::TyLayout<'tcx, Ty<'tcx>>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type<'tcx> {
     Error,
-    TypeOf(hir::Id),
+    TypeOf(hir::Id, &'tcx List<Ty<'tcx>>),
     Param(hir::Id),
     Var(TypeVar),
     Never,
@@ -141,11 +141,7 @@ impl<'tcx> Type<'tcx> {
         }
     }
 
-    pub fn replace(
-        &'tcx self,
-        args: &std::collections::HashMap<hir::Id, Ty<'tcx>>,
-        tcx: &Tcx<'tcx>,
-    ) -> Ty<'tcx> {
+    pub fn replace(&'tcx self, args: &HashMap<hir::Id, Ty<'tcx>>, tcx: &Tcx<'tcx>) -> Ty<'tcx> {
         match self {
             Type::Param(id) if args.contains_key(id) => args[id],
             Type::Ref(mut_, to) => {
@@ -240,7 +236,15 @@ impl fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Error => write!(f, "[type error]"),
-            Type::TypeOf(id) => write!(f, "{}.type", id),
+            Type::TypeOf(id, args) => write!(
+                f,
+                "{}<{}>",
+                id,
+                args.iter()
+                    .map(|a| a.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Type::Param(id) => write!(f, "{}", id),
             Type::Var(var) => var.fmt(f),
             Type::Never => write!(f, "never"),
@@ -267,17 +271,17 @@ impl fmt::Display for Type<'_> {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
-            // Type::Struct(id, _) => write!(f, "struct {}", id),
+            Type::Struct(id, _) => write!(f, "struct {}", id),
             Type::Enum(id, _) => write!(f, "enum {}", id),
-            Type::Struct(_, fields) => write!(
-                f,
-                "struct {{ {} }}",
-                fields
-                    .iter()
-                    .map(|f| f.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+            // Type::Struct(_, fields) => write!(
+            //     f,
+            //     "struct {{ {} }}",
+            //     fields
+            //         .iter()
+            //         .map(|f| f.to_string())
+            //         .collect::<Vec<_>>()
+            //         .join(", ")
+            // ),
             Type::Func(Some(id), params, ret) => write!(
                 f,
                 "fn ({}) -> {} {{{}}}",
@@ -363,6 +367,7 @@ pub(crate) mod ser {
 
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
     enum SType {
+        TypeOf(hir::Id, Vec<usize>),
         Param(hir::Id),
         Never,
         Bool,
@@ -394,11 +399,14 @@ pub(crate) mod ser {
                 } else {
                     let sty = match ty {
                         Type::Error
-                        | Type::TypeOf(_)
                         | Type::Var(_)
                         | Type::VInt(_)
                         | Type::VUInt(_)
                         | Type::VFloat(_) => unreachable!(),
+                        Type::TypeOf(id, args) => SType::TypeOf(
+                            *id,
+                            args.iter().map(|ty| convert(index, idx2, ty)).collect(),
+                        ),
                         Type::Param(id) => SType::Param(*id),
                         Type::Never => SType::Never,
                         Type::Bool => SType::Bool,
@@ -485,6 +493,15 @@ pub(crate) mod ser {
                 } else {
                     let sty = &index.0[idx];
                     let ty = match sty {
+                        SType::TypeOf(id, args) => Type::TypeOf(
+                            *id,
+                            arena.intern_ty_list(
+                                &args
+                                    .into_iter()
+                                    .map(|ty| convert(arena, index, index2, *ty))
+                                    .collect::<Vec<_>>(),
+                            ),
+                        ),
                         SType::Param(id) => Type::Param(*id),
                         SType::Never => Type::Never,
                         SType::Bool => Type::Bool,

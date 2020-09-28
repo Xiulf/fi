@@ -258,6 +258,12 @@ pub enum ExprKind {
         expr: Box<Expr>,
         ty: Type,
     },
+    Box {
+        expr: Box<Expr>,
+    },
+    Unbox {
+        expr: Box<Expr>,
+    },
     Assign {
         lhs: Box<Expr>,
         rhs: Box<Expr>,

@@ -44,8 +44,8 @@ impl<'tcx> Tcx<'tcx> {
             hir::ItemKind::Param { ty } => self.type_of(ty),
             hir::ItemKind::Var { ty, .. } => self.type_of(ty),
             hir::ItemKind::Const { ty, .. } => self.type_of(ty),
-            hir::ItemKind::Struct { .. } => self.intern_ty(Type::TypeOf(*id)),
-            hir::ItemKind::Enum { .. } => self.intern_ty(Type::TypeOf(*id)),
+            hir::ItemKind::Struct { .. } => self.intern_ty(Type::TypeOf(*id, List::empty())),
+            hir::ItemKind::Enum { .. } => self.intern_ty(Type::TypeOf(*id, List::empty())),
             hir::ItemKind::Ctor {
                 item,
                 variant: _,

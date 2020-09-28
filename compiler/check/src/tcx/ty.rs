@@ -85,8 +85,13 @@ impl<'tcx> Tcx<'tcx> {
                         let args = args.iter().map(|a| self.type_of(a)).collect();
 
                         ty.mono(self, args)
+                    } else if let Type::TypeOf(id, _) = ty {
+                        let args = args.iter().map(|a| self.type_of(a)).collect::<Vec<_>>();
+                        let args = self.intern.intern_ty_list(&args);
+
+                        self.intern_ty(Type::TypeOf(*id, args))
                     } else {
-                        unreachable!();
+                        unreachable!("{}", ty);
                     }
                 } else {
                     unreachable!();

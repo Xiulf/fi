@@ -44,12 +44,27 @@ impl<'tcx> Tcx<'tcx> {
             Constraint::Equal(a, a_span, b, b_span) => match (a, b) {
                 (Type::Var(tvar), _) => self.unify_var(*tvar, b, b_span),
                 (_, Type::Var(tvar)) => self.unify_var(*tvar, a, a_span),
-                (Type::TypeOf(id), _) => {
-                    self.unify_one(Constraint::Equal(self.type_of(id), a_span, b, b_span))
+                (Type::TypeOf(a, a_args), Type::TypeOf(b, b_args)) if a == b => {
+                    let mut cs = Constraints::new();
+
+                    for (a, b) in a_args.iter().zip(b_args.iter()) {
+                        cs.push(Constraint::Equal(a, a_span, b, b_span));
+                    }
+
+                    self.unify_all(cs)
                 }
-                (_, Type::TypeOf(id)) => {
-                    self.unify_one(Constraint::Equal(a, a_span, self.type_of(id), b_span))
-                }
+                (Type::TypeOf(id, args), _) => self.unify_one(Constraint::Equal(
+                    self.type_of(id).mono(self, args.to_vec()),
+                    a_span,
+                    b,
+                    b_span,
+                )),
+                (_, Type::TypeOf(id, args)) => self.unify_one(Constraint::Equal(
+                    a,
+                    a_span,
+                    self.type_of(id).mono(self, args.to_vec()),
+                    b_span,
+                )),
                 (Type::Error, _)
                 | (_, Type::Error)
                 | (Type::Never, _)

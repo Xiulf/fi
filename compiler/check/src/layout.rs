@@ -112,7 +112,11 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
 
         tcx.layout(match self.ty {
             Type::Error | Type::Var(_) => unreachable!(),
-            Type::TypeOf(id) => return tcx.layout_of(id).field(tcx, idx),
+            Type::TypeOf(id, args) => {
+                return tcx
+                    .layout(tcx.type_of(id).mono(tcx, args.to_vec()))
+                    .field(tcx, idx)
+            }
             Type::Never
             | Type::Forall(_, _)
             | Type::Bool

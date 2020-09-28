@@ -201,6 +201,22 @@ impl<'tcx> Tcx<'tcx> {
                 self.type_of(expr);
                 self.type_of(ty)
             }
+            hir::ExprKind::Box { expr } => {
+                let ty = self.type_of(expr);
+
+                self.intern_ty(Type::Ref(false, ty))
+            }
+            hir::ExprKind::Unbox { expr } => {
+                let expr_ty = self.type_of(expr);
+                let expr_span = self.span_of(expr);
+                let ty = self.new_var();
+                let ptr_ty = self.intern_ty(Type::Ref(false, ty));
+                let span = self.span_of(id);
+
+                self.constrain(Constraint::Equal(ptr_ty, span, expr_ty, expr_span));
+
+                ty
+            }
             hir::ExprKind::Assign { lhs, rhs } => {
                 let lhs_ty = self.type_of(lhs);
                 let lhs_span = self.span_of(lhs);

@@ -83,7 +83,6 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
         | Type::VUInt(_)
         | Type::VFloat(_)
         | Type::Error
-        | Type::TypeOf(_)
         | Type::Never
         | Type::Bool
         | Type::Str
@@ -91,6 +90,11 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
         | Type::Int(_)
         | Type::UInt(_)
         | Type::Float(_) => {}
+        Type::TypeOf(_, args) => {
+            for arg in args.iter() {
+                subst_var(arg, tvar, repl);
+            }
+        }
         Type::Ref(_, to) => subst_var(to, tvar, repl),
         Type::Array(of, _) => subst_var(of, tvar, repl),
         Type::Slice(of) => subst_var(of, tvar, repl),
