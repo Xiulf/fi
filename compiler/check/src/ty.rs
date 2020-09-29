@@ -61,7 +61,16 @@ pub struct Variant<'tcx> {
 
 pub struct TypeMap<'tcx>(pub(crate) HashMap<hir::Id, Ty<'tcx>>);
 
+pub struct TyDisplay<'a, 'tcx> {
+    ty: &'a Type<'tcx>,
+    tcx: &'a Tcx<'tcx>,
+}
+
 impl<'tcx> Type<'tcx> {
+    pub fn display<'a>(&'a self, tcx: &'a Tcx<'tcx>) -> TyDisplay<'a, 'tcx> {
+        TyDisplay { ty: self, tcx }
+    }
+
     pub fn func(&self) -> Option<(Option<&hir::Id>, &'tcx List<Param<'tcx>>, Ty<'tcx>)> {
         match self {
             Type::Func(id, params, ret) => Some((id.as_ref(), params, ret)),
@@ -143,6 +152,16 @@ impl<'tcx> Type<'tcx> {
 
     pub fn replace(&'tcx self, args: &HashMap<hir::Id, Ty<'tcx>>, tcx: &Tcx<'tcx>) -> Ty<'tcx> {
         match self {
+            Type::TypeOf(id, tys) => {
+                let tys = tys
+                    .iter()
+                    .map(|ty| ty.replace(args, tcx))
+                    .collect::<Vec<_>>();
+
+                let tys = tcx.intern.intern_ty_list(&tys);
+
+                tcx.intern_ty(Type::TypeOf(*id, tys))
+            }
             Type::Param(id) if args.contains_key(id) => args[id],
             Type::Ref(mut_, to) => {
                 let new_to = to.replace(args, tcx);
@@ -271,17 +290,17 @@ impl fmt::Display for Type<'_> {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
-            Type::Struct(id, _) => write!(f, "struct {}", id),
+            // Type::Struct(id, _) => write!(f, "struct {}", id),
             Type::Enum(id, _) => write!(f, "enum {}", id),
-            // Type::Struct(_, fields) => write!(
-            //     f,
-            //     "struct {{ {} }}",
-            //     fields
-            //         .iter()
-            //         .map(|f| f.to_string())
-            //         .collect::<Vec<_>>()
-            //         .join(", ")
-            // ),
+            Type::Struct(_, fields) => write!(
+                f,
+                "struct {{ {} }}",
+                fields
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Type::Func(Some(id), params, ret) => write!(
                 f,
                 "fn ({}) -> {} {{{}}}",
@@ -311,6 +330,82 @@ impl fmt::Display for Type<'_> {
                     .collect::<Vec<_>>()
                     .join(", "),
                 ty
+            ),
+            Type::Object => write!(f, "[object]"),
+        }
+    }
+}
+
+impl fmt::Display for TyDisplay<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.ty {
+            Type::Error => write!(f, "[type error]"),
+            Type::TypeOf(id, args) => write!(
+                f,
+                "{}<{}>",
+                self.tcx.get_full_name(id, true),
+                args.iter()
+                    .map(|a| a.display(self.tcx).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Type::Param(id) => write!(f, "T{}", id.local().saturating_sub(2) + 1),
+            Type::Var(var) => var.fmt(f),
+            Type::Never => write!(f, "never"),
+            Type::Bool => write!(f, "bool"),
+            Type::Str => write!(f, "str"),
+            Type::TypeId => write!(f, "type"),
+            Type::VInt(_) => write!(f, "int"),
+            Type::VUInt(_) => write!(f, "uint"),
+            Type::VFloat(_) => write!(f, "float"),
+            Type::Int(0) => write!(f, "isize"),
+            Type::UInt(0) => write!(f, "usize"),
+            Type::Int(bits) => write!(f, "i{}", bits),
+            Type::UInt(bits) => write!(f, "u{}", bits),
+            Type::Float(bits) => write!(f, "f{}", bits),
+            Type::Ref(true, to) => write!(f, "*gc {}", to.display(self.tcx)),
+            Type::Ref(false, to) => write!(f, "*{}", to.display(self.tcx)),
+            Type::Array(of, len) => write!(f, "[{}; {}]", of.display(self.tcx), len),
+            Type::Slice(of) => write!(f, "[{}]", of.display(self.tcx)),
+            Type::Tuple(tys) => write!(
+                f,
+                "({})",
+                tys.iter()
+                    .map(|t| format!("{},", t.display(self.tcx)))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            Type::Struct(id, _) => write!(f, "{}", self.tcx.get_full_name(id, true)),
+            Type::Enum(id, _) => write!(f, "{}", self.tcx.get_full_name(id, true)),
+            Type::Func(Some(id), params, ret) => write!(
+                f,
+                "fn ({}) -> {} {{{}}}",
+                params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, p.ty.display(self.tcx)))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ret.display(self.tcx),
+                self.tcx.get_full_name(id, true),
+            ),
+            Type::Func(None, params, ret) => write!(
+                f,
+                "fn ({}) -> {}",
+                params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, p.ty.display(self.tcx)))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ret.display(self.tcx),
+            ),
+            Type::Forall(args, ty) => write!(
+                f,
+                "for<{}> {}",
+                args.iter()
+                    .map(|a| format!("T{}", a.local().saturating_sub(2) + 1))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ty.display(self.tcx),
             ),
             Type::Object => write!(f, "[object]"),
         }

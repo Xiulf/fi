@@ -403,13 +403,14 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 Operand::Place(res)
             }
             hir::ExprKind::Box { expr } => {
+                let expr_ty = self.tcx.type_of(expr);
                 let expr = self.trans_expr(expr);
                 let ty = self.tcx.type_of(id);
                 let res = self.builder.create_tmp(ty);
                 let res = Place::local(res);
                 let next = self.builder.create_block();
                 let n = Operand::Const(
-                    Const::Scalar(self.tcx.layout(ty).size.bytes() as u128),
+                    Const::Scalar(self.tcx.layout(expr_ty).size.bytes() as u128),
                     self.tcx.builtin.usize,
                 );
 
@@ -633,6 +634,19 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
         }
 
+        if let hir::ExprKind::Path {
+            res: hir::Res::Item(item),
+        } = &self.hir.exprs[func].kind
+        {
+            if let Some(item) = self.hir.items.get(item) {
+                if let hir::ItemKind::Ctor { variant, .. } = &item.kind {
+                    self.builder.init(res.clone(), ret_ty, *variant, call_args);
+
+                    return Operand::Place(res);
+                }
+            }
+        }
+
         if let Some(func_id) = func_id {
             let (_, param_tys_orig, ret_ty_orig) = match self.tcx.type_of(func_id) {
                 Type::Func(a, b, c) => (a.as_ref(), *b, *c),
@@ -650,22 +664,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 res = Place::local(obj);
             }
-        }
 
-        if let hir::ExprKind::Path {
-            res: hir::Res::Item(item),
-        } = &self.hir.exprs[func].kind
-        {
-            if let Some(item) = self.hir.items.get(item) {
-                if let hir::ItemKind::Ctor { variant, .. } = &item.kind {
-                    self.builder.init(res.clone(), ret_ty, *variant, call_args);
-
-                    return Operand::Place(res);
-                }
-            }
-        }
-
-        if let Some(func_id) = func_id {
             if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
                 let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
                 let subst = params.iter().map(|p| subst[&p]);

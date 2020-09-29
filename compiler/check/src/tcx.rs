@@ -21,7 +21,7 @@ pub struct Tcx<'tcx> {
     pub package: &'tcx hir::Package,
     pub module_structure: &'tcx hir::resolve::ModuleStructure,
     pub(crate) target: &'tcx target_lexicon::Triple,
-    types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
+    pub(super) types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
     layouts: RefCell<HashMap<*const Type<'tcx>, TyLayout<'tcx, Ty<'tcx>>>>,
     constraints: RefCell<Constraints<'tcx>>,
     pub(crate) substs: RefCell<HashMap<*const Type<'tcx>, HashMap<hir::Id, Ty<'tcx>>>>,
@@ -235,8 +235,11 @@ impl<'tcx> Tcx<'tcx> {
             ty.span
         } else if let Some(item) = self.package.items.get(id) {
             item.span
+        } else if let Some(import) = self.package.imports.0.get(id) {
+            import.name.span
         } else {
-            panic!("unused id {}", id);
+            // panic!("unused id {}", id);
+            Span::default()
         }
     }
 
@@ -308,12 +311,16 @@ impl<'tcx> Tcx<'tcx> {
                     .collect::<Vec<_>>()
                     .join("/")
             }
+        } else if let Some(item) = self.package.items.get(id) {
+            item.name.to_string()
+        } else if let Some(import) = self.package.imports.0.get(id) {
+            import.name.to_string()
         } else {
-            self.package.items[id].name.to_string()
+            id.to_string()
         }
     }
 
-    pub fn store_type_map(&self, file: impl AsRef<std::path::Path>) {
+    pub fn type_map(&self) -> TypeMap<'tcx> {
         let mut tmap = TypeMap(HashMap::new());
 
         fn rec<'tcx>(
@@ -332,6 +339,11 @@ impl<'tcx> Tcx<'tcx> {
 
         rec(self, &mut tmap, self.module_structure);
 
+        tmap
+    }
+
+    pub fn store_type_map(&self, file: impl AsRef<std::path::Path>) {
+        let tmap = self.type_map();
         let file = file.as_ref();
         let file = std::fs::File::create(file).unwrap();
 

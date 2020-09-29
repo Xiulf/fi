@@ -36,9 +36,19 @@ pub fn with_tcx<'a, T>(
 
     reporter.report(true);
 
+    // let mut diag =
+    //     diagnostics::Diagnostic::new(diagnostics::Severity::Info, None, "type information");
+    //
     // for (id, ty) in tcx.types.borrow().iter() {
-    //     println!("{}: {}", id, ty);
+    //     diag = diag.label(
+    //         diagnostics::Severity::Info,
+    //         tcx.span_of(id),
+    //         ty.display(&tcx).to_string(),
+    //     );
     // }
+    //
+    // reporter.add(diag);
+    // reporter.report(false);
 
     f(tcx)
 }

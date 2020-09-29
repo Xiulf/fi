@@ -389,6 +389,10 @@ impl Id {
     pub const fn item_id(&self) -> ItemId {
         self.0
     }
+
+    pub const fn local(&self) -> u64 {
+        self.1
+    }
 }
 
 impl Imports {
