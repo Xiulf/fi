@@ -337,9 +337,15 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             hir::ExprKind::Call { func, args } => self.trans_call(func, args),
             hir::ExprKind::Field { obj, field } => self.trans_field(obj, field),
             hir::ExprKind::Index { list, index } => {
-                let list_ty = self.tcx.type_of(list);
+                let mut list_ty = self.tcx.type_of(list);
                 let list = self.trans_expr(list);
-                let list = self.builder.placed(list, list_ty);
+                let mut list = self.builder.placed(list, list_ty);
+
+                while let Type::Ref(_, to) = list_ty {
+                    list_ty = to;
+                    list = list.deref();
+                }
+
                 let index = self.trans_expr(index);
 
                 Operand::Place(list.index(index))
@@ -702,7 +708,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
     }
 
     fn trans_field(&mut self, obj: &hir::Id, field: &hir::Ident) -> Operand<'tcx> {
-        let obj_ty = self.tcx.type_of(obj);
+        let mut obj_ty = self.tcx.type_of(obj);
         let obj = self.trans_expr(obj);
 
         if let Operand::Const(Const::Type(ty), _) = obj {
@@ -737,21 +743,35 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     unreachable!();
                 }
             }
-        } else if let Type::Array(_, len) = obj_ty {
-            if &**field.symbol == "len" {
-                Operand::Const(Const::Scalar(*len as u128), self.tcx.builtin.usize)
-            } else {
-                unreachable!();
-            }
         } else {
-            let obj = self.builder.placed(obj, obj_ty);
-            let fields = obj_ty.fields(self.tcx);
-            let idx = fields
-                .into_iter()
-                .position(|(name, _)| name == field.symbol)
-                .unwrap();
+            let mut derefs = 0;
 
-            Operand::Place(obj.field(idx))
+            while let Type::Ref(_, to) = obj_ty {
+                obj_ty = to;
+                derefs += 1;
+            }
+
+            if let Type::Array(_, len) = obj_ty {
+                if &**field.symbol == "len" {
+                    Operand::Const(Const::Scalar(*len as u128), self.tcx.builtin.usize)
+                } else {
+                    unreachable!();
+                }
+            } else {
+                let mut obj = self.builder.placed(obj, obj_ty);
+
+                for _ in 0..derefs {
+                    obj = obj.deref();
+                }
+
+                let fields = obj_ty.fields(self.tcx);
+                let idx = fields
+                    .into_iter()
+                    .position(|(name, _)| name == field.symbol)
+                    .unwrap();
+
+                Operand::Place(obj.field(idx))
+            }
         }
     }
 

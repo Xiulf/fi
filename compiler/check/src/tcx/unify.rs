@@ -292,6 +292,9 @@ impl<'tcx> Tcx<'tcx> {
                 }
             }
             Constraint::Index(list_ty, list_span, ret_ty, ret_span) => match list_ty {
+                Type::Ref(_, to) => {
+                    self.unify_one(Constraint::Index(to, list_span, ret_ty, ret_span))
+                }
                 Type::Str => self.unify_one(Constraint::Equal(
                     ret_ty,
                     ret_span,
@@ -324,6 +327,10 @@ impl<'tcx> Tcx<'tcx> {
             },
             Constraint::Field(obj_ty, obj_span, field, ret_ty, ret_span) => {
                 let fields = match obj_ty {
+                    Type::Ref(_, to) => {
+                        return self
+                            .unify_one(Constraint::Field(to, obj_span, field, ret_ty, ret_span))
+                    }
                     Type::TypeId => vec![
                         (
                             Ident {
