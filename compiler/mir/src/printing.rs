@@ -123,7 +123,8 @@ impl Display for Term<'_> {
 impl Display for Operand<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
-            Operand::Place(place) => place.fmt(f),
+            Operand::Copy(place) => write!(f, "copy({})", place),
+            Operand::Move(place) => write!(f, "move({})", place),
             Operand::Const(const_, _) => const_.fmt(f),
         }
     }

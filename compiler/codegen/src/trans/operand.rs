@@ -8,7 +8,8 @@ use cranelift_module::Backend;
 impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
     pub fn trans_operand(&mut self, operand: &mir::Operand<'tcx>) -> Value<'tcx> {
         match operand {
-            mir::Operand::Place(place) => self.trans_place(place).to_value(self),
+            mir::Operand::Copy(place) => self.trans_place(place).to_value(self),
+            mir::Operand::Move(place) => self.trans_place(place).to_value(self),
             mir::Operand::Const(c, ty) => match c {
                 mir::Const::Undefined => {
                     let slot = self.builder.create_stack_slot(cir::StackSlotData::new(

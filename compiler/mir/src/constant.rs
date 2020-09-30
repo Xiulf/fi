@@ -41,7 +41,7 @@ pub fn eval_expr<'tcx>(
         current_block: None,
     };
 
-    let mut converter = crate::convert::BodyConverter::new(tcx, hir, builder);
+    let mut converter = crate::convert::BodyConverter::new(tcx, hir, false, builder);
     let entry = converter.builder.create_block();
 
     converter.builder.use_block(entry);
@@ -170,7 +170,8 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
 
     pub fn eval_op(&mut self, op: Operand<'tcx>) -> Const<'tcx> {
         match op {
-            Operand::Place(place) => place.load(self),
+            Operand::Copy(place) => place.load(self),
+            Operand::Move(place) => place.load(self),
             Operand::Const(c, _) => c,
         }
     }
@@ -199,7 +200,8 @@ impl<'tcx> Place<'tcx> {
                 },
                 PlaceElem::Index(idx) => {
                     let idx = match idx {
-                        Operand::Place(idx) => idx.load(ecx),
+                        Operand::Copy(idx) => idx.load(ecx),
+                        Operand::Move(idx) => idx.load(ecx),
                         Operand::Const(idx, _) => idx.clone(),
                     }
                     .scalar() as usize;
@@ -246,7 +248,8 @@ impl<'tcx> Place<'tcx> {
                 },
                 PlaceElem::Index(idx) => {
                     let idx = match idx {
-                        Operand::Place(idx) => idx.load(ecx_clone),
+                        Operand::Copy(idx) => idx.load(ecx_clone),
+                        Operand::Move(idx) => idx.load(ecx_clone),
                         Operand::Const(idx, _) => idx.clone(),
                     }
                     .scalar() as usize;

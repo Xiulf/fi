@@ -107,7 +107,8 @@ pub enum PlaceElem<'tcx> {
 
 #[derive(Debug, Clone)]
 pub enum Operand<'tcx> {
-    Place(Place<'tcx>),
+    Copy(Place<'tcx>),
+    Move(Place<'tcx>),
     Const(Const<'tcx>, Ty<'tcx>),
 }
 
@@ -432,7 +433,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
     pub fn placed(&mut self, op: Operand<'tcx>, ty: Ty<'tcx>) -> Place<'tcx> {
         match op {
-            Operand::Place(place) => place,
+            Operand::Copy(place) => place,
+            Operand::Move(place) => place,
             _ => {
                 let tmp = self.create_tmp(ty);
                 let place = Place::local(tmp);
@@ -445,6 +447,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
     pub fn use_block(&mut self, id: BlockId) {
         self.current_block = Some(id);
+    }
+
+    pub fn var_dead(&mut self, id: LocalId) {
+        self.block().stmts.push(Stmt::VarDead(id));
     }
 
     pub fn use_(&mut self, place: Place<'tcx>, op: Operand<'tcx>) {

@@ -343,6 +343,10 @@ impl<'tcx> Tcx<'tcx> {
                     ret
                 }
             }
+            hir::ExprKind::Defer { expr } => {
+                self.type_of(expr);
+                self.builtin.unit
+            }
             _ => unimplemented!("{}", expr),
         }
     }

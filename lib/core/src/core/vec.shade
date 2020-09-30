@@ -4,6 +4,7 @@ struct Vec<T>
     len: usize
 end
 
+@poly
 fn new<T>() -> Vec<T>
     var ptr = ~/ptr/NULL;
     var cap = if `T`.size == 0; !0 else 0 end;
@@ -11,6 +12,7 @@ fn new<T>() -> Vec<T>
     Vec(ptr, cap, 0)
 end
 
+@poly
 fn push<T>(self: *Vec<T>, item: T)
     reserve(self, 1);
 
@@ -20,12 +22,14 @@ fn push<T>(self: *Vec<T>, item: T)
     self.*.len += 1;
 end
 
+@poly
 fn index<T>(self: *Vec<T>, idx: usize) -> *T
     var ptr = self.*.ptr + idx * `T`.stride;
 
     ptr.(*T)
 end
 
+@poly
 fn reserve<T>(self: *Vec<T>, n: usize)
     if self.*.ptr == ~/ptr/NULL
         self.*.ptr = /libc/malloc(`T`.stride).(*T);
@@ -38,6 +42,7 @@ fn reserve<T>(self: *Vec<T>, n: usize)
     end
 end
 
+@poly
 fn drop<T>(self: *Vec<T>)
     /libc/free(self.*.ptr.(*()));
     self.*.ptr = ~/ptr/NULL;

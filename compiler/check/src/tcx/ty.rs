@@ -91,7 +91,7 @@ impl<'tcx> Tcx<'tcx> {
 
                         self.intern_ty(Type::TypeOf(*id, args))
                     } else {
-                        unreachable!("{}", ty);
+                        unreachable!();
                     }
                 } else {
                     unreachable!();

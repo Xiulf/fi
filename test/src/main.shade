@@ -1,33 +1,66 @@
+extern "C" puts: fn (s: *u8) -> i32;
+
 fn main(argc: i32, argv: **u8) -> i32
-    var a = box Node('a', NULL, NULL, NULL);
-    var b = box Node('b', NULL, NULL, NULL);
-    var c = box Node('c', NULL, NULL, NULL);
-    var d = box Node('d', NULL, NULL, NULL);
+    var a = Gc_new(22);   defer Gc_drop(&a);
+    var b = Gc_clone(&a); defer Gc_drop(&b);
 
-    a.left = b;
-    a.right = c;
-    b.parent = a;
-    b.left = d;
-    c.parent = a;
-    d.parent = b;
-
-    0
+    b.ptr.value
 end
 
-const NULL: for<T> *T = 0.(*_);
-
-struct Tree<T>
-    root: *Node<T>
-    len: usize
+struct Gc<T>
+    ptr: *GcBox<T>
 end
 
-struct Node<T>
-    data: T
-    left: *Node<T>
-    right: *Node<T>
-    parent: *Node<T>
+struct GcWeak<T>
+    ptr: *GcBox<T>
 end
 
-fn Tree_empty<T>() -> Tree<T>
-    Tree(0.(*Node<T>), 0)
+struct GcBox<T>
+    value: T
+    strong: usize
+    weak: usize
+end
+
+struct ObjRepr
+    value: *()
+    vtable: *()
+end
+
+@poly
+fn Gc_new<T>(value: T) -> Gc<T>
+    var repr = value.(ObjRepr);
+
+    Gc(box GcBox(repr.value.(_).*, 1, 0))
+end
+
+@poly
+fn Gc_clone<T>(self: *Gc<T>) -> Gc<T>
+    self.ptr.strong += 1;
+    self.*
+end
+
+@poly
+fn Gc_drop<T>(self: *Gc<T>)
+    self.ptr.strong -= 1;
+
+    if self.ptr.strong == 0
+        unbox self.ptr;
+    end
+end
+
+@poly
+fn GcWeak_new<T>(gc: *Gc<T>) -> GcWeak<T>
+    gc.ptr.weak += 1;
+    GcWeak(gc.ptr)
+end
+
+@poly
+fn GcWeak_clone<T>(self: *GcWeak<T>) -> GcWeak<T>
+    self.ptr.weak += 1;
+    self.*
+end
+
+@poly
+fn GcWeak_drop<T>(self: *GcWeak<T>)
+    self.ptr.weak -= 1;
 end

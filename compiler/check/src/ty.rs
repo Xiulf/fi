@@ -78,9 +78,9 @@ impl<'tcx> Type<'tcx> {
         }
     }
 
-    pub fn is_object(&self) -> bool {
+    pub fn is_object(&self, is_poly: bool) -> bool {
         match self {
-            Type::Param(_) => true,
+            Type::Param(_) => is_poly,
             Type::Object => true,
             _ => false,
         }

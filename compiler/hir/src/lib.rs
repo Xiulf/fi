@@ -421,6 +421,12 @@ impl Item {
             .iter()
             .any(|attr| matches!(&attr.kind, AttrKind::Main))
     }
+
+    pub fn is_poly(&self) -> bool {
+        self.attrs
+            .iter()
+            .any(|attr| matches!(&attr.kind, AttrKind::Poly))
+    }
 }
 
 impl Hash for Item {

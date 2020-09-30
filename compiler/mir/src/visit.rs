@@ -171,7 +171,8 @@ macro_rules! make_visitor{
 
             fn super_op(&mut self, op: & $($mut)? Operand<'tcx>) {
                 match op {
-                    Operand::Place(place) => self.visit_place(place),
+                    Operand::Copy(place) => self.visit_place(place),
+                    Operand::Move(place) => self.visit_place(place),
                     Operand::Const(const_, ty) => self.visit_const(const_, ty),
                 }
             }

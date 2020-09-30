@@ -136,13 +136,21 @@ impl<'tcx> Tcx<'tcx> {
                         Diagnostic::new(
                             Severity::Error,
                             0007,
-                            format!("mismatched types: `{}` != `{}`", a, b),
+                            format!(
+                                "mismatched types: `{}` != `{}`",
+                                a.display(self),
+                                b.display(self)
+                            ),
                         )
-                        .label(Severity::Error, a_span, format!("found type `{}`", a))
+                        .label(
+                            Severity::Error,
+                            a_span,
+                            format!("found type `{}`", a.display(self)),
+                        )
                         .label(
                             Severity::Info,
                             b_span,
-                            format!("type `{}` specified here", b),
+                            format!("type `{}` specified here", b.display(self)),
                         ),
                     );
 
@@ -186,7 +194,7 @@ impl<'tcx> Tcx<'tcx> {
                         Diagnostic::new(
                             Severity::Error,
                             0008,
-                            format!("type `{}` is not numeric", ty),
+                            format!("type `{}` is not numeric", ty.display(self)),
                         )
                         .label(Severity::Error, span, None::<String>),
                     );
@@ -208,7 +216,7 @@ impl<'tcx> Tcx<'tcx> {
                         Diagnostic::new(
                             Severity::Error,
                             0009,
-                            format!("type `{}` is not an integer", ty),
+                            format!("type `{}` is not an integer", ty.display(self)),
                         )
                         .label(Severity::Error, span, None::<String>),
                     );
@@ -283,7 +291,7 @@ impl<'tcx> Tcx<'tcx> {
                         Diagnostic::new(
                             Severity::Error,
                             0010,
-                            format!("type `{}` is not a fuction", fn_ty),
+                            format!("type `{}` is not a fuction", fn_ty.display(self)),
                         )
                         .label(Severity::Error, fn_span, None::<String>),
                     );
@@ -317,7 +325,7 @@ impl<'tcx> Tcx<'tcx> {
                         Diagnostic::new(
                             Severity::Error,
                             0014,
-                            format!("type `{}` cannot be indexed", list_ty),
+                            format!("type `{}` cannot be indexed", list_ty.display(self)),
                         )
                         .label(Severity::Error, list_span, None::<String>),
                     );
@@ -423,7 +431,7 @@ impl<'tcx> Tcx<'tcx> {
                             Diagnostic::new(
                                 Severity::Error,
                                 0015,
-                                format!("type `{}` does not have any fields", obj_ty),
+                                format!("type `{}` does not have any fields", obj_ty.display(self)),
                             )
                             .label(
                                 Severity::Error,
@@ -443,7 +451,11 @@ impl<'tcx> Tcx<'tcx> {
                         Diagnostic::new(
                             Severity::Error,
                             0013,
-                            format!("type `{}` does not have field '{}'", obj_ty, field),
+                            format!(
+                                "type `{}` does not have field '{}'",
+                                obj_ty.display(self),
+                                field
+                            ),
                         )
                         .label(Severity::Error, field.span, None::<String>),
                     );
@@ -463,11 +475,12 @@ impl<'tcx> Tcx<'tcx> {
             }
         } else if occurs(ty, tvar) {
             self.reporter.add(
-                Diagnostic::new(Severity::Error, 0016, format!("Recursive type `{}`", ty)).label(
+                Diagnostic::new(
                     Severity::Error,
-                    span,
-                    None::<String>,
-                ),
+                    0016,
+                    format!("Recursive type `{}`", ty.display(self)),
+                )
+                .label(Severity::Error, span, None::<String>),
             );
 
             let ptr = ty as *const _ as *mut _;

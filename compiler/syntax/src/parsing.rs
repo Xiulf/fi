@@ -152,6 +152,7 @@ impl Parse for Attribute {
                 "lang" => AttrKind::Lang(input.parse()?),
                 "intrinsic" => AttrKind::Intrinsic,
                 "main" => AttrKind::Main,
+                "poly" => AttrKind::Poly,
                 _ => return input.error_at("unknown attribute", name.span, 0001),
             };
 

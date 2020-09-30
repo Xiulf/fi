@@ -115,6 +115,7 @@ impl Display for Attribute {
             AttrKind::Lang(name) => write!(f, "@lang {}", name),
             AttrKind::Intrinsic => write!(f, "@intrinsic"),
             AttrKind::Main => write!(f, "@main"),
+            AttrKind::Poly => write!(f, "@poly"),
         }
     }
 }

@@ -675,6 +675,9 @@ impl<'a> Converter<'a> {
 
                 ExprKind::While { label, cond, body }
             }
+            ast::ExprKind::Defer { expr } => ExprKind::Defer {
+                expr: self.trans_expr(expr),
+            },
             _ => unimplemented!("{}", expr),
         };
 

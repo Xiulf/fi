@@ -81,7 +81,7 @@ impl<'tcx> VisitorMut<'tcx> for VarReplacer {
                 if let Stmt::Assign(place, rvalue) = stmt {
                     if let PlaceBase::Local(a) = &place.base {
                         if place.elems.is_empty() && *a != LocalId::RET {
-                            if let RValue::Use(Operand::Place(r)) = rvalue {
+                            if let RValue::Use(Operand::Move(r)) = rvalue {
                                 if let PlaceBase::Local(b) = &r.base {
                                     if r.elems.is_empty() {
                                         self.repl = Some((*b, *a));

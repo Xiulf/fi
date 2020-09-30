@@ -32,6 +32,7 @@ pub enum AttrKind {
     Lang(StringLiteral),
     Intrinsic,
     Main,
+    Poly,
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]

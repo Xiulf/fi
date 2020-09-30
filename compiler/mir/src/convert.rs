@@ -18,8 +18,10 @@ pub(crate) struct BodyConverter<'a, 'tcx> {
     tcx: &'a Tcx<'tcx>,
     hir: &'a hir::Package,
     pub(crate) builder: Builder<'a, 'tcx>,
+    is_poly: bool,
     locals: HashMap<hir::Id, LocalId>,
     loops: Vec<(Option<&'a hir::Id>, BlockId, BlockId)>,
+    deferred: Vec<Vec<hir::Id>>,
 }
 
 impl<'a, 'tcx> Converter<'a, 'tcx> {
@@ -64,18 +66,22 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                 let func_ty = self.tcx.type_of(&item.id);
 
                 let (param_tys, ret_ty) = if let Type::Forall(gparams, new_ty) = func_ty {
-                    let mut param_tys = gparams
-                        .iter()
-                        .map(|_| self.tcx.builtin.typeid)
-                        .collect::<Vec<_>>();
-                    let (_, tparams, ret) = new_ty.func().unwrap();
-                    // let (_, param_tys, ret) = new_ty.func().unwrap();
-                    // let param_tys = param_tys.iter().map(|p| p.ty).collect::<Vec<_>>();
+                    if item.is_poly() {
+                        let mut param_tys = gparams
+                            .iter()
+                            .map(|_| self.tcx.builtin.typeid)
+                            .collect::<Vec<_>>();
+                        let (_, tparams, ret) = new_ty.func().unwrap();
+                        // let (_, param_tys, ret) = new_ty.func().unwrap();
+                        // let param_tys = param_tys.iter().map(|p| p.ty).collect::<Vec<_>>();
 
-                    params = gparams.iter().chain(params).collect();
-                    param_tys.extend(tparams.iter().map(|p| p.ty));
+                        params = gparams.iter().chain(params).collect();
+                        param_tys.extend(tparams.iter().map(|p| p.ty));
 
-                    (param_tys, ret)
+                        (param_tys, ret)
+                    } else {
+                        unimplemented!("function instances");
+                    }
                 } else {
                     let (_, params, ret) = func_ty.func().unwrap();
 
@@ -89,8 +95,10 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                     tcx: self.tcx,
                     hir: package,
                     builder: self.package.define_body(item.id),
+                    is_poly: item.is_poly(),
                     locals: HashMap::new(),
                     loops: Vec::new(),
+                    deferred: Vec::new(),
                 };
 
                 converter.convert(&params, ret, body);
@@ -112,8 +120,10 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                             tcx,
                             hir: package,
                             builder,
+                            is_poly: false,
                             locals: HashMap::new(),
                             loops: Vec::new(),
+                            deferred: vec![Vec::new()],
                         };
 
                         let entry = converter.builder.create_block();
@@ -143,14 +153,17 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
     pub(crate) fn new(
         tcx: &'a Tcx<'tcx>,
         hir: &'a hir::Package,
+        is_poly: bool,
         builder: Builder<'a, 'tcx>,
     ) -> Self {
         BodyConverter {
             tcx,
             hir,
             builder,
+            is_poly,
             locals: HashMap::new(),
             loops: Vec::new(),
+            deferred: Vec::new(),
         }
     }
 
@@ -164,11 +177,19 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         }
 
         self.trans_block(body, LocalId(0));
+
+        for id in params {
+            self.builder.var_dead(self.locals[id]);
+        }
+
         self.builder.return_();
     }
 
     fn trans_block(&mut self, block: &hir::Block, res: LocalId) -> Operand<'tcx> {
         let res = Place::local(res);
+        let mut locals = Vec::new();
+
+        self.deferred.push(Vec::new());
 
         for (i, stmt) in block.stmts.iter().enumerate() {
             match &stmt.kind {
@@ -180,6 +201,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                         let var = self.builder.create_var(self.tcx.type_of(id));
 
                         self.locals.insert(*id, var);
+                        locals.push(var);
 
                         if let Some(val) = val {
                             let val = self.trans_expr(val);
@@ -201,7 +223,15 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
         }
 
-        Operand::Place(res)
+        for id in self.deferred.pop().unwrap().iter().rev() {
+            self.trans_expr(id);
+        }
+
+        for id in locals {
+            self.builder.var_dead(id);
+        }
+
+        Operand::Move(res)
     }
 
     pub(crate) fn trans_expr(&mut self, id: &hir::Id) -> Operand<'tcx> {
@@ -223,11 +253,11 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                                 if self.tcx.type_of(ty).func().is_some() {
                                     Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
                                 } else {
-                                    Operand::Place(Place::global(*id))
+                                    Operand::Move(Place::global(*id))
                                 }
                             }
                             hir::ItemKind::Var { global: true, .. } => {
-                                Operand::Place(Place::global(*id))
+                                Operand::Move(Place::global(*id))
                             }
                             hir::ItemKind::Ctor {
                                 item,
@@ -240,7 +270,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                                 self.builder.init(res.clone(), ty, *variant, Vec::new());
 
-                                Operand::Place(res)
+                                Operand::Move(res)
                             }
                             hir::ItemKind::Const { val, .. } => {
                                 let ty = self.tcx.type_of(&expr.id);
@@ -263,19 +293,19 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                             hir::ImportKind::Func => {
                                 Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
                             }
-                            hir::ImportKind::Var => Operand::Place(Place::global(*id)),
+                            hir::ImportKind::Var => Operand::Move(Place::global(*id)),
                             hir::ImportKind::Extern { abi: _ } => {
                                 if let Some(_) = self.tcx.type_of(id).func() {
                                     Operand::Const(Const::FuncAddr(*id), self.tcx.type_of(id))
                                 } else {
-                                    Operand::Place(Place::global(*id))
+                                    Operand::Move(Place::global(*id))
                                 }
                             }
                             hir::ImportKind::Struct | hir::ImportKind::Enum => unreachable!(),
                         }
                     }
                 }
-                hir::Res::Local(id) => Operand::Place(Place::local(self.locals[id])),
+                hir::Res::Local(id) => Operand::Copy(Place::local(self.locals[id])),
                 hir::Res::PrimVal(prim) => match prim {
                     hir::PrimVal::True => Operand::Const(Const::Scalar(1), self.tcx.builtin.bool),
                     hir::PrimVal::False => Operand::Const(Const::Scalar(0), self.tcx.builtin.bool),
@@ -306,7 +336,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 self.builder.init(res.clone(), ty, 0, ops);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::Tuple { exprs } => {
                 let ty = self.tcx.type_of(id);
@@ -316,7 +346,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 self.builder.init(res.clone(), ty, 0, ops);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::Range { lo, hi } => {
                 let ty = self.tcx.type_of(id);
@@ -327,7 +357,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 self.builder.init(res.clone(), ty, 0, vec![lo, hi]);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::Block { block } => {
                 let var = self.builder.create_tmp(self.tcx.type_of(id));
@@ -348,7 +378,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 let index = self.trans_expr(index);
 
-                Operand::Place(list.index(index))
+                Operand::Copy(list.index(index))
             }
             hir::ExprKind::Slice { list, low, high } => {
                 let list_ty = self.tcx.type_of(list);
@@ -365,10 +395,10 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 } else if let Type::Array(_, len) = list_ty {
                     Operand::Const(Const::Scalar(*len as u128), self.tcx.builtin.usize)
                 } else {
-                    Operand::Place(list.clone().field(1))
+                    Operand::Move(list.clone().field(1))
                 };
 
-                Operand::Place(list.slice(low, high))
+                Operand::Move(list.slice(low, high))
             }
             hir::ExprKind::Ref { expr } => {
                 let ty = self.tcx.type_of(id);
@@ -380,14 +410,14 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 self.builder.ref_(res.clone(), expr);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::Deref { expr } => {
                 let expr_ty = self.tcx.type_of(expr);
                 let expr = self.trans_expr(expr);
                 let place = self.builder.placed(expr, expr_ty);
 
-                Operand::Place(place.deref())
+                Operand::Copy(place.deref())
             }
             hir::ExprKind::TypeOf { expr } => {
                 let expr_ty = self.tcx.type_of(expr);
@@ -406,7 +436,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 self.builder.cast(res.clone(), ty, expr, kind);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::Box { expr } => {
                 let expr_ty = self.tcx.type_of(expr);
@@ -428,7 +458,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.use_block(next);
                 self.builder.use_(res.clone().deref(), expr);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::Unbox { expr } => {
                 let expr_ty = self.tcx.type_of(expr);
@@ -445,12 +475,12 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     Operand::Const(Const::FuncAddr(box_free), self.tcx.type_of(&box_free));
 
                 self.builder
-                    .use_(res.clone(), Operand::Place(expr.clone().deref()));
+                    .use_(res.clone(), Operand::Copy(expr.clone().deref()));
                 self.builder
-                    .call(unit, box_free, vec![Operand::Place(expr)], next);
+                    .call(unit, box_free, vec![Operand::Move(expr)], next);
                 self.builder.use_block(next);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::Assign { lhs, rhs } => {
                 let lhs_ty = self.tcx.type_of(lhs);
@@ -460,7 +490,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 self.builder.use_(lhs.clone(), rhs);
 
-                Operand::Place(lhs)
+                Operand::Move(lhs)
             }
             hir::ExprKind::BinOp { op, lhs, rhs } => {
                 let lhs = self.trans_expr(lhs);
@@ -486,7 +516,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                         self.builder.jump(exit_block);
                         self.builder.use_block(exit_block);
 
-                        return Operand::Place(res);
+                        return Operand::Move(res);
                     }
                     hir::BinOp::Or => {
                         let true_block = self.builder.create_block();
@@ -506,7 +536,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                         self.builder.jump(exit_block);
                         self.builder.use_block(exit_block);
 
-                        return Operand::Place(res);
+                        return Operand::Move(res);
                     }
                     hir::BinOp::Add => BinOp::Add,
                     hir::BinOp::Sub => BinOp::Sub,
@@ -528,7 +558,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 self.builder.binop(res.clone(), op, lhs, rhs);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::UnOp { op, rhs } => {
                 let ty = self.tcx.type_of(id);
@@ -542,7 +572,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 self.builder.unop(res.clone(), op, rhs);
 
-                Operand::Place(res)
+                Operand::Move(res)
             }
             hir::ExprKind::IfElse { cond, then, else_ } => {
                 let cond = self.trans_expr(cond);
@@ -563,7 +593,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     self.builder.jump(exit_block);
                     self.builder.use_block(exit_block);
 
-                    Operand::Place(Place::local(res))
+                    Operand::Move(Place::local(res))
                 } else {
                     self.builder
                         .switch(cond, vec![0], vec![exit_block, then_block]);
@@ -600,6 +630,11 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.jump(cond_block);
                 self.builder.use_block(exit_block);
                 self.loops.pop().unwrap();
+
+                Operand::Const(Const::Tuple(Vec::new()), self.tcx.builtin.unit)
+            }
+            hir::ExprKind::Defer { expr } => {
+                self.deferred.last_mut().unwrap().push(*expr);
 
                 Operand::Const(Const::Tuple(Vec::new()), self.tcx.builtin.unit)
             }
@@ -648,7 +683,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 if let hir::ItemKind::Ctor { variant, .. } = &item.kind {
                     self.builder.init(res.clone(), ret_ty, *variant, call_args);
 
-                    return Operand::Place(res);
+                    return Operand::Move(res);
                 }
             }
         }
@@ -664,21 +699,24 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.auto_cast(curr.ty, orig.ty, &mut call_args[i]);
             }
 
-            if !ret_ty.is_object() && ret_ty_orig.is_object() {
+            if !ret_ty.is_object(self.is_poly) && ret_ty_orig.is_object(self.is_poly) {
                 // return type is an object, but we expect a known type
                 let obj = self.builder.create_tmp(ret_ty_orig);
 
                 res = Place::local(obj);
             }
 
-            if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
-                let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
-                let subst = params.iter().map(|p| subst[&p]);
+            // FIXME: if callee is poly, not self
+            if self.is_poly {
+                if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
+                    let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
+                    let subst = params.iter().map(|p| subst[&p]);
 
-                call_args = subst
-                    .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
-                    .chain(call_args)
-                    .collect();
+                    call_args = subst
+                        .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
+                        .chain(call_args)
+                        .collect();
+                }
             }
         }
 
@@ -695,16 +733,16 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 _ => unreachable!(),
             };
 
-            if !ret_ty.is_object() && ret_ty_orig.is_object() {
+            if !ret_ty.is_object(self.is_poly) && ret_ty_orig.is_object(self.is_poly) {
                 // return type is an object, but we expect a known type
                 self.builder
-                    .use_(Place::local(res2), Operand::Place(res.field(0).deref()));
+                    .use_(Place::local(res2), Operand::Move(res.field(0).deref()));
 
                 res = Place::local(res2);
             }
         }
 
-        Operand::Place(res)
+        Operand::Move(res)
     }
 
     fn trans_field(&mut self, obj: &hir::Id, field: &hir::Ident) -> Operand<'tcx> {
@@ -725,7 +763,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     unreachable!();
                 };
 
-                Operand::Place(param)
+                Operand::Copy(param)
             } else {
                 let layout = self.tcx.layout(ty);
 
@@ -770,19 +808,19 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                     .position(|(name, _)| name == field.symbol)
                     .unwrap();
 
-                Operand::Place(obj.field(idx))
+                Operand::Copy(obj.field(idx))
             }
         }
     }
 
     fn auto_cast(&mut self, a: Ty<'tcx>, b: Ty<'tcx>, value: &mut Operand<'tcx>) {
-        if !a.is_object() && b.is_object() {
+        if !a.is_object(self.is_poly) && b.is_object(self.is_poly) {
             let obj = self.builder.create_tmp(b);
 
             self.builder
                 .cast(Place::local(obj), b, value.clone(), CastKind::Object);
 
-            *value = Operand::Place(Place::local(obj));
+            *value = Operand::Move(Place::local(obj));
         }
     }
 }
