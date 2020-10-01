@@ -23,7 +23,7 @@ pub struct Package {
     pub name: String,
     pub version: Option<String>,
     pub authors: Option<Vec<String>>,
-    pub entry: Option<PathBuf>,
+    pub src_dir: Option<PathBuf>,
     #[serde(skip)]
     pub target_dir: PathBuf,
     #[serde(default = "Triple::host")]

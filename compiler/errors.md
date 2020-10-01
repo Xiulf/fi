@@ -18,3 +18,4 @@
 | 0016 | recursive type T                               |
 | 0017 | no shadow.toml file found                      |
 | 0018 | invalid shadow.toml file                       |
+| 0019 | cyclic module                                  |

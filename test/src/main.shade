@@ -1,3 +1,5 @@
+module Main
+
 extern "C" puts: fn (s: *u8) -> i32;
 
 fn main(argc: i32, argv: **u8) -> i32

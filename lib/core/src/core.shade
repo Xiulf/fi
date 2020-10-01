@@ -1,6 +1,8 @@
-mod vec;
-mod convert;
-mod option;
-mod range;
-mod ptr;
-mod intrinsic;
+module Core (C)
+
+import Core.Vec as C
+import Core.Convert as C
+import Core.Option as C
+import Core.Range as C
+import Core.Ptr as C
+import Core.Intrinsic as C

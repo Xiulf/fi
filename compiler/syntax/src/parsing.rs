@@ -3,8 +3,12 @@ use parser::attr::Attr;
 use parser::error::Result;
 use parser::parse::{Parse, ParseStream};
 
+parser::token![ident "module" TModule];
+parser::token![ident "as" TAs];
+parser::token![ident "import" TImport];
+parser::token![ident "qualified" TQualified];
+parser::token![ident "hiding" THiding];
 parser::token![ident "end" TEnd];
-parser::token![ident "mod" TMod];
 parser::token![ident "where" TWhere];
 parser::token![ident "extern" TExtern];
 parser::token![ident "fn" TFn];
@@ -77,28 +81,64 @@ parser::token![punct "!" TNot/1];
 
 impl Parse for Package {
     fn parse(input: ParseStream) -> Result<Self> {
-        let module = input.parse::<Module>()?;
+        let mut modules = Vec::new();
 
-        Ok(Package {
-            span: module.span,
-            module,
-        })
+        while !input.is_empty() {
+            match input.parse::<Module>() {
+                Ok(m) => modules.push(m),
+                Err(e) => {
+                    input.reporter.add(e);
+
+                    while !input.is_empty() && !input.peek::<TModule>() {
+                        input.bump();
+                    }
+                }
+            }
+        }
+
+        Ok(Package { modules })
     }
 }
 
 impl Parse for Module {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
+        let _ = input.parse::<TModule>()?;
+        let name = Module::parse_name(input)?;
+        let exports = if let Ok(_) = input.parse::<TLParen>() {
+            let mut exports = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                exports.push(input.parse()?);
+
+                if !input.peek::<TRParen>() {
+                    input.parse::<TComma>()?;
+                }
+            }
+
+            input.parse::<TRParen>()?;
+
+            Exports::Some(exports)
+        } else {
+            Exports::All
+        };
+
+        let mut imports = Vec::new();
+
+        while !input.is_empty() && input.peek::<TImport>() {
+            imports.push(input.parse()?);
+        }
+
         let mut items = Vec::new();
 
-        while !input.is_empty() && !input.peek::<TEnd>() {
+        while !input.is_empty() && !input.peek::<TModule>() {
             match input.parse() {
                 Ok(item) => items.push(item),
                 Err(e) => {
                     input.reporter.add(e);
                     input.bump();
 
-                    while !input.is_empty() && !Item::peek(input) {
+                    while !input.is_empty() && !input.peek::<TModule>() && !Item::peek(input) {
                         input.bump();
                     }
                 }
@@ -107,32 +147,96 @@ impl Parse for Module {
 
         Ok(Module {
             span: start.to(input.prev_span()),
+            name,
+            exports,
+            imports,
             items,
         })
     }
 }
 
 impl Module {
-    fn parse_file(input: ParseStream, name: &Ident) -> Result<Self> {
-        let file_name = name.span.file.name.file_stem().unwrap();
-        let file_path = name.span.file.name.parent().unwrap();
-        let path = match file_name.to_str() {
-            Some("main") | Some("lib") => file_path.join(format!("{}.shade", name)),
-            _ => {
-                let path = file_path.join(file_name);
+    fn parse_name(input: ParseStream) -> Result<Ident> {
+        let mut name = input.parse::<Ident>()?;
 
-                path.join(format!("{}.shade", name))
-            }
+        if input.peek::<TDot>()
+            && input.peek2::<Ident>()
+            && input.span().start.offset == name.span.end.offset
+            && input.span().end.offset == input.cursor().bump().span().start.offset
+        {
+            input.parse::<TDot>()?;
+
+            let part = input.parse::<Ident>()?;
+
+            name.symbol = Symbol::new(format!("{}.{}", name.symbol, part.symbol));
+            name.span.end = part.span.end;
+        }
+
+        Ok(name)
+    }
+}
+
+impl Parse for Export {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name = input.parse()?;
+
+        Ok(Export { name })
+    }
+}
+
+impl Parse for Import {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let _ = input.parse::<TImport>()?;
+        let qualified = input.parse::<TQualified>().is_ok();
+        let module = Module::parse_name(input)?;
+        let alias = if let Ok(_) = input.parse::<TAs>() {
+            Some(input.parse()?)
+        } else {
+            None
         };
 
-        let source = std::fs::read_to_string(&path).unwrap();
-        let file = diagnostics::FileId::new(path, source);
-        let mut lexer = parser::lexer::Lexer::new(&file.source, file, input.reporter);
-        let tokens = lexer.run();
-        let buffer =
-            parser::parse::ParseBuffer::new(tokens.begin(), input.reporter, (), Span::empty(file));
+        let hiding = input.parse::<THiding>().is_ok();
+        let imports = if let Ok(_) = input.parse::<TLParen>() {
+            let mut imports = Vec::new();
 
-        Module::parse(&buffer)
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                imports.push(input.parse()?);
+            }
+
+            input.parse::<TRParen>()?;
+
+            Some(imports)
+        } else {
+            None
+        };
+
+        Ok(Import {
+            span: start.to(input.prev_span()),
+            qualified,
+            module,
+            alias,
+            hiding,
+            imports,
+        })
+    }
+}
+
+impl Parse for ImportItem {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let name = input.parse()?;
+        let alias = if let Ok(_) = input.parse::<TAs>() {
+            Some(input.parse()?)
+        } else {
+            None
+        };
+
+        Ok(ImportItem {
+            span: start.to(input.prev_span()),
+            name,
+            alias,
+        })
     }
 }
 
@@ -183,31 +287,7 @@ impl Parse for Item {
             attrs.push(input.parse()?);
         }
 
-        if let Ok(_) = input.parse::<TMod>() {
-            let name = input.parse()?;
-
-            if let Ok(_) = input.parse::<TWhere>() {
-                let module = input.parse::<Module>()?;
-                let _ = input.parse::<TEnd>()?;
-
-                Ok(Item {
-                    span: start.to(input.prev_span()),
-                    attrs,
-                    name,
-                    kind: ItemKind::Module { module },
-                })
-            } else {
-                let _ = input.parse::<TSemi>();
-                let module = Module::parse_file(input, &name)?;
-
-                Ok(Item {
-                    span: start.to(input.prev_span()),
-                    attrs,
-                    name,
-                    kind: ItemKind::Module { module },
-                })
-            }
-        } else if let Ok(_) = input.parse::<TExtern>() {
+        if let Ok(_) = input.parse::<TExtern>() {
             let abi = input.parse()?;
             let name = input.parse()?;
             let _ = input.parse::<TColon>()?;
@@ -350,7 +430,6 @@ impl Parse for Item {
 impl Item {
     fn peek(input: ParseStream) -> bool {
         input.peek::<Attribute>()
-            || input.peek::<TMod>()
             || input.peek::<TExtern>()
             || input.peek::<TFn>()
             || input.peek::<TVar>()

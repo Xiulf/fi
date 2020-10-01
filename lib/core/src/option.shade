@@ -1,3 +1,5 @@
+module Core.Option
+
 @lang "option"
 enum Option<T>
     None

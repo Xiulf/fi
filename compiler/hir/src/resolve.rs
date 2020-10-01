@@ -1,4 +1,4 @@
-use crate::{Id, ItemId, Symbol};
+use crate::{Id, Symbol};
 use diagnostics::{Diagnostic, Reporter, Severity, Span};
 use std::collections::HashMap;
 
@@ -7,14 +7,14 @@ use std::collections::HashMap;
 pub struct Resolver<'a> {
     #[derivative(Debug = "ignore")]
     reporter: &'a Reporter,
-    pub(crate) current_module: ItemId,
-    modules: HashMap<ItemId, PerNs<Vec<Rib>>>,
+    pub(crate) current_module: ModuleId,
+    modules: HashMap<ModuleId, PerNs<Vec<Rib>>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ModuleStructure {
     pub name: Symbol,
-    pub id: ItemId,
+    pub id: ModuleId,
     pub items: HashMap<Symbol, (Id, bool)>,
     pub children: Vec<ModuleStructure>,
 }
@@ -50,7 +50,7 @@ pub enum RibKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 pub enum Res {
-    Module(ItemId),
+    Module(ModuleId),
     Item(Id),
     Local(Id),
     Label(Id),
@@ -74,6 +74,8 @@ pub enum PrimTy {
     Float(u8),
 }
 
+pub type ModuleId = syntax::symbol::Symbol;
+
 impl<'a> Resolver<'a> {
     pub fn new<'b>(
         reporter: &'a Reporter,
@@ -81,7 +83,7 @@ impl<'a> Resolver<'a> {
     ) -> Self {
         let mut resolver = Resolver {
             reporter,
-            current_module: ItemId(0),
+            current_module: ModuleId::dummy(),
             modules: HashMap::new(),
         };
 
@@ -90,13 +92,13 @@ impl<'a> Resolver<'a> {
         for dep in deps {
             let structure = ModuleStructure::load(dep);
 
-            resolver.add_structure(structure, ItemId(0));
+            resolver.add_structure(structure, ModuleId::dummy());
         }
 
         resolver
     }
 
-    fn add_structure(&mut self, structure: ModuleStructure, parent: ItemId) {
+    fn add_structure(&mut self, structure: ModuleStructure, parent: ModuleId) {
         self.set_module(parent);
         self.add_module(structure.id);
         self.define(
@@ -122,7 +124,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    pub fn add_module(&mut self, id: ItemId) {
+    pub fn add_module(&mut self, id: ModuleId) {
         self.modules.insert(
             id,
             PerNs {
@@ -134,7 +136,7 @@ impl<'a> Resolver<'a> {
         );
     }
 
-    pub fn set_module(&mut self, id: ItemId) {
+    pub fn set_module(&mut self, id: ModuleId) {
         self.current_module = id;
     }
 
@@ -181,11 +183,11 @@ impl<'a> Resolver<'a> {
         match self.get_path_inner(ns, path, self.current_module) {
             Some(res) => Some(res),
             None if path.root => None,
-            None => self.get_path_inner(ns, path, ItemId(0)),
+            None => self.get_path_inner(ns, path, ModuleId::dummy()),
         }
     }
 
-    fn get_path_inner(&self, ns: Ns, path: &syntax::ast::Path, module: ItemId) -> Option<Res> {
+    fn get_path_inner(&self, ns: Ns, path: &syntax::ast::Path, module: ModuleId) -> Option<Res> {
         let mut res = None;
 
         for (i, seg) in path.segs.iter().enumerate() {
@@ -196,7 +198,7 @@ impl<'a> Resolver<'a> {
                     res = self
                         .get_seg(
                             if !last { Ns::Modules } else { ns },
-                            if path.root { ItemId(0) } else { module },
+                            if path.root { ModuleId::dummy() } else { module },
                             seg,
                         )
                         .0;
@@ -231,7 +233,7 @@ impl<'a> Resolver<'a> {
     pub fn get_seg(
         &self,
         ns: Ns,
-        module: ItemId,
+        module: ModuleId,
         seg: &syntax::ast::PathSeg,
     ) -> (Option<Res>, bool) {
         let ribs = &self.modules[&module][ns];
@@ -254,7 +256,7 @@ impl<'a> Resolver<'a> {
         (res, is_local)
     }
 
-    pub fn module_structure(&self, name: Symbol, module: &ItemId) -> ModuleStructure {
+    pub fn module_structure(&self, name: Symbol, module: &ModuleId) -> ModuleStructure {
         let modules = &self.modules[module][Ns::Modules][0];
         let values = &self.modules[module][Ns::Values][0];
         let types = &self.modules[module][Ns::Types][0];
@@ -292,8 +294,8 @@ impl<'a> Resolver<'a> {
     }
 
     fn add_root(&mut self) {
-        self.add_module(ItemId(0));
-        self.set_module(ItemId(0));
+        self.add_module(ModuleId::dummy());
+        self.set_module(ModuleId::dummy());
         self.define(
             Ns::Values,
             Symbol::new("true"),

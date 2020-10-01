@@ -2,12 +2,9 @@ pub use crate::symbol::{Ident, Symbol};
 pub use diagnostics::Span;
 pub use parser::literal::*;
 
-#[derive(Debug, derivative::Derivative)]
-#[derivative(Hash)]
+#[derive(Debug, Hash)]
 pub struct Package {
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-    pub module: Module,
+    pub modules: Vec<Module>,
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]
@@ -15,7 +12,48 @@ pub struct Package {
 pub struct Module {
     #[derivative(Hash = "ignore")]
     pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
+    pub exports: Exports,
+    pub imports: Vec<Import>,
     pub items: Vec<Item>,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub enum Exports {
+    All,
+    Some(Vec<Export>),
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct Export {
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
+}
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct Import {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub module: Ident,
+    #[derivative(Hash(hash_with = "hash_option_ident"))]
+    pub alias: Option<Ident>,
+    pub qualified: bool,
+    pub hiding: bool,
+    pub imports: Option<Vec<ImportItem>>,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct ImportItem {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
+    #[derivative(Hash(hash_with = "hash_option_ident"))]
+    pub alias: Option<Ident>,
 }
 
 #[derive(Debug, Clone, derivative::Derivative, serde::Serialize, serde::Deserialize)]
@@ -46,11 +84,9 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
 pub enum ItemKind {
-    Module {
-        module: Module,
-    },
     Extern {
         abi: Abi,
         ty: Type,

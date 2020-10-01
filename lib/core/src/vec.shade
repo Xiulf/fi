@@ -1,3 +1,5 @@
+module Core.Vec
+
 struct Vec<T>
     ptr: *T
     cap: usize

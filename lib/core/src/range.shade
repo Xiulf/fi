@@ -1,3 +1,5 @@
+module Core.Range
+
 @lang "range"
 struct Range<T>
     lo: T

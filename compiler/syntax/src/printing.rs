@@ -3,18 +3,75 @@ use std::fmt::{Display, Formatter, Result, Write};
 
 impl Display for Package {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        self.module.fmt(f)
+        for (i, module) in self.modules.iter().enumerate() {
+            if i != 0 {
+                write!(f, "\n\n")?;
+            }
+
+            module.fmt(f)?;
+        }
+
+        Ok(())
     }
 }
 
 impl Display for Module {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        for (i, item) in self.items.iter().enumerate() {
-            if i != 0 {
-                writeln!(f)?;
-            }
+        write!(f, "module {}", self.name)?;
 
+        match &self.exports {
+            Exports::All => {}
+            Exports::Some(e) => write!(f, " ({})", list(e, ", "))?,
+        }
+
+        for import in &self.imports {
+            writeln!(f)?;
+            import.fmt(f)?;
+        }
+
+        for item in &self.items {
+            writeln!(f)?;
             item.fmt(f)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for Export {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        self.name.fmt(f)
+    }
+}
+
+impl Display for Import {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        let alias = match &self.alias {
+            Some(a) => format!(" as {}", a),
+            None => String::new(),
+        };
+
+        let qualified = if self.qualified { " qualified" } else { "" };
+        let hiding = if self.hiding { " hiding" } else { "" };
+        let imports = match &self.imports {
+            Some(i) => format!(" ({})", list(i, ", ")),
+            None => String::new(),
+        };
+
+        write!(
+            f,
+            "import{} {}{}{}{}",
+            qualified, self.module, alias, hiding, imports
+        )
+    }
+}
+
+impl Display for ImportItem {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        self.name.fmt(f)?;
+
+        if let Some(a) = &self.alias {
+            write!(f, " as {}", a)?;
         }
 
         Ok(())
@@ -28,11 +85,6 @@ impl Display for Item {
         }
 
         match &self.kind {
-            ItemKind::Module { module } => {
-                writeln!(f, "mod {} where", self.name)?;
-                writeln!(indent(f), "{}", module)?;
-                write!(f, "end")
-            }
             ItemKind::Extern { abi, ty } => write!(f, "extern {}{}: {};", self.name, abi, ty),
             ItemKind::Func {
                 generics,

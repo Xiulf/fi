@@ -58,17 +58,16 @@ pub fn build(mut opts: Opts) -> BuildFiles {
         opts.project_dir.display()
     );
 
-    let source = std::fs::read_to_string(manifest.package.entry.as_ref().unwrap()).unwrap();
-    let file = diagnostics::FileId::new(manifest.package.entry.as_ref().unwrap(), source);
-    let package = syntax::parse(&reporter, file);
+    let package = parse_all(&reporter, manifest.package.src_dir.as_ref().unwrap());
 
     reporter.report(true);
 
-    // println!("{}", package);
+    println!("{}", package);
 
-    let (hir, module_structure) = hir::convert::convert(
+    /* let (hir, module_structure) = hir::convert::convert(
         &reporter,
         &package,
+        &manifest.package.name,
         dep_files.iter().map(|d| d.modules.as_ref()),
         dep_files.iter().map(|d| d.exports.as_ref()),
     );
@@ -104,7 +103,7 @@ pub fn build(mut opts: Opts) -> BuildFiles {
                 dep_files.iter().map(|d| d.bin.as_ref()),
             );
         },
-    );
+    ); */
 
     BuildFiles {
         bin: bin_dir,
@@ -161,27 +160,45 @@ pub fn get_manifest(reporter: &Reporter, project_dir: &Path) -> Manifest {
         }
     };
 
-    match &mut manifest.package.entry {
+    match &mut manifest.package.src_dir {
         Some(entry) => {
             if entry.is_relative() {
                 *entry = format!("{}/{}", project_dir.display(), entry.display()).into();
             }
-
-            entry.set_extension("shade");
         }
         None => {
-            let path = format!(
-                "{}/src/{}.shade",
-                project_dir.display(),
-                manifest.package.name
-            );
+            let path = format!("{}/src", project_dir.display(),);
 
-            manifest.package.entry = Some(path.into());
+            manifest.package.src_dir = Some(path.into());
         }
     }
 
     manifest.package.target_dir = format!("{}/target", project_dir.display()).into();
     manifest
+}
+
+pub fn parse_all(reporter: &Reporter, src_dir: &Path) -> syntax::ast::Package {
+    let mut package = syntax::ast::Package {
+        modules: Vec::new(),
+    };
+
+    for entry in src_dir.read_dir().unwrap() {
+        let entry = entry.unwrap().path();
+
+        if entry.is_dir() {
+            let mut pkg = parse_all(reporter, &entry);
+
+            package.modules.append(&mut pkg.modules);
+        } else if entry.extension().and_then(|s| s.to_str()) == Some("shade") {
+            let source = std::fs::read_to_string(&entry).unwrap();
+            let file = diagnostics::FileId::new(entry, source);
+            let mut pkg = syntax::parse(reporter, file);
+
+            package.modules.append(&mut pkg.modules);
+        }
+    }
+
+    package
 }
 
 pub fn build_deps(opts: &Opts, manifest: &Manifest) -> Vec<BuildFiles> {

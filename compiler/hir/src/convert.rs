@@ -1,25 +1,63 @@
 use crate::*;
 use diagnostics::{Diagnostic, Reporter, Severity};
-use resolve::{Ns, Res, Resolver, RibKind};
-use std::collections::BTreeMap;
+use resolve::{ModuleId, Ns, Res, Resolver, RibKind};
+use std::collections::{BTreeMap, HashMap};
 use syntax::ast;
 
 pub fn convert<'a>(
     reporter: &Reporter,
     ast: &ast::Package,
+    package_name: &str,
     sdeps: impl Iterator<Item = &'a std::path::Path>,
     ideps: impl Iterator<Item = &'a std::path::Path>,
 ) -> (Package, resolve::ModuleStructure) {
-    let root = ItemId::new(&ast.module);
-    let mut converter = Converter::new(reporter, root, sdeps, ideps);
-    let package_name = Ident {
-        symbol: Symbol::new(ast.span.file.name.file_stem().unwrap().to_str().unwrap()),
-        span: Span::empty(ast.span.file),
-    };
+    let modules = sort_modules(reporter, &ast.modules);
+    let mut converter = Converter::new(reporter, sdeps, ideps);
 
-    converter.register_module(&ast.module, &package_name, root);
-    converter.trans_module(&ast.module, root);
-    converter.finish(package_name, root)
+    for module in modules {
+        let id = converter.register_module(module);
+
+        converter.trans_module(module, id);
+    }
+
+    converter.finish(Symbol::new(package_name))
+}
+
+fn sort_modules<'a>(reporter: &Reporter, modules: &'a [ast::Module]) -> Vec<&'a ast::Module> {
+    let mut g = petgraph::Graph::new();
+    let ids = modules
+        .iter()
+        .map(|m| (m.name.symbol, g.add_node(m)))
+        .collect::<HashMap<_, _>>();
+
+    for module in modules {
+        for import in &module.imports {
+            g.add_edge(ids[&module.name.symbol], ids[&import.module.symbol], ());
+        }
+    }
+
+    match petgraph::algo::toposort(&g, None) {
+        Ok(order) => order
+            .into_iter()
+            .map(|i| g.node_weight(i).unwrap())
+            .copied()
+            .collect(),
+        Err(e) => {
+            let module = g.node_weight(e.node_id()).unwrap();
+
+            reporter.add(
+                Diagnostic::new(
+                    Severity::Error,
+                    0019,
+                    format!("cyclic module '{}'", module.name),
+                )
+                .label(Severity::Error, module.name.span, None::<String>),
+            );
+
+            reporter.report(true);
+            unreachable!();
+        }
+    }
 }
 
 pub struct Converter<'a> {
@@ -29,7 +67,6 @@ pub struct Converter<'a> {
     exprs: BTreeMap<Id, Expr>,
     types: BTreeMap<Id, Type>,
     imports: Imports,
-    package_id: ItemId,
     current_item: ItemId,
     local_id: u64,
 }
@@ -37,7 +74,6 @@ pub struct Converter<'a> {
 impl<'a> Converter<'a> {
     pub fn new<'b>(
         reporter: &'a Reporter,
-        package_id: ItemId,
         sdeps: impl Iterator<Item = &'b std::path::Path>,
         ideps: impl Iterator<Item = &'b std::path::Path>,
     ) -> Self {
@@ -56,22 +92,21 @@ impl<'a> Converter<'a> {
             exprs: BTreeMap::new(),
             types: BTreeMap::new(),
             imports,
-            package_id,
             current_item: ItemId(0),
             local_id: 0,
         }
     }
 
-    pub fn finish(self, package: Ident, root: ItemId) -> (Package, resolve::ModuleStructure) {
+    pub fn finish(self, package: Symbol) -> (Package, resolve::ModuleStructure) {
         (
             Package {
-                name: package.symbol,
+                name: package,
                 items: self.items,
                 exprs: self.exprs,
                 types: self.types,
                 imports: self.imports,
             },
-            self.resolver.module_structure(package.symbol, &root),
+            self.resolver.module_structure(package, &package),
         )
     }
 
@@ -81,52 +116,23 @@ impl<'a> Converter<'a> {
         Id(self.current_item, self.local_id)
     }
 
-    pub fn register_module(&mut self, module: &ast::Module, name: &Ident, id: ItemId) {
-        let parent = self.resolver.current_module;
-
-        self.resolver
-            .define(Ns::Modules, name.symbol, name.span, Res::Module(id));
+    pub fn register_module(&mut self, module: &ast::Module) -> ModuleId {
+        let id = module.name.symbol;
 
         self.resolver.add_module(id);
         self.resolver.set_module(id);
-
-        self.resolver.define(
-            Ns::Modules,
-            Symbol::new("@package"),
-            name.span,
-            Res::Module(self.package_id),
-        );
-
-        self.resolver.define(
-            Ns::Modules,
-            Symbol::new("@self"),
-            name.span,
-            Res::Module(id),
-        );
-
-        if !parent.is_null() {
-            self.resolver.define(
-                Ns::Modules,
-                Symbol::new("@super"),
-                name.span,
-                Res::Module(parent),
-            );
-        }
 
         for item in &module.items {
             self.register_item(item, true);
         }
 
-        self.resolver.set_module(parent);
+        id
     }
 
     pub fn register_item(&mut self, item: &ast::Item, top_level: bool) -> ItemId {
         let id = ItemId::new(item);
 
         match &item.kind {
-            ast::ItemKind::Module { module } => {
-                self.register_module(module, &item.name, id);
-            }
             ast::ItemKind::Extern { .. } => {
                 self.resolver.define(
                     Ns::Values,
@@ -198,16 +204,12 @@ impl<'a> Converter<'a> {
         id
     }
 
-    pub fn trans_module(&mut self, module: &ast::Module, id: ItemId) {
-        let parent = self.resolver.current_module;
-
+    pub fn trans_module(&mut self, module: &ast::Module, id: ModuleId) {
         self.resolver.set_module(id);
 
         for item in &module.items {
             self.trans_item(item, true);
         }
-
-        self.resolver.set_module(parent);
     }
 
     pub fn trans_item(&mut self, item: &ast::Item, top_level: bool) -> Id {
@@ -218,9 +220,6 @@ impl<'a> Converter<'a> {
         self.local_id = 0;
 
         match &item.kind {
-            ast::ItemKind::Module { module } => {
-                self.trans_module(module, id.item_id());
-            }
             ast::ItemKind::Extern { abi, ty } => {
                 let ty = self.trans_ty(ty);
 
