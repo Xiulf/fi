@@ -429,6 +429,14 @@ impl Item {
     }
 }
 
+impl Import {
+    pub fn is_poly(&self) -> bool {
+        self.attrs
+            .iter()
+            .any(|attr| matches!(&attr.kind, AttrKind::Poly))
+    }
+}
+
 impl Hash for Item {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);

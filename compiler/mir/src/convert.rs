@@ -18,7 +18,6 @@ pub(crate) struct BodyConverter<'a, 'tcx> {
     tcx: &'a Tcx<'tcx>,
     hir: &'a hir::Package,
     pub(crate) builder: Builder<'a, 'tcx>,
-    is_poly: bool,
     locals: HashMap<hir::Id, LocalId>,
     loops: Vec<(Option<&'a hir::Id>, BlockId, BlockId)>,
     deferred: Vec<Vec<hir::Id>>,
@@ -95,7 +94,6 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                     tcx: self.tcx,
                     hir: package,
                     builder: self.package.define_body(item.id),
-                    is_poly: item.is_poly(),
                     locals: HashMap::new(),
                     loops: Vec::new(),
                     deferred: Vec::new(),
@@ -120,7 +118,6 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                             tcx,
                             hir: package,
                             builder,
-                            is_poly: false,
                             locals: HashMap::new(),
                             loops: Vec::new(),
                             deferred: vec![Vec::new()],
@@ -153,14 +150,12 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
     pub(crate) fn new(
         tcx: &'a Tcx<'tcx>,
         hir: &'a hir::Package,
-        is_poly: bool,
         builder: Builder<'a, 'tcx>,
     ) -> Self {
         BodyConverter {
             tcx,
             hir,
             builder,
-            is_poly,
             locals: HashMap::new(),
             loops: Vec::new(),
             deferred: Vec::new(),
@@ -689,6 +684,12 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         }
 
         if let Some(func_id) = func_id {
+            let is_poly = if let Some(item) = self.hir.items.get(func_id) {
+                item.is_poly()
+            } else {
+                self.hir.imports.0[func_id].is_poly()
+            };
+
             let (_, param_tys_orig, ret_ty_orig) = match self.tcx.type_of(func_id) {
                 Type::Func(a, b, c) => (a.as_ref(), *b, *c),
                 Type::Forall(_, ty) => ty.func().unwrap(),
@@ -696,18 +697,17 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             };
 
             for (i, (curr, orig)) in param_tys.iter().zip(param_tys_orig.iter()).enumerate() {
-                self.auto_cast(curr.ty, orig.ty, &mut call_args[i]);
+                self.auto_cast(curr.ty, orig.ty, &mut call_args[i], is_poly);
             }
 
-            if !ret_ty.is_object(self.is_poly) && ret_ty_orig.is_object(self.is_poly) {
+            if !ret_ty.is_object(is_poly) && ret_ty_orig.is_object(is_poly) {
                 // return type is an object, but we expect a known type
                 let obj = self.builder.create_tmp(ret_ty_orig);
 
                 res = Place::local(obj);
             }
 
-            // FIXME: if callee is poly, not self
-            if self.is_poly {
+            if is_poly {
                 if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
                     let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
                     let subst = params.iter().map(|p| subst[&p]);
@@ -727,13 +727,19 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         self.builder.use_block(next_block);
 
         if let Some(func_id) = func_id {
+            let is_poly = if let Some(item) = self.hir.items.get(func_id) {
+                item.is_poly()
+            } else {
+                self.hir.imports.0[func_id].is_poly()
+            };
+
             let (_, _, ret_ty_orig) = match self.tcx.type_of(func_id) {
                 Type::Func(a, b, c) => (a.as_ref(), *b, *c),
                 Type::Forall(_, ty) => ty.func().unwrap(),
                 _ => unreachable!(),
             };
 
-            if !ret_ty.is_object(self.is_poly) && ret_ty_orig.is_object(self.is_poly) {
+            if !ret_ty.is_object(is_poly) && ret_ty_orig.is_object(is_poly) {
                 // return type is an object, but we expect a known type
                 self.builder
                     .use_(Place::local(res2), Operand::Move(res.field(0).deref()));
@@ -813,8 +819,8 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         }
     }
 
-    fn auto_cast(&mut self, a: Ty<'tcx>, b: Ty<'tcx>, value: &mut Operand<'tcx>) {
-        if !a.is_object(self.is_poly) && b.is_object(self.is_poly) {
+    fn auto_cast(&mut self, a: Ty<'tcx>, b: Ty<'tcx>, value: &mut Operand<'tcx>, is_poly: bool) {
+        if !a.is_object(is_poly) && b.is_object(is_poly) {
             let obj = self.builder.create_tmp(b);
 
             self.builder

@@ -41,7 +41,7 @@ pub fn eval_expr<'tcx>(
         current_block: None,
     };
 
-    let mut converter = crate::convert::BodyConverter::new(tcx, hir, false, builder);
+    let mut converter = crate::convert::BodyConverter::new(tcx, hir, builder);
     let entry = converter.builder.create_block();
 
     converter.builder.use_block(entry);
