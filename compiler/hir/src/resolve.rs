@@ -27,6 +27,7 @@ pub enum ModuleId {
 pub struct ModuleInfo {
     pub module: crate::Module,
     pub scopes: PerNs<Vec<Rib>>,
+    pub imports: HashMap<Symbol, ModuleId>,
     pub exports: Vec<Export>,
     external: bool,
 }
@@ -137,6 +138,12 @@ impl<'a> Resolver<'a> {
                 Span::default(),
                 Res::Item(id),
             );
+
+            self.module().info_mut().exports.push(if is_type {
+                Export::Type(ModuleId::Normal(meta.name), id)
+            } else {
+                Export::Value(ModuleId::Normal(meta.name), id)
+            });
         }
     }
 
@@ -154,6 +161,7 @@ impl<'a> Resolver<'a> {
                     types: vec![Rib::new(RibKind::Global)],
                     labels: Vec::new(),
                 },
+                imports: HashMap::new(),
                 exports: Vec::new(),
                 external,
             }),
@@ -283,6 +291,7 @@ impl<'a> Resolver<'a> {
                     types: vec![Rib::new(RibKind::Global)],
                     labels: Vec::new(),
                 },
+                imports: HashMap::new(),
                 exports: Vec::new(),
                 external: true,
             }),

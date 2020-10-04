@@ -51,18 +51,13 @@ impl Display for Import {
             None => String::new(),
         };
 
-        let qualified = if self.qualified { " qualified" } else { "" };
         let hiding = if self.hiding { " hiding" } else { "" };
         let imports = match &self.imports {
             Some(i) => format!(" ({})", list(i, ", ")),
             None => String::new(),
         };
 
-        write!(
-            f,
-            "import{} {}{}{}{}",
-            qualified, self.module, alias, hiding, imports
-        )
+        write!(f, "import {}{}{}{}", self.module, alias, hiding, imports)
     }
 }
 

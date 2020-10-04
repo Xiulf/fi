@@ -6,7 +6,6 @@ use parser::parse::{Parse, ParseStream};
 parser::token![ident "module" TModule];
 parser::token![ident "as" TAs];
 parser::token![ident "import" TImport];
-parser::token![ident "qualified" TQualified];
 parser::token![ident "hiding" THiding];
 parser::token![ident "end" TEnd];
 parser::token![ident "where" TWhere];
@@ -184,7 +183,6 @@ impl Parse for Import {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let _ = input.parse::<TImport>()?;
-        let qualified = input.parse::<TQualified>().is_ok();
         let module = Module::parse_name(input)?;
         let alias = if let Ok(_) = input.parse::<TAs>() {
             Some(input.parse()?)
@@ -213,7 +211,6 @@ impl Parse for Import {
 
         Ok(Import {
             span: start.to(input.prev_span()),
-            qualified,
             module,
             alias,
             hiding,

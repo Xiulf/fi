@@ -31,7 +31,7 @@ pub struct Package {
     pub imports: Imports,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Module {
     pub name: Symbol,
     pub items: Vec<Id>,
@@ -327,7 +327,7 @@ impl Package {
                     module
                         .items
                         .iter()
-                        .map(|id| {
+                        .filter_map(|id| {
                             let item = &self.items[id];
                             let path = format!("{}.{}", module.name, item.name);
                             let symbol = if let ItemKind::Extern { .. } = item.kind {
@@ -340,7 +340,7 @@ impl Package {
                                 mangling::mangle(path.bytes())
                             };
 
-                            (
+                            Some((
                                 *id,
                                 Import {
                                     id: *id,
@@ -354,10 +354,10 @@ impl Package {
                                         ItemKind::Var { .. } => ImportKind::Var,
                                         ItemKind::Struct { .. } => ImportKind::Struct,
                                         ItemKind::Enum { .. } => ImportKind::Enum,
-                                        _ => unimplemented!(),
+                                        _ => return None,
                                     },
                                 },
-                            )
+                            ))
                         })
                         .collect::<Vec<_>>()
                 })

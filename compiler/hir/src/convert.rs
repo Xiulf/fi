@@ -109,7 +109,22 @@ impl<'a> Converter<'a> {
         (
             Package {
                 name: package,
-                modules: BTreeMap::new(),
+                modules: self
+                    .resolver
+                    .modules
+                    .iter()
+                    .filter_map(|(id, m)| {
+                        if let crate::resolve::Module::Normal(m) = m {
+                            if let ModuleId::Normal(id) = id {
+                                Some((*id, m.module.clone()))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
                 items: self.items,
                 exprs: self.exprs,
                 types: self.types,
@@ -126,7 +141,6 @@ impl<'a> Converter<'a> {
     }
 
     pub fn register_module(&mut self, module: &ast::Module) -> ModuleId {
-        println!("register {}", module.name);
         let id = ModuleId::Normal(module.name.symbol);
 
         self.resolver.add_module(module.name.symbol, false);
@@ -140,7 +154,7 @@ impl<'a> Converter<'a> {
             self.register_import(import, &id);
         }
 
-        // self.register_exports(&module.exports, &id);
+        self.register_exports(&id, &module.exports);
 
         id
     }
@@ -179,17 +193,41 @@ impl<'a> Converter<'a> {
     ) {
         let exports = self.collect_imports(imodule, names, hiding, span);
 
-        // TODO: if virtual module already exists
-        self.vmods += 1;
-        let vmod_id = ModuleId::Virtual(self.vmods);
+        if let Some(&vmod_id) = self.resolver.modules[module]
+            .info()
+            .imports
+            .get(&alias.symbol)
+        {
+            for (name, export) in exports {
+                // TODO: check for clashing import
+                self.resolver
+                    .modules
+                    .get_mut(&vmod_id)
+                    .unwrap()
+                    .virt_mut()
+                    .exports
+                    .push(export);
+            }
+        } else {
+            self.vmods += 1;
+            let vmod_id = ModuleId::Virtual(self.vmods);
 
-        self.resolver.modules.insert(
-            vmod_id,
-            crate::resolve::Module::Virtual(crate::resolve::VirtualModule {
-                name: alias.symbol,
-                exports: exports.into_iter().map(|(_, e)| e).collect(),
-            }),
-        );
+            self.resolver
+                .modules
+                .get_mut(module)
+                .unwrap()
+                .info_mut()
+                .imports
+                .insert(alias.symbol, vmod_id);
+
+            self.resolver.modules.insert(
+                vmod_id,
+                crate::resolve::Module::Virtual(crate::resolve::VirtualModule {
+                    name: alias.symbol,
+                    exports: exports.into_iter().map(|(_, e)| e).collect(),
+                }),
+            );
+        }
     }
 
     pub fn import_normal(
@@ -281,6 +319,68 @@ impl<'a> Converter<'a> {
         }
     }
 
+    pub fn register_exports(&mut self, module: &ModuleId, exports: &ast::Exports) {
+        match exports {
+            ast::Exports::All => {
+                self.export_all(module);
+            }
+            ast::Exports::Some(exports) => {
+                for export in exports {
+                    match self
+                        .resolver
+                        .get(Ns::Modules, Some(*module), &export.name.symbol)
+                    {
+                        (Some(Res::Module(id)), _) => {
+                            let imodule =
+                                &self.resolver.modules[module].info().imports[&export.name.symbol];
+
+                            if imodule == module {
+                                self.export_all(module);
+                            } else {
+                                let exports = match &self.resolver.modules[imodule] {
+                                    crate::resolve::Module::Normal(m) => &m.exports,
+                                    crate::resolve::Module::Virtual(m) => &m.exports,
+                                }
+                                .clone();
+
+                                self.resolver
+                                    .modules
+                                    .get_mut(module)
+                                    .unwrap()
+                                    .info_mut()
+                                    .exports
+                                    .extend(exports);
+                            }
+
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn export_all(&mut self, module: &ModuleId) {
+        let module = self.resolver.modules.get_mut(module).unwrap().info_mut();
+
+        for (_, res) in module.scopes[Ns::Values][0].iter() {
+            if let Res::Item(id) = res {
+                module
+                    .exports
+                    .push(Export::Value(ModuleId::Normal(module.module.name), *id));
+            }
+        }
+
+        for (_, res) in module.scopes[Ns::Types][0].iter() {
+            if let Res::Item(id) = res {
+                module
+                    .exports
+                    .push(Export::Type(ModuleId::Normal(module.module.name), *id));
+            }
+        }
+    }
+
     pub fn find_export(
         &self,
         module: &ModuleId,
@@ -290,7 +390,15 @@ impl<'a> Converter<'a> {
         if let Some(idx) = exports.iter().position(|(n, _)| n.symbol == name.symbol) {
             Some(exports.swap_remove(idx))
         } else {
-            // TODO: report error
+            self.reporter.add(
+                Diagnostic::new(
+                    Severity::Error,
+                    0020,
+                    format!("Module '{}' does not export name '{}'", module, name),
+                )
+                .label(Severity::Error, name.span, None::<String>),
+            );
+
             None
         }
     }
@@ -300,18 +408,47 @@ impl<'a> Converter<'a> {
             crate::resolve::Module::Normal(m) => m
                 .exports
                 .iter()
-                .map(|export| (self.items[export.id()].name, *export))
+                .map(|export| {
+                    (
+                        if let Some(item) = self.items.get(export.id()) {
+                            item.name
+                        } else {
+                            self.imports.0[export.id()].name
+                        },
+                        *export,
+                    )
+                })
                 .collect(),
             crate::resolve::Module::Virtual(m) => m
                 .exports
                 .iter()
-                .map(|export| (self.items[export.id()].name, *export))
+                .map(|export| {
+                    (
+                        if let Some(item) = self.items.get(export.id()) {
+                            item.name
+                        } else {
+                            self.imports.0[export.id()].name
+                        },
+                        *export,
+                    )
+                })
                 .collect(),
         }
     }
 
     pub fn register_item(&mut self, item: &ast::Item, top_level: bool) -> ItemId {
         let id = ItemId::new(item);
+
+        if top_level {
+            self.resolver
+                .modules
+                .get_mut(&self.resolver.current_module)
+                .unwrap()
+                .info_mut()
+                .module
+                .items
+                .push(Id::item(id));
+        }
 
         match &item.kind {
             ast::ItemKind::Extern { .. } => {

@@ -40,7 +40,6 @@ pub struct Import {
     pub module: Ident,
     #[derivative(Hash(hash_with = "hash_option_ident"))]
     pub alias: Option<Ident>,
-    pub qualified: bool,
     pub hiding: bool,
     pub imports: Option<Vec<ImportItem>>,
 }
