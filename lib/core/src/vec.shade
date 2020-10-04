@@ -1,5 +1,8 @@
 module Core.Vec
 
+import Core.Ptr (NULL)
+import Libc (memcpy, malloc, free, realloc)
+
 struct Vec<T>
     ptr: *T
     cap: usize
@@ -8,7 +11,7 @@ end
 
 @poly
 fn new<T>() -> Vec<T>
-    var ptr = ~/ptr/NULL;
+    var ptr = NULL;
     var cap = if `T`.size == 0; !0 else 0 end;
 
     Vec(ptr, cap, 0)
@@ -20,7 +23,7 @@ fn push<T>(self: *Vec<T>, item: T)
 
     var ptr = self.*.ptr + self.*.len * `T`.stride;
 
-    /libc/memcpy(ptr.(*()), item.(*()), `T`.size);
+    memcpy(ptr.(*()), item.(*()), `T`.size);
     self.*.len += 1;
 end
 
@@ -33,19 +36,19 @@ end
 
 @poly
 fn reserve<T>(self: *Vec<T>, n: usize)
-    if self.*.ptr == ~/ptr/NULL
-        self.*.ptr = /libc/malloc(`T`.stride).(*T);
+    if self.*.ptr == NULL
+        self.*.ptr = malloc(`T`.stride).(*T);
         self.*.cap += 1;
     end
 
     while self.*.len + n > self.*.cap
         self.*.cap *= 2;
-        self.*.ptr = /libc/realloc(self.*.ptr.(*()), self.*.cap * `T`.stride).(*T);
+        self.*.ptr = realloc(self.*.ptr.(*()), self.*.cap * `T`.stride).(*T);
     end
 end
 
 @poly
 fn drop<T>(self: *Vec<T>)
-    /libc/free(self.*.ptr.(*()));
-    self.*.ptr = ~/ptr/NULL;
+    free(self.*.ptr.(*()));
+    self.*.ptr = NULL;
 end

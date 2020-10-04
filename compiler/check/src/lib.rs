@@ -12,13 +12,12 @@ pub mod ty;
 pub fn with_tcx<'a, T>(
     reporter: &diagnostics::Reporter,
     package: &hir::Package,
-    module_structure: &hir::resolve::ModuleStructure,
     target: &target_lexicon::Triple,
     typemaps: impl Iterator<Item = &'a std::path::Path>,
     f: impl FnOnce(tcx::Tcx) -> T,
 ) -> T {
     let arena = bumpalo::Bump::new();
-    let tcx = tcx::Tcx::new(reporter, &arena, &target, package, module_structure);
+    let tcx = tcx::Tcx::new(reporter, &arena, &target, package);
 
     for path in typemaps {
         tcx.load_type_map(path);

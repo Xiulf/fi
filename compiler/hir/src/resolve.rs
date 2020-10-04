@@ -8,15 +8,45 @@ pub struct Resolver<'a> {
     #[derivative(Debug = "ignore")]
     reporter: &'a Reporter,
     pub(crate) current_module: ModuleId,
-    modules: HashMap<ModuleId, PerNs<Vec<Rib>>>,
+    pub(crate) modules: HashMap<ModuleId, Module>,
+}
+
+#[derive(Debug)]
+pub enum Module {
+    Normal(ModuleInfo),
+    Virtual(VirtualModule),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModuleId {
+    Normal(Symbol),
+    Virtual(usize),
+}
+
+#[derive(Debug)]
+pub struct ModuleInfo {
+    pub module: crate::Module,
+    pub scopes: PerNs<Vec<Rib>>,
+    pub exports: Vec<Export>,
+    external: bool,
+}
+
+#[derive(Debug)]
+pub struct VirtualModule {
+    pub name: Symbol,
+    pub exports: Vec<Export>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Export {
+    Value(ModuleId, Id),
+    Type(ModuleId, Id),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ModuleStructure {
+pub struct ModuleMeta {
     pub name: Symbol,
-    pub id: ModuleId,
     pub items: HashMap<Symbol, (Id, bool)>,
-    pub children: Vec<ModuleStructure>,
 }
 
 #[derive(Debug, Clone)]
@@ -74,8 +104,6 @@ pub enum PrimTy {
     Float(u8),
 }
 
-pub type ModuleId = syntax::symbol::Symbol;
-
 impl<'a> Resolver<'a> {
     pub fn new<'b>(
         reporter: &'a Reporter,
@@ -83,34 +111,26 @@ impl<'a> Resolver<'a> {
     ) -> Self {
         let mut resolver = Resolver {
             reporter,
-            current_module: ModuleId::dummy(),
+            current_module: ModuleId::Virtual(0),
             modules: HashMap::new(),
         };
 
         resolver.add_root();
 
         for dep in deps {
-            let structure = ModuleStructure::load(dep);
+            let meta = ModuleMeta::load(dep);
 
-            resolver.add_structure(structure, ModuleId::dummy());
+            resolver.add_meta(meta);
         }
 
         resolver
     }
 
-    fn add_structure(&mut self, structure: ModuleStructure, parent: ModuleId) {
-        self.set_module(parent);
-        self.add_module(structure.id);
-        self.define(
-            Ns::Modules,
-            structure.name,
-            Span::default(),
-            Res::Module(structure.id),
-        );
+    fn add_meta(&mut self, meta: ModuleMeta) {
+        self.add_module(meta.name, true);
+        self.set_module(ModuleId::Normal(meta.name));
 
-        self.set_module(structure.id);
-
-        for (name, (id, is_type)) in structure.items {
+        for (name, (id, is_type)) in meta.items {
             self.define(
                 if is_type { Ns::Types } else { Ns::Values },
                 name,
@@ -118,21 +138,25 @@ impl<'a> Resolver<'a> {
                 Res::Item(id),
             );
         }
-
-        for child in structure.children {
-            self.add_structure(child, structure.id);
-        }
     }
 
-    pub fn add_module(&mut self, id: ModuleId) {
+    pub fn add_module(&mut self, name: Symbol, external: bool) {
         self.modules.insert(
-            id,
-            PerNs {
-                modules: vec![Rib::new(RibKind::Global)],
-                values: vec![Rib::new(RibKind::Global)],
-                types: vec![Rib::new(RibKind::Global)],
-                labels: Vec::new(),
-            },
+            ModuleId::Normal(name),
+            Module::Normal(ModuleInfo {
+                module: crate::Module {
+                    name,
+                    items: Vec::new(),
+                },
+                scopes: PerNs {
+                    modules: vec![Rib::new(RibKind::Global)],
+                    values: vec![Rib::new(RibKind::Global)],
+                    types: vec![Rib::new(RibKind::Global)],
+                    labels: Vec::new(),
+                },
+                exports: Vec::new(),
+                external,
+            }),
         );
     }
 
@@ -140,7 +164,7 @@ impl<'a> Resolver<'a> {
         self.current_module = id;
     }
 
-    fn module(&mut self) -> &mut PerNs<Vec<Rib>> {
+    fn module(&mut self) -> &mut Module {
         self.modules
             .get_mut(&self.current_module)
             .expect("undefined module")
@@ -148,12 +172,17 @@ impl<'a> Resolver<'a> {
 
     pub fn define(&mut self, ns: Ns, name: Symbol, span: Span, res: Res) {
         if self.check_duplicate(ns, &name, span) {
-            self.module()[ns].last_mut().unwrap().insert(name, res);
+            self.module().info_mut().scopes[ns]
+                .last_mut()
+                .unwrap()
+                .insert(name, res);
         }
     }
 
     fn check_duplicate(&self, ns: Ns, name: &Symbol, span: Span) -> bool {
-        let last_rib = self.modules[&self.current_module][ns].last().unwrap();
+        let last_rib = self.modules[&self.current_module].info().scopes[ns]
+            .last()
+            .unwrap();
 
         if last_rib.contains(name) {
             self.reporter.add(
@@ -172,82 +201,27 @@ impl<'a> Resolver<'a> {
     }
 
     pub fn push_rib(&mut self, ns: Ns, kind: RibKind) {
-        self.module()[ns].push(Rib::new(kind));
+        self.module().info_mut().scopes[ns].push(Rib::new(kind));
     }
 
     pub fn pop_rib(&mut self, ns: Ns) {
-        self.module()[ns].pop().unwrap();
+        self.module().info_mut().scopes[ns].pop().unwrap();
     }
 
-    pub fn get_path(&self, ns: Ns, path: &syntax::ast::Path) -> Option<Res> {
-        match self.get_path_inner(ns, path, self.current_module) {
-            Some(res) => Some(res),
-            None if path.root => None,
-            None => self.get_path_inner(ns, path, ModuleId::dummy()),
+    pub fn get(&self, ns: Ns, module: Option<ModuleId>, name: &Symbol) -> (Option<Res>, bool) {
+        match self.get_inner(ns, module.unwrap_or(self.current_module), name) {
+            (Some(res), l) => (Some(res), l),
+            (None, _) => self.get_inner(ns, ModuleId::Virtual(0), name),
         }
     }
 
-    fn get_path_inner(&self, ns: Ns, path: &syntax::ast::Path, module: ModuleId) -> Option<Res> {
-        let mut res = None;
-
-        for (i, seg) in path.segs.iter().enumerate() {
-            let last = i == path.segs.len() - 1;
-
-            match res {
-                None if i == 0 => {
-                    res = self
-                        .get_seg(
-                            if !last { Ns::Modules } else { ns },
-                            if path.root { ModuleId::dummy() } else { module },
-                            seg,
-                        )
-                        .0;
-                }
-                None => return res,
-                Some(Res::Module(id)) => {
-                    res = self
-                        .get_seg(if !last { Ns::Modules } else { ns }, id, seg)
-                        .0;
-                }
-                Some(Res::Item(_)) if last => break,
-                Some(Res::Local(_)) if i == 0 => break,
-                Some(Res::Label(_)) if i == 0 => break,
-                Some(Res::PrimTy(_)) if i == 0 => break,
-                Some(Res::Item(_)) => {
-                    // TODO: error: {..seg} is not a module
-                }
-                Some(Res::Local(_)) => {
-                    // TODO: error: a local can only be referenced directly
-                }
-                Some(Res::Label(_)) => {
-                    // TODO: error: a label can only be referenced directly
-                }
-                Some(Res::PrimVal(_)) => unreachable!(),
-                Some(Res::PrimTy(_)) => unreachable!(),
-            }
-        }
-
-        res
-    }
-
-    pub fn get_seg(
-        &self,
-        ns: Ns,
-        module: ModuleId,
-        seg: &syntax::ast::PathSeg,
-    ) -> (Option<Res>, bool) {
-        let ribs = &self.modules[&module][ns];
+    pub fn get_inner(&self, ns: Ns, module: ModuleId, name: &Symbol) -> (Option<Res>, bool) {
+        let ribs = &self.modules[&module].info().scopes[ns];
         let mut is_local = false;
         let mut res = None;
-        let symbol = match seg {
-            syntax::ast::PathSeg::Name(name) => name.symbol,
-            syntax::ast::PathSeg::Parent => Symbol::new("@super"),
-            syntax::ast::PathSeg::Current => Symbol::new("@self"),
-            syntax::ast::PathSeg::Package => Symbol::new("@package"),
-        };
 
         for rib in ribs {
-            if let Some(r) = rib.get(&symbol) {
+            if let Some(r) = rib.get(name) {
                 res = Some(r);
                 is_local = rib.kind == RibKind::Local;
             }
@@ -256,10 +230,27 @@ impl<'a> Resolver<'a> {
         (res, is_local)
     }
 
-    pub fn module_structure(&self, name: Symbol, module: &ModuleId) -> ModuleStructure {
-        let modules = &self.modules[module][Ns::Modules][0];
-        let values = &self.modules[module][Ns::Values][0];
-        let types = &self.modules[module][Ns::Types][0];
+    pub fn all_module_meta(&self) -> Vec<ModuleMeta> {
+        self.modules
+            .iter()
+            .filter_map(|(id, m)| {
+                if let Module::Normal(info) = m {
+                    if !info.external {
+                        Some(self.module_meta(id))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn module_meta(&self, module: &ModuleId) -> ModuleMeta {
+        let modules = &self.modules[module].info().scopes[Ns::Modules][0];
+        let values = &self.modules[module].info().scopes[Ns::Values][0];
+        let types = &self.modules[module].info().scopes[Ns::Types][0];
         let items = values
             .iter()
             .filter_map(|(name, res)| match res {
@@ -272,30 +263,32 @@ impl<'a> Resolver<'a> {
             }))
             .collect();
 
-        let children = modules
-            .iter()
-            .filter_map(|(name, res)| match &***name {
-                "@package" => None,
-                "@self" => None,
-                "@super" => None,
-                _ => match res {
-                    Res::Module(id) => Some(self.module_structure(*name, id)),
-                    _ => None,
-                },
-            })
-            .collect();
-
-        ModuleStructure {
-            name,
-            id: *module,
+        ModuleMeta {
+            name: *self.modules[module].name(),
             items,
-            children,
         }
     }
 
     fn add_root(&mut self) {
-        self.add_module(ModuleId::dummy());
-        self.set_module(ModuleId::dummy());
+        self.modules.insert(
+            ModuleId::Virtual(0),
+            Module::Normal(ModuleInfo {
+                module: crate::Module {
+                    name: Symbol::dummy(),
+                    items: Vec::new(),
+                },
+                scopes: PerNs {
+                    modules: vec![Rib::new(RibKind::Global)],
+                    values: vec![Rib::new(RibKind::Global)],
+                    types: vec![Rib::new(RibKind::Global)],
+                    labels: Vec::new(),
+                },
+                exports: Vec::new(),
+                external: true,
+            }),
+        );
+
+        self.set_module(ModuleId::Virtual(0));
         self.define(
             Ns::Values,
             Symbol::new("true"),
@@ -486,28 +479,53 @@ impl<T> std::ops::IndexMut<Ns> for PerNs<T> {
     }
 }
 
-impl ModuleStructure {
-    pub fn find_path(&self, id: &Id, path: &mut Vec<Symbol>) -> bool {
-        if let Some(symbol) = self
-            .items
-            .iter()
-            .find_map(|(s, (v, _))| if v == id { Some(*s) } else { None })
-        {
-            path.push(symbol);
-            true
-        } else {
-            for child in &self.children {
-                if child.find_path(id, path) {
-                    path.push(child.name);
-
-                    return true;
-                }
-            }
-
-            false
+impl Module {
+    pub fn name(&self) -> &Symbol {
+        match self {
+            Module::Normal(info) => &info.module.name,
+            Module::Virtual(virt) => &virt.name,
         }
     }
 
+    pub fn info(&self) -> &ModuleInfo {
+        match self {
+            Module::Normal(info) => info,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn info_mut(&mut self) -> &mut ModuleInfo {
+        match self {
+            Module::Normal(info) => info,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn virt_mut(&mut self) -> &mut VirtualModule {
+        match self {
+            Module::Virtual(virt) => virt,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Export {
+    pub fn module(&self) -> &ModuleId {
+        match self {
+            Export::Value(m, _) => m,
+            Export::Type(m, _) => m,
+        }
+    }
+
+    pub fn id(&self) -> &Id {
+        match self {
+            Export::Value(_, id) => id,
+            Export::Type(_, id) => id,
+        }
+    }
+}
+
+impl ModuleMeta {
     pub fn store(&self, path: impl AsRef<std::path::Path>) {
         let file = std::fs::File::create(path).unwrap();
 
@@ -518,5 +536,14 @@ impl ModuleStructure {
         let file = std::fs::File::open(path).unwrap();
 
         bincode::deserialize_from(file).unwrap()
+    }
+}
+
+impl std::fmt::Display for ModuleId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ModuleId::Normal(name) => name.fmt(f),
+            ModuleId::Virtual(id) => write!(f, "Virtual({})", id),
+        }
     }
 }

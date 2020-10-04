@@ -259,31 +259,10 @@ impl Display for Stmt {
     }
 }
 
-impl Display for Path {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        if self.root {
-            write!(f, "/")?;
-        }
-
-        write!(f, "{}", list(&self.segs, "/"))
-    }
-}
-
-impl Display for PathSeg {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        match self {
-            PathSeg::Name(name) => name.fmt(f),
-            PathSeg::Current => write!(f, "."),
-            PathSeg::Parent => write!(f, ".."),
-            PathSeg::Package => write!(f, "~"),
-        }
-    }
-}
-
 impl Display for Expr {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
-            ExprKind::Path { path } => path.fmt(f),
+            ExprKind::Ident { name } => name.fmt(f),
             ExprKind::Apply { expr, args } => write!(f, "{}.<{}>", expr, list(args, ", ")),
             ExprKind::Int { val } => val.fmt(f),
             ExprKind::Float { bits } => f64::from_bits(*bits).fmt(f),
@@ -437,7 +416,7 @@ impl Display for Type {
         match &self.kind {
             TypeKind::Infer => write!(f, "_"),
             TypeKind::Parens { inner } => write!(f, "({})", inner),
-            TypeKind::Path { path } => path.fmt(f),
+            TypeKind::Ident { name } => name.fmt(f),
             TypeKind::Func { params, ret } => write!(f, "fn ({}) -> {}", list(params, ", "), ret),
             TypeKind::Ref { mut_: true, ty } => write!(f, "*mut {}", ty),
             TypeKind::Ref { mut_: false, ty } => write!(f, "*{}", ty),

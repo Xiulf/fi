@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 pub struct BuildFiles {
     pub bin: PathBuf,
-    pub modules: PathBuf,
+    pub modules: Vec<PathBuf>,
     pub exports: PathBuf,
     pub typemap: PathBuf,
 }
@@ -16,13 +16,6 @@ pub fn build(mut opts: Opts) -> BuildFiles {
 
     let reporter = Reporter::default();
     let manifest = get_manifest(&reporter, &opts.project_dir);
-    let module_dir = format!(
-        "{}/{}.shade-modules",
-        manifest.package.target_dir.display(),
-        manifest.package.name
-    )
-    .into();
-
     let exports_dir = format!(
         "{}/{}.shade-exports",
         manifest.package.target_dir.display(),
@@ -62,21 +55,37 @@ pub fn build(mut opts: Opts) -> BuildFiles {
 
     reporter.report(true);
 
-    println!("{}", package);
+    // println!("{}", package);
 
-    /* let (hir, module_structure) = hir::convert::convert(
+    let (hir, meta) = hir::convert::convert(
         &reporter,
         &package,
         &manifest.package.name,
-        dep_files.iter().map(|d| d.modules.as_ref()),
+        dep_files
+            .iter()
+            .flat_map(|d| d.modules.iter().map(|d| d.as_path())),
         dep_files.iter().map(|d| d.exports.as_ref()),
     );
 
-    let exports = hir.collect_exports(&module_structure);
+    let exports = hir.collect_exports();
 
     reporter.report(true);
-    module_structure.store(&module_dir);
     exports.store(&exports_dir);
+
+    let meta_files = meta
+        .iter()
+        .map(|meta| {
+            let path = PathBuf::from(format!(
+                "{}/{}.shade-module",
+                manifest.package.target_dir.display(),
+                meta.name,
+            ));
+
+            meta.store(&path);
+
+            path
+        })
+        .collect();
 
     // println!("{}", hir);
     // println!("{:#?}", module_structure);
@@ -84,13 +93,12 @@ pub fn build(mut opts: Opts) -> BuildFiles {
     check::with_tcx(
         &reporter,
         &hir,
-        &module_structure,
         &opts.target,
         dep_files.iter().map(|d| d.typemap.as_ref()),
         |tcx| {
             let mir = mir::convert::convert(&tcx, &hir);
 
-            println!("{}", mir);
+            // println!("{}", mir);
 
             tcx.store_type_map(&types_dir);
 
@@ -103,11 +111,11 @@ pub fn build(mut opts: Opts) -> BuildFiles {
                 dep_files.iter().map(|d| d.bin.as_ref()),
             );
         },
-    ); */
+    );
 
     BuildFiles {
         bin: bin_dir,
-        modules: module_dir,
+        modules: meta_files,
         exports: exports_dir,
         typemap: types_dir,
     }

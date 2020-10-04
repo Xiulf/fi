@@ -193,24 +193,6 @@ pub enum StmtKind {
 
 #[derive(Debug, Clone, derivative::Derivative)]
 #[derivative(Hash)]
-pub struct Path {
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-    pub root: bool,
-    pub segs: Vec<PathSeg>,
-}
-
-#[derive(Debug, Clone, derivative::Derivative)]
-#[derivative(Hash)]
-pub enum PathSeg {
-    Name(Ident),
-    Current,
-    Parent,
-    Package,
-}
-
-#[derive(Debug, Clone, derivative::Derivative)]
-#[derivative(Hash)]
 pub struct Expr {
     #[derivative(Hash = "ignore")]
     pub span: Span,
@@ -219,8 +201,8 @@ pub struct Expr {
 
 #[derive(Debug, Clone, Hash)]
 pub enum ExprKind {
-    Path {
-        path: Path,
+    Ident {
+        name: Ident,
     },
     Apply {
         expr: Box<Expr>,
@@ -410,8 +392,8 @@ pub enum TypeKind {
     Parens {
         inner: Box<Type>,
     },
-    Path {
-        path: Path,
+    Ident {
+        name: Ident,
     },
     Func {
         params: Vec<TypeParam>,
@@ -449,12 +431,6 @@ pub struct TypeParam {
     #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub ty: Type,
-}
-
-impl PathSeg {
-    pub fn is_parent(&self) -> bool {
-        matches!(self, PathSeg::Parent | PathSeg::Current | PathSeg::Package)
-    }
 }
 
 fn hash_ident<H: std::hash::Hasher>(ident: &Ident, state: &mut H) {

@@ -19,7 +19,6 @@ pub struct Tcx<'tcx> {
     pub reporter: &'tcx Reporter,
     pub(crate) intern: TcxIntern<'tcx>,
     pub package: &'tcx hir::Package,
-    pub module_structure: &'tcx hir::resolve::ModuleStructure,
     pub(crate) target: &'tcx target_lexicon::Triple,
     pub(super) types: RefCell<BTreeMap<hir::Id, Ty<'tcx>>>,
     layouts: RefCell<HashMap<*const Type<'tcx>, TyLayout<'tcx, Ty<'tcx>>>>,
@@ -171,7 +170,6 @@ impl<'tcx> Tcx<'tcx> {
         arena: &'tcx bumpalo::Bump,
         target: &'tcx target_lexicon::Triple,
         package: &'tcx hir::Package,
-        module_structure: &'tcx hir::resolve::ModuleStructure,
     ) -> Self {
         let intern = TcxIntern {
             arena,
@@ -190,7 +188,6 @@ impl<'tcx> Tcx<'tcx> {
             intern,
             target,
             package,
-            module_structure,
             lang_items: hir::lang::LangItems::collect(package),
             types: RefCell::new(BTreeMap::new()),
             layouts: RefCell::new(HashMap::new()),
@@ -293,51 +290,33 @@ impl<'tcx> Tcx<'tcx> {
         self.intern_ty(Type::VFloat(TypeVar(var)))
     }
 
-    pub fn get_full_name(&self, id: &hir::Id, base: bool) -> String {
-        let mut path = Vec::new();
-
-        if self.module_structure.find_path(id, &mut path) {
-            if base {
-                path.into_iter()
-                    .chain(std::iter::once(self.module_structure.name))
-                    .rev()
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>()
-                    .join("/")
-            } else {
-                path.into_iter()
-                    .rev()
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>()
-                    .join("/")
-            }
-        } else if let Some(item) = self.package.items.get(id) {
-            item.name.to_string()
-        } else if let Some(import) = self.package.imports.0.get(id) {
-            import.name.to_string()
+    pub fn get_full_name(&self, id: &hir::Id) -> String {
+        if let Some(import) = self.package.imports.0.get(id) {
+            import.path.clone()
         } else {
-            id.to_string()
+            self.package
+                .modules
+                .values()
+                .filter_map(|module| {
+                    if module.items.contains(id) {
+                        Some(format!("{}.{}", module.name, self.package.items[id].name))
+                    } else {
+                        None
+                    }
+                })
+                .next()
+                .unwrap()
         }
     }
 
     pub fn type_map(&self) -> TypeMap<'tcx> {
         let mut tmap = TypeMap(HashMap::new());
 
-        fn rec<'tcx>(
-            this: &Tcx<'tcx>,
-            tmap: &mut TypeMap<'tcx>,
-            m: &hir::resolve::ModuleStructure,
-        ) {
-            for (_, (id, _)) in &m.items {
-                tmap.0.insert(*id, this.type_of(id));
-            }
-
-            for child in &m.children {
-                rec(this, tmap, child);
+        for (_, module) in &self.package.modules {
+            for id in &module.items {
+                tmap.0.insert(*id, self.type_of(id));
             }
         }
-
-        rec(self, &mut tmap, self.module_structure);
 
         tmap
     }

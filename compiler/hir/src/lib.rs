@@ -24,10 +24,17 @@ pub struct Id(ItemId, u64);
 #[derive(Debug)]
 pub struct Package {
     pub name: Symbol,
+    pub modules: BTreeMap<Symbol, Module>,
     pub items: BTreeMap<Id, Item>,
     pub exprs: BTreeMap<Id, Expr>,
     pub types: BTreeMap<Id, Type>,
     pub imports: Imports,
+}
+
+#[derive(Debug)]
+pub struct Module {
+    pub name: Symbol,
+    pub items: Vec<Id>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -312,51 +319,47 @@ pub struct TypeParam {
 }
 
 impl Package {
-    pub fn collect_exports(&self, module_structure: &resolve::ModuleStructure) -> Imports {
+    pub fn collect_exports(&self) -> Imports {
         Imports(
-            self.items
-                .iter()
-                .filter_map(|(id, item)| {
-                    let mut path = Vec::new();
+            self.modules
+                .values()
+                .flat_map(|module| {
+                    module
+                        .items
+                        .iter()
+                        .map(|id| {
+                            let item = &self.items[id];
+                            let path = format!("{}.{}", module.name, item.name);
+                            let symbol = if let ItemKind::Extern { .. } = item.kind {
+                                item.name.to_string()
+                            } else if item.no_mangle() {
+                                item.name.to_string()
+                            } else if item.is_main() {
+                                String::from("main")
+                            } else {
+                                mangling::mangle(path.bytes())
+                            };
 
-                    module_structure.find_path(id, &mut path);
-
-                    let path = path
-                        .into_iter()
-                        .chain(std::iter::once(module_structure.name))
-                        .rev()
-                        .map(|s| s.to_string())
+                            (
+                                *id,
+                                Import {
+                                    id: *id,
+                                    name: item.name,
+                                    path,
+                                    symbol,
+                                    attrs: item.attrs.clone(),
+                                    kind: match item.kind {
+                                        ItemKind::Extern { abi, .. } => ImportKind::Extern { abi },
+                                        ItemKind::Func { .. } => ImportKind::Func,
+                                        ItemKind::Var { .. } => ImportKind::Var,
+                                        ItemKind::Struct { .. } => ImportKind::Struct,
+                                        ItemKind::Enum { .. } => ImportKind::Enum,
+                                        _ => unimplemented!(),
+                                    },
+                                },
+                            )
+                        })
                         .collect::<Vec<_>>()
-                        .join("/");
-
-                    let symbol = if let ItemKind::Extern { .. } = item.kind {
-                        item.name.to_string()
-                    } else if item.no_mangle() {
-                        item.name.to_string()
-                    } else if item.is_main() {
-                        String::from("main")
-                    } else {
-                        mangling::mangle(path.bytes())
-                    };
-
-                    Some((
-                        *id,
-                        Import {
-                            id: item.id,
-                            name: item.name,
-                            path,
-                            symbol,
-                            attrs: item.attrs.clone(),
-                            kind: match item.kind {
-                                ItemKind::Extern { abi, .. } => ImportKind::Extern { abi },
-                                ItemKind::Func { .. } => ImportKind::Func,
-                                ItemKind::Var { global: true, .. } => ImportKind::Var,
-                                ItemKind::Struct { .. } => ImportKind::Struct,
-                                ItemKind::Enum { .. } => ImportKind::Enum,
-                                _ => return None,
-                            },
-                        },
-                    ))
                 })
                 .collect(),
         )

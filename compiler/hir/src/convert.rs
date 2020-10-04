@@ -1,6 +1,6 @@
 use crate::*;
 use diagnostics::{Diagnostic, Reporter, Severity};
-use resolve::{ModuleId, Ns, Res, Resolver, RibKind};
+use resolve::{Export, ModuleId, Ns, Res, Resolver, RibKind};
 use std::collections::{BTreeMap, HashMap};
 use syntax::ast;
 
@@ -10,7 +10,7 @@ pub fn convert<'a>(
     package_name: &str,
     sdeps: impl Iterator<Item = &'a std::path::Path>,
     ideps: impl Iterator<Item = &'a std::path::Path>,
-) -> (Package, resolve::ModuleStructure) {
+) -> (Package, Vec<resolve::ModuleMeta>) {
     let modules = sort_modules(reporter, &ast.modules);
     let mut converter = Converter::new(reporter, sdeps, ideps);
 
@@ -32,7 +32,12 @@ fn sort_modules<'a>(reporter: &Reporter, modules: &'a [ast::Module]) -> Vec<&'a 
 
     for module in modules {
         for import in &module.imports {
-            g.add_edge(ids[&module.name.symbol], ids[&import.module.symbol], ());
+            match (ids.get(&module.name.symbol), ids.get(&import.module.symbol)) {
+                (Some(a), Some(b)) => {
+                    g.add_edge(*a, *b, ());
+                }
+                _ => {}
+            }
         }
     }
 
@@ -41,6 +46,7 @@ fn sort_modules<'a>(reporter: &Reporter, modules: &'a [ast::Module]) -> Vec<&'a 
             .into_iter()
             .map(|i| g.node_weight(i).unwrap())
             .copied()
+            .rev()
             .collect(),
         Err(e) => {
             let module = g.node_weight(e.node_id()).unwrap();
@@ -69,6 +75,7 @@ pub struct Converter<'a> {
     imports: Imports,
     current_item: ItemId,
     local_id: u64,
+    vmods: usize,
 }
 
 impl<'a> Converter<'a> {
@@ -94,19 +101,21 @@ impl<'a> Converter<'a> {
             imports,
             current_item: ItemId(0),
             local_id: 0,
+            vmods: 0,
         }
     }
 
-    pub fn finish(self, package: Symbol) -> (Package, resolve::ModuleStructure) {
+    pub fn finish(self, package: Symbol) -> (Package, Vec<resolve::ModuleMeta>) {
         (
             Package {
                 name: package,
+                modules: BTreeMap::new(),
                 items: self.items,
                 exprs: self.exprs,
                 types: self.types,
                 imports: self.imports,
             },
-            self.resolver.module_structure(package, &package),
+            self.resolver.all_module_meta(),
         )
     }
 
@@ -117,16 +126,188 @@ impl<'a> Converter<'a> {
     }
 
     pub fn register_module(&mut self, module: &ast::Module) -> ModuleId {
-        let id = module.name.symbol;
+        println!("register {}", module.name);
+        let id = ModuleId::Normal(module.name.symbol);
 
-        self.resolver.add_module(id);
+        self.resolver.add_module(module.name.symbol, false);
         self.resolver.set_module(id);
 
         for item in &module.items {
             self.register_item(item, true);
         }
 
+        for import in &module.imports {
+            self.register_import(import, &id);
+        }
+
+        // self.register_exports(&module.exports, &id);
+
         id
+    }
+
+    pub fn register_import(&mut self, import: &ast::Import, module: &ModuleId) {
+        let imodule = ModuleId::Normal(import.module.symbol);
+
+        if let Some(alias) = import.alias {
+            self.import_virtual(
+                module,
+                &imodule,
+                &import.imports,
+                import.hiding,
+                alias,
+                import.span,
+            );
+        } else {
+            self.import_normal(
+                module,
+                &imodule,
+                &import.imports,
+                import.hiding,
+                import.span,
+            );
+        }
+    }
+
+    pub fn import_virtual(
+        &mut self,
+        module: &ModuleId,
+        imodule: &ModuleId,
+        names: &Option<Vec<ast::ImportItem>>,
+        hiding: bool,
+        alias: Ident,
+        span: Span,
+    ) {
+        let exports = self.collect_imports(imodule, names, hiding, span);
+
+        // TODO: if virtual module already exists
+        self.vmods += 1;
+        let vmod_id = ModuleId::Virtual(self.vmods);
+
+        self.resolver.modules.insert(
+            vmod_id,
+            crate::resolve::Module::Virtual(crate::resolve::VirtualModule {
+                name: alias.symbol,
+                exports: exports.into_iter().map(|(_, e)| e).collect(),
+            }),
+        );
+    }
+
+    pub fn import_normal(
+        &mut self,
+        module: &ModuleId,
+        imodule: &ModuleId,
+        names: &Option<Vec<ast::ImportItem>>,
+        hiding: bool,
+        span: Span,
+    ) {
+        let imports = self.collect_imports(imodule, names, hiding, span);
+
+        for (name, export) in imports {
+            self.import_single(module, name, export);
+        }
+    }
+
+    pub fn import_single(&mut self, module: &ModuleId, name: Ident, export: Export) {
+        match export {
+            Export::Value(m, id) => {
+                // TODO: check for duplicate import
+                self.resolver
+                    .modules
+                    .get_mut(module)
+                    .unwrap()
+                    .info_mut()
+                    .scopes[Ns::Values]
+                    .last_mut()
+                    .unwrap()
+                    .insert(name.symbol, Res::Item(id));
+            }
+            Export::Type(m, id) => {
+                // TODO: check for duplicate import
+                self.resolver
+                    .modules
+                    .get_mut(module)
+                    .unwrap()
+                    .info_mut()
+                    .scopes[Ns::Types]
+                    .last_mut()
+                    .unwrap()
+                    .insert(name.symbol, Res::Item(id));
+            }
+        }
+    }
+
+    pub fn collect_imports(
+        &self,
+        imodule: &ModuleId,
+        imports: &Option<Vec<ast::ImportItem>>,
+        hiding: bool,
+        span: Span,
+    ) -> Vec<(Ident, Export)> {
+        let mut exports = self.collect_exports(imodule);
+
+        if let Some(imports) = imports {
+            if hiding {
+                for import in imports {
+                    self.find_export(imodule, &mut exports, &import.name);
+                }
+
+                exports
+                    .into_iter()
+                    .map(|(mut n, e)| {
+                        n.span = span;
+                        (n, e)
+                    })
+                    .collect()
+            } else {
+                imports
+                    .into_iter()
+                    .filter_map(|import| {
+                        self.find_export(imodule, &mut exports, &import.name)
+                            .map(|(mut n, e)| {
+                                n.span = span;
+                                (n, e)
+                            })
+                    })
+                    .collect()
+            }
+        } else {
+            exports
+                .into_iter()
+                .map(|(mut n, e)| {
+                    n.span = span;
+                    (n, e)
+                })
+                .collect()
+        }
+    }
+
+    pub fn find_export(
+        &self,
+        module: &ModuleId,
+        exports: &mut Vec<(Ident, Export)>,
+        name: &Ident,
+    ) -> Option<(Ident, Export)> {
+        if let Some(idx) = exports.iter().position(|(n, _)| n.symbol == name.symbol) {
+            Some(exports.swap_remove(idx))
+        } else {
+            // TODO: report error
+            None
+        }
+    }
+
+    pub fn collect_exports(&self, module: &ModuleId) -> Vec<(Ident, Export)> {
+        match &self.resolver.modules[module] {
+            crate::resolve::Module::Normal(m) => m
+                .exports
+                .iter()
+                .map(|export| (self.items[export.id()].name, *export))
+                .collect(),
+            crate::resolve::Module::Virtual(m) => m
+                .exports
+                .iter()
+                .map(|export| (self.items[export.id()].name, *export))
+                .collect(),
+        }
     }
 
     pub fn register_item(&mut self, item: &ast::Item, top_level: bool) -> ItemId {
@@ -546,14 +727,15 @@ impl<'a> Converter<'a> {
         let id = self.next_id();
         let kind = match &expr.kind {
             ast::ExprKind::Parens { inner } => return self.trans_expr(inner),
-            ast::ExprKind::Path { path } => {
-                if let Some(res) = self.resolver.get_path(Ns::Values, path) {
+            ast::ExprKind::Ident { name } => {
+                if let (Some(res), _) = self.resolver.get(Ns::Values, None, &name.symbol) {
                     ExprKind::Path { res }
                 } else {
                     self.reporter.add(
-                        Diagnostic::new(Severity::Error, 0004, format!("Unknown value '{}'", path))
-                            .label(Severity::Error, path.span, None::<String>),
+                        Diagnostic::new(Severity::Error, 0004, format!("Unknown value '{}'", name))
+                            .label(Severity::Error, name.span, None::<String>),
                     );
+
                     ExprKind::Err
                 }
             }
@@ -697,13 +879,13 @@ impl<'a> Converter<'a> {
         let kind = match &ty.kind {
             ast::TypeKind::Parens { inner } => return self.trans_ty(inner),
             ast::TypeKind::Infer => TypeKind::Infer,
-            ast::TypeKind::Path { path } => {
-                if let Some(res) = self.resolver.get_path(Ns::Types, path) {
+            ast::TypeKind::Ident { name } => {
+                if let (Some(res), _) = self.resolver.get(Ns::Types, None, &name.symbol) {
                     TypeKind::Path { res }
                 } else {
                     self.reporter.add(
-                        Diagnostic::new(Severity::Error, 0005, format!("Unknown type '{}'", path))
-                            .label(Severity::Error, path.span, None::<String>),
+                        Diagnostic::new(Severity::Error, 0005, format!("Unknown type '{}'", name))
+                            .label(Severity::Error, name.span, None::<String>),
                     );
 
                     TypeKind::Err

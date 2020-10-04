@@ -1,4 +1,4 @@
-module libc
+module Libc
 
 extern "C" write: fn (fd: i32, buf: *u8, count: usize) -> isize
 extern "C" malloc: fn (size: usize) -> *()

@@ -343,7 +343,7 @@ impl fmt::Display for TyDisplay<'_, '_> {
             Type::TypeOf(id, args) => write!(
                 f,
                 "{}<{}>",
-                self.tcx.get_full_name(id, true),
+                self.tcx.get_full_name(id),
                 args.iter()
                     .map(|a| a.display(self.tcx).to_string())
                     .collect::<Vec<_>>()
@@ -375,8 +375,8 @@ impl fmt::Display for TyDisplay<'_, '_> {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
-            Type::Struct(id, _) => write!(f, "{}", self.tcx.get_full_name(id, true)),
-            Type::Enum(id, _) => write!(f, "{}", self.tcx.get_full_name(id, true)),
+            Type::Struct(id, _) => write!(f, "{}", self.tcx.get_full_name(id)),
+            Type::Enum(id, _) => write!(f, "{}", self.tcx.get_full_name(id)),
             Type::Func(Some(id), params, ret) => write!(
                 f,
                 "fn ({}) -> {} {{{}}}",
@@ -386,7 +386,7 @@ impl fmt::Display for TyDisplay<'_, '_> {
                     .collect::<Vec<_>>()
                     .join(", "),
                 ret.display(self.tcx),
-                self.tcx.get_full_name(id, true),
+                self.tcx.get_full_name(id),
             ),
             Type::Func(None, params, ret) => write!(
                 f,

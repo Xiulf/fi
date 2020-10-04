@@ -74,24 +74,9 @@ pub fn declare<'tcx>(
             item.name.to_string()
         }
     } else {
-        let mut path = Vec::new();
-        let found = tcx.module_structure.find_path(&item.id, &mut path);
+        let path = tcx.get_full_name(&item.id);
 
-        if found && path.len() == 1 && &**item.name.symbol == "main" {
-            String::from("main")
-        } else if found {
-            let name = path
-                .into_iter()
-                .chain(std::iter::once(tcx.module_structure.name))
-                .rev()
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>()
-                .join("/");
-
-            mangling::mangle(name.bytes())
-        } else {
-            unreachable!();
-        }
+        mangling::mangle(path.bytes())
     };
 
     match &item.kind {
