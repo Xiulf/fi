@@ -5,6 +5,7 @@ pub use opts::*;
 use std::path::{Path, PathBuf};
 
 pub struct BuildFiles {
+    pub manifest: Manifest,
     pub bin: PathBuf,
     pub modules: Vec<PathBuf>,
     pub exports: PathBuf,
@@ -114,6 +115,7 @@ pub fn build(mut opts: Opts) -> BuildFiles {
     );
 
     BuildFiles {
+        manifest,
         bin: bin_dir,
         modules: meta_files,
         exports: exports_dir,

@@ -124,20 +124,36 @@ impl Display for Item {
                 val,
             } => write!(f, "const {} = {};", self.name, val),
             ItemKind::Const { ty, val } => write!(f, "const {}: {} = {};", self.name, ty, val),
-            ItemKind::Struct { generics, fields } => {
+            ItemKind::Struct {
+                generics,
+                fields,
+                methods,
+            } => {
                 writeln!(f, "struct {}{}", self.name, generics)?;
 
                 for field in fields {
                     writeln!(indent(f), "{}", field)?;
                 }
 
+                for method in methods {
+                    writeln!(indent(f), "{}", method)?;
+                }
+
                 write!(f, "end")
             }
-            ItemKind::Enum { generics, variants } => {
+            ItemKind::Enum {
+                generics,
+                variants,
+                methods,
+            } => {
                 writeln!(f, "enum {}{}", self.name, generics)?;
 
                 for variant in variants {
                     writeln!(indent(f), "{}", variant)?;
+                }
+
+                for method in methods {
+                    writeln!(indent(f), "{}", method)?;
                 }
 
                 write!(f, "end")
@@ -225,6 +241,26 @@ impl Display for EnumVariant {
         }
 
         Ok(())
+    }
+}
+
+impl Display for Method {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        let ret = if let TypeKind::Infer = &self.ret.kind {
+            String::new()
+        } else {
+            format!("-> {} ", self.ret)
+        };
+
+        write!(
+            f,
+            "fn{} {}({}) {}{}",
+            self.generics,
+            self.name,
+            list(&self.params, ", "),
+            ret,
+            self.body
+        )
     }
 }
 

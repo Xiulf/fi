@@ -3,5 +3,5 @@ name = "test"
 version = "0.1.0"
 authors = ["Tymo Ooijevaar <tttymo@gmail.com>"]
 
-[dependencies.core]
-path = "../lib/core"
+# [dependencies.core]
+# path = "../lib/core"

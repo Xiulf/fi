@@ -97,10 +97,19 @@ pub enum ItemKind {
     Struct {
         generics: Generics,
         fields: Vec<StructField>,
+        methods: Vec<Id>,
     },
     Enum {
         generics: Generics,
         variants: Vec<EnumVariant>,
+        methods: Vec<Id>,
+    },
+    Method {
+        owner: Id,
+        generics: Generics,
+        params: Vec<Id>,
+        ret: Id,
+        body: Block,
     },
     Ctor {
         item: Id,

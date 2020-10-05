@@ -385,9 +385,14 @@ impl Parse for Item {
             let name = input.parse()?;
             let generics = input.parse()?;
             let mut fields = Vec::new();
+            let mut methods = Vec::new();
 
-            while !input.is_empty() && !input.peek::<TEnd>() {
+            while !input.is_empty() && !input.peek::<TEnd>() && !input.peek::<TFn>() {
                 fields.push(input.parse()?);
+            }
+
+            while !input.is_empty() && input.peek::<TFn>() {
+                methods.push(input.parse()?);
             }
 
             input.parse::<TEnd>()?;
@@ -396,15 +401,24 @@ impl Parse for Item {
                 span: start.to(input.prev_span()),
                 attrs,
                 name,
-                kind: ItemKind::Struct { generics, fields },
+                kind: ItemKind::Struct {
+                    generics,
+                    fields,
+                    methods,
+                },
             })
         } else if let Ok(_) = input.parse::<TEnum>() {
             let name = input.parse()?;
             let generics = input.parse()?;
             let mut variants = Vec::new();
+            let mut methods = Vec::new();
 
-            while !input.is_empty() && !input.peek::<TEnd>() {
+            while !input.is_empty() && !input.peek::<TEnd>() && !input.peek::<TFn>() {
                 variants.push(input.parse()?);
+            }
+
+            while !input.is_empty() && input.peek::<TFn>() {
+                methods.push(input.parse()?);
             }
 
             input.parse::<TEnd>()?;
@@ -413,7 +427,11 @@ impl Parse for Item {
                 span: start.to(input.prev_span()),
                 attrs,
                 name,
-                kind: ItemKind::Enum { generics, variants },
+                kind: ItemKind::Enum {
+                    generics,
+                    variants,
+                    methods,
+                },
             })
         } else {
             input.error(
@@ -557,6 +575,47 @@ impl Parse for EnumVariant {
             span: start.to(input.prev_span()),
             name,
             fields,
+        })
+    }
+}
+
+impl Parse for Method {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let _ = input.parse::<TFn>()?;
+        let name = input.parse()?;
+        let generics = input.parse()?;
+        let _ = input.parse::<TLParen>()?;
+        let mut params = Vec::new();
+
+        while !input.is_empty() && !input.peek::<TRParen>() {
+            params.push(input.parse()?);
+
+            if !input.peek::<TRParen>() {
+                input.parse::<TComma>()?;
+            }
+        }
+
+        input.parse::<TRParen>()?;
+
+        let ret = if let Ok(_) = input.parse::<TArrow>() {
+            input.parse()?
+        } else {
+            Type {
+                span: input.span(),
+                kind: TypeKind::Infer,
+            }
+        };
+
+        let body = Block::parse(input, TEnd::parse)?;
+
+        Ok(Method {
+            span: start.to(input.prev_span()),
+            name,
+            generics,
+            params,
+            ret,
+            body,
         })
     }
 }
@@ -871,13 +930,36 @@ impl Expr {
                         },
                     };
                 } else if let Ok(name) = input.parse::<Ident>() {
-                    expr = Expr {
-                        span: start.to(input.prev_span()),
-                        kind: ExprKind::Field {
-                            obj: Box::new(expr),
-                            field: name,
-                        },
-                    };
+                    if let Ok(_) = input.parse::<TLParen>() {
+                        let mut args = Vec::new();
+
+                        while !input.is_empty() && !input.peek::<TRParen>() {
+                            args.push(input.parse()?);
+
+                            if !input.peek::<TRParen>() {
+                                input.parse::<TComma>()?;
+                            }
+                        }
+
+                        input.parse::<TRParen>()?;
+
+                        expr = Expr {
+                            span: start.to(input.prev_span()),
+                            kind: ExprKind::MethodCall {
+                                obj: Box::new(expr),
+                                method: name,
+                                args,
+                            },
+                        };
+                    } else {
+                        expr = Expr {
+                            span: start.to(input.prev_span()),
+                            kind: ExprKind::Field {
+                                obj: Box::new(expr),
+                                field: name,
+                            },
+                        };
+                    }
                 } else {
                     return input.error(
                         "expected '(', '<', '*', 'type', a number or an identifier",

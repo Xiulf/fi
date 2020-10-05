@@ -41,6 +41,46 @@ impl<'tcx> Tcx<'tcx> {
 
                 ty
             }
+            hir::ItemKind::Method {
+                owner,
+                generics,
+                params,
+                ret,
+                body: _,
+            } => {
+                let params = self.intern.intern_param_list(
+                    &std::iter::once(Param {
+                        span: item.name.span,
+                        name: Ident {
+                            symbol: hir::Symbol::dummy(),
+                            span: item.name.span,
+                        },
+                        ty: self.type_of(owner),
+                    })
+                    .chain(params.iter().map(|id| {
+                        let param = &self.package.items[id];
+
+                        Param {
+                            span: param.span,
+                            name: param.name,
+                            ty: self.type_of(id),
+                        }
+                    }))
+                    .collect::<Vec<_>>(),
+                );
+
+                let ret = self.type_of(ret);
+                let mut ty = self.intern_ty(Type::Func(Some(*id), params, ret));
+
+                if !generics.params.is_empty() {
+                    let args = generics.params.iter().map(|g| g.id).collect::<Vec<_>>();
+                    let args = self.intern.intern_id_list(&args);
+
+                    ty = self.intern_ty(Type::Forall(args, ty));
+                }
+
+                ty
+            }
             hir::ItemKind::Param { ty } => self.type_of(ty),
             hir::ItemKind::Var { ty, .. } => self.type_of(ty),
             hir::ItemKind::Const { ty, .. } => self.type_of(ty),
@@ -91,6 +131,13 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.constrain(Constraint::Equal(body_ty, body.span, ret_ty, ret_span));
             }
+            hir::ItemKind::Method { ret, body, .. } => {
+                let body_ty = self.infer_block(body);
+                let ret_ty = self.type_of(ret);
+                let ret_span = self.span_of(ret);
+
+                self.constrain(Constraint::Equal(body_ty, body.span, ret_ty, ret_span));
+            }
             hir::ItemKind::Var {
                 ty, val: Some(val), ..
             } => {
@@ -109,7 +156,11 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.constrain(Constraint::Equal(val_ty, val_span, ty_ty, ty_span));
             }
-            hir::ItemKind::Struct { generics, fields } => {
+            hir::ItemKind::Struct {
+                generics,
+                fields,
+                methods: _,
+            } => {
                 let fields = fields
                     .iter()
                     .map(|f| Field {
@@ -131,7 +182,11 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.types.borrow_mut().insert(*id, new_ty);
             }
-            hir::ItemKind::Enum { generics, variants } => {
+            hir::ItemKind::Enum {
+                generics,
+                variants,
+                methods: _,
+            } => {
                 let variants = variants
                     .iter()
                     .map(|v| {

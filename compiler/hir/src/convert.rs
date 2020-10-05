@@ -705,7 +705,11 @@ impl<'a> Converter<'a> {
                     },
                 );
             }
-            ast::ItemKind::Struct { generics, fields } => {
+            ast::ItemKind::Struct {
+                generics,
+                fields,
+                methods,
+            } => {
                 let cons_id = self.next_id();
 
                 self.resolver.push_rib(Ns::Types, RibKind::Block);
@@ -720,6 +724,11 @@ impl<'a> Converter<'a> {
                     })
                     .collect::<Vec<_>>();
 
+                let methods = methods
+                    .iter()
+                    .map(|m| self.trans_method(m, id))
+                    .collect::<Vec<_>>();
+
                 self.resolver.pop_rib(Ns::Types);
 
                 self.items.insert(
@@ -732,6 +741,7 @@ impl<'a> Converter<'a> {
                         kind: ItemKind::Struct {
                             generics,
                             fields: fields.clone(),
+                            methods,
                         },
                     },
                 );
@@ -751,7 +761,11 @@ impl<'a> Converter<'a> {
                     },
                 );
             }
-            ast::ItemKind::Enum { generics, variants } => {
+            ast::ItemKind::Enum {
+                generics,
+                variants,
+                methods,
+            } => {
                 let variant_ids = variants.iter().map(|_| self.next_id()).collect::<Vec<_>>();
 
                 self.resolver.push_rib(Ns::Types, RibKind::Block);
@@ -797,6 +811,11 @@ impl<'a> Converter<'a> {
                     })
                     .collect();
 
+                let methods = methods
+                    .iter()
+                    .map(|m| self.trans_method(m, id))
+                    .collect::<Vec<_>>();
+
                 self.resolver.pop_rib(Ns::Types);
 
                 self.items.insert(
@@ -806,7 +825,11 @@ impl<'a> Converter<'a> {
                         id,
                         attrs,
                         name: item.name,
-                        kind: ItemKind::Enum { generics, variants },
+                        kind: ItemKind::Enum {
+                            generics,
+                            variants,
+                            methods,
+                        },
                     },
                 );
             }
@@ -839,6 +862,69 @@ impl<'a> Converter<'a> {
                 })
                 .collect(),
         }
+    }
+
+    pub fn trans_method(&mut self, method: &ast::Method, owner: Id) -> Id {
+        self.resolver.push_rib(Ns::Values, RibKind::Block);
+        self.resolver.push_rib(Ns::Types, RibKind::Block);
+        self.resolver.push_rib(Ns::Labels, RibKind::Block);
+
+        let id = self.next_id();
+        let generics = self.trans_generics(&method.generics);
+        let params = method
+            .params
+            .iter()
+            .map(|param| {
+                let id = self.next_id();
+                let ty = self.trans_ty(&param.ty);
+
+                self.resolver.define(
+                    Ns::Values,
+                    param.name.symbol,
+                    param.name.span,
+                    Res::Local(id),
+                );
+
+                self.items.insert(
+                    id,
+                    Item {
+                        span: param.span,
+                        id,
+                        attrs: Vec::new(),
+                        name: param.name,
+                        kind: ItemKind::Param { ty },
+                    },
+                );
+
+                id
+            })
+            .collect();
+
+        let ret = self.trans_ty(&method.ret);
+        let body = self.trans_block(&method.body);
+
+        self.resolver.pop_rib(Ns::Values);
+        self.resolver.pop_rib(Ns::Types);
+        self.resolver.pop_rib(Ns::Labels);
+
+        self.items.insert(
+            id,
+            Item {
+                span: method.span,
+                id,
+                attrs: Vec::new(),
+                name: method.name,
+                kind: ItemKind::Method {
+                    owner,
+                    generics,
+                    params,
+                    ret,
+                    body,
+                },
+            },
+        );
+
+        id
     }
 
     pub fn trans_block(&mut self, block: &ast::Block) -> Block {

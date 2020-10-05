@@ -107,10 +107,12 @@ pub enum ItemKind {
     Struct {
         generics: Generics,
         fields: Vec<StructField>,
+        methods: Vec<Method>,
     },
     Enum {
         generics: Generics,
         variants: Vec<EnumVariant>,
+        methods: Vec<Method>,
     },
 }
 
@@ -165,6 +167,19 @@ pub struct EnumVariant {
     #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub fields: Option<Vec<StructField>>,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct Method {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
+    pub generics: Generics,
+    pub params: Vec<Param>,
+    pub ret: Type,
+    pub body: Block,
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]

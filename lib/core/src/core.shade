@@ -1,6 +1,5 @@
 module Core (C)
 
-import Core.Vec as C
 import Core.Convert as C
 import Core.Option as C
 import Core.Range as C
