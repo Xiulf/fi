@@ -6,4 +6,3 @@ import Core.Option as C
 import Core.Range as C
 import Core.Ptr as C
 import Core.Intrinsic as C
-import Core.Gc as C

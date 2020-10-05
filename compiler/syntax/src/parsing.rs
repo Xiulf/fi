@@ -154,7 +154,7 @@ impl Module {
     fn parse_name(input: ParseStream) -> Result<Ident> {
         let mut name = input.parse::<Ident>()?;
 
-        if input.peek::<TDot>()
+        while input.peek::<TDot>()
             && input.peek2::<Ident>()
             && input.span().start.offset == name.span.end.offset
             && input.span().end.offset == input.cursor().bump().span().start.offset

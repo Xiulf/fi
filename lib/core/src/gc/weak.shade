@@ -1,0 +1,24 @@
+module Core.Gc.Weak (Weak, new, clone, drop)
+
+import Core.Gc (Gc, GcBox)
+
+struct Weak<T>
+    ptr: *GcBox<T>
+end
+
+@poly
+fn new<T>(gc: *Gc<T>) -> Weak<T>
+    gc.ptr.weak += 1;
+    Weak(gc.ptr)
+end
+
+@poly
+fn clone<T>(self: *Weak<T>) -> Weak<T>
+    self.ptr.weak += 1;
+    self.*
+end
+
+@poly
+fn drop<T>(self: *Weak<T>)
+    self.ptr.weak -= 1;
+end

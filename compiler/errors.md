@@ -20,3 +20,4 @@
 | 0018 | invalid shadow.toml file                       |
 | 0019 | cyclic module                                  |
 | 0020 | Module M does not export name N                |
+| 0021 | Module M does not contain item I               |

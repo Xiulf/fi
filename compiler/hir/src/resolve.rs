@@ -35,7 +35,7 @@ pub struct ModuleInfo {
 #[derive(Debug)]
 pub struct VirtualModule {
     pub name: Symbol,
-    pub exports: Vec<Export>,
+    pub exports: HashMap<Symbol, Export>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -223,7 +223,22 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    pub fn get_inner(&self, ns: Ns, module: ModuleId, name: &Symbol) -> (Option<Res>, bool) {
+    pub fn get_virt(&self, ns: Ns, module: ModuleId, name: &Symbol) -> Option<Res> {
+        let module = self.modules[&module].virt();
+
+        module
+            .exports
+            .iter()
+            .filter(|(_, e)| match (e, ns) {
+                (Export::Value(..), Ns::Values) => true,
+                (Export::Type(..), Ns::Types) => true,
+                _ => false,
+            })
+            .find(|(n, _)| *n == name)
+            .map(|(_, e)| Res::Item(*e.id()))
+    }
+
+    fn get_inner(&self, ns: Ns, module: ModuleId, name: &Symbol) -> (Option<Res>, bool) {
         let ribs = &self.modules[&module].info().scopes[ns];
         let mut is_local = false;
         let mut res = None;
@@ -506,6 +521,13 @@ impl Module {
     pub fn info_mut(&mut self) -> &mut ModuleInfo {
         match self {
             Module::Normal(info) => info,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn virt(&self) -> &VirtualModule {
+        match self {
+            Module::Virtual(virt) => virt,
             _ => unreachable!(),
         }
     }

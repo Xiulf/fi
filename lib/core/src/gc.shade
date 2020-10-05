@@ -1,10 +1,6 @@
-module Core.Gc (Gc, GcWeak, Gc_new, Gc_clone, Gc_drop, GcWeak_new, GcWeak_clone, GcWeak_drop)
+module Core.Gc (Gc, GcBox, new, clone, drop)
 
 struct Gc<T>
-    ptr: *GcBox<T>
-end
-
-struct GcWeak<T>
     ptr: *GcBox<T>
 end
 
@@ -20,40 +16,23 @@ struct ObjRepr
 end
 
 @poly
-fn Gc_new<T>(value: T) -> Gc<T>
+fn new<T>(value: T) -> Gc<T>
     var repr = value.(ObjRepr);
 
     Gc(box GcBox(repr.value.(_).*, 1, 0))
 end
 
 @poly
-fn Gc_clone<T>(self: *Gc<T>) -> Gc<T>
+fn clone<T>(self: *Gc<T>) -> Gc<T>
     self.ptr.strong += 1;
     self.*
 end
 
 @poly
-fn Gc_drop<T>(self: *Gc<T>)
+fn drop<T>(self: *Gc<T>)
     self.ptr.strong -= 1;
 
     if self.ptr.strong == 0
         unbox self.ptr;
     end
-end
-
-@poly
-fn GcWeak_new<T>(gc: *Gc<T>) -> GcWeak<T>
-    gc.ptr.weak += 1;
-    GcWeak(gc.ptr)
-end
-
-@poly
-fn GcWeak_clone<T>(self: *GcWeak<T>) -> GcWeak<T>
-    self.ptr.weak += 1;
-    self.*
-end
-
-@poly
-fn GcWeak_drop<T>(self: *GcWeak<T>)
-    self.ptr.weak -= 1;
 end

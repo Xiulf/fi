@@ -1,4 +1,5 @@
 #![feature(label_break_value)]
+#![feature(drain_filter)]
 
 pub mod convert;
 pub mod lang;

@@ -1,11 +1,11 @@
 module Main
 
-import Core.Gc
+import Core.Gc as Gc
 
 @main
 fn main(argc: i32, argv: **u8) -> i32
-    var a = Gc_new(22);   defer Gc_drop(&a);
-    var b = Gc_clone(&a); defer Gc_drop(&b);
+    var a = Gc.new(22);   defer Gc.drop(&a);
+    var b = Gc.clone(&a); defer Gc.drop(&b);
 
     b.ptr.value
 end

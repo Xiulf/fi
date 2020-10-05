@@ -206,7 +206,7 @@ impl<'a> Converter<'a> {
                     .unwrap()
                     .virt_mut()
                     .exports
-                    .push(export);
+                    .insert(name.symbol, export);
             }
         } else {
             self.vmods += 1;
@@ -220,11 +220,14 @@ impl<'a> Converter<'a> {
                 .imports
                 .insert(alias.symbol, vmod_id);
 
+            self.resolver
+                .define(Ns::Modules, alias.symbol, alias.span, Res::Module(vmod_id));
+
             self.resolver.modules.insert(
                 vmod_id,
                 crate::resolve::Module::Virtual(crate::resolve::VirtualModule {
                     name: alias.symbol,
-                    exports: exports.into_iter().map(|(_, e)| e).collect(),
+                    exports: exports.into_iter().map(|(n, e)| (n.symbol, e)).collect(),
                 }),
             );
         }
@@ -299,8 +302,9 @@ impl<'a> Converter<'a> {
             } else {
                 imports
                     .into_iter()
-                    .filter_map(|import| {
+                    .flat_map(|import| {
                         self.find_export(imodule, &mut exports, &import.name)
+                            .into_iter()
                             .map(|(mut n, e)| {
                                 n.span = span;
                                 (n, e)
@@ -326,6 +330,8 @@ impl<'a> Converter<'a> {
             }
             ast::Exports::Some(exports) => {
                 for export in exports {
+                    let mut found = false;
+
                     match self
                         .resolver
                         .get(Ns::Modules, Some(*module), &export.name.symbol)
@@ -338,10 +344,11 @@ impl<'a> Converter<'a> {
                                 self.export_all(module);
                             } else {
                                 let exports = match &self.resolver.modules[imodule] {
-                                    crate::resolve::Module::Normal(m) => &m.exports,
-                                    crate::resolve::Module::Virtual(m) => &m.exports,
-                                }
-                                .clone();
+                                    crate::resolve::Module::Normal(m) => m.exports.clone(),
+                                    crate::resolve::Module::Virtual(m) => {
+                                        m.exports.iter().map(|(_, e)| e.clone()).collect()
+                                    }
+                                };
 
                                 self.resolver
                                     .modules
@@ -352,9 +359,57 @@ impl<'a> Converter<'a> {
                                     .extend(exports);
                             }
 
-                            continue;
+                            found = true;
                         }
                         _ => {}
+                    }
+
+                    if let (Some(Res::Item(id)), _) =
+                        self.resolver
+                            .get(Ns::Values, Some(*module), &export.name.symbol)
+                    {
+                        self.resolver
+                            .modules
+                            .get_mut(module)
+                            .unwrap()
+                            .info_mut()
+                            .exports
+                            .push(Export::Value(*module, id));
+
+                        found = true;
+                    }
+
+                    if let (Some(Res::Item(id)), _) =
+                        self.resolver
+                            .get(Ns::Types, Some(*module), &export.name.symbol)
+                    {
+                        self.resolver
+                            .modules
+                            .get_mut(module)
+                            .unwrap()
+                            .info_mut()
+                            .exports
+                            .push(Export::Type(*module, id));
+
+                        found = true;
+                    }
+
+                    if !found {
+                        self.reporter.add(
+                            Diagnostic::new(
+                                Severity::Error,
+                                0021,
+                                format!(
+                                    "Module '{}' does not contain item '{}'",
+                                    module, export.name
+                                ),
+                            )
+                            .label(
+                                Severity::Error,
+                                export.name.span,
+                                None::<String>,
+                            ),
+                        );
                     }
                 }
             }
@@ -386,10 +441,12 @@ impl<'a> Converter<'a> {
         module: &ModuleId,
         exports: &mut Vec<(Ident, Export)>,
         name: &Ident,
-    ) -> Option<(Ident, Export)> {
-        if let Some(idx) = exports.iter().position(|(n, _)| n.symbol == name.symbol) {
-            Some(exports.swap_remove(idx))
-        } else {
+    ) -> Vec<(Ident, Export)> {
+        let exp = exports
+            .drain_filter(|(n, _)| n.symbol == name.symbol)
+            .collect::<Vec<_>>();
+
+        if exp.is_empty() {
             self.reporter.add(
                 Diagnostic::new(
                     Severity::Error,
@@ -398,9 +455,9 @@ impl<'a> Converter<'a> {
                 )
                 .label(Severity::Error, name.span, None::<String>),
             );
-
-            None
         }
+
+        exp
     }
 
     pub fn collect_exports(&self, module: &ModuleId) -> Vec<(Ident, Export)> {
@@ -422,7 +479,7 @@ impl<'a> Converter<'a> {
             crate::resolve::Module::Virtual(m) => m
                 .exports
                 .iter()
-                .map(|export| {
+                .map(|(_, export)| {
                     (
                         if let Some(item) = self.items.get(export.id()) {
                             item.name
@@ -913,10 +970,42 @@ impl<'a> Converter<'a> {
 
                 ExprKind::Call { func, args }
             }
-            ast::ExprKind::Field { obj, field } => ExprKind::Field {
-                obj: self.trans_expr(obj),
-                field: *field,
-            },
+            ast::ExprKind::Field { obj, field } => {
+                if let ast::ExprKind::Ident { name } = &obj.kind {
+                    if let (Some(Res::Module(m)), _) =
+                        self.resolver.get(Ns::Modules, None, &name.symbol)
+                    {
+                        if let Some(res) = self.resolver.get_virt(Ns::Values, m, &field.symbol) {
+                            ExprKind::Path { res }
+                        } else {
+                            self.reporter.add(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    0004,
+                                    format!("Unknown value '{}.{}'", obj, field),
+                                )
+                                .label(
+                                    Severity::Error,
+                                    expr.span,
+                                    None::<String>,
+                                ),
+                            );
+
+                            ExprKind::Err
+                        }
+                    } else {
+                        ExprKind::Field {
+                            obj: self.trans_expr(obj),
+                            field: *field,
+                        }
+                    }
+                } else {
+                    ExprKind::Field {
+                        obj: self.trans_expr(obj),
+                        field: *field,
+                    }
+                }
+            }
             ast::ExprKind::Index { list, index } => ExprKind::Index {
                 list: self.trans_expr(list),
                 index: self.trans_expr(index),
