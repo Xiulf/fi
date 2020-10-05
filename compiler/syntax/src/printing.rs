@@ -411,6 +411,7 @@ impl Display for Type {
         match &self.kind {
             TypeKind::Infer => write!(f, "_"),
             TypeKind::Parens { inner } => write!(f, "({})", inner),
+            TypeKind::Path { module, name } => write!(f, "{}.{}", module, name),
             TypeKind::Ident { name } => name.fmt(f),
             TypeKind::Func { params, ret } => write!(f, "fn ({}) -> {}", list(params, ", "), ret),
             TypeKind::Ref { mut_: true, ty } => write!(f, "*mut {}", ty),

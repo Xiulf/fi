@@ -1105,6 +1105,45 @@ impl<'a> Converter<'a> {
         let kind = match &ty.kind {
             ast::TypeKind::Parens { inner } => return self.trans_ty(inner),
             ast::TypeKind::Infer => TypeKind::Infer,
+            ast::TypeKind::Path { module, name } => {
+                if let (Some(Res::Module(m)), _) =
+                    self.resolver.get(Ns::Modules, None, &module.symbol)
+                {
+                    if let Some(res) = self.resolver.get_virt(Ns::Types, m, &name.symbol) {
+                        TypeKind::Path { res }
+                    } else {
+                        self.reporter.add(
+                            Diagnostic::new(
+                                Severity::Error,
+                                0005,
+                                format!("Unknown type '{}.{}'", module, name),
+                            )
+                            .label(
+                                Severity::Error,
+                                ty.span,
+                                None::<String>,
+                            ),
+                        );
+
+                        TypeKind::Err
+                    }
+                } else {
+                    self.reporter.add(
+                        Diagnostic::new(
+                            Severity::Error,
+                            0022,
+                            format!("Unknown module '{}'", module),
+                        )
+                        .label(
+                            Severity::Error,
+                            module.span,
+                            None::<String>,
+                        ),
+                    );
+
+                    TypeKind::Err
+                }
+            }
             ast::TypeKind::Ident { name } => {
                 if let (Some(res), _) = self.resolver.get(Ns::Types, None, &name.symbol) {
                     TypeKind::Path { res }

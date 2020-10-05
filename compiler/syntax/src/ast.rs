@@ -385,13 +385,21 @@ pub struct Type {
     pub kind: TypeKind,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
 pub enum TypeKind {
     Infer,
     Parens {
         inner: Box<Type>,
     },
+    Path {
+        #[derivative(Hash(hash_with = "hash_ident"))]
+        module: Ident,
+        #[derivative(Hash(hash_with = "hash_ident"))]
+        name: Ident,
+    },
     Ident {
+        #[derivative(Hash(hash_with = "hash_ident"))]
         name: Ident,
     },
     Func {

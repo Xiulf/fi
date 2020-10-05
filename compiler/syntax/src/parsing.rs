@@ -1250,7 +1250,16 @@ impl Type {
         } else if let Ok(_) = input.parse::<TWildcard>() {
             TypeKind::Infer
         } else if let Ok(name) = input.parse::<Ident>() {
-            TypeKind::Ident { name }
+            if let Ok(_) = input.parse::<TDot>() {
+                let field = input.parse::<Ident>()?;
+
+                TypeKind::Path {
+                    module: name,
+                    name: field,
+                }
+            } else {
+                TypeKind::Ident { name }
+            }
         } else {
             return input.error("expected 'fn', '*', '[', '_', '#' or an identifier", 0001);
         };
