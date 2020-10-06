@@ -164,7 +164,7 @@ impl<'tcx> Place<'tcx> {
                     layout,
                 }
             }
-            Type::Slice(_) => {
+            Type::Slice(_) | Type::Str => {
                 let ptr = self.field(fx, 0).deref(fx).as_ptr();
                 let new_ptr = ptr.offset_value(fx, new_idx);
 
@@ -353,7 +353,11 @@ impl<'tcx> Place<'tcx> {
     pub fn write_place_ref(self, fx: &mut FunctionCtx<'_, 'tcx, impl Backend>, dest: Place<'tcx>) {
         if let Abi::ScalarPair(_, _) = self.layout.abi {
             let (ptr, extra) = self.as_ptr_maybe_unsized();
-            let ptr = Value::new_pair(ptr.get_addr(fx), extra.unwrap(), dest.layout);
+            let ptr = if let Some(extra) = extra {
+                Value::new_pair(ptr.get_addr(fx), extra, dest.layout)
+            } else {
+                Value::new_val(ptr.get_addr(fx), dest.layout)
+            };
 
             dest.store(fx, ptr);
         } else {

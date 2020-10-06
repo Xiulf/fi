@@ -106,7 +106,7 @@ impl<'tcx> Tcx<'tcx> {
                     self.unify_all(cs)
                 }
                 (Type::Func(_, a_params, a_ret), Type::Func(_, b_params, b_ret))
-                    if a_params.len() != b_params.len() =>
+                    if a_params.len() == b_params.len() =>
                 {
                     let mut cs = Constraints::new();
 

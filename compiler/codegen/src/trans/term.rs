@@ -86,10 +86,12 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                         self.builder.ins().call(func, &args)
                     }
                 } else {
-                    let _func = self.trans_operand(func).load_scalar(self);
+                    let (_, params, ret) = self.type_of_op(func).func().unwrap();
+                    let func = self.trans_operand(func).load_scalar(self);
+                    let sig = crate::pass::call_sig(self, params, ret);
+                    let sig = self.builder.import_signature(sig);
 
-                    // self.builder.ins().call_indirect(sig, func, &args)
-                    unimplemented!()
+                    self.builder.ins().call_indirect(sig, func, &args)
                 };
 
                 match ret_mode {

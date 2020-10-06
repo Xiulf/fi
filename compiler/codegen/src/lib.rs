@@ -106,6 +106,31 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
     pub fn clif_pair_type(&self, layout: Layout<'tcx>) -> Option<(types::Type, types::Type)> {
         self::clif_pair_type(self.module, layout)
     }
+
+    pub fn type_of_op(&self, op: &mir::Operand<'tcx>) -> mir::Ty<'tcx> {
+        match op {
+            mir::Operand::Const(_, ty) => ty,
+            mir::Operand::Move(place) | mir::Operand::Copy(place) => self.type_of_place(place),
+        }
+    }
+
+    pub fn type_of_place(&self, place: &mir::Place<'tcx>) -> mir::Ty<'tcx> {
+        let mut ty = match &place.base {
+            mir::PlaceBase::Local(id) => self.locals[id].layout.ty,
+            mir::PlaceBase::Global(id) => self.tcx.type_of(id),
+        };
+
+        for elem in &place.elems {
+            ty = match elem {
+                mir::PlaceElem::Deref => ty.pointee(self.tcx),
+                mir::PlaceElem::Field(idx) => ty.fields(self.tcx)[*idx].1,
+                mir::PlaceElem::Index(_) => ty.idx(self.tcx),
+                mir::PlaceElem::Slice(..) => self.tcx.intern_ty(Type::Slice(ty.idx(self.tcx))),
+            }
+        }
+
+        ty
+    }
 }
 
 pub fn clif_type<'tcx>(module: &Module<impl Backend>, layout: Layout<'tcx>) -> Option<types::Type> {

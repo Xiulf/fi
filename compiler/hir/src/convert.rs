@@ -1056,6 +1056,66 @@ impl<'a> Converter<'a> {
 
                 ExprKind::Call { func, args }
             }
+            ast::ExprKind::MethodCall { obj, method, args } => {
+                let args = args
+                    .iter()
+                    .map(|arg| Arg {
+                        span: arg.span,
+                        name: arg.name,
+                        value: self.trans_expr(&arg.value),
+                    })
+                    .collect();
+
+                if let ast::ExprKind::Ident { name } = &obj.kind {
+                    if let (Some(Res::Module(m)), _) =
+                        self.resolver.get(Ns::Modules, None, &name.symbol)
+                    {
+                        if let Some(res) = self.resolver.get_virt(Ns::Values, m, &method.symbol) {
+                            let callee = Expr {
+                                span: obj.span.to(method.span),
+                                id: self.next_id(),
+                                kind: ExprKind::Path { res },
+                            };
+
+                            let callee_id = callee.id;
+
+                            self.exprs.insert(callee_id, callee);
+
+                            ExprKind::Call {
+                                func: callee_id,
+                                args,
+                            }
+                        } else {
+                            self.reporter.add(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    0004,
+                                    format!("Unknown value '{}.{}'", obj, method),
+                                )
+                                .label(
+                                    Severity::Error,
+                                    expr.span,
+                                    None::<String>,
+                                ),
+                            );
+
+                            ExprKind::Err
+                        }
+                    } else {
+                        ExprKind::MethodCall {
+                            obj: self.trans_expr(obj),
+                            method: *method,
+                            args,
+                        }
+                    }
+                } else {
+                    ExprKind::MethodCall {
+                        obj: self.trans_expr(obj),
+                        method: *method,
+                        args,
+                    }
+                }
+            }
             ast::ExprKind::Field { obj, field } => {
                 if let ast::ExprKind::Ident { name } = &obj.kind {
                     if let (Some(Res::Module(m)), _) =

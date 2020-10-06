@@ -305,7 +305,7 @@ impl<'tcx> Tcx<'tcx> {
                     }
                 })
                 .next()
-                .unwrap()
+                .unwrap_or(id.to_string())
         }
     }
 

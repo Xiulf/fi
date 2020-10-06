@@ -1,19 +1,13 @@
 module Main
 
-extern "C" puts: fn (string: [*:0]u8) -> i32;
+import Fmt
+import Fmt.Arg as FmtArg
 
 @main
 fn main(argc: i32, argv: [*][*:0]u8) -> i32
-    print_args(argc, argv);
+    print_fmt("Hello %!\n", [
+        FmtArg.u8(&144)
+    ][..]);
 
     0
-end
-
-fn print_args(argc: i32, argv: [*][*:0]u8)
-    var i = 0;
-
-    while i < argc.(usize)
-        puts(argv[i]);
-        i += 1;
-    end   
 end
