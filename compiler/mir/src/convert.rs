@@ -366,7 +366,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let list = self.trans_expr(list);
                 let mut list = self.builder.placed(list, list_ty);
 
-                while let Type::Ref(_, to) = list_ty {
+                while let Type::Ptr(check::ty::PtrKind::Single, to) = list_ty {
                     list_ty = to;
                     list = list.deref();
                 }
@@ -790,7 +790,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         } else {
             let mut derefs = 0;
 
-            while let Type::Ref(_, to) = obj_ty {
+            while let Type::Ptr(check::ty::PtrKind::Single, to) = obj_ty {
                 obj_ty = to;
                 derefs += 1;
             }

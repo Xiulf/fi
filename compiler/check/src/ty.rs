@@ -24,7 +24,7 @@ pub enum Type<'tcx> {
     Int(u8),
     UInt(u8),
     Float(u8),
-    Ref(bool, Ty<'tcx>),
+    Ptr(PtrKind, Ty<'tcx>),
     Array(Ty<'tcx>, usize),
     Slice(Ty<'tcx>),
     Tuple(&'tcx List<Ty<'tcx>>),
@@ -37,6 +37,14 @@ pub enum Type<'tcx> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeVar(pub(crate) usize);
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub enum PtrKind {
+    Single,
+    Multiple(bool),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Param<'tcx> {
@@ -97,7 +105,10 @@ impl<'tcx> Type<'tcx> {
                 (Symbol::new("align"), tcx.builtin.usize),
             ],
             Type::Slice(of) => vec![
-                (Symbol::new("ptr"), tcx.intern_ty(Type::Ref(false, of))),
+                (
+                    Symbol::new("ptr"),
+                    tcx.intern_ty(Type::Ptr(PtrKind::Multiple(false), of)),
+                ),
                 (Symbol::new("len"), tcx.builtin.usize),
             ],
             Type::Tuple(tys) => tys
@@ -112,7 +123,7 @@ impl<'tcx> Type<'tcx> {
 
     pub fn pointee(&self, tcx: &Tcx<'tcx>) -> Ty<'tcx> {
         match self {
-            Type::Ref(_, to) => to,
+            Type::Ptr(_, to) => to,
             Type::TypeId => tcx.builtin.type_layout,
             _ => panic!("type is not a reference"),
         }
@@ -121,6 +132,7 @@ impl<'tcx> Type<'tcx> {
     pub fn idx(&self, tcx: &Tcx<'tcx>) -> Ty<'tcx> {
         match self {
             Type::Str => tcx.builtin.u8,
+            Type::Ptr(PtrKind::Multiple(_), to) => to,
             Type::Array(of, _) => of,
             Type::Slice(of) => of,
             _ => panic!("type can't be indexed"),
@@ -163,10 +175,10 @@ impl<'tcx> Type<'tcx> {
                 tcx.intern_ty(Type::TypeOf(*id, tys))
             }
             Type::Param(id) if args.contains_key(id) => args[id],
-            Type::Ref(mut_, to) => {
+            Type::Ptr(kind, to) => {
                 let new_to = to.replace(args, tcx);
 
-                tcx.intern_ty(Type::Ref(*mut_, new_to))
+                tcx.intern_ty(Type::Ptr(*kind, new_to))
             }
             Type::Array(of, len) => {
                 let new_of = of.replace(args, tcx);
@@ -278,10 +290,11 @@ impl fmt::Display for Type<'_> {
             Type::Int(bits) => write!(f, "i{}", bits),
             Type::UInt(bits) => write!(f, "u{}", bits),
             Type::Float(bits) => write!(f, "f{}", bits),
-            Type::Ref(true, to) => write!(f, "*mut {}", to),
-            Type::Ref(false, to) => write!(f, "*{}", to),
-            Type::Array(of, len) => write!(f, "[{}; {}]", of, len),
-            Type::Slice(of) => write!(f, "[{}]", of),
+            Type::Ptr(PtrKind::Single, to) => write!(f, "*{}", to),
+            Type::Ptr(PtrKind::Multiple(true), to) => write!(f, "[*:0]{}", to),
+            Type::Ptr(PtrKind::Multiple(false), to) => write!(f, "[*]{}", to),
+            Type::Array(of, len) => write!(f, "[{}]{}", len, of),
+            Type::Slice(of) => write!(f, "[]{}", of),
             Type::Tuple(tys) => write!(
                 f,
                 "({})",
@@ -363,10 +376,11 @@ impl fmt::Display for TyDisplay<'_, '_> {
             Type::Int(bits) => write!(f, "i{}", bits),
             Type::UInt(bits) => write!(f, "u{}", bits),
             Type::Float(bits) => write!(f, "f{}", bits),
-            Type::Ref(true, to) => write!(f, "*gc {}", to.display(self.tcx)),
-            Type::Ref(false, to) => write!(f, "*{}", to.display(self.tcx)),
-            Type::Array(of, len) => write!(f, "[{}; {}]", of.display(self.tcx), len),
-            Type::Slice(of) => write!(f, "[{}]", of.display(self.tcx)),
+            Type::Ptr(PtrKind::Single, to) => write!(f, "{}", to.display(self.tcx)),
+            Type::Ptr(PtrKind::Multiple(true), to) => write!(f, "[*:0]{}", to.display(self.tcx)),
+            Type::Ptr(PtrKind::Multiple(false), to) => write!(f, "[*]{}", to.display(self.tcx)),
+            Type::Array(of, len) => write!(f, "[{}]{}", len, of.display(self.tcx)),
+            Type::Slice(of) => write!(f, "[]{}", of.display(self.tcx)),
             Type::Tuple(tys) => write!(
                 f,
                 "({})",
@@ -471,7 +485,7 @@ pub(crate) mod ser {
         Int(u8),
         UInt(u8),
         Float(u8),
-        Ref(bool, usize),
+        Ptr(PtrKind, usize),
         Array(usize, usize),
         Slice(usize),
         Tuple(Vec<usize>),
@@ -510,7 +524,7 @@ pub(crate) mod ser {
                         Type::Int(bits) => SType::Int(*bits),
                         Type::UInt(bits) => SType::UInt(*bits),
                         Type::Float(bits) => SType::Float(*bits),
-                        Type::Ref(b, ty) => SType::Ref(*b, convert(index, idx2, ty)),
+                        Type::Ptr(kind, ty) => SType::Ptr(*kind, convert(index, idx2, ty)),
                         Type::Array(ty, len) => SType::Array(convert(index, idx2, ty), *len),
                         Type::Slice(ty) => SType::Slice(convert(index, idx2, ty)),
                         Type::Tuple(tys) => {
@@ -605,7 +619,9 @@ pub(crate) mod ser {
                         SType::Int(bits) => Type::Int(*bits),
                         SType::UInt(bits) => Type::UInt(*bits),
                         SType::Float(bits) => Type::Float(*bits),
-                        SType::Ref(b, ty) => Type::Ref(*b, convert(arena, index, index2, *ty)),
+                        SType::Ptr(kind, ty) => {
+                            Type::Ptr(*kind, convert(arena, index, index2, *ty))
+                        }
                         SType::Array(ty, len) => {
                             Type::Array(convert(arena, index, index2, *ty), *len)
                         }

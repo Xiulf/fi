@@ -334,10 +334,20 @@ impl Display for Type {
             TypeKind::Err => write!(f, "[error]"),
             TypeKind::Infer => write!(f, "_"),
             TypeKind::Path { res } => res.fmt(f),
-            TypeKind::Ref { mut_: true, to } => write!(f, "ref mut {}", to),
-            TypeKind::Ref { mut_: false, to } => write!(f, "ref {}", to),
-            TypeKind::Array { of, len } => write!(f, "[{}; {}]", of, len),
-            TypeKind::Slice { of } => write!(f, "[{}]", of),
+            TypeKind::Ptr {
+                kind: PtrKind::Single,
+                to,
+            } => write!(f, "*{}", to),
+            TypeKind::Ptr {
+                kind: PtrKind::Multiple(true),
+                to,
+            } => write!(f, "[*:0]{}", to),
+            TypeKind::Ptr {
+                kind: PtrKind::Multiple(false),
+                to,
+            } => write!(f, "[*]{}", to),
+            TypeKind::Array { of, len } => write!(f, "[{}]{}", len, of),
+            TypeKind::Slice { of } => write!(f, "[]{}", of),
             TypeKind::Tuple { tys } => write!(
                 f,
                 "({})",

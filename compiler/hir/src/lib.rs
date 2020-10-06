@@ -10,7 +10,7 @@ pub use diagnostics::Span;
 pub use resolve::{PrimTy, PrimVal, Res};
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
-pub use syntax::ast::{Abi, AttrKind, Attribute, BinOp, Ident, Literal, Symbol, UnOp};
+pub use syntax::ast::{Abi, AttrKind, Attribute, BinOp, Ident, Literal, PtrKind, Symbol, UnOp};
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
@@ -312,7 +312,7 @@ pub enum TypeKind {
     Err,
     Infer,
     Path { res: Res },
-    Ref { mut_: bool, to: Id },
+    Ptr { kind: PtrKind, to: Id },
     Func { params: Vec<TypeParam>, ret: Id },
     Tuple { tys: Vec<Id> },
     Array { of: Id, len: usize },

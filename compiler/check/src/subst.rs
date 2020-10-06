@@ -95,7 +95,7 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
                 subst_var(arg, tvar, repl);
             }
         }
-        Type::Ref(_, to) => subst_var(to, tvar, repl),
+        Type::Ptr(_, to) => subst_var(to, tvar, repl),
         Type::Array(of, _) => subst_var(of, tvar, repl),
         Type::Slice(of) => subst_var(of, tvar, repl),
         Type::Tuple(tys) => {

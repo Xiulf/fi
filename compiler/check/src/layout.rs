@@ -106,7 +106,7 @@ impl<'a, Ty> std::ops::Deref for TyLayout<'a, Ty> {
 
 impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
     pub fn field(&self, tcx: &crate::tcx::Tcx<'tcx>, idx: usize) -> Self {
-        use super::ty::Type;
+        use super::ty::{PtrKind, Type};
 
         assert!(idx < self.fields.count());
 
@@ -127,7 +127,7 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
             | Type::Int(_)
             | Type::UInt(_)
             | Type::Float(_)
-            | Type::Ref(_, _)
+            | Type::Ptr(_, _)
             | Type::Array(_, _)
             | Type::Func(..) => unreachable!("{}.{}", self.ty.display(tcx), idx),
             Type::Str => {
@@ -139,7 +139,7 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
             }
             Type::Slice(of) => {
                 if idx == 0 {
-                    tcx.intern_ty(Type::Ref(false, of))
+                    tcx.intern_ty(Type::Ptr(PtrKind::Multiple(false), of))
                 } else {
                     tcx.builtin.usize
                 }

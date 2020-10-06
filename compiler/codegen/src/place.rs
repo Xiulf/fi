@@ -146,6 +146,15 @@ impl<'tcx> Place<'tcx> {
         let new_idx = fx.builder.ins().imul_imm(idx, layout.stride.bytes() as i64);
 
         match &*self.layout.ty {
+            Type::Ptr(check::ty::PtrKind::Multiple(_), _) => {
+                let ptr = Pointer::addr(self.to_value(fx).load_scalar(fx));
+                let new_ptr = ptr.offset_value(fx, new_idx);
+
+                Place {
+                    kind: PlaceKind::Addr(new_ptr, None),
+                    layout,
+                }
+            }
             Type::Array(..) => {
                 let ptr = self.as_ptr();
                 let new_ptr = ptr.offset_value(fx, new_idx);
@@ -155,7 +164,7 @@ impl<'tcx> Place<'tcx> {
                     layout,
                 }
             }
-            _ => {
+            Type::Slice(_) => {
                 let ptr = self.field(fx, 0).deref(fx).as_ptr();
                 let new_ptr = ptr.offset_value(fx, new_idx);
 
@@ -164,6 +173,7 @@ impl<'tcx> Place<'tcx> {
                     layout,
                 }
             }
+            _ => unreachable!(),
         }
     }
 

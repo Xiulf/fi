@@ -182,11 +182,11 @@ impl<'tcx> Tcx<'tcx> {
             hir::ExprKind::Ref { expr: inner } => {
                 let inner_ty = self.type_of(inner);
 
-                self.intern_ty(Type::Ref(false, inner_ty))
+                self.intern_ty(Type::Ptr(PtrKind::Single, inner_ty))
             }
             hir::ExprKind::Deref { expr: inner } => {
                 let ty = self.new_var();
-                let ref_ty = self.intern_ty(Type::Ref(false, ty));
+                let ref_ty = self.intern_ty(Type::Ptr(PtrKind::Single, ty));
                 let inner_ty = self.type_of(inner);
                 let inner_span = self.span_of(inner);
 
@@ -204,13 +204,13 @@ impl<'tcx> Tcx<'tcx> {
             hir::ExprKind::Box { expr } => {
                 let ty = self.type_of(expr);
 
-                self.intern_ty(Type::Ref(false, ty))
+                self.intern_ty(Type::Ptr(PtrKind::Single, ty))
             }
             hir::ExprKind::Unbox { expr } => {
                 let expr_ty = self.type_of(expr);
                 let expr_span = self.span_of(expr);
                 let ty = self.new_var();
-                let ptr_ty = self.intern_ty(Type::Ref(false, ty));
+                let ptr_ty = self.intern_ty(Type::Ptr(PtrKind::Single, ty));
                 let span = self.span_of(id);
 
                 self.constrain(Constraint::Equal(ptr_ty, span, expr_ty, expr_span));

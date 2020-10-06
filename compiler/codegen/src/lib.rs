@@ -137,7 +137,7 @@ pub fn clif_type<'tcx>(module: &Module<impl Backend>, layout: Layout<'tcx>) -> O
             64 => Some(types::F64),
             _ => unreachable!(),
         },
-        Type::Ref(_, _) => Some(module.target_config().pointer_type()),
+        Type::Ptr(_, _) => Some(module.target_config().pointer_type()),
         Type::Func(_, _, _) => Some(module.target_config().pointer_type()),
         _ => None,
     }

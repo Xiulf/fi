@@ -1242,8 +1242,8 @@ impl<'a> Converter<'a> {
                     TypeKind::Err
                 }
             }
-            ast::TypeKind::Ref { ty, mut_ } => TypeKind::Ref {
-                mut_: *mut_,
+            ast::TypeKind::Ptr { ty, kind } => TypeKind::Ptr {
+                kind: *kind,
                 to: self.trans_ty(ty),
             },
             ast::TypeKind::Array { of, len } => TypeKind::Array {

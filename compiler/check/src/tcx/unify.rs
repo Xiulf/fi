@@ -87,9 +87,7 @@ impl<'tcx> Tcx<'tcx> {
                 (Type::VFloat(tvar), Type::Float(_)) => vec![(*tvar, b)].into_iter().collect(),
                 (Type::VFloat(tvar), Type::VFloat(_)) => vec![(*tvar, b)].into_iter().collect(),
                 (Type::Float(_), Type::VFloat(tvar)) => vec![(*tvar, a)].into_iter().collect(),
-                (Type::Ref(a_mut, a), Type::Ref(b_mut, b))
-                    if a_mut == b_mut || (!*b_mut && *a_mut) =>
-                {
+                (Type::Ptr(a_kind, a), Type::Ptr(b_kind, b)) if a_kind == b_kind => {
                     self.unify_one(Constraint::Equal(a, a_span, b, b_span))
                 }
                 (Type::Array(a, a_len), Type::Array(b, b_len)) if a_len == b_len => {
@@ -158,14 +156,14 @@ impl<'tcx> Tcx<'tcx> {
                 }
             },
             Constraint::PtrArith(a, a_span, b, b_span) => match (a, b) {
-                (Type::Ref(_, a), Type::Ref(_, b)) => {
+                (Type::Ptr(_, a), Type::Ptr(_, b)) => {
                     self.unify_one(Constraint::Equal(a, a_span, b, b_span))
                 }
-                (Type::Ref(_, _), Type::Int(0)) | (Type::Ref(_, _), Type::UInt(0)) => {
+                (Type::Ptr(_, _), Type::Int(0)) | (Type::Ptr(_, _), Type::UInt(0)) => {
                     Subst::empty()
                 }
-                (Type::Ref(_, _), Type::VInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
-                (Type::Ref(_, _), Type::VUInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
+                (Type::Ptr(_, _), Type::VInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
+                (Type::Ptr(_, _), Type::VUInt(tvar)) => vec![(*tvar, a)].into_iter().collect(),
                 (_, _) => {
                     let mut cs = Constraints::new();
 
@@ -300,7 +298,10 @@ impl<'tcx> Tcx<'tcx> {
                 }
             }
             Constraint::Index(list_ty, list_span, ret_ty, ret_span) => match list_ty {
-                Type::Ref(_, to) => {
+                Type::Ptr(PtrKind::Multiple(_), to) => {
+                    self.unify_one(Constraint::Equal(ret_ty, ret_span, to, list_span))
+                }
+                Type::Ptr(_, to) => {
                     self.unify_one(Constraint::Index(to, list_span, ret_ty, ret_span))
                 }
                 Type::Str => self.unify_one(Constraint::Equal(
@@ -335,7 +336,7 @@ impl<'tcx> Tcx<'tcx> {
             },
             Constraint::Field(obj_ty, obj_span, field, ret_ty, ret_span) => {
                 let fields = match obj_ty {
-                    Type::Ref(_, to) => {
+                    Type::Ptr(_, to) => {
                         return self
                             .unify_one(Constraint::Field(to, obj_span, field, ret_ty, ret_span))
                     }
@@ -391,7 +392,7 @@ impl<'tcx> Tcx<'tcx> {
                                 symbol: hir::Symbol::new("ptr"),
                                 span: obj_span,
                             },
-                            self.intern_ty(Type::Ref(false, of)),
+                            self.intern_ty(Type::Ptr(PtrKind::Multiple(false), of)),
                         ),
                         (
                             Ident {
@@ -498,7 +499,7 @@ impl<'tcx> Tcx<'tcx> {
 fn occurs(ty: Ty<'_>, tvar: TypeVar) -> bool {
     match ty {
         Type::Var(tvar2) if *tvar2 == tvar => true,
-        Type::Ref(_, to) => occurs(to, tvar),
+        Type::Ptr(_, to) => occurs(to, tvar),
         Type::Array(of, _) => occurs(of, tvar),
         Type::Slice(of) => occurs(of, tvar),
         Type::Func(_, params, ret) => {

@@ -36,10 +36,16 @@ impl<'tcx> Tcx<'tcx> {
                 },
                 _ => unreachable!(),
             },
-            hir::TypeKind::Ref { mut_, to } => {
+            hir::TypeKind::Ptr { kind, to } => {
                 let to = self.type_of(to);
 
-                self.intern_ty(Type::Ref(*mut_, to))
+                self.intern_ty(Type::Ptr(
+                    match kind {
+                        hir::PtrKind::Single => PtrKind::Single,
+                        hir::PtrKind::Multiple(null) => PtrKind::Multiple(*null),
+                    },
+                    to,
+                ))
             }
             hir::TypeKind::Array { of, len } => {
                 let of = self.type_of(of);

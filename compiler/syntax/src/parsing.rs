@@ -1287,23 +1287,40 @@ impl Type {
 
             TypeKind::Forall { gen, ty }
         } else if let Ok(_) = input.parse::<TStar>() {
-            let mut_ = input.parse::<TMut>().is_ok();
             let ty = input.parse()?;
 
-            TypeKind::Ref { mut_, ty }
+            TypeKind::Ptr {
+                kind: PtrKind::Single,
+                ty,
+            }
         } else if let Ok(_) = input.parse::<TLBracket>() {
-            let of = input.parse()?;
+            if let Ok(_) = input.parse::<TStar>() {
+                let null = if let Ok(_) = input.parse::<TColon>() {
+                    let term = input.parse::<IntLiteral>()?;
 
-            if let Ok(_) = input.parse::<TSemi>() {
-                let len = input.parse::<IntLiteral>()?;
+                    term.int == 0
+                } else {
+                    false
+                };
+
                 let _ = input.parse::<TRBracket>()?;
+                let to = input.parse()?;
+
+                TypeKind::Ptr {
+                    kind: PtrKind::Multiple(null),
+                    ty: to,
+                }
+            } else if let Ok(len) = input.parse::<IntLiteral>() {
+                let _ = input.parse::<TRBracket>()?;
+                let of = input.parse()?;
 
                 TypeKind::Array {
-                    of,
                     len: len.int as usize,
+                    of,
                 }
             } else {
-                input.parse::<TRBracket>()?;
+                let _ = input.parse::<TRBracket>()?;
+                let of = input.parse()?;
 
                 TypeKind::Slice { of }
             }

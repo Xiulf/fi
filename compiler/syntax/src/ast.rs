@@ -421,9 +421,9 @@ pub enum TypeKind {
         params: Vec<TypeParam>,
         ret: Box<Type>,
     },
-    Ref {
+    Ptr {
+        kind: PtrKind,
         ty: Box<Type>,
-        mut_: bool,
     },
     Array {
         of: Box<Type>,
@@ -453,6 +453,12 @@ pub struct TypeParam {
     #[derivative(Hash(hash_with = "hash_ident"))]
     pub name: Ident,
     pub ty: Type,
+}
+
+#[derive(Debug, Clone, Copy, Hash)]
+pub enum PtrKind {
+    Single,
+    Multiple(bool),
 }
 
 fn hash_ident<H: std::hash::Hasher>(ident: &Ident, state: &mut H) {

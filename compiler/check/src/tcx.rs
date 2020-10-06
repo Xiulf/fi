@@ -93,8 +93,8 @@ impl<'tcx> BuiltinTypes<'tcx> {
             isize: intern.intern_ty(Type::Int(0)),
             f32: intern.intern_ty(Type::Float(32)),
             f64: intern.intern_ty(Type::Float(64)),
-            ref_unit: intern.intern_ty(Type::Ref(false, unit)),
-            ref_u8: intern.intern_ty(Type::Ref(false, u8)),
+            ref_unit: intern.intern_ty(Type::Ptr(PtrKind::Single, unit)),
+            ref_u8: intern.intern_ty(Type::Ptr(PtrKind::Multiple(false), u8)),
             type_layout: intern.intern_ty(Type::Tuple(
                 intern.intern_ty_list(&[&*usize, &*usize, &*usize]),
             )),
@@ -499,7 +499,7 @@ impl<'tcx> Tcx<'tcx> {
                 }
                 Err(_) => scalar(Primitive::Int(Integer::I32, false)),
             },
-            Type::Ref(_, _) => {
+            Type::Ptr(_, _) => {
                 let data_ptr = scalar_unit(Primitive::Pointer);
 
                 self.intern_layout(Layout::scalar(data_ptr, self.target))

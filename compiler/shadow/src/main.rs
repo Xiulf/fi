@@ -91,8 +91,10 @@ fn main() {
 
         let mut cmd = std::process::Command::new(files.bin);
 
-        for arg in matches.values_of("bin-args").unwrap() {
-            cmd.arg(arg);
+        if let Some(args) = matches.values_of("bin-args") {
+            for arg in args {
+                cmd.arg(arg);
+            }
         }
 
         let status = cmd.status().unwrap();
