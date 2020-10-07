@@ -871,6 +871,52 @@ impl<'a> Converter<'a> {
 
         let id = self.next_id();
         let generics = self.trans_generics(&method.generics);
+
+        {
+            let id = self.next_id();
+            let ty_id = self.next_id();
+            let ty_id2 = self.next_id();
+
+            self.types.insert(
+                ty_id,
+                Type {
+                    span: method.span,
+                    id: ty_id,
+                    kind: TypeKind::Path {
+                        res: Res::Item(owner),
+                    },
+                },
+            );
+
+            self.types.insert(
+                ty_id2,
+                Type {
+                    span: method.span,
+                    id: ty_id2,
+                    kind: TypeKind::Ptr {
+                        kind: PtrKind::Single,
+                        to: ty_id,
+                    },
+                },
+            );
+
+            self.resolver
+                .define(Ns::Values, Symbol::new("self"), method.span, Res::Local(id));
+            self.items.insert(
+                id,
+                Item {
+                    span: method.span,
+                    id,
+                    attrs: Vec::new(),
+                    name: Ident {
+                        symbol: Symbol::new("self"),
+                        span: method.span,
+                    },
+                    kind: ItemKind::Param { ty: ty_id2 },
+                },
+            );
+        }
+
         let params = method
             .params
             .iter()
@@ -1185,17 +1231,18 @@ impl<'a> Converter<'a> {
                 rhs: self.trans_expr(rhs),
             },
             ast::ExprKind::AssignOp { op, lhs, rhs } => {
-                let lhs_ = self.trans_expr(lhs);
-                let rhs = self.trans_expr(&ast::Expr {
+                let lhs = self.trans_expr(lhs);
+                let rhs = self.trans_expr(rhs);
+                let rhs_id = self.next_id();
+                let rhs = Expr {
                     span: expr.span,
-                    kind: ast::ExprKind::BinOp {
-                        op: *op,
-                        lhs: lhs.clone(),
-                        rhs: rhs.clone(),
-                    },
-                });
+                    id: rhs_id,
+                    kind: ExprKind::BinOp { op: *op, lhs, rhs },
+                };
 
-                ExprKind::Assign { lhs: lhs_, rhs }
+                self.exprs.insert(rhs_id, rhs);
+
+                ExprKind::Assign { lhs, rhs: rhs_id }
             }
             ast::ExprKind::BinOp { op, lhs, rhs } => ExprKind::BinOp {
                 op: *op,

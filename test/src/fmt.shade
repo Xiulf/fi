@@ -41,7 +41,7 @@ end
 module Fmt.Arg (
     FmtArg,
     str, bool,
-    u8
+    u8, usize
 )
 
 extern "C" write: fn (stream: i32, buf: [*]u8, count: usize) -> isize;
@@ -55,14 +55,22 @@ fn str(s: *str) -> FmtArg
     FmtArg(s.(*()), fmt_str)
 end
 
+fn bool(b: *bool) -> FmtArg
+    FmtArg(b.(*()), fmt_bool)
+end
+
+fn u8(v: *u8) -> FmtArg
+    FmtArg(v.(*()), fmt_u8)
+end
+
+fn usize(v: *usize) -> FmtArg
+    FmtArg(v.(*()), fmt_usize)
+end
+
 fn fmt_str(val: *(), stream: i32)
     var val = val.(*str);
     
     write(stream, val.ptr, val.len);
-end
-
-fn bool(b: *bool) -> FmtArg
-    FmtArg(b.(*()), fmt_bool)
 end
 
 fn fmt_bool(val: *(), stream: i32)
@@ -77,20 +85,30 @@ fn fmt_bool(val: *(), stream: i32)
     end
 end
 
-fn u8(v: *u8) -> FmtArg
-    FmtArg(v.(*()), fmt_u8)
-end
-
 fn fmt_u8(val: *(), stream: i32)
     fn rec(val: u8, stream: i32)
         if val >= 10
             rec(val / 10, stream);
         end
 
-        var ch = '0' + (val.(u32) % 10)
+        var ch = '0' + (val % 10).(u32)
 
         write(stream, (&ch).([*]u8), 1);
     end
 
     rec(val.(*u8).*, stream)
+end
+
+fn fmt_usize(val: *(), stream: i32)
+    fn rec(val: usize, stream: i32)
+        if val >= 10
+            rec(val / 10, stream);
+        end
+
+        var ch = '0' + (val % 10).(u32)
+
+        write(stream, (&ch).([*]u8), 1);
+    end
+
+    rec(val.(*usize).*, stream)
 end

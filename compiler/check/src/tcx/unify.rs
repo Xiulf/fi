@@ -297,11 +297,142 @@ impl<'tcx> Tcx<'tcx> {
                     Subst::empty()
                 }
             }
+            Constraint::MethodCall(obj_ty, obj_span, method, args, ret_ty, ret_span) => {
+                match obj_ty {
+                    Type::Struct(id, _) | Type::Enum(id, _) => {
+                        let methods = self.methods.borrow()[&id].clone();
+
+                        if let Some(method) = methods
+                            .iter()
+                            .map(|id| &self.package.items[id])
+                            .find(|item| item.name.symbol == method.symbol)
+                        {
+                            match self.type_of(&method.id) {
+                                Type::Func(_, a_params, a_ret) => {
+                                    let mut cs = Constraints::new();
+
+                                    if a_params.len() != args.len() {
+                                        self.reporter.add(
+                                            Diagnostic::new(
+                                                Severity::Error,
+                                                0011,
+                                                format!(
+                                                    "this method takes {} parameters, but {} arguments were supplied",
+                                                    a_params.len(),
+                                                    args.len()
+                                                )
+                                            )
+                                            .label(Severity::Error, method.span, None::<String>)
+                                        );
+
+                                        return Subst::empty();
+                                    }
+
+                                    let mut skip = Vec::with_capacity(a_params.len());
+
+                                    for arg in &args {
+                                        if !arg.name.symbol.is_empty() {
+                                            if let Some(i) = a_params
+                                                .iter()
+                                                .position(|p| p.name.symbol == arg.name.symbol)
+                                            {
+                                                let param = &a_params[i];
+
+                                                skip.push(i);
+                                                cs.push(Constraint::Equal(
+                                                    arg.ty, arg.span, param.ty, param.span,
+                                                ));
+                                            } else {
+                                                self.reporter.add(
+                                                    Diagnostic::new(
+                                                        Severity::Error,
+                                                        0012,
+                                                        format!(
+                                                            "unknown named parameter '{}'",
+                                                            arg.name
+                                                        ),
+                                                    )
+                                                    .label(
+                                                        Severity::Error,
+                                                        arg.name.span,
+                                                        None::<String>,
+                                                    ),
+                                                );
+                                            }
+                                        }
+                                    }
+
+                                    for arg in &args {
+                                        if arg.name.symbol.is_empty() {
+                                            let mut i = 0;
+
+                                            while skip.contains(&i) {
+                                                i += 1;
+                                            }
+
+                                            let param = &a_params[i];
+
+                                            skip.push(i);
+                                            cs.push(Constraint::Equal(
+                                                arg.ty, arg.span, param.ty, param.span,
+                                            ));
+                                        }
+                                    }
+
+                                    cs.push(Constraint::Equal(
+                                        ret_ty,
+                                        ret_span,
+                                        a_ret,
+                                        method.span,
+                                    ));
+
+                                    self.unify_all(cs)
+                                }
+                                Type::Error => Subst::empty(),
+                                _ => {
+                                    unreachable!();
+                                }
+                            }
+                        } else {
+                            Subst::empty()
+                        }
+                    }
+                    Type::Ptr(PtrKind::Single, to) => self.unify_one(Constraint::MethodCall(
+                        to, obj_span, method, args, ret_ty, ret_span,
+                    )),
+                    Type::Var(_) => {
+                        self.constrain(Constraint::MethodCall(
+                            obj_ty, obj_span, method, args, ret_ty, ret_span,
+                        ));
+
+                        Subst::empty()
+                    }
+                    _ => {
+                        self.reporter.add(
+                            Diagnostic::new(
+                                Severity::Error,
+                                0023,
+                                format!(
+                                    "type `{}` does not have any methods",
+                                    obj_ty.display(self)
+                                ),
+                            )
+                            .label(
+                                Severity::Error,
+                                obj_span,
+                                None::<String>,
+                            ),
+                        );
+
+                        Subst::empty()
+                    }
+                }
+            }
             Constraint::Index(list_ty, list_span, ret_ty, ret_span) => match list_ty {
                 Type::Ptr(PtrKind::Multiple(_), to) => {
                     self.unify_one(Constraint::Equal(ret_ty, ret_span, to, list_span))
                 }
-                Type::Ptr(_, to) => {
+                Type::Ptr(PtrKind::Single, to) => {
                     self.unify_one(Constraint::Index(to, list_span, ret_ty, ret_span))
                 }
                 Type::Str => self.unify_one(Constraint::Equal(
@@ -336,7 +467,7 @@ impl<'tcx> Tcx<'tcx> {
             },
             Constraint::Field(obj_ty, obj_span, field, ret_ty, ret_span) => {
                 let fields = match obj_ty {
-                    Type::Ptr(_, to) => {
+                    Type::Ptr(PtrKind::Single, to) => {
                         return self
                             .unify_one(Constraint::Field(to, obj_span, field, ret_ty, ret_span))
                     }
@@ -423,10 +554,10 @@ impl<'tcx> Tcx<'tcx> {
 
                         return Subst::empty();
                     }
-                    Type::Forall(_, ty) => {
-                        return self
-                            .unify_one(Constraint::Field(ty, obj_span, field, ret_ty, ret_span));
-                    }
+                    // Type::Forall(_, ty) => {
+                    //     return self
+                    //         .unify_one(Constraint::Field(ty, obj_span, field, ret_ty, ret_span));
+                    // }
                     _ => {
                         self.reporter.add(
                             Diagnostic::new(

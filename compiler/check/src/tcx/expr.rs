@@ -120,6 +120,28 @@ impl<'tcx> Tcx<'tcx> {
 
                 ret_ty
             }
+            hir::ExprKind::MethodCall { obj, method, args } => {
+                let ret_ty = self.new_var();
+                let obj_ty = self.type_of(obj);
+                let obj_span = self.span_of(obj);
+                let args = args
+                    .iter()
+                    .map(|a| Param {
+                        span: a.span,
+                        name: a.name.unwrap_or_else(|| Ident {
+                            span: a.span,
+                            symbol: hir::Symbol::dummy(),
+                        }),
+                        ty: self.type_of(&a.value),
+                    })
+                    .collect::<Vec<_>>();
+
+                self.constrain(Constraint::MethodCall(
+                    obj_ty, obj_span, *method, args, ret_ty, expr.span,
+                ));
+
+                ret_ty
+            }
             hir::ExprKind::Field { obj, field } => {
                 let ty = self.new_var();
                 let obj_ty = self.type_of(obj);

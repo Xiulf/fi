@@ -49,24 +49,18 @@ impl<'tcx> Tcx<'tcx> {
                 body: _,
             } => {
                 let params = self.intern.intern_param_list(
-                    &std::iter::once(Param {
-                        span: item.name.span,
-                        name: Ident {
-                            symbol: hir::Symbol::dummy(),
-                            span: item.name.span,
-                        },
-                        ty: self.type_of(owner),
-                    })
-                    .chain(params.iter().map(|id| {
-                        let param = &self.package.items[id];
+                    &params
+                        .iter()
+                        .map(|id| {
+                            let param = &self.package.items[id];
 
-                        Param {
-                            span: param.span,
-                            name: param.name,
-                            ty: self.type_of(id),
-                        }
-                    }))
-                    .collect::<Vec<_>>(),
+                            Param {
+                                span: param.span,
+                                name: param.name,
+                                ty: self.type_of(id),
+                            }
+                        })
+                        .collect::<Vec<_>>(),
                 );
 
                 let ret = self.type_of(ret);
@@ -78,6 +72,12 @@ impl<'tcx> Tcx<'tcx> {
 
                     ty = self.intern_ty(Type::Forall(args, ty));
                 }
+
+                self.methods
+                    .borrow_mut()
+                    .entry(*owner)
+                    .or_default()
+                    .push(item.id);
 
                 ty
             }

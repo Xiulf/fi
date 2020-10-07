@@ -11,6 +11,7 @@ pub enum Constraint<'tcx> {
     IsNum(Ty<'tcx>, Span),
     IsInt(Ty<'tcx>, Span),
     Call(Ty<'tcx>, Span, Vec<Param<'tcx>>, Ty<'tcx>, Span),
+    MethodCall(Ty<'tcx>, Span, Ident, Vec<Param<'tcx>>, Ty<'tcx>, Span),
     Field(Ty<'tcx>, Span, Ident, Ty<'tcx>, Span),
     Index(Ty<'tcx>, Span, Ty<'tcx>, Span),
 }
@@ -26,6 +27,18 @@ impl fmt::Display for Constraint<'_> {
                 f,
                 "({})({}) -> {}",
                 func,
+                params
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ret
+            ),
+            Constraint::MethodCall(obj, _, method, params, ret, _) => write!(
+                f,
+                "({}).{}({}) -> {}",
+                obj,
+                method,
                 params
                     .iter()
                     .map(|p| p.to_string())

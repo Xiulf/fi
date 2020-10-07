@@ -45,6 +45,14 @@ impl<'tcx> Subst<'tcx> {
                     param.ty = self.apply_ty(param.ty);
                 }
             }
+            Constraint::MethodCall(obj, _, _, params, ret, _) => {
+                *obj = self.apply_ty(obj);
+                *ret = self.apply_ty(ret);
+
+                for param in params {
+                    param.ty = self.apply_ty(param.ty);
+                }
+            }
             Constraint::Field(obj, _, _, ty, _) => {
                 *obj = self.apply_ty(obj);
                 *ty = self.apply_ty(ty);

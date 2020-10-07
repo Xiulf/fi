@@ -22,3 +22,4 @@
 | 0020 | Module M does not export name N                |
 | 0021 | Module M does not contain item I               |
 | 0022 | Unknown module M                               |
+| 0023 | Type T does not have any methods               |

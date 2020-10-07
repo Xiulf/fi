@@ -360,6 +360,9 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.trans_block(block, var)
             }
             hir::ExprKind::Call { func, args } => self.trans_call(func, args),
+            hir::ExprKind::MethodCall { obj, method, args } => {
+                self.trans_method_call(obj, method, args)
+            }
             hir::ExprKind::Field { obj, field } => self.trans_field(obj, field),
             hir::ExprKind::Index { list, index } => {
                 let mut list_ty = self.tcx.type_of(list);
@@ -749,6 +752,15 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         }
 
         Operand::Move(res)
+    }
+
+    fn trans_method_call(
+        &mut self,
+        obj: &hir::Id,
+        method: &hir::Ident,
+        args: &[hir::Arg],
+    ) -> Operand<'tcx> {
+        unimplemented!();
     }
 
     fn trans_field(&mut self, obj: &hir::Id, field: &hir::Ident) -> Operand<'tcx> {
