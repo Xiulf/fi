@@ -107,6 +107,7 @@ pub enum ItemKind {
     Method {
         owner: Id,
         generics: Generics,
+        self_param: Id,
         params: Vec<Id>,
         ret: Id,
         body: Block,

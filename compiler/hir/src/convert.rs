@@ -871,8 +871,7 @@ impl<'a> Converter<'a> {
 
         let id = self.next_id();
         let generics = self.trans_generics(&method.generics);
-
-        {
+        let self_param = {
             let id = self.next_id();
             let ty_id = self.next_id();
             let ty_id2 = self.next_id();
@@ -902,6 +901,7 @@ impl<'a> Converter<'a> {
 
             self.resolver
                 .define(Ns::Values, Symbol::new("self"), method.span, Res::Local(id));
+
             self.items.insert(
                 id,
                 Item {
@@ -915,7 +915,9 @@ impl<'a> Converter<'a> {
                     kind: ItemKind::Param { ty: ty_id2 },
                 },
             );
-        }
+
+            id
+        };
 
         let params = method
             .params
@@ -963,6 +965,7 @@ impl<'a> Converter<'a> {
                 kind: ItemKind::Method {
                     owner,
                     generics,
+                    self_param,
                     params,
                     ret,
                     body,

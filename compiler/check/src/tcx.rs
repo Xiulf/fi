@@ -260,6 +260,14 @@ impl<'tcx> Tcx<'tcx> {
         }
     }
 
+    pub fn find_method(&self, id: &hir::Id, name: hir::Symbol) -> Option<hir::Id> {
+        let methods = self.methods.borrow()[&id].clone();
+
+        methods
+            .into_iter()
+            .find(|id| self.package.items[&id].name.symbol == name)
+    }
+
     pub fn constrain(&self, cs: Constraint<'tcx>) {
         self.constraints.borrow_mut().push(cs);
     }

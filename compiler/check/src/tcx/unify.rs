@@ -300,14 +300,8 @@ impl<'tcx> Tcx<'tcx> {
             Constraint::MethodCall(obj_ty, obj_span, method, args, ret_ty, ret_span) => {
                 match obj_ty {
                     Type::Struct(id, _) | Type::Enum(id, _) => {
-                        let methods = self.methods.borrow()[&id].clone();
-
-                        if let Some(method) = methods
-                            .iter()
-                            .map(|id| &self.package.items[id])
-                            .find(|item| item.name.symbol == method.symbol)
-                        {
-                            match self.type_of(&method.id) {
+                        if let Some(ref id) = self.find_method(id, method.symbol) {
+                            match self.type_of(id) {
                                 Type::Func(_, a_params, a_ret) => {
                                     let mut cs = Constraints::new();
 

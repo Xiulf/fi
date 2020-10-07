@@ -46,7 +46,7 @@ impl<'tcx> Tcx<'tcx> {
                 generics,
                 params,
                 ret,
-                body: _,
+                ..
             } => {
                 let params = self.intern.intern_param_list(
                     &params

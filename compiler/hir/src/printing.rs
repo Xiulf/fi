@@ -123,16 +123,22 @@ impl Display for Item {
             ItemKind::Method {
                 owner,
                 generics,
+                self_param,
                 params,
                 ret,
                 body,
             } => write!(
                 f,
-                "{}.fn {}{}({}) -> {} {}",
+                "{}.fn {}{}(self({}){}) -> {} {}",
                 owner,
                 self.name,
                 generics,
-                list(params, ", "),
+                self_param,
+                params
+                    .iter()
+                    .map(|p| format!(", {}", p))
+                    .collect::<Vec<_>>()
+                    .join(""),
                 ret,
                 body
             ),

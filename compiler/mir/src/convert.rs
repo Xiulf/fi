@@ -71,8 +71,6 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                             .map(|_| self.tcx.builtin.typeid)
                             .collect::<Vec<_>>();
                         let (_, tparams, ret) = new_ty.func().unwrap();
-                        // let (_, param_tys, ret) = new_ty.func().unwrap();
-                        // let param_tys = param_tys.iter().map(|p| p.ty).collect::<Vec<_>>();
 
                         params = gparams.iter().chain(params).collect();
                         param_tys.extend(tparams.iter().map(|p| p.ty));
@@ -85,6 +83,60 @@ impl<'a, 'tcx> Converter<'a, 'tcx> {
                     let (_, params, ret) = func_ty.func().unwrap();
 
                     (params.iter().map(|p| p.ty).collect(), ret)
+                };
+
+                self.package
+                    .declare_body(item.id, attrs, item.name, &param_tys, ret_ty);
+
+                let mut converter = BodyConverter {
+                    tcx: self.tcx,
+                    hir: package,
+                    builder: self.package.define_body(item.id),
+                    locals: HashMap::new(),
+                    loops: Vec::new(),
+                    deferred: Vec::new(),
+                };
+
+                converter.convert(&params, ret, body);
+            }
+            hir::ItemKind::Method {
+                owner,
+                self_param,
+                params,
+                ret,
+                body,
+                generics: _,
+            } => {
+                let mut params = params.clone();
+                let func_ty = self.tcx.type_of(&item.id);
+
+                params.insert(0, *self_param);
+
+                let (param_tys, ret_ty) = if let Type::Forall(gparams, new_ty) = func_ty {
+                    if item.is_poly() {
+                        let mut param_tys = gparams
+                            .iter()
+                            .map(|_| self.tcx.builtin.typeid)
+                            .collect::<Vec<_>>();
+                        let (_, tparams, ret) = new_ty.func().unwrap();
+
+                        params = gparams.iter().chain(params).collect();
+                        param_tys.push(self.tcx.type_of(self_param));
+                        param_tys.extend(tparams.iter().map(|p| p.ty));
+
+                        (param_tys, ret)
+                    } else {
+                        unimplemented!("function instances");
+                    }
+                } else {
+                    let (_, params, ret) = func_ty.func().unwrap();
+
+                    (
+                        std::iter::once(self.tcx.type_of(self_param))
+                            .chain(params.iter().map(|p| p.ty))
+                            .collect(),
+                        ret,
+                    )
                 };
 
                 self.package
@@ -641,10 +693,65 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
     }
 
     fn trans_call(&mut self, func: &hir::Id, args: &[hir::Arg]) -> Operand<'tcx> {
-        let (func_id, param_tys, ret_ty) = self.tcx.type_of(func).func().unwrap();
-        let res = self.builder.create_tmp(ret_ty);
-        let res2 = res;
-        let mut res = Place::local(res);
+        let func_ty = self.tcx.type_of(func);
+        let args = self.trans_call_args(func_ty, args);
+
+        if let hir::ExprKind::Path {
+            res: hir::Res::Item(func_id),
+        } = &self.hir.exprs[func].kind
+        {
+            if let Some(item) = self.hir.items.get(func_id) {
+                if let hir::ItemKind::Ctor { variant, .. } = &item.kind {
+                    let (_, _, ret_ty) = func_ty.func().unwrap();
+                    let res = self.builder.create_tmp(ret_ty);
+                    let res = Place::local(res);
+
+                    self.builder.init(res.clone(), ret_ty, *variant, args);
+
+                    return Operand::Move(res);
+                }
+            }
+        }
+
+        let func = self.trans_expr(func);
+
+        self.trans_call_inner(func, func_ty, args)
+    }
+
+    fn trans_method_call(
+        &mut self,
+        obj: &hir::Id,
+        method: &hir::Ident,
+        args: &[hir::Arg],
+    ) -> Operand<'tcx> {
+        let obj_ty = self.tcx.type_of(obj);
+        let obj_id = match obj_ty {
+            Type::Struct(id, _) | Type::Enum(id, _) => id,
+            _ => unreachable!(),
+        };
+
+        let method = self.tcx.find_method(obj_id, method.symbol).unwrap();
+        let method_ty = self.tcx.type_of(&method);
+        let obj = self.trans_expr(obj);
+        let obj = self.builder.placed(obj, obj_ty);
+        let obj_ref = self.builder.create_tmp(
+            self.tcx
+                .intern_ty(Type::Ptr(check::ty::PtrKind::Single, obj_ty)),
+        );
+
+        let obj_ref = Place::local(obj_ref);
+        let _ = self.builder.ref_(obj_ref.clone(), obj);
+        let mut args = self.trans_call_args(method_ty, args);
+
+        args.insert(0, Operand::Move(obj_ref));
+
+        let method = Operand::Const(Const::FuncAddr(method), method_ty);
+
+        self.trans_call_inner(method, method_ty, args)
+    }
+
+    fn trans_call_args(&mut self, func_ty: Ty<'tcx>, args: &[hir::Arg]) -> Vec<Operand<'tcx>> {
+        let (_, param_tys, _) = func_ty.func().unwrap();
         let mut call_args = Vec::with_capacity(args.len());
         let mut skip = Vec::with_capacity(args.len());
 
@@ -673,18 +780,19 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             }
         }
 
-        if let hir::ExprKind::Path {
-            res: hir::Res::Item(item),
-        } = &self.hir.exprs[func].kind
-        {
-            if let Some(item) = self.hir.items.get(item) {
-                if let hir::ItemKind::Ctor { variant, .. } = &item.kind {
-                    self.builder.init(res.clone(), ret_ty, *variant, call_args);
+        call_args
+    }
 
-                    return Operand::Move(res);
-                }
-            }
-        }
+    fn trans_call_inner(
+        &mut self,
+        func: Operand<'tcx>,
+        func_ty: Ty<'tcx>,
+        mut args: Vec<Operand<'tcx>>,
+    ) -> Operand<'tcx> {
+        let (func_id, param_tys, ret_ty) = func_ty.func().unwrap();
+        let res = self.builder.create_tmp(ret_ty);
+        let res2 = res;
+        let mut res = Place::local(res);
 
         if let Some(func_id) = func_id {
             let is_poly = if let Some(item) = self.hir.items.get(func_id) {
@@ -700,7 +808,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
             };
 
             for (i, (curr, orig)) in param_tys.iter().zip(param_tys_orig.iter()).enumerate() {
-                self.auto_cast(curr.ty, orig.ty, &mut call_args[i], is_poly);
+                self.auto_cast(curr.ty, orig.ty, &mut args[i], is_poly);
             }
 
             if !ret_ty.is_object(is_poly) && ret_ty_orig.is_object(is_poly) {
@@ -712,21 +820,20 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
             if is_poly {
                 if let Type::Forall(params, _) = self.tcx.type_of(func_id) {
-                    let subst = self.tcx.subst_of(self.tcx.type_of(func)).unwrap();
+                    let subst = self.tcx.subst_of(func_ty).unwrap();
                     let subst = params.iter().map(|p| subst[&p]);
 
-                    call_args = subst
+                    args = subst
                         .map(|ty| Operand::Const(Const::Type(ty), self.tcx.builtin.typeid))
-                        .chain(call_args)
+                        .chain(args)
                         .collect();
                 }
             }
         }
 
-        let func = self.trans_expr(func);
         let next_block = self.builder.create_block();
 
-        self.builder.call(res.clone(), func, call_args, next_block);
+        self.builder.call(res.clone(), func, args, next_block);
         self.builder.use_block(next_block);
 
         if let Some(func_id) = func_id {
@@ -752,15 +859,6 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         }
 
         Operand::Move(res)
-    }
-
-    fn trans_method_call(
-        &mut self,
-        obj: &hir::Id,
-        method: &hir::Ident,
-        args: &[hir::Arg],
-    ) -> Operand<'tcx> {
-        unimplemented!();
     }
 
     fn trans_field(&mut self, obj: &hir::Id, field: &hir::Ident) -> Operand<'tcx> {
