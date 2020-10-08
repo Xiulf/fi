@@ -179,6 +179,7 @@ impl Display for Attribute {
             AttrKind::Intrinsic => write!(f, "@intrinsic"),
             AttrKind::Main => write!(f, "@main"),
             AttrKind::Poly => write!(f, "@poly"),
+            AttrKind::Macro => write!(f, "@macro"),
         }
     }
 }

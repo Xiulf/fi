@@ -1,0 +1,9 @@
+module Macro.AST
+
+struct StringLiteral
+    text: str
+end
+
+enum Expression
+    ExpString(lit: StringLiteral)
+end

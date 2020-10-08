@@ -70,6 +70,7 @@ pub enum AttrKind {
     Intrinsic,
     Main,
     Poly,
+    Macro,
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]

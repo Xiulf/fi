@@ -254,6 +254,7 @@ impl Parse for Attribute {
                 "intrinsic" => AttrKind::Intrinsic,
                 "main" => AttrKind::Main,
                 "poly" => AttrKind::Poly,
+                "macro" => AttrKind::Macro,
                 _ => return input.error_at("unknown attribute", name.span, 0001),
             };
 
