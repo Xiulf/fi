@@ -127,7 +127,17 @@ impl<'tcx> Tcx<'tcx> {
 
                     self.unify_all(cs)
                 }
-                (Type::Enum(a, _), Type::Enum(b, _)) if a == b => Subst::empty(),
+                (Type::Enum(a, a_variants), Type::Enum(b, b_variants)) if a == b => {
+                    let mut cs = Constraints::new();
+
+                    for (av, bv) in a_variants.iter().zip(b_variants.iter()) {
+                        for (a, b) in av.fields.iter().zip(bv.fields.iter()) {
+                            cs.push(Constraint::Equal(a.ty, a_span, b.ty, b_span));
+                        }
+                    }
+
+                    self.unify_all(cs)
+                }
                 (a, Type::Forall(_, b)) => self.unify_one(Constraint::Equal(a, a_span, b, b_span)),
                 (_, _) => {
                     self.reporter.add(

@@ -353,6 +353,15 @@ impl Display for Expr {
                 then,
                 else_: None,
             } => write!(f, "if {} {}", cond, then),
+            ExprKind::Match { pred, arms } => {
+                writeln!(f, "match {}", pred)?;
+
+                for arm in arms {
+                    writeln!(indent(f), "{}", arm)?;
+                }
+
+                write!(f, "end")
+            }
             ExprKind::While {
                 label: Some(label),
                 cond,
@@ -439,6 +448,35 @@ impl Display for UnOp {
         match self {
             UnOp::Neg => write!(f, "-"),
             UnOp::Not => write!(f, "!"),
+        }
+    }
+}
+
+impl Display for MatchArm {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{}: {}", self.pat, self.value)
+    }
+}
+
+impl Display for Pat {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match &self.kind {
+            PatKind::Wildcard => write!(f, "_"),
+            PatKind::Bind {
+                name,
+                inner: Some(inner),
+            } => write!(f, "{} @ {}", name, inner),
+            PatKind::Bind { name, inner: None } => write!(f, "{}", name),
+            PatKind::Ctor {
+                module: Some(module),
+                name,
+                pats,
+            } => write!(f, "{}.{}({})", module, name, list(pats, ", ")),
+            PatKind::Ctor {
+                module: None,
+                name,
+                pats,
+            } => write!(f, "{}({})", name, list(pats, ", ")),
         }
     }
 }

@@ -5,14 +5,13 @@ import Fmt.Arg as FmtArg
 
 @main
 fn main(argc: i32, argv: [*][*:0]u8) -> i32
-    var x = Some('a');
-
-    match x
-        Some(x): do end
-        None: do end
+    var x = Some(22.(usize));
+    var arg = match x
+        Some(x): FmtArg.usize(&x)
+        None: FmtArg.str(&"none")
     end
 
-    print_fmt("Hello world!\n", [][..]);
+    print_fmt("result: %\n", [arg][..]);
 
     0
 end

@@ -2,6 +2,7 @@
 #![feature(drain_filter)]
 
 pub mod convert;
+pub mod errors;
 pub mod lang;
 mod printing;
 pub mod resolve;
@@ -28,6 +29,7 @@ pub struct Package {
     pub modules: BTreeMap<Symbol, Module>,
     pub items: BTreeMap<Id, Item>,
     pub exprs: BTreeMap<Id, Expr>,
+    pub pats: BTreeMap<Id, Pat>,
     pub types: BTreeMap<Id, Type>,
     pub imports: Imports,
 }
@@ -270,6 +272,10 @@ pub enum ExprKind {
         then: Block,
         else_: Option<Block>,
     },
+    Match {
+        pred: Id,
+        arms: Vec<MatchArm>,
+    },
     While {
         label: Option<Id>,
         cond: Id,
@@ -299,6 +305,28 @@ pub struct Arg {
     pub span: Span,
     pub name: Option<Ident>,
     pub value: Id,
+}
+
+#[derive(Debug)]
+pub struct MatchArm {
+    pub span: Span,
+    pub pat: Id,
+    pub value: Id,
+}
+
+#[derive(Debug)]
+pub struct Pat {
+    pub span: Span,
+    pub id: Id,
+    pub kind: PatKind,
+}
+
+#[derive(Debug, Hash)]
+pub enum PatKind {
+    Err,
+    Wildcard,
+    Bind { var: Id, inner: Option<Id> },
+    Ctor { id: Id, pats: Vec<Id> },
 }
 
 #[derive(Debug)]
@@ -501,6 +529,7 @@ impl Hash for Stmt {
 
 impl Hash for Expr {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
         self.kind.hash(state);
     }
 }
@@ -517,8 +546,23 @@ impl Hash for Arg {
     }
 }
 
+impl Hash for MatchArm {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.pat.hash(state);
+        self.value.hash(state);
+    }
+}
+
+impl Hash for Pat {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.kind.hash(state);
+    }
+}
+
 impl Hash for Type {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
         self.kind.hash(state);
     }
 }

@@ -1,3 +1,4 @@
+use crate::errors::Error;
 use crate::*;
 use diagnostics::{Diagnostic, Reporter, Severity};
 use resolve::{Export, ModuleId, Ns, Res, Resolver, RibKind};
@@ -51,15 +52,7 @@ fn sort_modules<'a>(reporter: &Reporter, modules: &'a [ast::Module]) -> Vec<&'a 
         Err(e) => {
             let module = g.node_weight(e.node_id()).unwrap();
 
-            reporter.add(
-                Diagnostic::new(
-                    Severity::Error,
-                    0019,
-                    format!("cyclic module '{}'", module.name),
-                )
-                .label(Severity::Error, module.name.span, None::<String>),
-            );
-
+            reporter.add(Error::CyclicModule(module.name));
             reporter.report(true);
             unreachable!();
         }
@@ -71,6 +64,7 @@ pub struct Converter<'a> {
     resolver: Resolver<'a>,
     items: BTreeMap<Id, Item>,
     exprs: BTreeMap<Id, Expr>,
+    pats: BTreeMap<Id, Pat>,
     types: BTreeMap<Id, Type>,
     imports: Imports,
     current_item: ItemId,
@@ -97,6 +91,7 @@ impl<'a> Converter<'a> {
             resolver: Resolver::new(reporter, sdeps),
             items: BTreeMap::new(),
             exprs: BTreeMap::new(),
+            pats: BTreeMap::new(),
             types: BTreeMap::new(),
             imports,
             current_item: ItemId(0),
@@ -127,6 +122,7 @@ impl<'a> Converter<'a> {
                     .collect(),
                 items: self.items,
                 exprs: self.exprs,
+                pats: self.pats,
                 types: self.types,
                 imports: self.imports,
             },
@@ -250,7 +246,7 @@ impl<'a> Converter<'a> {
 
     pub fn import_single(&mut self, module: &ModuleId, name: Ident, export: Export) {
         match export {
-            Export::Value(m, id) => {
+            Export::Value(_m, id) => {
                 // TODO: check for duplicate import
                 self.resolver
                     .modules
@@ -262,7 +258,7 @@ impl<'a> Converter<'a> {
                     .unwrap()
                     .insert(name.symbol, Res::Item(id));
             }
-            Export::Type(m, id) => {
+            Export::Type(_m, id) => {
                 // TODO: check for duplicate import
                 self.resolver
                     .modules
@@ -336,10 +332,7 @@ impl<'a> Converter<'a> {
                         .resolver
                         .get(Ns::Modules, Some(*module), &export.name.symbol)
                     {
-                        (Some(Res::Module(id)), _) => {
-                            let imodule =
-                                &self.resolver.modules[module].info().imports[&export.name.symbol];
-
+                        (Some(Res::Module(ref imodule)), _) => {
                             if imodule == module {
                                 self.export_all(module);
                             } else {
@@ -395,21 +388,7 @@ impl<'a> Converter<'a> {
                     }
 
                     if !found {
-                        self.reporter.add(
-                            Diagnostic::new(
-                                Severity::Error,
-                                0021,
-                                format!(
-                                    "Module '{}' does not contain item '{}'",
-                                    module, export.name
-                                ),
-                            )
-                            .label(
-                                Severity::Error,
-                                export.name.span,
-                                None::<String>,
-                            ),
-                        );
+                        self.reporter.add(Error::NotContained(*module, export.name));
                     }
                 }
             }
@@ -447,14 +426,7 @@ impl<'a> Converter<'a> {
             .collect::<Vec<_>>();
 
         if exp.is_empty() {
-            self.reporter.add(
-                Diagnostic::new(
-                    Severity::Error,
-                    0020,
-                    format!("Module '{}' does not export name '{}'", module, name),
-                )
-                .label(Severity::Error, name.span, None::<String>),
-            );
+            self.reporter.add(Error::NotExported(*module, *name));
         }
 
         exp
@@ -1060,10 +1032,7 @@ impl<'a> Converter<'a> {
                 if let (Some(res), _) = self.resolver.get(Ns::Values, None, &name.symbol) {
                     ExprKind::Path { res }
                 } else {
-                    self.reporter.add(
-                        Diagnostic::new(Severity::Error, 0004, format!("Unknown value '{}'", name))
-                            .label(Severity::Error, name.span, None::<String>),
-                    );
+                    self.reporter.add(Error::UnknownValue(None, *name));
 
                     ExprKind::Err
                 }
@@ -1135,18 +1104,7 @@ impl<'a> Converter<'a> {
                                 args,
                             }
                         } else {
-                            self.reporter.add(
-                                Diagnostic::new(
-                                    Severity::Error,
-                                    0004,
-                                    format!("Unknown value '{}.{}'", obj, method),
-                                )
-                                .label(
-                                    Severity::Error,
-                                    expr.span,
-                                    None::<String>,
-                                ),
-                            );
+                            self.reporter.add(Error::UnknownValue(Some(*name), *method));
 
                             ExprKind::Err
                         }
@@ -1173,18 +1131,7 @@ impl<'a> Converter<'a> {
                         if let Some(res) = self.resolver.get_virt(Ns::Values, m, &field.symbol) {
                             ExprKind::Path { res }
                         } else {
-                            self.reporter.add(
-                                Diagnostic::new(
-                                    Severity::Error,
-                                    0004,
-                                    format!("Unknown value '{}.{}'", obj, field),
-                                )
-                                .label(
-                                    Severity::Error,
-                                    expr.span,
-                                    None::<String>,
-                                ),
-                            );
+                            self.reporter.add(Error::UnknownValue(Some(*name), *field));
 
                             ExprKind::Err
                         }
@@ -1261,6 +1208,25 @@ impl<'a> Converter<'a> {
                 then: self.trans_block(then),
                 else_: else_.as_ref().map(|e| self.trans_block(e)),
             },
+            ast::ExprKind::Match { pred, arms } => ExprKind::Match {
+                pred: self.trans_expr(pred),
+                arms: arms
+                    .iter()
+                    .map(|a| {
+                        self.resolver.push_rib(Ns::Values, RibKind::Local);
+
+                        let arm = MatchArm {
+                            span: a.span,
+                            pat: self.trans_pat(&a.pat),
+                            value: self.trans_expr(&a.value),
+                        };
+
+                        self.resolver.pop_rib(Ns::Values);
+
+                        arm
+                    })
+                    .collect(),
+            },
             ast::ExprKind::While { label, cond, body } => {
                 let label = if let Some(label) = label {
                     let id = self.next_id();
@@ -1296,6 +1262,133 @@ impl<'a> Converter<'a> {
         id
     }
 
+    pub fn trans_pat(&mut self, pat: &ast::Pat) -> Id {
+        let id = self.next_id();
+        let kind = match &pat.kind {
+            ast::PatKind::Wildcard => PatKind::Wildcard,
+            ast::PatKind::Bind { name, inner } => {
+                if let Some(inner) = inner {
+                    let inner = self.trans_pat(inner);
+                    let id = self.next_id();
+                    let ty = self.infer_ty(name.span);
+
+                    self.resolver
+                        .define(Ns::Values, name.symbol, name.span, Res::Local(id));
+
+                    self.items.insert(
+                        id,
+                        Item {
+                            span: name.span,
+                            id,
+                            name: *name,
+                            attrs: Vec::new(),
+                            kind: ItemKind::Var {
+                                global: false,
+                                ty,
+                                val: None,
+                            },
+                        },
+                    );
+
+                    PatKind::Bind {
+                        var: id,
+                        inner: Some(inner),
+                    }
+                } else {
+                    if let (Some(Res::Item(item)), _) =
+                        self.resolver.get(Ns::Values, None, &name.symbol)
+                    {
+                        PatKind::Ctor {
+                            id: item,
+                            pats: Vec::new(),
+                        }
+                    } else {
+                        let id = self.next_id();
+                        let ty = self.infer_ty(name.span);
+
+                        self.resolver
+                            .define(Ns::Values, name.symbol, name.span, Res::Local(id));
+
+                        self.items.insert(
+                            id,
+                            Item {
+                                span: name.span,
+                                id,
+                                name: *name,
+                                attrs: Vec::new(),
+                                kind: ItemKind::Var {
+                                    global: false,
+                                    ty,
+                                    val: None,
+                                },
+                            },
+                        );
+
+                        PatKind::Bind {
+                            var: id,
+                            inner: None,
+                        }
+                    }
+                }
+            }
+            ast::PatKind::Ctor { module, name, pats } => {
+                if let Some(module) = module {
+                    if let (Some(Res::Module(m)), _) =
+                        self.resolver.get(Ns::Modules, None, &module.symbol)
+                    {
+                        if let Some(Res::Item(id)) =
+                            self.resolver.get_virt(Ns::Values, m, &name.symbol)
+                        {
+                            let pats = pats.iter().map(|p| self.trans_pat(p)).collect();
+
+                            PatKind::Ctor { id, pats }
+                        } else {
+                            PatKind::Err
+                        }
+                    } else {
+                        PatKind::Err
+                    }
+                } else {
+                    if let (Some(Res::Item(id)), _) =
+                        self.resolver.get(Ns::Values, None, &name.symbol)
+                    {
+                        let pats = pats.iter().map(|p| self.trans_pat(p)).collect();
+
+                        PatKind::Ctor { id, pats }
+                    } else {
+                        PatKind::Err
+                    }
+                }
+            }
+        };
+
+        self.pats.insert(
+            id,
+            Pat {
+                span: pat.span,
+                id,
+                kind,
+            },
+        );
+
+        id
+    }
+
+    fn infer_ty(&mut self, span: Span) -> Id {
+        let id = self.next_id();
+
+        self.types.insert(
+            id,
+            Type {
+                span,
+                id,
+                kind: TypeKind::Infer,
+            },
+        );
+
+        id
+    }
+
     pub fn trans_ty(&mut self, ty: &ast::Type) -> Id {
         let id = self.next_id();
         let kind = match &ty.kind {
@@ -1308,18 +1401,7 @@ impl<'a> Converter<'a> {
                     if let Some(res) = self.resolver.get_virt(Ns::Types, m, &name.symbol) {
                         TypeKind::Path { res }
                     } else {
-                        self.reporter.add(
-                            Diagnostic::new(
-                                Severity::Error,
-                                0005,
-                                format!("Unknown type '{}.{}'", module, name),
-                            )
-                            .label(
-                                Severity::Error,
-                                ty.span,
-                                None::<String>,
-                            ),
-                        );
+                        self.reporter.add(Error::UnknownType(Some(*module), *name));
 
                         TypeKind::Err
                     }
@@ -1344,10 +1426,7 @@ impl<'a> Converter<'a> {
                 if let (Some(res), _) = self.resolver.get(Ns::Types, None, &name.symbol) {
                     TypeKind::Path { res }
                 } else {
-                    self.reporter.add(
-                        Diagnostic::new(Severity::Error, 0005, format!("Unknown type '{}'", name))
-                            .label(Severity::Error, name.span, None::<String>),
-                    );
+                    self.reporter.add(Error::UnknownType(None, *name));
 
                     TypeKind::Err
                 }

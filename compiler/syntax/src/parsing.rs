@@ -20,6 +20,7 @@ parser::token![ident "mut" TMut];
 parser::token![ident "type" TType];
 parser::token![ident "if" TIf];
 parser::token![ident "else" TElse];
+parser::token![ident "match" TMatch];
 parser::token![ident "for" TFor];
 parser::token![ident "while" TWhile];
 parser::token![ident "loop" TLoop];
@@ -1047,6 +1048,17 @@ impl Expr {
             };
 
             ExprKind::IfElse { cond, then, else_ }
+        } else if let Ok(_) = input.parse::<TMatch>() {
+            let pred = input.parse()?;
+            let mut arms = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TEnd>() {
+                arms.push(input.parse()?);
+            }
+
+            input.parse::<TEnd>()?;
+
+            ExprKind::Match { pred, arms }
         } else if let Ok(_) = input.parse::<TWhile>() {
             let cond = input.parse()?;
             let _ = input.parse::<TSemi>();
@@ -1098,7 +1110,7 @@ impl Expr {
         } else if let Ok(name) = input.parse() {
             ExprKind::Ident { name }
         } else {
-            return input.error("expected '(', '{', '[', 'do', 'if', 'while', 'loop', 'break', 'continue', 'return', 'defer', a label, a literal or an identifier", 0001);
+            return input.error("expected '(', '{', '[', 'do', 'if', 'match', 'while', 'loop', 'break', 'continue', 'return', 'defer', a label, a literal or an identifier", 0001);
         };
 
         Ok(Expr {
@@ -1227,6 +1239,74 @@ impl Parse for UnOp {
         } else {
             input.error("expected '-' or '!'", 0001)
         }
+    }
+}
+
+impl Parse for MatchArm {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let pat = input.parse()?;
+        let _ = input.parse::<TColon>()?;
+        let value = input.parse()?;
+
+        Ok(MatchArm {
+            span: start.to(input.prev_span()),
+            pat,
+            value,
+        })
+    }
+}
+
+impl Parse for Pat {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let kind = if let Ok(_) = input.parse::<TWildcard>() {
+            PatKind::Wildcard
+        } else if let Ok(mut name) = input.parse::<Ident>() {
+            if input.peek::<TLParen>() || input.peek::<TDot>() {
+                let module = if let Ok(_) = input.parse::<TDot>() {
+                    let m = name;
+
+                    name = input.parse()?;
+
+                    Some(m)
+                } else {
+                    None
+                };
+
+                let mut pats = Vec::new();
+
+                if let Ok(_) = input.parse::<TLParen>() {
+                    while !input.is_empty() && !input.peek::<TRParen>() {
+                        pats.push(input.parse()?);
+
+                        if !input.peek::<TRParen>() {
+                            input.parse::<TComma>()?;
+                        }
+                    }
+
+                    input.parse::<TRParen>()?;
+                }
+
+                PatKind::Ctor { module, name, pats }
+            } else if let Ok(_) = input.parse::<TAt>() {
+                let inner = input.parse()?;
+
+                PatKind::Bind {
+                    name,
+                    inner: Some(inner),
+                }
+            } else {
+                PatKind::Bind { name, inner: None }
+            }
+        } else {
+            return input.error("expected '_' or an identifier", 0001);
+        };
+
+        Ok(Pat {
+            span: start.to(input.prev_span()),
+            kind,
+        })
     }
 }
 

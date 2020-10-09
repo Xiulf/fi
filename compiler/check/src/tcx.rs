@@ -1,5 +1,6 @@
 mod expr;
 mod item;
+mod pat;
 mod ty;
 mod unify;
 mod verify;
@@ -209,6 +210,8 @@ impl<'tcx> Tcx<'tcx> {
 
             let ty = if let Some(_) = self.package.exprs.get(id) {
                 self.infer_expr(id)
+            } else if let Some(_) = self.package.pats.get(id) {
+                self.infer_pat(id)
             } else if let Some(_) = self.package.types.get(id) {
                 self.infer_type(id)
             } else if let Some(_) = self.package.items.get(id) {
@@ -230,6 +233,8 @@ impl<'tcx> Tcx<'tcx> {
     pub fn span_of(&self, id: &hir::Id) -> Span {
         if let Some(expr) = self.package.exprs.get(id) {
             expr.span
+        } else if let Some(pat) = self.package.pats.get(id) {
+            pat.span
         } else if let Some(ty) = self.package.types.get(id) {
             ty.span
         } else if let Some(item) = self.package.items.get(id) {

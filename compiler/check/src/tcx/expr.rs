@@ -337,6 +337,23 @@ impl<'tcx> Tcx<'tcx> {
                     self.builtin.unit
                 }
             }
+            hir::ExprKind::Match { pred, arms } => {
+                let ty = self.new_var();
+                let pred_ty = self.type_of(pred);
+                let pred_span = self.span_of(pred);
+
+                for arm in arms {
+                    let pat_ty = self.type_of(&arm.pat);
+                    let pat_span = self.span_of(&arm.pat);
+                    let val_ty = self.type_of(&arm.value);
+                    let val_span = self.span_of(&arm.value);
+
+                    self.constrain(Constraint::Equal(pat_ty, pat_span, pred_ty, pred_span));
+                    self.constrain(Constraint::Equal(val_ty, val_span, ty, expr.span));
+                }
+
+                ty
+            }
             hir::ExprKind::While { label, cond, body } => {
                 let cond_ty = self.type_of(cond);
                 let cond_span = self.span_of(cond);

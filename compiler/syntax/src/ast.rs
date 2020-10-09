@@ -321,6 +321,10 @@ pub enum ExprKind {
         then: Block,
         else_: Option<Block>,
     },
+    Match {
+        pred: Box<Expr>,
+        arms: Vec<MatchArm>,
+    },
     While {
         label: Option<Ident>,
         cond: Box<Expr>,
@@ -391,6 +395,41 @@ pub enum BinOp {
 pub enum UnOp {
     Neg,
     Not,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct MatchArm {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    pub pat: Pat,
+    pub value: Expr,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct Pat {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    pub kind: PatKind,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub enum PatKind {
+    Wildcard,
+    Bind {
+        #[derivative(Hash(hash_with = "hash_ident"))]
+        name: Ident,
+        inner: Option<Box<Pat>>,
+    },
+    Ctor {
+        #[derivative(Hash(hash_with = "hash_option_ident"))]
+        module: Option<Ident>,
+        #[derivative(Hash(hash_with = "hash_ident"))]
+        name: Ident,
+        pats: Vec<Pat>,
+    },
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]

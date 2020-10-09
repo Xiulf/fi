@@ -271,7 +271,6 @@ impl<'a> Resolver<'a> {
     }
 
     pub fn module_meta(&self, module: &ModuleId) -> ModuleMeta {
-        let modules = &self.modules[module].info().scopes[Ns::Modules][0];
         let values = &self.modules[module].info().scopes[Ns::Values][0];
         let types = &self.modules[module].info().scopes[Ns::Types][0];
         let items = values

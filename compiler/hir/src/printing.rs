@@ -41,6 +41,17 @@ impl Display for Package {
             )?;
         }
 
+        write!(f, "\n                   | ####### PATS  #######")?;
+
+        for (id, pat) in &self.pats {
+            write!(f, "\n{} | ", id)?;
+            write!(
+                f,
+                "{}",
+                list(pat.to_string().lines(), "\n                  | ")
+            )?;
+        }
+
         write!(f, "\n                   | ####### TYPES #######")?;
 
         for (id, ty) in &self.types {
@@ -284,6 +295,15 @@ impl Display for Expr {
                 then,
                 else_: None,
             } => write!(f, "if {} {}", cond, then),
+            ExprKind::Match { pred, arms } => {
+                writeln!(f, "match {}", pred)?;
+
+                for arm in arms {
+                    writeln!(indent(f), "{}", arm)?;
+                }
+
+                write!(f, "end")
+            }
             ExprKind::While {
                 label: Some(label),
                 cond,
@@ -331,6 +351,27 @@ impl Display for Arg {
         }
 
         self.value.fmt(f)
+    }
+}
+
+impl Display for MatchArm {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{}: {}", self.pat, self.value)
+    }
+}
+
+impl Display for Pat {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match &self.kind {
+            PatKind::Err => write!(f, "[error]"),
+            PatKind::Wildcard => write!(f, "_"),
+            PatKind::Bind {
+                var,
+                inner: Some(id),
+            } => write!(f, "{} @ {}", var, id),
+            PatKind::Bind { var, inner: None } => write!(f, "{}", var),
+            PatKind::Ctor { id, pats } => write!(f, "{}({})", id, list(pats, ", ")),
+        }
     }
 }
 
