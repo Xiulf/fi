@@ -42,6 +42,12 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                     res = Place::new_ref_meta(ptr, len, layout);
                 }
+                mir::PlaceElem::AsVariant(idx) => {
+                    res = Place {
+                        kind: res.kind,
+                        layout: self.tcx.layout_for_variant(res.layout, *idx),
+                    };
+                }
             }
         }
 

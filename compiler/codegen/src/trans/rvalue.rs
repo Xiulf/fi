@@ -109,6 +109,13 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                 }
                 _ => unimplemented!("{}", ty),
             },
+            mir::RValue::Discr(pl) => {
+                let pl = self.trans_place(pl);
+                let value = pl.to_value(self);
+                let discr = self.get_discr(value, place.layout);
+
+                place.store(self, discr);
+            }
         }
     }
 
@@ -148,6 +155,48 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
                     niche.store(self, niche_val);
                 }
+            }
+        }
+    }
+
+    fn get_discr(&mut self, value: Value<'tcx>, layout: Layout<'tcx>) -> Value<'tcx> {
+        if let check::layout::Abi::Uninhabited = value.layout.abi {
+            unreachable!();
+        }
+
+        let (tag_scalar, tag_field, tag_encoding) = match &layout.variants {
+            check::layout::Variants::Single { index } => {
+                return Value::new_const(self, *index as u128, layout);
+            }
+            check::layout::Variants::Multiple {
+                tag,
+                tag_field,
+                tag_encoding,
+                variants: _,
+            } => (tag, *tag_field, tag_encoding),
+        };
+
+        let cast_to = self.clif_type(layout).unwrap();
+        let tag = value.field(self, tag_field);
+        let tag = tag.load_scalar(self);
+
+        match *tag_encoding {
+            check::layout::TagEncoding::Direct => {
+                let signed = match tag_scalar.value {
+                    check::layout::Primitive::Int(_, s) => s,
+                    _ => false,
+                };
+
+                let val = self.trans_cast(tag, false, cast_to, signed);
+
+                Value::new_val(val, layout)
+            }
+            check::layout::TagEncoding::Niche {
+                dataful_variant,
+                ref niche_variants,
+                niche_start,
+            } => {
+                unimplemented!();
             }
         }
     }

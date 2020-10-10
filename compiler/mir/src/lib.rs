@@ -103,6 +103,7 @@ pub enum PlaceElem<'tcx> {
     Field(usize),
     Index(Operand<'tcx>),
     Slice(Operand<'tcx>, Operand<'tcx>),
+    AsVariant(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +133,7 @@ pub enum RValue<'tcx> {
     BinOp(BinOp, Operand<'tcx>, Operand<'tcx>),
     UnOp(UnOp, Operand<'tcx>),
     Init(Ty<'tcx>, usize, Vec<Operand<'tcx>>),
+    Discr(Place<'tcx>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -365,6 +367,11 @@ impl<'tcx> Place<'tcx> {
 
     pub fn slice(mut self, low: Operand<'tcx>, high: Operand<'tcx>) -> Self {
         self.elems.push(PlaceElem::Slice(low, high));
+        self
+    }
+
+    pub fn as_variant(mut self, idx: usize) -> Self {
+        self.elems.push(PlaceElem::AsVariant(idx));
         self
     }
 }

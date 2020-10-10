@@ -1,3 +1,5 @@
+mod match_;
+
 use crate::*;
 use check::tcx::Tcx;
 use std::collections::HashMap;
@@ -939,24 +941,5 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
             *value = Operand::Move(Place::local(obj));
         }
-    }
-
-    fn trans_match(
-        &mut self,
-        id: &hir::Id,
-        pred: &hir::Id,
-        arms: &[hir::MatchArm],
-    ) -> Operand<'tcx> {
-        let res = self.builder.create_tmp(self.tcx.type_of(id));
-        let res = Place::local(res);
-        let pred_ty = self.tcx.type_of(pred);
-        let pred = self.trans_expr(pred);
-        let pred = self.builder.placed(pred, pred_ty);
-        let exit_block = self.builder.create_block();
-
-        self.builder.jump(exit_block);
-        self.builder.use_block(exit_block);
-
-        Operand::Move(res)
     }
 }

@@ -140,6 +140,7 @@ macro_rules! make_visitor{
                             self.visit_op(lo);
                             self.visit_op(hi);
                         },
+                        PlaceElem::AsVariant(_) => {},
                     }
                 }
             }
@@ -166,6 +167,7 @@ macro_rules! make_visitor{
                         self.visit_op(rhs);
                     },
                     RValue::UnOp(_, op) => self.visit_op(op),
+                    RValue::Discr(place) => self.visit_place(place),
                 }
             }
 

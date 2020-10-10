@@ -143,6 +143,7 @@ impl Display for Place<'_> {
                 PlaceElem::Field(idx) => write!(f, ".{}", idx)?,
                 PlaceElem::Index(idx) => write!(f, "[{}]", idx)?,
                 PlaceElem::Slice(lo, hi) => write!(f, "[{}..{}]", lo, hi)?,
+                PlaceElem::AsVariant(idx) => write!(f, ".({})", idx)?,
             }
         }
 
@@ -176,6 +177,7 @@ impl Display for RValue<'_> {
             RValue::Init(ty, variant, ops) => {
                 write!(f, "{}.{} {{ {} }}", ty, variant, list(ops, ", "))
             }
+            RValue::Discr(place) => write!(f, "discr({})", place),
         }
     }
 }

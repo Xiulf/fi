@@ -126,6 +126,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                 mir::PlaceElem::Field(idx) => ty.fields(self.tcx)[*idx].1,
                 mir::PlaceElem::Index(_) => ty.idx(self.tcx),
                 mir::PlaceElem::Slice(..) => self.tcx.intern_ty(Type::Slice(ty.idx(self.tcx))),
+                mir::PlaceElem::AsVariant(_) => ty,
             }
         }
 

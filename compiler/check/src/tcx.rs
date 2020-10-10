@@ -394,6 +394,21 @@ impl<'tcx> Tcx<'tcx> {
         self.layout(self.type_of(id))
     }
 
+    pub fn layout_for_variant(
+        &self,
+        old: TyLayout<'tcx, Ty<'tcx>>,
+        variant: usize,
+    ) -> TyLayout<'tcx, Ty<'tcx>> {
+        match &old.variants {
+            Variants::Multiple { variants, .. } => {
+                let layout = self.intern_layout(variants[variant].clone());
+
+                TyLayout { ty: old.ty, layout }
+            }
+            _ => unreachable!(),
+        }
+    }
+
     pub fn layout(&self, ty: Ty<'tcx>) -> TyLayout<'tcx, Ty<'tcx>> {
         let layouts = self.layouts.borrow();
 

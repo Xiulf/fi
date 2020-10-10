@@ -165,6 +165,7 @@ impl<'a, 'tcx> Ecx<'a, 'tcx> {
                     _ => unimplemented!(),
                 }
             }
+            RValue::Discr(place) => unimplemented!(),
         }
     }
 
@@ -218,7 +219,8 @@ impl<'tcx> Place<'tcx> {
                         _ => unimplemented!(),
                     }
                 }
-                PlaceElem::Slice(lo, hi) => unimplemented!(),
+                PlaceElem::Slice(_lo, _hi) => unimplemented!(),
+                PlaceElem::AsVariant(_idx) => unimplemented!(),
             }
         }
 
@@ -261,7 +263,8 @@ impl<'tcx> Place<'tcx> {
                         _ => unimplemented!(),
                     }
                 }
-                PlaceElem::Slice(lo, hi) => unimplemented!(),
+                PlaceElem::Slice(_lo, _hi) => unimplemented!(),
+                PlaceElem::AsVariant(_idx) => unimplemented!(),
             }
         }
 
