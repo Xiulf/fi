@@ -164,7 +164,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
             unreachable!();
         }
 
-        let (tag_scalar, tag_field, tag_encoding) = match &layout.variants {
+        let (tag_scalar, tag_field, tag_encoding) = match &value.layout.variants {
             check::layout::Variants::Single { index } => {
                 return Value::new_const(self, *index as u128, layout);
             }

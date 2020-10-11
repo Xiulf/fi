@@ -333,6 +333,7 @@ pub fn define<'tcx>(
         ctx.eliminate_unreachable_code(module.isa()).unwrap();
         ctx.dce(module.isa()).unwrap();
 
+        // println!("{}", tcx.get_full_name(&item.id));
         // println!("{}", ctx.func);
 
         module.define_function(
