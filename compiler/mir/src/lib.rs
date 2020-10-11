@@ -502,6 +502,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             .push(Stmt::Assign(place, RValue::Init(ty, variant, ops)));
     }
 
+    pub fn discriminant(&mut self, place: Place<'tcx>, val: Place<'tcx>) {
+        self.block()
+            .stmts
+            .push(Stmt::Assign(place, RValue::Discr(val)));
+    }
+
     pub fn abort(&mut self) {
         if let Term::Unset = self.block().term {
             self.block().term = Term::Abort;

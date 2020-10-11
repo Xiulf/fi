@@ -46,7 +46,7 @@ pub fn eval_expr<'tcx>(
 
     converter.builder.use_block(entry);
 
-    let res = converter.trans_expr(expr);
+    let res = converter.trans_expr(expr, None);
 
     converter.builder.use_(Place::local(LocalId::RET), res);
     converter.builder.return_();

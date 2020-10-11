@@ -15,22 +15,31 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
     ) -> Operand<'tcx> {
         let res = self.builder.create_tmp(self.tcx.type_of(id));
         let res = Place::local(res);
-        let pred = self.trans_pred(pred);
+        let (pred, discr) = self.trans_pred(pred);
         let exit_block = self.builder.create_block();
-        let candidates = self.build_candidates(pred.clone(), exit_block, arms);
+        let candidates = self.build_candidates(pred, exit_block, arms);
 
-        self.trans_candidates(candidates, pred, exit_block, res.clone());
+        self.trans_candidates(candidates, discr, exit_block, res.clone());
         self.builder.use_block(exit_block);
 
         Operand::Move(res)
     }
 
-    fn trans_pred(&mut self, pred: &hir::Id) -> Place<'tcx> {
+    fn trans_pred(&mut self, pred: &hir::Id) -> (Place<'tcx>, Place<'tcx>) {
         let pred_ty = self.tcx.type_of(pred);
-        let pred = self.trans_expr(pred);
+        let pred = self.trans_expr(pred, None);
         let pred = self.builder.placed(pred, pred_ty);
 
-        pred
+        if let Type::Enum(..) = pred_ty {
+            let discr = self.builder.create_tmp(self.tcx.builtin.usize);
+            let discr = Place::local(discr);
+
+            self.builder.discriminant(discr.clone(), pred.clone());
+
+            (pred, discr)
+        } else {
+            (pred.clone(), pred)
+        }
     }
 
     fn build_candidates(
@@ -137,7 +146,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         }
 
         if eval_arm {
-            let val = self.trans_expr(&arm.value);
+            let val = self.trans_expr(&arm.value, None);
 
             self.builder.use_(res, val);
             self.builder.jump(exit_block);

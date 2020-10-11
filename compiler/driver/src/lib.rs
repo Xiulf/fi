@@ -99,7 +99,7 @@ pub fn build(mut opts: Opts) -> BuildFiles {
         |tcx| {
             let mir = mir::convert::convert(&tcx, &hir);
 
-            println!("{}", mir);
+            println!("{}", mir.display(&tcx));
 
             tcx.store_type_map(&types_dir);
 
