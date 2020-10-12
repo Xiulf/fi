@@ -9,18 +9,30 @@ impl<'tcx> Tcx<'tcx> {
         match &pat.kind {
             hir::PatKind::Err => self.builtin.error,
             hir::PatKind::Wildcard => self.new_var(),
-            hir::PatKind::Bind { var, inner } => {
+            hir::PatKind::Bind { var, inner, by_ref } => {
                 let var_ty = self.type_of(var);
+                let var_span = self.span_of(var);
+                let ty = self.new_var();
+
+                self.constrain(Constraint::Equal(
+                    var_ty,
+                    var_span,
+                    if *by_ref {
+                        self.intern_ty(Type::Ptr(PtrKind::Single, ty))
+                    } else {
+                        ty
+                    },
+                    pat.span,
+                ));
 
                 if let Some(inner) = inner {
                     let inner_ty = self.type_of(inner);
                     let inner_span = self.span_of(inner);
-                    let var_span = self.span_of(var);
 
-                    self.constrain(Constraint::Equal(var_ty, var_span, inner_ty, inner_span));
+                    self.constrain(Constraint::Equal(ty, var_span, inner_ty, inner_span));
                 }
 
-                var_ty
+                ty
             }
             hir::PatKind::Ctor { id, pats } => {
                 let ctor_ty = self.type_of(id).mono(self, Vec::new());

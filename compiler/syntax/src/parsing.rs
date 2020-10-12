@@ -1262,6 +1262,19 @@ impl Parse for Pat {
         let start = input.span();
         let kind = if let Ok(_) = input.parse::<TWildcard>() {
             PatKind::Wildcard
+        } else if let Ok(_) = input.parse::<TAmp>() {
+            let name = input.parse::<Ident>()?;
+            let inner = if let Ok(_) = input.parse::<TAt>() {
+                Some(input.parse()?)
+            } else {
+                None
+            };
+
+            PatKind::Bind {
+                name,
+                inner,
+                by_ref: true,
+            }
         } else if let Ok(mut name) = input.parse::<Ident>() {
             if input.peek::<TLParen>() || input.peek::<TDot>() {
                 let module = if let Ok(_) = input.parse::<TDot>() {
@@ -1295,9 +1308,14 @@ impl Parse for Pat {
                 PatKind::Bind {
                     name,
                     inner: Some(inner),
+                    by_ref: false,
                 }
             } else {
-                PatKind::Bind { name, inner: None }
+                PatKind::Bind {
+                    name,
+                    inner: None,
+                    by_ref: false,
+                }
             }
         } else {
             return input.error("expected '_' or an identifier", 0001);

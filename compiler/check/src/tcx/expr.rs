@@ -354,18 +354,8 @@ impl<'tcx> Tcx<'tcx> {
 
                 ty
             }
-            hir::ExprKind::While { label, cond, body } => {
-                let cond_ty = self.type_of(cond);
-                let cond_span = self.span_of(cond);
+            hir::ExprKind::Loop { label, body } => {
                 let _ = self.infer_block(body);
-
-                self.constrain(Constraint::Equal(
-                    cond_ty,
-                    cond_span,
-                    self.builtin.bool,
-                    cond_span,
-                ));
-
                 let mut breaks = Vec::new();
 
                 self.find_breaks(body, label.as_ref(), &mut breaks);
@@ -381,6 +371,31 @@ impl<'tcx> Tcx<'tcx> {
 
                     ret
                 }
+            }
+            hir::ExprKind::While {
+                label: _,
+                cond,
+                body,
+            } => {
+                let cond_ty = self.type_of(cond);
+                let cond_span = self.span_of(cond);
+                let _ = self.infer_block(body);
+
+                self.constrain(Constraint::Equal(
+                    cond_ty,
+                    cond_span,
+                    self.builtin.bool,
+                    cond_span,
+                ));
+
+                self.builtin.unit
+            }
+            hir::ExprKind::Break { label: _, expr } => {
+                if let Some(expr) = expr {
+                    self.type_of(expr);
+                }
+
+                self.builtin.never
             }
             hir::ExprKind::Defer { expr } => {
                 self.type_of(expr);

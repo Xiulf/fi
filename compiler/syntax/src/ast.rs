@@ -422,6 +422,7 @@ pub enum PatKind {
         #[derivative(Hash(hash_with = "hash_ident"))]
         name: Ident,
         inner: Option<Box<Pat>>,
+        by_ref: bool,
     },
     Ctor {
         #[derivative(Hash(hash_with = "hash_option_ident"))]

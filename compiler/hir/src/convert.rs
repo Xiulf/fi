@@ -1227,6 +1227,22 @@ impl<'a> Converter<'a> {
                     })
                     .collect(),
             },
+            ast::ExprKind::Loop { label, body } => {
+                let label = if let Some(label) = label {
+                    let id = self.next_id();
+
+                    self.resolver
+                        .define(Ns::Labels, label.symbol, label.span, Res::Label(id));
+
+                    Some(id)
+                } else {
+                    None
+                };
+
+                let body = self.trans_block(body);
+
+                ExprKind::Loop { label, body }
+            }
             ast::ExprKind::While { label, cond, body } => {
                 let label = if let Some(label) = label {
                     let id = self.next_id();
@@ -1243,6 +1259,20 @@ impl<'a> Converter<'a> {
                 let body = self.trans_block(body);
 
                 ExprKind::While { label, cond, body }
+            }
+            ast::ExprKind::Break { label, expr } => {
+                let label = label
+                    .as_ref()
+                    .map(|name| self.resolver.get(Ns::Labels, None, &name.symbol))
+                    .and_then(|(res, _)| res)
+                    .and_then(|res| match res {
+                        Res::Label(id) => Some(id),
+                        _ => None,
+                    });
+
+                let expr = expr.as_ref().map(|e| self.trans_expr(e));
+
+                ExprKind::Break { label, expr }
             }
             ast::ExprKind::Defer { expr } => ExprKind::Defer {
                 expr: self.trans_expr(expr),
@@ -1266,7 +1296,11 @@ impl<'a> Converter<'a> {
         let id = self.next_id();
         let kind = match &pat.kind {
             ast::PatKind::Wildcard => PatKind::Wildcard,
-            ast::PatKind::Bind { name, inner } => {
+            ast::PatKind::Bind {
+                name,
+                inner,
+                by_ref,
+            } => {
                 if let Some(inner) = inner {
                     let inner = self.trans_pat(inner);
                     let id = self.next_id();
@@ -1293,6 +1327,7 @@ impl<'a> Converter<'a> {
                     PatKind::Bind {
                         var: id,
                         inner: Some(inner),
+                        by_ref: *by_ref,
                     }
                 } else {
                     if let (Some(Res::Item(item)), _) =
@@ -1327,6 +1362,7 @@ impl<'a> Converter<'a> {
                         PatKind::Bind {
                             var: id,
                             inner: None,
+                            by_ref: *by_ref,
                         }
                     }
                 }

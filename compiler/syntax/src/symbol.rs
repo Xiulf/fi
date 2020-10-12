@@ -118,7 +118,13 @@ impl<D> parser::parse::Parse<D> for Ident {
 
 impl parser::token::Token for Ident {
     fn peek(cursor: parser::buffer::Cursor) -> bool {
-        parser::ident::Ident::peek(cursor)
+        match cursor.ident() {
+            Some((ident, _)) => match ident.name.as_str() {
+                "do" | "if" | "match" | "loop" | "while" | "end" => false,
+                _ => true,
+            },
+            None => false,
+        }
     }
 
     fn display() -> &'static str {

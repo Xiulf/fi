@@ -368,8 +368,13 @@ impl Display for Pat {
             PatKind::Bind {
                 var,
                 inner: Some(id),
-            } => write!(f, "{} @ {}", var, id),
-            PatKind::Bind { var, inner: None } => write!(f, "{}", var),
+                by_ref,
+            } => write!(f, "{}{} @ {}", if *by_ref { "&" } else { "" }, var, id),
+            PatKind::Bind {
+                var,
+                inner: None,
+                by_ref,
+            } => write!(f, "{}{}", if *by_ref { "&" } else { "" }, var),
             PatKind::Ctor { id, pats } => write!(f, "{}({})", id, list(pats, ", ")),
         }
     }

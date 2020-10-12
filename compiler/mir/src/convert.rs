@@ -21,7 +21,7 @@ pub(crate) struct BodyConverter<'a, 'tcx> {
     hir: &'a hir::Package,
     pub(crate) builder: Builder<'a, 'tcx>,
     locals: HashMap<hir::Id, LocalId>,
-    loops: Vec<(Option<&'a hir::Id>, BlockId, BlockId)>,
+    loops: Vec<(Option<&'a hir::Id>, Option<Place<'tcx>>, BlockId, BlockId)>,
     deferred: Vec<Vec<hir::Id>>,
 }
 
@@ -653,12 +653,40 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 }
             }
             hir::ExprKind::Match { pred, arms } => self.trans_match(id, pred, arms),
+            hir::ExprKind::Loop { label, body } => {
+                let body_block = self.builder.create_block();
+                let exit_block = self.builder.create_block();
+                let res = if expr_ty == self.tcx.builtin.unit {
+                    None
+                } else {
+                    Some(Place::local(self.builder.create_tmp(expr_ty)))
+                };
+
+                let tmp = self.builder.create_tmp(self.tcx.builtin.unit);
+
+                self.loops
+                    .push((label.as_ref(), res.clone(), body_block, exit_block));
+
+                self.builder.jump(body_block);
+                self.builder.use_block(body_block);
+                self.trans_block(body, tmp);
+                self.builder.jump(body_block);
+                self.builder.use_block(exit_block);
+                self.loops.pop().unwrap();
+
+                if let Some(res) = res {
+                    Operand::Move(res)
+                } else {
+                    Operand::Const(Const::Tuple(Vec::new()), self.tcx.builtin.unit)
+                }
+            }
             hir::ExprKind::While { label, cond, body } => {
                 let cond_block = self.builder.create_block();
                 let body_block = self.builder.create_block();
                 let exit_block = self.builder.create_block();
 
-                self.loops.push((label.as_ref(), cond_block, exit_block));
+                self.loops
+                    .push((label.as_ref(), None, cond_block, exit_block));
                 self.builder.jump(cond_block);
                 self.builder.use_block(cond_block);
 
@@ -674,6 +702,29 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 self.builder.jump(cond_block);
                 self.builder.use_block(exit_block);
                 self.loops.pop().unwrap();
+
+                Operand::Const(Const::Tuple(Vec::new()), self.tcx.builtin.unit)
+            }
+            hir::ExprKind::Break { label, expr } => {
+                let (_, res, _, exit_block) = if let Some(lbl) = label {
+                    self.loops
+                        .iter()
+                        .find(|(l, _, _, _)| if let Some(l) = l { *l == lbl } else { false })
+                        .unwrap()
+                        .clone()
+                } else {
+                    self.loops.last().unwrap().clone()
+                };
+
+                if let Some(expr) = expr {
+                    if let Some(res) = res {
+                        let val = self.trans_expr(expr, None);
+
+                        self.builder.use_(res, val);
+                    }
+                }
+
+                self.builder.jump(exit_block);
 
                 Operand::Const(Const::Tuple(Vec::new()), self.tcx.builtin.unit)
             }

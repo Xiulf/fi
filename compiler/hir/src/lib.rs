@@ -325,8 +325,15 @@ pub struct Pat {
 pub enum PatKind {
     Err,
     Wildcard,
-    Bind { var: Id, inner: Option<Id> },
-    Ctor { id: Id, pats: Vec<Id> },
+    Bind {
+        var: Id,
+        inner: Option<Id>,
+        by_ref: bool,
+    },
+    Ctor {
+        id: Id,
+        pats: Vec<Id>,
+    },
 }
 
 #[derive(Debug)]

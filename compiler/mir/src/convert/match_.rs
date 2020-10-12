@@ -101,11 +101,16 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
         match &candidate.pat.kind {
             hir::PatKind::Err => return true,
             hir::PatKind::Wildcard => return true,
-            hir::PatKind::Bind { var, inner } => {
+            hir::PatKind::Bind { var, inner, by_ref } => {
                 let local = self.builder.create_var(self.tcx.type_of(var));
 
-                self.builder
-                    .use_(Place::local(local), Operand::Copy(candidate.place.clone()));
+                if *by_ref {
+                    self.builder
+                        .ref_(Place::local(local), candidate.place.clone());
+                } else {
+                    self.builder
+                        .use_(Place::local(local), Operand::Copy(candidate.place.clone()));
+                }
 
                 self.locals.insert(*var, local);
 
