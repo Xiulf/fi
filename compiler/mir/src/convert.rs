@@ -345,7 +345,9 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                                     Operand::Move(Place::global(*id))
                                 }
                             }
-                            hir::ImportKind::Struct | hir::ImportKind::Enum => unreachable!(),
+                            hir::ImportKind::Struct
+                            | hir::ImportKind::Enum
+                            | hir::ImportKind::Alias => unreachable!(),
                         }
                     }
                 }
@@ -367,7 +369,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 Operand::Const(Const::Scalar(*val as u128), self.tcx.type_of(id))
             }
             hir::ExprKind::String { val } => {
-                Operand::Const(Const::Bytes(val.as_bytes().into()), self.tcx.builtin.str)
+                Operand::Const(Const::Bytes(val.as_bytes().into()), expr_ty)
             }
             hir::ExprKind::Type { ty } => {
                 Operand::Const(Const::Type(self.tcx.type_of(ty)), self.tcx.builtin.typeid)

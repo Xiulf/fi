@@ -60,7 +60,11 @@ impl<'tcx> Tcx<'tcx> {
             hir::ExprKind::Int { .. } => self.new_int(),
             hir::ExprKind::Float { .. } => self.new_float(),
             hir::ExprKind::Char { .. } => self.builtin.u32,
-            hir::ExprKind::String { .. } => self.builtin.str,
+            hir::ExprKind::String { val } => {
+                let arr = self.intern_ty(Type::Array(self.builtin.u8, val.len()));
+
+                self.intern_ty(Type::Ptr(PtrKind::Single, arr))
+            }
             hir::ExprKind::Type { ty } => {
                 self.type_of(ty);
                 self.builtin.typeid

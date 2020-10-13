@@ -1,7 +1,7 @@
 module Macro.AST
 
 struct StringLiteral
-    text: str
+    text: []u8
 end
 
 enum Expression

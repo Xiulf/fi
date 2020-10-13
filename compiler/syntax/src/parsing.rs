@@ -15,6 +15,7 @@ parser::token![ident "var" TVar];
 parser::token![ident "const" TConst];
 parser::token![ident "struct" TStruct];
 parser::token![ident "enum" TEnum];
+parser::token![ident "alias" TAlias];
 parser::token![ident "do" TDo];
 parser::token![ident "mut" TMut];
 parser::token![ident "type" TType];
@@ -435,9 +436,22 @@ impl Parse for Item {
                     methods,
                 },
             })
+        } else if let Ok(_) = input.parse::<TAlias>() {
+            let name = input.parse()?;
+            let generics = input.parse()?;
+            let _ = input.parse::<TEquals>()?;
+            let value = input.parse()?;
+            let _ = input.parse::<TSemi>();
+
+            Ok(Item {
+                span: start.to(input.prev_span()),
+                attrs,
+                name,
+                kind: ItemKind::Alias { generics, value },
+            })
         } else {
             input.error(
-                "expected 'mod', 'extern', 'fn', 'var', 'const', 'struct' or 'enum'",
+                "expected 'mod', 'extern', 'fn', 'var', 'const', 'struct', 'enum' or 'alias'",
                 0001,
             )
         }
@@ -452,6 +466,8 @@ impl Item {
             || input.peek::<TVar>()
             || input.peek::<TConst>()
             || input.peek::<TStruct>()
+            || input.peek::<TEnum>()
+            || input.peek::<TAlias>()
     }
 }
 

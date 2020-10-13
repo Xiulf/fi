@@ -14,7 +14,6 @@ impl<'tcx> Tcx<'tcx> {
                 hir::Res::PrimTy(prim) => match prim {
                     hir::PrimTy::Never => self.builtin.never,
                     hir::PrimTy::Bool => self.builtin.bool,
-                    hir::PrimTy::Str => self.builtin.str,
                     hir::PrimTy::Int(255, true) => self.new_int(),
                     hir::PrimTy::Int(255, false) => self.new_uint(),
                     hir::PrimTy::Float(255) => self.new_float(),

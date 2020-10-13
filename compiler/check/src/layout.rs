@@ -130,13 +130,6 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
             | Type::Ptr(_, _)
             | Type::Array(_, _)
             | Type::Func(..) => unreachable!("{}.{}", self.ty.display(tcx), idx),
-            Type::Str => {
-                if idx == 0 {
-                    tcx.builtin.ref_u8
-                } else {
-                    tcx.builtin.usize
-                }
-            }
             Type::Slice(of) => {
                 if idx == 0 {
                     tcx.intern_ty(Type::Ptr(PtrKind::Multiple(false), of))

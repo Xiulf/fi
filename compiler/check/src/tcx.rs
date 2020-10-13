@@ -47,7 +47,6 @@ pub struct BuiltinTypes<'tcx> {
     pub never: Ty<'tcx>,
     pub unit: Ty<'tcx>,
     pub bool: Ty<'tcx>,
-    pub str: Ty<'tcx>,
     pub typeid: Ty<'tcx>,
     pub u8: Ty<'tcx>,
     pub u16: Ty<'tcx>,
@@ -64,14 +63,12 @@ pub struct BuiltinTypes<'tcx> {
     pub f32: Ty<'tcx>,
     pub f64: Ty<'tcx>,
     pub ref_unit: Ty<'tcx>,
-    pub ref_u8: Ty<'tcx>,
     pub type_layout: Ty<'tcx>,
 }
 
 impl<'tcx> BuiltinTypes<'tcx> {
     fn new(intern: &TcxIntern<'tcx>) -> Self {
         let unit = intern.intern_ty(Type::Tuple(List::empty()));
-        let u8 = intern.intern_ty(Type::UInt(8));
         let usize = intern.intern_ty(Type::UInt(0));
 
         BuiltinTypes {
@@ -79,9 +76,8 @@ impl<'tcx> BuiltinTypes<'tcx> {
             never: intern.intern_ty(Type::Never),
             unit,
             bool: intern.intern_ty(Type::Bool),
-            str: intern.intern_ty(Type::Str),
             typeid: intern.intern_ty(Type::TypeId),
-            u8,
+            u8: intern.intern_ty(Type::UInt(8)),
             u16: intern.intern_ty(Type::UInt(16)),
             u32: intern.intern_ty(Type::UInt(32)),
             u64: intern.intern_ty(Type::UInt(64)),
@@ -96,7 +92,6 @@ impl<'tcx> BuiltinTypes<'tcx> {
             f32: intern.intern_ty(Type::Float(32)),
             f64: intern.intern_ty(Type::Float(64)),
             ref_unit: intern.intern_ty(Type::Ptr(PtrKind::Single, unit)),
-            ref_u8: intern.intern_ty(Type::Ptr(PtrKind::Multiple(false), u8)),
             type_layout: intern.intern_ty(Type::Tuple(
                 intern.intern_ty_list(&[&*usize, &*usize, &*usize]),
             )),
@@ -275,6 +270,10 @@ impl<'tcx> Tcx<'tcx> {
 
     pub fn constrain(&self, cs: Constraint<'tcx>) {
         self.constraints.borrow_mut().push(cs);
+    }
+
+    pub(crate) unsafe fn package_mut(&self) -> &mut hir::Package {
+        &mut *(self.package as *const hir::Package as *mut hir::Package)
     }
 
     pub fn new_var(&self) -> Ty<'tcx> {
@@ -508,15 +507,6 @@ impl<'tcx> Tcx<'tcx> {
             Type::Float(32) => scalar(Primitive::F32),
             Type::Float(64) => scalar(Primitive::F64),
             Type::Float(_) => unreachable!(),
-            Type::Str => {
-                let mut data_ptr = scalar_unit(Primitive::Pointer);
-
-                data_ptr.valid_range = 1..=*data_ptr.valid_range.end();
-
-                let metadata = scalar_unit(Primitive::Int(Integer::ptr_sized(self.target), false));
-
-                self.intern_layout(self.scalar_pair(data_ptr, metadata))
-            }
             Type::TypeId => match self.target.pointer_width() {
                 Ok(target_lexicon::PointerWidth::U16) => {
                     scalar(Primitive::Int(Integer::I16, false))

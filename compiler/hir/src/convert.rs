@@ -546,6 +546,14 @@ impl<'a> Converter<'a> {
                     );
                 }
             }
+            ast::ItemKind::Alias { .. } => {
+                self.resolver.define(
+                    Ns::Types,
+                    item.name.symbol,
+                    item.name.span,
+                    Res::Item(Id::item(id)),
+                );
+            }
         }
 
         id
@@ -578,6 +586,7 @@ impl<'a> Converter<'a> {
                         attrs,
                         name: item.name,
                         kind: ItemKind::Extern { abi: *abi, ty },
+                        max_id: Id(id.item_id(), self.local_id),
                     },
                 );
             }
@@ -613,6 +622,7 @@ impl<'a> Converter<'a> {
                                 attrs: Vec::new(),
                                 name: param.name,
                                 kind: ItemKind::Param { ty },
+                                max_id: id,
                             },
                         );
 
@@ -640,6 +650,7 @@ impl<'a> Converter<'a> {
                             ret,
                             body,
                         },
+                        max_id: Id(id.item_id(), self.local_id),
                     },
                 );
             }
@@ -659,6 +670,7 @@ impl<'a> Converter<'a> {
                             val,
                             global: top_level,
                         },
+                        max_id: Id(id.item_id(), self.local_id),
                     },
                 );
             }
@@ -674,6 +686,7 @@ impl<'a> Converter<'a> {
                         attrs,
                         name: item.name,
                         kind: ItemKind::Const { ty, val },
+                        max_id: Id(id.item_id(), self.local_id),
                     },
                 );
             }
@@ -715,6 +728,7 @@ impl<'a> Converter<'a> {
                             fields: fields.clone(),
                             methods,
                         },
+                        max_id: Id(id.item_id(), self.local_id),
                     },
                 );
 
@@ -730,6 +744,7 @@ impl<'a> Converter<'a> {
                             variant: 0,
                             params: Some(fields),
                         },
+                        max_id: cons_id,
                     },
                 );
             }
@@ -771,6 +786,7 @@ impl<'a> Converter<'a> {
                                     variant: i,
                                     params: fields.clone(),
                                 },
+                                max_id: cons_id,
                             },
                         );
 
@@ -802,6 +818,27 @@ impl<'a> Converter<'a> {
                             variants,
                             methods,
                         },
+                        max_id: Id(id.item_id(), self.local_id),
+                    },
+                );
+            }
+            ast::ItemKind::Alias { generics, value } => {
+                self.resolver.push_rib(Ns::Types, RibKind::Block);
+
+                let generics = self.trans_generics(generics);
+                let value = self.trans_ty(value);
+
+                self.resolver.pop_rib(Ns::Types);
+
+                self.items.insert(
+                    id,
+                    Item {
+                        span: item.span,
+                        id,
+                        attrs,
+                        name: item.name,
+                        kind: ItemKind::Alias { generics, value },
+                        max_id: Id(id.item_id(), self.local_id),
                     },
                 );
             }
@@ -841,7 +878,13 @@ impl<'a> Converter<'a> {
         self.resolver.push_rib(Ns::Types, RibKind::Block);
         self.resolver.push_rib(Ns::Labels, RibKind::Block);
 
-        let id = self.next_id();
+        let id = Id::item(ItemId::new(method));
+        let old_local = self.local_id;
+        let old_item = self.current_item;
+
+        self.current_item = id.item_id();
+        self.local_id = 0;
+
         let generics = self.trans_generics(&method.generics);
         let self_param = {
             let id = self.next_id();
@@ -885,6 +928,7 @@ impl<'a> Converter<'a> {
                         span: method.span,
                     },
                     kind: ItemKind::Param { ty: ty_id2 },
+                    max_id: id,
                 },
             );
 
@@ -913,6 +957,7 @@ impl<'a> Converter<'a> {
                         attrs: Vec::new(),
                         name: param.name,
                         kind: ItemKind::Param { ty },
+                        max_id: id,
                     },
                 );
 
@@ -942,8 +987,12 @@ impl<'a> Converter<'a> {
                     ret,
                     body,
                 },
+                max_id: Id(id.item_id(), self.local_id),
             },
         );
+
+        self.current_item = old_item;
+        self.local_id = old_local;
 
         id
     }
@@ -990,6 +1039,7 @@ impl<'a> Converter<'a> {
                                     val,
                                     global: false,
                                 },
+                                max_id: id,
                             },
                         );
 
@@ -1321,6 +1371,7 @@ impl<'a> Converter<'a> {
                                 ty,
                                 val: None,
                             },
+                            max_id: id,
                         },
                     );
 
@@ -1356,6 +1407,7 @@ impl<'a> Converter<'a> {
                                     ty,
                                     val: None,
                                 },
+                                max_id: id,
                             },
                         );
 

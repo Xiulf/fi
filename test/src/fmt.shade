@@ -14,11 +14,11 @@ fn print_args(argc: i32, argv: [*][*:0]u8)
     end   
 end
 
-fn print_fmt(fmt: str, args: []FmtArg)
+fn print_fmt(fmt: []u8, args: []FmtArg)
     write_fmt(0, fmt, args)
 end
 
-fn write_fmt(stream: i32, fmt: str, args: []FmtArg)
+fn write_fmt(stream: i32, fmt: []u8, args: []FmtArg)
     var i = 0;
     var a = 0;
 
@@ -51,7 +51,7 @@ struct FmtArg
     f: fn(val: *(), stream: i32) -> ()
 end
 
-fn str(s: *str) -> FmtArg
+fn str(s: *[]u8) -> FmtArg
     FmtArg(s.(*()), fmt_str)
 end
 
@@ -68,7 +68,7 @@ fn usize(v: *usize) -> FmtArg
 end
 
 fn fmt_str(val: *(), stream: i32)
-    var val = val.(*str);
+    var val = val.(*[]u8);
     
     write(stream, val.ptr, val.len);
 end
@@ -79,9 +79,9 @@ fn fmt_bool(val: *(), stream: i32)
     var false = "false";
 
     if val
-        write(stream, true.ptr, true.len);
+        write(stream, true.([*]u8), true.len);
     else
-        write(stream, false.ptr, false.len);
+        write(stream, false.([*]u8), false.len);
     end
 end
 

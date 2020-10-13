@@ -115,6 +115,10 @@ pub enum ItemKind {
         variants: Vec<EnumVariant>,
         methods: Vec<Method>,
     },
+    Alias {
+        generics: Generics,
+        value: Type,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

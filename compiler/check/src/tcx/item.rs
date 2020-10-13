@@ -86,6 +86,7 @@ impl<'tcx> Tcx<'tcx> {
             hir::ItemKind::Const { ty, .. } => self.type_of(ty),
             hir::ItemKind::Struct { .. } => self.intern_ty(Type::TypeOf(*id, List::empty())),
             hir::ItemKind::Enum { .. } => self.intern_ty(Type::TypeOf(*id, List::empty())),
+            hir::ItemKind::Alias { .. } => self.intern_ty(Type::TypeOf(*id, List::empty())),
             hir::ItemKind::Ctor {
                 item,
                 variant: _,
@@ -215,6 +216,18 @@ impl<'tcx> Tcx<'tcx> {
 
                 let variants = self.intern.intern_variant_list(&variants);
                 let mut new_ty = self.intern_ty(Type::Enum(*id, variants));
+
+                if !generics.params.is_empty() {
+                    let args = generics.params.iter().map(|g| g.id).collect::<Vec<_>>();
+                    let args = self.intern.intern_id_list(&args);
+
+                    new_ty = self.intern_ty(Type::Forall(args, new_ty));
+                }
+
+                self.types.borrow_mut().insert(*id, new_ty);
+            }
+            hir::ItemKind::Alias { generics, value } => {
+                let mut new_ty = self.type_of(value);
 
                 if !generics.params.is_empty() {
                     let args = generics.params.iter().map(|g| g.id).collect::<Vec<_>>();

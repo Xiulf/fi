@@ -3,16 +3,13 @@ module Main
 import Fmt
 import Fmt.Arg as FmtArg
 
-@main
-fn main(argc: i32, argv: [*][*:0]u8) -> i32
-    var x = 0..10;
+alias CArray<T> = [*]T;
+alias cstr = [*:0]u8;
+alias str = []u8;
 
-    loop
-        match x.next()
-            Some(i): print_fmt("i: %\n", [FmtArg.usize(&i)][..])
-            None: break
-        end
-    end
+@main
+fn main(argc: i32, argv: CArray<cstr>) -> i32
+    var x: str = "abcd";
 
     0
 end

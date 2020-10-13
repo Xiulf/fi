@@ -164,7 +164,7 @@ impl<'tcx> Place<'tcx> {
                     layout,
                 }
             }
-            Type::Slice(_) | Type::Str => {
+            Type::Slice(_) => {
                 let ptr = self.field(fx, 0).deref(fx).as_ptr();
                 let new_ptr = ptr.offset_value(fx, new_idx);
 

@@ -61,6 +61,7 @@ pub enum ImportKind {
     Var,
     Struct,
     Enum,
+    Alias,
 }
 
 #[derive(Debug)]
@@ -70,6 +71,7 @@ pub struct Item {
     pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub kind: ItemKind,
+    max_id: Id,
 }
 
 #[derive(Debug, Hash)]
@@ -105,6 +107,10 @@ pub enum ItemKind {
         generics: Generics,
         variants: Vec<EnumVariant>,
         methods: Vec<Id>,
+    },
+    Alias {
+        generics: Generics,
+        value: Id,
     },
     Method {
         owner: Id,
@@ -475,6 +481,11 @@ impl Item {
         self.attrs
             .iter()
             .any(|attr| matches!(&attr.kind, AttrKind::Poly))
+    }
+
+    pub fn next_id(&mut self) -> Id {
+        self.max_id.1 += 1;
+        self.max_id
     }
 }
 

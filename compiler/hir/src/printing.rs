@@ -37,7 +37,7 @@ impl Display for Package {
             write!(
                 f,
                 "{}",
-                list(expr.to_string().lines(), "\n                  | ")
+                list(expr.to_string().lines(), "\n                   | ")
             )?;
         }
 
@@ -48,7 +48,7 @@ impl Display for Package {
             write!(
                 f,
                 "{}",
-                list(pat.to_string().lines(), "\n                  | ")
+                list(pat.to_string().lines(), "\n                   | ")
             )?;
         }
 
@@ -130,6 +130,9 @@ impl Display for Item {
                 }
 
                 write!(f, "end")
+            }
+            ItemKind::Alias { generics, value } => {
+                write!(f, "alias {}{} = {};", self.name, generics, value)
             }
             ItemKind::Method {
                 owner,
@@ -449,7 +452,6 @@ impl Display for PrimTy {
         match self {
             PrimTy::Never => write!(f, "never"),
             PrimTy::Bool => write!(f, "bool"),
-            PrimTy::Str => write!(f, "str"),
             PrimTy::Int(255, false) => write!(f, "uint"),
             PrimTy::Int(255, true) => write!(f, "int"),
             PrimTy::Float(255) => write!(f, "float"),

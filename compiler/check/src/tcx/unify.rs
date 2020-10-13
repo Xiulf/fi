@@ -70,7 +70,6 @@ impl<'tcx> Tcx<'tcx> {
                 | (Type::Never, _)
                 | (_, Type::Never)
                 | (Type::Bool, Type::Bool)
-                | (Type::Str, Type::Str)
                 | (Type::TypeId, Type::TypeId) => Subst::empty(),
                 (Type::Param(a), Type::Param(b)) if a == b => Subst::empty(),
                 (Type::Int(a), Type::Int(b)) if a == b => Subst::empty(),
@@ -439,12 +438,6 @@ impl<'tcx> Tcx<'tcx> {
                 Type::Ptr(PtrKind::Single, to) => {
                     self.unify_one(Constraint::Index(to, list_span, ret_ty, ret_span))
                 }
-                Type::Str => self.unify_one(Constraint::Equal(
-                    ret_ty,
-                    ret_span,
-                    self.builtin.u8,
-                    list_span,
-                )),
                 Type::Array(of, _) => {
                     self.unify_one(Constraint::Equal(ret_ty, ret_span, of, list_span))
                 }
@@ -493,22 +486,6 @@ impl<'tcx> Tcx<'tcx> {
                         (
                             Ident {
                                 symbol: hir::Symbol::new("stride"),
-                                span: obj_span,
-                            },
-                            self.builtin.usize,
-                        ),
-                    ],
-                    Type::Str => vec![
-                        (
-                            Ident {
-                                symbol: hir::Symbol::new("ptr"),
-                                span: obj_span,
-                            },
-                            self.builtin.ref_u8,
-                        ),
-                        (
-                            Ident {
-                                symbol: hir::Symbol::new("len"),
                                 span: obj_span,
                             },
                             self.builtin.usize,

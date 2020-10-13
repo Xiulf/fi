@@ -100,7 +100,6 @@ pub enum PrimVal {
 pub enum PrimTy {
     Never,
     Bool,
-    Str,
     Int(u8, bool),
     Float(u8),
 }
@@ -341,12 +340,6 @@ impl<'a> Resolver<'a> {
             Symbol::new("bool"),
             Span::default(),
             Res::PrimTy(PrimTy::Bool),
-        );
-        self.define(
-            Ns::Types,
-            Symbol::new("str"),
-            Span::default(),
-            Res::PrimTy(PrimTy::Str),
         );
         self.define(
             Ns::Types,

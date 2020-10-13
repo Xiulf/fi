@@ -2,7 +2,7 @@ use crate::place::Place;
 use crate::ptr::Pointer;
 use crate::FunctionCtx;
 use check::layout::{Abi, Primitive, Scalar};
-use check::ty::{Layout, Type};
+use check::ty::Layout;
 use cranelift::codegen::ir::{self as cir, InstBuilder};
 use cranelift_module::Backend;
 use std::convert::{TryFrom, TryInto};
@@ -193,7 +193,7 @@ fn gen_field<'tcx>(
         }
 
         match field_layout.ty {
-            Type::Str => simple(fx),
+            // Type::Str => simple(fx),
             _ => unimplemented!(),
         }
     } else {

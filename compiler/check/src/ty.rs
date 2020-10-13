@@ -16,7 +16,6 @@ pub enum Type<'tcx> {
     Var(TypeVar),
     Never,
     Bool,
-    Str,
     TypeId,
     VInt(TypeVar),
     VUInt(TypeVar),
@@ -96,10 +95,6 @@ impl<'tcx> Type<'tcx> {
 
     pub fn fields(&self, tcx: &Tcx<'tcx>) -> Vec<(Symbol, Ty<'tcx>)> {
         match self {
-            Type::Str => vec![
-                (Symbol::new("ptr"), tcx.builtin.ref_u8),
-                (Symbol::new("len"), tcx.builtin.usize),
-            ],
             Type::TypeId => vec![
                 (Symbol::new("size"), tcx.builtin.usize),
                 (Symbol::new("align"), tcx.builtin.usize),
@@ -131,7 +126,6 @@ impl<'tcx> Type<'tcx> {
 
     pub fn idx(&self, tcx: &Tcx<'tcx>) -> Ty<'tcx> {
         match self {
-            Type::Str => tcx.builtin.u8,
             Type::Ptr(PtrKind::Multiple(_), to) => to,
             Type::Array(of, _) => of,
             Type::Slice(of) => of,
@@ -280,7 +274,6 @@ impl fmt::Display for Type<'_> {
             Type::Var(var) => var.fmt(f),
             Type::Never => write!(f, "never"),
             Type::Bool => write!(f, "bool"),
-            Type::Str => write!(f, "str"),
             Type::TypeId => write!(f, "type"),
             Type::VInt(_) => write!(f, "int"),
             Type::VUInt(_) => write!(f, "uint"),
@@ -366,7 +359,6 @@ impl fmt::Display for TyDisplay<'_, '_> {
             Type::Var(var) => var.fmt(f),
             Type::Never => write!(f, "never"),
             Type::Bool => write!(f, "bool"),
-            Type::Str => write!(f, "str"),
             Type::TypeId => write!(f, "type"),
             Type::VInt(_) => write!(f, "int"),
             Type::VUInt(_) => write!(f, "uint"),
@@ -376,7 +368,7 @@ impl fmt::Display for TyDisplay<'_, '_> {
             Type::Int(bits) => write!(f, "i{}", bits),
             Type::UInt(bits) => write!(f, "u{}", bits),
             Type::Float(bits) => write!(f, "f{}", bits),
-            Type::Ptr(PtrKind::Single, to) => write!(f, "{}", to.display(self.tcx)),
+            Type::Ptr(PtrKind::Single, to) => write!(f, "*{}", to.display(self.tcx)),
             Type::Ptr(PtrKind::Multiple(true), to) => write!(f, "[*:0]{}", to.display(self.tcx)),
             Type::Ptr(PtrKind::Multiple(false), to) => write!(f, "[*]{}", to.display(self.tcx)),
             Type::Array(of, len) => write!(f, "[{}]{}", len, of.display(self.tcx)),
@@ -480,7 +472,6 @@ pub(crate) mod ser {
         Param(hir::Id),
         Never,
         Bool,
-        Str,
         TypeId,
         Int(u8),
         UInt(u8),
@@ -519,7 +510,6 @@ pub(crate) mod ser {
                         Type::Param(id) => SType::Param(*id),
                         Type::Never => SType::Never,
                         Type::Bool => SType::Bool,
-                        Type::Str => SType::Str,
                         Type::TypeId => SType::TypeId,
                         Type::Int(bits) => SType::Int(*bits),
                         Type::UInt(bits) => SType::UInt(*bits),
@@ -614,7 +604,6 @@ pub(crate) mod ser {
                         SType::Param(id) => Type::Param(*id),
                         SType::Never => Type::Never,
                         SType::Bool => Type::Bool,
-                        SType::Str => Type::Str,
                         SType::TypeId => Type::TypeId,
                         SType::Int(bits) => Type::Int(*bits),
                         SType::UInt(bits) => Type::UInt(*bits),

@@ -93,7 +93,6 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
         | Type::Error
         | Type::Never
         | Type::Bool
-        | Type::Str
         | Type::TypeId
         | Type::Int(_)
         | Type::UInt(_)

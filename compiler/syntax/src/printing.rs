@@ -158,6 +158,9 @@ impl Display for Item {
 
                 write!(f, "end")
             }
+            ItemKind::Alias { generics, value } => {
+                write!(f, "alias {}{} = {};", self.name, generics, value)
+            }
         }
     }
 }

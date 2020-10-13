@@ -2,6 +2,7 @@ use crate::place::Place;
 use crate::value::Value;
 use crate::FunctionCtx;
 use check::ty::Layout;
+use check::ty::{PtrKind, Type};
 use cranelift::codegen::ir::{self as cir, InstBuilder};
 use cranelift_module::Backend;
 
@@ -35,7 +36,7 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                     self.tcx.layout(self.tcx.builtin.typeid),
                 ),
                 mir::Const::Bytes(bytes) => {
-                    let place = Place::new_stack(self, self.tcx.layout(self.tcx.builtin.str));
+                    let place = Place::new_stack(self, self.tcx.layout(ty));
 
                     self.trans_bytes(place, bytes)
                 }
@@ -96,20 +97,32 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
 
         let global = self.module.declare_data_in_func(data_id, self.builder.func);
         let value = self.builder.ins().global_value(self.pointer_type, global);
-        let len = self
-            .builder
-            .ins()
-            .iconst(self.pointer_type, bytes.len() as i64);
 
-        place.field(self, 0).store(
-            self,
-            Value::new_val(value, self.tcx.layout(self.tcx.builtin.ref_u8)),
-        );
+        match place.layout.ty {
+            Type::Slice(_) => {
+                let len = self
+                    .builder
+                    .ins()
+                    .iconst(self.pointer_type, bytes.len() as i64);
 
-        place.field(self, 1).store(
-            self,
-            Value::new_val(len, self.tcx.layout(self.tcx.builtin.usize)),
-        );
+                let ref_u8 = self
+                    .tcx
+                    .intern_ty(Type::Ptr(PtrKind::Multiple(false), self.tcx.builtin.u8));
+
+                place
+                    .field(self, 0)
+                    .store(self, Value::new_val(value, self.tcx.layout(ref_u8)));
+
+                place.field(self, 1).store(
+                    self,
+                    Value::new_val(len, self.tcx.layout(self.tcx.builtin.usize)),
+                );
+            }
+            Type::Ptr(..) => {
+                place.store(self, Value::new_val(value, place.layout));
+            }
+            _ => unreachable!(),
+        }
 
         place.to_value(self)
     }
