@@ -82,6 +82,13 @@ impl<'a, 'tcx, B: Backend> FunctionCtx<'a, 'tcx, B> {
                         place.index(self, idx).store(self, val);
                     }
                 }
+                Type::Slice(_) => {
+                    for (i, op) in ops.iter().enumerate() {
+                        let val = self.trans_operand(op);
+
+                        place.field(self, i).store(self, val);
+                    }
+                }
                 Type::Tuple(_) => {
                     for (i, op) in ops.iter().enumerate() {
                         let val = self.trans_operand(op);

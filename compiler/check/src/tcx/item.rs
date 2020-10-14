@@ -147,7 +147,7 @@ impl<'tcx> Tcx<'tcx> {
                 let ty_ty = self.type_of(ty);
                 let ty_span = self.span_of(ty);
 
-                self.constrain(Constraint::Equal(val_ty, val_span, ty_ty, ty_span));
+                self.constrain(Constraint::Coerce(val_ty, val_span, val, ty_ty, ty_span));
             }
             hir::ItemKind::Const { ty, val } => {
                 let val_ty = self.type_of(val);
@@ -155,7 +155,7 @@ impl<'tcx> Tcx<'tcx> {
                 let ty_ty = self.type_of(ty);
                 let ty_span = self.span_of(ty);
 
-                self.constrain(Constraint::Equal(val_ty, val_span, ty_ty, ty_span));
+                self.constrain(Constraint::Coerce(val_ty, val_span, val, ty_ty, ty_span));
             }
             hir::ItemKind::Struct {
                 generics,

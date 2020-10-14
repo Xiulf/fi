@@ -164,6 +164,63 @@ impl<'tcx> Tcx<'tcx> {
                     Subst::empty()
                 }
             },
+            Constraint::Coerce(from_ty, from_span, from_id, to_ty, to_span) => {
+                match (from_ty, to_ty) {
+                    (Type::Ptr(PtrKind::Single, Type::Array(from_of, len)), Type::Slice(to_of)) => unsafe {
+                        self.constrain(Constraint::Equal(from_of, from_span, to_of, to_span));
+
+                        let item_id = hir::Id::item((*from_id).item_id());
+                        let item = self.package_mut().items.get_mut(&item_id).unwrap();
+                        let slice_len = hir::Expr {
+                            span: from_span,
+                            id: item.next_id(),
+                            kind: hir::ExprKind::Int { val: *len as u128 },
+                        };
+
+                        let slice_ty = hir::Type {
+                            span: from_span,
+                            id: item.next_id(),
+                            kind: hir::TypeKind::Infer,
+                        };
+
+                        let arr_to_slice = hir::Expr {
+                            span: from_span,
+                            id: item.next_id(),
+                            kind: hir::ExprKind::Init {
+                                ty: slice_ty.id,
+                                args: vec![
+                                    hir::Arg {
+                                        span: from_span,
+                                        name: None,
+                                        value: *from_id,
+                                    },
+                                    hir::Arg {
+                                        span: from_span,
+                                        name: None,
+                                        value: slice_len.id,
+                                    },
+                                ],
+                            },
+                        };
+
+                        *(from_id as *mut hir::Id) = arr_to_slice.id;
+
+                        self.types
+                            .borrow_mut()
+                            .insert(slice_len.id, self.builtin.usize);
+                        self.types.borrow_mut().insert(slice_ty.id, to_ty);
+                        self.types.borrow_mut().insert(arr_to_slice.id, to_ty);
+                        self.package_mut().exprs.insert(slice_len.id, slice_len);
+                        self.package_mut()
+                            .exprs
+                            .insert(arr_to_slice.id, arr_to_slice);
+                        self.package_mut().types.insert(slice_ty.id, slice_ty);
+
+                        Subst::empty()
+                    },
+                    (_, _) => self.unify_one(Constraint::Equal(from_ty, from_span, to_ty, to_span)),
+                }
+            }
             Constraint::PtrArith(a, a_span, b, b_span) => match (a, b) {
                 (Type::Ptr(_, a), Type::Ptr(_, b)) => {
                     self.unify_one(Constraint::Equal(a, a_span, b, b_span))
@@ -246,7 +303,7 @@ impl<'tcx> Tcx<'tcx> {
 
                     let mut skip = Vec::with_capacity(a_params.len());
 
-                    for arg in &b_params {
+                    for (arg, id) in &b_params {
                         if !arg.name.symbol.is_empty() {
                             if let Some(i) = a_params
                                 .iter()
@@ -255,7 +312,9 @@ impl<'tcx> Tcx<'tcx> {
                                 let param = &a_params[i];
 
                                 skip.push(i);
-                                cs.push(Constraint::Equal(arg.ty, arg.span, param.ty, param.span));
+                                cs.push(Constraint::Coerce(
+                                    arg.ty, arg.span, *id, param.ty, param.span,
+                                ));
                             } else {
                                 self.reporter.add(
                                     Diagnostic::new(
@@ -273,7 +332,7 @@ impl<'tcx> Tcx<'tcx> {
                         }
                     }
 
-                    for arg in &b_params {
+                    for (arg, id) in &b_params {
                         if arg.name.symbol.is_empty() {
                             let mut i = 0;
 
@@ -284,7 +343,9 @@ impl<'tcx> Tcx<'tcx> {
                             let param = &a_params[i];
 
                             skip.push(i);
-                            cs.push(Constraint::Equal(arg.ty, arg.span, param.ty, param.span));
+                            cs.push(Constraint::Coerce(
+                                arg.ty, arg.span, *id, param.ty, param.span,
+                            ));
                         }
                     }
 

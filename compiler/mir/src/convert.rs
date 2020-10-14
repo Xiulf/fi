@@ -402,6 +402,18 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 Operand::Move(res)
             }
+            hir::ExprKind::Init { ty, args } => {
+                let res = self.builder.create_tmp(expr_ty);
+                let res = Place::local(res);
+                let args = args
+                    .iter()
+                    .map(|a| self.trans_expr(&a.value, None))
+                    .collect();
+
+                self.builder.init(res.clone(), expr_ty, 0, args);
+
+                Operand::Move(res)
+            }
             hir::ExprKind::Block { block } => {
                 let var = self.builder.create_tmp(expr_ty);
 

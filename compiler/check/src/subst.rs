@@ -27,6 +27,10 @@ impl<'tcx> Subst<'tcx> {
                 *a = self.apply_ty(a);
                 *b = self.apply_ty(b);
             }
+            Constraint::Coerce(a, _, _, b, _) => {
+                *a = self.apply_ty(a);
+                *b = self.apply_ty(b);
+            }
             Constraint::PtrArith(a, _, b, _) => {
                 *a = self.apply_ty(a);
                 *b = self.apply_ty(b);
@@ -41,7 +45,7 @@ impl<'tcx> Subst<'tcx> {
                 *func = self.apply_ty(func);
                 *ret = self.apply_ty(ret);
 
-                for param in params {
+                for (param, _) in params {
                     param.ty = self.apply_ty(param.ty);
                 }
             }

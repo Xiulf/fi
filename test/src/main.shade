@@ -9,7 +9,9 @@ alias str = []u8;
 
 @main
 fn main(argc: i32, argv: CArray<cstr>) -> i32
-    var x: str = "abcd";
+    var x = 22;
+
+    print_fmt("x = %\n", &[FmtArg.usize(&x)]);
 
     0
 end

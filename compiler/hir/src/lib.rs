@@ -216,6 +216,10 @@ pub enum ExprKind {
         lo: Id,
         hi: Id,
     },
+    Init {
+        ty: Id,
+        args: Vec<Arg>,
+    },
     Block {
         block: Block,
     },

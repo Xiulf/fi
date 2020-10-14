@@ -101,6 +101,21 @@ impl<'tcx> Tcx<'tcx> {
                 self.type_of(&self.lang_items.range().unwrap())
                     .mono(self, vec![lo_ty])
             }
+            hir::ExprKind::Init { ty, args } => {
+                let ty_ty = self.type_of(ty);
+                let ty_span = self.span_of(ty);
+
+                for arg in args {
+                    let arg_ty = self.type_of(&arg.value);
+                    let arg_span = self.span_of(&arg.value);
+
+                    if let Some(name) = &arg.name {
+                        self.constrain(Constraint::Field(ty_ty, ty_span, *name, arg_ty, arg_span));
+                    }
+                }
+
+                ty_ty
+            }
             hir::ExprKind::Block { block } => self.infer_block(block),
             hir::ExprKind::Call { func, args } => {
                 let ret_ty = self.new_var();
@@ -108,13 +123,18 @@ impl<'tcx> Tcx<'tcx> {
                 let func_span = self.span_of(func);
                 let args = args
                     .iter()
-                    .map(|a| Param {
-                        span: a.span,
-                        name: a.name.unwrap_or_else(|| Ident {
-                            span: a.span,
-                            symbol: hir::Symbol::dummy(),
-                        }),
-                        ty: self.type_of(&a.value),
+                    .map(|a| {
+                        (
+                            Param {
+                                span: a.span,
+                                name: a.name.unwrap_or_else(|| Ident {
+                                    span: a.span,
+                                    symbol: hir::Symbol::dummy(),
+                                }),
+                                ty: self.type_of(&a.value),
+                            },
+                            (&a.value) as *const hir::Id,
+                        )
                     })
                     .collect::<Vec<_>>();
 
@@ -249,7 +269,7 @@ impl<'tcx> Tcx<'tcx> {
                 let rhs_ty = self.type_of(rhs);
                 let rhs_span = self.span_of(rhs);
 
-                self.constrain(Constraint::Equal(lhs_ty, lhs_span, rhs_ty, rhs_span));
+                self.constrain(Constraint::Coerce(rhs_ty, rhs_span, rhs, lhs_ty, lhs_span));
                 lhs_ty
             }
             hir::ExprKind::BinOp { op, lhs, rhs } => {
