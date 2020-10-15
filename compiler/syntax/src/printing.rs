@@ -161,6 +161,15 @@ impl Display for Item {
             ItemKind::Alias { generics, value } => {
                 write!(f, "alias {}{} = {};", self.name, generics, value)
             }
+            ItemKind::Interface { generics, items } => {
+                writeln!(f, "iface {}{}", self.name, generics)?;
+
+                for item in items {
+                    writeln!(indent(f), "{}", item)?;
+                }
+
+                write!(f, "end")
+            }
         }
     }
 }
@@ -265,6 +274,38 @@ impl Display for Method {
             ret,
             self.body
         )
+    }
+}
+
+impl Display for IfaceItem {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match &self.kind {
+            IfaceItemKind::Alias {} => write!(f, "alias {};", self.name),
+            IfaceItemKind::Const { ty, value } => {
+                write!(f, "const {}: {} = {};", self.name, ty, value)
+            }
+            IfaceItemKind::Field { ty } => write!(f, "var {}: {};", self.name, ty),
+            IfaceItemKind::Method {
+                generics,
+                params,
+                ret,
+            } => {
+                let ret = if let TypeKind::Infer = &ret.kind {
+                    String::new()
+                } else {
+                    format!(" -> {} ", ret)
+                };
+
+                write!(
+                    f,
+                    "fn {}{}({}){}",
+                    self.name,
+                    generics,
+                    list(params, ", "),
+                    ret
+                )
+            }
+        }
     }
 }
 

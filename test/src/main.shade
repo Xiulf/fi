@@ -16,22 +16,15 @@ fn main(argc: i32, argv: CArray<cstr>) -> i32
     0
 end
 
+@lang "iterator"
+iface Iterator
+    alias Item;
+
+    fn next() -> Option<Self.Item>;
+end
+
+@lang "option"
 enum Option<T>
     Some(val: T)
     None
-end
-
-@lang "range"
-struct Range
-    lo: usize
-    hi: usize
-
-    fn next() -> Option<usize>
-        if self.lo < self.hi
-            self.lo += 1;
-            Some(self.lo - 1)
-        else
-            None
-        end
-    end
 end

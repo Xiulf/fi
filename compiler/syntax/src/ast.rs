@@ -119,6 +119,10 @@ pub enum ItemKind {
         generics: Generics,
         value: Type,
     },
+    Interface {
+        generics: Generics,
+        items: Vec<IfaceItem>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -185,6 +189,34 @@ pub struct Method {
     pub params: Vec<Param>,
     pub ret: Type,
     pub body: Block,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub struct IfaceItem {
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+    #[derivative(Hash(hash_with = "hash_ident"))]
+    pub name: Ident,
+    pub kind: IfaceItemKind,
+}
+
+#[derive(Debug, Clone, derivative::Derivative)]
+#[derivative(Hash)]
+pub enum IfaceItemKind {
+    Alias {},
+    Const {
+        ty: Type,
+        value: Expr,
+    },
+    Field {
+        ty: Type,
+    },
+    Method {
+        generics: Generics,
+        params: Vec<Param>,
+        ret: Type,
+    },
 }
 
 #[derive(Debug, Clone, derivative::Derivative)]

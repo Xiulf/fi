@@ -16,6 +16,7 @@ parser::token![ident "const" TConst];
 parser::token![ident "struct" TStruct];
 parser::token![ident "enum" TEnum];
 parser::token![ident "alias" TAlias];
+parser::token![ident "iface" TIface];
 parser::token![ident "do" TDo];
 parser::token![ident "mut" TMut];
 parser::token![ident "type" TType];
@@ -449,9 +450,35 @@ impl Parse for Item {
                 name,
                 kind: ItemKind::Alias { generics, value },
             })
+        } else if let Ok(_) = input.parse::<TIface>() {
+            let name = input.parse()?;
+            let generics = input.parse()?;
+            let mut items = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TEnd>() {
+                match input.parse::<IfaceItem>() {
+                    Ok(item) => items.push(item),
+                    Err(e) => {
+                        input.reporter.add(e);
+
+                        while !input.is_empty() && !IfaceItem::peek(input) {
+                            input.bump();
+                        }
+                    }
+                }
+            }
+
+            input.parse::<TEnd>()?;
+
+            Ok(Item {
+                span: start.to(input.prev_span()),
+                attrs,
+                name,
+                kind: ItemKind::Interface { generics, items },
+            })
         } else {
             input.error(
-                "expected 'mod', 'extern', 'fn', 'var', 'const', 'struct', 'enum' or 'alias'",
+                "expected 'mod', 'extern', 'fn', 'var', 'const', 'struct', 'enum', 'alias' or 'iface'",
                 0001,
             )
         }
@@ -468,6 +495,7 @@ impl Item {
             || input.peek::<TStruct>()
             || input.peek::<TEnum>()
             || input.peek::<TAlias>()
+            || input.peek::<TIface>()
     }
 }
 
@@ -635,6 +663,92 @@ impl Parse for Method {
             ret,
             body,
         })
+    }
+}
+
+impl Parse for IfaceItem {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let (name, kind) = if let Ok(_) = input.parse::<TAlias>() {
+            let name = input.parse()?;
+            let _ = input.parse::<TSemi>();
+
+            (name, IfaceItemKind::Alias {})
+        } else if let Ok(_) = input.parse::<TConst>() {
+            let name = input.parse()?;
+            let ty = if let Ok(_) = input.parse::<TColon>() {
+                input.parse()?
+            } else {
+                Type {
+                    span: input.span(),
+                    kind: TypeKind::Infer,
+                }
+            };
+
+            let _ = input.parse::<TEquals>()?;
+            let value = input.parse()?;
+            let _ = input.parse::<TSemi>();
+
+            (name, IfaceItemKind::Const { ty, value })
+        } else if let Ok(_) = input.parse::<TVar>() {
+            let name = input.parse()?;
+            let _ = input.parse::<TColon>()?;
+            let ty = input.parse()?;
+            let _ = input.parse::<TSemi>();
+
+            (name, IfaceItemKind::Field { ty })
+        } else if let Ok(_) = input.parse::<TFn>() {
+            let name = input.parse()?;
+            let generics = input.parse()?;
+            let _ = input.parse::<TLParen>()?;
+            let mut params = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TRParen>() {
+                params.push(input.parse()?);
+
+                if !input.peek::<TRParen>() {
+                    input.parse::<TComma>()?;
+                }
+            }
+
+            let _ = input.parse::<TRParen>()?;
+            let ret = if let Ok(_) = input.parse::<TArrow>() {
+                input.parse()?
+            } else {
+                Type {
+                    span: input.span(),
+                    kind: TypeKind::Infer,
+                }
+            };
+
+            let _ = input.parse::<TSemi>();
+
+            (
+                name,
+                IfaceItemKind::Method {
+                    generics,
+                    params,
+                    ret,
+                },
+            )
+        } else {
+            return input.error("expected 'alias', 'const', 'var' or 'fn'", 0001);
+        };
+
+        Ok(IfaceItem {
+            span: start.to(input.prev_span()),
+            name,
+            kind,
+        })
+    }
+}
+
+impl IfaceItem {
+    fn peek(input: ParseStream) -> bool {
+        input.peek::<TAlias>()
+            || input.peek::<TVar>()
+            || input.peek::<TConst>()
+            || input.peek::<TFn>()
     }
 }
 

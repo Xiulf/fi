@@ -554,6 +554,7 @@ impl<'a> Converter<'a> {
                     Res::Item(Id::item(id)),
                 );
             }
+            ast::ItemKind::Interface { .. } => unimplemented!(),
         }
 
         id
@@ -842,6 +843,7 @@ impl<'a> Converter<'a> {
                     },
                 );
             }
+            ast::ItemKind::Interface { .. } => unimplemented!(),
         }
 
         id
