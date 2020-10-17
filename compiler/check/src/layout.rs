@@ -150,7 +150,7 @@ impl<'tcx> TyLayout<'tcx, crate::ty::Ty<'tcx>> {
                     };
                 }
             },
-            Type::Object | Type::Param(_) => tcx.builtin.ref_unit,
+            Type::Object(_) | Type::Param(_) => tcx.builtin.ref_unit,
         })
     }
 

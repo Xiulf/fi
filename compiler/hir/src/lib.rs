@@ -28,6 +28,7 @@ pub struct Package {
     pub name: Symbol,
     pub modules: BTreeMap<Symbol, Module>,
     pub items: BTreeMap<Id, Item>,
+    pub iface_items: BTreeMap<Id, IfaceItem>,
     pub exprs: BTreeMap<Id, Expr>,
     pub pats: BTreeMap<Id, Pat>,
     pub types: BTreeMap<Id, Type>,
@@ -112,6 +113,10 @@ pub enum ItemKind {
         generics: Generics,
         value: Id,
     },
+    Interface {
+        generics: Generics,
+        items: Vec<Id>,
+    },
     Method {
         owner: Id,
         generics: Generics,
@@ -124,6 +129,31 @@ pub enum ItemKind {
         item: Id,
         variant: usize,
         params: Option<Vec<StructField>>,
+    },
+}
+
+#[derive(Debug)]
+pub struct IfaceItem {
+    pub span: Span,
+    pub id: Id,
+    pub attrs: Vec<Attribute>,
+    pub name: Ident,
+    pub kind: IfaceItemKind,
+}
+
+#[derive(Debug, Hash)]
+pub enum IfaceItemKind {
+    Alias {},
+    Const {
+        ty: Id,
+    },
+    Field {
+        ty: Id,
+    },
+    Method {
+        generics: Generics,
+        params: Vec<(Span, Ident, Id)>,
+        ret: Id,
     },
 }
 
@@ -491,6 +521,18 @@ impl Item {
         self.max_id.1 += 1;
         self.max_id
     }
+
+    pub fn generics(&self) -> Option<&Generics> {
+        match &self.kind {
+            ItemKind::Func { generics, .. }
+            | ItemKind::Struct { generics, .. }
+            | ItemKind::Enum { generics, .. }
+            | ItemKind::Alias { generics, .. }
+            | ItemKind::Interface { generics, .. }
+            | ItemKind::Method { generics, .. } => Some(generics),
+            _ => None,
+        }
+    }
 }
 
 impl Import {
@@ -504,6 +546,17 @@ impl Import {
 impl Hash for Item {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
+        self.attrs.hash(state);
+        self.name.symbol.hash(state);
+        self.kind.hash(state);
+        self.max_id.hash(state);
+    }
+}
+
+impl Hash for IfaceItem {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.attrs.hash(state);
         self.name.symbol.hash(state);
         self.kind.hash(state);
     }

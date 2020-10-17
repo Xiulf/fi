@@ -192,7 +192,7 @@ pub fn clif_pair_type(
 
     match layout.ty {
         Type::Slice(_) => Some((ptr_ty, ptr_ty)),
-        Type::Object => Some((ptr_ty, ptr_ty)),
+        Type::Object(_) => Some((ptr_ty, ptr_ty)),
         Type::Param(_) => Some((ptr_ty, ptr_ty)),
         _ => None,
     }

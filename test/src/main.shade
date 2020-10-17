@@ -5,26 +5,22 @@ import Fmt.Arg as FmtArg
 
 alias CArray<T> = [*]T;
 alias cstr = [*:0]u8;
-alias str = []u8;
 
 @main
 fn main(argc: i32, argv: CArray<cstr>) -> i32
-    var x = 22;
-
-    print_fmt("x = %\n", &[FmtArg.usize(&x)]);
-
     0
 end
 
-@lang "iterator"
-iface Iterator
-    alias Item;
+iface Any end
 
-    fn next() -> Option<Self.Item>;
-end
+impl<T> Any for T end
 
-@lang "option"
-enum Option<T>
-    Some(val: T)
-    None
+impl Any
+    fn downcast<T>() -> T
+        self.(*(*T, *())).*.0.*
+    end
+
+    fn downcast_ref<T>() -> *T
+        self.(*(*T, *())).*.0
+    end
 end

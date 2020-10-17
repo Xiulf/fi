@@ -134,7 +134,7 @@ fn subst_var(ty: Ty, tvar: &TypeVar, repl: Ty) {
             subst_var(ret, tvar, repl);
         }
         Type::Forall(_, ty) => subst_var(ty, tvar, repl),
-        Type::Object => {}
+        Type::Object(_) => {}
     }
 }
 

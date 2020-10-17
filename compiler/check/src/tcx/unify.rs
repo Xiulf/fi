@@ -525,6 +525,15 @@ impl<'tcx> Tcx<'tcx> {
             },
             Constraint::Field(obj_ty, obj_span, field, ret_ty, ret_span) => {
                 let fields = match obj_ty {
+                    Type::TypeOf(id, subst) => {
+                        return self.unify_one(Constraint::Field(
+                            self.type_of(id).mono(self, subst.to_vec()),
+                            obj_span,
+                            field,
+                            ret_ty,
+                            ret_span,
+                        ));
+                    }
                     Type::Ptr(PtrKind::Single, to) => {
                         return self
                             .unify_one(Constraint::Field(to, obj_span, field, ret_ty, ret_span))

@@ -31,7 +31,7 @@ pub enum Type<'tcx> {
     Enum(hir::Id, &'tcx List<Variant<'tcx>>),
     Func(Option<hir::Id>, &'tcx List<Param<'tcx>>, Ty<'tcx>),
     Forall(&'tcx List<hir::Id>, Ty<'tcx>),
-    Object,
+    Object(&'tcx List<hir::Id>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -69,12 +69,12 @@ pub struct Variant<'tcx> {
 pub struct TypeMap<'tcx>(pub(crate) HashMap<hir::Id, Ty<'tcx>>);
 
 pub struct TyDisplay<'a, 'tcx> {
-    ty: &'a Type<'tcx>,
+    ty: Ty<'tcx>,
     tcx: &'a Tcx<'tcx>,
 }
 
 impl<'tcx> Type<'tcx> {
-    pub fn display<'a>(&'a self, tcx: &'a Tcx<'tcx>) -> TyDisplay<'a, 'tcx> {
+    pub fn display<'a>(&'tcx self, tcx: &'a Tcx<'tcx>) -> TyDisplay<'a, 'tcx> {
         TyDisplay { ty: self, tcx }
     }
 
@@ -88,13 +88,14 @@ impl<'tcx> Type<'tcx> {
     pub fn is_object(&self, is_poly: bool) -> bool {
         match self {
             Type::Param(_) => is_poly,
-            Type::Object => true,
+            Type::Object(_) => true,
             _ => false,
         }
     }
 
     pub fn fields(&self, tcx: &Tcx<'tcx>) -> Vec<(Symbol, Ty<'tcx>)> {
         match self {
+            Type::TypeOf(id, tys) => tcx.type_of(id).mono(tcx, tys.to_vec()).fields(tcx),
             Type::TypeId => vec![
                 (Symbol::new("size"), tcx.builtin.usize),
                 (Symbol::new("align"), tcx.builtin.usize),
@@ -124,7 +125,7 @@ impl<'tcx> Type<'tcx> {
         }
     }
 
-    pub fn idx(&self, tcx: &Tcx<'tcx>) -> Ty<'tcx> {
+    pub fn idx(&self, _tcx: &Tcx<'tcx>) -> Ty<'tcx> {
         match self {
             Type::Ptr(PtrKind::Multiple(_), to) => to,
             Type::Array(of, _) => of,
@@ -337,7 +338,7 @@ impl fmt::Display for Type<'_> {
                     .join(", "),
                 ty
             ),
-            Type::Object => write!(f, "[object]"),
+            Type::Object(_) => write!(f, "[object]"),
         }
     }
 }
@@ -381,8 +382,38 @@ impl fmt::Display for TyDisplay<'_, '_> {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
-            Type::Struct(id, _) => write!(f, "{}", self.tcx.get_full_name(id)),
-            Type::Enum(id, _) => write!(f, "{}", self.tcx.get_full_name(id)),
+            Type::Struct(id, _) => {
+                if let Some(subst) = self.tcx.subst_of(self.ty) {
+                    write!(
+                        f,
+                        "{}<{}>",
+                        self.tcx.get_full_name(id),
+                        subst
+                            .values()
+                            .map(|t| t.display(self.tcx).to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                } else {
+                    write!(f, "{}", self.tcx.get_full_name(id))
+                }
+            }
+            Type::Enum(id, _) => {
+                if let Some(subst) = self.tcx.subst_of(self.ty) {
+                    write!(
+                        f,
+                        "{}<{}>",
+                        self.tcx.get_full_name(id),
+                        subst
+                            .values()
+                            .map(|t| t.display(self.tcx).to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                } else {
+                    write!(f, "{}", self.tcx.get_full_name(id))
+                }
+            }
             Type::Func(Some(id), params, ret) => write!(
                 f,
                 "fn ({}) -> {} {{{}}}",
@@ -413,7 +444,15 @@ impl fmt::Display for TyDisplay<'_, '_> {
                     .join(", "),
                 ty.display(self.tcx),
             ),
-            Type::Object => write!(f, "[object]"),
+            Type::Object(ifaces) => write!(
+                f,
+                "{}",
+                ifaces
+                    .iter()
+                    .map(|id| self.tcx.package.iface_items[&id].name.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            ),
         }
     }
 }
@@ -484,7 +523,7 @@ pub(crate) mod ser {
         Enum(hir::Id, Vec<(Span, Ident, Vec<(Span, Ident, usize)>)>),
         Func(Option<hir::Id>, Vec<(Span, Ident, usize)>, usize),
         Forall(Vec<hir::Id>, usize),
-        Object,
+        Object(Vec<hir::Id>),
     }
 
     impl<'tcx> serde::Serialize for TypeMap<'tcx> {
@@ -554,7 +593,7 @@ pub(crate) mod ser {
                         Type::Forall(params, ret) => {
                             SType::Forall(params.to_vec(), convert(index, idx2, ret))
                         }
-                        Type::Object => SType::Object,
+                        Type::Object(ifaces) => SType::Object(ifaces.to_vec()),
                     };
 
                     index.0.push(sty);
@@ -675,7 +714,9 @@ pub(crate) mod ser {
                             arena.intern_id_list(params.as_ref()),
                             convert(arena, index, index2, *ret),
                         ),
-                        SType::Object => Type::Object,
+                        SType::Object(ifaces) => {
+                            Type::Object(arena.intern_id_list(ifaces.as_ref()))
+                        }
                     };
 
                     let ty = arena.intern_ty(ty);

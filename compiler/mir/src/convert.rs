@@ -293,6 +293,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 hir::Res::Module(_) => unreachable!(),
                 hir::Res::Label(_) => unreachable!(),
                 hir::Res::PrimTy(_) => unreachable!(),
+                hir::Res::SelfTy(_, _) => unreachable!(),
                 hir::Res::Item(id) => {
                     if let Some(item) = self.hir.items.get(id) {
                         match &item.kind {
@@ -310,7 +311,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                                 Operand::Move(Place::global(*id))
                             }
                             hir::ItemKind::Ctor {
-                                item,
+                                item: _,
                                 variant,
                                 params: None,
                             } => {
@@ -402,7 +403,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
 
                 Operand::Move(res)
             }
-            hir::ExprKind::Init { ty, args } => {
+            hir::ExprKind::Init { ty: _, args } => {
                 let res = self.builder.create_tmp(expr_ty);
                 let res = Place::local(res);
                 let args = args
@@ -488,7 +489,7 @@ impl<'a, 'tcx> BodyConverter<'a, 'tcx> {
                 let res = self.builder.create_tmp(ty);
                 let res = Place::local(res);
                 let kind = match ty {
-                    Type::Param(_) | Type::Object => CastKind::Object,
+                    Type::Param(_) | Type::Object(_) => CastKind::Object,
                     _ => CastKind::Misc,
                 };
 

@@ -685,11 +685,9 @@ impl Parse for IfaceItem {
                 }
             };
 
-            let _ = input.parse::<TEquals>()?;
-            let value = input.parse()?;
             let _ = input.parse::<TSemi>();
 
-            (name, IfaceItemKind::Const { ty, value })
+            (name, IfaceItemKind::Const { ty })
         } else if let Ok(_) = input.parse::<TVar>() {
             let name = input.parse()?;
             let _ = input.parse::<TColon>()?;

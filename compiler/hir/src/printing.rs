@@ -134,6 +134,13 @@ impl Display for Item {
             ItemKind::Alias { generics, value } => {
                 write!(f, "alias {}{} = {};", self.name, generics, value)
             }
+            ItemKind::Interface { generics, items } => write!(
+                f,
+                "iface {}{} {{ {} }}",
+                self.name,
+                generics,
+                list(items, ", ")
+            ),
             ItemKind::Method {
                 owner,
                 generics,
@@ -434,6 +441,7 @@ impl Display for Res {
             Res::Label(id) => id.fmt(f),
             Res::PrimVal(prim) => prim.fmt(f),
             Res::PrimTy(prim) => prim.fmt(f),
+            Res::SelfTy(_, _) => write!(f, "Self"),
         }
     }
 }

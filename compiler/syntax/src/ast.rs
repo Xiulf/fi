@@ -207,7 +207,6 @@ pub enum IfaceItemKind {
     Alias {},
     Const {
         ty: Type,
-        value: Expr,
     },
     Field {
         ty: Type,

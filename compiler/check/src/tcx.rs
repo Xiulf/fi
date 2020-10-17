@@ -581,7 +581,7 @@ impl<'tcx> Tcx<'tcx> {
 
                 self.intern_layout(self.enum_layout(variants))
             }
-            Type::Object => {
+            Type::Object(_) => {
                 let mut data = scalar_unit(Primitive::Pointer);
                 let mut meta = scalar_unit(Primitive::Pointer);
 

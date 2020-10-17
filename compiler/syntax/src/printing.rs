@@ -281,9 +281,7 @@ impl Display for IfaceItem {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
             IfaceItemKind::Alias {} => write!(f, "alias {};", self.name),
-            IfaceItemKind::Const { ty, value } => {
-                write!(f, "const {}: {} = {};", self.name, ty, value)
-            }
+            IfaceItemKind::Const { ty } => write!(f, "const {}: {};", self.name, ty),
             IfaceItemKind::Field { ty } => write!(f, "var {}: {};", self.name, ty),
             IfaceItemKind::Method {
                 generics,

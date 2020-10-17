@@ -40,11 +40,12 @@ end
 
 module Fmt.Arg (
     FmtArg,
-    str, bool,
+    str, char, bool,
     u8, usize
 )
 
 extern "C" write: fn (stream: i32, buf: [*]u8, count: usize) -> isize;
+alias Char = u32;
 
 struct FmtArg
     val: *()
@@ -53,6 +54,10 @@ end
 
 fn str(s: *[]u8) -> FmtArg
     FmtArg(s.(*()), fmt_str)
+end
+
+fn char(c: *Char) -> FmtArg
+    FmtArg(c.(*()), fmt_char)
 end
 
 fn bool(b: *bool) -> FmtArg
@@ -71,6 +76,12 @@ fn fmt_str(val: *(), stream: i32)
     var val = val.(*[]u8);
     
     write(stream, val.ptr, val.len);
+end
+
+fn fmt_char(val: *(), stream: i32)
+    var val = val.([*]u8);
+
+    write(stream, val, 4);
 end
 
 fn fmt_bool(val: *(), stream: i32)

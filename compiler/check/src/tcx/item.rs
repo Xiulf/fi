@@ -87,6 +87,7 @@ impl<'tcx> Tcx<'tcx> {
             hir::ItemKind::Struct { .. } => self.intern_ty(Type::TypeOf(*id, List::empty())),
             hir::ItemKind::Enum { .. } => self.intern_ty(Type::TypeOf(*id, List::empty())),
             hir::ItemKind::Alias { .. } => self.intern_ty(Type::TypeOf(*id, List::empty())),
+            hir::ItemKind::Interface { .. } => self.builtin.never,
             hir::ItemKind::Ctor {
                 item,
                 variant: _,

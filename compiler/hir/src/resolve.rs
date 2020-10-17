@@ -87,6 +87,7 @@ pub enum Res {
     Label(Id),
     PrimVal(PrimVal),
     PrimTy(PrimTy),
+    SelfTy(Option<Id> /* iface */, Option<Id> /* impl */),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]

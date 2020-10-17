@@ -63,6 +63,7 @@ pub struct Converter<'a> {
     reporter: &'a Reporter,
     resolver: Resolver<'a>,
     items: BTreeMap<Id, Item>,
+    iface_items: BTreeMap<Id, IfaceItem>,
     exprs: BTreeMap<Id, Expr>,
     pats: BTreeMap<Id, Pat>,
     types: BTreeMap<Id, Type>,
@@ -90,6 +91,7 @@ impl<'a> Converter<'a> {
             reporter,
             resolver: Resolver::new(reporter, sdeps),
             items: BTreeMap::new(),
+            iface_items: BTreeMap::new(),
             exprs: BTreeMap::new(),
             pats: BTreeMap::new(),
             types: BTreeMap::new(),
@@ -121,6 +123,7 @@ impl<'a> Converter<'a> {
                     })
                     .collect(),
                 items: self.items,
+                iface_items: self.iface_items,
                 exprs: self.exprs,
                 pats: self.pats,
                 types: self.types,
@@ -554,7 +557,14 @@ impl<'a> Converter<'a> {
                     Res::Item(Id::item(id)),
                 );
             }
-            ast::ItemKind::Interface { .. } => unimplemented!(),
+            ast::ItemKind::Interface { .. } => {
+                self.resolver.define(
+                    Ns::Types,
+                    item.name.symbol,
+                    item.name.span,
+                    Res::Item(Id::item(id)),
+                );
+            }
         }
 
         id
@@ -699,6 +709,12 @@ impl<'a> Converter<'a> {
                 let cons_id = self.next_id();
 
                 self.resolver.push_rib(Ns::Types, RibKind::Block);
+                self.resolver.define(
+                    Ns::Types,
+                    Symbol::new("Self"),
+                    item.name.span,
+                    Res::SelfTy(None, None),
+                );
 
                 let generics = self.trans_generics(generics);
                 let fields = fields
@@ -757,6 +773,12 @@ impl<'a> Converter<'a> {
                 let variant_ids = variants.iter().map(|_| self.next_id()).collect::<Vec<_>>();
 
                 self.resolver.push_rib(Ns::Types, RibKind::Block);
+                self.resolver.define(
+                    Ns::Types,
+                    Symbol::new("Self"),
+                    item.name.span,
+                    Res::SelfTy(None, None),
+                );
 
                 let generics = self.trans_generics(generics);
                 let variants = variants
@@ -825,6 +847,12 @@ impl<'a> Converter<'a> {
             }
             ast::ItemKind::Alias { generics, value } => {
                 self.resolver.push_rib(Ns::Types, RibKind::Block);
+                self.resolver.define(
+                    Ns::Types,
+                    Symbol::new("Self"),
+                    item.name.span,
+                    Res::SelfTy(None, None),
+                );
 
                 let generics = self.trans_generics(generics);
                 let value = self.trans_ty(value);
@@ -843,7 +871,87 @@ impl<'a> Converter<'a> {
                     },
                 );
             }
-            ast::ItemKind::Interface { .. } => unimplemented!(),
+            ast::ItemKind::Interface { generics, items } => {
+                self.resolver.push_rib(Ns::Types, RibKind::Block);
+                self.resolver.define(
+                    Ns::Types,
+                    Symbol::new("Self"),
+                    item.name.span,
+                    Res::SelfTy(Some(id), None),
+                );
+
+                let generics = self.trans_generics(generics);
+                let items = items
+                    .iter()
+                    .map(|item| {
+                        let item_id = Id::item(ItemId::new(item));
+                        let old_id = self.current_item;
+                        let old_local = self.local_id;
+                        let kind = match &item.kind {
+                            ast::IfaceItemKind::Alias {} => IfaceItemKind::Alias {},
+                            ast::IfaceItemKind::Const { ty } => IfaceItemKind::Const {
+                                ty: self.trans_ty(ty),
+                            },
+                            ast::IfaceItemKind::Field { ty } => IfaceItemKind::Field {
+                                ty: self.trans_ty(ty),
+                            },
+                            ast::IfaceItemKind::Method {
+                                generics,
+                                params,
+                                ret,
+                            } => {
+                                let generics = self.trans_generics(generics);
+                                let params = params
+                                    .iter()
+                                    .map(|p| {
+                                        let ty = self.trans_ty(&p.ty);
+
+                                        (p.span, p.name, ty)
+                                    })
+                                    .collect();
+
+                                let ret = self.trans_ty(ret);
+
+                                IfaceItemKind::Method {
+                                    generics,
+                                    params,
+                                    ret,
+                                }
+                            }
+                        };
+
+                        self.iface_items.insert(
+                            item_id,
+                            IfaceItem {
+                                span: item.span,
+                                id: item_id,
+                                attrs: Vec::new(),
+                                name: item.name,
+                                kind,
+                            },
+                        );
+
+                        self.current_item = old_id;
+                        self.local_id = old_local;
+
+                        item_id
+                    })
+                    .collect();
+
+                self.resolver.pop_rib(Ns::Types);
+
+                self.items.insert(
+                    id,
+                    Item {
+                        span: item.span,
+                        id,
+                        attrs,
+                        name: item.name,
+                        kind: ItemKind::Interface { generics, items },
+                        max_id: Id(id.item_id(), self.local_id),
+                    },
+                );
+            }
         }
 
         id

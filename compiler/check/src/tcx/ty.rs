@@ -33,6 +33,26 @@ impl<'tcx> Tcx<'tcx> {
                     hir::PrimTy::Float(64) => self.builtin.f64,
                     _ => unreachable!(),
                 },
+                hir::Res::SelfTy(_, _) => {
+                    let id = hir::Id::item(id.item_id());
+                    let ty = self.type_of(&id);
+
+                    if let Some(gen) = &self.package.items[&id].generics() {
+                        let args = gen
+                            .params
+                            .iter()
+                            .map(|g| self.intern_ty(Type::Param(g.id)))
+                            .collect::<Vec<_>>();
+
+                        if let Type::TypeOf(id, _) = ty {
+                            self.intern_ty(Type::TypeOf(*id, self.intern.intern_ty_list(&args)))
+                        } else {
+                            ty.mono(self, args)
+                        }
+                    } else {
+                        ty
+                    }
+                }
                 _ => unreachable!(),
             },
             hir::TypeKind::Ptr { kind, to } => {
