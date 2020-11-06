@@ -1,0 +1,38 @@
+module Core.Gc (Gc, GcBox, new, clone, drop)
+
+struct Gc<T>
+    ptr: *GcBox<T>
+end
+
+struct GcBox<T>
+    value: T
+    strong: usize
+    weak: usize
+end
+
+struct ObjRepr
+    value: *()
+    vtable: *()
+end
+
+@poly
+fn new<T>(value: T) -> Gc<T>
+    var repr = value.(ObjRepr);
+
+    Gc(box GcBox(repr.value.(_).*, 1, 0))
+end
+
+@poly
+fn clone<T>(self: *Gc<T>) -> Gc<T>
+    self.ptr.strong += 1;
+    self.*
+end
+
+@poly
+fn drop<T>(self: *Gc<T>)
+    self.ptr.strong -= 1;
+
+    if self.ptr.strong == 0
+        unbox self.ptr;
+    end
+end

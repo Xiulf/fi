@@ -1,0 +1,18 @@
+module Core.Intrinsic
+
+import Libc (malloc, free)
+
+@intrinsic extern sqrtf32: fn (f: f32) -> f32;
+@intrinsic extern sqrtf64: fn (f: f64) -> f64;
+
+--| Not really intrinsic, but required for boxing
+@lang "box-alloc"
+fn box_alloc(size: usize) -> *()
+    malloc(size)
+end
+
+--| Not really intrinsic, but required for unboxing
+@lang "box-free"
+fn box_free(ptr: *())
+    free(ptr);
+end

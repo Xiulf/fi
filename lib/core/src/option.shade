@@ -1,0 +1,7 @@
+module Core.Option
+
+@lang "option"
+enum Option<T>
+    None
+    Some(val: T)
+end
