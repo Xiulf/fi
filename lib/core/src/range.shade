@@ -1,7 +1,0 @@
-module Core.Range
-
-@lang "range"
-struct Range<T>
-    lo: T
-    hi: T
-end

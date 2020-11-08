@@ -1,6 +1,0 @@
-module Core.Convert
-
-@poly
-fn identity<T>(x: T) -> T
-    x
-end

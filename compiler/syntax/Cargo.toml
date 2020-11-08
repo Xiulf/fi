@@ -1,0 +1,12 @@
+[package]
+name = "syntax"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+source = { path = "../source" }
+parser = { path = "./parser" }
+codespan = "0.9.5"
+codespan-reporting = "0.9.5"
+salsa = "0.16.0"

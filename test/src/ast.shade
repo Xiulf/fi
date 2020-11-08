@@ -1,9 +1,0 @@
-module Macro.AST
-
-struct StringLiteral
-    text: []u8
-end
-
-enum Expression
-    ExpString(lit: StringLiteral)
-end

@@ -1,7 +1,0 @@
-module Libc
-
-extern "C" write: fn (fd: i32, buf: *u8, count: usize) -> isize
-extern "C" malloc: fn (size: usize) -> *()
-extern "C" realloc: fn (ptr: *(), size: usize) -> *()
-extern "C" free: fn (ptr: *()) -> ()
-extern "C" memcpy: fn (dest: *(), src: *(), size: usize) -> *()

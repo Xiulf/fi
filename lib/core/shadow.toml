@@ -1,7 +1,0 @@
-[package]
-name = "core"
-version = "0.1.0"
-authors = ["Tymo Ooijevaar <tttymo@gmail.com>"]
-
-[dependencies.libc]
-path = "../libc"

@@ -1,3 +1,0 @@
-module Core.Ptr
-
-const NULL: for<T> *T = 0.(*_);
