@@ -4,6 +4,11 @@ use std::fmt::{Debug, Formatter, Result, Write};
 impl Debug for Module {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(f, "Module name = {:?}", &**self.name.symbol)?;
+
+        for attr in &self.attrs {
+            writeln!(indent(f), "{:?}", attr)?;
+        }
+
         write!(indent(f), "{:?}", self.exports)?;
 
         for import in &self.imports {
@@ -17,6 +22,45 @@ impl Debug for Module {
         }
 
         Ok(())
+    }
+}
+
+impl Debug for Attribute {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "Attribute name = {:?}", &**self.name.symbol)?;
+
+        if let Some(body) = &self.body {
+            writeln!(f)?;
+            write!(indent(f), "{:?}", body)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Debug for AttrBody {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "AttrBody")?;
+
+        for arg in &self.args {
+            writeln!(f)?;
+            write!(indent(f), "{:?}", arg)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Debug for AttrArg {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "AttrArg::")?;
+
+        match self {
+            AttrArg::Literal(lit) => write!(f, "Literal val = {}", lit),
+            AttrArg::Field(name, val) => {
+                write!(f, "Field name = {:?}, val = {}", &**name.symbol, val)
+            }
+        }
     }
 }
 
@@ -94,10 +138,19 @@ impl Debug for Decl {
         match &self.kind {
             DeclKind::FuncTy { ty } => {
                 writeln!(f, "FuncTy name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
                 write!(indent(f), "{:?}", ty)
             }
             DeclKind::Func { pats, val } => {
                 writeln!(f, "Func name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
 
                 for pat in pats {
                     writeln!(indent(f), "{:?}", pat)?;
@@ -105,12 +158,57 @@ impl Debug for Decl {
 
                 write!(indent(f), "{:?}", val)
             }
+            DeclKind::ConstTy { ty } => {
+                writeln!(f, "ConstTy name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
+                write!(indent(f), "{:?}", ty)
+            }
+            DeclKind::Const { val } => {
+                writeln!(f, "Const name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
+                write!(indent(f), "{:?}", val)
+            }
+            DeclKind::StaticTy { ty } => {
+                writeln!(f, "StaticTy name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
+                write!(indent(f), "{:?}", ty)
+            }
+            DeclKind::Static { val } => {
+                writeln!(f, "Static name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
+                write!(indent(f), "{:?}", val)
+            }
             DeclKind::AliasKind { kind } => {
                 writeln!(f, "AliasKind name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
                 write!(indent(f), "{:?}", kind)
             }
             DeclKind::Alias { vars, ty } => {
                 writeln!(f, "Alias name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
 
                 for var in vars {
                     writeln!(indent(f), "{:?}", var)?;
@@ -118,8 +216,40 @@ impl Debug for Decl {
 
                 write!(indent(f), "{:?}", ty)
             }
+            DeclKind::DataKind { kind } => {
+                writeln!(f, "DataKind name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
+                write!(indent(f), "{:?}", kind)
+            }
+            DeclKind::Data { head, body } => {
+                writeln!(f, "Data name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
+                write!(indent(f), "{:?}", head)?;
+
+                if let Some(body) = body {
+                    for ctor in body {
+                        writeln!(f)?;
+                        write!(indent(f), "{:?}", ctor)?;
+                    }
+                }
+
+                Ok(())
+            }
             DeclKind::Iface { head, body } => {
                 writeln!(f, "Iface name = {:?}", &**self.name.symbol)?;
+
+                for attr in &self.attrs {
+                    writeln!(indent(f), "{:?}", attr)?;
+                }
+
                 write!(indent(f), "{:?}", head)?;
 
                 if let Some(body) = body {
@@ -132,6 +262,11 @@ impl Debug for Decl {
             DeclKind::ImplChain { impls } => {
                 write!(f, "ImplChain name = {:?}", &**self.name.symbol)?;
 
+                for attr in &self.attrs {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", attr)?;
+                }
+
                 for impl_ in impls {
                     writeln!(f)?;
                     write!(indent(f), "{:?}", impl_)?;
@@ -140,6 +275,32 @@ impl Debug for Decl {
                 Ok(())
             }
         }
+    }
+}
+
+impl Debug for DataHead {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "DataHead")?;
+
+        for var in &self.vars {
+            writeln!(f)?;
+            write!(indent(f), "{:?}", var)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Debug for DataCtor {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "DataCtor name = {:?}", &**self.name.symbol)?;
+
+        for ty in &self.tys {
+            writeln!(f)?;
+            write!(indent(f), "{:?}", ty)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -268,14 +429,21 @@ impl Debug for Pat {
                 write!(indent(f), "{:?}", inner)
             }
             PatKind::Wildcard => write!(f, "Wildcard"),
+            PatKind::Int { val } => write!(f, "Int val = {}", val),
+            PatKind::Float { bits } => write!(f, "Float bits = {}", bits),
+            PatKind::Char { val, byte } => write!(f, "Char val = {:?}, byte = {}", val, byte),
+            PatKind::Str { val } => write!(f, "String val = {:?}", val),
             PatKind::Ident { name } => write!(f, "Ident name = {:?}", &**name.symbol),
-            PatKind::App { base, args } => {
-                writeln!(f, "App")?;
-                write!(indent(f), "{:?}", base)?;
+            PatKind::Named { name, pat } => {
+                writeln!(f, "Named name = {:?}", &**name.symbol)?;
+                write!(indent(f), "{:?}", pat)
+            }
+            PatKind::Ctor { name, pats } => {
+                write!(f, "Ctor name = {:?}", &**name.symbol)?;
 
-                for arg in args {
+                for pat in pats {
                     writeln!(f)?;
-                    write!(indent(f), "{:?}", arg)?;
+                    write!(indent(f), "{:?}", pat)?;
                 }
 
                 Ok(())
@@ -289,6 +457,35 @@ impl Debug for Pat {
                 }
 
                 Ok(())
+            }
+            PatKind::Record { fields } => {
+                write!(f, "Record")?;
+
+                for field in fields {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", field)?;
+                }
+
+                Ok(())
+            }
+            PatKind::Typed { pat, ty } => {
+                writeln!(f, "Typed")?;
+                writeln!(indent(f), "{:?}", pat)?;
+                write!(indent(f), "{:?}", ty)
+            }
+        }
+    }
+}
+
+impl<T: Debug> Debug for RecordField<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "RecordField")?;
+
+        match self {
+            RecordField::Pun { name } => write!(f, "Pun name = {:?}", &**name.symbol),
+            RecordField::Field { name, val } => {
+                writeln!(f, "Field name = {:?}", &**name.symbol)?;
+                write!(indent(f), "{:?}", val)
             }
         }
     }
@@ -328,6 +525,7 @@ impl Debug for Expr {
         write!(f, "Expr::")?;
 
         match &self.kind {
+            ExprKind::Hole { name } => write!(f, "Hole name = {:?}", &**name.symbol),
             ExprKind::Parens { inner } => {
                 writeln!(f, "Inner")?;
                 write!(indent(f), "{:?}", inner)
@@ -358,12 +556,155 @@ impl Debug for Expr {
 
                 Ok(())
             }
+            ExprKind::Record { fields } => {
+                write!(f, "Record")?;
+
+                for field in fields {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", field)?;
+                }
+
+                Ok(())
+            }
+            ExprKind::Field { base, field } => {
+                writeln!(f, "Field field = {:?}", &**field.symbol)?;
+                write!(indent(f), "{:?}", base)
+            }
+            ExprKind::Index { base, index } => {
+                writeln!(f, "Index")?;
+                writeln!(indent(f), "{:?}", base)?;
+                write!(indent(f), "{:?}", index)
+            }
+            ExprKind::Assign { lhs, rhs } => {
+                writeln!(f, "Assign")?;
+                writeln!(indent(f), "{:?}", lhs)?;
+                write!(indent(f), "{:?}", rhs)
+            }
+            ExprKind::Infix { op, lhs, rhs } => {
+                writeln!(f, "Infix op = {:?}", op)?;
+                writeln!(indent(f), "{:?}", lhs)?;
+                write!(indent(f), "{:?}", rhs)
+            }
+            ExprKind::Prefix { op, rhs } => {
+                writeln!(f, "Prefix op = {:?}", op)?;
+                write!(indent(f), "{:?}", rhs)
+            }
+            ExprKind::Postfix { op, lhs } => {
+                writeln!(f, "Postfix op = {:?}", op)?;
+                write!(indent(f), "{:?}", lhs)
+            }
+            ExprKind::Let { bindings, body } => {
+                writeln!(f, "Let")?;
+
+                for binding in bindings {
+                    writeln!(indent(f), "{:?}", binding)?;
+                }
+
+                write!(indent(f), "{:?}", body)
+            }
+            ExprKind::If { cond, then, else_ } => {
+                writeln!(f, "If")?;
+                writeln!(indent(f), "{:?}", cond)?;
+                writeln!(indent(f), "{:?}", then)?;
+                write!(indent(f), "{:?}", else_)
+            }
+            ExprKind::Case { pred, arms } => {
+                writeln!(f, "Case")?;
+                write!(indent(f), "{:?}", pred)?;
+
+                for arm in arms {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", arm)?;
+                }
+
+                Ok(())
+            }
+            ExprKind::Loop { body } => {
+                writeln!(f, "Loop")?;
+                write!(indent(f), "{:?}", body)
+            }
+            ExprKind::While { cond, body } => {
+                writeln!(f, "While")?;
+                writeln!(indent(f), "{:?}", cond)?;
+                write!(indent(f), "{:?}", body)
+            }
+            ExprKind::Do { block } => {
+                writeln!(f, "Do")?;
+                write!(indent(f), "{:?}", block)
+            }
             ExprKind::Typed { expr, ty } => {
                 writeln!(f, "Typed")?;
                 writeln!(indent(f), "{:?}", expr)?;
                 write!(indent(f), "{:?}", ty)
             }
         }
+    }
+}
+
+impl Debug for Block {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "Block")?;
+
+        for stmt in &self.stmts {
+            writeln!(f)?;
+            write!(indent(f), "{:?}", stmt)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Debug for Stmt {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "Stmt::")?;
+
+        match &self.kind {
+            StmtKind::Let { bindings } => {
+                write!(f, "Let")?;
+
+                for binding in bindings {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", binding)?;
+                }
+
+                Ok(())
+            }
+            StmtKind::Discard { expr } => {
+                writeln!(f, "Discard")?;
+                write!(indent(f), "{:?}", expr)
+            }
+            StmtKind::Bind { pat, val } => {
+                writeln!(f, "Bind")?;
+                writeln!(indent(f), "{:?}", pat)?;
+                write!(indent(f), "{:?}", val)
+            }
+        }
+    }
+}
+
+impl Debug for LetBinding {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "LetBinding::")?;
+
+        match &self.kind {
+            LetBindingKind::Type { ty } => {
+                writeln!(f, "Type name = {:?}", &**self.name.symbol)?;
+                write!(indent(f), "{:?}", ty)
+            }
+            LetBindingKind::Value { pat, val } => {
+                writeln!(f, "Value name = {:?}", &**self.name.symbol)?;
+                writeln!(indent(f), "{:?}", pat)?;
+                write!(indent(f), "{:?}", val)
+            }
+        }
+    }
+}
+
+impl Debug for CaseArm {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "CaseArm")?;
+        writeln!(indent(f), "{:?}", self.pat)?;
+        write!(indent(f), "{:?}", self.val)
     }
 }
 
@@ -376,7 +717,8 @@ impl Debug for Type {
                 writeln!(f, "Parens")?;
                 write!(indent(f), "{:?}", inner)
             }
-            TypeKind::Hole => write!(f, "Hole"),
+            TypeKind::Hole { name } => write!(f, "Hole name = {:?}", &**name.symbol),
+            TypeKind::Int { val } => write!(f, "Int val = {}", val),
             TypeKind::Var { name } => write!(f, "Var name = {:?}", &**name.symbol),
             TypeKind::Ident { name } => write!(f, "Ident name = {:?}", &**name.symbol),
             TypeKind::App { base, args } => {
@@ -426,6 +768,11 @@ impl Debug for Type {
             TypeKind::Record { row } => {
                 writeln!(f, "Record")?;
                 write!(indent(f), "{:?}", row)
+            }
+            TypeKind::Kinded { ty, kind } => {
+                writeln!(f, "Kinded")?;
+                writeln!(indent(f), "{:?}", ty)?;
+                write!(indent(f), "{:?}", kind)
             }
         }
     }

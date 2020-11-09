@@ -43,7 +43,7 @@ impl<D> Parse<D> for LytStart {
     fn parse(input: ParseStream<D>) -> Result<Self> {
         input.step(|cursor| match cursor.lyt_start() {
             Some((span, rest)) => Ok((LytStart(span), rest)),
-            None => Err(cursor.error("expected an increase in indentation")),
+            None => Err(cursor.error("expected the start of a block")),
         })
     }
 }
@@ -81,7 +81,7 @@ impl<D> Parse<D> for LytEnd {
     fn parse(input: ParseStream<D>) -> Result<Self> {
         input.step(|cursor| match cursor.lyt_end() {
             Some((span, rest)) => Ok((LytEnd(span), rest)),
-            None => Err(cursor.error("expected a decrease in indentation")),
+            None => Err(cursor.error("expected the end of a block")),
         })
     }
 }
@@ -155,6 +155,8 @@ fn insert_layout(
     stack: &mut LayoutStack,
     tokens: &mut Vec<Entry>,
 ) {
+    crate::token![ident "fn" TFn];
+    crate::token![ident "data" TData];
     crate::token![ident "iface" TIface];
     crate::token![ident "where" TWhere];
     crate::token![ident "in" TIn];
@@ -194,7 +196,7 @@ fn insert_layout(
         stack: &mut LayoutStack,
         tokens: &mut Vec<Entry>,
     ) {
-        /*if TEnum::peek(cursor) {
+        if TData::peek(cursor) {
             insert_default(files, cursor, stack, tokens);
 
             let p = pos(files, cursor.file, cursor.span().start());
@@ -202,8 +204,15 @@ fn insert_layout(
             if is_top_decl(p, stack) {
                 stack.push((p, LayoutDelim::TopDecl));
             }
-        } else*/
-        if TIface::peek(cursor) {
+        } else if TFn::peek(cursor) {
+            insert_default(files, cursor, stack, tokens);
+
+            let p = pos(files, cursor.file, cursor.span().start());
+
+            if is_top_decl(p, stack) {
+                stack.push((p, LayoutDelim::TopDecl));
+            }
+        } else if TIface::peek(cursor) {
             insert_default(files, cursor, stack, tokens);
 
             let p = pos(files, cursor.file, cursor.span().start());

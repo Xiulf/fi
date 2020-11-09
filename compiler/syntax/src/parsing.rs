@@ -1,7 +1,8 @@
 use crate::ast::*;
+use parser::attr::Attr;
 use parser::error::Result;
 use parser::layout::{LytEnd, LytSep, LytStart};
-use parser::literal::Literal;
+use parser::literal::{Literal, StringLiteral};
 use parser::parse::{Parse, ParseStream};
 
 parser::token![ident "module" TModule];
@@ -11,6 +12,7 @@ parser::token![ident "hiding" THiding];
 parser::token![ident "as" TAs];
 parser::token![ident "fn" TFn];
 parser::token![ident "alias" TAlias];
+parser::token![ident "data" TData];
 parser::token![ident "iface" TIface];
 parser::token![ident "impl" TImpl];
 parser::token![ident "forall" TForall];
@@ -33,9 +35,38 @@ parser::token![punct "|" TBar/1];
 parser::token![punct "?" TQmark/1];
 parser::token![ident "_" TWildcard];
 
+parser::token![punct "-" TNeg/1];
+parser::token![punct "!" TNot/1];
+parser::token![punct "~" TBitNot/1];
+
+parser::token![punct "+" TAdd/1];
+parser::token![punct "-" TSub/1];
+parser::token![punct "*" TMul/1];
+parser::token![punct "/" TDiv/1];
+parser::token![punct "%" TRem/1];
+parser::token![punct "==" TEq/2];
+parser::token![punct "!=" TNe/2];
+parser::token![punct "<" TLt/1];
+parser::token![punct "<=" TLe/2];
+parser::token![punct ">" TGt/1];
+parser::token![punct ">=" TGe/2];
+parser::token![punct "&" TBitAnd/1];
+parser::token![punct "|" TBitOr/1];
+parser::token![punct "^" TBitXor/1];
+parser::token![punct "<<" TShl/1];
+parser::token![punct ">>" TShr/1];
+parser::token![ident "and" TAnd];
+parser::token![ident "or" TOr];
+
 impl Parse for Module {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
+        let mut attrs = Vec::new();
+
+        while !input.is_empty() && Attribute::peek(input) {
+            attrs.push(input.parse()?);
+        }
+
         let _ = input.parse::<TModule>()?;
         let name = input.parse()?;
         let exports = input.parse()?;
@@ -70,11 +101,97 @@ impl Parse for Module {
 
         Ok(Module {
             span: start.merge(input.prev_span()),
+            attrs,
             name,
             exports,
             imports,
             decls,
         })
+    }
+}
+
+impl Parse for Attribute {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if let Ok(attr) = input.parse::<Attr>() {
+            Ok(Attribute {
+                span: attr.span,
+                name: Ident {
+                    span: attr.span,
+                    symbol: Symbol::new("doc"),
+                },
+                body: Some(AttrBody {
+                    span: attr.span,
+                    args: vec![AttrArg::Literal(Literal::String(StringLiteral {
+                        span: Span::new(
+                            attr.span.start() + codespan::ByteOffset::from_str_len("--|"),
+                            attr.span.end(),
+                        ),
+                        text: attr.text,
+                    }))],
+                }),
+            })
+        } else {
+            let start = input.span();
+            let _ = input.parse::<TLBracket>()?;
+            let name = input.parse()?;
+            let body = if input.peek::<TLParen>() {
+                Some(input.parse()?)
+            } else {
+                None
+            };
+
+            input.parse::<TRBracket>()?;
+
+            Ok(Attribute {
+                span: start.merge(input.prev_span()),
+                name,
+                body,
+            })
+        }
+    }
+}
+
+impl Attribute {
+    fn peek(input: ParseStream) -> bool {
+        input.peek::<Attr>() || input.peek::<TLBracket>()
+    }
+}
+
+impl Parse for AttrBody {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let _ = input.parse::<TLParen>()?;
+        let mut args = Vec::new();
+
+        while !input.is_empty() && !input.peek::<TRParen>() {
+            args.push(input.parse()?);
+
+            if !input.peek::<TRParen>() {
+                input.parse::<TComma>()?;
+            }
+        }
+
+        input.parse::<TRParen>()?;
+
+        Ok(AttrBody {
+            span: start.merge(input.prev_span()),
+            args,
+        })
+    }
+}
+
+impl Parse for AttrArg {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if let Ok(lit) = input.parse() {
+            Ok(AttrArg::Literal(lit))
+        } else if let Ok(name) = input.parse() {
+            let _ = input.parse::<TEquals>()?;
+            let val = input.parse()?;
+
+            Ok(AttrArg::Field(name, val))
+        } else {
+            input.error("expected a literal or an identifier", "E0006")
+        }
     }
 }
 
@@ -198,6 +315,13 @@ impl Parse for Import {
 impl Parse for Decl {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
+        let mut attrs = Vec::new();
+
+        while !input.is_empty() && Attribute::peek(input) {
+            let _ = attrs.push(input.parse()?);
+            let _ = input.parse::<LytSep>();
+        }
+
         let (name, kind) = if let Ok(_) = input.parse::<TFn>() {
             let name = input.parse()?;
             let kind = if let Ok(_) = input.parse::<TDblColon>() {
@@ -226,7 +350,7 @@ impl Parse for Decl {
             } else {
                 let mut vars = Vec::new();
 
-                while !input.is_empty() && !input.peek::<TEquals>() {
+                while !input.is_empty() && TypeVar::peek(input) {
                     vars.push(input.parse()?);
                 }
 
@@ -234,6 +358,41 @@ impl Parse for Decl {
                 let ty = input.parse()?;
 
                 DeclKind::Alias { vars, ty }
+            };
+
+            (name, kind)
+        } else if let Ok(_) = input.parse::<TData>() {
+            let name = input.parse()?;
+            let kind = if let Ok(_) = input.parse::<TDblColon>() {
+                let kind = input.parse()?;
+
+                DeclKind::DataKind { kind }
+            } else {
+                let mut vars = Vec::new();
+
+                while !input.is_empty() && TypeVar::peek(input) {
+                    vars.push(input.parse()?);
+                }
+
+                let head = DataHead {
+                    span: start.merge(input.prev_span()),
+                    vars,
+                };
+
+                let body = if let Ok(_) = input.parse::<TEquals>() {
+                    let mut ctors = vec![input.parse()?];
+
+                    while !input.is_empty() && input.peek::<TBar>() {
+                        input.parse::<TBar>()?;
+                        ctors.push(input.parse()?);
+                    }
+
+                    Some(ctors)
+                } else {
+                    None
+                };
+
+                DeclKind::Data { head, body }
             };
 
             (name, kind)
@@ -293,11 +452,12 @@ impl Parse for Decl {
 
             (impls[0].head.iface, DeclKind::ImplChain { impls })
         } else {
-            return input.error("expected 'fn', 'alias', 'iface' or 'impl'", "E0006");
+            return input.error("expected 'fn', 'alias', 'data', 'iface' or 'impl'", "E0006");
         };
 
         Ok(Decl {
             span: start.merge(input.prev_span()),
+            attrs,
             name,
             kind,
         })
@@ -306,10 +466,30 @@ impl Parse for Decl {
 
 impl Decl {
     fn peek(input: ParseStream) -> bool {
-        input.peek::<TFn>()
+        Attribute::peek(input)
+            || input.peek::<TFn>()
             || input.peek::<TAlias>()
+            || input.peek::<TData>()
             || input.peek::<TIface>()
             || input.peek::<TImpl>()
+    }
+}
+
+impl Parse for DataCtor {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let start = input.span();
+        let name = input.parse()?;
+        let mut tys = Vec::new();
+
+        while !input.is_empty() && Type::peek(input) {
+            tys.push(Type::infix(input)?);
+        }
+
+        Ok(DataCtor {
+            span: start.merge(input.prev_span()),
+            name,
+            tys,
+        })
     }
 }
 
@@ -476,22 +656,23 @@ impl ImplDecl {
 impl Parse for Pat {
     fn parse(input: ParseStream) -> Result<Self> {
         let base = Pat::atom(input)?;
-        let mut args = Vec::new();
+        let mut pats = Vec::new();
 
-        while Pat::peek(input) {
-            args.push(input.parse()?);
+        if let PatKind::Ident { .. } = &base.kind {
+            while Pat::peek(input) {
+                pats.push(input.parse()?);
+            }
         }
 
-        if args.is_empty() {
+        if pats.is_empty() {
             Ok(base)
-        } else {
+        } else if let PatKind::Ident { name } = base.kind {
             Ok(Pat {
                 span: base.span.merge(input.prev_span()),
-                kind: PatKind::App {
-                    base: Box::new(base),
-                    args,
-                },
+                kind: PatKind::Ctor { name, pats },
             })
+        } else {
+            Ok(base)
         }
     }
 }
@@ -576,11 +757,351 @@ impl Parse for GuardedExpr {
 
 impl Parse for Expr {
     fn parse(input: ParseStream) -> Result<Self> {
-        let base = Expr::infix(input)?;
+        let expr = Expr::infix(input)?;
+
+        if let Ok(_) = input.parse::<TDblColon>() {
+            let ty = input.parse()?;
+
+            Ok(Expr {
+                span: expr.span.merge(input.prev_span()),
+                kind: ExprKind::Typed {
+                    expr: Box::new(expr),
+                    ty,
+                },
+            })
+        } else {
+            Ok(expr)
+        }
+    }
+}
+
+impl Expr {
+    fn infix(input: ParseStream) -> Result<Self> {
+        return assign(input);
+
+        fn assign(input: ParseStream) -> Result<Expr> {
+            let lhs = or(input)?;
+
+            if let Ok(_) = input.parse::<TEquals>() {
+                let rhs = assign(input)?;
+
+                Ok(Expr {
+                    span: lhs.span.merge(rhs.span),
+                    kind: ExprKind::Assign {
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                    },
+                })
+            } else {
+                Ok(lhs)
+            }
+        }
+
+        fn or(input: ParseStream) -> Result<Expr> {
+            let mut lhs = and(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TOr>() {
+                    let rhs = and(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Or,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn and(input: ParseStream) -> Result<Expr> {
+            let mut lhs = bit_or(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TAnd>() {
+                    let rhs = bit_or(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::And,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn bit_or(input: ParseStream) -> Result<Expr> {
+            let mut lhs = bit_xor(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TBitOr>() {
+                    let rhs = bit_xor(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::BitOr,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn bit_xor(input: ParseStream) -> Result<Expr> {
+            let mut lhs = bit_and(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TBitXor>() {
+                    let rhs = bit_and(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::BitXor,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn bit_and(input: ParseStream) -> Result<Expr> {
+            let mut lhs = eq(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TEq>() {
+                    let rhs = eq(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::BitAnd,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn eq(input: ParseStream) -> Result<Expr> {
+            let mut lhs = cmp(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TEq>() {
+                    let rhs = cmp(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Eq,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TNe>() {
+                    let rhs = cmp(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Ne,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn cmp(input: ParseStream) -> Result<Expr> {
+            let mut lhs = shift(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TLe>() {
+                    let rhs = shift(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Le,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TGe>() {
+                    let rhs = shift(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Ge,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TLt>() {
+                    let rhs = shift(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Lt,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TGt>() {
+                    let rhs = shift(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Gt,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn shift(input: ParseStream) -> Result<Expr> {
+            let mut lhs = add(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TShl>() {
+                    let rhs = add(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Shl,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TShr>() {
+                    let rhs = add(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Shr,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn add(input: ParseStream) -> Result<Expr> {
+            let mut lhs = mul(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TAdd>() {
+                    let rhs = mul(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Add,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TSub>() {
+                    let rhs = mul(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Sub,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+
+        fn mul(input: ParseStream) -> Result<Expr> {
+            let mut lhs = Expr::app(input)?;
+
+            loop {
+                if let Ok(_) = input.parse::<TMul>() {
+                    let rhs = Expr::app(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Mul,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TDiv>() {
+                    let rhs = Expr::app(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Div,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else if let Ok(_) = input.parse::<TRem>() {
+                    let rhs = Expr::app(input)?;
+
+                    lhs = Expr {
+                        span: lhs.span.merge(rhs.span),
+                        kind: ExprKind::Infix {
+                            op: InfixOp::Rem,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                } else {
+                    return Ok(lhs);
+                }
+            }
+        }
+    }
+
+    fn app(input: ParseStream) -> Result<Self> {
+        let base = Expr::prefix(input)?;
         let mut args = Vec::new();
 
-        while Expr::peek(input) {
-            args.push(input.parse()?);
+        while !input.is_empty() && Expr::peek(input) {
+            args.push(Expr::prefix(input)?);
         }
 
         if args.is_empty() {
@@ -595,29 +1116,57 @@ impl Parse for Expr {
             })
         }
     }
-}
-
-impl Expr {
-    fn infix(input: ParseStream) -> Result<Self> {
-        Expr::prefix(input)
-    }
 
     fn prefix(input: ParseStream) -> Result<Self> {
-        Expr::postfix(input)
+        let start = input.span();
+
+        if let Ok(_) = input.parse::<TNeg>() {
+            let rhs = Expr::prefix(input)?;
+
+            Ok(Expr {
+                span: start.merge(input.prev_span()),
+                kind: ExprKind::Prefix {
+                    op: PrefixOp::Neg,
+                    rhs: Box::new(rhs),
+                },
+            })
+        } else if let Ok(_) = input.parse::<TNot>() {
+            let rhs = Expr::prefix(input)?;
+
+            Ok(Expr {
+                span: start.merge(input.prev_span()),
+                kind: ExprKind::Prefix {
+                    op: PrefixOp::Not,
+                    rhs: Box::new(rhs),
+                },
+            })
+        } else if let Ok(_) = input.parse::<TBitNot>() {
+            let rhs = Expr::prefix(input)?;
+
+            Ok(Expr {
+                span: start.merge(input.prev_span()),
+                kind: ExprKind::Prefix {
+                    op: PrefixOp::BitNot,
+                    rhs: Box::new(rhs),
+                },
+            })
+        } else {
+            Expr::postfix(input)
+        }
     }
 
     fn postfix(input: ParseStream) -> Result<Self> {
         let mut expr = Expr::atom(input)?;
 
         while !input.is_empty() {
-            if let Ok(_) = input.parse::<TDblColon>() {
-                let ty = input.parse()?;
+            if let Ok(_) = input.parse::<TDot>() {
+                let field = input.parse()?;
 
                 expr = Expr {
                     span: expr.span.merge(input.prev_span()),
-                    kind: ExprKind::Typed {
-                        expr: Box::new(expr),
-                        ty,
+                    kind: ExprKind::Field {
+                        base: Box::new(expr),
+                        field,
                     },
                 };
             } else {
@@ -672,29 +1221,31 @@ impl Expr {
     }
 
     fn peek(input: ParseStream) -> bool {
-        input.peek::<TLParen>() || input.peek::<Ident>() || input.peek::<Literal>()
+        input.peek::<TLParen>()
+            || input.peek::<TNeg>()
+            || input.peek::<TNot>()
+            || input.peek::<TBitNot>()
+            || input.peek::<Ident>()
+            || input.peek::<Literal>()
     }
 }
 
 impl Parse for Type {
     fn parse(input: ParseStream) -> Result<Self> {
-        let base = Type::infix(input)?;
-        let mut args = Vec::new();
+        let ty = Type::infix(input)?;
 
-        while Type::peek(input) {
-            args.push(Type::atom(input)?);
-        }
+        if let Ok(_) = input.parse::<TDblColon>() {
+            let kind = input.parse()?;
 
-        if args.is_empty() {
-            Ok(base)
-        } else {
             Ok(Type {
-                span: base.span.merge(input.prev_span()),
-                kind: TypeKind::App {
-                    base: Box::new(base),
-                    args,
+                span: ty.span.merge(input.prev_span()),
+                kind: TypeKind::Kinded {
+                    ty: Box::new(ty),
+                    kind,
                 },
             })
+        } else {
+            Ok(ty)
         }
     }
 }
@@ -703,7 +1254,7 @@ impl Type {
     fn infix(input: ParseStream) -> Result<Self> {
         let save = input.cursor();
         let start = input.span();
-        let ty = Type::atom(input)?;
+        let ty = Type::app(input)?;
 
         if let Ok(_) = input.parse::<TArrow>() {
             let ret = input.parse()?;
@@ -732,6 +1283,27 @@ impl Type {
             })
         } else {
             Ok(ty)
+        }
+    }
+
+    fn app(input: ParseStream) -> Result<Self> {
+        let base = Type::atom(input)?;
+        let mut args = Vec::new();
+
+        while !input.is_empty() && Type::peek(input) {
+            args.push(Type::atom(input)?);
+        }
+
+        if args.is_empty() {
+            Ok(base)
+        } else {
+            Ok(Type {
+                span: base.span.merge(input.prev_span()),
+                kind: TypeKind::App {
+                    base: Box::new(base),
+                    args,
+                },
+            })
         }
     }
 
@@ -765,7 +1337,9 @@ impl Type {
 
             TypeKind::Record { row }
         } else if let Ok(_) = input.parse::<TQmark>() {
-            TypeKind::Hole
+            let name = input.parse()?;
+
+            TypeKind::Hole { name }
         } else if let Ok(_) = input.parse::<TForall>() {
             let mut vars = Vec::new();
 
@@ -866,6 +1440,12 @@ impl Parse for TypeVar {
 
             Ok(TypeVar::Name { name })
         }
+    }
+}
+
+impl TypeVar {
+    fn peek(input: ParseStream) -> bool {
+        input.peek::<TLParen>() || input.peek::<Ident>()
     }
 }
 

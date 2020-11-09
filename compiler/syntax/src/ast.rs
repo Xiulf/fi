@@ -2,14 +2,35 @@ mod debug;
 
 pub use crate::symbol::{Ident, Symbol};
 pub use codespan::Span;
+pub use parser::literal::Literal;
 
 #[derive(PartialEq, Eq)]
 pub struct Module {
     pub span: Span,
+    pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub exports: Exports,
     pub imports: Vec<ImportDecl>,
     pub decls: Vec<Decl>,
+}
+
+#[derive(PartialEq, Eq)]
+pub struct Attribute {
+    pub span: Span,
+    pub name: Ident,
+    pub body: Option<AttrBody>,
+}
+
+#[derive(PartialEq, Eq)]
+pub struct AttrBody {
+    pub span: Span,
+    pub args: Vec<AttrArg>,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum AttrArg {
+    Literal(Literal),
+    Field(Ident, Literal),
 }
 
 #[derive(PartialEq, Eq)]
@@ -57,6 +78,7 @@ pub enum ImportKind {
 #[derive(PartialEq, Eq)]
 pub struct Decl {
     pub span: Span,
+    pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub kind: DeclKind,
 }
@@ -70,12 +92,31 @@ pub enum DeclKind {
         pats: Vec<Pat>,
         val: Guarded,
     },
+    ConstTy {
+        ty: Type,
+    },
+    Const {
+        val: Expr,
+    },
+    StaticTy {
+        ty: Type,
+    },
+    Static {
+        val: Expr,
+    },
     AliasKind {
         kind: Type,
     },
     Alias {
         vars: Vec<TypeVar>,
         ty: Type,
+    },
+    DataKind {
+        kind: Type,
+    },
+    Data {
+        head: DataHead,
+        body: Option<Vec<DataCtor>>,
     },
     Iface {
         head: IfaceHead,
@@ -84,6 +125,19 @@ pub enum DeclKind {
     ImplChain {
         impls: Vec<Impl>,
     },
+}
+
+#[derive(PartialEq, Eq)]
+pub struct DataHead {
+    pub span: Span,
+    pub vars: Vec<TypeVar>,
+}
+
+#[derive(PartialEq, Eq)]
+pub struct DataCtor {
+    pub span: Span,
+    pub name: Ident,
+    pub tys: Vec<Type>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -155,9 +209,22 @@ pub struct Pat {
 pub enum PatKind {
     Parens { inner: Box<Pat> },
     Wildcard,
+    Int { val: u128 },
+    Float { bits: u64 },
+    Char { val: char, byte: bool },
+    Str { val: String },
     Ident { name: Ident },
-    App { base: Box<Pat>, args: Vec<Pat> },
+    Named { name: Ident, pat: Box<Pat> },
+    Ctor { name: Ident, pats: Vec<Pat> },
     Tuple { pats: Vec<Pat> },
+    Record { fields: Vec<RecordField<Pat>> },
+    Typed { pat: Box<Pat>, ty: Type },
+}
+
+#[derive(PartialEq, Eq)]
+pub enum RecordField<T> {
+    Pun { name: Ident },
+    Field { name: Ident, val: T },
 }
 
 #[derive(PartialEq, Eq)]
@@ -181,15 +248,160 @@ pub struct Expr {
 
 #[derive(PartialEq, Eq)]
 pub enum ExprKind {
-    Parens { inner: Box<Expr> },
-    Ident { name: Ident },
-    Int { val: u128 },
-    Float { bits: u64 },
-    Char { val: char },
-    Str { val: String },
-    App { base: Box<Expr>, args: Vec<Expr> },
-    Tuple { exprs: Vec<Expr> },
-    Typed { expr: Box<Expr>, ty: Type },
+    Hole {
+        name: Ident,
+    },
+    Parens {
+        inner: Box<Expr>,
+    },
+    Ident {
+        name: Ident,
+    },
+    Int {
+        val: u128,
+    },
+    Float {
+        bits: u64,
+    },
+    Char {
+        val: char,
+    },
+    Str {
+        val: String,
+    },
+    App {
+        base: Box<Expr>,
+        args: Vec<Expr>,
+    },
+    Tuple {
+        exprs: Vec<Expr>,
+    },
+    Record {
+        fields: Vec<RecordField<Expr>>,
+    },
+    Field {
+        base: Box<Expr>,
+        field: Ident,
+    },
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
+    },
+    Assign {
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
+    Infix {
+        op: InfixOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
+    Prefix {
+        op: PrefixOp,
+        rhs: Box<Expr>,
+    },
+    Postfix {
+        op: PostfixOp,
+        lhs: Box<Expr>,
+    },
+    Let {
+        bindings: Vec<LetBinding>,
+        body: Box<Expr>,
+    },
+    If {
+        cond: Box<Expr>,
+        then: Box<Expr>,
+        else_: Box<Expr>,
+    },
+    Case {
+        pred: Box<Expr>,
+        arms: Vec<CaseArm>,
+    },
+    Loop {
+        body: Box<Expr>,
+    },
+    While {
+        cond: Box<Expr>,
+        body: Block,
+    },
+    Do {
+        block: Block,
+    },
+    Typed {
+        expr: Box<Expr>,
+        ty: Type,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InfixOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PrefixOp {
+    Neg,
+    Not,
+    BitNot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PostfixOp {}
+
+#[derive(PartialEq, Eq)]
+pub struct Block {
+    pub span: Span,
+    pub stmts: Vec<Stmt>,
+}
+
+#[derive(PartialEq, Eq)]
+pub struct Stmt {
+    pub span: Span,
+    pub kind: StmtKind,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum StmtKind {
+    Let { bindings: Vec<LetBinding> },
+    Discard { expr: Expr },
+    Bind { pat: Pat, val: Expr },
+}
+
+#[derive(PartialEq, Eq)]
+pub struct LetBinding {
+    pub span: Span,
+    pub name: Ident,
+    pub kind: LetBindingKind,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum LetBindingKind {
+    Type { ty: Type },
+    Value { pat: Pat, val: Expr },
+}
+
+#[derive(PartialEq, Eq)]
+pub struct CaseArm {
+    pub span: Span,
+    pub pat: Pat,
+    pub val: Guarded,
 }
 
 #[derive(PartialEq, Eq)]
@@ -200,8 +412,9 @@ pub struct Type {
 
 #[derive(PartialEq, Eq)]
 pub enum TypeKind {
+    Hole { name: Ident },
     Parens { inner: Box<Type> },
-    Hole,
+    Int { val: u128 },
     Var { name: Ident },
     Ident { name: Ident },
     App { base: Box<Type>, args: Vec<Type> },
@@ -210,6 +423,7 @@ pub enum TypeKind {
     Forall { vars: Vec<TypeVar>, ret: Box<Type> },
     Cons { cs: Constraint, ty: Box<Type> },
     Record { row: Row },
+    Kinded { ty: Box<Type>, kind: Box<Type> },
 }
 
 #[derive(PartialEq, Eq)]

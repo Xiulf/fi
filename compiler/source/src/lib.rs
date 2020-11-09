@@ -1,3 +1,5 @@
+pub mod hash;
+
 pub use codespan::{FileId, Files};
 use std::sync::Arc;
 

@@ -131,9 +131,13 @@ impl<'a> Lexer<'a> {
             }
         }
 
+        let text2 = text.trim_start();
+        let text3 = text2.trim_end().to_string();
+        let end = text2.len() - text3.len();
+
         Ok(Entry::Attr(Attr {
-            span: self.span(),
-            text,
+            span: Span::new(self.start, self.pos - ByteOffset::from(end as i64)),
+            text: text3,
         }))
     }
 

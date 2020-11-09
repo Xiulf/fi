@@ -1,0 +1,48 @@
+module Prim where
+
+alias Byte = U8
+alias Char = U32
+alias Float = F32
+alias Double = F64
+alias Str = Slice Byte
+
+[repr("u8"  )]
+[lang("bool")]
+data Bool = False | True
+
+[repr("u8"  )] data U8   :: Type
+[repr("u16" )] data U16  :: Type
+[repr("u32" )] data U32  :: Type
+[repr("u64" )] data U64  :: Type
+[repr("u128")] data U128 :: Type
+[repr("i8"  )] data I8   :: Type
+[repr("i16" )] data I16  :: Type
+[repr("i32" )] data I32  :: Type
+[repr("i64" )] data I64  :: Type
+[repr("i128")] data I128 :: Type
+[repr("f32" )] data F32  :: Type
+[repr("f64" )] data F64  :: Type
+
+[repr("ptr")]
+[lang("ptr")]
+data Ptr :: forall (t :: Type). t -> Type
+
+[lang("array")] data Array :: forall (t :: Type) i. Integer i => (t, i) -> Type
+[lang("slice")] data Slice :: forall (t :: Type). t -> Type
+
+[lang("integer")] iface Integer
+[lang("decimal")] iface Decimal
+
+impl Integer U8
+impl Integer U16
+impl Integer U32
+impl Integer U64
+impl Integer U128
+impl Integer I8
+impl Integer I16
+impl Integer I32
+impl Integer I64
+impl Integer I128
+
+impl Decimal F32
+impl Decimal F64
