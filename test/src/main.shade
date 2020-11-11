@@ -1,4 +1,4 @@
-module Test where
+module Main where
 
 import Prim
 
@@ -7,17 +7,3 @@ fn main argc argv = identity 22
 
 fn identity :: forall t. t -> t
 fn identity x = x
-
-const max :: U8
-const max = 255
-
-static test :: Bool
-static test = True
-
--- fn main :: (I32, Ptr (Ptr U8)) -> I32 =
---     case _0, _1 of
---         argc, argv -> identity 22
-
--- fn identity :: forall t. t -> t =
---     case _0 of
---         I x -> a

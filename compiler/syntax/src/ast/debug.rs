@@ -117,11 +117,7 @@ impl Debug for ImportDecl {
 
 impl Debug for Import {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(
-            f,
-            "Import name = {:?}, kind = {:?}",
-            &**self.name.symbol, self.kind
-        )?;
+        write!(f, "Import name = {:?}", &**self.name.symbol)?;
 
         if let Some(alias) = &self.alias {
             write!(f, ", alias = {:?}", &**alias.symbol)?;
@@ -260,7 +256,7 @@ impl Debug for Decl {
                 Ok(())
             }
             DeclKind::ImplChain { impls } => {
-                write!(f, "ImplChain name = {:?}", &**self.name.symbol)?;
+                write!(f, "ImplChain")?;
 
                 for attr in &self.attrs {
                     writeln!(f)?;
@@ -352,7 +348,7 @@ impl Debug for IfaceDecl {
 
 impl Debug for Impl {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        writeln!(f, "Impl")?;
+        writeln!(f, "Impl name = {:?}", &**self.head.name.symbol)?;
         write!(indent(f), "{:?}", self.head)?;
 
         if let Some(body) = &self.body {
@@ -431,7 +427,7 @@ impl Debug for Pat {
             PatKind::Wildcard => write!(f, "Wildcard"),
             PatKind::Int { val } => write!(f, "Int val = {}", val),
             PatKind::Float { bits } => write!(f, "Float bits = {}", bits),
-            PatKind::Char { val, byte } => write!(f, "Char val = {:?}, byte = {}", val, byte),
+            PatKind::Char { val } => write!(f, "Char val = {:?}", val),
             PatKind::Str { val } => write!(f, "String val = {:?}", val),
             PatKind::Ident { name } => write!(f, "Ident name = {:?}", &**name.symbol),
             PatKind::Named { name, pat } => {
@@ -440,6 +436,16 @@ impl Debug for Pat {
             }
             PatKind::Ctor { name, pats } => {
                 write!(f, "Ctor name = {:?}", &**name.symbol)?;
+
+                for pat in pats {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", pat)?;
+                }
+
+                Ok(())
+            }
+            PatKind::Array { pats } => {
+                write!(f, "Array")?;
 
                 for pat in pats {
                     writeln!(f)?;
@@ -479,7 +485,7 @@ impl Debug for Pat {
 
 impl<T: Debug> Debug for RecordField<T> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "RecordField")?;
+        write!(f, "RecordField::")?;
 
         match self {
             RecordField::Pun { name } => write!(f, "Pun name = {:?}", &**name.symbol),
@@ -542,6 +548,16 @@ impl Debug for Expr {
                 for arg in args {
                     writeln!(f)?;
                     write!(indent(f), "{:?}", arg)?;
+                }
+
+                Ok(())
+            }
+            ExprKind::Array { exprs } => {
+                write!(f, "Array")?;
+
+                for expr in exprs {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", expr)?;
                 }
 
                 Ok(())
@@ -609,8 +625,12 @@ impl Debug for Expr {
                 write!(indent(f), "{:?}", else_)
             }
             ExprKind::Case { pred, arms } => {
-                writeln!(f, "Case")?;
-                write!(indent(f), "{:?}", pred)?;
+                write!(f, "Case")?;
+
+                for expr in pred {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", expr)?;
+                }
 
                 for arm in arms {
                     writeln!(f)?;
@@ -628,9 +648,15 @@ impl Debug for Expr {
                 writeln!(indent(f), "{:?}", cond)?;
                 write!(indent(f), "{:?}", body)
             }
+            ExprKind::Break {} => write!(f, "Break"),
+            ExprKind::Next {} => write!(f, "Next"),
             ExprKind::Do { block } => {
                 writeln!(f, "Do")?;
                 write!(indent(f), "{:?}", block)
+            }
+            ExprKind::Return { val } => {
+                writeln!(f, "Return")?;
+                write!(indent(f), "{:?}", val)
             }
             ExprKind::Typed { expr, ty } => {
                 writeln!(f, "Typed")?;
@@ -659,16 +685,6 @@ impl Debug for Stmt {
         write!(f, "Stmt::")?;
 
         match &self.kind {
-            StmtKind::Let { bindings } => {
-                write!(f, "Let")?;
-
-                for binding in bindings {
-                    writeln!(f)?;
-                    write!(indent(f), "{:?}", binding)?;
-                }
-
-                Ok(())
-            }
             StmtKind::Discard { expr } => {
                 writeln!(f, "Discard")?;
                 write!(indent(f), "{:?}", expr)
@@ -687,12 +703,12 @@ impl Debug for LetBinding {
         write!(f, "LetBinding::")?;
 
         match &self.kind {
-            LetBindingKind::Type { ty } => {
-                writeln!(f, "Type name = {:?}", &**self.name.symbol)?;
+            LetBindingKind::Type { name, ty } => {
+                writeln!(f, "Type name = {:?}", &**name.symbol)?;
                 write!(indent(f), "{:?}", ty)
             }
             LetBindingKind::Value { pat, val } => {
-                writeln!(f, "Value name = {:?}", &**self.name.symbol)?;
+                writeln!(f, "Value")?;
                 writeln!(indent(f), "{:?}", pat)?;
                 write!(indent(f), "{:?}", val)
             }
@@ -703,7 +719,11 @@ impl Debug for LetBinding {
 impl Debug for CaseArm {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(f, "CaseArm")?;
-        writeln!(indent(f), "{:?}", self.pat)?;
+
+        for pat in &self.pats {
+            writeln!(indent(f), "{:?}", pat)?;
+        }
+
         write!(indent(f), "{:?}", self.val)
     }
 }
@@ -719,7 +739,6 @@ impl Debug for Type {
             }
             TypeKind::Hole { name } => write!(f, "Hole name = {:?}", &**name.symbol),
             TypeKind::Int { val } => write!(f, "Int val = {}", val),
-            TypeKind::Var { name } => write!(f, "Var name = {:?}", &**name.symbol),
             TypeKind::Ident { name } => write!(f, "Ident name = {:?}", &**name.symbol),
             TypeKind::App { base, args } => {
                 writeln!(f, "App")?;

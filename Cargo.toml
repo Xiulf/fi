@@ -4,7 +4,7 @@ members = [
     "compiler/driver",
     "compiler/source",
     "compiler/syntax",
-    # "compiler/hir",
+    "compiler/hir",
     # "compiler/check",
     # "compiler/mir",
     # "compiler/codegen",

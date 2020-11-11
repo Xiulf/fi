@@ -113,7 +113,7 @@ impl parser::token::Token for Ident {
     fn peek(cursor: parser::buffer::Cursor) -> bool {
         match cursor.ident() {
             Some((ident, _)) => match ident.name.as_str() {
-                "where" | "do" => false,
+                "where" | "then" | "else" | "of" | "do" => false,
                 _ => true,
             },
             None => false,

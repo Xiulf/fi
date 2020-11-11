@@ -31,7 +31,12 @@ pub fn fix_layout(files: &Files<Arc<str>>, buffer: TokenBuffer) -> TokenBuffer {
         pos.offset = cursor.span().start();
         pos.loc = files.location(file, cursor.span().start()).unwrap();
         insert_layout(files, cursor, &mut stack, &mut tokens);
-        cursor = cursor.bump();
+
+        if TArrow::peek(cursor) {
+            cursor = cursor.bump().bump();
+        } else {
+            cursor = cursor.bump();
+        }
     }
 
     unwind(pos, &stack, &mut tokens);
@@ -149,6 +154,8 @@ fn is_top_decl(pos: Pos, stack: &LayoutStack) -> bool {
     }
 }
 
+crate::token![punct "->" TArrow/2];
+
 fn insert_layout(
     files: &Files<Arc<str>>,
     cursor: Cursor,
@@ -162,13 +169,13 @@ fn insert_layout(
     crate::token![ident "in" TIn];
     crate::token![ident "let" TLet];
     crate::token![ident "do" TDo];
+    crate::token![ident "loop" TLoop];
     crate::token![ident "case" TCase];
     crate::token![ident "of" TOf];
     crate::token![ident "if" TIf];
     crate::token![ident "then" TThen];
     crate::token![ident "else" TElse];
     crate::token![ident "forall" TForall];
-    crate::token![punct "->" TArrow/2];
     crate::token![punct "=" TEquals/1];
     crate::token![punct "|" TPipe/1];
     crate::token![punct "`" TTick/1];
@@ -295,12 +302,7 @@ fn insert_layout(
                             .unwrap()
                             .column =>
                 {
-                    insert_start(
-                        LayoutDelim::LetStmt,
-                        pos(files, cursor.file, cursor.span().start()),
-                        stack,
-                        tokens,
-                    );
+                    insert_start(LayoutDelim::LetStmt, next_pos(files, cursor), stack, tokens);
                 }
                 _ => {
                     insert_start(LayoutDelim::Let, next_pos(files, cursor), stack, tokens);
@@ -312,12 +314,15 @@ fn insert_layout(
             if let [.., (_, LayoutDelim::Prop)] = stack[..] {
                 stack.pop().unwrap();
             } else {
-                insert_start(
-                    LayoutDelim::Do,
-                    pos(files, cursor.file, cursor.span().start()),
-                    stack,
-                    tokens,
-                );
+                insert_start(LayoutDelim::Do, next_pos(files, cursor), stack, tokens);
+            }
+        } else if TLoop::peek(cursor) {
+            insert_default(files, cursor, stack, tokens);
+
+            if let [.., (_, LayoutDelim::Prop)] = stack[..] {
+                stack.pop().unwrap();
+            } else {
+                insert_start(LayoutDelim::Do, next_pos(files, cursor), stack, tokens);
             }
         } else if TCase::peek(cursor) {
             insert_default(files, cursor, stack, tokens);
@@ -336,12 +341,7 @@ fn insert_layout(
             if let [.., (_, LayoutDelim::Case)] = stack[..] {
                 stack.pop().unwrap();
                 tokens.push(cursor.entry().clone());
-                insert_start(
-                    LayoutDelim::Of,
-                    pos(files, cursor.file, cursor.span().start()),
-                    stack,
-                    tokens,
-                );
+                insert_start(LayoutDelim::Of, next_pos(files, cursor), stack, tokens);
                 stack.push((next_pos(files, cursor), LayoutDelim::CaseBinders));
             } else {
                 insert_default(files, cursor, stack, tokens);
@@ -436,6 +436,7 @@ fn insert_layout(
             }
 
             tokens.push(cursor.entry().clone());
+            tokens.push(cursor.bump().entry().clone());
         } else if TEquals::peek(cursor) {
             let mut c = Collapse::new(tokens);
 

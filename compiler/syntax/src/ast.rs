@@ -48,6 +48,7 @@ pub struct Export {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ExportKind {
+    Any,
     Value,
     Type,
     Module,
@@ -66,13 +67,6 @@ pub struct Import {
     pub span: Span,
     pub name: Ident,
     pub alias: Option<Ident>,
-    pub kind: ImportKind,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum ImportKind {
-    Value,
-    Type,
 }
 
 #[derive(PartialEq, Eq)]
@@ -175,6 +169,7 @@ pub struct Impl {
 #[derive(PartialEq, Eq)]
 pub struct ImplHead {
     pub span: Span,
+    pub name: Ident,
     pub cs: Option<Vec<Constraint>>,
     pub iface: Ident,
     pub tys: Vec<Type>,
@@ -211,11 +206,12 @@ pub enum PatKind {
     Wildcard,
     Int { val: u128 },
     Float { bits: u64 },
-    Char { val: char, byte: bool },
+    Char { val: char },
     Str { val: String },
     Ident { name: Ident },
     Named { name: Ident, pat: Box<Pat> },
     Ctor { name: Ident, pats: Vec<Pat> },
+    Array { pats: Vec<Pat> },
     Tuple { pats: Vec<Pat> },
     Record { fields: Vec<RecordField<Pat>> },
     Typed { pat: Box<Pat>, ty: Type },
@@ -273,6 +269,9 @@ pub enum ExprKind {
         base: Box<Expr>,
         args: Vec<Expr>,
     },
+    Array {
+        exprs: Vec<Expr>,
+    },
     Tuple {
         exprs: Vec<Expr>,
     },
@@ -314,18 +313,23 @@ pub enum ExprKind {
         else_: Box<Expr>,
     },
     Case {
-        pred: Box<Expr>,
+        pred: Vec<Expr>,
         arms: Vec<CaseArm>,
     },
     Loop {
-        body: Box<Expr>,
+        body: Block,
     },
     While {
         cond: Box<Expr>,
         body: Block,
     },
+    Break {},
+    Next {},
     Do {
         block: Block,
+    },
+    Return {
+        val: Box<Expr>,
     },
     Typed {
         expr: Box<Expr>,
@@ -379,7 +383,6 @@ pub struct Stmt {
 
 #[derive(PartialEq, Eq)]
 pub enum StmtKind {
-    Let { bindings: Vec<LetBinding> },
     Discard { expr: Expr },
     Bind { pat: Pat, val: Expr },
 }
@@ -387,20 +390,19 @@ pub enum StmtKind {
 #[derive(PartialEq, Eq)]
 pub struct LetBinding {
     pub span: Span,
-    pub name: Ident,
     pub kind: LetBindingKind,
 }
 
 #[derive(PartialEq, Eq)]
 pub enum LetBindingKind {
-    Type { ty: Type },
+    Type { name: Ident, ty: Type },
     Value { pat: Pat, val: Expr },
 }
 
 #[derive(PartialEq, Eq)]
 pub struct CaseArm {
     pub span: Span,
-    pub pat: Pat,
+    pub pats: Vec<Pat>,
     pub val: Guarded,
 }
 
@@ -415,7 +417,6 @@ pub enum TypeKind {
     Hole { name: Ident },
     Parens { inner: Box<Type> },
     Int { val: u128 },
-    Var { name: Ident },
     Ident { name: Ident },
     App { base: Box<Type>, args: Vec<Type> },
     Tuple { tys: Vec<Type> },
