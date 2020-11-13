@@ -1801,6 +1801,7 @@ impl Parse for TypeVar {
             let name = input.parse()?;
             let _ = input.parse::<TDblColon>()?;
             let kind = input.parse()?;
+            let _ = input.parse::<TRParen>()?;
 
             Ok(TypeVar::Kind { name, kind })
         } else {

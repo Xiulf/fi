@@ -5,26 +5,19 @@ pub mod symbol;
 use std::sync::Arc;
 
 #[salsa::query_group(SyntaxDatabaseStorage)]
-pub trait SyntaxDatabase: source::SourceDatabase {
+pub trait SyntaxDatabase: source::SourceDatabase + diagnostics::Diagnostics {
     #[salsa::invoke(parse_query)]
     fn parse(&self, id: source::FileId) -> Arc<ast::Module>;
 }
 
 fn parse_query(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> {
-    use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-    let writer = StandardStream::stderr(ColorChoice::Always);
-    let config = codespan_reporting::term::Config::default();
     let source = db.file_content(id);
     let mut lexer = parser::lexer::Lexer::new(&source, id);
     let tokens = match lexer.run() {
         Ok(tokens) => tokens,
         Err(errors) => {
-            for err in errors {
-                codespan_reporting::term::emit(&mut writer.lock(), &config, &*db.files(), &err)
-                    .unwrap();
-            }
-
-            std::process::exit(1);
+            db.report_all(errors);
+            db.print_and_exit();
         }
     };
 
@@ -35,8 +28,8 @@ fn parse_query(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> 
     match buffer.parse::<ast::Module>() {
         Ok(module) => Arc::new(module),
         Err(e) => {
-            codespan_reporting::term::emit(&mut writer.lock(), &config, &*db.files(), &e).unwrap();
-            std::process::exit(1);
+            db.report(e);
+            db.print_and_exit();
         }
     }
 }

@@ -33,16 +33,16 @@ data Ptr :: forall (t :: Type). t -> Type
 [lang("integer")] iface Integer
 [lang("decimal")] iface Decimal
 
-impl Integer U8
-impl Integer U16
-impl Integer U32
-impl Integer U64
-impl Integer U128
-impl Integer I8
-impl Integer I16
-impl Integer I32
-impl Integer I64
-impl Integer I128
+impl IntegerU8   :: Integer U8
+impl IntegerU16  :: Integer U16
+impl IntegerU32  :: Integer U32
+impl IntegerU64  :: Integer U64
+impl Integeru128 :: Integer U128
+impl IntegerI8   :: Integer I8
+impl IntegerI16  :: Integer I16
+impl IntegerI32  :: Integer I32
+impl IntegerI64  :: Integer I64
+impl IntegerI128 :: Integer I128
 
-impl Decimal F32
-impl Decimal F64
+impl DecimalF32 :: Decimal F32
+impl DecimalF64 :: Decimal F64

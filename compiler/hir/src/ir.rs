@@ -1,10 +1,9 @@
 pub use codespan::Span;
+use data_structures::stable_hasher;
+pub use source::LibId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LibId(pub u32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct DefIndex(u32);
+pub struct DefIndex(u64, u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DefId {
@@ -41,24 +40,24 @@ pub struct Expr {
 
 pub enum ExprKind {}
 
-impl LibId {
-    pub const LOCAL: Self = LibId(0);
-}
-
 impl DefId {
     pub fn new(lib: LibId, index: DefIndex) -> Self {
         DefId { lib, index }
-    }
-
-    pub fn local(index: DefIndex) -> Self {
-        DefId::new(LibId::LOCAL, index)
     }
 }
 
 impl DefIndex {
     pub fn from_path(module: &str, name: &str) -> Self {
-        let id = source::hash::hash(&(module, name));
+        use stable_hasher::HashStable;
+        let mut hasher = stable_hasher::StableHasher::new();
+        (module, name).hash_stable(&mut (), &mut hasher);
+        hasher.finish()
+    }
+}
 
-        DefIndex(id)
+impl stable_hasher::StableHasherResult for DefIndex {
+    fn finish(hasher: stable_hasher::StableHasher) -> Self {
+        let (_0, _1) = hasher.finalize();
+        DefIndex(_0, _1)
     }
 }

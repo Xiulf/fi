@@ -1,0 +1,13 @@
+[package]
+name = "data_structures"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+cfg-if = "1.0.0"
+parking_lot = "0.11.0"
+stable_deref_trait = "1.0.0"
+smallvec = "1.4.2"
+fxhash = "0.2.1"
+index_vec = "0.1.2"

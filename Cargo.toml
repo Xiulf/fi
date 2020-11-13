@@ -2,6 +2,8 @@
 members = [
     "compiler/shadow",
     "compiler/driver",
+    "compiler/data_structures",
+    "compiler/diagnostics",
     "compiler/source",
     "compiler/syntax",
     "compiler/hir",
