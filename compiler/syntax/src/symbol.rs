@@ -1,4 +1,5 @@
 use codespan::Span;
+use data_structures::stable_hasher;
 
 static mut GLOBAL_SYMBOL_INTERNER: SymbolInterner = SymbolInterner::new();
 
@@ -134,6 +135,12 @@ impl std::fmt::Display for Ident {
 impl std::hash::Hash for Ident {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         (&*self.symbol).hash(state);
+    }
+}
+
+impl<CTX> stable_hasher::HashStable<CTX> for Symbol {
+    fn hash_stable(&self, ctx: &mut CTX, hasher: &mut stable_hasher::StableHasher) {
+        (&***self).hash_stable(ctx, hasher);
     }
 }
 

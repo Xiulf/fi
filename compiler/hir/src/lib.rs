@@ -10,4 +10,6 @@ use std::sync::Arc;
 pub trait HirDatabase: syntax::SyntaxDatabase {
     #[salsa::invoke(ModuleTree::query)]
     fn module_tree(&self, lib: source::LibId) -> Arc<ModuleTree>;
+
+    fn module(&self, id: ir::ModuleId) -> Arc<ir::Module>;
 }
