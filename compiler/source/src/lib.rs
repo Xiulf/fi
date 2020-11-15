@@ -1,3 +1,5 @@
+pub mod opts;
+
 pub use codespan::FileId;
 use std::sync::Arc;
 
@@ -16,6 +18,9 @@ pub trait SourceDatabase: salsa::Database {
 
     #[salsa::input]
     fn file_lib(&self, id: FileId) -> LibId;
+
+    #[salsa::input]
+    fn manifest(&self, lib: LibId) -> Arc<opts::Manifest>;
 
     fn file_content(&self, id: FileId) -> Arc<str>;
 }

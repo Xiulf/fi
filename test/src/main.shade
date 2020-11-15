@@ -5,5 +5,8 @@ import Prim
 fn main :: (I32, Ptr (Ptr U8)) -> I32
 fn main argc argv = identity 22
 
+[if(os = "windows")]
 fn identity :: forall t. t -> t
+
+[if(not(os = "windows"))]
 fn identity x = x

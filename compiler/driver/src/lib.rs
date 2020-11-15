@@ -55,10 +55,30 @@ pub fn run() {
     let mut files = source::Files::new();
     let mut lib_files = Vec::new();
     let lib = db.next_lib();
+    let manifest = source::opts::Manifest::load(
+        &diagnostics::UnsafeReporter::new(&files),
+        &mut files,
+        &std::path::PathBuf::from("test"),
+    );
 
-    register_files(&mut db, &mut files, &mut lib_files, lib, "test/src").unwrap();
+    register_files(
+        &mut db,
+        &mut files,
+        &mut lib_files,
+        lib,
+        manifest.package.src_dir.as_ref().unwrap(),
+    )
+    .unwrap();
+
+    db.set_manifest(lib, std::sync::Arc::new(manifest));
     db.set_files(std::sync::Arc::new(files));
     db.set_lib_files(lib, std::sync::Arc::new(lib_files));
+
+    for file in &*db.lib_files(lib) {
+        let module = db.module_hir(*file);
+
+        println!("{:#?}", module);
+    }
 }
 
 fn register_files(

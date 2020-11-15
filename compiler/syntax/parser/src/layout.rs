@@ -529,6 +529,12 @@ fn insert_layout(
                 LayoutDelim::Prop,
             ));
         } else if TLSquare::peek(cursor) {
+            Collapse::new(tokens).collapse(files, offside_p, cursor, stack, tokens);
+
+            if is_top_decl(pos(files, cursor.file, cursor.span().start()), stack) {
+                println!("attr");
+            }
+
             insert_default(files, cursor, stack, tokens);
             stack.push((
                 pos(files, cursor.file, cursor.span().start()),

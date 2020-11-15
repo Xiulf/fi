@@ -1,5 +1,6 @@
 #![feature(drain_filter, vec_remove_item)]
 
+pub mod convert;
 pub mod ir;
 pub mod module_tree;
 
@@ -11,5 +12,6 @@ pub trait HirDatabase: syntax::SyntaxDatabase {
     #[salsa::invoke(ModuleTree::query)]
     fn module_tree(&self, lib: source::LibId) -> Arc<ModuleTree>;
 
-    fn module(&self, id: ir::ModuleId) -> Arc<ir::Module>;
+    #[salsa::invoke(convert::convert)]
+    fn module_hir(&self, file: source::FileId) -> Arc<ir::Module>;
 }

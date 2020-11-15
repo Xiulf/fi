@@ -16,6 +16,22 @@ pub trait Diagnostics {
     fn print_and_exit(&self) -> !;
 }
 
+pub struct DiagnosticBuilder<'rep> {
+    rep: &'rep dyn Diagnostics,
+    diag: Diagnostic,
+    labels: Vec<Label>,
+    notes: Vec<String>,
+}
+
+pub struct UnsafeReporter<'a, F>
+where
+    F: codespan_reporting::files::Files<'a, FileId = FileId, Name = String, Source = &'a str>,
+{
+    diags: std::cell::RefCell<Vec<Diagnostic>>,
+    files: *const F,
+    _marker: std::marker::PhantomData<&'a ()>,
+}
+
 impl dyn Diagnostics + '_ {
     pub fn bug(&self, message: impl Into<String>) -> DiagnosticBuilder<'_> {
         DiagnosticBuilder {
@@ -63,13 +79,6 @@ impl dyn Diagnostics + '_ {
     }
 }
 
-pub struct DiagnosticBuilder<'rep> {
-    rep: &'rep dyn Diagnostics,
-    diag: Diagnostic,
-    labels: Vec<Label>,
-    notes: Vec<String>,
-}
-
 impl DiagnosticBuilder<'_> {
     pub fn with_code(self, code: impl Into<String>) -> Self {
         DiagnosticBuilder {
@@ -97,5 +106,46 @@ impl DiagnosticBuilder<'_> {
         } = self;
 
         rep.report(diag.with_labels(labels).with_notes(notes));
+    }
+}
+
+impl<'a, F> UnsafeReporter<'a, F>
+where
+    F: codespan_reporting::files::Files<'a, FileId = FileId, Name = String, Source = &'a str>,
+{
+    pub fn new(files: &F) -> Self {
+        UnsafeReporter {
+            files,
+            diags: Default::default(),
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, F> Diagnostics for UnsafeReporter<'a, F>
+where
+    F: codespan_reporting::files::Files<'a, FileId = FileId, Name = String, Source = &'a str>,
+    F: 'a,
+{
+    fn report(&self, diag: Diagnostic) {
+        self.diags.borrow_mut().push(diag);
+    }
+
+    fn report_all(&self, mut diags: Vec<Diagnostic>) {
+        self.diags.borrow_mut().append(&mut diags);
+    }
+
+    fn print(&self) {
+        let mut stream = StandardStream::stderr(ColorChoice::Always);
+        let config = Config::default();
+
+        for diag in self.diags.borrow_mut().drain(..) {
+            emit(&mut stream, &config, unsafe { &*self.files }, &diag).unwrap();
+        }
+    }
+
+    fn print_and_exit(&self) -> ! {
+        self.print();
+        std::process::exit(0);
     }
 }

@@ -22,7 +22,7 @@ fn parse_query(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> 
     };
 
     let tokens = parser::layout::fix_layout(&db.files(), tokens);
-    // println!("{}", tokens);
+    println!("{}", tokens);
     let buffer = parser::parse::ParseBuffer::new(tokens.begin(), (), codespan::Span::default());
 
     match buffer.parse::<ast::Module>() {

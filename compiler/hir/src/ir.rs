@@ -35,29 +35,144 @@ pub struct LocalId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BodyId(pub HirId);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct IfaceItemId(pub HirId);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ImplItemId(pub HirId);
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Module {
     pub id: ModuleId,
     pub span: Span,
-    pub decls: BTreeMap<HirId, Decl>,
+    pub name: Ident,
+    pub items: BTreeMap<HirId, Item>,
+    pub iface_items: BTreeMap<IfaceItemId, IfaceItem>,
+    pub impl_items: BTreeMap<ImplItemId, ImplItem>,
     pub bodies: BTreeMap<BodyId, Body>,
     pub body_ids: Vec<BodyId>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Decl {
+pub struct Item {
     pub id: HirId,
     pub span: Span,
     pub name: Ident,
-    pub kind: DeclKind,
+    pub kind: ItemKind,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum DeclKind {
+pub enum ItemKind {
     Const { ty: Type, body: BodyId },
     Static { ty: Type, body: BodyId },
     Func { ty: Type, body: BodyId },
     Alias { kind: Type, value: Type },
+    Data { head: DataHead, body: Vec<DataCtor> },
+    Iface { head: IfaceHead, body: IfaceBody },
+    ImplChain { impls: Vec<Impl> },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct DataHead {
+    pub id: HirId,
+    pub span: Span,
+    pub vars: Vec<TypeVar>,
+    pub kind: Type,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct DataCtor {
+    pub id: HirId,
+    pub span: Span,
+    pub name: Ident,
+    pub tys: Vec<Type>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct IfaceHead {
+    pub id: HirId,
+    pub span: Span,
+    pub parent: Vec<Constraint>,
+    pub vars: Vec<TypeVar>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct IfaceBody {
+    pub id: HirId,
+    pub span: Span,
+    pub items: Vec<IfaceItemRef>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct IfaceItemRef {
+    pub id: IfaceItemId,
+    pub span: Span,
+    pub name: Ident,
+    pub kind: AssocItemKind,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Impl {
+    pub id: HirId,
+    pub span: Span,
+    pub head: ImplHead,
+    pub body: ImplBody,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ImplHead {
+    pub id: HirId,
+    pub span: Span,
+    pub name: Ident,
+    pub cs: Vec<Constraint>,
+    pub iface: HirId,
+    pub tys: Vec<Type>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ImplBody {
+    pub id: HirId,
+    pub span: Span,
+    pub items: Vec<ImplItemRef>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ImplItemRef {
+    pub id: ImplItemId,
+    pub span: Span,
+    pub name: Ident,
+    pub kind: AssocItemKind,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AssocItemKind {
+    Func,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct IfaceItem {
+    pub id: HirId,
+    pub span: Span,
+    pub name: Ident,
+    pub kind: IfaceItemKind,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum IfaceItemKind {
+    Func { ty: Type },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ImplItem {
+    pub id: HirId,
+    pub span: Span,
+    pub name: Ident,
+    pub kind: ImplItemKind,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ImplItemKind {
+    Func { ty: Type, body: BodyId },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -86,6 +201,7 @@ pub enum DefKind {
     Static,
     Alias,
     Data,
+    Ctor,
     Iface,
     Impl,
 }
@@ -153,6 +269,7 @@ pub enum Guarded {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct GuardedExpr {
+    pub id: HirId,
     pub span: Span,
     pub guard: Expr,
     pub val: Expr,
@@ -318,6 +435,7 @@ pub enum TypeKind {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Row {
+    pub id: HirId,
     pub span: Span,
     pub fields: Vec<RowField>,
     pub tail: Option<Box<Type>>,
@@ -325,6 +443,7 @@ pub struct Row {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct RowField {
+    pub id: HirId,
     pub span: Span,
     pub name: Ident,
     pub ty: Type,
@@ -340,6 +459,7 @@ pub struct TypeVar {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Constraint {
+    pub id: HirId,
     pub span: Span,
     pub iface: HirId,
     pub tys: Vec<Type>,
@@ -364,6 +484,13 @@ impl stable_hasher::StableHasherResult for ModuleId {
 impl DefId {
     pub fn new(lib: LibId, index: DefIndex) -> Self {
         DefId { lib, index }
+    }
+
+    pub fn dummy() -> Self {
+        DefId {
+            lib: LibId(0),
+            index: DefIndex(0, 0),
+        }
     }
 }
 
