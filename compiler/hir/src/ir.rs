@@ -2,7 +2,7 @@ pub use codespan::Span;
 use data_structures::stable_hasher;
 pub use source::LibId;
 use std::collections::BTreeMap;
-pub use syntax::ast::{InfixOp, PostfixOp, PrefixOp};
+pub use syntax::ast::{AttrArg, Attribute, InfixOp, PostfixOp, PrefixOp};
 pub use syntax::symbol::{Ident, Symbol};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -45,6 +45,7 @@ pub struct ImplItemId(pub HirId);
 pub struct Module {
     pub id: ModuleId,
     pub span: Span,
+    pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub items: BTreeMap<HirId, Item>,
     pub iface_items: BTreeMap<IfaceItemId, IfaceItem>,
@@ -57,15 +58,16 @@ pub struct Module {
 pub struct Item {
     pub id: HirId,
     pub span: Span,
+    pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub kind: ItemKind,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ItemKind {
+    Func { ty: Type, body: BodyId },
     Const { ty: Type, body: BodyId },
     Static { ty: Type, body: BodyId },
-    Func { ty: Type, body: BodyId },
     Alias { kind: Type, value: Type },
     Data { head: DataHead, body: Vec<DataCtor> },
     Iface { head: IfaceHead, body: IfaceBody },
@@ -203,7 +205,6 @@ pub enum DefKind {
     Data,
     Ctor,
     Iface,
-    Impl,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -217,40 +218,16 @@ pub struct Pat {
 pub enum PatKind {
     Error,
     Wildcard,
-    Int {
-        val: u128,
-    },
-    Float {
-        bits: u64,
-    },
-    Char {
-        val: char,
-    },
-    Str {
-        val: String,
-    },
-    Bind {
-        id: HirId,
-        name: Ident,
-        sub: Option<Box<Pat>>,
-    },
-    Ctor {
-        ctor: HirId,
-        pats: Vec<Pat>,
-    },
-    Array {
-        pats: Vec<Pat>,
-    },
-    Tuple {
-        pats: Vec<Pat>,
-    },
-    Record {
-        fields: Vec<RecordField<Pat>>,
-    },
-    Typed {
-        pat: Box<Pat>,
-        ty: Type,
-    },
+    Int { val: u128 },
+    Float { bits: u64 },
+    Char { val: char },
+    Str { val: String },
+    Bind { name: Ident, sub: Option<Box<Pat>> },
+    Ctor { ctor: DefId, pats: Vec<Pat> },
+    Array { pats: Vec<Pat> },
+    Tuple { pats: Vec<Pat> },
+    Record { fields: Vec<RecordField<Pat>> },
+    Typed { pat: Box<Pat>, ty: Type },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -352,7 +329,7 @@ pub enum ExprKind {
     },
     Case {
         pred: Vec<Expr>,
-        asrms: Vec<CaseArm>,
+        arms: Vec<CaseArm>,
     },
     Loop {
         body: Block,
@@ -408,7 +385,7 @@ pub struct Binding {
 pub struct CaseArm {
     pub id: HirId,
     pub span: Span,
-    pub pat: Pat,
+    pub pats: Vec<Pat>,
     pub val: Guarded,
 }
 
@@ -422,8 +399,10 @@ pub struct Type {
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeKind {
     Error,
+    Infer,
     Hole { name: Ident },
     Ident { res: Res },
+    Int { val: u128 },
     App { base: Box<Type>, args: Vec<Type> },
     Tuple { tys: Vec<Type> },
     Record { row: Row },
@@ -461,7 +440,7 @@ pub struct TypeVar {
 pub struct Constraint {
     pub id: HirId,
     pub span: Span,
-    pub iface: HirId,
+    pub iface: DefId,
     pub tys: Vec<Type>,
 }
 
@@ -495,10 +474,10 @@ impl DefId {
 }
 
 impl DefIndex {
-    pub fn from_path(module: Symbol, def: DefPath) -> Self {
+    pub fn from_path(module: Symbol, path: &[DefPath]) -> Self {
         use stable_hasher::HashStable;
         let mut hasher = stable_hasher::StableHasher::new();
-        (module, def).hash_stable(&mut (), &mut hasher);
+        (module, path).hash_stable(&mut (), &mut hasher);
         hasher.finish()
     }
 }

@@ -204,10 +204,26 @@ impl Parse for AttrArg {
         if let Ok(lit) = input.parse() {
             Ok(AttrArg::Literal(lit))
         } else if let Ok(name) = input.parse() {
-            let _ = input.parse::<TEquals>()?;
-            let val = input.parse()?;
+            if let Ok(_) = input.parse::<TLParen>() {
+                let mut args = Vec::new();
 
-            Ok(AttrArg::Field(name, val))
+                while !input.is_empty() && !input.peek::<TRParen>() {
+                    args.push(input.parse()?);
+
+                    if !input.peek::<TRParen>() {
+                        input.parse::<TComma>()?;
+                    }
+                }
+
+                input.parse::<TRParen>()?;
+
+                Ok(AttrArg::Call(name, args))
+            } else {
+                let _ = input.parse::<TEquals>()?;
+                let val = input.parse()?;
+
+                Ok(AttrArg::Field(name, val))
+            }
         } else {
             input.error("expected a literal or an identifier", "E0006")
         }

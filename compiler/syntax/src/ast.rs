@@ -14,23 +14,24 @@ pub struct Module {
     pub decls: Vec<Decl>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Attribute {
     pub span: Span,
     pub name: Ident,
     pub body: Option<AttrBody>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct AttrBody {
     pub span: Span,
     pub args: Vec<AttrArg>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum AttrArg {
     Literal(Literal),
     Field(Ident, Literal),
+    Call(Ident, Vec<AttrArg>),
 }
 
 #[derive(PartialEq, Eq)]
@@ -451,4 +452,89 @@ pub enum TypeVar {
 pub enum Constraint {
     CS { iface: Ident, tys: Vec<Type> },
     Parens { inner: Box<Constraint> },
+}
+
+impl Module {
+    pub fn decl_groups(&self) -> DeclGroups {
+        DeclGroups {
+            decls: &self.decls,
+            start: 0,
+        }
+    }
+}
+
+pub struct DeclGroups<'ast> {
+    decls: &'ast [Decl],
+    start: usize,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum DeclGroupKind {
+    Func,
+    Const,
+    Static,
+    Alias,
+    Data,
+    Iface,
+    Impl,
+}
+
+impl<'ast> Iterator for DeclGroups<'ast> {
+    type Item = (DeclGroupKind, &'ast [Decl]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        impl Decl {
+            fn defkind(&self) -> DeclGroupKind {
+                match &self.kind {
+                    DeclKind::FuncTy { .. } | DeclKind::Func { .. } => DeclGroupKind::Func,
+                    DeclKind::ConstTy { .. } | DeclKind::Const { .. } => DeclGroupKind::Const,
+                    DeclKind::StaticTy { .. } | DeclKind::Static { .. } => DeclGroupKind::Static,
+                    DeclKind::AliasKind { .. } | DeclKind::Alias { .. } => DeclGroupKind::Alias,
+                    DeclKind::DataKind { .. } | DeclKind::Data { .. } => DeclGroupKind::Data,
+                    DeclKind::Iface { .. } => DeclGroupKind::Iface,
+                    DeclKind::ImplChain { .. } => DeclGroupKind::Impl,
+                }
+            }
+        }
+
+        impl DeclGroupKind {
+            fn max(&self) -> usize {
+                match self {
+                    DeclGroupKind::Func => usize::max_value(),
+                    DeclGroupKind::Const => 2,
+                    DeclGroupKind::Static => 2,
+                    DeclGroupKind::Alias => 2,
+                    DeclGroupKind::Data => 2,
+                    DeclGroupKind::Iface => 1,
+                    DeclGroupKind::Impl => 1,
+                }
+            }
+        }
+
+        if self.start >= self.decls.len() {
+            return None;
+        }
+
+        let mut pos = self.start;
+        let name = self.decls[pos].name.symbol;
+        let kind = self.decls[pos].defkind();
+
+        while pos < self.decls.len() && self.decls[pos].name.symbol == name {
+            let kind2 = self.decls[pos].defkind();
+
+            if kind == kind2 {
+                pos += 1;
+
+                if pos - self.start >= kind.max() {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        let start = std::mem::replace(&mut self.start, pos);
+
+        Some((kind, &self.decls[start..pos]))
+    }
 }

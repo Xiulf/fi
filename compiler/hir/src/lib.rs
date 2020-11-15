@@ -3,6 +3,7 @@
 pub mod convert;
 pub mod ir;
 pub mod module_tree;
+pub mod resolve;
 
 use module_tree::ModuleTree;
 use std::sync::Arc;

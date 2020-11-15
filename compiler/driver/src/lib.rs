@@ -35,6 +35,14 @@ impl diagnostics::Diagnostics for CompilerDatabase {
         self.diags.borrow_mut().append(&mut diags);
     }
 
+    fn has_errors(&self) -> bool {
+        self.diags.borrow().iter().any(|d| match d.severity {
+            diagnostics::Severity::Bug => true,
+            diagnostics::Severity::Error => true,
+            _ => false,
+        })
+    }
+
     fn print(&self) {
         let mut stream = diagnostics::StandardStream::stderr(diagnostics::ColorChoice::Always);
         let config = diagnostics::Config::default();
@@ -74,8 +82,8 @@ pub fn run() {
     db.set_files(std::sync::Arc::new(files));
     db.set_lib_files(lib, std::sync::Arc::new(lib_files));
 
-    for file in &*db.lib_files(lib) {
-        let module = db.module_hir(*file);
+    for mdata in db.module_tree(lib).toposort(&db) {
+        let module = db.module_hir(mdata.file);
 
         println!("{:#?}", module);
     }

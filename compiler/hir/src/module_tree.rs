@@ -38,7 +38,7 @@ impl ModuleTree {
             });
         }
 
-        for (i, (_, ast)) in asts.into_iter().enumerate() {
+        for (i, (file, ast)) in asts.into_iter().enumerate() {
             for import in &ast.imports {
                 if let Some(index) = tree
                     .data
@@ -49,8 +49,16 @@ impl ModuleTree {
                         .children
                         .push(ModuleIndex::from(index));
                 } else {
+                    db.to_diag_db()
+                        .error(format!("Unknown module '{}'", import.module))
+                        .with_label(diagnostics::Label::primary(file, import.module.span))
+                        .finish();
                 }
             }
+        }
+
+        if db.has_errors() {
+            db.print_and_exit();
         }
 
         Arc::new(tree)

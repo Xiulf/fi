@@ -91,7 +91,7 @@ impl<D> Parse<D> for LytEnd {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Pos {
     offset: ByteIndex,
     loc: Location,
@@ -114,6 +114,7 @@ enum LayoutDelim {
     Root,
     TopDecl,
     TopDeclHead,
+    Attr,
     Prop,
     DeclGuard,
     Case,
@@ -203,15 +204,16 @@ fn insert_layout(
         stack: &mut LayoutStack,
         tokens: &mut Vec<Entry>,
     ) {
-        if TData::peek(cursor) {
-            insert_default(files, cursor, stack, tokens);
-
-            let p = pos(files, cursor.file, cursor.span().start());
-
-            if is_top_decl(p, stack) {
-                stack.push((p, LayoutDelim::TopDecl));
+        if let [.., (_, LayoutDelim::Attr)] = stack[..] {
+            if TRSquare::peek(cursor) {
+                stack.pop().unwrap();
             }
-        } else if TFn::peek(cursor) {
+
+            tokens.push(cursor.entry().clone());
+            return;
+        }
+
+        if TData::peek(cursor) {
             insert_default(files, cursor, stack, tokens);
 
             let p = pos(files, cursor.file, cursor.span().start());
@@ -529,17 +531,19 @@ fn insert_layout(
                 LayoutDelim::Prop,
             ));
         } else if TLSquare::peek(cursor) {
-            Collapse::new(tokens).collapse(files, offside_p, cursor, stack, tokens);
+            insert_default(files, cursor, stack, tokens);
 
             if is_top_decl(pos(files, cursor.file, cursor.span().start()), stack) {
-                println!("attr");
+                stack.push((
+                    pos(files, cursor.file, cursor.span().start()),
+                    LayoutDelim::Attr,
+                ));
+            } else {
+                stack.push((
+                    pos(files, cursor.file, cursor.span().start()),
+                    LayoutDelim::Square,
+                ));
             }
-
-            insert_default(files, cursor, stack, tokens);
-            stack.push((
-                pos(files, cursor.file, cursor.span().start()),
-                LayoutDelim::Square,
-            ));
         } else if TRParen::peek(cursor) {
             Collapse::new(tokens).collapse(files, indented_p, cursor, stack, tokens);
 

@@ -6,14 +6,26 @@ pub use codespan_reporting::term::{
     Config,
 };
 
+pub use codespan_reporting::diagnostic::Severity;
 pub type Diagnostic = codespan_reporting::diagnostic::Diagnostic<FileId>;
 pub type Label = codespan_reporting::diagnostic::Label<FileId>;
 
-pub trait Diagnostics {
+pub trait Diagnostics: ToDiagDb {
     fn report(&self, diag: Diagnostic);
     fn report_all(&self, diags: Vec<Diagnostic>);
+    fn has_errors(&self) -> bool;
     fn print(&self);
     fn print_and_exit(&self) -> !;
+}
+
+pub trait ToDiagDb {
+    fn to_diag_db(&self) -> &dyn Diagnostics;
+}
+
+impl<T: Diagnostics> ToDiagDb for T {
+    fn to_diag_db(&self) -> &dyn Diagnostics {
+        self
+    }
 }
 
 pub struct DiagnosticBuilder<'rep> {
@@ -135,6 +147,14 @@ where
         self.diags.borrow_mut().append(&mut diags);
     }
 
+    fn has_errors(&self) -> bool {
+        self.diags.borrow().iter().any(|d| match d.severity {
+            Severity::Bug => true,
+            Severity::Error => true,
+            _ => false,
+        })
+    }
+
     fn print(&self) {
         let mut stream = StandardStream::stderr(ColorChoice::Always);
         let config = Config::default();
@@ -146,6 +166,6 @@ where
 
     fn print_and_exit(&self) -> ! {
         self.print();
-        std::process::exit(0);
+        std::process::exit(1);
     }
 }

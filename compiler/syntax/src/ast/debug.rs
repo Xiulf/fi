@@ -60,6 +60,16 @@ impl Debug for AttrArg {
             AttrArg::Field(name, val) => {
                 write!(f, "Field name = {:?}, val = {}", &**name.symbol, val)
             }
+            AttrArg::Call(name, args) => {
+                write!(f, "Call name = {:?}", &**name.symbol)?;
+
+                for arg in args {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", arg)?;
+                }
+
+                Ok(())
+            }
         }
     }
 }
