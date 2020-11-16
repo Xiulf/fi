@@ -127,13 +127,11 @@ impl Debug for ImportDecl {
 
 impl Debug for Import {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "Import name = {:?}", &**self.name.symbol)?;
-
-        if let Some(alias) = &self.alias {
-            write!(f, ", alias = {:?}", &**alias.symbol)?;
-        }
-
-        Ok(())
+        write!(
+            f,
+            "Import name = {:?}, kind = {:?}",
+            &**self.name.symbol, self.kind
+        )
     }
 }
 

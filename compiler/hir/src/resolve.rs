@@ -17,7 +17,7 @@ pub struct PerNs<T> {
     types: T,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ns {
     Modules,
     Values,
@@ -48,7 +48,7 @@ impl<'db> Resolver<'db> {
     pub fn define(&mut self, ns: Ns, ident: Ident, res: Res) {
         if let Some(_) = self.get(ns, ident.symbol) {
             self.db
-                .error(format!("Duplicate definition if '{}'", ident))
+                .error(format!("Duplicate definition of '{}'", ident))
                 .with_label(diagnostics::Label::primary(self.file, ident.span))
                 .finish();
         } else {
@@ -57,7 +57,16 @@ impl<'db> Resolver<'db> {
     }
 
     pub fn get(&self, ns: Ns, symbol: Symbol) -> Option<Res> {
-        self.ribs[ns].last().unwrap().get(symbol)
+        self.ribs[ns].iter().filter_map(|r| r.get(symbol)).last()
+    }
+
+    pub fn iter<'a>(&'a self, ns: Ns) -> impl Iterator<Item = (Symbol, Res)> + 'a {
+        self.ribs[ns]
+            .last()
+            .unwrap()
+            .names
+            .iter()
+            .map(|(k, v)| (*k, *v))
     }
 }
 

@@ -1,15 +1,20 @@
 module Prim where
 
 alias Byte = U8
-alias Char = U32
+alias Word = I16
+alias Int = I32
+alias Long = I64
 alias Float = F32
 alias Double = F64
 alias Str = Slice Byte
+
+[lang("type")] data Type
 
 [repr("u8"  )]
 [lang("bool")]
 data Bool = False | True
 
+[repr("u32" )] data Char :: Type
 [repr("u8"  )] data U8   :: Type
 [repr("u16" )] data U16  :: Type
 [repr("u32" )] data U32  :: Type

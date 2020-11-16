@@ -64,6 +64,16 @@ impl ModuleTree {
         Arc::new(tree)
     }
 
+    pub fn find(&self, name: syntax::symbol::Symbol) -> Option<&ModuleData> {
+        for data in &self.data {
+            if data.name.symbol == name {
+                return Some(data);
+            }
+        }
+
+        None
+    }
+
     pub fn toposort(&self, diags: &dyn diagnostics::Diagnostics) -> Vec<ModuleData> {
         let mut graph = self
             .data

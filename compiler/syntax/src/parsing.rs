@@ -6,8 +6,6 @@ use parser::literal::{IntLiteral, Literal, StringLiteral};
 use parser::parse::{Parse, ParseStream};
 
 parser::token![ident "module" TModule];
-parser::token![ident "value" TValue];
-parser::token![ident "type" TType];
 parser::token![ident "where" TWhere];
 parser::token![ident "import" TImport];
 parser::token![ident "hiding" THiding];
@@ -44,6 +42,7 @@ parser::token![punct "]" TRBracket/1];
 parser::token![punct "," TComma/1];
 parser::token![punct "." TDot/1];
 parser::token![punct ":" TColon/1];
+parser::token![punct ".." TDblDot/2];
 parser::token![punct "::" TDblColon/2];
 parser::token![punct "->" TArrow/2];
 parser::token![punct "=>" TFatArrow/2];
@@ -255,17 +254,34 @@ impl Parse for Exports {
 impl Parse for Export {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
-        let kind = if let Ok(_) = input.parse::<TModule>() {
+        let mut kind = if let Ok(_) = input.parse::<TModule>() {
             ExportKind::Module
-        } else if let Ok(_) = input.parse::<TValue>() {
-            ExportKind::Value
-        } else if let Ok(_) = input.parse::<TType>() {
-            ExportKind::Type
         } else {
             ExportKind::Any
         };
 
         let name = input.parse::<Ident>()?;
+
+        if let Ok(_) = input.parse::<TLParen>() {
+            let ctors = if let Ok(_) = input.parse::<TDblDot>() {
+                ExportGroup::All
+            } else {
+                let mut ctors = Vec::new();
+
+                while !input.is_empty() && !input.peek::<TRParen>() {
+                    ctors.push(input.parse()?);
+
+                    if !input.peek::<TRParen>() {
+                        input.parse::<TComma>()?;
+                    }
+                }
+
+                ExportGroup::Some(ctors)
+            };
+
+            input.parse::<TRParen>()?;
+            kind = ExportKind::Group(ctors);
+        }
 
         Ok(Export {
             span: start.merge(input.prev_span()),
@@ -319,16 +335,34 @@ impl Parse for Import {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let name = input.parse::<Ident>()?;
-        let alias = if let Ok(_) = input.parse::<TAs>() {
-            Some(input.parse()?)
+        let kind = if let Ok(_) = input.parse::<TLParen>() {
+            let ctors = if let Ok(_) = input.parse::<TDblDot>() {
+                ImportGroup::All
+            } else {
+                let mut ctors = Vec::new();
+
+                while !input.is_empty() && !input.peek::<TRParen>() {
+                    ctors.push(input.parse()?);
+
+                    if !input.peek::<TRParen>() {
+                        input.parse::<TComma>()?;
+                    }
+                }
+
+                ImportGroup::Some(ctors)
+            };
+
+            input.parse::<TRParen>()?;
+
+            ImportKind::Group(ctors)
         } else {
-            None
+            ImportKind::Any
         };
 
         Ok(Import {
             span: start.merge(input.prev_span()),
             name,
-            alias,
+            kind,
         })
     }
 }

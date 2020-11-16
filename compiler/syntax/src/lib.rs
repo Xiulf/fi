@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod group;
 mod parsing;
 pub mod symbol;
 

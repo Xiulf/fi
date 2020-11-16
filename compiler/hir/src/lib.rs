@@ -1,4 +1,4 @@
-#![feature(drain_filter, vec_remove_item)]
+#![feature(drain_filter, vec_remove_item, or_patterns)]
 
 pub mod convert;
 pub mod ir;
