@@ -1,4 +1,4 @@
-module Prim where
+module Prim (Int, Ptr, Byte, Bool(True)) where
 
 alias Byte = U8
 alias Word = I16

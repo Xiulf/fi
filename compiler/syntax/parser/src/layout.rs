@@ -34,6 +34,8 @@ pub fn fix_layout(files: &Files<Arc<str>>, buffer: TokenBuffer) -> TokenBuffer {
 
         if TArrow::peek(cursor) {
             cursor = cursor.bump().bump();
+        } else if TDblDot::peek(cursor) {
+            cursor = cursor.bump().bump();
         } else {
             cursor = cursor.bump();
         }
@@ -156,6 +158,7 @@ fn is_top_decl(pos: Pos, stack: &LayoutStack) -> bool {
 }
 
 crate::token![punct "->" TArrow/2];
+crate::token![punct ".." TDblDot/2];
 
 fn insert_layout(
     files: &Files<Arc<str>>,
@@ -503,6 +506,11 @@ fn insert_layout(
             } else {
                 tokens.push(cursor.entry().clone());
             }
+        } else if TDblDot::peek(cursor) {
+            Collapse::new(tokens).collapse(files, offside_p, cursor, stack, tokens);
+            insert_sep(files, cursor, stack, tokens);
+            tokens.push(cursor.entry().clone());
+            tokens.push(cursor.bump().entry().clone());
         } else if TDot::peek(cursor) {
             insert_default(files, cursor, stack, tokens);
 

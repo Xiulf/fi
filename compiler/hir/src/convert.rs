@@ -193,6 +193,7 @@ impl<'db> Converter<'db> {
                                 res: ir::Res::Def(ir::DefKind::Func, item.id.owner),
                                 module: self.file,
                                 ns: Ns::Values,
+                                group: None,
                             });
                         }
                         ir::ItemKind::Const { .. } => {
@@ -201,6 +202,7 @@ impl<'db> Converter<'db> {
                                 res: ir::Res::Def(ir::DefKind::Const, item.id.owner),
                                 module: self.file,
                                 ns: Ns::Values,
+                                group: None,
                             });
                         }
                         ir::ItemKind::Static { .. } => {
@@ -209,6 +211,7 @@ impl<'db> Converter<'db> {
                                 res: ir::Res::Def(ir::DefKind::Static, item.id.owner),
                                 module: self.file,
                                 ns: Ns::Values,
+                                group: None,
                             });
                         }
                         ir::ItemKind::Alias { .. } => {
@@ -217,6 +220,7 @@ impl<'db> Converter<'db> {
                                 res: ir::Res::Def(ir::DefKind::Alias, item.id.owner),
                                 module: self.file,
                                 ns: Ns::Types,
+                                group: None,
                             });
                         }
                         ir::ItemKind::Data { body, .. } => {
@@ -225,16 +229,18 @@ impl<'db> Converter<'db> {
                                 res: ir::Res::Def(ir::DefKind::Data, item.id.owner),
                                 module: self.file,
                                 ns: Ns::Types,
+                                group: Some(
+                                    body.iter()
+                                        .map(|ctor| ir::Export {
+                                            name: ctor.name.symbol,
+                                            res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
+                                            module: self.file,
+                                            ns: Ns::Values,
+                                            group: None,
+                                        })
+                                        .collect(),
+                                ),
                             });
-
-                            for ctor in body {
-                                self.exports.push(ir::Export {
-                                    name: ctor.name.symbol,
-                                    res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
-                                    module: self.file,
-                                    ns: Ns::Values,
-                                });
-                            }
                         }
                         ir::ItemKind::Iface { body, .. } => {
                             self.exports.push(ir::Export {
@@ -242,16 +248,19 @@ impl<'db> Converter<'db> {
                                 res: ir::Res::Def(ir::DefKind::Iface, item.id.owner),
                                 module: self.file,
                                 ns: Ns::Types,
+                                group: Some(
+                                    body.items
+                                        .iter()
+                                        .map(|item| ir::Export {
+                                            name: item.name.symbol,
+                                            res: ir::Res::Def(ir::DefKind::Func, item.id.0.owner),
+                                            module: self.file,
+                                            ns: Ns::Values,
+                                            group: None,
+                                        })
+                                        .collect(),
+                                ),
                             });
-
-                            for item in &body.items {
-                                self.exports.push(ir::Export {
-                                    name: item.name.symbol,
-                                    res: ir::Res::Def(ir::DefKind::Func, item.id.0.owner),
-                                    module: self.file,
-                                    ns: Ns::Values,
-                                });
-                            }
                         }
                         ir::ItemKind::Impl { .. } => {}
                     }
@@ -277,19 +286,98 @@ impl<'db> Converter<'db> {
             let module_data = module_tree.find(import.module.symbol).unwrap();
             let module = self.db.module_hir(module_data.file);
 
-            if let Some(_names) = &import.names {
-                unimplemented!();
+            if let Some((hiding, names)) = &import.names {
+                if *hiding {
+                    unimplemented!();
+                } else {
+                    for imp in names {
+                        if let Some(export) =
+                            module.exports.iter().find(|e| e.name == imp.name.symbol)
+                        {
+                            if let ast::ImportKind::Group(grp) = &imp.kind {
+                                self.resolver.define(export.ns, imp.name, export.res);
+
+                                if let Some(egrp) = &export.group {
+                                    match grp {
+                                        ast::ImportGroup::All => {
+                                            for exp in egrp {
+                                                self.resolver.define(
+                                                    exp.ns,
+                                                    ir::Ident {
+                                                        symbol: exp.name,
+                                                        span: imp.span,
+                                                    },
+                                                    exp.res,
+                                                );
+                                            }
+                                        }
+                                        ast::ImportGroup::Some(grp) => {
+                                            for name in grp {
+                                                if let Some(exp) =
+                                                    egrp.iter().find(|e| e.name == name.symbol)
+                                                {
+                                                    self.resolver.define(exp.ns, *name, exp.res);
+                                                } else {
+                                                    self.db
+                                                        .to_diag_db()
+                                                        .error(format!(
+                                                            "module '{}' does not export '{}'",
+                                                            import.module, name
+                                                        ))
+                                                        .with_label(diagnostics::Label::primary(
+                                                            self.file, name.span,
+                                                        ))
+                                                        .finish();
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    self.db
+                                        .to_diag_db()
+                                        .error(format!("'{}' is not a group export", imp.name))
+                                        .with_label(diagnostics::Label::primary(
+                                            self.file,
+                                            imp.name.span,
+                                        ))
+                                        .finish();
+                                }
+                            } else {
+                                self.resolver.define(export.ns, imp.name, export.res);
+                            }
+                        } else {
+                            self.db
+                                .to_diag_db()
+                                .error(format!(
+                                    "module '{}' does not export '{}'",
+                                    import.module, imp.name
+                                ))
+                                .with_label(diagnostics::Label::primary(self.file, imp.name.span))
+                                .finish();
+                        }
+                    }
+                }
             } else {
                 for export in &module.exports {
-                    self.resolver.define(
-                        export.ns,
-                        ir::Ident {
-                            symbol: export.name,
-                            span: import.span,
-                        },
-                        export.res,
-                    );
+                    self.register_single_import(import.span, export);
                 }
+            }
+        }
+    }
+
+    fn register_single_import(&mut self, span: ir::Span, export: &ir::Export) {
+        self.resolver.define(
+            export.ns,
+            ir::Ident {
+                symbol: export.name,
+                span,
+            },
+            export.res,
+        );
+
+        if let Some(group) = &export.group {
+            for exp in group {
+                self.register_single_import(span, exp);
             }
         }
     }
@@ -1363,7 +1451,10 @@ impl<'db> Converter<'db> {
                     res
                     @
                     (ir::Res::Local(_)
-                    | ir::Res::Def(ir::DefKind::Alias | ir::DefKind::Data, _)),
+                    | ir::Res::Def(
+                        ir::DefKind::Alias | ir::DefKind::Data | ir::DefKind::Iface,
+                        _,
+                    )),
                 ) => ir::TypeKind::Ident { res },
                 Some(_) => {
                     self.db

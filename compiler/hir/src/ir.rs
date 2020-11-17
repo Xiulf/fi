@@ -63,6 +63,7 @@ pub struct Export {
     pub res: Res,
     pub module: source::FileId,
     pub ns: crate::resolve::Ns,
+    pub group: Option<Vec<Export>>,
 }
 
 #[derive(PartialEq, Eq)]
