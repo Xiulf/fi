@@ -199,7 +199,19 @@ impl<'db> Converter<'db> {
             ast::Exports::Some(exports) => {
                 for export in exports {
                     match &export.kind {
-                        ast::ExportKind::Module => unimplemented!(),
+                        ast::ExportKind::Module => {
+                            if let Some(qmod) =
+                                self.modules.iter().find(|m| m.name == export.name.symbol)
+                            {
+                                self.exports.extend(qmod.exports.clone());
+                            } else {
+                                self.db
+                                    .to_diag_db()
+                                    .error(format!("Unknown qualified module '{}'", export.name))
+                                    .with_label(diagnostics::Label::primary(self.file, export.span))
+                                    .finish();
+                            }
+                        }
                         _ => {
                             if let Some(item) = self
                                 .items
