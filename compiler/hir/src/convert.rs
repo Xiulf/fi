@@ -29,11 +29,17 @@ pub struct Converter<'db> {
     module_name: ir::Ident,
     id_counter: u32,
     current_item: ir::DefId,
+    modules: Vec<QualModule>,
     exports: Vec<ir::Export>,
     items: BTreeMap<ir::HirId, ir::Item>,
     trait_items: BTreeMap<ir::TraitItemId, ir::TraitItem>,
     impl_items: BTreeMap<ir::ImplItemId, ir::ImplItem>,
     bodies: BTreeMap<ir::BodyId, ir::Body>,
+}
+
+struct QualModule {
+    name: ir::Symbol,
+    exports: Vec<ir::Export>,
 }
 
 impl<'db> Converter<'db> {
@@ -51,6 +57,7 @@ impl<'db> Converter<'db> {
             resolver: Resolver::new(db.to_diag_db(), file),
             id_counter: 0,
             current_item: ir::DefId::dummy(),
+            modules: Vec::new(),
             exports: Vec::new(),
             items: BTreeMap::new(),
             trait_items: BTreeMap::new(),
@@ -456,6 +463,15 @@ impl<'db> Converter<'db> {
         span: ir::Span,
     ) {
         let exports = self.collect_exports(imp_mod, imports, span);
+
+        if let Some(qmod) = self.modules.iter_mut().find(|m| m.name == alias.symbol) {
+            qmod.exports.extend(exports);
+        } else {
+            self.modules.push(QualModule {
+                name: alias.symbol,
+                exports,
+            });
+        }
     }
 
     fn import_normal(
@@ -1665,6 +1681,51 @@ impl<'db> Converter<'db> {
                     ir::TypeKind::Error
                 }
             },
+            ast::TypeKind::Qual { module, name } => {
+                match self.modules.iter().find(|m| m.name == module.symbol) {
+                    Some(qmod) => match qmod.exports.iter().find(|e| e.name == name.symbol) {
+                        Some(e) => match e.res {
+                            ir::Res::Def(
+                                ir::DefKind::Alias | ir::DefKind::Data | ir::DefKind::Trait,
+                                _,
+                            ) => ir::TypeKind::Ident { res: e.res },
+                            _ => {
+                                self.db
+                                    .to_diag_db()
+                                    .error(format!("'{}.{}' is not a type", module, name))
+                                    .with_label(diagnostics::Label::primary(
+                                        self.file,
+                                        module.span.merge(name.span),
+                                    ))
+                                    .finish();
+
+                                ir::TypeKind::Error
+                            }
+                        },
+                        None => {
+                            self.db
+                                .to_diag_db()
+                                .error(format!("unknown type '{}.{}'", module, name))
+                                .with_label(diagnostics::Label::primary(
+                                    self.file,
+                                    module.span.merge(name.span),
+                                ))
+                                .finish();
+
+                            ir::TypeKind::Error
+                        }
+                    },
+                    None => {
+                        self.db
+                            .to_diag_db()
+                            .error(format!("unknown qualified module '{}'", module))
+                            .with_label(diagnostics::Label::primary(self.file, module.span))
+                            .finish();
+
+                        ir::TypeKind::Error
+                    }
+                }
+            }
             ast::TypeKind::Int { val } => ir::TypeKind::Int { val },
             ast::TypeKind::App { ref base, ref args } => ir::TypeKind::App {
                 base: Box::new(self.convert_type(base)),

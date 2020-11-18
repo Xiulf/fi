@@ -436,6 +436,7 @@ pub enum TypeKind {
     Parens { inner: Box<Type> },
     Int { val: u128 },
     Ident { name: Ident },
+    Qual { module: Ident, name: Ident },
     App { base: Box<Type>, args: Vec<Type> },
     Tuple { tys: Vec<Type> },
     Func { params: Vec<Type>, ret: Box<Type> },

@@ -1780,7 +1780,14 @@ impl Type {
 
             TypeKind::Forall { vars, ret }
         } else if let Ok(name) = input.parse::<Ident>() {
-            TypeKind::Ident { name }
+            if let Ok(_) = input.parse::<TDot>() {
+                let module = name;
+                let name = input.parse()?;
+
+                TypeKind::Qual { module, name }
+            } else {
+                TypeKind::Ident { name }
+            }
         } else {
             return input.error("expected '(', '{', '?', 'forall' or an identifier", "E0006");
         };

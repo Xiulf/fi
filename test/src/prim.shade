@@ -35,8 +35,8 @@ data Ptr :: forall (t :: Type). t -> Type
 [lang("array")] data Array :: forall (t :: Type) i. Integer i => (t, i) -> Type
 [lang("slice")] data Slice :: forall (t :: Type). t -> Type
 
-[lang("integer")] iface Integer
-[lang("decimal")] iface Decimal
+[lang("integer")] trait Integer
+[lang("decimal")] trait Decimal
 
 impl IntegerU8   :: Integer U8
 impl IntegerU16  :: Integer U16

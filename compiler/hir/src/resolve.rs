@@ -12,14 +12,12 @@ pub struct Rib {
 }
 
 pub struct PerNs<T> {
-    modules: T,
     values: T,
     types: T,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ns {
-    Modules,
     Values,
     Types,
 }
@@ -30,7 +28,6 @@ impl<'db> Resolver<'db> {
             db,
             file,
             ribs: PerNs {
-                modules: vec![Rib::new()],
                 values: vec![Rib::new()],
                 types: vec![Rib::new()],
             },
@@ -91,7 +88,6 @@ impl<T> std::ops::Index<Ns> for PerNs<T> {
 
     fn index(&self, ns: Ns) -> &Self::Output {
         match ns {
-            Ns::Modules => &self.modules,
             Ns::Values => &self.values,
             Ns::Types => &self.types,
         }
@@ -101,7 +97,6 @@ impl<T> std::ops::Index<Ns> for PerNs<T> {
 impl<T> std::ops::IndexMut<Ns> for PerNs<T> {
     fn index_mut(&mut self, ns: Ns) -> &mut Self::Output {
         match ns {
-            Ns::Modules => &mut self.modules,
             Ns::Values => &mut self.values,
             Ns::Types => &mut self.types,
         }

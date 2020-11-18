@@ -584,6 +584,12 @@ fn insert_layout(
             Collapse::new(tokens).collapse(files, offside_end_p, cursor, stack, tokens);
             insert_sep(files, cursor, stack, tokens);
             tokens.push(cursor.entry().clone());
+        } else if crate::ident::Ident::peek(cursor) {
+            insert_default(files, cursor, stack, tokens);
+
+            if let [.., (_, LayoutDelim::Prop)] = stack[..] {
+                stack.pop().unwrap();
+            }
         } else {
             insert_default(files, cursor, stack, tokens);
         }
