@@ -38,7 +38,7 @@ pub struct LocalId(pub u32);
 pub struct BodyId(pub HirId);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct IfaceItemId(pub HirId);
+pub struct TraitItemId(pub HirId);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ImplItemId(pub HirId);
@@ -51,7 +51,7 @@ pub struct Module {
     pub name: Ident,
     pub exports: Vec<Export>,
     pub items: BTreeMap<HirId, Item>,
-    pub iface_items: BTreeMap<IfaceItemId, IfaceItem>,
+    pub trait_items: BTreeMap<TraitItemId, TraitItem>,
     pub impl_items: BTreeMap<ImplItemId, ImplItem>,
     pub bodies: BTreeMap<BodyId, Body>,
     pub body_ids: Vec<BodyId>,
@@ -98,9 +98,9 @@ pub enum ItemKind {
         head: DataHead,
         body: Vec<DataCtor>,
     },
-    Iface {
-        head: IfaceHead,
-        body: IfaceBody,
+    Trait {
+        head: TraitHead,
+        body: TraitBody,
     },
     Impl {
         chain: Vec<HirId>,
@@ -127,7 +127,7 @@ pub struct DataCtor {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct IfaceHead {
+pub struct TraitHead {
     pub id: HirId,
     pub span: Span,
     pub parent: Vec<Constraint>,
@@ -135,15 +135,15 @@ pub struct IfaceHead {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct IfaceBody {
+pub struct TraitBody {
     pub id: HirId,
     pub span: Span,
-    pub items: Vec<IfaceItemRef>,
+    pub items: Vec<TraitItemRef>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct IfaceItemRef {
-    pub id: IfaceItemId,
+pub struct TraitItemRef {
+    pub id: TraitItemId,
     pub span: Span,
     pub name: Ident,
     pub kind: AssocItemKind,
@@ -154,7 +154,7 @@ pub struct ImplHead {
     pub id: HirId,
     pub span: Span,
     pub cs: Vec<Constraint>,
-    pub iface: DefId,
+    pub trait_: DefId,
     pub tys: Vec<Type>,
 }
 
@@ -179,7 +179,7 @@ pub enum AssocItemKind {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct IfaceItem {
+pub struct TraitItem {
     pub id: HirId,
     pub span: Span,
     pub name: Ident,
@@ -231,7 +231,7 @@ pub enum DefKind {
     Alias,
     Data,
     Ctor,
-    Iface,
+    Trait,
 }
 
 #[derive(PartialEq, Eq)]
@@ -467,7 +467,7 @@ pub struct TypeVar {
 pub struct Constraint {
     pub id: HirId,
     pub span: Span,
-    pub iface: DefId,
+    pub trait_: DefId,
     pub tys: Vec<Type>,
 }
 

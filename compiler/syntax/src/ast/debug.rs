@@ -247,8 +247,8 @@ impl Debug for Decl {
 
                 Ok(())
             }
-            DeclKind::Iface { head, body } => {
-                writeln!(f, "Iface name = {:?}", &**self.name.symbol)?;
+            DeclKind::Trait { head, body } => {
+                writeln!(f, "Trait name = {:?}", &**self.name.symbol)?;
 
                 for attr in &self.attrs {
                     writeln!(indent(f), "{:?}", attr)?;
@@ -308,9 +308,9 @@ impl Debug for DataCtor {
     }
 }
 
-impl Debug for IfaceHead {
+impl Debug for TraitHead {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "IfaceHead")?;
+        write!(f, "TraitHead")?;
 
         if let Some(cs) = &self.parent {
             for c in cs {
@@ -328,9 +328,9 @@ impl Debug for IfaceHead {
     }
 }
 
-impl Debug for IfaceBody {
+impl Debug for TraitBody {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "IfaceBody")?;
+        write!(f, "TraitBody")?;
 
         for decl in &self.decls {
             writeln!(f)?;
@@ -341,12 +341,12 @@ impl Debug for IfaceBody {
     }
 }
 
-impl Debug for IfaceDecl {
+impl Debug for TraitDecl {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "IfaceDecl::")?;
+        write!(f, "TraitDecl::")?;
 
         match &self.kind {
-            IfaceDeclKind::FuncTy { ty } => {
+            TraitDeclKind::FuncTy { ty } => {
                 writeln!(f, "FuncTy")?;
                 write!(indent(f), "{:?}", ty)
             }
@@ -370,7 +370,7 @@ impl Debug for Impl {
 
 impl Debug for ImplHead {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "ImplHead iface = {:?}", &**self.iface.symbol)?;
+        write!(f, "ImplHead trait = {:?}", &**self.iface.symbol)?;
 
         if let Some(cs) = &self.cs {
             for c in cs {
@@ -850,7 +850,7 @@ impl Debug for Constraint {
 
         match self {
             Constraint::CS { iface, tys } => {
-                write!(f, " iface = {:?}", &**iface.symbol)?;
+                write!(f, " trait = {:?}", &**iface.symbol)?;
 
                 for ty in tys {
                     writeln!(f)?;

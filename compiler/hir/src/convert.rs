@@ -31,7 +31,7 @@ pub struct Converter<'db> {
     current_item: ir::DefId,
     exports: Vec<ir::Export>,
     items: BTreeMap<ir::HirId, ir::Item>,
-    iface_items: BTreeMap<ir::IfaceItemId, ir::IfaceItem>,
+    trait_items: BTreeMap<ir::TraitItemId, ir::TraitItem>,
     impl_items: BTreeMap<ir::ImplItemId, ir::ImplItem>,
     bodies: BTreeMap<ir::BodyId, ir::Body>,
 }
@@ -53,7 +53,7 @@ impl<'db> Converter<'db> {
             current_item: ir::DefId::dummy(),
             exports: Vec::new(),
             items: BTreeMap::new(),
-            iface_items: BTreeMap::new(),
+            trait_items: BTreeMap::new(),
             impl_items: BTreeMap::new(),
             bodies: BTreeMap::new(),
         }
@@ -68,7 +68,7 @@ impl<'db> Converter<'db> {
             exports: self.exports,
             body_ids: self.bodies.keys().copied().collect(),
             items: self.items,
-            iface_items: self.iface_items,
+            trait_items: self.trait_items,
             impl_items: self.impl_items,
             bodies: self.bodies,
         })
@@ -125,9 +125,9 @@ impl<'db> Converter<'db> {
                 ir::DefKind::Data,
                 Ns::Types,
             ),
-            ast::DeclKind::Iface { .. } => (
+            ast::DeclKind::Trait { .. } => (
                 ir::DefPath::Type(group[0].name.symbol),
-                ir::DefKind::Iface,
+                ir::DefKind::Trait,
                 Ns::Types,
             ),
             ast::DeclKind::ImplChain { .. } => return,
@@ -159,7 +159,7 @@ impl<'db> Converter<'db> {
                         );
                     }
                 }
-                ast::DeclKind::Iface {
+                ast::DeclKind::Trait {
                     body: Some(body), ..
                 } => {
                     for decl in &body.decls {
@@ -186,89 +186,247 @@ impl<'db> Converter<'db> {
         match exports {
             ast::Exports::All => {
                 for (_, item) in &self.items {
-                    match &item.kind {
-                        ir::ItemKind::Func { .. } => {
-                            self.exports.push(ir::Export {
-                                name: item.name.symbol,
-                                res: ir::Res::Def(ir::DefKind::Func, item.id.owner),
-                                module: self.file,
-                                ns: Ns::Values,
-                                group: None,
-                            });
+                    Self::register_single_export(&mut self.exports, self.file, item);
+                }
+            }
+            ast::Exports::Some(exports) => {
+                for export in exports {
+                    match &export.kind {
+                        ast::ExportKind::Module => unimplemented!(),
+                        _ => {
+                            if let Some(item) = self
+                                .items
+                                .values()
+                                .find(|i| i.name.symbol == export.name.symbol)
+                            {
+                                if let ast::ExportKind::Group(grp) = &export.kind {
+                                    Self::register_single_export_grp(
+                                        self.db,
+                                        &mut self.exports,
+                                        self.file,
+                                        item,
+                                        export.name.span,
+                                        grp,
+                                    );
+                                } else {
+                                    Self::register_single_export(
+                                        &mut self.exports,
+                                        self.file,
+                                        item,
+                                    );
+                                }
+                            } else {
+                                self.db
+                                    .to_diag_db()
+                                    .error(format!(
+                                        "module '{}' does not contain '{}'",
+                                        self.module_name, export.name
+                                    ))
+                                    .with_label(diagnostics::Label::primary(
+                                        self.file,
+                                        export.name.span,
+                                    ))
+                                    .finish();
+                            }
                         }
-                        ir::ItemKind::Const { .. } => {
-                            self.exports.push(ir::Export {
-                                name: item.name.symbol,
-                                res: ir::Res::Def(ir::DefKind::Const, item.id.owner),
-                                module: self.file,
-                                ns: Ns::Values,
-                                group: None,
-                            });
-                        }
-                        ir::ItemKind::Static { .. } => {
-                            self.exports.push(ir::Export {
-                                name: item.name.symbol,
-                                res: ir::Res::Def(ir::DefKind::Static, item.id.owner),
-                                module: self.file,
-                                ns: Ns::Values,
-                                group: None,
-                            });
-                        }
-                        ir::ItemKind::Alias { .. } => {
-                            self.exports.push(ir::Export {
-                                name: item.name.symbol,
-                                res: ir::Res::Def(ir::DefKind::Alias, item.id.owner),
-                                module: self.file,
-                                ns: Ns::Types,
-                                group: None,
-                            });
-                        }
-                        ir::ItemKind::Data { body, .. } => {
-                            self.exports.push(ir::Export {
-                                name: item.name.symbol,
-                                res: ir::Res::Def(ir::DefKind::Data, item.id.owner),
-                                module: self.file,
-                                ns: Ns::Types,
-                                group: Some(
-                                    body.iter()
-                                        .map(|ctor| ir::Export {
-                                            name: ctor.name.symbol,
-                                            res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
-                                            module: self.file,
-                                            ns: Ns::Values,
-                                            group: None,
-                                        })
-                                        .collect(),
-                                ),
-                            });
-                        }
-                        ir::ItemKind::Iface { body, .. } => {
-                            self.exports.push(ir::Export {
-                                name: item.name.symbol,
-                                res: ir::Res::Def(ir::DefKind::Iface, item.id.owner),
-                                module: self.file,
-                                ns: Ns::Types,
-                                group: Some(
-                                    body.items
-                                        .iter()
-                                        .map(|item| ir::Export {
-                                            name: item.name.symbol,
-                                            res: ir::Res::Def(ir::DefKind::Func, item.id.0.owner),
-                                            module: self.file,
-                                            ns: Ns::Values,
-                                            group: None,
-                                        })
-                                        .collect(),
-                                ),
-                            });
-                        }
-                        ir::ItemKind::Impl { .. } => {}
                     }
                 }
             }
-            ast::Exports::Some(_exports) => {
-                unimplemented!();
+        }
+    }
+
+    fn register_single_export(
+        exports: &mut Vec<ir::Export>,
+        file: source::FileId,
+        item: &ir::Item,
+    ) {
+        match &item.kind {
+            ir::ItemKind::Func { .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Func, item.id.owner),
+                    module: file,
+                    ns: Ns::Values,
+                    group: None,
+                });
             }
+            ir::ItemKind::Const { .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Const, item.id.owner),
+                    module: file,
+                    ns: Ns::Values,
+                    group: None,
+                });
+            }
+            ir::ItemKind::Static { .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Static, item.id.owner),
+                    module: file,
+                    ns: Ns::Values,
+                    group: None,
+                });
+            }
+            ir::ItemKind::Alias { .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Alias, item.id.owner),
+                    module: file,
+                    ns: Ns::Types,
+                    group: None,
+                });
+            }
+            ir::ItemKind::Data { body, .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Data, item.id.owner),
+                    module: file,
+                    ns: Ns::Types,
+                    group: Some(
+                        body.iter()
+                            .map(|ctor| ir::Export {
+                                name: ctor.name.symbol,
+                                res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
+                                module: file,
+                                ns: Ns::Values,
+                                group: None,
+                            })
+                            .collect(),
+                    ),
+                });
+            }
+            ir::ItemKind::Trait { body, .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Trait, item.id.owner),
+                    module: file,
+                    ns: Ns::Types,
+                    group: Some(
+                        body.items
+                            .iter()
+                            .map(|item| ir::Export {
+                                name: item.name.symbol,
+                                res: ir::Res::Def(ir::DefKind::Func, item.id.0.owner),
+                                module: file,
+                                ns: Ns::Values,
+                                group: None,
+                            })
+                            .collect(),
+                    ),
+                });
+            }
+            ir::ItemKind::Impl { .. } => {}
+        }
+    }
+
+    fn register_single_export_grp(
+        db: &dyn HirDatabase,
+        exports: &mut Vec<ir::Export>,
+        file: source::FileId,
+        item: &ir::Item,
+        span: ir::Span,
+        grp: &ast::ExportGroup,
+    ) {
+        match &item.kind {
+            ir::ItemKind::Data { body, .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Data, item.id.owner),
+                    module: file,
+                    ns: Ns::Types,
+                    group: Some(if let ast::ExportGroup::Some(names) = grp {
+                        names
+                            .iter()
+                            .filter_map(|name| {
+                                if let Some(ctor) =
+                                    body.iter().find(|c| c.name.symbol == name.symbol)
+                                {
+                                    Some(ir::Export {
+                                        name: ctor.name.symbol,
+                                        res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
+                                        module: file,
+                                        ns: Ns::Values,
+                                        group: None,
+                                    })
+                                } else {
+                                    db.to_diag_db()
+                                        .error(format!(
+                                            "'{}' does not have constructor '{}'",
+                                            item.name, name
+                                        ))
+                                        .with_label(diagnostics::Label::primary(file, name.span))
+                                        .finish();
+
+                                    None
+                                }
+                            })
+                            .collect()
+                    } else {
+                        body.iter()
+                            .map(|ctor| ir::Export {
+                                name: ctor.name.symbol,
+                                res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
+                                module: file,
+                                ns: Ns::Values,
+                                group: None,
+                            })
+                            .collect()
+                    }),
+                });
+            }
+            ir::ItemKind::Trait { body, .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Trait, item.id.owner),
+                    module: file,
+                    ns: Ns::Types,
+                    group: Some(if let ast::ExportGroup::Some(names) = grp {
+                        names
+                            .iter()
+                            .filter_map(|name| {
+                                if let Some(decl) =
+                                    body.items.iter().find(|d| d.name.symbol == name.symbol)
+                                {
+                                    Some(ir::Export {
+                                        name: decl.name.symbol,
+                                        res: ir::Res::Def(ir::DefKind::Func, decl.id.0.owner),
+                                        module: file,
+                                        ns: Ns::Values,
+                                        group: None,
+                                    })
+                                } else {
+                                    db.to_diag_db()
+                                        .error(format!(
+                                            "'{}' does not have method '{}'",
+                                            item.name, name
+                                        ))
+                                        .with_label(diagnostics::Label::primary(file, name.span))
+                                        .finish();
+
+                                    None
+                                }
+                            })
+                            .collect()
+                    } else {
+                        body.items
+                            .iter()
+                            .map(|item| ir::Export {
+                                name: item.name.symbol,
+                                res: ir::Res::Def(ir::DefKind::Func, item.id.0.owner),
+                                module: file,
+                                ns: Ns::Values,
+                                group: None,
+                            })
+                            .collect()
+                    }),
+                });
+            }
+            _ => db
+                .to_diag_db()
+                .error(format!("'{}' is not a datatype or trait", item.name))
+                .with_label(diagnostics::Label::primary(file, span))
+                .finish(),
         }
     }
 
@@ -428,7 +586,7 @@ impl<'db> Converter<'db> {
             | group::DeclGroupKind::Static(_) => ir::DefPath::Value(first.name.symbol),
             group::DeclGroupKind::Alias(_)
             | group::DeclGroupKind::Data(_)
-            | group::DeclGroupKind::Iface => ir::DefPath::Type(first.name.symbol),
+            | group::DeclGroupKind::Trait => ir::DefPath::Type(first.name.symbol),
             group::DeclGroupKind::Impl => return self.convert_impl_chain(first),
         };
 
@@ -688,8 +846,8 @@ impl<'db> Converter<'db> {
 
                 ir::ItemKind::Data { head, body }
             }
-            group::DeclGroupKind::Iface => {
-                if let ast::DeclKind::Iface { head, body } = &first.kind {
+            group::DeclGroupKind::Trait => {
+                if let ast::DeclKind::Trait { head, body } = &first.kind {
                     self.resolver.push_rib(Ns::Types);
 
                     let head_id = self.next_id();
@@ -703,7 +861,7 @@ impl<'db> Converter<'db> {
                         Vec::new()
                     };
 
-                    let head = ir::IfaceHead {
+                    let head = ir::TraitHead {
                         id: head_id,
                         span: head.span,
                         parent,
@@ -712,17 +870,17 @@ impl<'db> Converter<'db> {
 
                     let body_id = self.next_id();
                     let body = if let Some(body) = body {
-                        ir::IfaceBody {
+                        ir::TraitBody {
                             id: body_id,
                             span: body.span,
                             items: body
                                 .decls
                                 .iter()
-                                .map(|d| self.convert_iface_decl(first.name.symbol, d))
+                                .map(|d| self.convert_trait_decl(first.name.symbol, d))
                                 .collect(),
                         }
                     } else {
-                        ir::IfaceBody {
+                        ir::TraitBody {
                             id: body_id,
                             span: first.span,
                             items: Vec::new(),
@@ -731,7 +889,7 @@ impl<'db> Converter<'db> {
 
                     self.resolver.pop_rib(Ns::Types);
 
-                    ir::ItemKind::Iface { head, body }
+                    ir::ItemKind::Trait { head, body }
                 } else {
                     unreachable!();
                 }
@@ -784,12 +942,12 @@ impl<'db> Converter<'db> {
                 };
 
                 let tys = imp.head.tys.iter().map(|t| self.convert_type(t)).collect();
-                let iface = match self.resolver.get(Ns::Types, imp.head.iface.symbol) {
-                    Some(ir::Res::Def(ir::DefKind::Iface, iface)) => iface,
+                let trait_ = match self.resolver.get(Ns::Types, imp.head.iface.symbol) {
+                    Some(ir::Res::Def(ir::DefKind::Trait, iface)) => iface,
                     Some(_) => {
                         self.db
                             .to_diag_db()
-                            .error(format!("'{}' is not an interface", imp.head.iface))
+                            .error(format!("'{}' is not a trait", imp.head.iface))
                             .with_label(diagnostics::Label::primary(self.file, imp.head.iface.span))
                             .finish();
 
@@ -798,7 +956,7 @@ impl<'db> Converter<'db> {
                     None => {
                         self.db
                             .to_diag_db()
-                            .error(format!("unknown interface '{}'", imp.head.iface))
+                            .error(format!("unknown trait '{}'", imp.head.iface))
                             .with_label(diagnostics::Label::primary(self.file, imp.head.iface.span))
                             .finish();
 
@@ -810,7 +968,7 @@ impl<'db> Converter<'db> {
                     id: head_id,
                     span: imp.head.span,
                     cs,
-                    iface,
+                    trait_,
                     tys,
                 };
 
@@ -874,7 +1032,7 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn convert_iface_decl(&mut self, iface: ir::Symbol, decl: &ast::IfaceDecl) -> ir::IfaceItemRef {
+    fn convert_trait_decl(&mut self, iface: ir::Symbol, decl: &ast::TraitDecl) -> ir::TraitItemRef {
         let old_id = (self.current_item, self.id_counter);
         let defindex = ir::DefIndex::from_path(
             self.module_name.symbol,
@@ -889,14 +1047,14 @@ impl<'db> Converter<'db> {
 
         let id = self.next_id();
         let kind = match &decl.kind {
-            ast::IfaceDeclKind::FuncTy { ty } => ir::IfaceItemKind::Func {
+            ast::TraitDeclKind::FuncTy { ty } => ir::IfaceItemKind::Func {
                 ty: self.convert_type(ty),
             },
         };
 
-        self.iface_items.insert(
-            ir::IfaceItemId(id),
-            ir::IfaceItem {
+        self.trait_items.insert(
+            ir::TraitItemId(id),
+            ir::TraitItem {
                 id,
                 span: decl.span,
                 name: decl.name,
@@ -907,8 +1065,8 @@ impl<'db> Converter<'db> {
         self.current_item = old_id.0;
         self.id_counter = old_id.1;
 
-        ir::IfaceItemRef {
-            id: ir::IfaceItemId(id),
+        ir::TraitItemRef {
+            id: ir::TraitItemId(id),
             span: decl.span,
             name: decl.name,
             kind: ir::AssocItemKind::Func,
@@ -1484,7 +1642,7 @@ impl<'db> Converter<'db> {
                     @
                     (ir::Res::Local(_)
                     | ir::Res::Def(
-                        ir::DefKind::Alias | ir::DefKind::Data | ir::DefKind::Iface,
+                        ir::DefKind::Alias | ir::DefKind::Data | ir::DefKind::Trait,
                         _,
                     )),
                 ) => ir::TypeKind::Ident { res },
@@ -1622,12 +1780,12 @@ impl<'db> Converter<'db> {
                 } else {
                     tys.last().unwrap().span
                 }),
-                iface: match self.resolver.get(Ns::Types, iface.symbol) {
-                    Some(ir::Res::Def(ir::DefKind::Iface, iface)) => iface,
+                trait_: match self.resolver.get(Ns::Types, iface.symbol) {
+                    Some(ir::Res::Def(ir::DefKind::Trait, iface)) => iface,
                     Some(_) => {
                         self.db
                             .to_diag_db()
-                            .error(format!("'{}' is not an interface", iface))
+                            .error(format!("'{}' is not a trait", iface))
                             .with_label(diagnostics::Label::primary(self.file, iface.span))
                             .finish();
 
@@ -1636,7 +1794,7 @@ impl<'db> Converter<'db> {
                     None => {
                         self.db
                             .to_diag_db()
-                            .error(format!("unknown interface '{}'", iface))
+                            .error(format!("unknown trait '{}'", iface))
                             .with_label(diagnostics::Label::primary(self.file, iface.span))
                             .finish();
 

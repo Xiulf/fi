@@ -130,9 +130,9 @@ pub enum DeclKind {
         head: DataHead,
         body: Option<Vec<DataCtor>>,
     },
-    Iface {
-        head: IfaceHead,
-        body: Option<IfaceBody>,
+    Trait {
+        head: TraitHead,
+        body: Option<TraitBody>,
     },
     ImplChain {
         impls: Vec<Impl>,
@@ -153,27 +153,27 @@ pub struct DataCtor {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct IfaceHead {
+pub struct TraitHead {
     pub span: Span,
     pub parent: Option<Vec<Constraint>>,
     pub vars: Vec<TypeVar>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct IfaceBody {
+pub struct TraitBody {
     pub span: Span,
-    pub decls: Vec<IfaceDecl>,
+    pub decls: Vec<TraitDecl>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct IfaceDecl {
+pub struct TraitDecl {
     pub span: Span,
     pub name: Ident,
-    pub kind: IfaceDeclKind,
+    pub kind: TraitDeclKind,
 }
 
 #[derive(PartialEq, Eq)]
-pub enum IfaceDeclKind {
+pub enum TraitDeclKind {
     FuncTy { ty: Type },
 }
 

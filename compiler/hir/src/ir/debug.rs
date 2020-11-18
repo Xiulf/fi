@@ -31,7 +31,7 @@ impl Debug for BodyId {
     }
 }
 
-impl Debug for IfaceItemId {
+impl Debug for TraitItemId {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{:?}", self.0)
     }
@@ -62,7 +62,7 @@ impl Debug for Module {
             write!(indent(f), "{:?}", item)?;
         }
 
-        for (_, item) in &self.iface_items {
+        for (_, item) in &self.trait_items {
             writeln!(f)?;
             write!(indent(f), "{:?}", item)?;
         }
@@ -155,10 +155,10 @@ impl Debug for Item {
 
                 Ok(())
             }
-            ItemKind::Iface { head, body } => {
+            ItemKind::Trait { head, body } => {
                 writeln!(
                     f,
-                    "Iface id = {:?}, name = {:?}",
+                    "Trait id = {:?}, name = {:?}",
                     self.id, &**self.name.symbol
                 )?;
                 writeln!(indent(f), "{:?}", head)?;
@@ -212,9 +212,9 @@ impl Debug for DataCtor {
     }
 }
 
-impl Debug for IfaceHead {
+impl Debug for TraitHead {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "IfaceHead id = {:?}", self.id)?;
+        write!(f, "TraitHead id = {:?}", self.id)?;
 
         for cs in &self.parent {
             writeln!(f)?;
@@ -230,9 +230,9 @@ impl Debug for IfaceHead {
     }
 }
 
-impl Debug for IfaceBody {
+impl Debug for TraitBody {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "IfaceBody id = {:?}", self.id)?;
+        write!(f, "TraitBody id = {:?}", self.id)?;
 
         for item in &self.items {
             writeln!(f)?;
@@ -243,11 +243,11 @@ impl Debug for IfaceBody {
     }
 }
 
-impl Debug for IfaceItemRef {
+impl Debug for TraitItemRef {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(
             f,
-            "IfaceItemRef id = {:?}, name = {:?}, kind = {:?}",
+            "TraitItemRef id = {:?}, name = {:?}, kind = {:?}",
             self.id, &**self.name.symbol, self.kind
         )
     }
@@ -255,7 +255,7 @@ impl Debug for IfaceItemRef {
 
 impl Debug for ImplHead {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "ImplHead id = {:?}, iface = {:?}", self.id, self.iface)?;
+        write!(f, "ImplHead id = {:?}, trait = {:?}", self.id, self.trait_)?;
 
         for c in &self.cs {
             writeln!(f)?;
@@ -294,9 +294,9 @@ impl Debug for ImplItemRef {
     }
 }
 
-impl Debug for IfaceItem {
+impl Debug for TraitItem {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "IfaceItem::")?;
+        write!(f, "TraitItem::")?;
 
         match &self.kind {
             IfaceItemKind::Func { ty } => {
@@ -677,7 +677,11 @@ impl Debug for TypeVar {
 
 impl Debug for Constraint {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "Constraint id = {:?}, iface = {:?}", self.id, self.iface)?;
+        write!(
+            f,
+            "Constraint id = {:?}, trait = {:?}",
+            self.id, self.trait_
+        )?;
 
         for ty in &self.tys {
             writeln!(f)?;

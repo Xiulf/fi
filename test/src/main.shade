@@ -1,6 +1,6 @@
 module Main where
 
-import Prim (Int, Ptr, Byte, Bool(True, False))
+import Prim
 
 [main]
 fn main :: (Int, Ptr (Ptr Byte)) -> Int
@@ -8,6 +8,3 @@ fn main argc argv = identity 22
 
 fn identity :: forall t. t -> t
 fn identity x = x
-
-const TEST :: Bool
-const TEST = True

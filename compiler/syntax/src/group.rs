@@ -21,7 +21,7 @@ pub enum DeclGroupKind {
     Static(bool),
     Alias(bool),
     Data(bool),
-    Iface,
+    Trait,
     Impl,
 }
 
@@ -65,7 +65,7 @@ impl Decl {
             DeclKind::Alias { .. } => DeclGroupKind::Alias(false),
             DeclKind::DataKind { .. } => DeclGroupKind::Data(true),
             DeclKind::Data { .. } => DeclGroupKind::Data(false),
-            DeclKind::Iface { .. } => DeclGroupKind::Iface,
+            DeclKind::Trait { .. } => DeclGroupKind::Trait,
             DeclKind::ImplChain { .. } => DeclGroupKind::Impl,
         }
     }
@@ -79,7 +79,7 @@ impl DeclGroupKind {
             DeclGroupKind::Static(_) => 2,
             DeclGroupKind::Alias(_) => 2,
             DeclGroupKind::Data(_) => 2,
-            DeclGroupKind::Iface => 1,
+            DeclGroupKind::Trait => 1,
             DeclGroupKind::Impl => 1,
         }
     }
@@ -100,7 +100,7 @@ impl PartialEq for DeclGroupKind {
             (Alias(false), Alias(false)) => true,
             (Data(true), Data(false)) => true,
             (Data(false), Data(false)) => true,
-            (Iface, Iface) => true,
+            (Trait, Trait) => true,
             (Impl, Impl) => true,
             _ => false,
         }

@@ -15,7 +15,7 @@ parser::token![ident "const" TConst];
 parser::token![ident "static" TStatic];
 parser::token![ident "alias" TAlias];
 parser::token![ident "data" TData];
-parser::token![ident "iface" TIface];
+parser::token![ident "trait" TTrait];
 parser::token![ident "impl" TImpl];
 parser::token![ident "forall" TForall];
 parser::token![ident "if" TIf];
@@ -479,7 +479,7 @@ impl Parse for Decl {
             };
 
             (name, kind)
-        } else if let Ok(_) = input.parse::<TIface>() {
+        } else if let Ok(_) = input.parse::<TTrait>() {
             let mut parent = Vec::new();
             let mut fork = input.fork();
 
@@ -498,7 +498,7 @@ impl Parse for Decl {
                 vars.push(input.parse()?);
             }
 
-            let head = IfaceHead {
+            let head = TraitHead {
                 span: start.merge(input.prev_span()),
                 parent: if parent.is_empty() {
                     None
@@ -514,7 +514,7 @@ impl Parse for Decl {
                 None
             };
 
-            (name, DeclKind::Iface { head, body })
+            (name, DeclKind::Trait { head, body })
         } else if input.peek::<TImpl>() {
             let mut impls = vec![input.parse::<Impl>()?];
 
@@ -535,7 +535,7 @@ impl Parse for Decl {
 
             (Ident::dummy(), DeclKind::ImplChain { impls })
         } else {
-            return input.error("expected 'fn', 'alias', 'data', 'iface' or 'impl'", "E0006");
+            return input.error("expected 'fn', 'alias', 'data', 'trait' or 'impl'", "E0006");
         };
 
         Ok(Decl {
@@ -555,7 +555,7 @@ impl Decl {
             || input.peek::<TStatic>()
             || input.peek::<TAlias>()
             || input.peek::<TData>()
-            || input.peek::<TIface>()
+            || input.peek::<TTrait>()
             || input.peek::<TImpl>()
     }
 }
@@ -578,14 +578,14 @@ impl Parse for DataCtor {
     }
 }
 
-impl Parse for IfaceBody {
+impl Parse for TraitBody {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let _ = input.parse::<TWhere>()?;
         let _ = input.parse::<LytStart>()?;
         let mut decls = Vec::new();
 
-        while !input.is_empty() && IfaceDecl::peek(input) {
+        while !input.is_empty() && TraitDecl::peek(input) {
             decls.push(input.parse()?);
 
             if input.peek::<LytEnd>() {
@@ -597,14 +597,14 @@ impl Parse for IfaceBody {
 
         input.parse::<LytEnd>()?;
 
-        Ok(IfaceBody {
+        Ok(TraitBody {
             span: start.merge(input.prev_span()),
             decls,
         })
     }
 }
 
-impl Parse for IfaceDecl {
+impl Parse for TraitDecl {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let (name, kind) = if let Ok(_) = input.parse::<TFn>() {
@@ -612,12 +612,12 @@ impl Parse for IfaceDecl {
             let _ = input.parse::<TDblColon>()?;
             let ty = input.parse()?;
 
-            (name, IfaceDeclKind::FuncTy { ty })
+            (name, TraitDeclKind::FuncTy { ty })
         } else {
             return input.error("expected 'fn'", "E0006");
         };
 
-        Ok(IfaceDecl {
+        Ok(TraitDecl {
             span: start.merge(input.prev_span()),
             name,
             kind,
@@ -625,7 +625,7 @@ impl Parse for IfaceDecl {
     }
 }
 
-impl IfaceDecl {
+impl TraitDecl {
     fn peek(input: ParseStream) -> bool {
         input.peek::<TFn>()
     }
