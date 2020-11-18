@@ -57,7 +57,7 @@ pub struct Module {
     pub body_ids: Vec<BodyId>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Export {
     pub name: Symbol,
     pub res: Res,

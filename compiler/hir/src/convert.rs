@@ -279,93 +279,41 @@ impl<'db> Converter<'db> {
     }
 
     fn register_import(&mut self, import: &ast::ImportDecl) {
-        if let Some(_alias) = &import.qual {
-            unimplemented!();
+        let module_tree = self.db.module_tree(self.lib);
+        let module_data = module_tree.find(import.module.symbol).unwrap();
+        let module = self.db.module_hir(module_data.file);
+
+        if let Some(alias) = &import.qual {
+            self.import_qual(&module, &import.names, *alias, import.span);
         } else {
-            let module_tree = self.db.module_tree(self.lib);
-            let module_data = module_tree.find(import.module.symbol).unwrap();
-            let module = self.db.module_hir(module_data.file);
-
-            if let Some((hiding, names)) = &import.names {
-                if *hiding {
-                    unimplemented!();
-                } else {
-                    for imp in names {
-                        if let Some(export) =
-                            module.exports.iter().find(|e| e.name == imp.name.symbol)
-                        {
-                            if let ast::ImportKind::Group(grp) = &imp.kind {
-                                self.resolver.define(export.ns, imp.name, export.res);
-
-                                if let Some(egrp) = &export.group {
-                                    match grp {
-                                        ast::ImportGroup::All => {
-                                            for exp in egrp {
-                                                self.resolver.define(
-                                                    exp.ns,
-                                                    ir::Ident {
-                                                        symbol: exp.name,
-                                                        span: imp.span,
-                                                    },
-                                                    exp.res,
-                                                );
-                                            }
-                                        }
-                                        ast::ImportGroup::Some(grp) => {
-                                            for name in grp {
-                                                if let Some(exp) =
-                                                    egrp.iter().find(|e| e.name == name.symbol)
-                                                {
-                                                    self.resolver.define(exp.ns, *name, exp.res);
-                                                } else {
-                                                    self.db
-                                                        .to_diag_db()
-                                                        .error(format!(
-                                                            "module '{}' does not export '{}'",
-                                                            import.module, name
-                                                        ))
-                                                        .with_label(diagnostics::Label::primary(
-                                                            self.file, name.span,
-                                                        ))
-                                                        .finish();
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    self.db
-                                        .to_diag_db()
-                                        .error(format!("'{}' is not a group export", imp.name))
-                                        .with_label(diagnostics::Label::primary(
-                                            self.file,
-                                            imp.name.span,
-                                        ))
-                                        .finish();
-                                }
-                            } else {
-                                self.resolver.define(export.ns, imp.name, export.res);
-                            }
-                        } else {
-                            self.db
-                                .to_diag_db()
-                                .error(format!(
-                                    "module '{}' does not export '{}'",
-                                    import.module, imp.name
-                                ))
-                                .with_label(diagnostics::Label::primary(self.file, imp.name.span))
-                                .finish();
-                        }
-                    }
-                }
-            } else {
-                for export in &module.exports {
-                    self.register_single_import(import.span, export);
-                }
-            }
+            self.import_normal(&module, &import.names, import.span);
         }
     }
 
-    fn register_single_import(&mut self, span: ir::Span, export: &ir::Export) {
+    fn import_qual(
+        &mut self,
+        imp_mod: &ir::Module,
+        imports: &Option<(bool, Vec<ast::Import>)>,
+        alias: ir::Ident,
+        span: ir::Span,
+    ) {
+        let exports = self.collect_exports(imp_mod, imports, span);
+    }
+
+    fn import_normal(
+        &mut self,
+        imp_mod: &ir::Module,
+        imports: &Option<(bool, Vec<ast::Import>)>,
+        span: ir::Span,
+    ) {
+        let exports = self.collect_exports(imp_mod, imports, span);
+
+        for export in exports {
+            self.register_single_import(span, export);
+        }
+    }
+
+    fn register_single_import(&mut self, span: ir::Span, export: ir::Export) {
         self.resolver.define(
             export.ns,
             ir::Ident {
@@ -375,10 +323,94 @@ impl<'db> Converter<'db> {
             export.res,
         );
 
-        if let Some(group) = &export.group {
+        if let Some(group) = export.group {
             for exp in group {
                 self.register_single_import(span, exp);
             }
+        }
+    }
+
+    fn collect_exports(
+        &self,
+        module: &ir::Module,
+        imports: &Option<(bool, Vec<ast::Import>)>,
+        span: ir::Span,
+    ) -> Vec<ir::Export> {
+        let mut exports = module.exports.clone();
+
+        if let Some((hiding, imports)) = imports {
+            if *hiding {
+                for import in imports {
+                    self.find_export(module, &mut exports, import);
+                }
+
+                exports
+            } else {
+                imports
+                    .iter()
+                    .filter_map(|import| self.find_export(module, &mut exports, import))
+                    .collect()
+            }
+        } else {
+            exports
+        }
+    }
+
+    fn find_export(
+        &self,
+        module: &ir::Module,
+        exports: &mut Vec<ir::Export>,
+        import: &ast::Import,
+    ) -> Option<ir::Export> {
+        if let Some(idx) = exports.iter().position(|e| e.name == import.name.symbol) {
+            let mut export = exports.swap_remove(idx);
+
+            if let ast::ImportKind::Group(igrp) = &import.kind {
+                if let Some(egrp) = &mut export.group {
+                    if let ast::ImportGroup::Some(igrp) = igrp {
+                        *egrp = igrp
+                            .iter()
+                            .filter_map(|name| {
+                                if let Some(idx) = egrp.iter().position(|e| e.name == name.symbol) {
+                                    Some(egrp.swap_remove(idx))
+                                } else {
+                                    self.db
+                                        .to_diag_db()
+                                        .error(format!(
+                                            "module '{}' does not export '{}'",
+                                            module.name, name
+                                        ))
+                                        .with_label(diagnostics::Label::primary(
+                                            self.file, name.span,
+                                        ))
+                                        .finish();
+
+                                    None
+                                }
+                            })
+                            .collect();
+                    }
+                } else {
+                    self.db
+                        .to_diag_db()
+                        .error(format!("'{}' is not a group export", import.name))
+                        .with_label(diagnostics::Label::primary(self.file, import.name.span))
+                        .finish();
+                }
+            }
+
+            Some(export)
+        } else {
+            self.db
+                .to_diag_db()
+                .error(format!(
+                    "module '{}' does not export '{}'",
+                    module.name, import.name
+                ))
+                .with_label(diagnostics::Label::primary(self.file, import.name.span))
+                .finish();
+
+            None
         }
     }
 
