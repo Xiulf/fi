@@ -5,4 +5,5 @@ authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+hir = { path = "../hir" }
 index_vec = "0.1.2"

@@ -200,6 +200,7 @@ dependencies = [
 name = "mir"
 version = "0.1.0"
 dependencies = [
+ "hir",
  "index_vec",
 ]
 

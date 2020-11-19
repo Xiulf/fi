@@ -1,3 +1,4 @@
+pub use hir::ir::DefId;
 use index_vec::IndexVec;
 
 pub type Ty<'tcx> = std::marker::PhantomData<&'tcx ()>;
@@ -7,6 +8,7 @@ pub struct Module<'tcx> {
 }
 
 pub struct Body<'tcx> {
+    pub def: DefId,
     pub locals: IndexVec<Local, LocalData<'tcx>>,
     pub blocks: IndexVec<Block, BlockData<'tcx>>,
 }
@@ -39,20 +41,32 @@ pub struct BlockData<'tcx> {
 }
 
 pub enum Stmt<'tcx> {
+    Nop,
+    VarLive(Local),
+    VarDead(Local),
     Assign(Place<'tcx>, RValue<'tcx>),
+    SetDiscr(Place<'tcx>, usize),
 }
 
 pub enum Term<'tcx> {
+    Unset,
+    Abort,
+    Return,
+    Jump(Block),
+    Call(Place<'tcx>, Operand<'tcx>, Vec<Operand<'tcx>>, Block),
     Switch(Operand<'tcx>, Vec<u128>, Vec<Block>),
 }
 
 pub enum RValue<'tcx> {
     Use(Operand<'tcx>),
     Ref(Place<'tcx>),
+    Discr(Place<'tcx>),
+    Init(Ty<'tcx>, Vec<Operand<'tcx>>),
 }
 
 pub enum Operand<'tcx> {
-    Place(Place<'tcx>),
+    Copy(Place<'tcx>),
+    Move(Place<'tcx>),
     Const(Const, Ty<'tcx>),
 }
 
@@ -63,12 +77,14 @@ pub struct Place<'tcx> {
 
 pub enum PlaceBase {
     Local(Local),
+    Static(DefId),
 }
 
 pub enum PlaceElem<'tcx> {
     Deref,
     Field(usize),
     Index(Operand<'tcx>),
+    Downcast(usize),
 }
 
 pub enum Const {
@@ -77,6 +93,6 @@ pub enum Const {
     Tuple(Vec<Const>),
     Array(Vec<Const>),
     Scalar(u128),
-    FuncAddr(()),
+    FuncAddr(DefId),
     Bytes(Box<[u8]>),
 }
