@@ -9,4 +9,5 @@ diagnostics = { path = "../diagnostics" }
 source = { path = "../source" }
 syntax = { path = "../syntax" }
 hir = { path = "../hir" }
+mir = { path = "../mir" }
 salsa = "^0.16.0"

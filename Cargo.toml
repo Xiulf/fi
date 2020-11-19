@@ -8,6 +8,6 @@ members = [
     "compiler/syntax",
     "compiler/hir",
     # "compiler/check",
-    # "compiler/mir",
+    "compiler/mir",
     # "compiler/codegen",
 ]
