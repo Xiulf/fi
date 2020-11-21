@@ -140,6 +140,14 @@ impl Debug for Decl {
         write!(f, "Decl::")?;
 
         match &self.kind {
+            DeclKind::Foreign { ty, kind } => {
+                writeln!(
+                    f,
+                    "Foreign name = {:?}, kind = {:?}",
+                    &**self.name.symbol, kind
+                )?;
+                write!(indent(f), "{:?}", ty)
+            }
             DeclKind::FuncTy { ty } => {
                 writeln!(f, "FuncTy name = {:?}", &**self.name.symbol)?;
 

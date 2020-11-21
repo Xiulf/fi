@@ -10,4 +10,5 @@ source = { path = "../source" }
 syntax = { path = "../syntax" }
 hir = { path = "../hir" }
 mir = { path = "../mir" }
+check = { path = "../check" }
 salsa = "^0.16.0"

@@ -4,7 +4,7 @@ pub use codespan::Span;
 use data_structures::stable_hasher;
 pub use source::LibId;
 use std::collections::BTreeMap;
-pub use syntax::ast::{AttrArg, Attribute, InfixOp, PostfixOp, PrefixOp};
+pub use syntax::ast::{AttrArg, Attribute, ForeignKind, InfixOp, PostfixOp, PrefixOp};
 pub use syntax::symbol::{Ident, Symbol};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -77,6 +77,10 @@ pub struct Item {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ItemKind {
+    Foreign {
+        ty: Type,
+        kind: ForeignKind,
+    },
     Func {
         ty: Type,
         body: BodyId,

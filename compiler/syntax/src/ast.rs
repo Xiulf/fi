@@ -97,6 +97,10 @@ pub struct Decl {
 
 #[derive(PartialEq, Eq)]
 pub enum DeclKind {
+    Foreign {
+        ty: Type,
+        kind: ForeignKind,
+    },
     FuncTy {
         ty: Type,
     },
@@ -137,6 +141,12 @@ pub enum DeclKind {
     ImplChain {
         impls: Vec<Impl>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForeignKind {
+    Func,
+    Static,
 }
 
 #[derive(PartialEq, Eq)]

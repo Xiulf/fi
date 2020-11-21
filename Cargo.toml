@@ -7,7 +7,7 @@ members = [
     "compiler/source",
     "compiler/syntax",
     "compiler/hir",
-    # "compiler/check",
+    "compiler/check",
     "compiler/mir",
     # "compiler/codegen",
 ]

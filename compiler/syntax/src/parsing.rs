@@ -10,6 +10,7 @@ parser::token![ident "where" TWhere];
 parser::token![ident "import" TImport];
 parser::token![ident "hiding" THiding];
 parser::token![ident "as" TAs];
+parser::token![ident "foreign" TForeign];
 parser::token![ident "fn" TFn];
 parser::token![ident "const" TConst];
 parser::token![ident "static" TStatic];
@@ -377,7 +378,21 @@ impl Parse for Decl {
             let _ = input.parse::<LytSep>();
         }
 
-        let (name, kind) = if let Ok(_) = input.parse::<TFn>() {
+        let (name, kind) = if let Ok(_) = input.parse::<TForeign>() {
+            let kind = if let Ok(_) = input.parse::<TFn>() {
+                ForeignKind::Func
+            } else if let Ok(_) = input.parse::<TStatic>() {
+                ForeignKind::Static
+            } else {
+                return input.error("expected 'fn' or 'static'", "E0006");
+            };
+
+            let name = input.parse()?;
+            let _ = input.parse::<TDblColon>()?;
+            let ty = input.parse()?;
+
+            (name, DeclKind::Foreign { ty, kind })
+        } else if let Ok(_) = input.parse::<TFn>() {
             let name = input.parse()?;
             let kind = if let Ok(_) = input.parse::<TDblColon>() {
                 let ty = input.parse()?;
@@ -535,7 +550,10 @@ impl Parse for Decl {
 
             (Ident::dummy(), DeclKind::ImplChain { impls })
         } else {
-            return input.error("expected 'fn', 'alias', 'data', 'trait' or 'impl'", "E0006");
+            return input.error(
+                "expected 'foreign', 'fn', 'alias', 'data', 'trait' or 'impl'",
+                "E0006",
+            );
         };
 
         Ok(Decl {
@@ -550,6 +568,7 @@ impl Parse for Decl {
 impl Decl {
     fn peek(input: ParseStream) -> bool {
         Attribute::peek(input)
+            || input.peek::<TForeign>()
             || input.peek::<TFn>()
             || input.peek::<TConst>()
             || input.peek::<TStatic>()

@@ -97,6 +97,14 @@ impl Debug for Item {
         write!(f, "Item::")?;
 
         match &self.kind {
+            ItemKind::Foreign { ty, kind } => {
+                writeln!(
+                    f,
+                    "Foreign id = {:?}, name = {:?}, kind = {:?}",
+                    self.id, &**self.name.symbol, kind
+                )?;
+                write!(indent(f), "{:?}", ty)
+            }
             ItemKind::Func { ty, body } => {
                 writeln!(
                     f,
@@ -506,6 +514,10 @@ impl Debug for Expr {
                 }
 
                 Ok(())
+            }
+            ExprKind::Do { block } => {
+                writeln!(f, "Do id = {:?}", self.id)?;
+                write!(indent(f), "{:?}", block)
             }
             _ => unimplemented!(),
         }

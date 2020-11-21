@@ -107,6 +107,22 @@ impl<'db> Converter<'db> {
 
     fn register_decl(&mut self, group: &[ast::Decl]) {
         let (defpath, defkind, ns) = match &group[0].kind {
+            ast::DeclKind::Foreign {
+                kind: ast::ForeignKind::Func,
+                ..
+            } => (
+                ir::DefPath::Value(group[0].name.symbol),
+                ir::DefKind::Func,
+                Ns::Values,
+            ),
+            ast::DeclKind::Foreign {
+                kind: ast::ForeignKind::Static,
+                ..
+            } => (
+                ir::DefPath::Value(group[0].name.symbol),
+                ir::DefKind::Static,
+                Ns::Values,
+            ),
             ast::DeclKind::FuncTy { .. } | ast::DeclKind::Func { .. } => (
                 ir::DefPath::Value(group[0].name.symbol),
                 ir::DefKind::Func,
@@ -260,6 +276,30 @@ impl<'db> Converter<'db> {
         item: &ir::Item,
     ) {
         match &item.kind {
+            ir::ItemKind::Foreign {
+                kind: ir::ForeignKind::Func,
+                ..
+            } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Func, item.id.owner),
+                    module: file,
+                    ns: Ns::Values,
+                    group: None,
+                });
+            }
+            ir::ItemKind::Foreign {
+                kind: ir::ForeignKind::Static,
+                ..
+            } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Static, item.id.owner),
+                    module: file,
+                    ns: Ns::Values,
+                    group: None,
+                });
+            }
             ir::ItemKind::Func { .. } => {
                 exports.push(ir::Export {
                     name: item.name.symbol,
@@ -461,7 +501,7 @@ impl<'db> Converter<'db> {
         let module = self.db.module_hir(module_data.file);
 
         if let Some(alias) = &import.qual {
-            self.import_qual(&module, &import.names, *alias, import.span);
+            self.import_qual(&module, &import.names, *alias);
         } else {
             self.import_normal(&module, &import.names, import.span);
         }
@@ -472,9 +512,8 @@ impl<'db> Converter<'db> {
         imp_mod: &ir::Module,
         imports: &Option<(bool, Vec<ast::Import>)>,
         alias: ir::Ident,
-        span: ir::Span,
     ) {
-        let exports = self.collect_exports(imp_mod, imports, span);
+        let exports = self.collect_exports(imp_mod, imports);
 
         if let Some(qmod) = self.modules.iter_mut().find(|m| m.name == alias.symbol) {
             qmod.exports.extend(exports);
@@ -492,7 +531,7 @@ impl<'db> Converter<'db> {
         imports: &Option<(bool, Vec<ast::Import>)>,
         span: ir::Span,
     ) {
-        let exports = self.collect_exports(imp_mod, imports, span);
+        let exports = self.collect_exports(imp_mod, imports);
 
         for export in exports {
             self.register_single_import(span, export);
@@ -520,7 +559,6 @@ impl<'db> Converter<'db> {
         &self,
         module: &ir::Module,
         imports: &Option<(bool, Vec<ast::Import>)>,
-        span: ir::Span,
     ) -> Vec<ir::Export> {
         let mut exports = module.exports.clone();
 
@@ -609,7 +647,8 @@ impl<'db> Converter<'db> {
     fn convert_decl(&mut self, kind: group::DeclGroupKind, decls: &[ast::Decl]) {
         let first = &decls[0];
         let defpath = match kind {
-            group::DeclGroupKind::Func(_)
+            group::DeclGroupKind::Foreign
+            | group::DeclGroupKind::Func(_)
             | group::DeclGroupKind::Const(_)
             | group::DeclGroupKind::Static(_) => ir::DefPath::Value(first.name.symbol),
             group::DeclGroupKind::Alias(_)
@@ -626,6 +665,15 @@ impl<'db> Converter<'db> {
         let id = self.next_id();
         let span = first.span.merge(decls.last().unwrap().span);
         let kind = match kind {
+            group::DeclGroupKind::Foreign => {
+                if let ast::DeclKind::Foreign { ref ty, kind } = first.kind {
+                    let ty = self.convert_type(ty);
+
+                    ir::ItemKind::Foreign { ty, kind }
+                } else {
+                    unreachable!();
+                }
+            }
             group::DeclGroupKind::Func(_) => {
                 let mut ty = None;
                 let mut params = None::<Vec<ir::Param>>;

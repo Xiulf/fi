@@ -16,6 +16,7 @@ pub struct DeclGroups<'ast> {
 
 #[derive(Clone, Copy)]
 pub enum DeclGroupKind {
+    Foreign,
     Func(bool),
     Const(bool),
     Static(bool),
@@ -55,6 +56,7 @@ impl<'ast> LetBindingGroups<'ast> {
 impl Decl {
     fn group_kind(&self) -> DeclGroupKind {
         match &self.kind {
+            DeclKind::Foreign { .. } => DeclGroupKind::Foreign,
             DeclKind::FuncTy { .. } => DeclGroupKind::Func(true),
             DeclKind::Func { .. } => DeclGroupKind::Func(false),
             DeclKind::ConstTy { .. } => DeclGroupKind::Const(true),
@@ -74,6 +76,7 @@ impl Decl {
 impl DeclGroupKind {
     fn max(&self) -> usize {
         match self {
+            DeclGroupKind::Foreign => 1,
             DeclGroupKind::Func(_) => usize::max_value(),
             DeclGroupKind::Const(_) => 2,
             DeclGroupKind::Static(_) => 2,
@@ -90,6 +93,7 @@ impl PartialEq for DeclGroupKind {
         use DeclGroupKind::*;
 
         match (self, other) {
+            (Foreign, Foreign) => true,
             (Func(true), Func(false)) => true,
             (Func(false), Func(false)) => true,
             (Const(true), Const(false)) => true,
