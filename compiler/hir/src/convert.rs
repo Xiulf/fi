@@ -1717,10 +1717,7 @@ impl<'db> Converter<'db> {
                     res
                     @
                     (ir::Res::Local(_)
-                    | ir::Res::Def(
-                        ir::DefKind::Alias | ir::DefKind::Data | ir::DefKind::Trait,
-                        _,
-                    )),
+                    | ir::Res::Def(ir::DefKind::Alias | ir::DefKind::Data, _)),
                 ) => ir::TypeKind::Ident { res },
                 Some(_) => {
                     self.db
@@ -1745,10 +1742,9 @@ impl<'db> Converter<'db> {
                 match self.modules.iter().find(|m| m.name == module.symbol) {
                     Some(qmod) => match qmod.exports.iter().find(|e| e.name == name.symbol) {
                         Some(e) => match e.res {
-                            ir::Res::Def(
-                                ir::DefKind::Alias | ir::DefKind::Data | ir::DefKind::Trait,
-                                _,
-                            ) => ir::TypeKind::Ident { res: e.res },
+                            ir::Res::Def(ir::DefKind::Alias | ir::DefKind::Data, _) => {
+                                ir::TypeKind::Ident { res: e.res }
+                            }
                             _ => {
                                 self.db
                                     .to_diag_db()

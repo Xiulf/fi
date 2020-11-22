@@ -1,18 +1,21 @@
+use check::TypeDatabase;
 use hir::HirDatabase;
 use source::SourceDatabase;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::Path;
 
 #[salsa::database(
     source::SourceDatabaseStorage,
     syntax::SyntaxDatabaseStorage,
-    hir::HirDatabaseStorage
+    hir::HirDatabaseStorage,
+    check::TypeDatabaseStorage
 )]
 #[derive(Default)]
 pub struct CompilerDatabase {
     storage: salsa::Storage<Self>,
     diags: RefCell<Vec<diagnostics::Diagnostic>>,
     lib_ids: u32,
+    infer_ids: Cell<u64>,
 }
 
 impl salsa::Database for CompilerDatabase {}
@@ -23,6 +26,16 @@ impl CompilerDatabase {
 
         self.lib_ids += 1;
         source::LibId(id)
+    }
+}
+
+impl check::InferDb for CompilerDatabase {
+    fn new_infer_var(&self) -> check::ty::InferVar {
+        let id = self.infer_ids.get();
+
+        self.infer_ids.set(id + 1);
+
+        check::ty::InferVar(id)
     }
 }
 
@@ -81,11 +94,18 @@ pub fn run() {
     db.set_manifest(lib, std::sync::Arc::new(manifest));
     db.set_files(std::sync::Arc::new(files));
     db.set_lib_files(lib, std::sync::Arc::new(lib_files));
+    db.set_libs(vec![lib]);
 
     for mdata in db.module_tree(lib).toposort(&db) {
         let module = db.module_hir(mdata.file);
 
-        println!("{:#?}", module);
+        for export in &module.exports {
+            if let hir::ir::Res::Def(_, id) = export.res {
+                let ty = db.type_of(module.id, id);
+
+                println!("{:#?}", ty);
+            }
+        }
     }
 }
 

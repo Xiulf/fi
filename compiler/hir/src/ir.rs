@@ -531,3 +531,34 @@ impl<CTX> stable_hasher::HashStable<CTX> for DefPath {
         }
     }
 }
+
+pub enum Def<'a> {
+    Item(&'a Item),
+    TraitItem(&'a TraitItem),
+    ImplItem(&'a ImplItem),
+}
+
+impl Module {
+    pub fn def(&self, id: DefId) -> Def {
+        let hir_id = HirId {
+            owner: id,
+            local_id: LocalId(0),
+        };
+
+        if let Some(item) = self.items.get(&hir_id) {
+            Def::Item(item)
+        } else if let Some(trait_item) = self.trait_items.get(&TraitItemId(hir_id)) {
+            Def::TraitItem(trait_item)
+        } else {
+            Def::ImplItem(&self.impl_items[&ImplItemId(hir_id)])
+        }
+    }
+}
+
+impl std::ops::Index<BodyId> for Module {
+    type Output = Body;
+
+    fn index(&self, id: BodyId) -> &Self::Output {
+        &self.bodies[&id]
+    }
+}

@@ -11,6 +11,9 @@ pub struct LibId(pub u32);
 #[salsa::query_group(SourceDatabaseStorage)]
 pub trait SourceDatabase: salsa::Database {
     #[salsa::input]
+    fn libs(&self) -> Vec<LibId>;
+
+    #[salsa::input]
     fn files(&self) -> Arc<Files>;
 
     #[salsa::input]

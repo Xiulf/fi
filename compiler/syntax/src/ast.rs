@@ -481,3 +481,15 @@ pub enum Constraint {
     CS { iface: Ident, tys: Vec<Type> },
     Parens { inner: Box<Constraint> },
 }
+
+impl Attribute {
+    pub fn str_arg(&self) -> Option<&str> {
+        let body = self.body.as_ref()?;
+
+        if let [AttrArg::Literal(Literal::String(s))] = &body.args[..] {
+            Some(&s.text)
+        } else {
+            None
+        }
+    }
+}

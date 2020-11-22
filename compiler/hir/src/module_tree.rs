@@ -11,6 +11,7 @@ pub struct ModuleTree {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleData {
     pub file: source::FileId,
+    pub id: crate::ir::ModuleId,
     pub name: Ident,
     pub children: Vec<ModuleIndex>,
 }
@@ -33,6 +34,7 @@ impl ModuleTree {
         for (file, ast) in &asts {
             tree.data.push(ModuleData {
                 file: *file,
+                id: crate::ir::ModuleId::from_name(ast.name.symbol),
                 name: ast.name,
                 children: Vec::new(),
             });
@@ -72,6 +74,16 @@ impl ModuleTree {
         }
 
         None
+    }
+
+    pub fn file(&self, id: crate::ir::ModuleId) -> source::FileId {
+        for data in &self.data {
+            if data.id == id {
+                return data.file;
+            }
+        }
+
+        unreachable!();
     }
 
     pub fn toposort(&self, diags: &dyn diagnostics::Diagnostics) -> Vec<ModuleData> {

@@ -7,11 +7,10 @@ use std::sync::Arc;
 
 #[salsa::query_group(SyntaxDatabaseStorage)]
 pub trait SyntaxDatabase: source::SourceDatabase + diagnostics::Diagnostics {
-    #[salsa::invoke(parse_query)]
     fn parse(&self, id: source::FileId) -> Arc<ast::Module>;
 }
 
-fn parse_query(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> {
+fn parse(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> {
     let source = db.file_content(id);
     let mut lexer = parser::lexer::Lexer::new(&source, id);
     let tokens = match lexer.run() {

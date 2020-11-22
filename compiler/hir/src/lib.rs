@@ -2,6 +2,7 @@
 
 pub mod convert;
 pub mod ir;
+pub mod lang;
 pub mod module_tree;
 pub mod resolve;
 
@@ -15,4 +16,7 @@ pub trait HirDatabase: syntax::SyntaxDatabase {
 
     #[salsa::invoke(convert::convert)]
     fn module_hir(&self, file: source::FileId) -> Arc<ir::Module>;
+
+    #[salsa::invoke(lang::LangItems::collect)]
+    fn lang_items(&self) -> Arc<lang::LangItems>;
 }
