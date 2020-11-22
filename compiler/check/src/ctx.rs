@@ -4,40 +4,42 @@ use std::collections::HashMap;
 
 pub struct Ctx<'db> {
     db: &'db dyn TypeDatabase,
-    module: ir::ModuleId,
     var_kinds: HashMap<TypeVar, Ty>,
 }
 
 impl<'db> Ctx<'db> {
-    pub fn new(db: &'db dyn TypeDatabase, module: ir::ModuleId) -> Self {
+    pub fn new(db: &'db dyn TypeDatabase) -> Self {
         Ctx {
             db,
-            module,
             var_kinds: HashMap::new(),
         }
     }
 
+    pub fn insert_var_kind(&mut self, var: TypeVar, kind: Ty) {
+        self.var_kinds.insert(var, kind);
+    }
+
     pub fn hir_ty(&mut self, ty: &ir::Type) -> Ty {
         match &ty.kind {
-            ir::TypeKind::Error => Ty::Error,
-            ir::TypeKind::Infer => Ty::Infer(self.db.new_infer_var()),
-            ir::TypeKind::Hole { name: _ } => Ty::Infer(self.db.new_infer_var()),
+            ir::TypeKind::Error => Ty::error(),
+            ir::TypeKind::Infer => Ty::infer(self.db.new_infer_var()),
+            ir::TypeKind::Hole { name: _ } => Ty::infer(self.db.new_infer_var()),
             ir::TypeKind::Int { .. } => panic!("cannot use int as type directly"),
             ir::TypeKind::Ident { res } => match res {
-                ir::Res::Error => Ty::Error,
-                ir::Res::Def(_, id) => self.db.type_of(self.module, *id),
-                ir::Res::Local(id) => Ty::Var(TypeVar(*id)),
+                ir::Res::Error => Ty::error(),
+                ir::Res::Def(_, id) => self.db.type_of(*id),
+                ir::Res::Local(id) => Ty::var(TypeVar(*id)),
             },
             ir::TypeKind::Func { params, ret } => {
                 let params = params.iter().map(|t| self.hir_ty(t)).collect();
                 let ret = self.hir_ty(ret);
 
-                Ty::Func(params, Box::new(ret))
+                Ty::func(params, ret)
             }
             ir::TypeKind::Tuple { tys } => {
                 let tys = tys.iter().map(|t| self.hir_ty(t)).collect();
 
-                Ty::Tuple(tys)
+                Ty::tuple(tys)
             }
             ir::TypeKind::Record { row } => {
                 let fields = row
@@ -49,15 +51,16 @@ impl<'db> Ctx<'db> {
                     })
                     .collect();
 
-                let tail = row.tail.as_deref().map(|t| Box::new(self.hir_ty(t)));
+                let tail = row.tail.as_deref().map(|t| self.hir_ty(t));
 
-                Ty::Record(fields, tail)
+                Ty::record(fields, tail)
             }
             ir::TypeKind::App { base, args } => {
                 let base = self.hir_ty(base);
                 let args = args.iter().map(|a| self.hir_ty(a)).collect();
+                let ty = base.instantiate(&args);
 
-                base.instantiate(args)
+                Ty::app(ty, args)
             }
             ir::TypeKind::Forall { vars, ty } => {
                 let vars = vars
@@ -66,14 +69,14 @@ impl<'db> Ctx<'db> {
                         let kind = self.hir_ty(&v.kind);
                         let var = TypeVar(v.id);
 
-                        self.var_kinds.insert(var, kind);
+                        self.insert_var_kind(var, kind);
                         var
                     })
-                    .collect::<Vec<_>>();
+                    .collect();
 
                 let ty = self.hir_ty(ty);
 
-                Ty::ForAll(vars, Box::new(ty))
+                Ty::for_all(vars, ty)
             }
             ir::TypeKind::Cons { cs, ty } => {
                 unimplemented!();
@@ -88,26 +91,27 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn infer_kind(&mut self, ty: &Ty) -> Ty {
+    pub fn infer_kind(&mut self, ty: &Ty) -> Ty {
         let kind_type = self.db.lang_items().kind_type();
-        let kind_type = Ty::Data(kind_type.owner, Vec::new());
+        let kind_type = Ty::data(kind_type.owner, List::new());
 
-        match ty {
-            Ty::Error => Ty::Error,
-            Ty::Infer(_) => Ty::Infer(self.db.new_infer_var()),
-            Ty::Var(var) => self.var_kinds[var].clone(),
-            Ty::Func(..) => kind_type,
-            Ty::Data(..) => kind_type,
-            Ty::Tuple(_) => kind_type,
-            Ty::Record(..) => kind_type,
-            Ty::ForAll(vars, ty) => {
+        match &**ty {
+            Type::Error => Ty::error(),
+            Type::Infer(_) => Ty::infer(self.db.new_infer_var()),
+            Type::Var(var) => self.var_kinds[var].clone(),
+            Type::Func(..) => kind_type,
+            Type::Data(..) => kind_type,
+            Type::Tuple(_) => kind_type,
+            Type::Record(..) => kind_type,
+            Type::ForAll(vars, ty) => {
                 let ret = self.infer_kind(ty);
 
-                Ty::Func(
+                Ty::func(
                     vars.iter().map(|var| self.var_kinds[var].clone()).collect(),
-                    Box::new(ret),
+                    ret,
                 )
             }
+            Type::App(ty, _) => self.infer_kind(ty),
         }
     }
 }

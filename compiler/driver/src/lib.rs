@@ -99,11 +99,13 @@ pub fn run() {
     for mdata in db.module_tree(lib).toposort(&db) {
         let module = db.module_hir(mdata.file);
 
+        // println!("{:?}", module);
+
         for export in &module.exports {
             if let hir::ir::Res::Def(_, id) = export.res {
-                let ty = db.type_of(module.id, id);
+                let ty = db.type_of(id);
 
-                println!("{:#?}", ty);
+                println!("{}: {}", export.name, ty.display(&db));
             }
         }
     }

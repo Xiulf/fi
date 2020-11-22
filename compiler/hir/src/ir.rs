@@ -22,6 +22,7 @@ pub enum DefPath {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DefId {
     pub lib: LibId,
+    pub module: ModuleId,
     pub index: DefIndex,
 }
 
@@ -492,13 +493,14 @@ impl stable_hasher::StableHasherResult for ModuleId {
 }
 
 impl DefId {
-    pub fn new(lib: LibId, index: DefIndex) -> Self {
-        DefId { lib, index }
+    pub fn new(lib: LibId, module: ModuleId, index: DefIndex) -> Self {
+        DefId { lib, module, index }
     }
 
     pub fn dummy() -> Self {
         DefId {
             lib: LibId(0),
+            module: ModuleId(0, 0),
             index: DefIndex(0, 0),
         }
     }

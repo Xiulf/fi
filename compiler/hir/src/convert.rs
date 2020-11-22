@@ -27,6 +27,7 @@ pub struct Converter<'db> {
     lib: source::LibId,
     file: source::FileId,
     module_name: ir::Ident,
+    module_id: ir::ModuleId,
     id_counter: u32,
     current_item: ir::DefId,
     modules: Vec<QualModule>,
@@ -54,6 +55,7 @@ impl<'db> Converter<'db> {
             lib,
             file,
             module_name,
+            module_id: ir::ModuleId::from_name(module_name.symbol),
             resolver: Resolver::new(db.to_diag_db(), file),
             id_counter: 0,
             current_item: ir::DefId::dummy(),
@@ -68,7 +70,7 @@ impl<'db> Converter<'db> {
 
     pub fn finish(self, ast: &ast::Module) -> Arc<ir::Module> {
         Arc::new(ir::Module {
-            id: ir::ModuleId::from_name(ast.name.symbol),
+            id: self.module_id,
             span: ast.span,
             attrs: ast.attrs.clone(),
             name: ast.name,
@@ -157,7 +159,7 @@ impl<'db> Converter<'db> {
         };
 
         let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[defpath]);
-        let defid = ir::DefId::new(self.lib, defindex);
+        let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
         self.resolver
             .define(ns, group[0].name, ir::Res::Def(defkind, defid));
@@ -173,7 +175,7 @@ impl<'db> Converter<'db> {
                             &[defpath, ir::DefPath::Value(ctor.name.symbol)],
                         );
 
-                        let defid = ir::DefId::new(self.lib, defindex);
+                        let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
                         self.resolver.define(
                             Ns::Values,
@@ -191,7 +193,7 @@ impl<'db> Converter<'db> {
                             &[defpath, ir::DefPath::Value(decl.name.symbol)],
                         );
 
-                        let defid = ir::DefId::new(self.lib, defindex);
+                        let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
                         self.resolver.define(
                             Ns::Values,
@@ -659,7 +661,7 @@ impl<'db> Converter<'db> {
 
         let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[defpath]);
 
-        self.current_item = ir::DefId::new(self.lib, defindex);
+        self.current_item = ir::DefId::new(self.lib, self.module_id, defindex);
         self.id_counter = 0;
 
         let id = self.next_id();
@@ -994,7 +996,7 @@ impl<'db> Converter<'db> {
                     &[ir::DefPath::Type(imp.head.name.symbol)],
                 );
 
-                let defid = ir::DefId::new(self.lib, defindex);
+                let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
                 chain.push(ir::HirId {
                     owner: defid,
@@ -1091,7 +1093,7 @@ impl<'db> Converter<'db> {
             &[parent, ir::DefPath::Value(ctor.name.symbol)],
         );
 
-        self.current_item = ir::DefId::new(self.lib, defindex);
+        self.current_item = ir::DefId::new(self.lib, self.module_id, defindex);
         self.id_counter = 0;
 
         let id = self.next_id();
@@ -1118,7 +1120,7 @@ impl<'db> Converter<'db> {
             ],
         );
 
-        self.current_item = ir::DefId::new(self.lib, defindex);
+        self.current_item = ir::DefId::new(self.lib, self.module_id, defindex);
         self.id_counter = 0;
 
         let id = self.next_id();
@@ -1167,7 +1169,7 @@ impl<'db> Converter<'db> {
             ],
         );
 
-        self.current_item = ir::DefId::new(self.lib, defindex);
+        self.current_item = ir::DefId::new(self.lib, self.module_id, defindex);
         self.id_counter = 0;
 
         let id = self.next_id();

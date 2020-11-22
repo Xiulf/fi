@@ -17,9 +17,9 @@ macro_rules! lang_items {
                 let lang_attr = syntax::symbol::Symbol::new("lang");
                 let libs = db.libs();
                 let find = |name| {
-                    libs.into_iter()
+                    libs.iter()
                         .filter_map(|lib| db
-                            .lib_files(lib).iter()
+                            .lib_files(*lib).iter()
                             .map(|file| db.module_hir(*file))
                             .filter_map(|hir| hir.items
                                 .values()
@@ -31,7 +31,8 @@ macro_rules! lang_items {
                                     } else {
                                         None
                                     }
-                                }).next()
+                                })
+                                .next()
                             )
                             .next()
                         )
