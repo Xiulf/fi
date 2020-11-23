@@ -1,5 +1,5 @@
 use hir::ir::{DefId, HirId, Symbol};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -12,6 +12,7 @@ pub struct List<T>(Arc<[T]>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Error,
+    TypeOf(DefId),
     Infer(InferVar),
     Var(TypeVar),
     ForAll(List<TypeVar>, Ty),
@@ -31,7 +32,7 @@ pub struct TypeVar(pub HirId);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variant {
     pub id: DefId,
-    pub tys: Vec<Ty>,
+    pub tys: List<Ty>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,9 +94,98 @@ impl Ty {
         }
     }
 
+    pub fn generalize(&self, id: DefId) -> Ty {
+        let mut vars = HashSet::new();
+
+        self.collect_vars(&mut vars);
+
+        if vars.is_empty() {
+            self.clone()
+        } else {
+            let vars = vars
+                .into_iter()
+                .map(|var| {
+                    let var2 = TypeVar(HirId {
+                        owner: id,
+                        local_id: hir::ir::LocalId(u32::max_value() - var.0 as u32),
+                    });
+
+                    (var, var2)
+                })
+                .collect::<List<_>>();
+
+            let subst = (&vars)
+                .into_iter()
+                .map(|(i, v)| (i, Ty::var(v)))
+                .collect::<crate::subst::Subst>();
+
+            let ty = subst.apply_ty(self);
+
+            Ty::for_all((&vars).into_iter().map(|v| v.1).collect(), ty)
+        }
+    }
+
+    pub fn collect_vars(&self, vars: &mut HashSet<InferVar>) {
+        match &**self {
+            Type::Infer(var) => {
+                vars.insert(*var);
+            }
+            Type::ForAll(_, ty) => ty.collect_vars(vars),
+            Type::Func(params, ret) => {
+                for param in params {
+                    param.collect_vars(vars);
+                }
+
+                ret.collect_vars(vars);
+            }
+            Type::Data(_, variants) => {
+                for variant in variants {
+                    for ty in &variant.tys {
+                        ty.collect_vars(vars);
+                    }
+                }
+            }
+            Type::Tuple(tys) => {
+                for ty in tys {
+                    ty.collect_vars(vars);
+                }
+            }
+            Type::Record(fields, tail) => {
+                for field in fields {
+                    field.ty.collect_vars(vars);
+                }
+
+                if let Some(tail) = tail {
+                    tail.collect_vars(vars);
+                }
+            }
+            Type::App(ty, args) => {
+                ty.collect_vars(vars);
+
+                for arg in args {
+                    arg.collect_vars(vars);
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub fn instantiate(&self, args: &List<Self>) -> Self {
         if let Type::ForAll(vars, ret) = &**self {
             ret.replace(&vars.into_iter().zip(args).collect())
+        } else {
+            self.clone()
+        }
+    }
+
+    pub fn monomorphize(&self, db: &dyn crate::TypeDatabase) -> Self {
+        if let Type::ForAll(vars, ret) = &**self {
+            ret.replace(
+                &vars
+                    .into_iter()
+                    .map(|v| (v, Ty::infer(db.new_infer_var())))
+                    .collect(),
+            )
         } else {
             self.clone()
         }
@@ -194,6 +284,7 @@ impl fmt::Display for TyDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &**self.0 {
             Type::Error => write!(f, "[error]"),
+            Type::TypeOf(def) => write!(f, "{}", self.1.typecheck(*def).ty.display(self.1)),
             Type::Infer(var) => write!(f, "{}", var),
             Type::Var(var) => write!(f, "{}", var),
             Type::ForAll(vars, ty) => {
@@ -295,17 +386,18 @@ impl fmt::Display for InferVar {
 
 impl fmt::Display for TypeVar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut num = self.0.local_id.0;
-        let mut s = String::new();
+        let mut num = if self.0.local_id.0 > i32::max_value as u32 {
+            u32::max_value() - self.0.local_id.0
+        } else {
+            self.0.local_id.0
+        };
 
         while num >= 26 {
-            s.push((b'a' + (num % 26) as u8) as char);
+            write!(f, "{}", (b'a' + (num % 26) as u8) as char)?;
             num = num.saturating_sub(26);
         }
 
-        s.push((b'a' + num as u8) as char);
-
-        write!(f, "{}", s)
+        write!(f, "{}", (b'a' + num as u8) as char)
     }
 }
 

@@ -103,9 +103,9 @@ pub fn run() {
 
         for export in &module.exports {
             if let hir::ir::Res::Def(_, id) = export.res {
-                let ty = db.type_of(id);
+                let checked = db.typecheck(id);
 
-                println!("{}: {}", export.name, ty.display(&db));
+                println!("{}: {}", export.name, checked.ty.display(&db));
             }
         }
     }

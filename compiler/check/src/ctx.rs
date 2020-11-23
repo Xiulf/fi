@@ -1,22 +1,67 @@
+mod expr;
+mod pat;
+
+use crate::constraint::Constraint;
 use crate::{ty::*, TypeDatabase};
 use hir::ir;
 use std::collections::HashMap;
 
 pub struct Ctx<'db> {
-    db: &'db dyn TypeDatabase,
-    var_kinds: HashMap<TypeVar, Ty>,
+    pub(crate) db: &'db dyn TypeDatabase,
+    pub(crate) file: source::FileId,
+    pub(crate) var_kinds: HashMap<TypeVar, Ty>,
+    pub(crate) tys: HashMap<ir::HirId, Ty>,
+    pub(crate) cs: Vec<Constraint>,
 }
 
 impl<'db> Ctx<'db> {
-    pub fn new(db: &'db dyn TypeDatabase) -> Self {
+    pub fn new(db: &'db dyn TypeDatabase, file: source::FileId) -> Self {
         Ctx {
             db,
+            file,
             var_kinds: HashMap::new(),
+            tys: HashMap::new(),
+            cs: Vec::new(),
         }
+    }
+
+    pub fn finish(self) -> HashMap<ir::HirId, Ty> {
+        self.tys
     }
 
     pub fn insert_var_kind(&mut self, var: TypeVar, kind: Ty) {
         self.var_kinds.insert(var, kind);
+    }
+
+    pub fn constrain(&mut self, c: Constraint) {
+        self.cs.push(c);
+    }
+
+    pub fn infer_body(&mut self, body: &ir::Body, expected: Ty, expected_span: ir::Span) {
+        let param_tys = body
+            .params
+            .iter()
+            .map(|p| {
+                let ty = Ty::infer(self.db.new_infer_var());
+
+                self.tys.insert(p.id, ty.clone());
+                ty
+            })
+            .collect();
+
+        let ret = self.infer_expr(&body.value);
+
+        // self.unify();
+
+        let ty = Ty::func(param_tys, ret);
+        // let ty = ty.generalize(body.id.0.owner);
+
+        self.constrain(Constraint::Equal(
+            ty,
+            body.value.span,
+            expected,
+            expected_span,
+        ));
     }
 
     pub fn hir_ty(&mut self, ty: &ir::Type) -> Ty {
@@ -27,7 +72,7 @@ impl<'db> Ctx<'db> {
             ir::TypeKind::Int { .. } => panic!("cannot use int as type directly"),
             ir::TypeKind::Ident { res } => match res {
                 ir::Res::Error => Ty::error(),
-                ir::Res::Def(_, id) => self.db.type_of(*id),
+                ir::Res::Def(_, id) => self.db.typecheck(*id).ty.clone(),
                 ir::Res::Local(id) => Ty::var(TypeVar(*id)),
             },
             ir::TypeKind::Func { params, ret } => {
@@ -82,11 +127,13 @@ impl<'db> Ctx<'db> {
                 unimplemented!();
             }
             ir::TypeKind::Kinded { ty, kind } => {
-                let ty = self.hir_ty(ty);
-                let kind = self.hir_ty(kind);
-                let ty_kind = self.infer_kind(&ty);
+                let ty_ = self.hir_ty(ty);
+                let kind_ = self.hir_ty(kind);
+                let ty_kind = self.infer_kind(&ty_);
 
-                ty
+                self.constrain(Constraint::Equal(ty_kind, ty.span, kind_, kind.span));
+
+                ty_
             }
         }
     }
@@ -97,6 +144,7 @@ impl<'db> Ctx<'db> {
 
         match &**ty {
             Type::Error => Ty::error(),
+            Type::TypeOf(def) => self.infer_kind(&self.db.typecheck(*def).ty),
             Type::Infer(_) => Ty::infer(self.db.new_infer_var()),
             Type::Var(var) => self.var_kinds[var].clone(),
             Type::Func(..) => kind_type,
