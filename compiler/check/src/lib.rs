@@ -11,6 +11,8 @@ use std::sync::Arc;
 #[salsa::query_group(TypeDatabaseStorage)]
 pub trait TypeDatabase: hir::HirDatabase + InferDb {
     fn typecheck(&self, id: ir::DefId) -> Arc<TypeCheckResult>;
+
+    fn variants(&self, id: ir::DefId) -> ty::List<ty::Variant>;
 }
 
 pub trait InferDb {
@@ -75,20 +77,8 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypeCheckResult> {
                     )
                 }
             }
-            ir::ItemKind::Data { head, body } => {
-                let ty = ty::Ty::data(
-                    item.id.owner,
-                    body.iter()
-                        .map(|ctor| {
-                            let tys = ctor.tys.iter().map(|t| ctx.hir_ty(t)).collect();
-
-                            ty::Variant {
-                                id: ctor.id.owner,
-                                tys,
-                            }
-                        })
-                        .collect(),
-                );
+            ir::ItemKind::Data { head, body: _ } => {
+                let ty = ty::Ty::data(item.id.owner);
 
                 if head.vars.is_empty() {
                     ty
@@ -131,3 +121,40 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypeCheckResult> {
         tys: ctx.finish(),
     })
 }
+
+fn variants(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Variant> {
+    let file = db.module_tree(id.lib).file(id.module);
+    let hir = db.module_hir(file);
+    let def = hir.def(id);
+    let mut ctx = ctx::Ctx::new(db, file);
+
+    if let ir::Def::Item(ir::Item {
+        kind: ir::ItemKind::Data { body, .. },
+        ..
+    }) = def
+    {
+        body.iter()
+            .map(|ctor| {
+                let tys = ctor.tys.iter().map(|t| ctx.hir_ty(t)).collect();
+
+                ty::Variant {
+                    id: ctor.id.owner,
+                    tys,
+                }
+            })
+            .collect()
+    } else {
+        unreachable!()
+    }
+}
+
+// fn recover_cycle(
+//     _db: &dyn TypeDatabase,
+//     _cycle: &[String],
+//     id: &ir::DefId,
+// ) -> Arc<TypeCheckResult> {
+//     Arc::new(TypeCheckResult {
+//         ty: ty::Ty::type_of(*id),
+//         tys: Default::default(),
+//     })
+// }

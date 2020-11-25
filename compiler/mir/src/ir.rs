@@ -12,16 +12,29 @@ pub struct Module {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Body {
     pub def: DefId,
+    pub kind: BodyKind,
     pub locals: IndexVec<Local, LocalData>,
     pub blocks: IndexVec<Block, BlockData>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodyKind {
+    Func,
+    Static,
+    Const,
 }
 
 index_vec::define_index_type! {
     pub struct Local = u32;
 }
 
+impl Local {
+    pub const RET: Self = unsafe { std::mem::transmute(0u32) };
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct LocalData {
+    pub id: Local,
     pub ty: Ty,
     pub kind: LocalKind,
 }
@@ -40,6 +53,7 @@ index_vec::define_index_type! {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BlockData {
+    pub id: Block,
     pub stmts: Vec<Stmt>,
     pub term: Term,
 }
@@ -71,26 +85,26 @@ pub enum RValue {
     Init(Ty, Vec<Operand>),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operand {
     Copy(Place),
     Move(Place),
     Const(Const, Ty),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Place {
     pub base: PlaceBase,
     pub elems: Vec<PlaceElem>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlaceBase {
     Local(Local),
     Static(DefId),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlaceElem {
     Deref,
     Field(usize),
@@ -98,7 +112,7 @@ pub enum PlaceElem {
     Downcast(usize),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Const {
     Undefined,
     Ref(Box<Const>),

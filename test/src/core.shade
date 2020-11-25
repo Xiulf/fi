@@ -1,3 +1,17 @@
-module Core (module C) where
+module Core (module Core, module C) where
 
 import Prim as C
+
+[lang("type_info")]
+data TypeInfo = TypeInfo {
+    size   :: C.Int,
+    align  :: C.Int,
+    stride :: C.Int,
+    vwt    :: C.Ptr ValueWitnessTable,
+}
+
+data ValueWitnessTable = ValueWitnessTable {
+    copy :: (C.Ptr (), C.Ptr (), C.Ptr TypeInfo) -> (),
+    move :: (C.Ptr (), C.Ptr (), C.Ptr TypeInfo) -> (),
+    drop :: (C.Ptr (), C.Ptr TypeInfo) -> (),
+}

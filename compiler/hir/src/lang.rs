@@ -67,6 +67,8 @@ macro_rules! lang_items {
 }
 
 lang_items! {
-    kind_type, "type"   , KindType;
-    kind_int , "typeint", KindInt ;
+    kind_type, "type"     , KindType;
+    kind_int , "typeint"  , KindInt ;
+    type_info, "type_info", TypeInfo;
+    ptr_ty   , "ptr_ty"   , PtrType ;
 }

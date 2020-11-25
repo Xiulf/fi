@@ -7,15 +7,20 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new(def: DefId) -> Self {
+    pub fn new(def: DefId, kind: BodyKind) -> Self {
         Builder {
             body: Body {
                 def,
+                kind,
                 locals: IndexVec::new(),
                 blocks: IndexVec::new(),
             },
             current_block: Block::new(0),
         }
+    }
+
+    pub fn finish(self) -> Body {
+        self.body
     }
 
     fn block(&mut self) -> &mut BlockData {
@@ -30,8 +35,13 @@ impl Builder {
         self.current_block
     }
 
+    pub fn term_unset(&self) -> bool {
+        matches!(self.body.blocks[self.current_block].term, Term::Unset)
+    }
+
     pub fn create_block(&mut self) -> Block {
         self.body.blocks.push(BlockData {
+            id: self.body.blocks.next_idx(),
             stmts: Vec::new(),
             term: Term::Unset,
         })
@@ -39,6 +49,7 @@ impl Builder {
 
     pub fn create_ret(&mut self, ty: Ty) -> Local {
         self.body.locals.push(LocalData {
+            id: self.body.locals.next_idx(),
             ty,
             kind: LocalKind::Ret,
         })
@@ -46,6 +57,7 @@ impl Builder {
 
     pub fn create_arg(&mut self, ty: Ty) -> Local {
         self.body.locals.push(LocalData {
+            id: self.body.locals.next_idx(),
             ty,
             kind: LocalKind::Arg,
         })
@@ -53,6 +65,7 @@ impl Builder {
 
     pub fn create_tmp(&mut self, ty: Ty) -> Local {
         self.body.locals.push(LocalData {
+            id: self.body.locals.next_idx(),
             ty,
             kind: LocalKind::Tmp,
         })
@@ -60,6 +73,7 @@ impl Builder {
 
     pub fn create_var(&mut self, ty: Ty) -> Local {
         self.body.locals.push(LocalData {
+            id: self.body.locals.next_idx(),
             ty,
             kind: LocalKind::Var,
         })
@@ -123,5 +137,41 @@ impl Builder {
 
     pub fn switch(&mut self, op: Operand, vals: Vec<u128>, tos: Vec<Block>) {
         self.block().term = Term::Switch(op, vals, tos);
+    }
+}
+
+impl Place {
+    pub fn local(id: Local) -> Self {
+        Place {
+            base: PlaceBase::Local(id),
+            elems: Vec::new(),
+        }
+    }
+
+    pub fn static_(id: DefId) -> Self {
+        Place {
+            base: PlaceBase::Static(id),
+            elems: Vec::new(),
+        }
+    }
+
+    pub fn deref(mut self) -> Self {
+        self.elems.push(PlaceElem::Deref);
+        self
+    }
+
+    pub fn field(mut self, i: usize) -> Self {
+        self.elems.push(PlaceElem::Field(i));
+        self
+    }
+
+    pub fn index(mut self, idx: Operand) -> Self {
+        self.elems.push(PlaceElem::Index(idx));
+        self
+    }
+
+    pub fn downcast(mut self, variant: usize) -> Self {
+        self.elems.push(PlaceElem::Downcast(variant));
+        self
     }
 }

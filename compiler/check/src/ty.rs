@@ -3,13 +3,13 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ty(Arc<Type>);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct List<T>(Arc<[T]>);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Error,
     TypeOf(DefId),
@@ -17,7 +17,7 @@ pub enum Type {
     Var(TypeVar),
     ForAll(List<TypeVar>, Ty),
     Func(List<Ty>, Ty),
-    Data(DefId, List<Variant>),
+    Data(DefId),
     Tuple(List<Ty>),
     Record(List<Field>, Option<Ty>),
     App(Ty, List<Ty>),
@@ -29,13 +29,13 @@ pub struct InferVar(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeVar(pub HirId);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Variant {
     pub id: DefId,
     pub tys: List<Ty>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Field {
     pub name: Symbol,
     pub ty: Ty,
@@ -47,6 +47,10 @@ pub struct FieldDisplay<'a>(&'a Field, &'a dyn crate::TypeDatabase);
 impl Ty {
     pub fn error() -> Self {
         Ty(Arc::new(Type::Error))
+    }
+
+    pub fn type_of(def: DefId) -> Self {
+        Ty(Arc::new(Type::TypeOf(def)))
     }
 
     pub fn infer(var: InferVar) -> Self {
@@ -65,8 +69,8 @@ impl Ty {
         Ty(Arc::new(Type::Func(params, ret)))
     }
 
-    pub fn data(id: DefId, variants: List<Variant>) -> Self {
-        Ty(Arc::new(Type::Data(id, variants)))
+    pub fn data(id: DefId) -> Self {
+        Ty(Arc::new(Type::Data(id)))
     }
 
     pub fn tuple(tys: List<Ty>) -> Self {
@@ -138,13 +142,7 @@ impl Ty {
 
                 ret.collect_vars(vars);
             }
-            Type::Data(_, variants) => {
-                for variant in variants {
-                    for ty in &variant.tys {
-                        ty.collect_vars(vars);
-                    }
-                }
-            }
+            Type::Data(_) => {}
             Type::Tuple(tys) => {
                 for ty in tys {
                     ty.collect_vars(vars);
@@ -180,12 +178,12 @@ impl Ty {
 
     pub fn monomorphize(&self, db: &dyn crate::TypeDatabase) -> Self {
         if let Type::ForAll(vars, ret) = &**self {
-            ret.replace(
-                &vars
-                    .into_iter()
-                    .map(|v| (v, Ty::infer(db.new_infer_var())))
-                    .collect(),
-            )
+            let args = (0..vars.len())
+                .map(|_| Ty::infer(db.new_infer_var()))
+                .collect::<List<_>>();
+            let ty = ret.replace(&vars.into_iter().zip(&args).collect());
+
+            Ty::app(ty, args)
         } else {
             self.clone()
         }
@@ -204,16 +202,6 @@ impl Ty {
             Type::Func(params, ret) => Ty::func(
                 params.into_iter().map(|t| t.replace(map)).collect(),
                 ret.replace(map),
-            ),
-            Type::Data(id, variants) => Ty::data(
-                *id,
-                variants
-                    .into_iter()
-                    .map(|v| Variant {
-                        id: v.id,
-                        tys: v.tys.into_iter().map(|t| t.replace(map)).collect(),
-                    })
-                    .collect(),
             ),
             Type::Tuple(tys) => Ty::tuple(tys.into_iter().map(|t| t.replace(map)).collect()),
             Type::Record(fields, tail) => Ty::record(
@@ -284,7 +272,7 @@ impl fmt::Display for TyDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &**self.0 {
             Type::Error => write!(f, "[error]"),
-            Type::TypeOf(def) => write!(f, "{}", self.1.typecheck(*def).ty.display(self.1)),
+            Type::TypeOf(def) => write!(f, "{:?}", def),
             Type::Infer(var) => write!(f, "{}", var),
             Type::Var(var) => write!(f, "{}", var),
             Type::ForAll(vars, ty) => {
@@ -318,7 +306,7 @@ impl fmt::Display for TyDisplay<'_> {
                     write!(f, ") -> {}", ret.display(self.1))
                 }
             }
-            Type::Data(id, _) => {
+            Type::Data(id) => {
                 let file = self.1.module_tree(id.lib).file(id.module);
                 let module = self.1.module_hir(file);
                 let def = module.def(*id);
@@ -360,10 +348,21 @@ impl fmt::Display for TyDisplay<'_> {
                 write!(f, " }}")
             }
             Type::App(ty, args) => {
-                ty.display(self.1).fmt(f)?;
-
                 let ty_prec = self.0.prec();
 
+                if ty.prec() >= ty_prec {
+                    write!(f, "({})", ty.display(self.1))?;
+                } else {
+                    ty.display(self.1).fmt(f)?;
+                }
+
+                // match &**ty {
+                //     Type::Error
+                //     | Type::TypeOf(_)
+                //     | Type::Infer(_)
+                //     | Type::Var(_)
+                //     | Type::Data(_)
+                //     | Type::App(_, _) => {
                 for arg in args {
                     if arg.prec() >= ty_prec {
                         write!(f, " ({})", arg.display(self.1))?;
@@ -371,6 +370,9 @@ impl fmt::Display for TyDisplay<'_> {
                         write!(f, " {}", arg.display(self.1))?;
                     }
                 }
+                //     }
+                //     _ => {}
+                // }
 
                 Ok(())
             }

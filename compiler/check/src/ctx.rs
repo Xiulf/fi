@@ -123,7 +123,7 @@ impl<'db> Ctx<'db> {
 
                 Ty::for_all(vars, ty)
             }
-            ir::TypeKind::Cons { cs, ty } => {
+            ir::TypeKind::Cons { cs: _, ty: _ } => {
                 unimplemented!();
             }
             ir::TypeKind::Kinded { ty, kind } => {
@@ -140,7 +140,7 @@ impl<'db> Ctx<'db> {
 
     pub fn infer_kind(&mut self, ty: &Ty) -> Ty {
         let kind_type = self.db.lang_items().kind_type();
-        let kind_type = Ty::data(kind_type.owner, List::new());
+        let kind_type = Ty::data(kind_type.owner);
 
         match &**ty {
             Type::Error => Ty::error(),

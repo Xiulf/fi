@@ -30,7 +30,7 @@ data Bool = False | True
 [repr("f64" )] data F64  :: Type
 
 [repr("ptr")]
-[lang("ptr")]
+[lang("ptr_ty")]
 data Ptr :: Type -> Type
 
 [lang("array")] data Array :: (Type, TypeInt) -> Type

@@ -222,6 +222,14 @@ impl<'db> Converter<'db> {
                                 self.modules.iter().find(|m| m.name == export.name.symbol)
                             {
                                 self.exports.extend(qmod.exports.clone());
+                            } else if export.name.symbol == self.module_name.symbol {
+                                for (_, item) in &self.items {
+                                    Self::register_single_export(
+                                        &mut self.exports,
+                                        self.file,
+                                        item,
+                                    );
+                                }
                             } else {
                                 self.db
                                     .to_diag_db()

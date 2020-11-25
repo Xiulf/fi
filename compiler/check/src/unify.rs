@@ -35,7 +35,7 @@ impl<'db> Ctx<'db> {
     }
 
     fn unify_one(&mut self, cs: Constraint) -> Subst {
-        println!("solving: {}", cs.display(self.db));
+        // println!("solving: {}", cs.display(self.db));
 
         match cs {
             Constraint::Equal(a, a_span, b, b_span) => match (&*a, &*b) {
@@ -45,6 +45,12 @@ impl<'db> Ctx<'db> {
                 (Type::Var(a_var), Type::Var(b_var)) if a_var == b_var => Subst::empty(),
                 (_, Type::ForAll(_b_vars, b_ty)) => {
                     self.unify_one(Constraint::Equal(a, a_span, b_ty.clone(), b_span))
+                }
+                (Type::App(a, _), _) => {
+                    self.unify_one(Constraint::Equal(a.clone(), a_span, b, b_span))
+                }
+                (_, Type::App(b, _)) => {
+                    self.unify_one(Constraint::Equal(a, a_span, b.clone(), b_span))
                 }
                 (Type::Func(a_params, a_ret), Type::Func(b_params, b_ret))
                     if a_params.len() == b_params.len() =>
@@ -90,7 +96,7 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn unify_var(&self, ivar: &InferVar, ty: Ty, span: hir::ir::Span) -> Subst {
+    fn unify_var(&self, ivar: &InferVar, ty: Ty, _span: hir::ir::Span) -> Subst {
         if let Type::Infer(ivar2) = &*ty {
             if ivar == ivar2 {
                 Subst::empty()

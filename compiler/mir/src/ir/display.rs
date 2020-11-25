@@ -37,8 +37,12 @@ macro_rules! display {
 }
 
 display!(Module: ModuleDisplay(s, db, f) {
-    for body in &s.bodies {
-        writeln!(f, "{}", body.display(db))?;
+    for (i, body) in s.bodies.iter().enumerate() {
+        if i != 0 {
+            writeln!(f)?;
+        }
+
+        write!(f, "{}", body.display(db))?;
     };
 
     Ok(())
@@ -49,6 +53,12 @@ display!(Body: BodyDisplay(s, db, f) {
     let module = db.module_hir(file);
     let def = module.def(s.def);
 
+    match s.kind {
+        BodyKind::Func => write!(f, "fn "),
+        BodyKind::Static => write!(f, "static "),
+        BodyKind::Const => write!(f, "const "),
+    }?;
+
     match def {
         hir::ir::Def::Item(item) => write!(f, "{}.{}", module.name, item.name),
         hir::ir::Def::TraitItem(item) => write!(f, "{}.{}", module.name, item.name),
@@ -58,7 +68,7 @@ display!(Body: BodyDisplay(s, db, f) {
     writeln!(f, " {{")?;
 
     for local in &s.locals {
-        writeln!(f, "{}", local.display(db))?;
+        writeln!(indent(f), "{}", local.display(db))?;
     };
 
     for block in &s.blocks {
@@ -92,14 +102,13 @@ impl Display for Block {
 }
 
 display!(BlockData: BlockDisplay(s, db, f) {
-    write!(f, "{}:", s.id)?;
+    writeln!(f, "{}:", s.id)?;
 
     for stmt in &s.stmts {
-        writeln!(f)?;
-        write!(indent(f), "{}", stmt.display(db))?;
+        writeln!(indent(f), "{}", stmt.display(db))?;
     };
 
-    Ok(())
+    write!(indent(f), "{}", s.term.display(db))
 });
 
 display!(Stmt: StmtDisplay(s, db, f) {
@@ -139,7 +148,7 @@ display!(Term: TermDisplay(s, db, f) {
 display!(RValue: RValueDisplay(s, db, f) {
     match s {
         RValue::Use(op) => op.display(db).fmt(f),
-        RValue::Ref(place) => write!(f, "addrof {}", place.display(db)),
+        RValue::AddrOf(place) => write!(f, "addrof {}", place.display(db)),
         RValue::Discr(place) => write!(f, "get_discr {}", place.display(db)),
         RValue::Init(ty, ops) => write!(f, "init {}({})", ty.display(db.to_ty_db()), list(ops, ", ", db)),
     }

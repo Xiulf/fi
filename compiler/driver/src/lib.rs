@@ -1,4 +1,3 @@
-use check::TypeDatabase;
 use hir::HirDatabase;
 use mir::MirDatabase;
 use source::SourceDatabase;
