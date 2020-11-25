@@ -1,28 +1,32 @@
+pub mod display;
+
+pub use check::ty::Ty;
 pub use hir::ir::DefId;
 use index_vec::IndexVec;
 
-pub type Ty<'tcx> = std::marker::PhantomData<&'tcx ()>;
-
-pub struct Module<'tcx> {
-    pub bodies: Vec<Body<'tcx>>,
+#[derive(Debug, PartialEq, Eq)]
+pub struct Module {
+    pub bodies: Vec<Body>,
 }
 
-pub struct Body<'tcx> {
+#[derive(Debug, PartialEq, Eq)]
+pub struct Body {
     pub def: DefId,
-    pub locals: IndexVec<Local, LocalData<'tcx>>,
-    pub blocks: IndexVec<Block, BlockData<'tcx>>,
+    pub locals: IndexVec<Local, LocalData>,
+    pub blocks: IndexVec<Block, BlockData>,
 }
 
 index_vec::define_index_type! {
     pub struct Local = u32;
 }
 
-pub struct LocalData<'tcx> {
-    pub id: Local,
-    pub ty: Ty<'tcx>,
+#[derive(Debug, PartialEq, Eq)]
+pub struct LocalData {
+    pub ty: Ty,
     pub kind: LocalKind,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalKind {
     Ret,
     Arg,
@@ -34,59 +38,67 @@ index_vec::define_index_type! {
     pub struct Block = u32;
 }
 
-pub struct BlockData<'tcx> {
-    pub id: Block,
-    pub stmts: Vec<Stmt<'tcx>>,
-    pub term: Term<'tcx>,
+#[derive(Debug, PartialEq, Eq)]
+pub struct BlockData {
+    pub stmts: Vec<Stmt>,
+    pub term: Term,
 }
 
-pub enum Stmt<'tcx> {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Stmt {
     Nop,
     VarLive(Local),
     VarDead(Local),
-    Assign(Place<'tcx>, RValue<'tcx>),
-    SetDiscr(Place<'tcx>, usize),
+    Assign(Place, RValue),
+    SetDiscr(Place, usize),
 }
 
-pub enum Term<'tcx> {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Term {
     Unset,
     Abort,
     Return,
     Jump(Block),
-    Call(Place<'tcx>, Operand<'tcx>, Vec<Operand<'tcx>>, Block),
-    Switch(Operand<'tcx>, Vec<u128>, Vec<Block>),
+    Call(Place, Operand, Vec<Operand>, Block),
+    Switch(Operand, Vec<u128>, Vec<Block>),
 }
 
-pub enum RValue<'tcx> {
-    Use(Operand<'tcx>),
-    Ref(Place<'tcx>),
-    Discr(Place<'tcx>),
-    Init(Ty<'tcx>, Vec<Operand<'tcx>>),
+#[derive(Debug, PartialEq, Eq)]
+pub enum RValue {
+    Use(Operand),
+    AddrOf(Place),
+    Discr(Place),
+    Init(Ty, Vec<Operand>),
 }
 
-pub enum Operand<'tcx> {
-    Copy(Place<'tcx>),
-    Move(Place<'tcx>),
-    Const(Const, Ty<'tcx>),
+#[derive(Debug, PartialEq, Eq)]
+pub enum Operand {
+    Copy(Place),
+    Move(Place),
+    Const(Const, Ty),
 }
 
-pub struct Place<'tcx> {
+#[derive(Debug, PartialEq, Eq)]
+pub struct Place {
     pub base: PlaceBase,
-    pub elems: Vec<PlaceElem<'tcx>>,
+    pub elems: Vec<PlaceElem>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum PlaceBase {
     Local(Local),
     Static(DefId),
 }
 
-pub enum PlaceElem<'tcx> {
+#[derive(Debug, PartialEq, Eq)]
+pub enum PlaceElem {
     Deref,
     Field(usize),
-    Index(Operand<'tcx>),
+    Index(Operand),
     Downcast(usize),
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum Const {
     Undefined,
     Ref(Box<Const>),

@@ -6,4 +6,6 @@ edition = "2018"
 
 [dependencies]
 hir = { path = "../hir" }
+check = { path = "../check" }
 index_vec = "0.1.2"
+salsa = "0.16.0"

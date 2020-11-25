@@ -1,5 +1,6 @@
 use check::TypeDatabase;
 use hir::HirDatabase;
+use mir::MirDatabase;
 use source::SourceDatabase;
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -8,7 +9,8 @@ use std::path::Path;
     source::SourceDatabaseStorage,
     syntax::SyntaxDatabaseStorage,
     hir::HirDatabaseStorage,
-    check::TypeDatabaseStorage
+    check::TypeDatabaseStorage,
+    mir::MirDatabaseStorage
 )]
 #[derive(Default)]
 pub struct CompilerDatabase {
@@ -30,6 +32,10 @@ impl CompilerDatabase {
 }
 
 impl check::InferDb for CompilerDatabase {
+    fn to_ty_db(&self) -> &dyn check::TypeDatabase {
+        self
+    }
+
     fn new_infer_var(&self) -> check::ty::InferVar {
         let id = self.infer_ids.get();
 
@@ -97,17 +103,10 @@ pub fn run() {
     db.set_libs(vec![lib]);
 
     for mdata in db.module_tree(lib).toposort(&db) {
-        let module = db.module_hir(mdata.file);
+        use mir::ir::display::MirDisplay;
+        let module = db.module_mir(lib, mdata.id);
 
-        // println!("{:?}", module);
-
-        for export in &module.exports {
-            if let hir::ir::Res::Def(_, id) = export.res {
-                let checked = db.typecheck(id);
-
-                println!("{}: {}", export.name, checked.ty.display(&db));
-            }
-        }
+        println!("{}:\n{}", mdata.name, module.display(&db));
     }
 }
 

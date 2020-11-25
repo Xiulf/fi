@@ -14,6 +14,7 @@ pub trait TypeDatabase: hir::HirDatabase + InferDb {
 }
 
 pub trait InferDb {
+    fn to_ty_db(&self) -> &dyn TypeDatabase;
     fn new_infer_var(&self) -> ty::InferVar;
 }
 
