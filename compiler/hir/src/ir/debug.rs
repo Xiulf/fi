@@ -500,6 +500,20 @@ impl Debug for Expr {
 
                 Ok(())
             }
+            ExprKind::Tuple { exprs } => {
+                write!(f, "Tuple id = {:?}", self.id)?;
+
+                for expr in exprs {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", expr)?;
+                }
+
+                Ok(())
+            }
+            ExprKind::Field { base, field } => {
+                writeln!(f, "Field id = {:?}, field = {:?}", self.id, &**field.symbol)?;
+                write!(indent(f), "{:?}", base)
+            }
             ExprKind::Case { pred, arms } => {
                 write!(f, "Case id = {:?}", self.id)?;
 

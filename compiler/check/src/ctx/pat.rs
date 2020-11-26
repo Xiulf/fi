@@ -11,6 +11,9 @@ impl<'db> Ctx<'db> {
                     Ty::infer(self.db.new_infer_var())
                 }
             }
+            ir::PatKind::Ctor { ctor, pats } => {
+                let ctor_ty = self.db.typecheck(*ctor).ty.clone();
+            }
             _ => unimplemented!(),
         };
 

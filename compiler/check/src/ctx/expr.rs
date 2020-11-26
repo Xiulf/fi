@@ -21,6 +21,27 @@ impl<'db> Ctx<'db> {
 
                 ret_ty
             }
+            ir::ExprKind::Tuple { exprs } => {
+                let tys = exprs.iter().map(|e| self.infer_expr(e)).collect();
+
+                Ty::tuple(tys)
+            }
+            ir::ExprKind::Field { base, field } => {
+                let base_ty = self.infer_expr(base);
+                let ret_ty = Ty::infer(self.db.new_infer_var());
+                let exp_ty = Ty::record(
+                    vec![Field {
+                        name: field.symbol,
+                        ty: ret_ty.clone(),
+                    }]
+                    .into(),
+                    None,
+                );
+
+                self.constrain(Constraint::Equal(exp_ty, expr.span, base_ty, base.span));
+
+                ret_ty
+            }
             ir::ExprKind::Case { pred, arms } => {
                 let ret_ty = Ty::infer(self.db.new_infer_var());
                 let pred_tys = pred.iter().map(|e| (self.infer_expr(e), e.span)).collect();
@@ -31,7 +52,20 @@ impl<'db> Ctx<'db> {
 
                 ret_ty
             }
-            _ => unimplemented!(),
+            ir::ExprKind::Do { block } => {
+                for stmt in &block.stmts {
+                    self.infer_stmt(stmt);
+                }
+
+                match block.stmts.last() {
+                    Some(ir::Stmt {
+                        kind: ir::StmtKind::Discard { expr },
+                        ..
+                    }) => self.tys[&expr.id].clone(),
+                    _ => Ty::tuple(List::new()),
+                }
+            }
+            _ => unimplemented!("{:?}", expr),
         };
 
         self.tys.insert(expr.id, ty.clone());
@@ -60,6 +94,33 @@ impl<'db> Ctx<'db> {
         match guarded {
             ir::Guarded::Unconditional(expr) => self.infer_expr(expr),
             ir::Guarded::Guarded(_) => unimplemented!(),
+        }
+    }
+
+    fn infer_stmt(&mut self, stmt: &ir::Stmt) {
+        match &stmt.kind {
+            ir::StmtKind::Bind { binding } => {
+                let ty = self.hir_ty(&binding.ty);
+                let pat_ty = self.infer_pat(&binding.pat);
+                let val_ty = self.infer_expr(&binding.val);
+
+                self.constrain(Constraint::Equal(
+                    pat_ty.clone(),
+                    binding.pat.span,
+                    ty,
+                    stmt.span,
+                ));
+
+                self.constrain(Constraint::Equal(
+                    val_ty,
+                    binding.val.span,
+                    pat_ty,
+                    binding.pat.span,
+                ));
+            }
+            ir::StmtKind::Discard { expr } => {
+                self.infer_expr(expr);
+            }
         }
     }
 }

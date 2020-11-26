@@ -79,6 +79,7 @@ impl<'db> Ctx<'db> {
 
                     self.unify_all(cs)
                 }
+                (Type::Data(a), Type::Data(b)) if a == b => Subst::empty(),
                 (_, _) => {
                     self.db
                         .to_diag_db()

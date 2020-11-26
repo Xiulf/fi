@@ -1,12 +1,19 @@
 module Prim where
 
-alias Byte = U8
-alias Word = I16
-alias Int = I32
-alias Long = I64
-alias Float = F32
-alias Double = F64
+alias Byte = Uint8
+alias Word = Int16
+alias Long = Int64
+alias Float = Float32
+alias Double = Float64
 alias Str = Slice Byte
+
+-- [if(pointer_size = 16)] alias Int = Int16
+-- [if(pointer_size = 32)] alias Int = Int32
+[if(pointer_size = 64)] alias Int = Int64
+
+-- [if(pointer_size = 16)] alias Uint = Uint16
+-- [if(pointer_size = 32)] alias Uint = Uint32
+[if(pointer_size = 64)] alias Uint = Uint64
 
 [lang("type")] data Type
 [lang("typeint")] data TypeInt
@@ -15,19 +22,19 @@ alias Str = Slice Byte
 [lang("bool")]
 data Bool = False | True
 
-[repr("u32" )] data Char :: Type
-[repr("u8"  )] data U8   :: Type
-[repr("u16" )] data U16  :: Type
-[repr("u32" )] data U32  :: Type
-[repr("u64" )] data U64  :: Type
-[repr("u128")] data U128 :: Type
-[repr("i8"  )] data I8   :: Type
-[repr("i16" )] data I16  :: Type
-[repr("i32" )] data I32  :: Type
-[repr("i64" )] data I64  :: Type
-[repr("i128")] data I128 :: Type
-[repr("f32" )] data F32  :: Type
-[repr("f64" )] data F64  :: Type
+[repr("u32" )] data Char    :: Type
+[repr("u8"  )] data Uint8   :: Type
+[repr("u16" )] data Uint16  :: Type
+[repr("u32" )] data Uint32  :: Type
+[repr("u64" )] data Uint64  :: Type
+[repr("u128")] data Uint128 :: Type
+[repr("i8"  )] data Int8    :: Type
+[repr("i16" )] data Int16   :: Type
+[repr("i32" )] data Int32   :: Type
+[repr("i64" )] data Int64   :: Type
+[repr("i128")] data Int128  :: Type
+[repr("f32" )] data Float32 :: Type
+[repr("f64" )] data Float64 :: Type
 
 [repr("ptr")]
 [lang("ptr_ty")]
@@ -39,16 +46,47 @@ data Ptr :: Type -> Type
 [lang("integer")] trait Integer t
 [lang("decimal")] trait Decimal t
 
-impl IntegerU8   :: Integer U8
-impl IntegerU16  :: Integer U16
-impl IntegerU32  :: Integer U32
-impl IntegerU64  :: Integer U64
-impl Integeru128 :: Integer U128
-impl IntegerI8   :: Integer I8
-impl IntegerI16  :: Integer I16
-impl IntegerI32  :: Integer I32
-impl IntegerI64  :: Integer I64
-impl IntegerI128 :: Integer I128
+impl IntegerU8   :: Integer Uint8
+impl IntegerU16  :: Integer Uint16
+impl IntegerU32  :: Integer Uint32
+impl IntegerU64  :: Integer Uint64
+impl Integeru128 :: Integer Uint128
+impl IntegerI8   :: Integer Int8
+impl IntegerI16  :: Integer Int16
+impl IntegerI32  :: Integer Int32
+impl IntegerI64  :: Integer Int64
+impl IntegerI128 :: Integer Int128
 
-impl DecimalF32 :: Decimal F32
-impl DecimalF64 :: Decimal F64
+impl DecimalF32 :: Decimal Float32
+impl DecimalF64 :: Decimal Float64
+
+[lang("type_info")]
+data TypeInfo = TypeInfo {
+    size   :: Uint,
+    align  :: Uint,
+    stride :: Uint,
+    vwt    :: Ptr ValueWitnessTable,
+}
+
+data ValueWitnessTable = ValueWitnessTable {
+    copy :: (Ptr (), Ptr (), Ptr TypeInfo) -> (),
+    move :: (Ptr (), Ptr (), Ptr TypeInfo) -> (),
+    drop :: (Ptr (), Ptr TypeInfo) -> (),
+}
+
+[lang("BASIC_COPY")]
+fn __BASIC_COPY :: (Ptr (), Ptr (), Ptr TypeInfo) -> ()
+fn __BASIC_COPY dst src ty = do
+    TypeInfo info <- unsafe_read ty
+    memcpy dst src info.size
+    ()
+
+[lang("BASIC_DROP")]
+fn __BASIC_DROP :: (Ptr (), Ptr TypeInfo) -> ()
+fn __BASIC_DROP val ty = ()
+
+[intrinsic]
+foreign fn unsafe_read :: forall t. Ptr t -> t
+
+--|                   dest    src     n        dest
+foreign fn memcpy :: (Ptr (), Ptr (), Uint) -> Ptr ()
