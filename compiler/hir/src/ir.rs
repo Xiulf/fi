@@ -101,7 +101,11 @@ pub enum ItemKind {
     },
     Data {
         head: DataHead,
-        body: Vec<DataCtor>,
+        body: Vec<HirId>,
+    },
+    DataCtor {
+        data: HirId,
+        tys: Vec<Type>,
     },
     Trait {
         head: TraitHead,
@@ -121,14 +125,6 @@ pub struct DataHead {
     pub span: Span,
     pub vars: Vec<TypeVar>,
     pub kind: Type,
-}
-
-#[derive(PartialEq, Eq)]
-pub struct DataCtor {
-    pub id: HirId,
-    pub span: Span,
-    pub name: Ident,
-    pub tys: Vec<Type>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -562,5 +558,30 @@ impl std::ops::Index<BodyId> for Module {
 
     fn index(&self, id: BodyId) -> &Self::Output {
         &self.bodies[&id]
+    }
+}
+
+impl Item {
+    pub fn is_intrinsic(&self) -> bool {
+        let intrinsic = Symbol::new("intrinsic");
+
+        self.attrs
+            .iter()
+            .any(|a| a.name.symbol == intrinsic && a.body.is_none())
+    }
+
+    pub fn repr(&self) -> Option<&str> {
+        let repr = Symbol::new("repr");
+
+        self.attrs
+            .iter()
+            .filter_map(|a| {
+                if a.name.symbol == repr {
+                    a.str_arg()
+                } else {
+                    None
+                }
+            })
+            .next()
     }
 }

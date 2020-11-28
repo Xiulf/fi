@@ -28,19 +28,21 @@ impl<'db> Ctx<'db> {
             }
             ir::ExprKind::Field { base, field } => {
                 let base_ty = self.infer_expr(base);
-                let ret_ty = Ty::infer(self.db.new_infer_var());
+                let field_ty = Ty::infer(self.db.new_infer_var());
+                let rest_ty = Ty::infer(self.db.new_infer_var());
                 let exp_ty = Ty::record(
                     vec![Field {
                         name: field.symbol,
-                        ty: ret_ty.clone(),
+                        span: field.span,
+                        ty: field_ty.clone(),
                     }]
                     .into(),
-                    None,
+                    Some(rest_ty),
                 );
 
                 self.constrain(Constraint::Equal(exp_ty, expr.span, base_ty, base.span));
 
-                ret_ty
+                field_ty
             }
             ir::ExprKind::Case { pred, arms } => {
                 let ret_ty = Ty::infer(self.db.new_infer_var());

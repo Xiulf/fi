@@ -1,3 +1,0 @@
-module Core (module C) where
-
-import Prim as C

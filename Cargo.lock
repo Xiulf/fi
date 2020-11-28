@@ -119,6 +119,7 @@ dependencies = [
  "check",
  "diagnostics",
  "hir",
+ "layout",
  "mir",
  "salsa",
  "source",
@@ -191,6 +192,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "layout"
+version = "0.1.0"
+dependencies = [
+ "check",
+ "hir",
+ "salsa",
+ "source",
+ "target-lexicon",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -221,6 +233,7 @@ dependencies = [
  "check",
  "hir",
  "index_vec",
+ "layout",
  "salsa",
 ]
 

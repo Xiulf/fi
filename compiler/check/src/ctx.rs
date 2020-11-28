@@ -92,6 +92,7 @@ impl<'db> Ctx<'db> {
                     .iter()
                     .map(|f| Field {
                         name: f.name.symbol,
+                        span: f.span,
                         ty: self.hir_ty(&f.ty),
                     })
                     .collect();
@@ -144,6 +145,7 @@ impl<'db> Ctx<'db> {
 
         match &**ty {
             Type::Error => Ty::error(),
+            Type::Int(_) => Ty::data(self.db.lang_items().kind_int().owner),
             Type::TypeOf(def) => self.infer_kind(&self.db.typecheck(*def).ty),
             Type::Infer(_) => Ty::infer(self.db.new_infer_var()),
             Type::Var(var) => self.var_kinds[var].clone(),

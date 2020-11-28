@@ -98,6 +98,18 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypeCheckResult> {
                     )
                 }
             }
+            ir::ItemKind::DataCtor { data, tys } => {
+                let data_ty = db.typecheck(data.owner).ty.clone();
+                let tys = tys.iter().map(|t| ctx.hir_ty(t)).collect::<ty::List<_>>();
+
+                if tys.is_empty() {
+                    data_ty
+                } else if let ty::Type::ForAll(vars, data_ty) = &*data_ty {
+                    ty::Ty::for_all(vars.clone(), ty::Ty::func(tys, data_ty.clone()))
+                } else {
+                    ty::Ty::func(tys, data_ty)
+                }
+            }
             _ => ty::Ty::error(),
         },
         ir::Def::TraitItem(_item) => {
@@ -134,12 +146,20 @@ fn variants(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Variant> {
     }) = def
     {
         body.iter()
-            .map(|ctor| {
-                let tys = ctor.tys.iter().map(|t| ctx.hir_ty(t)).collect();
+            .filter_map(|ctor_id| {
+                if let ir::Def::Item(item) = hir.def(ctor_id.owner) {
+                    if let ir::ItemKind::DataCtor { data: _, tys } = &item.kind {
+                        let tys = tys.iter().map(|t| ctx.hir_ty(t)).collect();
 
-                ty::Variant {
-                    id: ctor.id.owner,
-                    tys,
+                        Some(ty::Variant {
+                            id: ctor_id.owner,
+                            tys,
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
                 }
             })
             .collect()

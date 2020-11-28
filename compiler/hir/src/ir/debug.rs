@@ -154,11 +154,20 @@ impl Debug for Item {
                     "Data id = {:?}, name = {:?}",
                     self.id, &**self.name.symbol
                 )?;
-                write!(indent(f), "{:?}", head)?;
 
-                for ctor in body {
+                writeln!(f, "           ctors = {:?}", body)?;
+                write!(indent(f), "{:?}", head)
+            }
+            ItemKind::DataCtor { data, tys } => {
+                write!(
+                    f,
+                    "DataCtor id = {:?}, name = {:?}, data = {:?}",
+                    self.id, &**self.name.symbol, data
+                )?;
+
+                for ty in tys {
                     writeln!(f)?;
-                    write!(indent(f), "{:?}", ctor)?;
+                    write!(indent(f), "{:?}", ty)?;
                 }
 
                 Ok(())
@@ -200,23 +209,6 @@ impl Debug for DataHead {
         }
 
         write!(indent(f), "{:?}", self.kind)
-    }
-}
-
-impl Debug for DataCtor {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(
-            f,
-            "DataCtor id = {:?}, name = {:?}",
-            self.id, &**self.name.symbol
-        )?;
-
-        for ty in &self.tys {
-            writeln!(f)?;
-            write!(indent(f), "{:?}", ty)?;
-        }
-
-        Ok(())
     }
 }
 

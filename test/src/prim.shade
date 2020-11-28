@@ -15,11 +15,11 @@ alias Str = Slice Byte
 -- [if(pointer_size = 32)] alias Uint = Uint32
 [if(pointer_size = 64)] alias Uint = Uint64
 
-[lang("type")] data Type
-[lang("typeint")] data TypeInt
+[lang("type_kind")] data Type
+[lang("int_kind" )] data TypeInt
 
 [repr("u8"  )]
-[lang("bool")]
+[lang("bool_ty")]
 data Bool = False | True
 
 [repr("u32" )] data Char    :: Type
@@ -40,11 +40,11 @@ data Bool = False | True
 [lang("ptr_ty")]
 data Ptr :: Type -> Type
 
-[lang("array")] data Array :: (Type, TypeInt) -> Type
-[lang("slice")] data Slice :: Type -> Type
+[lang("array_ty")] data Array :: (Type, TypeInt) -> Type
+[lang("slice_ty")] data Slice :: Type -> Type
 
-[lang("integer")] trait Integer t
-[lang("decimal")] trait Decimal t
+[lang("integer_trait")] trait Integer t
+[lang("decimal_trait")] trait Decimal t
 
 impl IntegerU8   :: Integer Uint8
 impl IntegerU16  :: Integer Uint16

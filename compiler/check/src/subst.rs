@@ -55,7 +55,12 @@ fn subst_var(ty: &Ty, ivar: &InferVar, repl: Ty) {
                 *ptr_mut = (*repl).clone();
             }
         }
-        Type::Infer(_) | Type::Var(_) | Type::Error | Type::TypeOf(_) | Type::Data(_) => {}
+        Type::Int(_)
+        | Type::Infer(_)
+        | Type::Var(_)
+        | Type::Error
+        | Type::TypeOf(_)
+        | Type::Data(_) => {}
         Type::Tuple(tys) => {
             for ty in &**tys {
                 subst_var(ty, ivar, repl.clone());

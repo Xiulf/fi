@@ -9,6 +9,7 @@ use std::path::Path;
     syntax::SyntaxDatabaseStorage,
     hir::HirDatabaseStorage,
     check::TypeDatabaseStorage,
+    layout::LayoutDatabaseStorage,
     mir::MirDatabaseStorage
 )]
 #[derive(Default)]

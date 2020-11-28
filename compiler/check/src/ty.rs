@@ -12,6 +12,7 @@ pub struct List<T>(Arc<[T]>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Error,
+    Int(u128),
     TypeOf(DefId),
     Infer(InferVar),
     Var(TypeVar),
@@ -38,6 +39,7 @@ pub struct Variant {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Field {
     pub name: Symbol,
+    pub span: hir::ir::Span,
     pub ty: Ty,
 }
 
@@ -209,10 +211,15 @@ impl Ty {
                     .into_iter()
                     .map(|f| Field {
                         name: f.name,
+                        span: f.span,
                         ty: f.ty.replace(map),
                     })
                     .collect(),
                 tail.as_ref().map(|t| t.replace(map)),
+            ),
+            Type::App(ty, args) => Ty::app(
+                ty.replace(map),
+                args.into_iter().map(|a| a.replace(map)).collect(),
             ),
             _ => self.clone(),
         }
@@ -260,6 +267,12 @@ impl<T> From<Vec<T>> for List<T> {
     }
 }
 
+impl<T: Clone> From<&[T]> for List<T> {
+    fn from(src: &[T]) -> Self {
+        List(src.to_vec().into())
+    }
+}
+
 impl<T> std::ops::Deref for List<T> {
     type Target = [T];
 
@@ -272,6 +285,7 @@ impl fmt::Display for TyDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &**self.0 {
             Type::Error => write!(f, "[error]"),
+            Type::Int(i) => write!(f, "{}", i),
             Type::TypeOf(def) => write!(f, "{:?}", def),
             Type::Infer(var) => write!(f, "{}", var),
             Type::Var(var) => write!(f, "{}", var),

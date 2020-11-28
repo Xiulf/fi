@@ -42,6 +42,7 @@ impl<'db> Ctx<'db> {
                 (Type::Infer(ivar), _) => self.unify_var(ivar, b, b_span),
                 (_, Type::Infer(ivar)) => self.unify_var(ivar, a, a_span),
                 (Type::Error, Type::Error) => Subst::empty(),
+                (Type::Int(a), Type::Int(b)) if a == b => Subst::empty(),
                 (Type::Var(a_var), Type::Var(b_var)) if a_var == b_var => Subst::empty(),
                 (_, Type::ForAll(_b_vars, b_ty)) => {
                     self.unify_one(Constraint::Equal(a, a_span, b_ty.clone(), b_span))
@@ -79,6 +80,55 @@ impl<'db> Ctx<'db> {
 
                     self.unify_all(cs)
                 }
+                (Type::Record(a_fields, None), Type::Record(b_fields, None))
+                    if a_fields.len() == b_fields.len() =>
+                {
+                    let mut cs = Vec::with_capacity(a_fields.len());
+
+                    for (a_field, b_field) in a_fields.into_iter().zip(b_fields) {
+                        if a_field.name != b_field.name {
+                            self.db
+                                .to_diag_db()
+                                .error("field names are not equal")
+                                .with_label(diagnostics::Label::primary(self.file, a_field.span))
+                                .with_label(diagnostics::Label::primary(self.file, b_field.span))
+                                .finish();
+                        } else {
+                            cs.push(Constraint::Equal(
+                                a_field.ty.clone(),
+                                a_field.span,
+                                b_field.ty.clone(),
+                                b_field.span,
+                            ));
+                        }
+                    }
+
+                    self.unify_all(cs)
+                }
+                (Type::Record(a_fields, Some(a_tail)), Type::Record(b_fields, None)) => {
+                    let mut cs = Vec::with_capacity(a_fields.len() + 1);
+
+                    for (a_field, b_field) in a_fields.into_iter().zip(b_fields) {
+                        if a_field.name != b_field.name {
+                        } else {
+                            cs.push(Constraint::Equal(
+                                a_field.ty.clone(),
+                                a_field.span,
+                                b_field.ty.clone(),
+                                b_field.span,
+                            ));
+                        }
+                    }
+
+                    cs.push(Constraint::Equal(
+                        a_tail.clone(),
+                        a_span,
+                        Ty::record(b_fields[a_fields.len()..].into(), None),
+                        b_span,
+                    ));
+
+                    self.unify_all(cs)
+                }
                 (Type::Data(a), Type::Data(b)) if a == b => Subst::empty(),
                 (_, _) => {
                     self.db
@@ -89,6 +139,12 @@ impl<'db> Ctx<'db> {
                             b.display(self.db)
                         ))
                         .with_label(diagnostics::Label::primary(self.file, a_span))
+                        .with_label(
+                            diagnostics::Label::secondary(self.file, b_span).with_message(format!(
+                                "type `{}` specified here",
+                                b.display(self.db)
+                            )),
+                        )
                         .finish();
 
                     Subst::empty()

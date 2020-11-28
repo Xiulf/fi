@@ -1,12 +1,12 @@
 [package]
-name = "mir"
+name = "layout"
 version = "0.1.0"
 authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+source = { path = "../source" }
 hir = { path = "../hir" }
 check = { path = "../check" }
-layout = { path = "../layout" }
-index_vec = "0.1.2"
+target-lexicon = "^0.11.0"
 salsa = "0.16.0"

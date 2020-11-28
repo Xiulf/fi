@@ -79,6 +79,24 @@ impl Builder {
         })
     }
 
+    pub fn local_ty(&self, local: Local) -> Ty {
+        self.body.locals[local].ty.clone()
+    }
+
+    pub fn placed(&mut self, op: Operand) -> Place {
+        match op {
+            Operand::Copy(p) => p,
+            Operand::Move(p) => p,
+            Operand::Const(c, ty) => {
+                let tmp = self.create_tmp(ty.clone());
+                let tmp = Place::local(tmp);
+
+                self.use_op(tmp.clone(), Operand::Const(c, ty));
+                tmp
+            }
+        }
+    }
+
     pub fn nop(&mut self) {
         self.block().stmts.push(Stmt::Nop);
     }

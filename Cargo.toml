@@ -9,5 +9,6 @@ members = [
     "compiler/hir",
     "compiler/check",
     "compiler/mir",
+    "compiler/layout",
     # "compiler/codegen",
 ]

@@ -67,8 +67,12 @@ macro_rules! lang_items {
 }
 
 lang_items! {
-    kind_type, "type"     , KindType;
-    kind_int , "typeint"  , KindInt ;
-    type_info, "type_info", TypeInfo;
-    ptr_ty   , "ptr_ty"   , PtrType ;
+    kind_type , "type_kind" , KindType ;
+    kind_int  , "int_kind"  , KindInt  ;
+    type_info , "type_info" , TypeInfo ;
+    ptr_ty    , "ptr_ty"    , PtrType  ;
+    array_ty  , "array_ty"  , ArrayType;
+    slice_ty  , "slice_ty"  , SliceType;
+    basic_copy, "BASIC_COPY", BasicCopy;
+    basic_drop, "BASIC_DROP", BasicDrop;
 }

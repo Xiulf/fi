@@ -211,7 +211,7 @@ impl<'db> Converter<'db> {
         match exports {
             ast::Exports::All => {
                 for (_, item) in &self.items {
-                    Self::register_single_export(&mut self.exports, self.file, item);
+                    Self::register_single_export(&mut self.exports, self.file, item, &self.items);
                 }
             }
             ast::Exports::Some(exports) => {
@@ -228,6 +228,7 @@ impl<'db> Converter<'db> {
                                         &mut self.exports,
                                         self.file,
                                         item,
+                                        &self.items,
                                     );
                                 }
                             } else {
@@ -250,6 +251,7 @@ impl<'db> Converter<'db> {
                                         &mut self.exports,
                                         self.file,
                                         item,
+                                        &self.items,
                                         export.name.span,
                                         grp,
                                     );
@@ -258,6 +260,7 @@ impl<'db> Converter<'db> {
                                         &mut self.exports,
                                         self.file,
                                         item,
+                                        &self.items,
                                     );
                                 }
                             } else {
@@ -284,6 +287,7 @@ impl<'db> Converter<'db> {
         exports: &mut Vec<ir::Export>,
         file: source::FileId,
         item: &ir::Item,
+        items: &BTreeMap<ir::HirId, ir::Item>,
     ) {
         match &item.kind {
             ir::ItemKind::Foreign {
@@ -355,8 +359,8 @@ impl<'db> Converter<'db> {
                     group: Some(
                         body.iter()
                             .map(|ctor| ir::Export {
-                                name: ctor.name.symbol,
-                                res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
+                                name: items[ctor].name.symbol,
+                                res: ir::Res::Def(ir::DefKind::Ctor, ctor.owner),
                                 module: file,
                                 ns: Ns::Values,
                                 group: None,
@@ -365,6 +369,7 @@ impl<'db> Converter<'db> {
                     ),
                 });
             }
+            ir::ItemKind::DataCtor { .. } => {}
             ir::ItemKind::Trait { body, .. } => {
                 exports.push(ir::Export {
                     name: item.name.symbol,
@@ -394,6 +399,7 @@ impl<'db> Converter<'db> {
         exports: &mut Vec<ir::Export>,
         file: source::FileId,
         item: &ir::Item,
+        items: &BTreeMap<ir::HirId, ir::Item>,
         span: ir::Span,
         grp: &ast::ExportGroup,
     ) {
@@ -409,11 +415,11 @@ impl<'db> Converter<'db> {
                             .iter()
                             .filter_map(|name| {
                                 if let Some(ctor) =
-                                    body.iter().find(|c| c.name.symbol == name.symbol)
+                                    body.iter().find(|c| items[*c].name.symbol == name.symbol)
                                 {
                                     Some(ir::Export {
-                                        name: ctor.name.symbol,
-                                        res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
+                                        name: items[ctor].name.symbol,
+                                        res: ir::Res::Def(ir::DefKind::Ctor, ctor.owner),
                                         module: file,
                                         ns: Ns::Values,
                                         group: None,
@@ -434,8 +440,8 @@ impl<'db> Converter<'db> {
                     } else {
                         body.iter()
                             .map(|ctor| ir::Export {
-                                name: ctor.name.symbol,
-                                res: ir::Res::Def(ir::DefKind::Ctor, ctor.id.owner),
+                                name: items[ctor].name.symbol,
+                                res: ir::Res::Def(ir::DefKind::Ctor, ctor.owner),
                                 module: file,
                                 ns: Ns::Values,
                                 group: None,
@@ -908,7 +914,9 @@ impl<'db> Converter<'db> {
 
                                 if let Some(body2) = body2 {
                                     body.extend(
-                                        body2.iter().map(|c| self.convert_data_ctor(defpath, c)),
+                                        body2
+                                            .iter()
+                                            .map(|c| self.convert_data_ctor(defpath, id, c)),
                                     );
                                 }
                             }
@@ -1094,7 +1102,12 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn convert_data_ctor(&mut self, parent: ir::DefPath, ctor: &ast::DataCtor) -> ir::DataCtor {
+    fn convert_data_ctor(
+        &mut self,
+        parent: ir::DefPath,
+        data: ir::HirId,
+        ctor: &ast::DataCtor,
+    ) -> ir::HirId {
         let old_id = (self.current_item, self.id_counter);
         let defindex = ir::DefIndex::from_path(
             self.module_name.symbol,
@@ -1110,12 +1123,18 @@ impl<'db> Converter<'db> {
         self.current_item = old_id.0;
         self.id_counter = old_id.1;
 
-        ir::DataCtor {
+        self.items.insert(
             id,
-            span: ctor.span,
-            name: ctor.name,
-            tys,
-        }
+            ir::Item {
+                id,
+                span: ctor.span,
+                name: ctor.name,
+                attrs: Vec::new(),
+                kind: ir::ItemKind::DataCtor { data, tys },
+            },
+        );
+
+        id
     }
 
     fn convert_trait_decl(&mut self, iface: ir::Symbol, decl: &ast::TraitDecl) -> ir::TraitItemRef {

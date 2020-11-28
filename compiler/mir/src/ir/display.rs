@@ -158,14 +158,14 @@ display!(Operand: OperandDisplay(s, db, f) {
     match s {
         Operand::Copy(p) => write!(f, "copy {}", p.display(db)),
         Operand::Move(p) => write!(f, "move {}", p.display(db)),
-        Operand::Const(c, ty) => write!(f, "({} :: {})", c.display(db), ty.display(db.to_ty_db())),
+        Operand::Const(c, _ty) => write!(f, "{}", c.display(db)),
     }
 });
 
 display!(Place: PlaceDisplay(s, db, f) {
     for elem in &s.elems {
         match elem {
-            PlaceElem::Deref => write!(f, "("),
+            PlaceElem::Deref => write!(f, "(*"),
             PlaceElem::Downcast(_) => write!(f, "("),
             _ => Ok(()),
         }?
