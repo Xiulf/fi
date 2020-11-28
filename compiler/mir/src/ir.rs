@@ -1,7 +1,7 @@
 pub mod display;
 
 pub use check::ty::Ty;
-pub use hir::ir::DefId;
+pub use hir::ir::{DefId, ModuleId};
 use index_vec::IndexVec;
 
 #[derive(Debug, PartialEq, Eq)]

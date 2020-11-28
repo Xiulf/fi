@@ -1,16 +1,16 @@
 [package]
-name = "driver"
+name = "codegen"
 version = "0.1.0"
 authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-diagnostics = { path = "../diagnostics" }
 source = { path = "../source" }
-syntax = { path = "../syntax" }
-hir = { path = "../hir" }
 check = { path = "../check" }
 layout = { path = "../layout" }
 mir = { path = "../mir" }
-codegen = { path = "../codegen" }
+inkwell = "0.1.0-llvm10sample"
 salsa = "^0.16.0"
+by_address = "1.0.4"
+tempfile = "3.1.0"
+anyhow = "1.0.34"

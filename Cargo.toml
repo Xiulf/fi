@@ -10,5 +10,5 @@ members = [
     "compiler/check",
     "compiler/mir",
     "compiler/layout",
-    # "compiler/codegen",
+    "compiler/codegen",
 ]

@@ -6,8 +6,18 @@ use std::ops::{Add, Mul, RangeInclusive};
 use std::sync::Arc;
 
 #[salsa::query_group(LayoutDatabaseStorage)]
-pub trait LayoutDatabase: check::TypeDatabase {
+pub trait LayoutDatabase: check::TypeDatabase + ToLayoutDb {
     fn layout_of(&self, lib: source::LibId, ty: Ty) -> TyLayout<Ty>;
+}
+
+pub trait ToLayoutDb {
+    fn to_layout_db(&self) -> &dyn LayoutDatabase;
+}
+
+impl<T: LayoutDatabase> ToLayoutDb for T {
+    fn to_layout_db(&self) -> &dyn LayoutDatabase {
+        self
+    }
 }
 
 fn layout_of(db: &dyn LayoutDatabase, lib: source::LibId, ty: Ty) -> TyLayout<Ty> {
@@ -409,6 +419,16 @@ impl<Ty> std::ops::Deref for TyLayout<Ty> {
     }
 }
 
+impl TyLayout<Ty> {
+    pub fn pointee(&self, lib: source::LibId, db: &dyn LayoutDatabase) -> Self {
+        if let Type::App(_, args) = &*self.ty {
+            db.layout_of(lib, args[0].clone())
+        } else {
+            unreachable!();
+        }
+    }
+}
+
 impl Layout {
     pub fn scalar(scalar: Scalar, triple: &target_lexicon::Triple) -> Self {
         let size = scalar.value.size(triple);
@@ -651,6 +671,12 @@ impl Mul<u64> for Size {
         Size {
             raw: self.raw * other,
         }
+    }
+}
+
+impl Scalar {
+    pub fn is_bool(&self) -> bool {
+        self.valid_range == (0..=1) && matches!(self.value, Primitive::Int(Integer::I8, _))
     }
 }
 
