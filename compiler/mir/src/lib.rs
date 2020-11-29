@@ -8,7 +8,7 @@ pub mod ir;
 use std::sync::Arc;
 
 #[salsa::query_group(MirDatabaseStorage)]
-pub trait MirDatabase: layout::LayoutDatabase {
+pub trait MirDatabase: layout::LayoutDatabase + layout::ToLayoutDb {
     #[salsa::invoke(convert::convert)]
     fn module_mir(&self, lib: hir::ir::LibId, id: hir::ir::ModuleId) -> Arc<ir::Module>;
 

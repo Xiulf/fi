@@ -6,7 +6,7 @@ use std::ops::{Add, Mul, RangeInclusive};
 use std::sync::Arc;
 
 #[salsa::query_group(LayoutDatabaseStorage)]
-pub trait LayoutDatabase: check::TypeDatabase + ToLayoutDb {
+pub trait LayoutDatabase: check::TypeDatabase {
     fn layout_of(&self, lib: source::LibId, ty: Ty) -> TyLayout<Ty>;
 }
 
@@ -427,6 +427,92 @@ impl TyLayout<Ty> {
             unreachable!();
         }
     }
+
+    pub fn element(&self, lib: source::LibId, db: &dyn LayoutDatabase) -> Self {
+        if let Type::App(_, args) = &*self.ty {
+            db.layout_of(lib, args[0].clone())
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub fn field(&self, lib: source::LibId, db: &dyn LayoutDatabase, field: usize) -> Self {
+        assert!(field < self.fields.count());
+
+        let mut ty = &*self.ty;
+
+        loop {
+            match ty {
+                Type::App(ty2, _) => ty = ty2,
+                Type::ForAll(_, ty2) => ty = ty2,
+                _ => break,
+            }
+        }
+
+        let ty = match ty {
+            Type::Error
+            | Type::Int(_)
+            | Type::TypeOf(_)
+            | Type::Infer(_)
+            | Type::Var(_)
+            | Type::Func(_, _)
+            | Type::App(_, _)
+            | Type::ForAll(_, _) => unreachable!(),
+            Type::Tuple(tys) => tys[field].clone(),
+            Type::Record(fields, _) => fields[field].ty.clone(),
+            Type::Data(id) => match self.variants {
+                Variants::Single { index } => db.variants(*id)[index].tys[field].clone(),
+                Variants::Multiple { ref tag, .. } => {
+                    assert_eq!(field, 0);
+
+                    return TyLayout {
+                        layout: Arc::new(Layout::scalar(tag.clone(), &db.target(lib))),
+                        ty: tag.value.ty(db),
+                    };
+                }
+            },
+        };
+
+        db.layout_of(lib, ty)
+    }
+
+    pub fn variant(&self, db: &dyn LayoutDatabase, variant: usize) -> Self {
+        let layout = match self.variants {
+            Variants::Single { index }
+                if variant == index && self.fields != FieldsShape::Primitive =>
+            {
+                self.layout.clone()
+            }
+            Variants::Single { index } => {
+                let fields = match &*self.ty {
+                    Type::Data(id) => db.variants(*id).len(),
+                    _ => unreachable!(),
+                };
+
+                Arc::new(Layout {
+                    variants: Variants::Single { index },
+                    fields: if fields == 0 {
+                        FieldsShape::Arbitrary {
+                            offsets: Vec::new(),
+                        }
+                    } else {
+                        FieldsShape::Union(fields)
+                    },
+                    abi: Abi::Uninhabited,
+                    largest_niche: None,
+                    align: Align::from_bytes(1),
+                    size: Size::ZERO,
+                    stride: Size::ZERO,
+                })
+            }
+            Variants::Multiple { ref variants, .. } => Arc::new(variants[variant].clone()),
+        };
+
+        TyLayout {
+            layout,
+            ty: self.ty.clone(),
+        }
+    }
 }
 
 impl Layout {
@@ -695,6 +781,27 @@ impl Primitive {
 
     pub fn align(&self, triple: &target_lexicon::Triple) -> Align {
         Align::from_bytes(self.size(triple).bytes())
+    }
+
+    pub fn ty(&self, db: &dyn LayoutDatabase) -> Ty {
+        let lang_items = db.lang_items();
+        let id = match self {
+            Primitive::Int(Integer::I8, false) => lang_items.uint8(),
+            Primitive::Int(Integer::I16, false) => lang_items.uint16(),
+            Primitive::Int(Integer::I32, false) => lang_items.uint32(),
+            Primitive::Int(Integer::I64, false) => lang_items.uint64(),
+            Primitive::Int(Integer::I128, false) => lang_items.uint128(),
+            Primitive::Int(Integer::I8, true) => lang_items.int8(),
+            Primitive::Int(Integer::I16, true) => lang_items.int16(),
+            Primitive::Int(Integer::I32, true) => lang_items.int32(),
+            Primitive::Int(Integer::I64, true) => lang_items.int64(),
+            Primitive::Int(Integer::I128, true) => lang_items.int128(),
+            Primitive::F32 => lang_items.float32(),
+            Primitive::F64 => lang_items.float64(),
+            Primitive::Pointer => unreachable!(),
+        };
+
+        Ty::data(id.owner)
     }
 }
 

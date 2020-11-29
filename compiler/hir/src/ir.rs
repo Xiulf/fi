@@ -585,3 +585,13 @@ impl Item {
             .next()
     }
 }
+
+impl Def<'_> {
+    pub fn name(&self) -> Ident {
+        match self {
+            Def::Item(item) => item.name,
+            Def::TraitItem(item) => item.name,
+            Def::ImplItem(item) => item.name,
+        }
+    }
+}

@@ -67,6 +67,20 @@ macro_rules! lang_items {
 }
 
 lang_items! {
+    uint8     , "uint8"     , Uint8    ;
+    uint16    , "uint16"    , Uint16   ;
+    uint32    , "uint32"    , Uint32   ;
+    uint64    , "uint64"    , Uint64   ;
+    uint128   , "uint128"   , Uint128  ;
+    int8      , "int8"      , Int8     ;
+    int16     , "int16"     , Int16    ;
+    int32     , "int32"     , Int32    ;
+    int64     , "int64"     , Int64    ;
+    int128    , "int128"    , Int128   ;
+    float32   , "float32"   , Float32  ;
+    float64   , "float64"   , Float64  ;
+    char      , "char"      , Char     ;
+    bool      , "bool"      , Bool     ;
     kind_type , "type_kind" , KindType ;
     kind_int  , "int_kind"  , KindInt  ;
     type_info , "type_info" , TypeInfo ;

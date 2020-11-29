@@ -1,6 +1,4 @@
-use crate::CodegenDatabase;
 use std::path::Path;
-use std::sync::Arc;
 use tempfile::NamedTempFile;
 
 #[derive(Debug)]
@@ -26,14 +24,4 @@ impl Assembly {
     pub fn copy_to<P: AsRef<Path>>(&self, dest: P) -> std::io::Result<()> {
         std::fs::copy(self.path(), dest).map(|_| ())
     }
-}
-
-pub fn build_assembly(
-    db: &dyn CodegenDatabase,
-    lib: source::LibId,
-    module: mir::ir::ModuleId,
-) -> Arc<Assembly> {
-    let file = NamedTempFile::new().expect("could not create temp file");
-
-    Arc::new(Assembly { file })
 }
