@@ -25,7 +25,7 @@ pub enum PlaceKind {
 }
 
 impl<'ctx> Place<'ctx> {
-    pub fn new_var<'a>(fx: &mut FunctionCtx<ClifBackend>, layout: TyLayout<Ty>) -> Self {
+    pub fn new_var(fx: &mut FunctionCtx<ClifBackend>, layout: TyLayout<Ty>) -> Self {
         let var = Variable::with_u32(fx.next_ssa_var());
 
         fx.bcx.declare_var(var, fx.ir_type(&layout).unwrap());
@@ -89,6 +89,22 @@ impl<'ctx> Place<'ctx> {
     pub fn new_ref_meta(ptr: Pointer, meta: cir::Value, layout: TyLayout<Ty>) -> Self {
         Place {
             kind: PlaceKind::Addr(ptr, Some(meta)),
+            layout,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn from_var(var: Variable, layout: TyLayout<Ty>) -> Self {
+        Place {
+            kind: PlaceKind::Var(var),
+            layout,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn from_var_pair(a: Variable, b: Variable, layout: TyLayout<Ty>) -> Self {
+        Place {
+            kind: PlaceKind::VarPair(a, b),
             layout,
             _marker: PhantomData,
         }

@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 source = { path = "../source" }
+hir = { path = "../hir" }
 check = { path = "../check" }
 layout = { path = "../layout" }
 mir = { path = "../mir" }

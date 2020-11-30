@@ -132,6 +132,8 @@ fn layout_of(db: &dyn LayoutDatabase, lib: source::LibId, ty: Ty) -> TyLayout<Ty
                         "i32" => scalar(Primitive::Int(Integer::I32, true)),
                         "i64" => scalar(Primitive::Int(Integer::I64, true)),
                         "i128" => scalar(Primitive::Int(Integer::I128, true)),
+                        "f32" => scalar(Primitive::F32),
+                        "f64" => scalar(Primitive::F64),
                         _ => unreachable!("unknown repr"),
                     };
                 }

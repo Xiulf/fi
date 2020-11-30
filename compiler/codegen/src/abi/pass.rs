@@ -58,17 +58,17 @@ impl<T> Iterator for EmptySinglePair<T> {
     }
 }
 
-pub fn get_pass_mode<B: Backend>(fx: &FunctionCtx<B>, layout: &TyLayout<Ty>) -> PassMode<B> {
+pub fn get_pass_mode<B: Backend>(mcx: &ModuleCtx<B>, layout: &TyLayout<Ty>) -> PassMode<B> {
     if layout.is_zst() {
         PassMode::NoPass
     } else {
         match &layout.abi {
             Abi::Uninhabited => PassMode::NoPass,
-            Abi::Scalar(scalar) => PassMode::ByVal(fx.scalar_ty(scalar)),
+            Abi::Scalar(scalar) => PassMode::ByVal(mcx.scalar_ty(scalar)),
             Abi::ScalarPair(a, b) => {
-                let a_ty = fx.scalar_ty(a);
-                let b_ty = fx.scalar_ty(b);
-                let target = fx.db.target(fx.lib);
+                let a_ty = mcx.scalar_ty(a);
+                let b_ty = mcx.scalar_ty(b);
+                let target = mcx.db.target(mcx.lib);
 
                 if a.value.size(&target).bits() == 128 && b.value.size(&target).bits() == 128 {
                     PassMode::ByRef {
@@ -83,5 +83,20 @@ pub fn get_pass_mode<B: Backend>(fx: &FunctionCtx<B>, layout: &TyLayout<Ty>) -> 
             },
             Abi::Aggregate { sized: false } => PassMode::ByRef { size: None },
         }
+    }
+}
+
+pub macro value_for_arg($fx:ident, $arg:ident, $by_ref:expr) {
+    match $crate::abi::get_pass_mode($fx, $arg.layout()) {
+        $crate::abi::PassMode::NoPass => $crate::abi::EmptySinglePair::Empty,
+        $crate::abi::PassMode::ByVal(_) => {
+            $crate::abi::EmptySinglePair::Single($arg.load_scalar($fx))
+        }
+        $crate::abi::PassMode::ByValPair(_, _) => {
+            let (a, b) = $arg.load_scalar_pair($fx);
+
+            $crate::abi::EmptySinglePair::Pair(a, b)
+        }
+        $crate::abi::PassMode::ByRef { size: _ } => $by_ref,
     }
 }

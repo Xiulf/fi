@@ -170,6 +170,7 @@ dependencies = [
  "mir",
  "salsa",
  "source",
+ "target-lexicon",
  "tempfile",
 ]
 
@@ -182,6 +183,7 @@ dependencies = [
  "cranelift",
  "cranelift-module",
  "cranelift-object",
+ "hir",
  "layout",
  "mangling",
  "mir",

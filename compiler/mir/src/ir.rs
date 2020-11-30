@@ -122,3 +122,9 @@ pub enum Const {
     FuncAddr(DefId),
     Bytes(Box<[u8]>),
 }
+
+impl Body {
+    pub fn args(&self) -> impl Iterator<Item = &LocalData> {
+        self.locals.iter().filter(|l| l.kind == LocalKind::Arg)
+    }
+}
