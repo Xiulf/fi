@@ -13,7 +13,16 @@ use mir::ir as mir;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-codegen::define_codegen_backend!(ClifBackend);
+pub fn create_backend(
+    db: &dyn ::mir::MirDatabase,
+    lib: source::LibId,
+    mir: std::sync::Arc<mir::Module>,
+) -> codegen::obj_file::ObjectFile {
+    let backend = ClifBackend::new();
+    let mcx = codegen::ModuleCtx::new(db, lib, mir, backend);
+
+    mcx.build()
+}
 
 pub struct ClifBackend<'ctx> {
     ptr_type: cranelift::prelude::Type,
@@ -43,7 +52,7 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
     type Value = value::Value<'ctx>;
     type Type = IrType<'ctx>;
 
-    fn create_module(&mut self, lib: source::LibId, db: &dyn CodegenDatabase) -> Self::Module {
+    fn create_module(&mut self, lib: source::LibId, db: &dyn ::mir::MirDatabase) -> Self::Module {
         let triple = db.target(lib);
         let manifest = db.manifest(lib);
         let flags_builder = cranelift::codegen::settings::builder();
@@ -141,6 +150,8 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
             .module
             .declare_function(&name, Linkage::Export, &sig)
             .unwrap();
+
+        mcx.func_ids.insert(body.def, (func, sig, ret));
 
         func
     }
@@ -273,8 +284,8 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
         fx.ctx.clear();
     }
 
-    fn finish(mcx: ModuleCtx<Self>) -> codegen::assembly::ObjectFile {
-        let mut obj_file = codegen::assembly::ObjectFile::new();
+    fn finish(mcx: ModuleCtx<Self>) -> codegen::obj_file::ObjectFile {
+        let mut obj_file = codegen::obj_file::ObjectFile::new();
         let product = mcx.module.finish();
         let bytes = product.emit().unwrap();
 

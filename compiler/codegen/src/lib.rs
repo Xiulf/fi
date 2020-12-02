@@ -2,48 +2,11 @@
 
 pub mod abi;
 pub mod analyze;
-pub mod assembly;
+pub mod obj_file;
 
 use mir::ir as mir;
 use std::collections::HashMap;
 use std::sync::Arc;
-
-#[salsa::query_group(CodegenDatabaseStorage)]
-pub trait CodegenDatabase: ::mir::MirDatabase + ::mir::ToMirDb {
-    #[salsa::input]
-    fn codegen_backend(&self) -> &'static str;
-
-    #[salsa::invoke(assembly::build_assembly)]
-    fn assembly(&self, lib: source::LibId, module: mir::ModuleId) -> Arc<assembly::Assembly>;
-
-    fn link_type(&self, lib: source::LibId, module: mir::ModuleId) -> linker::LinkOutputType;
-}
-
-fn link_type(
-    db: &dyn CodegenDatabase,
-    lib: source::LibId,
-    module: mir::ModuleId,
-) -> linker::LinkOutputType {
-    let file = db.module_tree(lib).file(module);
-    let hir = db.module_hir(file);
-
-    if let Some(out_ty) = hir.out_type() {
-        match out_ty {
-            "exe" => linker::LinkOutputType::Exe,
-            "staticlib" => linker::LinkOutputType::Lib,
-            "dylib" => linker::LinkOutputType::Dylib,
-            _ => panic!("invalid output type: {}", out_ty),
-        }
-    } else {
-        let has_main = hir.items.values().any(|item| item.is_main());
-
-        if has_main {
-            linker::LinkOutputType::Exe
-        } else {
-            linker::LinkOutputType::Dylib
-        }
-    }
-}
 
 pub trait Backend: Sized {
     type Module;
@@ -56,7 +19,7 @@ pub trait Backend: Sized {
     type Value: Value<Backend = Self>;
     type Type: Type<Backend = Self>;
 
-    fn create_module(&mut self, lib: source::LibId, db: &dyn CodegenDatabase) -> Self::Module;
+    fn create_module(&mut self, lib: source::LibId, db: &dyn ::mir::MirDatabase) -> Self::Module;
     fn create_ctx(&mut self, module: &mut Self::Module) -> Self::Context;
     fn create_builder(&mut self, ctx: &mut Self::Context) -> Self::Builder;
 
@@ -67,7 +30,7 @@ pub trait Backend: Sized {
 
     fn define_func(fx: &mut FunctionCtx<Self>, func: Self::Func);
 
-    fn finish(mcx: ModuleCtx<Self>) -> assembly::ObjectFile;
+    fn finish(mcx: ModuleCtx<Self>) -> obj_file::ObjectFile;
 
     fn trans_place(fx: &mut FunctionCtx<Self>, place: &mir::Place) -> Self::Place;
     fn trans_const(fx: &mut FunctionCtx<Self>, const_: &mir::Const, ty: &mir::Ty) -> Self::Value;
@@ -142,7 +105,7 @@ pub trait Type: Sized {
 }
 
 pub struct ModuleCtx<'db, B: Backend> {
-    pub db: &'db dyn CodegenDatabase,
+    pub db: &'db dyn ::mir::MirDatabase,
     pub backend: B,
     pub ctx: B::Context,
     pub module: B::Module,
@@ -160,7 +123,7 @@ pub struct FunctionCtx<'db, 'mcx, B: Backend> {
 
 impl<'db, B: Backend> ModuleCtx<'db, B> {
     pub fn new(
-        db: &'db dyn CodegenDatabase,
+        db: &'db dyn ::mir::MirDatabase,
         lib: source::LibId,
         mir: Arc<mir::Module>,
         mut backend: B,
@@ -178,7 +141,7 @@ impl<'db, B: Backend> ModuleCtx<'db, B> {
         }
     }
 
-    pub fn build(mut self) -> assembly::ObjectFile {
+    pub fn build(mut self) -> obj_file::ObjectFile {
         let mut func_ids = Vec::new();
         let mut static_ids = Vec::new();
         let mir = self.mir.clone();

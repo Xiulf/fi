@@ -13,4 +13,5 @@ members = [
     "compiler/codegen",
     "compiler/codegen_cranelift",
     "compiler/linker",
+    "compiler/assemble",
 ]

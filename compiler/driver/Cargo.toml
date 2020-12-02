@@ -12,5 +12,5 @@ hir = { path = "../hir" }
 check = { path = "../check" }
 layout = { path = "../layout" }
 mir = { path = "../mir" }
-codegen = { path = "../codegen" }
+assemble = { path = "../assemble" }
 salsa = "^0.16.0"

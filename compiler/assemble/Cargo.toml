@@ -1,0 +1,17 @@
+[package]
+name = "assemble"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[features]
+default = ["cranelift"]
+cranelift = ["codegen_cranelift"]
+
+[dependencies]
+source = { path = "../source" }
+mir = { path = "../mir" }
+codegen = { path = "../codegen" }
+codegen_cranelift = { path = "../codegen_cranelift", optional = true }
+linker = { path = "../linker" }
+salsa = "^0.16.0"

@@ -1,4 +1,4 @@
-use codegen::CodegenDatabase;
+use assemble::CodegenDatabase;
 use hir::HirDatabase;
 use source::SourceDatabase;
 use std::cell::{Cell, RefCell};
@@ -11,7 +11,7 @@ use std::path::Path;
     check::TypeDatabaseStorage,
     layout::LayoutDatabaseStorage,
     mir::MirDatabaseStorage,
-    codegen::CodegenDatabaseStorage
+    assemble::CodegenDatabaseStorage
 )]
 #[derive(Default)]
 pub struct CompilerDatabase {
@@ -21,11 +21,7 @@ pub struct CompilerDatabase {
     infer_ids: Cell<u64>,
 }
 
-impl salsa::Database for CompilerDatabase {
-    fn salsa_event(&self, event_fn: salsa::Event) {
-        println!("{:?}", event_fn);
-    }
-}
+impl salsa::Database for CompilerDatabase {}
 
 impl CompilerDatabase {
     fn next_lib(&mut self) -> source::LibId {
