@@ -48,7 +48,7 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
         let manifest = db.manifest(lib);
         let flags_builder = cranelift::codegen::settings::builder();
         let flags = cranelift::codegen::settings::Flags::new(flags_builder);
-        let isa = cranelift::codegen::isa::lookup(triple)
+        let isa = cranelift::codegen::isa::lookup((*triple).clone())
             .unwrap()
             .finish(flags);
 
@@ -271,6 +271,15 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
             .unwrap();
 
         fx.ctx.clear();
+    }
+
+    fn finish(mcx: ModuleCtx<Self>) -> codegen::assembly::ObjectFile {
+        let mut obj_file = codegen::assembly::ObjectFile::new();
+        let product = mcx.module.finish();
+        let bytes = product.emit().unwrap();
+
+        obj_file.write(&bytes);
+        obj_file
     }
 
     fn trans_place(fx: &mut FunctionCtx<Self>, place: &mir::Place) -> Self::Place {

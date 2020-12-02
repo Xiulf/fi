@@ -15,6 +15,16 @@ pub trait MirDatabase: layout::LayoutDatabase + layout::ToLayoutDb {
     fn type_info(&self, lib: hir::ir::LibId, ty: ir::Ty) -> ir::Operand;
 }
 
+pub trait ToMirDb {
+    fn to_mir_db(&self) -> &dyn MirDatabase;
+}
+
+impl<T: MirDatabase> ToMirDb for T {
+    fn to_mir_db(&self) -> &dyn MirDatabase {
+        self
+    }
+}
+
 fn type_info(db: &dyn MirDatabase, lib: hir::ir::LibId, ty: ir::Ty) -> ir::Operand {
     let ptr_ty = db.lang_items().ptr_ty();
     let ptr_ty = ir::Ty::data(ptr_ty.owner);

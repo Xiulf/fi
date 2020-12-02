@@ -1,0 +1,8 @@
+[package]
+name = "linker"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+target-lexicon = "^0.11.0"

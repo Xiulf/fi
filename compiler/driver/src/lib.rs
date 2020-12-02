@@ -1,5 +1,5 @@
+use codegen::CodegenDatabase;
 use hir::HirDatabase;
-use mir::MirDatabase;
 use source::SourceDatabase;
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -10,7 +10,8 @@ use std::path::Path;
     hir::HirDatabaseStorage,
     check::TypeDatabaseStorage,
     layout::LayoutDatabaseStorage,
-    mir::MirDatabaseStorage
+    mir::MirDatabaseStorage,
+    codegen::CodegenDatabaseStorage
 )]
 #[derive(Default)]
 pub struct CompilerDatabase {
@@ -20,7 +21,11 @@ pub struct CompilerDatabase {
     infer_ids: Cell<u64>,
 }
 
-impl salsa::Database for CompilerDatabase {}
+impl salsa::Database for CompilerDatabase {
+    fn salsa_event(&self, event_fn: salsa::Event) {
+        println!("{:?}", event_fn);
+    }
+}
 
 impl CompilerDatabase {
     fn next_lib(&mut self) -> source::LibId {
@@ -103,10 +108,7 @@ pub fn run() {
     db.set_libs(vec![lib]);
 
     for mdata in db.module_tree(lib).toposort(&db) {
-        use mir::ir::display::MirDisplay;
-        let module = db.module_mir(lib, mdata.id);
-
-        println!("{}:\n{}", mdata.name, module.display(&db));
+        db.assembly(lib, mdata.id);
     }
 }
 

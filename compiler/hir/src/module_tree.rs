@@ -66,6 +66,10 @@ impl ModuleTree {
         Arc::new(tree)
     }
 
+    pub fn get(&self, index: ModuleIndex) -> &ModuleData {
+        &self.data[index]
+    }
+
     pub fn find(&self, name: syntax::symbol::Symbol) -> Option<&ModuleData> {
         for data in &self.data {
             if data.name.symbol == name {
@@ -76,14 +80,18 @@ impl ModuleTree {
         None
     }
 
-    pub fn file(&self, id: crate::ir::ModuleId) -> source::FileId {
+    pub fn data(&self, id: crate::ir::ModuleId) -> &ModuleData {
         for data in &self.data {
             if data.id == id {
-                return data.file;
+                return data;
             }
         }
 
         unreachable!();
+    }
+
+    pub fn file(&self, id: crate::ir::ModuleId) -> source::FileId {
+        self.data(id).file
     }
 
     pub fn toposort(&self, diags: &dyn diagnostics::Diagnostics) -> Vec<ModuleData> {

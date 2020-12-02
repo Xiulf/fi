@@ -6,7 +6,7 @@ use codegen::Value as _;
 use cranelift::codegen::ir as cir;
 use cranelift::frontend::Variable;
 use cranelift::prelude::InstBuilder;
-use layout::{Abi, Scalar, ToLayoutDb, TyLayout};
+use layout::{Abi, Scalar, TyLayout};
 use std::convert::{TryFrom, TryInto};
 use std::marker::PhantomData;
 
@@ -287,7 +287,7 @@ impl<'ctx> codegen::Place for Place<'ctx> {
             }
             Abi::ScalarPair(a, b) => {
                 let (value, meta) = from.load_scalar_pair(fx);
-                let b_offset = scalar_pair_calculate_b_offset(fx.db.target(fx.lib), &a, &b);
+                let b_offset = scalar_pair_calculate_b_offset(&fx.db.target(fx.lib), &a, &b);
 
                 to_ptr.store(fx, value, cir::MemFlags::new());
                 to_ptr
@@ -356,14 +356,14 @@ impl<'ctx> codegen::Place for Place<'ctx> {
 }
 
 pub(crate) fn scalar_pair_calculate_b_offset(
-    triple: target_lexicon::Triple,
+    triple: &target_lexicon::Triple,
     a_scalar: &Scalar,
     b_scalar: &Scalar,
 ) -> cir::immediates::Offset32 {
     let b_offset = a_scalar
         .value
-        .size(&triple)
-        .align_to(b_scalar.value.align(&triple));
+        .size(triple)
+        .align_to(b_scalar.value.align(triple));
 
     cir::immediates::Offset32::new(b_offset.bytes().try_into().unwrap())
 }

@@ -62,6 +62,7 @@ impl std::ops::Deref for SymbolData {
     }
 }
 
+#[derive(Debug)]
 pub struct SymbolInterner {
     data: Vec<SymbolData>,
 }

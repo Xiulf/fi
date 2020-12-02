@@ -25,13 +25,13 @@ pub trait SourceDatabase: salsa::Database {
     #[salsa::input]
     fn manifest(&self, lib: LibId) -> Arc<opts::Manifest>;
 
-    fn target(&self, lib: LibId) -> target_lexicon::Triple;
+    fn target(&self, lib: LibId) -> Arc<target_lexicon::Triple>;
 
     fn file_content(&self, id: FileId) -> Arc<str>;
 }
 
-fn target(db: &dyn SourceDatabase, lib: LibId) -> target_lexicon::Triple {
-    db.manifest(lib).package.target.clone()
+fn target(db: &dyn SourceDatabase, lib: LibId) -> Arc<target_lexicon::Triple> {
+    Arc::new(db.manifest(lib).package.target.clone())
 }
 
 fn file_content(db: &dyn SourceDatabase, id: FileId) -> Arc<str> {

@@ -551,6 +551,21 @@ impl Module {
             Def::ImplItem(&self.impl_items[&ImplItemId(hir_id)])
         }
     }
+
+    pub fn out_type(&self) -> Option<&str> {
+        let out_type = Symbol::new("out_type");
+
+        self.attrs
+            .iter()
+            .filter_map(|a| {
+                if a.name.symbol == out_type {
+                    a.str_arg()
+                } else {
+                    None
+                }
+            })
+            .next()
+    }
 }
 
 impl std::ops::Index<BodyId> for Module {
@@ -565,9 +580,13 @@ impl Item {
     pub fn is_intrinsic(&self) -> bool {
         let intrinsic = Symbol::new("intrinsic");
 
-        self.attrs
-            .iter()
-            .any(|a| a.name.symbol == intrinsic && a.body.is_none())
+        self.attrs.iter().any(|a| a.name.symbol == intrinsic)
+    }
+
+    pub fn is_main(&self) -> bool {
+        let main = Symbol::new("main");
+
+        self.attrs.iter().any(|a| a.name.symbol == main)
     }
 
     pub fn repr(&self) -> Option<&str> {

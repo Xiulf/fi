@@ -121,7 +121,7 @@ impl<'ctx> codegen::Value for Value<'ctx> {
                 };
 
                 let b_offset =
-                    crate::place::scalar_pair_calculate_b_offset(fx.db.target(fx.lib), a, b);
+                    crate::place::scalar_pair_calculate_b_offset(&fx.db.target(fx.lib), a, b);
                 let ty1 = fx.scalar_ty(a);
                 let ty2 = fx.scalar_ty(b);
                 let val1 = ptr.load(fx, ty1, cir::MemFlags::new());

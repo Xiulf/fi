@@ -1,3 +1,5 @@
+#![feature(once_cell)]
+
 pub mod ast;
 pub mod group;
 mod parsing;

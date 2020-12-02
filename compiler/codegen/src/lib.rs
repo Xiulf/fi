@@ -9,9 +9,40 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[salsa::query_group(CodegenDatabaseStorage)]
-pub trait CodegenDatabase: ::mir::MirDatabase {
+pub trait CodegenDatabase: ::mir::MirDatabase + ::mir::ToMirDb {
+    #[salsa::input]
+    fn codegen_backend(&self) -> &'static str;
+
     #[salsa::invoke(assembly::build_assembly)]
     fn assembly(&self, lib: source::LibId, module: mir::ModuleId) -> Arc<assembly::Assembly>;
+
+    fn link_type(&self, lib: source::LibId, module: mir::ModuleId) -> linker::LinkOutputType;
+}
+
+fn link_type(
+    db: &dyn CodegenDatabase,
+    lib: source::LibId,
+    module: mir::ModuleId,
+) -> linker::LinkOutputType {
+    let file = db.module_tree(lib).file(module);
+    let hir = db.module_hir(file);
+
+    if let Some(out_ty) = hir.out_type() {
+        match out_ty {
+            "exe" => linker::LinkOutputType::Exe,
+            "staticlib" => linker::LinkOutputType::Lib,
+            "dylib" => linker::LinkOutputType::Dylib,
+            _ => panic!("invalid output type: {}", out_ty),
+        }
+    } else {
+        let has_main = hir.items.values().any(|item| item.is_main());
+
+        if has_main {
+            linker::LinkOutputType::Exe
+        } else {
+            linker::LinkOutputType::Dylib
+        }
+    }
 }
 
 pub trait Backend: Sized {
@@ -35,6 +66,8 @@ pub trait Backend: Sized {
     fn func_prologue(fx: &mut FunctionCtx<Self>);
 
     fn define_func(fx: &mut FunctionCtx<Self>, func: Self::Func);
+
+    fn finish(mcx: ModuleCtx<Self>) -> assembly::ObjectFile;
 
     fn trans_place(fx: &mut FunctionCtx<Self>, place: &mir::Place) -> Self::Place;
     fn trans_const(fx: &mut FunctionCtx<Self>, const_: &mir::Const, ty: &mir::Ty) -> Self::Value;
@@ -196,7 +229,7 @@ impl<'db, B: Backend> ModuleCtx<'db, B> {
             }
         }
 
-        unimplemented!();
+        B::finish(self)
     }
 
     pub fn ir_type(&self, layout: &layout::TyLayout<mir::Ty>) -> Option<<B::Type as Type>::Raw> {
