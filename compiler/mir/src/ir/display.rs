@@ -37,8 +37,16 @@ macro_rules! display {
 }
 
 display!(Module: ModuleDisplay(s, db, f) {
-    for (i, body) in s.bodies.iter().enumerate() {
+    for (i, foreign) in s.foreigns.iter().enumerate() {
         if i != 0 {
+            writeln!(f)?;
+        }
+
+        write!(f, "{}", foreign.display(db))?;
+    };
+
+    for (i, body) in s.bodies.iter().enumerate() {
+        if i != 0 || !s.foreigns.is_empty() {
             writeln!(f)?;
         }
 
@@ -46,6 +54,21 @@ display!(Module: ModuleDisplay(s, db, f) {
     };
 
     Ok(())
+});
+
+display!(Foreign: ForeignDisplay(s, db, f) {
+    let file = db.module_tree(s.def.lib).file(s.def.module);
+    let module = db.module_hir(file);
+    let def = module.def(s.def);
+
+    write!(f, "foreign ")?;
+
+    match s.kind {
+        ForeignKind::Func => write!(f, "fn "),
+        ForeignKind::Static => write!(f, "static "),
+    }?;
+
+    write!(f, "{}.{} :: {}", module.name, def.name(), db.typecheck(s.def).ty.display(db.to_ty_db()))
 });
 
 display!(Body: BodyDisplay(s, db, f) {

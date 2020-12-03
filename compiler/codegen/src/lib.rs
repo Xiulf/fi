@@ -25,12 +25,16 @@ pub trait Backend: Sized {
 
     fn declare_static(mcx: &mut ModuleCtx<Self>, body: &mir::Body) -> Self::Static;
     fn declare_func(mcx: &mut ModuleCtx<Self>, body: &mir::Body) -> Self::Func;
+    fn declare_foreign_static(mcx: &mut ModuleCtx<Self>, id: mir::DefId) -> Self::Static;
+    fn declare_foreign_func(mcx: &mut ModuleCtx<Self>, id: mir::DefId) -> Self::Func;
 
     fn func_prologue(fx: &mut FunctionCtx<Self>);
 
     fn define_func(fx: &mut FunctionCtx<Self>, func: Self::Func);
 
     fn finish(mcx: ModuleCtx<Self>) -> obj_file::ObjectFile;
+
+    fn switch_to_block(fx: &mut FunctionCtx<Self>, block: Self::Block);
 
     fn trans_place(fx: &mut FunctionCtx<Self>, place: &mir::Place) -> Self::Place;
     fn trans_const(fx: &mut FunctionCtx<Self>, const_: &mir::Const, ty: &mir::Ty) -> Self::Value;
@@ -146,6 +150,17 @@ impl<'db, B: Backend> ModuleCtx<'db, B> {
         let mut static_ids = Vec::new();
         let mir = self.mir.clone();
 
+        for foreign in &mir.foreigns {
+            match foreign.kind {
+                mir::ForeignKind::Func => {
+                    B::declare_foreign_func(&mut self, foreign.def);
+                }
+                mir::ForeignKind::Static => {
+                    B::declare_foreign_static(&mut self, foreign.def);
+                }
+            }
+        }
+
         for body in &mir.bodies {
             match body.kind {
                 mir::BodyKind::Func => func_ids.push(B::declare_func(&mut self, body)),
@@ -167,6 +182,10 @@ impl<'db, B: Backend> ModuleCtx<'db, B> {
                     B::func_prologue(&mut fx);
 
                     for block in &body.blocks {
+                        let ir_block = fx.blocks[&block.id];
+
+                        B::switch_to_block(&mut fx, ir_block);
+
                         for stmt in &block.stmts {
                             match stmt {
                                 mir::Stmt::Assign(place, rvalue) => {

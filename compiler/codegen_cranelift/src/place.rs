@@ -94,22 +94,6 @@ impl<'ctx> Place<'ctx> {
         }
     }
 
-    pub fn from_var(var: Variable, layout: TyLayout<Ty>) -> Self {
-        Place {
-            kind: PlaceKind::Var(var),
-            layout,
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn from_var_pair(a: Variable, b: Variable, layout: TyLayout<Ty>) -> Self {
-        Place {
-            kind: PlaceKind::VarPair(a, b),
-            layout,
-            _marker: PhantomData,
-        }
-    }
-
     #[track_caller]
     pub fn as_ptr(&self) -> Pointer {
         match self.as_ptr_maybe_unsized() {

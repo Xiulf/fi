@@ -589,6 +589,12 @@ impl Item {
         self.attrs.iter().any(|a| a.name.symbol == main)
     }
 
+    pub fn is_no_mangle(&self) -> bool {
+        let no_mangle = Symbol::new("no_mangle");
+
+        self.attrs.iter().any(|a| a.name.symbol == no_mangle)
+    }
+
     pub fn repr(&self) -> Option<&str> {
         let repr = Symbol::new("repr");
 

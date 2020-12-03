@@ -4,7 +4,7 @@ use std::process::Command;
 
 pub fn get_linker(_target: &target_lexicon::Triple) -> Box<dyn linker::Linker> {
     // currently only GccLinker is available
-    Box::new(linker::GccLinker::new(Command::new("ld"), true)) as Box<dyn linker::Linker>
+    Box::new(linker::GccLinker::new(Command::new("cc"), false)) as Box<dyn linker::Linker>
 }
 
 pub fn extension(output_type: LinkOutputType, target: &target_lexicon::Triple) -> &'static OsStr {

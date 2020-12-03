@@ -30,7 +30,7 @@ fn type_info(db: &dyn MirDatabase, lib: hir::ir::LibId, ty: ir::Ty) -> ir::Opera
     let ptr_ty = ir::Ty::data(ptr_ty.owner);
     let type_info = db.lang_items().type_info();
     let type_info = db.typecheck(type_info.owner).ty.clone();
-    let ptr_ty = ir::Ty::app(ptr_ty, vec![type_info].into());
+    let ptr_ty = ir::Ty::app(ptr_ty.clone(), ptr_ty, vec![type_info].into());
     let basic_copy = db.lang_items().basic_copy();
     let basic_drop = db.lang_items().basic_drop();
     let basic_vwt = ir::Const::Tuple(vec![
@@ -47,6 +47,8 @@ fn type_info(db: &dyn MirDatabase, lib: hir::ir::LibId, ty: ir::Ty) -> ir::Opera
         ir::Const::Scalar(layout.stride.bytes() as u128),
         ir::Const::Ref(Box::new(basic_vwt)),
     ]);
+
+    let info = ir::Const::Tuple(vec![info]);
 
     ir::Operand::Const(ir::Const::Ref(Box::new(info)), ptr_ty)
 }

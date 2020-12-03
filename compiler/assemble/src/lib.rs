@@ -37,6 +37,14 @@ fn link_type(
     }
 }
 
+fn lib_prefix(out_type: linker::LinkOutputType) -> &'static str {
+    match out_type {
+        linker::LinkOutputType::Exe => "",
+        linker::LinkOutputType::Lib => "lib",
+        linker::LinkOutputType::Dylib => "lib",
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Assembly {
     path: PathBuf,
@@ -61,29 +69,37 @@ pub fn assembly(
     let out_type = db.link_type(lib, module);
     let extension = linker::extension(out_type, &db.target(lib));
     let out_filename: PathBuf = format!(
-        "{}/{}.{}",
+        "{}/{}{}.{}",
         db.manifest(lib).package.target_dir.display(),
+        lib_prefix(out_type),
         data.name,
         extension.to_string_lossy(),
     )
     .into();
 
     linker.add_object(obj_file.path());
+    linker.include_path(db.manifest(lib).package.target_dir.as_path());
 
     for &dep in &data.children {
         let data = tree.get(dep);
-        let asm = db.assembly(lib, data.id);
+        let _ = db.assembly(lib, data.id);
 
         match db.link_type(lib, data.id) {
             linker::LinkOutputType::Exe => unreachable!(),
-            linker::LinkOutputType::Lib => linker.link_staticlib(asm.path()),
-            linker::LinkOutputType::Dylib => linker.link_dylib(asm.path()),
+            linker::LinkOutputType::Lib => linker.link_staticlib(&**data.name.symbol),
+            linker::LinkOutputType::Dylib => linker.link_dylib(&**data.name.symbol),
         }
     }
 
     linker.set_output_type(out_type, &out_filename);
     linker.output_filename(&out_filename);
     linker.finalize();
+    println!("{:?}", linker.cmd());
+    obj_file.copy(&PathBuf::from(format!(
+        "{}/{}.o",
+        db.manifest(lib).package.target_dir.display(),
+        data.name
+    )));
     linker.cmd().status().unwrap();
 
     Arc::new(Assembly { path: out_filename })

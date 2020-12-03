@@ -1,5 +1,6 @@
 #![feature(decl_macro)]
 
+mod alloc;
 pub mod place;
 pub mod ptr;
 pub mod value;
@@ -18,6 +19,8 @@ pub fn create_backend(
     lib: source::LibId,
     mir: std::sync::Arc<mir::Module>,
 ) -> codegen::obj_file::ObjectFile {
+    use ::mir::ir::display::MirDisplay;
+    println!("{}", mir.display(db));
     let backend = ClifBackend::new();
     let mcx = codegen::ModuleCtx::new(db, lib, mir, backend);
 
@@ -97,7 +100,14 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
         let def = module.def(body.def);
         let name = def.name();
         let name = format!("{}.{}", module.name, name);
-        let name = mangling::mangle(name.bytes());
+        let mut name = mangling::mangle(name.bytes());
+
+        if let hir::ir::Def::Item(item) = def {
+            if item.is_no_mangle() {
+                name = def.name().to_string();
+            }
+        }
+
         let data = mcx
             .module
             .declare_data(&name, Linkage::Export, true, false)
@@ -112,7 +122,16 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
         let def = module.def(body.def);
         let name = def.name();
         let name = format!("{}.{}", module.name, name);
-        let name = mangling::mangle(name.bytes());
+        let mut name = mangling::mangle(name.bytes());
+
+        if let hir::ir::Def::Item(item) = def {
+            if item.is_main() {
+                name = "main".to_string();
+            } else if item.is_no_mangle() {
+                name = def.name().to_string();
+            }
+        }
+
         let mut sig = mcx.module.make_signature();
         let ret = mcx
             .db
@@ -152,6 +171,86 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
             .unwrap();
 
         mcx.func_ids.insert(body.def, (func, sig, ret));
+
+        func
+    }
+
+    fn declare_foreign_static(mcx: &mut ModuleCtx<Self>, id: mir::DefId) -> Self::Static {
+        let file = mcx.db.module_tree(id.lib).file(id.module);
+        let module = mcx.db.module_hir(file);
+        let def = module.def(id);
+        let name = def.name();
+        let data = mcx
+            .module
+            .declare_data(&**name.symbol, Linkage::Import, true, false)
+            .unwrap();
+
+        data
+    }
+
+    fn declare_foreign_func(mcx: &mut ModuleCtx<Self>, id: mir::DefId) -> Self::Func {
+        let file = mcx.db.module_tree(id.lib).file(id.module);
+        let module = mcx.db.module_hir(file);
+        let def = module.def(id);
+        let name = def.name();
+        let mut sig = mcx.module.make_signature();
+        let ty = mcx.db.typecheck(id).ty.clone();
+        let mut vargs = None;
+        let ty = if let check::ty::Type::ForAll(vargs2, ty2) = &*ty {
+            vargs = Some(vargs2.clone());
+            ty2.clone()
+        } else {
+            ty
+        };
+
+        let ret = if let check::ty::Type::Func(args, ret) = &*ty {
+            use codegen::abi::{get_pass_mode, PassMode};
+            use cranelift::prelude::AbiParam;
+            let ret = mcx.db.layout_of(mcx.lib, ret.clone());
+
+            match get_pass_mode(mcx, &ret) {
+                PassMode::NoPass => {}
+                PassMode::ByVal(ty) => sig.returns.push(AbiParam::new(ty)),
+                PassMode::ByValPair(a, b) => {
+                    sig.returns.push(AbiParam::new(a));
+                    sig.returns.push(AbiParam::new(b));
+                }
+                PassMode::ByRef { size: _ } => {
+                    sig.params.push(AbiParam::new(mcx.ptr_type));
+                }
+            }
+
+            for arg in args {
+                match get_pass_mode(mcx, &mcx.db.layout_of(mcx.lib, arg)) {
+                    PassMode::NoPass => {}
+                    PassMode::ByVal(ty) => sig.params.push(AbiParam::new(ty)),
+                    PassMode::ByValPair(a, b) => {
+                        sig.params.push(AbiParam::new(a));
+                        sig.params.push(AbiParam::new(b));
+                    }
+                    PassMode::ByRef { size: _ } => {
+                        sig.params.push(AbiParam::new(mcx.ptr_type));
+                    }
+                }
+            }
+
+            if let Some(vargs) = vargs {
+                for _ in &vargs {
+                    sig.params.push(AbiParam::new(mcx.ptr_type));
+                }
+            }
+
+            ret
+        } else {
+            unreachable!();
+        };
+
+        let func = mcx
+            .module
+            .declare_function(&**name.symbol, Linkage::Import, &sig)
+            .unwrap();
+
+        mcx.func_ids.insert(id, (func, sig, ret));
 
         func
     }
@@ -196,36 +295,45 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
             }
         }
 
-        for arg in fx.body.args() {
-            let layout = fx.db.layout_of(fx.lib, arg.ty.clone());
-            let value = match get_pass_mode(fx.mcx, &layout) {
-                PassMode::NoPass => continue,
-                PassMode::ByVal(ty) => {
-                    let param = fx.bcx.append_block_param(start_block, ty);
+        let vals = fx
+            .body
+            .args()
+            .filter_map(|arg| {
+                let layout = fx.db.layout_of(fx.lib, arg.ty.clone());
+                let value = match get_pass_mode(fx.mcx, &layout) {
+                    PassMode::NoPass => return None,
+                    PassMode::ByVal(ty) => {
+                        let param = fx.bcx.append_block_param(start_block, ty);
 
-                    value::Value::new_val(param, layout.clone())
-                }
-                PassMode::ByValPair(a, b) => {
-                    let a = fx.bcx.append_block_param(start_block, a);
-                    let b = fx.bcx.append_block_param(start_block, b);
+                        value::Value::new_val(param, layout.clone())
+                    }
+                    PassMode::ByValPair(a, b) => {
+                        let a = fx.bcx.append_block_param(start_block, a);
+                        let b = fx.bcx.append_block_param(start_block, b);
 
-                    value::Value::new_val_pair(a, b, layout.clone())
-                }
-                PassMode::ByRef { size: Some(_) } => {
-                    let param = fx.bcx.append_block_param(start_block, fx.ptr_type);
+                        value::Value::new_val_pair(a, b, layout.clone())
+                    }
+                    PassMode::ByRef { size: Some(_) } => {
+                        let param = fx.bcx.append_block_param(start_block, fx.ptr_type);
 
-                    value::Value::new_ref(ptr::Pointer::addr(param), layout.clone())
-                }
-                PassMode::ByRef { size: None } => {
-                    let ptr = fx.bcx.append_block_param(start_block, fx.ptr_type);
-                    let meta = fx.bcx.append_block_param(start_block, fx.ptr_type);
+                        value::Value::new_ref(ptr::Pointer::addr(param), layout.clone())
+                    }
+                    PassMode::ByRef { size: None } => {
+                        let ptr = fx.bcx.append_block_param(start_block, fx.ptr_type);
+                        // let meta = fx.bcx.append_block_param(start_block, fx.ptr_type);
 
-                    value::Value::new_ref_meta(ptr::Pointer::addr(ptr), meta, layout.clone())
-                }
-            };
+                        // value::Value::new_ref_meta(ptr::Pointer::addr(ptr), meta, layout.clone())
+                        value::Value::new_ref(ptr::Pointer::addr(ptr), layout.clone())
+                    }
+                };
 
+                Some(value)
+            })
+            .collect::<Vec<_>>();
+
+        for (arg, value) in fx.body.args().zip(vals) {
             let ssa = ssa_map[&arg.id] == codegen::analyze::SsaKind::Ssa;
-            let place = local_place(fx, arg.id, layout, ssa);
+            let place = local_place(fx, arg.id, value.layout.clone(), ssa);
 
             place.store(fx, value);
         }
@@ -238,6 +346,10 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                 local_place(fx, local.id, layout, ssa);
             }
         }
+
+        fx.bcx
+            .ins()
+            .jump(fx.blocks[&fx.body.blocks.first().unwrap().id], &[]);
 
         fn local_place<'ctx>(
             fx: &mut FunctionCtx<ClifBackend<'ctx>>,
@@ -265,6 +377,9 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
         fx.bcx.finalize();
         fx.ctx.compute_cfg();
         fx.ctx.compute_domtree();
+
+        println!("{}", fx.ctx.func);
+
         fx.mcx
             .ctx
             .eliminate_unreachable_code(fx.mcx.module.isa())
@@ -291,6 +406,10 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
 
         obj_file.write(&bytes);
         obj_file
+    }
+
+    fn switch_to_block(fx: &mut FunctionCtx<Self>, block: Self::Block) {
+        fx.bcx.switch_to_block(block);
     }
 
     fn trans_place(fx: &mut FunctionCtx<Self>, place: &mir::Place) -> Self::Place {
@@ -349,6 +468,23 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                 value::Value::new_val(func, layout)
             }
             mir::Const::Bytes(bytes) => Self::trans_bytes(fx, bytes, layout),
+            mir::Const::Ref(const_) => {
+                let ptr_type = fx.ptr_type;
+                let data_id = Self::trans_const_alloc(
+                    fx,
+                    const_,
+                    layout.pointee(fx.lib, fx.db.to_layout_db()),
+                );
+
+                let global = fx
+                    .mcx
+                    .module
+                    .declare_data_in_func(data_id, &mut fx.mcx.ctx.func);
+
+                let global = fx.bcx.ins().global_value(ptr_type, global);
+
+                value::Value::new_val(global, layout)
+            }
             _ => unimplemented!(),
         }
     }

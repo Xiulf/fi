@@ -17,6 +17,20 @@ pub enum EmptySinglePair<T> {
     Pair(T, T),
 }
 
+impl<B: Backend> std::fmt::Debug for PassMode<B>
+where
+    <B::Type as Type>::Raw: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PassMode::NoPass => write!(f, "NoPass"),
+            PassMode::ByVal(ty) => write!(f, "ByVal({:?})", ty),
+            PassMode::ByValPair(a, b) => write!(f, "ByValPair({:?}, {:?})", a, b),
+            PassMode::ByRef { size } => write!(f, "ByRef {{ size: {:?} }}", size),
+        }
+    }
+}
+
 impl<T> EmptySinglePair<T> {
     pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> EmptySinglePair<U> {
         match self {

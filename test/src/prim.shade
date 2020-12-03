@@ -1,3 +1,4 @@
+[out_type("staticlib")]
 module Prim where
 
 alias Byte = Uint8
@@ -75,6 +76,7 @@ data ValueWitnessTable = ValueWitnessTable {
 }
 
 [lang("BASIC_COPY")]
+[no_mangle]
 fn __BASIC_COPY :: (Ptr (), Ptr (), Ptr TypeInfo) -> ()
 fn __BASIC_COPY dst src ty = do
     TypeInfo info <- unsafe_read ty
@@ -82,6 +84,7 @@ fn __BASIC_COPY dst src ty = do
     ()
 
 [lang("BASIC_DROP")]
+[no_mangle]
 fn __BASIC_DROP :: (Ptr (), Ptr TypeInfo) -> ()
 fn __BASIC_DROP val ty = ()
 

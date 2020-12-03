@@ -47,10 +47,10 @@ impl<'db> Ctx<'db> {
                 (_, Type::ForAll(_b_vars, b_ty)) => {
                     self.unify_one(Constraint::Equal(a, a_span, b_ty.clone(), b_span))
                 }
-                (Type::App(a, _), _) => {
+                (Type::App(a, _, _), _) => {
                     self.unify_one(Constraint::Equal(a.clone(), a_span, b, b_span))
                 }
-                (_, Type::App(b, _)) => {
+                (_, Type::App(b, _, _)) => {
                     self.unify_one(Constraint::Equal(a, a_span, b.clone(), b_span))
                 }
                 (Type::Func(a_params, a_ret), Type::Func(b_params, b_ret))

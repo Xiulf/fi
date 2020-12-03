@@ -69,7 +69,7 @@ fn layout_of(db: &dyn LayoutDatabase, lib: source::LibId, ty: Ty) -> TyLayout<Ty
                 .map(|f| db.layout_of(lib, f.ty))
                 .collect(),
         ),
-        Type::App(base, args) => match &**base {
+        Type::App(base, _, args) => match &**base {
             Type::Data(def) => {
                 if *def == db.lang_items().ptr_ty().owner {
                     scalar(Primitive::Pointer)
@@ -423,7 +423,7 @@ impl<Ty> std::ops::Deref for TyLayout<Ty> {
 
 impl TyLayout<Ty> {
     pub fn pointee(&self, lib: source::LibId, db: &dyn LayoutDatabase) -> Self {
-        if let Type::App(_, args) = &*self.ty {
+        if let Type::App(_, _, args) = &*self.ty {
             db.layout_of(lib, args[0].clone())
         } else {
             unreachable!();
@@ -431,7 +431,7 @@ impl TyLayout<Ty> {
     }
 
     pub fn element(&self, lib: source::LibId, db: &dyn LayoutDatabase) -> Self {
-        if let Type::App(_, args) = &*self.ty {
+        if let Type::App(_, _, args) = &*self.ty {
             db.layout_of(lib, args[0].clone())
         } else {
             unreachable!();
@@ -445,7 +445,7 @@ impl TyLayout<Ty> {
 
         loop {
             match ty {
-                Type::App(ty2, _) => ty = ty2,
+                Type::App(ty2, _, _) => ty = ty2,
                 Type::ForAll(_, ty2) => ty = ty2,
                 _ => break,
             }
@@ -458,7 +458,7 @@ impl TyLayout<Ty> {
             | Type::Infer(_)
             | Type::Var(_)
             | Type::Func(_, _)
-            | Type::App(_, _)
+            | Type::App(_, _, _)
             | Type::ForAll(_, _) => unreachable!(),
             Type::Tuple(tys) => tys[field].clone(),
             Type::Record(fields, _) => fields[field].ty.clone(),

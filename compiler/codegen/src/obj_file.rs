@@ -20,4 +20,8 @@ impl ObjectFile {
     pub fn path(&self) -> &Path {
         self.obj_file.path()
     }
+
+    pub fn copy(&self, path: &Path) {
+        std::fs::copy(self.path(), path).unwrap();
+    }
 }

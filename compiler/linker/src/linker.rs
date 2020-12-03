@@ -6,8 +6,9 @@ use std::process::Command;
 pub trait Linker {
     fn cmd(&mut self) -> &mut Command;
     fn set_output_type(&mut self, output_type: LinkOutputType, out_filename: &Path);
-    fn link_dylib(&mut self, path: &Path);
-    fn link_staticlib(&mut self, path: &Path);
+    fn link_dylib(&mut self, name: &str);
+    fn link_staticlib(&mut self, name: &str);
+    fn include_path(&mut self, path: &Path);
     fn output_filename(&mut self, path: &Path);
     fn add_object(&mut self, path: &Path);
     fn finalize(&mut self);
@@ -93,14 +94,18 @@ impl Linker for GccLinker {
         }
     }
 
-    fn link_dylib(&mut self, path: &Path) {
+    fn link_dylib(&mut self, name: &str) {
         self.hint_dynamic();
-        self.cmd.arg(format!("-l:{}", path.display()));
+        self.cmd.arg(format!("-l{}", name));
     }
 
-    fn link_staticlib(&mut self, path: &Path) {
+    fn link_staticlib(&mut self, name: &str) {
         self.hint_static();
-        self.cmd.arg(format!("-l:{}", path.display()));
+        self.cmd.arg(format!("-l{}", name));
+    }
+
+    fn include_path(&mut self, path: &Path) {
+        self.cmd.arg(format!("-L{}", path.display()));
     }
 
     fn output_filename(&mut self, path: &Path) {

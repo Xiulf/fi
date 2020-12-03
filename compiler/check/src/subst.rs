@@ -82,12 +82,13 @@ fn subst_var(ty: &Ty, ivar: &InferVar, repl: Ty) {
 
             subst_var(ret, ivar, repl);
         }
-        Type::App(base, args) => {
+        Type::App(base, orig, args) => {
             for arg in &**args {
                 subst_var(arg, ivar, repl.clone());
             }
 
-            subst_var(base, ivar, repl);
+            subst_var(base, ivar, repl.clone());
+            subst_var(orig, ivar, repl);
         }
         Type::ForAll(_, ty) => subst_var(ty, ivar, repl),
     }

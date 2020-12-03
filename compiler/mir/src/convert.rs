@@ -16,6 +16,7 @@ pub fn convert(db: &dyn MirDatabase, lib: hir::LibId, id: hir::ModuleId) -> Arc<
 
 pub struct Converter<'db> {
     db: &'db dyn MirDatabase,
+    foreigns: Vec<ir::Foreign>,
     bodies: Vec<ir::Body>,
 }
 
@@ -31,12 +32,14 @@ impl<'db> Converter<'db> {
     pub fn new(db: &'db dyn MirDatabase) -> Self {
         Converter {
             db,
+            foreigns: Vec::new(),
             bodies: Vec::new(),
         }
     }
 
     pub fn finish(self) -> ir::Module {
         ir::Module {
+            foreigns: self.foreigns,
             bodies: self.bodies,
         }
     }
@@ -67,6 +70,19 @@ impl<'db> Converter<'db> {
                         BodyConverter::new(self.db, hir, ty, item.id.owner, ir::BodyKind::Static);
 
                     self.bodies.push(conv.convert(body));
+                }
+                hir::ItemKind::Foreign { kind, .. } => {
+                    if !item.is_intrinsic() {
+                        let kind = match kind {
+                            hir::ForeignKind::Func => ir::ForeignKind::Func,
+                            hir::ForeignKind::Static => ir::ForeignKind::Static,
+                        };
+
+                        self.foreigns.push(ir::Foreign {
+                            def: item.id.owner,
+                            kind,
+                        });
+                    }
                 }
                 _ => {}
             }
@@ -135,7 +151,7 @@ impl<'db> BodyConverter<'db> {
             let type_info = self.db.typecheck(type_info.owner).ty.clone();
             let ptr_ty = self.db.lang_items().ptr_ty();
             let ptr_ty = ir::Ty::data(ptr_ty.owner);
-            let ty = ir::Ty::app(ptr_ty, vec![type_info].into());
+            let ty = ir::Ty::app(ptr_ty.clone(), ptr_ty, vec![type_info].into());
 
             for var in vars {
                 let local = self.builder.create_arg(ty.clone());
@@ -359,27 +375,68 @@ impl<'db> BodyConverter<'db> {
                 }
             }
             _ => {
-                use check::ty::Type;
+                use check::ty::{List, Ty, Type};
                 let base_ty = self.types.tys[&base.id].clone();
-                let res = self.builder.create_tmp(ty);
+                let res = self.builder.create_tmp(ty.clone());
                 let res = ir::Place::local(res);
+                let mut res2 = res.clone();
                 let next = self.builder.create_block();
                 let base_ = self.convert_expr(base);
-                let mut args = args
+                let mut arg_ops = args
                     .iter()
                     .map(|a| self.convert_expr(a))
                     .collect::<Vec<_>>();
 
                 match &*base_ty {
-                    Type::App(_, targs) => {
+                    Type::App(_, orig, targs) => {
+                        if let Type::Func(arg_tys, ret_ty) = &**orig {
+                            assert_eq!(arg_ops.len(), arg_tys.len());
+
+                            let ptr_ty = self.db.lang_items().ptr_ty();
+                            let ptr_ty = Ty::data(ptr_ty.owner);
+
+                            for i in 0..arg_tys.len() {
+                                if let Type::Var(_) = &*arg_tys[i] {
+                                    let arg_ref = self.builder.create_tmp(Ty::app(
+                                        ptr_ty.clone(),
+                                        ptr_ty.clone(),
+                                        vec![self.types.tys[&args[i].id].clone()].into(),
+                                    ));
+
+                                    let arg_ref = ir::Place::local(arg_ref);
+                                    let arg = self.builder.placed(arg_ops[i].clone());
+
+                                    self.builder.addrof(arg_ref.clone(), arg);
+                                    arg_ops[i] = ir::Operand::Move(arg_ref);
+                                }
+                            }
+
+                            if let Type::Var(_) = &**ret_ty {
+                                let res_ref = self.builder.create_tmp(Ty::app(
+                                    ptr_ty.clone(),
+                                    ptr_ty,
+                                    vec![ty].into(),
+                                ));
+
+                                let res_ref = ir::Place::local(res_ref);
+
+                                self.builder.addrof(res_ref.clone(), res.clone());
+
+                                let new_res = self.builder.create_tmp(Ty::tuple(List::new()));
+
+                                res2 = ir::Place::local(new_res);
+                                arg_ops.insert(0, ir::Operand::Move(res_ref));
+                            }
+                        }
+
                         for ty in targs {
-                            args.push(self.db.type_info(base.id.owner.lib, ty));
+                            arg_ops.push(self.db.type_info(base.id.owner.lib, ty));
                         }
                     }
                     _ => {}
                 }
 
-                self.builder.call(res.clone(), base_, args, next);
+                self.builder.call(res2, base_, arg_ops, next);
                 self.builder.set_bock(next);
 
                 ir::Operand::Move(res)

@@ -106,7 +106,7 @@ impl<'db> Ctx<'db> {
                 let args = args.iter().map(|a| self.hir_ty(a)).collect();
                 let ty = base.instantiate(&args);
 
-                Ty::app(ty, args)
+                Ty::app(ty, base, args)
             }
             ir::TypeKind::Forall { vars, ty } => {
                 let vars = vars
@@ -161,7 +161,7 @@ impl<'db> Ctx<'db> {
                     ret,
                 )
             }
-            Type::App(ty, _) => self.infer_kind(ty),
+            Type::App(ty, _, _) => self.infer_kind(ty),
         }
     }
 }

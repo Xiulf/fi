@@ -6,7 +6,20 @@ use index_vec::IndexVec;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Module {
+    pub foreigns: Vec<Foreign>,
     pub bodies: Vec<Body>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Foreign {
+    pub def: DefId,
+    pub kind: ForeignKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForeignKind {
+    Func,
+    Static,
 }
 
 #[derive(Debug, PartialEq, Eq)]

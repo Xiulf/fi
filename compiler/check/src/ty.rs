@@ -21,7 +21,7 @@ pub enum Type {
     Data(DefId),
     Tuple(List<Ty>),
     Record(List<Field>, Option<Ty>),
-    App(Ty, List<Ty>),
+    App(Ty, Ty, List<Ty>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -83,8 +83,8 @@ impl Ty {
         Ty(Arc::new(Type::Record(fields, tail)))
     }
 
-    pub fn app(ty: Ty, args: List<Ty>) -> Self {
-        Ty(Arc::new(Type::App(ty, args)))
+    pub fn app(ty: Ty, orig: Ty, args: List<Ty>) -> Self {
+        Ty(Arc::new(Type::App(ty, orig, args)))
     }
 
     pub fn display<'a>(&'a self, db: &'a dyn crate::TypeDatabase) -> TyDisplay<'a> {
@@ -159,8 +159,9 @@ impl Ty {
                     tail.collect_vars(vars);
                 }
             }
-            Type::App(ty, args) => {
+            Type::App(ty, orig, args) => {
                 ty.collect_vars(vars);
+                orig.collect_vars(vars);
 
                 for arg in args {
                     arg.collect_vars(vars);
@@ -185,7 +186,7 @@ impl Ty {
                 .collect::<List<_>>();
             let ty = ret.replace(&vars.into_iter().zip(&args).collect());
 
-            Ty::app(ty, args)
+            Ty::app(ty, ret.clone(), args)
         } else {
             self.clone()
         }
@@ -217,8 +218,9 @@ impl Ty {
                     .collect(),
                 tail.as_ref().map(|t| t.replace(map)),
             ),
-            Type::App(ty, args) => Ty::app(
+            Type::App(ty, orig, args) => Ty::app(
                 ty.replace(map),
+                orig.clone(),
                 args.into_iter().map(|a| a.replace(map)).collect(),
             ),
             _ => self.clone(),
@@ -361,7 +363,7 @@ impl fmt::Display for TyDisplay<'_> {
 
                 write!(f, " }}")
             }
-            Type::App(ty, args) => {
+            Type::App(ty, _, args) => {
                 let ty_prec = self.0.prec();
 
                 if ty.prec() >= ty_prec {
