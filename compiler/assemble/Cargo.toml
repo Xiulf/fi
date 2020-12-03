@@ -15,3 +15,4 @@ codegen = { path = "../codegen" }
 codegen_cranelift = { path = "../codegen_cranelift", optional = true }
 linker = { path = "../linker" }
 salsa = "^0.16.0"
+ar = "^0.8.0"

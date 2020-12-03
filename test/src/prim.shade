@@ -91,5 +91,11 @@ fn __BASIC_DROP val ty = ()
 [intrinsic]
 foreign fn unsafe_read :: forall t. Ptr t -> t
 
+[lang("__alloc")]
+foreign fn malloc :: Uint -> Ptr ()
+
+[lang("__free")]
+foreign fn free   :: Ptr () -> ()
+
 --|                   dest    src     n        dest
 foreign fn memcpy :: (Ptr (), Ptr (), Uint) -> Ptr ()

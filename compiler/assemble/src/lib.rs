@@ -69,7 +69,7 @@ pub fn assembly(
     let out_type = db.link_type(lib, module);
     let extension = linker::extension(out_type, &db.target(lib));
     let out_filename: PathBuf = format!(
-        "{}/{}{}.{}",
+        "{}/{}{}{}",
         db.manifest(lib).package.target_dir.display(),
         lib_prefix(out_type),
         data.name,
@@ -77,30 +77,66 @@ pub fn assembly(
     )
     .into();
 
-    linker.add_object(obj_file.path());
-    linker.include_path(db.manifest(lib).package.target_dir.as_path());
+    if let linker::LinkOutputType::Lib = out_type {
+        let file = std::fs::File::create(&out_filename).unwrap();
+        let mut ab = ar::GnuBuilder::new(
+            file,
+            std::iter::once(
+                obj_file
+                    .path()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+            .chain(data.children.iter().map(|&dep| {
+                let data = tree.get(dep);
+                let asm = db.assembly(lib, data.id);
 
-    for &dep in &data.children {
-        let data = tree.get(dep);
-        let _ = db.assembly(lib, data.id);
+                asm.path()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            }))
+            .map(|p| p.into_bytes())
+            .collect(),
+        );
 
-        match db.link_type(lib, data.id) {
-            linker::LinkOutputType::Exe => unreachable!(),
-            linker::LinkOutputType::Lib => linker.link_staticlib(&**data.name.symbol),
-            linker::LinkOutputType::Dylib => linker.link_dylib(&**data.name.symbol),
+        ab.append_path(obj_file.path()).unwrap();
+
+        for &dep in &data.children {
+            let data = tree.get(dep);
+            let asm = db.assembly(lib, data.id);
+
+            ab.append_path(asm.path()).unwrap();
         }
-    }
 
-    linker.set_output_type(out_type, &out_filename);
-    linker.output_filename(&out_filename);
-    linker.finalize();
-    println!("{:?}", linker.cmd());
-    obj_file.copy(&PathBuf::from(format!(
-        "{}/{}.o",
-        db.manifest(lib).package.target_dir.display(),
-        data.name
-    )));
-    linker.cmd().status().unwrap();
+        std::mem::drop(ab);
+        std::process::Command::new("ranlib")
+            .arg(&out_filename)
+            .status()
+            .unwrap();
+    } else {
+        linker.add_object(obj_file.path());
+        linker.include_path(db.manifest(lib).package.target_dir.as_path());
+
+        for &dep in &data.children {
+            let data = tree.get(dep);
+            let _ = db.assembly(lib, data.id);
+
+            match db.link_type(lib, data.id) {
+                linker::LinkOutputType::Exe => unreachable!(),
+                linker::LinkOutputType::Lib => linker.link_staticlib(&**data.name.symbol),
+                linker::LinkOutputType::Dylib => linker.link_dylib(&**data.name.symbol),
+            }
+        }
+
+        linker.finalize();
+        linker.set_output_type(out_type, &out_filename);
+        linker.output_filename(&out_filename);
+        linker.cmd().status().unwrap();
+    }
 
     Arc::new(Assembly { path: out_filename })
 }

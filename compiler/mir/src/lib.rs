@@ -3,13 +3,14 @@
 
 pub mod builder;
 pub mod convert;
+pub mod graph;
 pub mod ir;
+pub mod lifetime;
 
 use std::sync::Arc;
 
 #[salsa::query_group(MirDatabaseStorage)]
 pub trait MirDatabase: layout::LayoutDatabase + layout::ToLayoutDb {
-    #[salsa::invoke(convert::convert)]
     fn module_mir(&self, lib: hir::ir::LibId, id: hir::ir::ModuleId) -> Arc<ir::Module>;
 
     fn type_info(&self, lib: hir::ir::LibId, ty: ir::Ty) -> ir::Operand;
@@ -23,6 +24,14 @@ impl<T: MirDatabase> ToMirDb for T {
     fn to_mir_db(&self) -> &dyn MirDatabase {
         self
     }
+}
+
+fn module_mir(db: &dyn MirDatabase, lib: hir::ir::LibId, id: hir::ir::ModuleId) -> Arc<ir::Module> {
+    let mut module = convert::convert(db, lib, id);
+
+    lifetime::infer_lifetimes(&mut module);
+
+    Arc::new(module)
 }
 
 fn type_info(db: &dyn MirDatabase, lib: hir::ir::LibId, ty: ir::Ty) -> ir::Operand {

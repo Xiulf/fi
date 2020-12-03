@@ -4,14 +4,13 @@ use hir::ir as hir;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub fn convert(db: &dyn MirDatabase, lib: hir::LibId, id: hir::ModuleId) -> Arc<ir::Module> {
+pub fn convert(db: &dyn MirDatabase, lib: hir::LibId, id: hir::ModuleId) -> ir::Module {
     let file = db.module_tree(lib).file(id);
     let hir = db.module_hir(file);
     let mut converter = Converter::new(db);
 
     converter.convert(&hir);
-
-    Arc::new(converter.finish())
+    converter.finish()
 }
 
 pub struct Converter<'db> {

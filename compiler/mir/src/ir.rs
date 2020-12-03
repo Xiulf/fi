@@ -60,6 +60,12 @@ pub enum LocalKind {
     Var,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Location {
+    pub block: Block,
+    pub stmt: usize,
+}
+
 index_vec::define_index_type! {
     pub struct Block = u32;
 }
@@ -139,5 +145,9 @@ pub enum Const {
 impl Body {
     pub fn args(&self) -> impl Iterator<Item = &LocalData> {
         self.locals.iter().filter(|l| l.kind == LocalKind::Arg)
+    }
+
+    pub fn graph(&self) -> crate::graph::Graph {
+        crate::graph::Graph::new(self)
     }
 }

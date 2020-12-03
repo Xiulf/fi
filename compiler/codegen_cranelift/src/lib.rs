@@ -333,9 +333,20 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
 
         for (arg, value) in fx.body.args().zip(vals) {
             let ssa = ssa_map[&arg.id] == codegen::analyze::SsaKind::Ssa;
-            let place = local_place(fx, arg.id, value.layout.clone(), ssa);
+            let place = if ssa {
+                let place = if let layout::Abi::ScalarPair(_, _) = value.layout.abi {
+                    place::Place::new_var_pair(fx, value.layout.clone())
+                } else {
+                    place::Place::new_var(fx, value.layout.clone())
+                };
 
-            place.store(fx, value);
+                place.clone().store(fx, value);
+                place
+            } else {
+                place::Place::new_ref(value.clone().on_stack(fx).0, value.layout)
+            };
+
+            fx.locals.insert(arg.id, place);
         }
 
         for local in &fx.body.locals {
@@ -378,6 +389,7 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
         fx.ctx.compute_cfg();
         fx.ctx.compute_domtree();
 
+        println!("{}", fx.module.declarations().get_function_decl(func).name);
         println!("{}", fx.ctx.func);
 
         fx.mcx
