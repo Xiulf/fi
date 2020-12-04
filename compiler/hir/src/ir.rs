@@ -51,6 +51,7 @@ pub struct Module {
     pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub exports: Vec<Export>,
+    pub imports: Vec<DefId>,
     pub items: BTreeMap<HirId, Item>,
     pub trait_items: BTreeMap<TraitItemId, TraitItem>,
     pub impl_items: BTreeMap<ImplItemId, ImplItem>,

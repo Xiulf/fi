@@ -1,5 +1,6 @@
 use crate::{ClifBackend, FunctionCtx};
 use cranelift::codegen::ir::{self as cir, immediates::Offset32};
+use cranelift::frontend::Variable;
 use cranelift::prelude::InstBuilder;
 use layout::Align;
 use std::convert::TryFrom;
@@ -13,6 +14,7 @@ pub struct Pointer {
 #[derive(Debug, Clone, Copy)]
 pub enum PointerKind {
     Addr(cir::Value),
+    Var(Variable),
     Stack(cir::StackSlot),
     Dangling(Align),
 }
@@ -21,6 +23,13 @@ impl Pointer {
     pub fn addr(addr: cir::Value) -> Self {
         Pointer {
             kind: PointerKind::Addr(addr),
+            offset: Offset32::new(0),
+        }
+    }
+
+    pub fn var(var: Variable) -> Self {
+        Pointer {
+            kind: PointerKind::Var(var),
             offset: Offset32::new(0),
         }
     }
@@ -62,11 +71,28 @@ impl Pointer {
                     fx.bcx.ins().iadd_imm(addr, offset)
                 }
             }
+            PointerKind::Var(var) => {
+                let offset: i64 = self.offset.into();
+                let addr = fx.bcx.use_var(var);
+
+                if offset == 0 {
+                    addr
+                } else {
+                    fx.bcx.ins().iadd_imm(addr, offset)
+                }
+            }
             PointerKind::Stack(ss) => fx.bcx.ins().stack_addr(ptr_type, ss, self.offset),
             PointerKind::Dangling(align) => fx
                 .bcx
                 .ins()
                 .iconst(ptr_type, i64::try_from(align.bytes()).unwrap()),
+        }
+    }
+
+    pub fn get_var(self) -> Variable {
+        match self.kind {
+            PointerKind::Var(var) => var,
+            _ => unreachable!(),
         }
     }
 
@@ -87,6 +113,7 @@ impl Pointer {
             if let Some(new_offset) = base_offset.checked_add(offset) {
                 let base_addr = match self.kind {
                     PointerKind::Addr(addr) => addr,
+                    PointerKind::Var(var) => fx.bcx.use_var(var),
                     PointerKind::Stack(ss) => fx.bcx.ins().stack_addr(ptr_type, ss, 0),
                     PointerKind::Dangling(align) => fx
                         .bcx
@@ -112,6 +139,14 @@ impl Pointer {
         match self.kind {
             PointerKind::Addr(addr) => Pointer {
                 kind: PointerKind::Addr(fx.bcx.ins().iadd(addr, offset)),
+                offset: self.offset,
+            },
+            PointerKind::Var(var) => Pointer {
+                kind: PointerKind::Addr({
+                    let addr = fx.bcx.use_var(var);
+
+                    fx.bcx.ins().iadd(addr, offset)
+                }),
                 offset: self.offset,
             },
             PointerKind::Stack(slot) => {
@@ -144,6 +179,11 @@ impl Pointer {
     ) -> cir::Value {
         match self.kind {
             PointerKind::Addr(addr) => fx.bcx.ins().load(ty, flags, addr, self.offset),
+            PointerKind::Var(var) => {
+                let addr = fx.bcx.use_var(var);
+
+                fx.bcx.ins().load(ty, flags, addr, self.offset)
+            }
             PointerKind::Stack(ss) => fx.bcx.ins().stack_load(ty, ss, self.offset),
             PointerKind::Dangling(_) => unreachable!(),
         }
@@ -152,6 +192,11 @@ impl Pointer {
     pub fn store(self, fx: &mut FunctionCtx<ClifBackend>, value: cir::Value, flags: cir::MemFlags) {
         match self.kind {
             PointerKind::Addr(addr) => fx.bcx.ins().store(flags, value, addr, self.offset),
+            PointerKind::Var(var) => {
+                let addr = fx.bcx.use_var(var);
+
+                fx.bcx.ins().store(flags, value, addr, self.offset)
+            }
             PointerKind::Stack(ss) => fx.bcx.ins().stack_store(value, ss, self.offset),
             PointerKind::Dangling(_) => unreachable!(),
         };

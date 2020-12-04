@@ -44,6 +44,27 @@ impl<'db> Converter<'db> {
     }
 
     pub fn convert(&mut self, hir: &hir::Module) {
+        for &id in &hir.imports {
+            let file = self.db.module_tree(id.lib).file(id.module);
+            let module = self.db.module_hir(file);
+            let def = module.def(id);
+            let kind = if let hir::Def::Item(item) = def {
+                match &item.kind {
+                    hir::ItemKind::Func { .. } => ir::ForeignKind::Func,
+                    hir::ItemKind::Static { .. } => ir::ForeignKind::Static,
+                    hir::ItemKind::Foreign { kind, .. } => match kind {
+                        hir::ForeignKind::Func => ir::ForeignKind::Func,
+                        hir::ForeignKind::Static => ir::ForeignKind::Static,
+                    },
+                    _ => continue,
+                }
+            } else {
+                unimplemented!();
+            };
+
+            self.foreigns.push(ir::Foreign { def: id, kind });
+        }
+
         for (_, item) in &hir.items {
             match &item.kind {
                 hir::ItemKind::Func { body, .. } => {

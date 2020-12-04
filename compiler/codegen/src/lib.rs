@@ -36,6 +36,8 @@ pub trait Backend: Sized {
 
     fn switch_to_block(fx: &mut FunctionCtx<Self>, block: Self::Block);
 
+    fn var_live(fx: &mut FunctionCtx<Self>, local: mir::Local);
+    fn var_dead(fx: &mut FunctionCtx<Self>, local: mir::Local);
     fn trans_place(fx: &mut FunctionCtx<Self>, place: &mir::Place) -> Self::Place;
     fn trans_const(fx: &mut FunctionCtx<Self>, const_: &mir::Const, ty: &mir::Ty) -> Self::Value;
     fn trans_rvalue(fx: &mut FunctionCtx<Self>, place: Self::Place, rvalue: &mir::RValue);
@@ -192,6 +194,12 @@ impl<'db, B: Backend> ModuleCtx<'db, B> {
                                     let place = B::trans_place(&mut fx, place);
 
                                     B::trans_rvalue(&mut fx, place, rvalue);
+                                }
+                                mir::Stmt::VarLive(local) => {
+                                    B::var_live(&mut fx, *local);
+                                }
+                                mir::Stmt::VarDead(local) => {
+                                    B::var_dead(&mut fx, *local);
                                 }
                                 _ => unimplemented!(),
                             }

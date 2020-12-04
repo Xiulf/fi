@@ -32,6 +32,7 @@ pub struct Converter<'db> {
     current_item: ir::DefId,
     modules: Vec<QualModule>,
     exports: Vec<ir::Export>,
+    imports: Vec<ir::DefId>,
     items: BTreeMap<ir::HirId, ir::Item>,
     trait_items: BTreeMap<ir::TraitItemId, ir::TraitItem>,
     impl_items: BTreeMap<ir::ImplItemId, ir::ImplItem>,
@@ -61,6 +62,7 @@ impl<'db> Converter<'db> {
             current_item: ir::DefId::dummy(),
             modules: Vec::new(),
             exports: Vec::new(),
+            imports: Vec::new(),
             items: BTreeMap::new(),
             trait_items: BTreeMap::new(),
             impl_items: BTreeMap::new(),
@@ -75,6 +77,7 @@ impl<'db> Converter<'db> {
             attrs: ast.attrs.clone(),
             name: ast.name,
             exports: self.exports,
+            imports: self.imports,
             body_ids: self.bodies.keys().copied().collect(),
             items: self.items,
             trait_items: self.trait_items,
@@ -563,6 +566,10 @@ impl<'db> Converter<'db> {
             },
             export.res,
         );
+
+        if let ir::Res::Def(ir::DefKind::Func | ir::DefKind::Static, id) = export.res {
+            self.imports.push(id);
+        }
 
         if let Some(group) = export.group {
             for exp in group {

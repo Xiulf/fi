@@ -374,6 +374,11 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                 } else {
                     place::Place::new_var(fx, layout)
                 }
+            } else if let check::ty::Type::Var(_) = &*layout.ty {
+                // place::Place::new_ref(ptr::Pointer::dangling(layout.align), layout)
+                let var = cranelift::frontend::Variable::with_u32(fx.next_ssa_var());
+                fx.bcx.declare_var(var, fx.ptr_type);
+                place::Place::new_ref(ptr::Pointer::var(var), layout)
             } else {
                 place::Place::new_stack(fx, layout)
             };
@@ -422,6 +427,41 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
 
     fn switch_to_block(fx: &mut FunctionCtx<Self>, block: Self::Block) {
         fx.bcx.switch_to_block(block);
+    }
+
+    fn var_live(fx: &mut FunctionCtx<Self>, local: mir::Local) {
+        if let check::ty::Type::Var(var) = &*fx.body.locals[local].ty {
+            let __alloc = fx.db.lang_items().__alloc().owner;
+            let __alloc = fx.func_ids[&__alloc].0;
+            let __alloc = fx
+                .mcx
+                .module
+                .declare_func_in_func(__alloc, &mut fx.mcx.ctx.func);
+
+            let ptr_type = fx.ptr_type;
+            let zero = fx.bcx.ins().iconst(ptr_type, 0);
+            let call = fx.bcx.ins().call(__alloc, &[zero]);
+            let val = fx.bcx.inst_results(call)[0];
+            let place = fx.locals[&local].clone();
+            let var = place.as_ptr().get_var();
+
+            fx.bcx.def_var(var, val);
+        }
+    }
+
+    fn var_dead(fx: &mut FunctionCtx<Self>, local: mir::Local) {
+        if let check::ty::Type::Var(_) = &*fx.body.locals[local].ty {
+            let __free = fx.db.lang_items().__free().owner;
+            let __free = fx.func_ids[&__free].0;
+            let __free = fx
+                .mcx
+                .module
+                .declare_func_in_func(__free, &mut fx.mcx.ctx.func);
+
+            let ptr = fx.locals[&local].as_ptr().get_addr(fx);
+
+            fx.bcx.ins().call(__free, &[ptr]);
+        }
     }
 
     fn trans_place(fx: &mut FunctionCtx<Self>, place: &mir::Place) -> Self::Place {

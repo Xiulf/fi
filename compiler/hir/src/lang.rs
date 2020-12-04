@@ -89,4 +89,6 @@ lang_items! {
     slice_ty  , "slice_ty"  , SliceType;
     basic_copy, "BASIC_COPY", BasicCopy;
     basic_drop, "BASIC_DROP", BasicDrop;
+    __alloc   , "__alloc"   , Alloc    ;
+    __free    , "__free"    , Free     ;
 }
