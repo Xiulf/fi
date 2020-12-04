@@ -31,7 +31,7 @@ impl Graph {
         Graph { root, succ }
     }
 
-    pub fn successors(&self, block: Block) -> impl Iterator<Item = Block> + '_ {
-        self.succ[block].iter().copied()
+    pub fn successors(&self, block: Block) -> &[Block] {
+        &self.succ[block]
     }
 }
