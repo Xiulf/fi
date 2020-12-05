@@ -368,33 +368,52 @@ impl<'db> BodyConverter<'db> {
             } => {
                 unimplemented!();
             }
-            hir::ExprKind::Ident {
-                res: hir::Res::Def(hir::DefKind::Func, id),
-            } if self.hir.items[&hir::HirId {
-                owner: *id,
-                local_id: hir::LocalId(0),
-            }]
-                .is_intrinsic() =>
-            {
-                let item = &self.hir.items[&hir::HirId {
-                    owner: *id,
-                    local_id: hir::LocalId(0),
-                }];
-
-                let mut args = args.iter().map(|a| self.convert_expr(a));
-
-                // @INTRINSICS
-                match &**item.name.symbol {
-                    "unsafe_read" => {
-                        let arg = args.next().unwrap();
-                        let place = self.builder.placed(arg);
-
-                        ir::Operand::Copy(place.deref())
-                    }
-                    _ => unreachable!("unknown intrinsic function"),
-                }
-            }
             _ => {
+                if let hir::ExprKind::Ident {
+                    res: hir::Res::Def(hir::DefKind::Func, id),
+                } = &base.kind
+                {
+                    let file = self.db.module_tree(id.lib).file(id.module);
+                    let hir = self.db.module_hir(file);
+
+                    if hir.items[&hir::HirId {
+                        owner: *id,
+                        local_id: hir::LocalId(0),
+                    }]
+                        .is_intrinsic()
+                    {
+                        let item = &hir.items[&hir::HirId {
+                            owner: *id,
+                            local_id: hir::LocalId(0),
+                        }];
+
+                        let mut args = args.iter().map(|a| self.convert_expr(a));
+
+                        // @INTRINSICS
+                        return match &**item.name.symbol {
+                            "unsafe_read" => {
+                                let arg = args.next().unwrap();
+                                let place = self.builder.placed(arg);
+
+                                ir::Operand::Copy(place.deref())
+                            }
+                            "unsafe_store" => {
+                                let ptr = args.next().unwrap();
+                                let val = args.next().unwrap();
+                                let place = self.builder.placed(ptr);
+
+                                self.builder.use_op(place.deref(), val);
+
+                                ir::Operand::Const(
+                                    ir::Const::Tuple(Vec::new()),
+                                    check::ty::Ty::tuple(check::ty::List::new()),
+                                )
+                            }
+                            _ => unreachable!("unknown intrinsic function"),
+                        };
+                    }
+                }
+
                 use check::ty::{List, Ty, Type};
                 let base_ty = self.types.tys[&base.id].clone();
                 let res = self.builder.create_tmp(ty.clone());
