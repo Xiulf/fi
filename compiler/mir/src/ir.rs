@@ -150,4 +150,22 @@ impl Body {
     pub fn graph(&self) -> crate::graph::Graph {
         crate::graph::Graph::new(self)
     }
+
+    pub fn tvar_local(
+        &self,
+        db: &dyn crate::MirDatabase,
+        tvar: check::ty::TypeVar,
+    ) -> Option<Local> {
+        let ty = db.typecheck(self.def);
+
+        if let check::ty::Type::ForAll(vars, _) = &*ty.ty {
+            let args = self.args().count();
+
+            vars.iter()
+                .position(|&v| v == tvar)
+                .map(|i| Local::new(args - vars.len() + i + 1))
+        } else {
+            None
+        }
+    }
 }

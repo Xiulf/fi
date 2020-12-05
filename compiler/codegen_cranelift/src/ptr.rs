@@ -14,8 +14,8 @@ pub struct Pointer {
 #[derive(Debug, Clone, Copy)]
 pub enum PointerKind {
     Addr(cir::Value),
-    Var(Variable),
     Stack(cir::StackSlot),
+    Var(Variable),
     Dangling(Align),
 }
 
@@ -27,16 +27,16 @@ impl Pointer {
         }
     }
 
-    pub fn var(var: Variable) -> Self {
+    pub fn stack(slot: cir::StackSlot) -> Self {
         Pointer {
-            kind: PointerKind::Var(var),
+            kind: PointerKind::Stack(slot),
             offset: Offset32::new(0),
         }
     }
 
-    pub fn stack(slot: cir::StackSlot) -> Self {
+    pub fn var(var: Variable) -> Self {
         Pointer {
-            kind: PointerKind::Stack(slot),
+            kind: PointerKind::Var(var),
             offset: Offset32::new(0),
         }
     }
@@ -71,9 +71,10 @@ impl Pointer {
                     fx.bcx.ins().iadd_imm(addr, offset)
                 }
             }
+            PointerKind::Stack(ss) => fx.bcx.ins().stack_addr(ptr_type, ss, self.offset),
             PointerKind::Var(var) => {
-                let offset: i64 = self.offset.into();
                 let addr = fx.bcx.use_var(var);
+                let offset: i64 = self.offset.into();
 
                 if offset == 0 {
                     addr
@@ -81,18 +82,10 @@ impl Pointer {
                     fx.bcx.ins().iadd_imm(addr, offset)
                 }
             }
-            PointerKind::Stack(ss) => fx.bcx.ins().stack_addr(ptr_type, ss, self.offset),
             PointerKind::Dangling(align) => fx
                 .bcx
                 .ins()
                 .iconst(ptr_type, i64::try_from(align.bytes()).unwrap()),
-        }
-    }
-
-    pub fn get_var(self) -> Variable {
-        match self.kind {
-            PointerKind::Var(var) => var,
-            _ => unreachable!(),
         }
     }
 
@@ -113,8 +106,8 @@ impl Pointer {
             if let Some(new_offset) = base_offset.checked_add(offset) {
                 let base_addr = match self.kind {
                     PointerKind::Addr(addr) => addr,
-                    PointerKind::Var(var) => fx.bcx.use_var(var),
                     PointerKind::Stack(ss) => fx.bcx.ins().stack_addr(ptr_type, ss, 0),
+                    PointerKind::Var(var) => fx.bcx.use_var(var),
                     PointerKind::Dangling(align) => fx
                         .bcx
                         .ins()
@@ -141,20 +134,20 @@ impl Pointer {
                 kind: PointerKind::Addr(fx.bcx.ins().iadd(addr, offset)),
                 offset: self.offset,
             },
-            PointerKind::Var(var) => Pointer {
-                kind: PointerKind::Addr({
-                    let addr = fx.bcx.use_var(var);
-
-                    fx.bcx.ins().iadd(addr, offset)
-                }),
-                offset: self.offset,
-            },
             PointerKind::Stack(slot) => {
                 let addr = fx.bcx.ins().stack_addr(ptr_type, slot, self.offset);
 
                 Pointer {
                     kind: PointerKind::Addr(fx.bcx.ins().iadd(addr, offset)),
                     offset: Offset32::new(0),
+                }
+            }
+            PointerKind::Var(var) => {
+                let addr = fx.bcx.use_var(var);
+
+                Pointer {
+                    kind: PointerKind::Addr(fx.bcx.ins().iadd(addr, offset)),
+                    offset: self.offset,
                 }
             }
             PointerKind::Dangling(align) => {
@@ -179,26 +172,24 @@ impl Pointer {
     ) -> cir::Value {
         match self.kind {
             PointerKind::Addr(addr) => fx.bcx.ins().load(ty, flags, addr, self.offset),
-            PointerKind::Var(var) => {
-                let addr = fx.bcx.use_var(var);
-
-                fx.bcx.ins().load(ty, flags, addr, self.offset)
-            }
             PointerKind::Stack(ss) => fx.bcx.ins().stack_load(ty, ss, self.offset),
+            PointerKind::Var(var) => fx.bcx.use_var(var),
             PointerKind::Dangling(_) => unreachable!(),
         }
     }
 
     pub fn store(self, fx: &mut FunctionCtx<ClifBackend>, value: cir::Value, flags: cir::MemFlags) {
         match self.kind {
-            PointerKind::Addr(addr) => fx.bcx.ins().store(flags, value, addr, self.offset),
-            PointerKind::Var(var) => {
-                let addr = fx.bcx.use_var(var);
-
-                fx.bcx.ins().store(flags, value, addr, self.offset)
+            PointerKind::Addr(addr) => {
+                fx.bcx.ins().store(flags, value, addr, self.offset);
             }
-            PointerKind::Stack(ss) => fx.bcx.ins().stack_store(value, ss, self.offset),
+            PointerKind::Stack(ss) => {
+                fx.bcx.ins().stack_store(value, ss, self.offset);
+            }
+            PointerKind::Var(var) => {
+                fx.bcx.def_var(var, value);
+            }
             PointerKind::Dangling(_) => unreachable!(),
-        };
+        }
     }
 }

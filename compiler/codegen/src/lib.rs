@@ -38,16 +38,48 @@ pub trait Backend: Sized {
 
     fn var_live(fx: &mut FunctionCtx<Self>, local: mir::Local);
     fn var_dead(fx: &mut FunctionCtx<Self>, local: mir::Local);
+
+    fn trans_move(
+        fx: &mut FunctionCtx<Self>,
+        place: Self::Place,
+        into: Option<Self::Place>,
+    ) -> Self::Value;
+
+    fn trans_copy(
+        fx: &mut FunctionCtx<Self>,
+        place: Self::Place,
+        into: Option<Self::Place>,
+    ) -> Self::Value;
+
     fn trans_place(fx: &mut FunctionCtx<Self>, place: &mir::Place) -> Self::Place;
-    fn trans_const(fx: &mut FunctionCtx<Self>, const_: &mir::Const, ty: &mir::Ty) -> Self::Value;
+
+    fn trans_const(
+        fx: &mut FunctionCtx<Self>,
+        const_: &mir::Const,
+        ty: &mir::Ty,
+        into: Option<Self::Place>,
+    ) -> Self::Value;
+
     fn trans_rvalue(fx: &mut FunctionCtx<Self>, place: Self::Place, rvalue: &mir::RValue);
     fn trans_term(fx: &mut FunctionCtx<Self>, term: &mir::Term);
 
-    fn trans_op(fx: &mut FunctionCtx<Self>, op: &mir::Operand) -> Self::Value {
+    fn trans_op(
+        fx: &mut FunctionCtx<Self>,
+        op: &mir::Operand,
+        into: Option<Self::Place>,
+    ) -> Self::Value {
         match op {
-            mir::Operand::Move(place) => Self::trans_place(fx, place).to_value(fx),
-            mir::Operand::Copy(place) => Self::trans_place(fx, place).to_value(fx),
-            mir::Operand::Const(const_, ty) => Self::trans_const(fx, const_, ty),
+            mir::Operand::Move(place) => {
+                let place = Self::trans_place(fx, place);
+
+                Self::trans_move(fx, place, into)
+            }
+            mir::Operand::Copy(place) => {
+                let place = Self::trans_place(fx, place);
+
+                Self::trans_copy(fx, place, into)
+            }
+            mir::Operand::Const(const_, ty) => Self::trans_const(fx, const_, ty, into),
         }
     }
 }

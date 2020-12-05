@@ -375,8 +375,8 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                     place::Place::new_var(fx, layout)
                 }
             } else if let check::ty::Type::Var(_) = &*layout.ty {
-                // place::Place::new_ref(ptr::Pointer::dangling(layout.align), layout)
                 let var = cranelift::frontend::Variable::with_u32(fx.next_ssa_var());
+
                 fx.bcx.declare_var(var, fx.ptr_type);
                 place::Place::new_ref(ptr::Pointer::var(var), layout)
             } else {
@@ -438,14 +438,15 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                 .module
                 .declare_func_in_func(__alloc, &mut fx.mcx.ctx.func);
 
-            let ptr_type = fx.ptr_type;
-            let zero = fx.bcx.ins().iconst(ptr_type, 0);
-            let call = fx.bcx.ins().call(__alloc, &[zero]);
+            let var_info = fx.body.tvar_local(fx.db, *var).unwrap();
+            let var_info = fx.locals[&var_info].clone().deref(fx).field(fx, 0);
+            let size = var_info.field(fx, 0).to_value(fx).load_scalar(fx);
+            let call = fx.bcx.ins().call(__alloc, &[size]);
             let val = fx.bcx.inst_results(call)[0];
             let place = fx.locals[&local].clone();
-            let var = place.as_ptr().get_var();
+            let val = value::Value::new_val(val, place.layout.clone());
 
-            fx.bcx.def_var(var, val);
+            place.store(fx, val);
         }
     }
 
@@ -458,9 +459,119 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                 .module
                 .declare_func_in_func(__free, &mut fx.mcx.ctx.func);
 
-            let ptr = fx.locals[&local].as_ptr().get_addr(fx);
+            let ptr = fx.locals[&local]
+                .as_ptr()
+                .load(fx, fx.ptr_type, ir::MemFlags::new());
 
             fx.bcx.ins().call(__free, &[ptr]);
+        }
+    }
+
+    fn trans_copy(
+        fx: &mut FunctionCtx<Self>,
+        place: Self::Place,
+        into: Option<Self::Place>,
+    ) -> Self::Value {
+        if let check::ty::Type::Var(var) = &*place.layout.ty {
+            let into = if let Some(into) = into {
+                into
+            } else {
+                let var = cranelift::frontend::Variable::with_u32(fx.next_ssa_var());
+
+                fx.bcx.declare_var(var, fx.ptr_type);
+                place::Place::new_ref(ptr::Pointer::var(var), place.layout.clone())
+            };
+
+            let var_info = fx.body.tvar_local(fx.db, *var).unwrap();
+            let var_info = fx.locals[&var_info].clone();
+            let copy = var_info
+                .clone()
+                .deref(fx)
+                .field(fx, 0)
+                .field(fx, 3)
+                .deref(fx)
+                .field(fx, 0)
+                .field(fx, 0)
+                .to_value(fx)
+                .load_scalar(fx);
+
+            let mut sig = fx.module.make_signature();
+
+            sig.params.push(ir::AbiParam::new(fx.ptr_type));
+            sig.params.push(ir::AbiParam::new(fx.ptr_type));
+            sig.params.push(ir::AbiParam::new(fx.ptr_type));
+
+            let sig = fx.bcx.import_signature(sig);
+            let arg0 = into.as_ptr().get_addr(fx);
+            let arg1 = place.as_ptr().get_addr(fx);
+            let arg2 = var_info.to_value(fx).load_scalar(fx);
+
+            fx.bcx.ins().call_indirect(sig, copy, &[arg0, arg1, arg2]);
+
+            into.to_value(fx)
+        } else {
+            if let Some(into) = into {
+                let val = place.to_value(fx);
+
+                into.clone().store(fx, val);
+                into.to_value(fx)
+            } else {
+                place.to_value(fx)
+            }
+        }
+    }
+
+    fn trans_move(
+        fx: &mut FunctionCtx<Self>,
+        place: Self::Place,
+        into: Option<Self::Place>,
+    ) -> Self::Value {
+        if let check::ty::Type::Var(var) = &*place.layout.ty {
+            let into = if let Some(into) = into {
+                into
+            } else {
+                let var = cranelift::frontend::Variable::with_u32(fx.next_ssa_var());
+
+                fx.bcx.declare_var(var, fx.ptr_type);
+                place::Place::new_ref(ptr::Pointer::var(var), place.layout.clone())
+            };
+
+            let var_info = fx.body.tvar_local(fx.db, *var).unwrap();
+            let var_info = fx.locals[&var_info].clone();
+            let move_ = var_info
+                .clone()
+                .deref(fx)
+                .field(fx, 0)
+                .field(fx, 3)
+                .deref(fx)
+                .field(fx, 0)
+                .field(fx, 1)
+                .to_value(fx)
+                .load_scalar(fx);
+
+            let mut sig = fx.module.make_signature();
+
+            sig.params.push(ir::AbiParam::new(fx.ptr_type));
+            sig.params.push(ir::AbiParam::new(fx.ptr_type));
+            sig.params.push(ir::AbiParam::new(fx.ptr_type));
+
+            let sig = fx.bcx.import_signature(sig);
+            let arg0 = into.as_ptr().get_addr(fx);
+            let arg1 = place.as_ptr().get_addr(fx);
+            let arg2 = var_info.to_value(fx).load_scalar(fx);
+
+            fx.bcx.ins().call_indirect(sig, move_, &[arg0, arg1, arg2]);
+
+            into.to_value(fx)
+        } else {
+            if let Some(into) = into {
+                let val = place.to_value(fx);
+
+                into.clone().store(fx, val);
+                into.to_value(fx)
+            } else {
+                place.to_value(fx)
+            }
         }
     }
 
@@ -486,7 +597,7 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                 mir::PlaceElem::Deref => res = res.deref(fx),
                 mir::PlaceElem::Field(idx) => res = res.field(fx, *idx),
                 mir::PlaceElem::Index(idx) => {
-                    let idx = Self::trans_op(fx, idx);
+                    let idx = Self::trans_op(fx, idx, None);
 
                     res = res.index(fx, idx);
                 }
@@ -497,56 +608,73 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
         res
     }
 
-    fn trans_const(fx: &mut FunctionCtx<Self>, const_: &mir::Const, ty: &mir::Ty) -> Self::Value {
+    fn trans_const(
+        fx: &mut FunctionCtx<Self>,
+        const_: &mir::Const,
+        ty: &mir::Ty,
+        into: Option<Self::Place>,
+    ) -> Self::Value {
         let layout = fx.db.layout_of(fx.lib, ty.clone());
 
-        match const_ {
-            mir::Const::Undefined => {
-                let slot = fx.bcx.create_stack_slot(ir::StackSlotData::new(
-                    ir::StackSlotKind::ExplicitSlot,
-                    layout.size.bytes() as u32,
-                ));
+        if let Some(into) = into {
+            match const_ {
+                mir::Const::Undefined => into.to_value(fx),
+                mir::Const::Scalar(val) => {
+                    let val = value::Value::new_const(*val, fx, layout);
 
-                value::Value::new_ref(ptr::Pointer::stack(slot), layout)
+                    into.store(fx, val.clone());
+                    val
+                }
+                mir::Const::Tuple(vals) if vals.is_empty() => value::Value::new_unit(layout),
+                _ => unimplemented!(),
             }
-            mir::Const::Scalar(val) => value::Value::new_const(*val, fx, layout),
-            mir::Const::Tuple(vals) if vals.is_empty() => value::Value::new_unit(layout),
-            mir::Const::FuncAddr(id) => {
-                let ptr_type = fx.ptr_type;
-                let func = fx.func_ids[id].0;
-                let func = fx.mcx.module.declare_func_in_func(func, &mut fx.bcx.func);
-                let func = fx.bcx.ins().func_addr(ptr_type, func);
+        } else {
+            match const_ {
+                mir::Const::Undefined => {
+                    let slot = fx.bcx.create_stack_slot(ir::StackSlotData::new(
+                        ir::StackSlotKind::ExplicitSlot,
+                        layout.size.bytes() as u32,
+                    ));
 
-                value::Value::new_val(func, layout)
+                    value::Value::new_ref(ptr::Pointer::stack(slot), layout)
+                }
+                mir::Const::Scalar(val) => value::Value::new_const(*val, fx, layout),
+                mir::Const::Tuple(vals) if vals.is_empty() => value::Value::new_unit(layout),
+                mir::Const::FuncAddr(id) => {
+                    let ptr_type = fx.ptr_type;
+                    let func = fx.func_ids[id].0;
+                    let func = fx.mcx.module.declare_func_in_func(func, &mut fx.bcx.func);
+                    let func = fx.bcx.ins().func_addr(ptr_type, func);
+
+                    value::Value::new_val(func, layout)
+                }
+                mir::Const::Bytes(bytes) => Self::trans_bytes(fx, bytes, layout),
+                mir::Const::Ref(const_) => {
+                    let ptr_type = fx.ptr_type;
+                    let data_id = Self::trans_const_alloc(
+                        fx,
+                        const_,
+                        layout.pointee(fx.lib, fx.db.to_layout_db()),
+                    );
+
+                    let global = fx
+                        .mcx
+                        .module
+                        .declare_data_in_func(data_id, &mut fx.mcx.ctx.func);
+
+                    let global = fx.bcx.ins().global_value(ptr_type, global);
+
+                    value::Value::new_val(global, layout)
+                }
+                _ => unimplemented!(),
             }
-            mir::Const::Bytes(bytes) => Self::trans_bytes(fx, bytes, layout),
-            mir::Const::Ref(const_) => {
-                let ptr_type = fx.ptr_type;
-                let data_id = Self::trans_const_alloc(
-                    fx,
-                    const_,
-                    layout.pointee(fx.lib, fx.db.to_layout_db()),
-                );
-
-                let global = fx
-                    .mcx
-                    .module
-                    .declare_data_in_func(data_id, &mut fx.mcx.ctx.func);
-
-                let global = fx.bcx.ins().global_value(ptr_type, global);
-
-                value::Value::new_val(global, layout)
-            }
-            _ => unimplemented!(),
         }
     }
 
     fn trans_rvalue(fx: &mut FunctionCtx<Self>, place: Self::Place, rvalue: &mir::RValue) {
         match rvalue {
             mir::RValue::Use(op) => {
-                let value = Self::trans_op(fx, op);
-
-                place.store(fx, value);
+                Self::trans_op(fx, op, Some(place));
             }
             mir::RValue::AddrOf(val) => {
                 let val = Self::trans_place(fx, val);
@@ -600,7 +728,7 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
             mir::Term::Switch(op, vals, blocks) => {
                 let mut switch = cranelift::frontend::Switch::new();
                 let otherwise = fx.blocks[blocks.last().unwrap()];
-                let val = Self::trans_op(fx, op).load_scalar(fx);
+                let val = Self::trans_op(fx, op, None).load_scalar(fx);
 
                 for (val, block) in vals.iter().zip(blocks) {
                     switch.set_entry(*val, fx.blocks[block]);
@@ -613,7 +741,7 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                 let place = Self::trans_place(fx, place);
                 let args = args
                     .iter()
-                    .map(|a| Self::trans_op(fx, a))
+                    .map(|a| Self::trans_op(fx, a, None))
                     .collect::<Vec<_>>();
 
                 let ret_mode = get_pass_mode(fx.mcx, &place.layout);

@@ -4,8 +4,8 @@ use crate::{ClifBackend, FunctionCtx};
 use check::ty::Ty;
 use cranelift::codegen::ir as cir;
 use cranelift::prelude::InstBuilder;
-use layout::{Abi, Primitive, Scalar, TyLayout};
-use std::convert::{TryFrom, TryInto};
+use layout::{Abi, Primitive, TyLayout};
+use std::convert::TryFrom;
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]

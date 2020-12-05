@@ -29,14 +29,14 @@ impl Lifetimes {
     }
 }
 
-fn test(a: Vec<u8>) -> Option<u8> {
-    if a.is_empty() {
-        return None;
-    }
-
-    Some(a[0] + 1)
-}
-
+// fn test(a: Vec<u8>) -> Option<u8> {
+//     if a.is_empty() {
+//         return None;
+//     }
+//
+//     Some(a[0] + 1)
+// }
+//
 //  fn test {
 //      ret _0 :: Option<u8>
 //      arg _1 :: Vec<u8>

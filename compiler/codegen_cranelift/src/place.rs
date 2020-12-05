@@ -1,6 +1,6 @@
 use crate::ptr::Pointer;
 use crate::value::{Value, ValueKind};
-use crate::{ClifBackend, FunctionCtx, Type};
+use crate::{ClifBackend, FunctionCtx};
 use check::ty::Ty;
 use codegen::Value as _;
 use cranelift::codegen::ir as cir;
