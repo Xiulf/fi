@@ -246,6 +246,7 @@ impl<'db> BodyConverter<'db> {
                 self.convert_arms(preds, arms, ty)
             }
             hir::ExprKind::Do { block } => self.convert_block(block, ty),
+            hir::ExprKind::Typed { expr, ty: _ } => self.convert_expr(expr),
             _ => ir::Operand::Const(ir::Const::Undefined, ty),
         }
     }

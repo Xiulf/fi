@@ -216,6 +216,7 @@ pub struct Body {
 #[derive(PartialEq, Eq)]
 pub struct Param {
     pub id: HirId,
+    pub span: Span,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -9,7 +9,7 @@ impl<'db> Ctx<'db> {
             ir::ExprKind::Ident { res } => match res {
                 ir::Res::Error => Ty::error(),
                 ir::Res::Def(_, def) => self.db.typecheck(*def).ty.monomorphize(self.db),
-                ir::Res::Local(id) => self.tys[id].clone(),
+                ir::Res::Local(id) => self.tys[id].0.clone(),
             },
             ir::ExprKind::App { base, args } => {
                 let base_ty = self.infer_expr(base);
@@ -17,7 +17,8 @@ impl<'db> Ctx<'db> {
                 let ret_ty = Ty::infer(self.db.new_infer_var());
                 let func_ty = Ty::func(arg_tys, ret_ty.clone());
 
-                self.constrain(Constraint::Equal(base_ty, base.span, func_ty, expr.span));
+                self.constrain()
+                    .equal(base_ty, base.span, func_ty, expr.span);
 
                 ret_ty
             }
@@ -40,7 +41,8 @@ impl<'db> Ctx<'db> {
                     Some(rest_ty),
                 );
 
-                self.constrain(Constraint::Equal(exp_ty, expr.span, base_ty, base.span));
+                self.constrain()
+                    .equal(exp_ty, expr.span, base_ty, base.span);
 
                 field_ty
             }
@@ -63,14 +65,23 @@ impl<'db> Ctx<'db> {
                     Some(ir::Stmt {
                         kind: ir::StmtKind::Discard { expr },
                         ..
-                    }) => self.tys[&expr.id].clone(),
+                    }) => self.tys[&expr.id].0.clone(),
                     _ => Ty::tuple(List::new()),
                 }
+            }
+            ir::ExprKind::Typed { expr, ty } => {
+                let expr_ty = self.infer_expr(expr);
+                let ty_ty = self.hir_ty(ty);
+
+                self.constrain()
+                    .equal(expr_ty, expr.span, ty_ty.clone(), ty.span);
+
+                ty_ty
             }
             _ => unimplemented!("{:?}", expr),
         };
 
-        self.tys.insert(expr.id, ty.clone());
+        self.tys.insert(expr.id, (ty.clone(), expr.span));
         ty
     }
 
@@ -84,12 +95,12 @@ impl<'db> Ctx<'db> {
         for (pat, (pred_ty, pred_span)) in arm.pats.iter().zip(pred_tys) {
             let pat_ty = self.infer_pat(pat);
 
-            self.constrain(Constraint::Equal(pat_ty, pat.span, pred_ty, pred_span));
+            self.constrain().equal(pat_ty, pat.span, pred_ty, pred_span);
         }
 
         let val_ty = self.infer_guarded(&arm.val);
 
-        self.constrain(Constraint::Equal(val_ty, arm.span, ret_ty, ret_span));
+        self.constrain().equal(val_ty, arm.span, ret_ty, ret_span);
     }
 
     fn infer_guarded(&mut self, guarded: &ir::Guarded) -> Ty {
@@ -106,19 +117,11 @@ impl<'db> Ctx<'db> {
                 let pat_ty = self.infer_pat(&binding.pat);
                 let val_ty = self.infer_expr(&binding.val);
 
-                self.constrain(Constraint::Equal(
-                    pat_ty.clone(),
-                    binding.pat.span,
-                    ty,
-                    stmt.span,
-                ));
+                self.constrain()
+                    .equal(pat_ty.clone(), binding.pat.span, ty, stmt.span);
 
-                self.constrain(Constraint::Equal(
-                    val_ty,
-                    binding.val.span,
-                    pat_ty,
-                    binding.pat.span,
-                ));
+                self.constrain()
+                    .equal(val_ty, binding.val.span, pat_ty, binding.pat.span);
             }
             ir::StmtKind::Discard { expr } => {
                 self.infer_expr(expr);

@@ -712,7 +712,10 @@ impl<'db> Converter<'db> {
                             if let None = params {
                                 params = Some(
                                     (0..pats.len())
-                                        .map(|_| ir::Param { id: self.next_id() })
+                                        .map(|_| ir::Param {
+                                            id: self.next_id(),
+                                            span: decl.span,
+                                        })
                                         .collect(),
                                 );
                             }
@@ -1224,7 +1227,10 @@ impl<'db> Converter<'db> {
                             if let None = params {
                                 params = Some(
                                     (0..pats.len())
-                                        .map(|_| ir::Param { id: self.next_id() })
+                                        .map(|_| ir::Param {
+                                            id: self.next_id(),
+                                            span: decl.span,
+                                        })
                                         .collect(),
                                 );
                             }

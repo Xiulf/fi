@@ -29,7 +29,7 @@ impl Subst {
 
     pub fn apply_cs(&self, cs: &mut Vec<Constraint>) {
         cs.iter_mut().for_each(|c| match c {
-            Constraint::Equal(a, _, b, _) => {
+            Constraint::Equal(a, b) => {
                 *a = self.apply_ty(a);
                 *b = self.apply_ty(b);
             }

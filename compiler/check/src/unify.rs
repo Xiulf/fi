@@ -1,73 +1,67 @@
-use crate::constraint::Constraint;
-use crate::ctx::Ctx;
+use crate::constraint::{Constrain, Constraint};
 use crate::subst::Subst;
 use crate::ty::*;
 
-impl<'db> Ctx<'db> {
-    pub(crate) fn unify(&mut self) {
-        let mut cs = std::mem::replace(&mut self.cs, Vec::new());
+pub type UnifyResult = Result<Subst, UnifyError>;
 
-        while !cs.is_empty() {
-            let subst = self.unify_all(cs);
+pub enum UnifyError {
+    Mismatch,
+}
 
-            for (_, ty) in self.tys.iter_mut() {
-                subst.apply_ty(ty);
-            }
-
-            cs = std::mem::replace(&mut self.cs, Vec::new());
-            subst.apply_cs(&mut cs);
-        }
-    }
-
-    fn unify_all(&mut self, mut cs: Vec<Constraint>) -> Subst {
+impl<'ctx, 'db> Constrain<'ctx, 'db> {
+    fn unify_all(&mut self, mut cs: Vec<Constraint>) -> UnifyResult {
         let mut subst = Subst::empty();
 
         cs.reverse();
 
         while let Some(c) = cs.pop() {
-            let s = self.unify_one(c);
+            let s = self.unify_one(c)?;
 
             s.apply_cs(&mut cs);
             subst.compose(s);
         }
 
-        subst
+        Ok(subst)
     }
 
-    fn unify_one(&mut self, cs: Constraint) -> Subst {
-        // println!("solving: {}", cs.display(self.db));
+    pub(crate) fn unify_one(&mut self, cs: Constraint) -> UnifyResult {
+        // println!("solving: {}", cs.display(self.ctx.db));
 
         match cs {
-            Constraint::Equal(a, a_span, b, b_span) => match (&*a, &*b) {
-                (Type::Infer(ivar), _) => self.unify_var(ivar, b, b_span),
-                (_, Type::Infer(ivar)) => self.unify_var(ivar, a, a_span),
-                (Type::Error, Type::Error) => Subst::empty(),
-                (Type::Int(a), Type::Int(b)) if a == b => Subst::empty(),
-                (Type::Var(a_var), Type::Var(b_var)) if a_var == b_var => Subst::empty(),
+            Constraint::Equal(a, b) => match (&*a, &*b) {
+                (Type::Infer(ivar), _) => self.unify_var(ivar, b),
+                (_, Type::Infer(ivar)) => self.unify_var(ivar, a),
+                (Type::Error, Type::Error) => Ok(Subst::empty()),
+                (Type::Int(a), Type::Int(b)) if a == b => Ok(Subst::empty()),
+                (Type::Var(a_var), Type::Var(b_var)) if a_var == b_var => Ok(Subst::empty()),
                 (_, Type::ForAll(_b_vars, b_ty)) => {
-                    self.unify_one(Constraint::Equal(a, a_span, b_ty.clone(), b_span))
+                    self.unify_one(Constraint::Equal(a, b_ty.clone()))
                 }
-                (Type::App(a, _, _), _) => {
-                    self.unify_one(Constraint::Equal(a.clone(), a_span, b, b_span))
+                (Type::App(a, _, a_args), Type::App(b, _, b_args))
+                    if a_args.len() == b_args.len() =>
+                {
+                    let mut cs = Vec::with_capacity(a_args.len() + 1);
+
+                    cs.push(Constraint::Equal(a.clone(), b.clone()));
+
+                    for (a, b) in a_args.into_iter().zip(b_args) {
+                        cs.push(Constraint::Equal(a, b));
+                    }
+
+                    self.unify_all(cs)
                 }
-                (_, Type::App(b, _, _)) => {
-                    self.unify_one(Constraint::Equal(a, a_span, b.clone(), b_span))
-                }
+                (Type::App(a, _, _), _) => self.unify_one(Constraint::Equal(a.clone(), b)),
+                (_, Type::App(b, _, _)) => self.unify_one(Constraint::Equal(a, b.clone())),
                 (Type::Func(a_params, a_ret), Type::Func(b_params, b_ret))
                     if a_params.len() == b_params.len() =>
                 {
                     let mut cs = Vec::new();
 
                     for (a_param, b_param) in a_params.into_iter().zip(b_params) {
-                        cs.push(Constraint::Equal(a_param, a_span, b_param, b_span));
+                        cs.push(Constraint::Equal(a_param, b_param));
                     }
 
-                    cs.push(Constraint::Equal(
-                        a_ret.clone(),
-                        a_span,
-                        b_ret.clone(),
-                        b_span,
-                    ));
+                    cs.push(Constraint::Equal(a_ret.clone(), b_ret.clone()));
 
                     self.unify_all(cs)
                 }
@@ -75,7 +69,7 @@ impl<'db> Ctx<'db> {
                     let mut cs = Vec::with_capacity(a_tys.len());
 
                     for (a_ty, b_ty) in a_tys.into_iter().zip(b_tys) {
-                        cs.push(Constraint::Equal(a_ty, a_span, b_ty, b_span));
+                        cs.push(Constraint::Equal(a_ty, b_ty));
                     }
 
                     self.unify_all(cs)
@@ -87,19 +81,14 @@ impl<'db> Ctx<'db> {
 
                     for (a_field, b_field) in a_fields.into_iter().zip(b_fields) {
                         if a_field.name != b_field.name {
-                            self.db
-                                .to_diag_db()
-                                .error("field names are not equal")
-                                .with_label(diagnostics::Label::primary(self.file, a_field.span))
-                                .with_label(diagnostics::Label::primary(self.file, b_field.span))
-                                .finish();
+                            // self.db
+                            //     .to_diag_db()
+                            //     .error("field names are not equal")
+                            //     .with_label(diagnostics::Label::primary(self.file, a_field.span))
+                            //     .with_label(diagnostics::Label::primary(self.file, b_field.span))
+                            //     .finish();
                         } else {
-                            cs.push(Constraint::Equal(
-                                a_field.ty.clone(),
-                                a_field.span,
-                                b_field.ty.clone(),
-                                b_field.span,
-                            ));
+                            cs.push(Constraint::Equal(a_field.ty.clone(), b_field.ty.clone()));
                         }
                     }
 
@@ -111,57 +100,32 @@ impl<'db> Ctx<'db> {
                     for (a_field, b_field) in a_fields.into_iter().zip(b_fields) {
                         if a_field.name != b_field.name {
                         } else {
-                            cs.push(Constraint::Equal(
-                                a_field.ty.clone(),
-                                a_field.span,
-                                b_field.ty.clone(),
-                                b_field.span,
-                            ));
+                            cs.push(Constraint::Equal(a_field.ty.clone(), b_field.ty.clone()));
                         }
                     }
 
                     cs.push(Constraint::Equal(
                         a_tail.clone(),
-                        a_span,
                         Ty::record(b_fields[a_fields.len()..].into(), None),
-                        b_span,
                     ));
 
                     self.unify_all(cs)
                 }
-                (Type::Data(a), Type::Data(b)) if a == b => Subst::empty(),
-                (_, _) => {
-                    self.db
-                        .to_diag_db()
-                        .error(format!(
-                            "mismatched types: `{}` != `{}`",
-                            a.display(self.db),
-                            b.display(self.db)
-                        ))
-                        .with_label(diagnostics::Label::primary(self.file, a_span))
-                        .with_label(
-                            diagnostics::Label::secondary(self.file, b_span).with_message(format!(
-                                "type `{}` specified here",
-                                b.display(self.db)
-                            )),
-                        )
-                        .finish();
-
-                    Subst::empty()
-                }
+                (Type::Data(a), Type::Data(b)) if a == b => Ok(Subst::empty()),
+                (_, _) => Err(UnifyError::Mismatch),
             },
         }
     }
 
-    fn unify_var(&self, ivar: &InferVar, ty: Ty, _span: hir::ir::Span) -> Subst {
+    fn unify_var(&self, ivar: &InferVar, ty: Ty) -> UnifyResult {
         if let Type::Infer(ivar2) = &*ty {
             if ivar == ivar2 {
-                Subst::empty()
+                Ok(Subst::empty())
             } else {
-                vec![(*ivar, ty)].into_iter().collect()
+                Ok(vec![(*ivar, ty)].into_iter().collect())
             }
         } else {
-            vec![(*ivar, ty)].into_iter().collect()
+            Ok(vec![(*ivar, ty)].into_iter().collect())
         }
     }
 }

@@ -1,5 +1,6 @@
 pub mod constraint;
 pub mod ctx;
+pub mod error;
 pub mod subst;
 pub mod ty;
 mod unify;
@@ -120,11 +121,12 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypeCheckResult> {
         }
     };
 
-    ctx.unify();
+    // ctx.unify();
 
     if db.has_errors() {
         db.print_and_exit();
     } else {
+        ctx.verify();
         db.print();
     }
 

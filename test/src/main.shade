@@ -6,10 +6,10 @@ import Prim
 fn main :: (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = do
     test <- malloc 4
-    unsafe_store test 22
+    unsafe_store test (22 :: Int32)
     res <- unsafe_read test
     free test
     res
 
--- fn identity :: forall t. t -> t
+-- fn identity :: forall t. t -> t 
 -- fn identity x = x

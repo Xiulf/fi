@@ -19,7 +19,7 @@ impl<'db> Ctx<'db> {
                     for (param, pat) in params.into_iter().zip(pats) {
                         let pat_ty = self.infer_pat(pat);
 
-                        self.constrain(Constraint::Equal(pat_ty, pat.span, param, pat.span));
+                        self.constrain().equal(pat_ty, pat.span, param, pat.span);
                     }
 
                     ret.clone()
@@ -30,7 +30,7 @@ impl<'db> Ctx<'db> {
             _ => unimplemented!(),
         };
 
-        self.tys.insert(pat.id, ty.clone());
+        self.tys.insert(pat.id, (ty.clone(), pat.span));
         ty
     }
 }

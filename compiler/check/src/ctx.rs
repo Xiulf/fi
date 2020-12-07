@@ -1,7 +1,7 @@
 mod expr;
 mod pat;
 
-use crate::constraint::Constraint;
+use crate::constraint::Constrain;
 use crate::{ty::*, TypeDatabase};
 use hir::ir;
 use std::collections::HashMap;
@@ -10,8 +10,7 @@ pub struct Ctx<'db> {
     pub(crate) db: &'db dyn TypeDatabase,
     pub(crate) file: source::FileId,
     pub(crate) var_kinds: HashMap<TypeVar, Ty>,
-    pub(crate) tys: HashMap<ir::HirId, Ty>,
-    pub(crate) cs: Vec<Constraint>,
+    pub(crate) tys: HashMap<ir::HirId, (Ty, ir::Span)>,
 }
 
 impl<'db> Ctx<'db> {
@@ -21,20 +20,19 @@ impl<'db> Ctx<'db> {
             file,
             var_kinds: HashMap::new(),
             tys: HashMap::new(),
-            cs: Vec::new(),
         }
     }
 
     pub fn finish(self) -> HashMap<ir::HirId, Ty> {
-        self.tys
+        self.tys.into_iter().map(|(id, (ty, _))| (id, ty)).collect()
     }
 
     pub fn insert_var_kind(&mut self, var: TypeVar, kind: Ty) {
         self.var_kinds.insert(var, kind);
     }
 
-    pub fn constrain(&mut self, c: Constraint) {
-        self.cs.push(c);
+    pub fn constrain(&mut self) -> Constrain<'_, 'db> {
+        Constrain::new(self)
     }
 
     pub fn infer_body(&mut self, body: &ir::Body, expected: Ty, expected_span: ir::Span) {
@@ -44,10 +42,10 @@ impl<'db> Ctx<'db> {
             .map(|p| {
                 let ty = Ty::infer(self.db.new_infer_var());
 
-                self.tys.insert(p.id, ty.clone());
+                self.tys.insert(p.id, (ty.clone(), p.span));
                 ty
             })
-            .collect();
+            .collect::<List<_>>();
 
         let ret = self.infer_expr(&body.value);
 
@@ -56,12 +54,8 @@ impl<'db> Ctx<'db> {
         let ty = Ty::func(param_tys, ret);
         // let ty = ty.generalize(body.id.0.owner);
 
-        self.constrain(Constraint::Equal(
-            ty,
-            body.value.span,
-            expected,
-            expected_span,
-        ));
+        self.constrain()
+            .equal(ty, body.value.span, expected, expected_span);
     }
 
     pub fn hir_ty(&mut self, ty: &ir::Type) -> Ty {
@@ -132,7 +126,7 @@ impl<'db> Ctx<'db> {
                 let kind_ = self.hir_ty(kind);
                 let ty_kind = self.infer_kind(&ty_);
 
-                self.constrain(Constraint::Equal(ty_kind, ty.span, kind_, kind.span));
+                self.constrain().equal(ty_kind, ty.span, kind_, kind.span);
 
                 ty_
             }
@@ -162,6 +156,18 @@ impl<'db> Ctx<'db> {
                 )
             }
             Type::App(ty, _, _) => self.infer_kind(ty),
+        }
+    }
+
+    pub fn verify(&self) {
+        for (_, (ty, span)) in &self.tys {
+            if let Type::Infer(_) = &**ty {
+                self.db
+                    .to_diag_db()
+                    .error("could not infer type")
+                    .with_label(diagnostics::Label::primary(self.file, *span))
+                    .finish();
+            }
         }
     }
 }

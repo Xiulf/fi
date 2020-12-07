@@ -525,6 +525,11 @@ impl Debug for Expr {
                 writeln!(f, "Do id = {:?}", self.id)?;
                 write!(indent(f), "{:?}", block)
             }
+            ExprKind::Typed { expr, ty } => {
+                writeln!(f, "Typed id = {:?}", self.id)?;
+                writeln!(indent(f), "{:?}", expr)?;
+                write!(indent(f), "{:?}", ty)
+            }
             _ => unimplemented!(),
         }
     }
