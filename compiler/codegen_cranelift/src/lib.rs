@@ -203,6 +203,12 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
             ty
         };
 
+        if let hir::ir::Def::Item(item) = def {
+            if item.abi() == Some("C") {
+                vargs = None;
+            }
+        }
+
         let ret = if let check::ty::Type::Func(args, ret) = &*ty {
             use codegen::abi::{get_pass_mode, PassMode};
             use cranelift::prelude::AbiParam;

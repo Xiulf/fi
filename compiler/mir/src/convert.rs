@@ -376,18 +376,13 @@ impl<'db> BodyConverter<'db> {
                 {
                     let file = self.db.module_tree(id.lib).file(id.module);
                     let hir = self.db.module_hir(file);
-
-                    if hir.items[&hir::HirId {
+                    let item_id = hir::HirId {
                         owner: *id,
                         local_id: hir::LocalId(0),
-                    }]
-                        .is_intrinsic()
-                    {
-                        let item = &hir.items[&hir::HirId {
-                            owner: *id,
-                            local_id: hir::LocalId(0),
-                        }];
+                    };
 
+                    if hir.items[&item_id].is_intrinsic() {
+                        let item = &hir.items[&item_id];
                         let mut args = args.iter().map(|a| self.convert_expr(a));
 
                         // @INTRINSICS
@@ -412,6 +407,17 @@ impl<'db> BodyConverter<'db> {
                             }
                             _ => unreachable!("unknown intrinsic function"),
                         };
+                    } else if hir.items[&item_id].abi() == Some("C") {
+                        let args = args.iter().map(|a| self.convert_expr(a)).collect();
+                        let res = self.builder.create_tmp(ty.clone());
+                        let res = ir::Place::local(res);
+                        let next = self.builder.create_block();
+                        let base = self.convert_expr(base);
+
+                        self.builder.call(res.clone(), base, args, next);
+                        self.builder.set_bock(next);
+
+                        return ir::Operand::Move(res);
                     }
                 }
 

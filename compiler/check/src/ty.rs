@@ -366,29 +366,31 @@ impl fmt::Display for TyDisplay<'_> {
             Type::App(ty, _, args) => {
                 let ty_prec = self.0.prec();
 
-                if ty.prec() >= ty_prec {
-                    write!(f, "({})", ty.display(self.1))?;
-                } else {
-                    ty.display(self.1).fmt(f)?;
-                }
+                match &**ty {
+                    Type::Error
+                    | Type::TypeOf(_)
+                    | Type::Infer(_)
+                    | Type::Var(_)
+                    | Type::Data(_)
+                    | Type::App(_, _, _) => {
+                        if ty.prec() >= ty_prec {
+                            write!(f, "({})", ty.display(self.1))?;
+                        } else {
+                            ty.display(self.1).fmt(f)?;
+                        }
 
-                // match &**ty {
-                //     Type::Error
-                //     | Type::TypeOf(_)
-                //     | Type::Infer(_)
-                //     | Type::Var(_)
-                //     | Type::Data(_)
-                //     | Type::App(_, _) => {
-                for arg in args {
-                    if arg.prec() >= ty_prec {
-                        write!(f, " ({})", arg.display(self.1))?;
-                    } else {
-                        write!(f, " {}", arg.display(self.1))?;
+                        for arg in args {
+                            if arg.prec() >= ty_prec {
+                                write!(f, " ({})", arg.display(self.1))?;
+                            } else {
+                                write!(f, " {}", arg.display(self.1))?;
+                            }
+                        }
+                    }
+                    _ => {
+                        ty.display(self.1).fmt(f)?;
                     }
                 }
-                //     }
-                //     _ => {}
-                // }
 
                 Ok(())
             }
@@ -398,7 +400,16 @@ impl fmt::Display for TyDisplay<'_> {
 
 impl fmt::Display for InferVar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "${}", self.0)
+        let mut num = self.0;
+
+        write!(f, "?")?;
+
+        while num >= 26 {
+            write!(f, "{}", (b'a' + (num % 26) as u8) as char)?;
+            num -= 26;
+        }
+
+        write!(f, "{}", (b'a' + num as u8) as char)
     }
 }
 
@@ -412,7 +423,7 @@ impl fmt::Display for TypeVar {
 
         while num >= 26 {
             write!(f, "{}", (b'a' + (num % 26) as u8) as char)?;
-            num = num.saturating_sub(26);
+            num -= 26;
         }
 
         write!(f, "{}", (b'a' + num as u8) as char)

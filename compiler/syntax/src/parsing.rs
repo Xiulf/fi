@@ -1594,7 +1594,7 @@ impl Parse for Block {
         let mut stmts = Vec::new();
 
         while !input.is_empty() && !input.peek::<LytEnd>() {
-            stmts.push(input.parse()?);
+            stmts.push(input.parse::<Stmt>()?);
 
             if !input.peek::<LytEnd>() {
                 input.parse::<LytSep>()?;

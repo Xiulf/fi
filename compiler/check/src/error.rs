@@ -1,5 +1,12 @@
+use crate::subst::Subst;
 use crate::ty::Ty;
 use hir::ir::Span;
+
+pub type UnifyResult = Result<Subst, UnifyError>;
+
+pub enum UnifyError {
+    Mismatch,
+}
 
 pub enum TypeError {
     Mismatched {

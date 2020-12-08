@@ -1,7 +1,6 @@
 use crate::ctx::Ctx;
-use crate::error::TypeError;
+use crate::error::{TypeError, UnifyError};
 use crate::ty::*;
-use crate::unify::UnifyError;
 use hir::ir::Span;
 use std::fmt;
 
@@ -26,20 +25,33 @@ impl<'ctx, 'db> Constrain<'ctx, 'db> {
                 subst.apply_ty(&a);
                 subst.apply_ty(&b);
 
-                for (_, (ty, _)) in &mut self.ctx.tys {
+                for (_, (ty, _)) in &mut self.tys {
                     subst.apply_ty(ty);
                 }
             }
             Err(UnifyError::Mismatch) => {
-                TypeError::Mismatched {
+                self.errors.push(TypeError::Mismatched {
                     a_ty: a,
                     a_span,
                     b_ty: b,
                     b_span,
-                }
-                .report(self.ctx.file, self.ctx.db);
+                });
             }
         }
+    }
+}
+
+impl<'ctx, 'db> std::ops::Deref for Constrain<'ctx, 'db> {
+    type Target = Ctx<'db>;
+
+    fn deref(&self) -> &Self::Target {
+        self.ctx
+    }
+}
+
+impl<'ctx, 'db> std::ops::DerefMut for Constrain<'ctx, 'db> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.ctx
     }
 }
 

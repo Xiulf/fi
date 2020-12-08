@@ -121,7 +121,7 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypeCheckResult> {
         }
     };
 
-    // ctx.unify();
+    ctx.errors.drain(..).for_each(|e| e.report(file, db));
 
     if db.has_errors() {
         db.print_and_exit();

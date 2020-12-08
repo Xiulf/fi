@@ -611,6 +611,21 @@ impl Item {
             })
             .next()
     }
+
+    pub fn abi(&self) -> Option<&str> {
+        let repr = Symbol::new("abi");
+
+        self.attrs
+            .iter()
+            .filter_map(|a| {
+                if a.name.symbol == repr {
+                    a.str_arg()
+                } else {
+                    None
+                }
+            })
+            .next()
+    }
 }
 
 impl Def<'_> {

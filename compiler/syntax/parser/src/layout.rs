@@ -41,7 +41,9 @@ pub fn fix_layout(files: &Files<Arc<str>>, buffer: TokenBuffer) -> TokenBuffer {
         }
     }
 
-    unwind(pos, &stack, &mut tokens);
+    let last_span = cursor.prev().unwrap().span();
+
+    unwind(last_span, &stack, &mut tokens);
 
     TokenBuffer::new(file, tokens)
 }
@@ -632,24 +634,24 @@ fn insert_layout(
                 if sep_p(pos(files, cursor.file, cursor.span().start()), pos2) =>
             {
                 stack.pop().unwrap();
-                tokens.push(Entry::LayoutSep(span(pos2)));
+                tokens.push(Entry::LayoutSep(cursor.span()));
             }
             [.., (pos2, LayoutDelim::TopDeclHead)]
                 if sep_p(pos(files, cursor.file, cursor.span().start()), pos2) =>
             {
                 stack.pop().unwrap();
-                tokens.push(Entry::LayoutSep(span(pos2)));
+                tokens.push(Entry::LayoutSep(cursor.span()));
             }
             [.., (pos2, lyt)]
                 if indent_sep_p(pos(files, cursor.file, cursor.span().start()), pos2, lyt) =>
             {
                 match lyt {
                     LayoutDelim::Of => {
-                        tokens.push(Entry::LayoutSep(span(pos2)));
+                        tokens.push(Entry::LayoutSep(cursor.span()));
                         stack.push((pos2, LayoutDelim::CaseBinders));
                     }
                     _ => {
-                        tokens.push(Entry::LayoutSep(span(pos2)));
+                        tokens.push(Entry::LayoutSep(cursor.span()));
                     }
                 }
             }
@@ -680,7 +682,7 @@ fn insert_layout(
                     self.collapse(files, p, cursor, stack, tokens);
 
                     if lyt.is_indented() {
-                        tokens.push(Entry::LayoutEnd(span(lyt_pos)));
+                        tokens.push(Entry::LayoutEnd(cursor.prev().unwrap().span()));
                     }
                 }
                 _ => {}
@@ -715,15 +717,15 @@ fn insert_layout(
     }
 }
 
-fn unwind(pos: Pos, stack: &[(Pos, LayoutDelim)], tokens: &mut Vec<Entry>) {
+fn unwind(span: Span, stack: &[(Pos, LayoutDelim)], tokens: &mut Vec<Entry>) {
     match stack {
         [] => {}
         [.., (_, LayoutDelim::Root)] => tokens.push(Entry::Empty),
         [rest @ .., (_, lyt)] if lyt.is_indented() => {
-            tokens.push(Entry::LayoutEnd(Span::new(pos.offset, pos.offset)));
-            unwind(pos, rest, tokens);
+            tokens.push(Entry::LayoutEnd(span));
+            unwind(span, rest, tokens);
         }
-        [rest @ .., _] => unwind(pos, rest, tokens),
+        [rest @ .., _] => unwind(span, rest, tokens),
     }
 }
 

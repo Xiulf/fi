@@ -2,6 +2,7 @@ mod expr;
 mod pat;
 
 use crate::constraint::Constrain;
+use crate::error::TypeError;
 use crate::{ty::*, TypeDatabase};
 use hir::ir;
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ pub struct Ctx<'db> {
     pub(crate) file: source::FileId,
     pub(crate) var_kinds: HashMap<TypeVar, Ty>,
     pub(crate) tys: HashMap<ir::HirId, (Ty, ir::Span)>,
+    pub(crate) errors: Vec<TypeError>,
 }
 
 impl<'db> Ctx<'db> {
@@ -20,6 +22,7 @@ impl<'db> Ctx<'db> {
             file,
             var_kinds: HashMap::new(),
             tys: HashMap::new(),
+            errors: Vec::new(),
         }
     }
 
@@ -48,9 +51,6 @@ impl<'db> Ctx<'db> {
             .collect::<List<_>>();
 
         let ret = self.infer_expr(&body.value);
-
-        // self.unify();
-
         let ty = Ty::func(param_tys, ret);
         // let ty = ty.generalize(body.id.0.owner);
 

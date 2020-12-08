@@ -1,12 +1,7 @@
 use crate::constraint::{Constrain, Constraint};
+use crate::error::{UnifyError, UnifyResult};
 use crate::subst::Subst;
 use crate::ty::*;
-
-pub type UnifyResult = Result<Subst, UnifyError>;
-
-pub enum UnifyError {
-    Mismatch,
-}
 
 impl<'ctx, 'db> Constrain<'ctx, 'db> {
     fn unify_all(&mut self, mut cs: Vec<Constraint>) -> UnifyResult {
