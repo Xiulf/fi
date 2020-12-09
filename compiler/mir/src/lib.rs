@@ -48,6 +48,7 @@ fn type_info(db: &dyn MirDatabase, lib: hir::ir::LibId, ty: ir::Ty) -> ir::Opera
         ir::Const::FuncAddr(basic_drop.owner),
     ]);
 
+    let basic_vwt = ir::Const::Tuple(vec![basic_vwt]);
     let layout = db.layout_of(lib, ty);
 
     let info = ir::Const::Tuple(vec![

@@ -42,7 +42,7 @@ impl<'ctx> ClifBackend<'ctx> {
 
                         for (j, (c, offset)) in consts.iter().zip(offsets).enumerate() {
                             bytes.resize(start + offset.bytes() as usize, 0);
-                            *i += offset.bytes() as usize;
+                            *i = start + offset.bytes() as usize;
 
                             let field = layout.field(fx.lib, fx.db.to_layout_db(), j);
 
