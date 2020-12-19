@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 #[salsa::query_group(TypeDatabaseStorage)]
 pub trait TypeDatabase: hir::HirDatabase + InferDb {
+    #[salsa::cycle(recover_cycle)]
     fn typecheck(&self, id: ir::DefId) -> Arc<TypeCheckResult>;
 
     fn variants(&self, id: ir::DefId) -> ty::List<ty::Variant>;
@@ -39,6 +40,7 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypeCheckResult> {
             ir::ItemKind::Func { ty, body } => {
                 let ty_ = ctx.hir_ty(ty);
 
+                ctx.tys.insert(item.id, (ty_.clone(), ty.span));
                 ctx.infer_body(&hir.bodies[body], ty_.clone(), ty.span);
                 ty_
             }
@@ -101,13 +103,20 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypeCheckResult> {
             }
             ir::ItemKind::DataCtor { data, tys } => {
                 let data_ty = db.typecheck(data.owner).ty.clone();
-                let tys = tys.iter().map(|t| ctx.hir_ty(t)).collect::<ty::List<_>>();
 
                 if tys.is_empty() {
                     data_ty
                 } else if let ty::Type::ForAll(vars, data_ty) = &*data_ty {
+                    for var in vars {
+                        ctx.tys.insert(var.0, (ty::Ty::var(var), item.span));
+                    }
+
+                    let tys = tys.iter().map(|t| ctx.hir_ty(t)).collect::<ty::List<_>>();
+
                     ty::Ty::for_all(vars.clone(), ty::Ty::func(tys, data_ty.clone()))
                 } else {
+                    let tys = tys.iter().map(|t| ctx.hir_ty(t)).collect::<ty::List<_>>();
+
                     ty::Ty::func(tys, data_ty)
                 }
             }
@@ -170,13 +179,13 @@ fn variants(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Variant> {
     }
 }
 
-// fn recover_cycle(
-//     _db: &dyn TypeDatabase,
-//     _cycle: &[String],
-//     id: &ir::DefId,
-// ) -> Arc<TypeCheckResult> {
-//     Arc::new(TypeCheckResult {
-//         ty: ty::Ty::type_of(*id),
-//         tys: Default::default(),
-//     })
-// }
+fn recover_cycle(
+    _db: &dyn TypeDatabase,
+    _cycle: &[String],
+    id: &ir::DefId,
+) -> Arc<TypeCheckResult> {
+    Arc::new(TypeCheckResult {
+        ty: ty::Ty::type_of(*id),
+        tys: Default::default(),
+    })
+}

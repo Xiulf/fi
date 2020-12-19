@@ -400,8 +400,8 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
         fx.ctx.compute_cfg();
         fx.ctx.compute_domtree();
 
-        println!("{}", fx.module.declarations().get_function_decl(func).name);
-        println!("{}", fx.ctx.func);
+        // println!("{}", fx.module.declarations().get_function_decl(func).name);
+        // println!("{}", fx.ctx.func);
 
         fx.mcx
             .ctx
@@ -693,9 +693,6 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
 
                 unimplemented!();
             }
-            mir::RValue::Init(_, ops) => {
-                unimplemented!();
-            }
         }
     }
 
@@ -756,10 +753,11 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                     _ => None,
                 };
 
-                let args = ret_ptr
+                let arg_vals = ret_ptr
                     .into_iter()
                     .chain(
-                        args.into_iter()
+                        args.iter()
+                            .cloned()
                             .map(|a| {
                                 value_for_arg!(
                                     fx,
@@ -784,7 +782,7 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                     match def {
                         hir::ir::Def::Item(item) if item.is_intrinsic() => {
                             call_intrinsic_match! {
-                                fx, &**item.name.symbol, &args[..], place, block,
+                                fx, &**item.name.symbol, &arg_vals[..], place, block,
                                 sqrtf32(f) -> sqrt,
                                 sqrtf64(f) -> sqrt,
                             }
@@ -795,11 +793,46 @@ impl<'ctx> Backend for ClifBackend<'ctx> {
                             let func = fx.func_ids[id].0;
                             let func = fx.mcx.module.declare_func_in_func(func, &mut fx.bcx.func);
 
-                            fx.bcx.ins().call(func, &args)
+                            fx.bcx.ins().call(func, &arg_vals)
                         }
                     }
                 } else {
-                    unimplemented!();
+                    let mut sig = fx.module.make_signature();
+
+                    match ret_mode {
+                        PassMode::NoPass => {}
+                        PassMode::ByRef { .. } => {
+                            sig.params.push(ir::AbiParam::new(fx.ptr_type));
+                        }
+                        PassMode::ByVal(ty) => {
+                            sig.returns.push(ir::AbiParam::new(ty));
+                        }
+                        PassMode::ByValPair(a, b) => {
+                            sig.returns.push(ir::AbiParam::new(a));
+                            sig.returns.push(ir::AbiParam::new(b));
+                        }
+                    }
+
+                    for arg in &args {
+                        match get_pass_mode(fx.mcx, &arg.layout) {
+                            PassMode::NoPass => {}
+                            PassMode::ByRef { .. } => {
+                                sig.params.push(ir::AbiParam::new(fx.ptr_type));
+                            }
+                            PassMode::ByVal(ty) => {
+                                sig.params.push(ir::AbiParam::new(ty));
+                            }
+                            PassMode::ByValPair(a, b) => {
+                                sig.params.push(ir::AbiParam::new(a));
+                                sig.params.push(ir::AbiParam::new(b));
+                            }
+                        }
+                    }
+
+                    let sig = fx.bcx.import_signature(sig);
+                    let func = Self::trans_op(fx, op, None).load_scalar(fx);
+
+                    fx.bcx.ins().call_indirect(sig, func, &arg_vals)
                 };
 
                 match ret_mode {

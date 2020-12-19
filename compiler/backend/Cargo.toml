@@ -1,0 +1,13 @@
+[package]
+name = "backend"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+hir = { path = "../hir" }
+lower = { path = "../lower" }
+linker = { path = "../linker" }
+lowlang = { path = "../../../lowlang/umbrella" }
+salsa = "0.16.0"
+ar = "^0.8.0"

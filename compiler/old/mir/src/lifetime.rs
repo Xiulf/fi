@@ -169,11 +169,6 @@ fn rvalue_lifetime(lt: &mut Lifetimes, rvalue: &RValue, block: Block) {
         RValue::Use(op) => op_lifetime(lt, op, block),
         RValue::AddrOf(place) => place_lifetime(lt, place, block),
         RValue::Discr(place) => place_lifetime(lt, place, block),
-        RValue::Init(_, ops) => {
-            for op in ops {
-                op_lifetime(lt, op, block);
-            }
-        }
     }
 }
 

@@ -173,7 +173,6 @@ display!(RValue: RValueDisplay(s, db, f) {
         RValue::Use(op) => op.display(db).fmt(f),
         RValue::AddrOf(place) => write!(f, "addrof {}", place.display(db)),
         RValue::Discr(place) => write!(f, "get_discr {}", place.display(db)),
-        RValue::Init(ty, ops) => write!(f, "init {}({})", ty.display(db.to_ty_db()), list(ops, ", ", db)),
     }
 });
 

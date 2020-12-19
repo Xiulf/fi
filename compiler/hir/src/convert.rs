@@ -919,8 +919,10 @@ impl<'db> Converter<'db> {
                         }
                         ast::DeclKind::Data { head, body: body2 } => {
                             if !has_def {
+                                self.resolver.push_rib(Ns::Types);
+
                                 has_def = true;
-                                vars.extend(head.vars.iter().map(|v| self.convert_type_var(v)));
+                                vars = head.vars.iter().map(|v| self.convert_type_var(v)).collect();
 
                                 if let Some(body2) = body2 {
                                     body.extend(
@@ -929,6 +931,8 @@ impl<'db> Converter<'db> {
                                             .map(|c| self.convert_data_ctor(defpath, id, c)),
                                     );
                                 }
+
+                                self.resolver.pop_rib(Ns::Types);
                             }
                         }
                         _ => unreachable!(),

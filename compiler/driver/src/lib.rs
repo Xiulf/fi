@@ -1,4 +1,4 @@
-use assemble::CodegenDatabase;
+use backend::BackendDatabase;
 use hir::HirDatabase;
 use source::SourceDatabase;
 use std::cell::{Cell, RefCell};
@@ -9,9 +9,8 @@ use std::path::Path;
     syntax::SyntaxDatabaseStorage,
     hir::HirDatabaseStorage,
     check::TypeDatabaseStorage,
-    layout::LayoutDatabaseStorage,
-    mir::MirDatabaseStorage,
-    assemble::CodegenDatabaseStorage
+    lower::LowerDatabaseStorage,
+    backend::BackendDatabaseStorage
 )]
 #[derive(Default)]
 pub struct CompilerDatabase {

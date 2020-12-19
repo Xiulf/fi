@@ -8,19 +8,19 @@ alias Float = Float32
 alias Double = Float64
 alias Str = Slice Byte
 
-[if(pointer_size = 16)] alias Int = Int16
-[if(pointer_size = 32)] alias Int = Int32
+-- [if(pointer_size = 16)] alias Int = Int16
+-- [if(pointer_size = 32)] alias Int = Int32
 [if(pointer_size = 64)] alias Int = Int64
 
-[if(pointer_size = 16)] alias Uint = Uint16
-[if(pointer_size = 32)] alias Uint = Uint32
+-- [if(pointer_size = 16)] alias Uint = Uint16
+-- [if(pointer_size = 32)] alias Uint = Uint32
 [if(pointer_size = 64)] alias Uint = Uint64
 
 [lang("type_kind")] data Type
 [lang("int_kind" )] data TypeInt
 
 [repr("u8"  )]
-[lang("bool_ty")]
+[lang("bool")]
 data Bool = False | True
 
 [repr("u32" )] data Char    :: Type
@@ -62,22 +62,23 @@ impl DecimalF32 :: Decimal Float32
 impl DecimalF64 :: Decimal Float64
 
 [lang("type_info")]
-data TypeInfo = TypeInfo {
+data TypeInfo t = TypeInfo {
     size   :: Uint,
     align  :: Uint,
     stride :: Uint,
-    vwt    :: Ptr ValueWitnessTable,
+    vwt    :: Ptr (ValueWitnessTable t),
 }
 
-data ValueWitnessTable = ValueWitnessTable {
-    copy :: (Ptr (), Ptr (), Ptr TypeInfo) -> (),
-    move :: (Ptr (), Ptr (), Ptr TypeInfo) -> (),
-    drop :: (Ptr (), Ptr TypeInfo) -> (),
+[lang("vwt")]
+data ValueWitnessTable t = ValueWitnessTable {
+    copy :: (Ptr t, Ptr t, Ptr (TypeInfo t)) -> (),
+    move :: (Ptr t, Ptr t, Ptr (TypeInfo t)) -> (),
+    drop :: (Ptr t, Ptr (TypeInfo t)) -> (),
 }
 
 [lang("BASIC_COPY")]
 [no_mangle]
-fn __BASIC_COPY :: (Ptr (), Ptr (), Ptr TypeInfo) -> ()
+fn __BASIC_COPY :: (Ptr (), Ptr (), Ptr (TypeInfo ())) -> ()
 fn __BASIC_COPY dst src ty = do
     TypeInfo info <- unsafe_read ty
     memcpy dst src info.size
@@ -85,7 +86,7 @@ fn __BASIC_COPY dst src ty = do
 
 [lang("BASIC_DROP")]
 [no_mangle]
-fn __BASIC_DROP :: (Ptr (), Ptr TypeInfo) -> ()
+fn __BASIC_DROP :: (Ptr (), Ptr (TypeInfo ())) -> ()
 fn __BASIC_DROP val ty = ()
 
 -- [intrinsic] foreign fn transmute :: forall a b. a -> b

@@ -502,6 +502,16 @@ impl Debug for Expr {
 
                 Ok(())
             }
+            ExprKind::Record { fields } => {
+                write!(f, "Record id = {:?}", self.id)?;
+
+                for field in fields {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", field)?;
+                }
+
+                Ok(())
+            }
             ExprKind::Field { base, field } => {
                 writeln!(f, "Field id = {:?}, field = {:?}", self.id, &**field.symbol)?;
                 write!(indent(f), "{:?}", base)
@@ -520,6 +530,25 @@ impl Debug for Expr {
                 }
 
                 Ok(())
+            }
+            ExprKind::Infix { op, lhs, rhs } => {
+                writeln!(f, "Infix id = {:?}, op = {:?}", self.id, op)?;
+                writeln!(indent(f), "{:?}", lhs)?;
+                write!(indent(f), "{:?}", rhs)
+            }
+            ExprKind::Prefix { op, rhs } => {
+                writeln!(f, "Prefix id = {:?}, op = {:?}", self.id, op)?;
+                write!(indent(f), "{:?}", rhs)
+            }
+            ExprKind::Postfix { op, lhs } => {
+                writeln!(f, "Postfix id = {:?}, op = {:?}", self.id, op)?;
+                write!(indent(f), "{:?}", lhs)
+            }
+            ExprKind::If { cond, then, else_ } => {
+                writeln!(f, "If id = {:?}", self.id)?;
+                writeln!(indent(f), "{:?}", cond)?;
+                writeln!(indent(f), "{:?}", then)?;
+                write!(indent(f), "{:?}", else_)
             }
             ExprKind::Do { block } => {
                 writeln!(f, "Do id = {:?}", self.id)?;

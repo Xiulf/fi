@@ -733,7 +733,7 @@ impl Parse for ImplDecl {
                 let mut pats = Vec::new();
 
                 while !input.is_empty() && Pat::peek(input) {
-                    pats.push(input.parse()?);
+                    pats.push(Pat::atom(input)?);
                 }
 
                 let val = input.parse()?;
@@ -959,7 +959,7 @@ impl Parse for GuardedExpr {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let _ = input.parse::<TBar>()?;
-        let guard = input.parse()?;
+        let guard = Expr::infix(input)?;
         let _ = input.parse::<TEquals>()?;
         let val = input.parse()?;
 
@@ -975,7 +975,7 @@ impl GuardedExpr {
     fn case(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let _ = input.parse::<TBar>()?;
-        let guard = input.parse()?;
+        let guard = Expr::infix(input)?;
         let _ = input.parse::<TArrow>()?;
         let val = input.parse()?;
 
@@ -989,7 +989,7 @@ impl GuardedExpr {
 
 impl Parse for Expr {
     fn parse(input: ParseStream) -> Result<Self> {
-        let expr = Expr::infix(input)?;
+        let expr = Expr::assign(input)?;
 
         if let Ok(_) = input.parse::<TDblColon>() {
             let ty = input.parse()?;
@@ -1008,26 +1008,26 @@ impl Parse for Expr {
 }
 
 impl Expr {
-    fn infix(input: ParseStream) -> Result<Self> {
-        return assign(input);
+    fn assign(input: ParseStream) -> Result<Self> {
+        let lhs = Self::infix(input)?;
 
-        fn assign(input: ParseStream) -> Result<Expr> {
-            let lhs = or(input)?;
+        if let Ok(_) = input.parse::<TEquals>() {
+            let rhs = Self::assign(input)?;
 
-            if let Ok(_) = input.parse::<TEquals>() {
-                let rhs = assign(input)?;
-
-                Ok(Expr {
-                    span: lhs.span.merge(rhs.span),
-                    kind: ExprKind::Assign {
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                    },
-                })
-            } else {
-                Ok(lhs)
-            }
+            Ok(Expr {
+                span: lhs.span.merge(rhs.span),
+                kind: ExprKind::Assign {
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                },
+            })
+        } else {
+            Ok(lhs)
         }
+    }
+
+    fn infix(input: ParseStream) -> Result<Self> {
+        return or(input);
 
         fn or(input: ParseStream) -> Result<Expr> {
             let mut lhs = and(input)?;
@@ -1351,42 +1351,42 @@ impl Expr {
     }
 
     fn prefix(input: ParseStream) -> Result<Self> {
-        let start = input.span();
-
-        if input.peek::<TNeg>() && !input.peek::<TArrow>() {
-            let _ = input.parse::<TNeg>()?;
-            let rhs = Expr::prefix(input)?;
-
-            Ok(Expr {
-                span: start.merge(input.prev_span()),
-                kind: ExprKind::Prefix {
-                    op: PrefixOp::Neg,
-                    rhs: Box::new(rhs),
-                },
-            })
-        } else if let Ok(_) = input.parse::<TNot>() {
-            let rhs = Expr::prefix(input)?;
-
-            Ok(Expr {
-                span: start.merge(input.prev_span()),
-                kind: ExprKind::Prefix {
-                    op: PrefixOp::Not,
-                    rhs: Box::new(rhs),
-                },
-            })
-        } else if let Ok(_) = input.parse::<TBitNot>() {
-            let rhs = Expr::prefix(input)?;
-
-            Ok(Expr {
-                span: start.merge(input.prev_span()),
-                kind: ExprKind::Prefix {
-                    op: PrefixOp::BitNot,
-                    rhs: Box::new(rhs),
-                },
-            })
-        } else {
-            Expr::postfix(input)
-        }
+        // let start = input.span();
+        //
+        // if input.peek::<TNeg>() && !input.peek::<TArrow>() {
+        //     let _ = input.parse::<TNeg>()?;
+        //     let rhs = Expr::prefix(input)?;
+        //
+        //     Ok(Expr {
+        //         span: start.merge(input.prev_span()),
+        //         kind: ExprKind::Prefix {
+        //             op: PrefixOp::Neg,
+        //             rhs: Box::new(rhs),
+        //         },
+        //     })
+        // } else if let Ok(_) = input.parse::<TNot>() {
+        //     let rhs = Expr::prefix(input)?;
+        //
+        //     Ok(Expr {
+        //         span: start.merge(input.prev_span()),
+        //         kind: ExprKind::Prefix {
+        //             op: PrefixOp::Not,
+        //             rhs: Box::new(rhs),
+        //         },
+        //     })
+        // } else if let Ok(_) = input.parse::<TBitNot>() {
+        //     let rhs = Expr::prefix(input)?;
+        //
+        //     Ok(Expr {
+        //         span: start.merge(input.prev_span()),
+        //         kind: ExprKind::Prefix {
+        //             op: PrefixOp::BitNot,
+        //             rhs: Box::new(rhs),
+        //         },
+        //     })
+        // } else {
+        Expr::postfix(input)
+        // }
     }
 
     fn postfix(input: ParseStream) -> Result<Self> {
@@ -1578,9 +1578,10 @@ impl Expr {
 
     fn peek(input: ParseStream) -> bool {
         input.peek::<TLParen>()
-            || (input.peek::<TNeg>() && !input.peek::<TArrow>())
-            || input.peek::<TNot>()
-            || input.peek::<TBitNot>()
+            || input.peek::<TLBrace>()
+            // || (input.peek::<TNeg>() && !input.peek::<TArrow>())
+            // || input.peek::<TNot>()
+            // || input.peek::<TBitNot>()
             || input.peek::<TQmark>()
             || input.peek::<Ident>()
             || input.peek::<Literal>()

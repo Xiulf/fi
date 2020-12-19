@@ -118,7 +118,7 @@ impl<'db> Ctx<'db> {
 
                 Ty::for_all(vars, ty)
             }
-            ir::TypeKind::Cons { cs: _, ty: _ } => {
+            ir::TypeKind::Cons { cs, ty } => {
                 unimplemented!();
             }
             ir::TypeKind::Kinded { ty, kind } => {

@@ -8,7 +8,16 @@ impl<'db> Ctx<'db> {
             ir::ExprKind::Int { .. } => Ty::infer(self.db.new_infer_var()),
             ir::ExprKind::Ident { res } => match res {
                 ir::Res::Error => Ty::error(),
-                ir::Res::Def(_, def) => self.db.typecheck(*def).ty.monomorphize(self.db),
+                ir::Res::Def(_, def) => {
+                    if let Some((ty, _)) = self.tys.get(&ir::HirId {
+                        owner: *def,
+                        local_id: ir::LocalId(0),
+                    }) {
+                        ty.clone()
+                    } else {
+                        self.db.typecheck(*def).ty.monomorphize(self.db)
+                    }
+                }
                 ir::Res::Local(id) => self.tys[id].0.clone(),
             },
             ir::ExprKind::App { base, args } => {
@@ -26,6 +35,18 @@ impl<'db> Ctx<'db> {
                 let tys = exprs.iter().map(|e| self.infer_expr(e)).collect();
 
                 Ty::tuple(tys)
+            }
+            ir::ExprKind::Record { fields } => {
+                let fields = fields
+                    .iter()
+                    .map(|f| Field {
+                        span: f.span,
+                        name: f.name.symbol,
+                        ty: self.infer_expr(&f.val),
+                    })
+                    .collect();
+
+                Ty::record(fields, None)
             }
             ir::ExprKind::Field { base, field } => {
                 let base_ty = self.infer_expr(base);
@@ -45,6 +66,44 @@ impl<'db> Ctx<'db> {
                     .equal(exp_ty, expr.span, base_ty, base.span);
 
                 field_ty
+            }
+            ir::ExprKind::Infix { op, lhs, rhs } => {
+                let lhs_ty = self.infer_expr(lhs);
+                let rhs_ty = self.infer_expr(rhs);
+
+                self.constrain()
+                    .equal(rhs_ty, rhs.span, lhs_ty.clone(), lhs.span);
+
+                match op {
+                    ir::InfixOp::Eq
+                    | ir::InfixOp::Ne
+                    | ir::InfixOp::Lt
+                    | ir::InfixOp::Le
+                    | ir::InfixOp::Gt
+                    | ir::InfixOp::Ge => {
+                        let bool_ty = self.db.lang_items().bool();
+
+                        Ty::data(bool_ty.owner)
+                    }
+                    _ => lhs_ty,
+                }
+            }
+            ir::ExprKind::If { cond, then, else_ } => {
+                let res = Ty::infer(self.db.new_infer_var());
+                let bool_ty = self.db.lang_items().bool();
+                let bool_ty = Ty::data(bool_ty.owner);
+                let cond_ty = self.infer_expr(cond);
+                let then_ty = self.infer_expr(then);
+                let else_ty = self.infer_expr(else_);
+
+                self.constrain()
+                    .equal(cond_ty, cond.span, bool_ty, cond.span);
+                self.constrain()
+                    .equal(then_ty, then.span, res.clone(), expr.span);
+                self.constrain()
+                    .equal(else_ty, else_.span, res.clone(), expr.span);
+
+                res
             }
             ir::ExprKind::Case { pred, arms } => {
                 let ret_ty = Ty::infer(self.db.new_infer_var());
@@ -106,7 +165,29 @@ impl<'db> Ctx<'db> {
     fn infer_guarded(&mut self, guarded: &ir::Guarded) -> Ty {
         match guarded {
             ir::Guarded::Unconditional(expr) => self.infer_expr(expr),
-            ir::Guarded::Guarded(_) => unimplemented!(),
+            ir::Guarded::Guarded(guards) => {
+                let res = Ty::infer(self.db.new_infer_var());
+                let bool_ty = self.db.lang_items().bool();
+                let bool_ty = Ty::data(bool_ty.owner);
+                let span = guards[0].span.merge(guards[guards.len() - 1].span);
+
+                for guard in guards {
+                    let guard_ty = self.infer_expr(&guard.guard);
+                    let val_ty = self.infer_expr(&guard.val);
+
+                    self.constrain().equal(
+                        guard_ty,
+                        guard.guard.span,
+                        bool_ty.clone(),
+                        guard.guard.span,
+                    );
+
+                    self.constrain()
+                        .equal(val_ty, guard.val.span, res.clone(), span);
+                }
+
+                res
+            }
         }
     }
 

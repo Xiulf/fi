@@ -101,7 +101,6 @@ pub enum RValue {
     Use(Operand),
     AddrOf(Place),
     Discr(Place),
-    Init(Ty, Vec<Operand>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

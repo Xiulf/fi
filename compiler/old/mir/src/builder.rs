@@ -23,6 +23,10 @@ impl Builder {
         self.body
     }
 
+    pub fn body(&self) -> &Body {
+        &self.body
+    }
+
     fn block(&mut self) -> &mut BlockData {
         &mut self.body.blocks[self.current_block]
     }
@@ -125,12 +129,6 @@ impl Builder {
         self.block()
             .stmts
             .push(Stmt::Assign(place, RValue::Discr(from)));
-    }
-
-    pub fn init(&mut self, place: Place, ty: Ty, args: Vec<Operand>) {
-        self.block()
-            .stmts
-            .push(Stmt::Assign(place, RValue::Init(ty, args)));
     }
 
     pub fn set_discr(&mut self, place: Place, variant: usize) {

@@ -211,9 +211,29 @@ impl<'db> BodyConverter<'db> {
                 } else {
                     let res = self.builder.create_tmp(ty.clone());
                     let res = ir::Place::local(res);
-                    let ops = exprs.iter().map(|e| self.convert_expr(e)).collect();
 
-                    self.builder.init(res.clone(), ty, ops);
+                    for (i, expr) in exprs.iter().enumerate() {
+                        let op = self.convert_expr(expr);
+
+                        self.builder.use_op(res.clone().field(i), op);
+                    }
+
+                    ir::Operand::Move(res)
+                }
+            }
+            hir::ExprKind::Record { fields } => {
+                if fields.is_empty() {
+                    ir::Operand::Const(ir::Const::Tuple(Vec::new()), ty)
+                } else {
+                    let res = self.builder.create_tmp(ty.clone());
+                    let res = ir::Place::local(res);
+
+                    for (i, field) in fields.iter().enumerate() {
+                        let op = self.convert_expr(&field.val);
+
+                        self.builder.use_op(res.clone().field(i), op);
+                    }
+
                     ir::Operand::Move(res)
                 }
             }
@@ -358,6 +378,13 @@ impl<'db> BodyConverter<'db> {
 
                 next_block
             }
+            hir::PatKind::Record { fields } => {
+                for (i, field) in fields.iter().enumerate() {
+                    self.convert_pat(pred.clone().field(i), &field.val, next_block, exit_block);
+                }
+
+                next_block
+            }
             _ => next_block,
         }
     }
@@ -476,7 +503,13 @@ impl<'db> BodyConverter<'db> {
                         }
 
                         for ty in targs {
-                            arg_ops.push(self.db.type_info(base.id.owner.lib, ty));
+                            if let check::ty::Type::Var(var) = &*ty {
+                                let param = self.builder.body().tvar_local(self.db, *var).unwrap();
+
+                                arg_ops.push(ir::Operand::Copy(ir::Place::local(param)));
+                            } else {
+                                arg_ops.push(self.db.type_info(base.id.owner.lib, ty));
+                            }
                         }
                     }
                     _ => {}

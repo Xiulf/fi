@@ -84,6 +84,7 @@ lang_items! {
     kind_type , "type_kind" , KindType ;
     kind_int  , "int_kind"  , KindInt  ;
     type_info , "type_info" , TypeInfo ;
+    vwt       , "vwt"       , Vwt      ;
     ptr_ty    , "ptr_ty"    , PtrType  ;
     array_ty  , "array_ty"  , ArrayType;
     slice_ty  , "slice_ty"  , SliceType;

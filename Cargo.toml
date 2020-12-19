@@ -8,10 +8,7 @@ members = [
     "compiler/syntax",
     "compiler/hir",
     "compiler/check",
-    "compiler/mir",
-    "compiler/layout",
-    "compiler/codegen",
-    "compiler/codegen_cranelift",
+    "compiler/lower",
     "compiler/linker",
-    "compiler/assemble",
+    "compiler/backend",
 ]
