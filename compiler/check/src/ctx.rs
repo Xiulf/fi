@@ -118,7 +118,7 @@ impl<'db> Ctx<'db> {
 
                 Ty::for_all(vars, ty)
             }
-            ir::TypeKind::Cons { cs, ty } => {
+            ir::TypeKind::Cons { cs: _, ty: _ } => {
                 unimplemented!();
             }
             ir::TypeKind::Kinded { ty, kind } => {
@@ -156,6 +156,7 @@ impl<'db> Ctx<'db> {
                 )
             }
             Type::App(ty, _, _) => self.infer_kind(ty),
+            Type::Ctnt(_, ty) => self.infer_kind(ty),
         }
     }
 

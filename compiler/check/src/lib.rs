@@ -122,8 +122,34 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypeCheckResult> {
             }
             _ => ty::Ty::error(),
         },
-        ir::Def::TraitItem(_item) => {
-            unimplemented!();
+        ir::Def::TraitItem(item) => {
+            let head = hir.items[&item.owner].trait_();
+
+            match &item.kind {
+                ir::TraitItemKind::Func { ty } => {
+                    let vars = head
+                        .vars
+                        .iter()
+                        .map(|v| {
+                            let kind = ctx.hir_ty(&v.kind);
+                            let var = ty::TypeVar(v.id);
+
+                            ctx.insert_var_kind(var, kind);
+                            var
+                        })
+                        .collect::<ty::List<_>>();
+
+                    let ty = ty::Ty::ctnt(
+                        ty::TraitCtnt {
+                            trait_: item.owner,
+                            tys: vars.iter().map(|v| ty::Ty::var(*v)).collect(),
+                        },
+                        ctx.hir_ty(ty),
+                    );
+
+                    ty::Ty::for_all(vars, ty)
+                }
+            }
         }
         ir::Def::ImplItem(_item) => {
             unimplemented!();

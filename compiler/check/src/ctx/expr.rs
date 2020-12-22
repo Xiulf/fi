@@ -1,11 +1,23 @@
 use super::*;
+use crate::constraint::TraitCtnt;
 
 impl<'db> Ctx<'db> {
     pub(crate) fn infer_expr(&mut self, expr: &ir::Expr) -> Ty {
         let ty = match &expr.kind {
             ir::ExprKind::Error => Ty::error(),
             ir::ExprKind::Hole { .. } => Ty::infer(self.db.new_infer_var()),
-            ir::ExprKind::Int { .. } => Ty::infer(self.db.new_infer_var()),
+            ir::ExprKind::Int { .. } => {
+                let var = self.db.new_infer_var();
+                let ty = Ty::infer(var);
+
+                Ty::ctnt(
+                    TraitCtnt {
+                        trait_: self.db.lang_items().integer_trait(),
+                        tys: vec![ty.clone()].into(),
+                    },
+                    ty,
+                )
+            }
             ir::ExprKind::Ident { res } => match res {
                 ir::Res::Error => Ty::error(),
                 ir::Res::Def(_, def) => {

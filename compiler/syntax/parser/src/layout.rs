@@ -170,7 +170,7 @@ fn insert_layout(
 ) {
     crate::token![ident "fn" TFn];
     crate::token![ident "data" TData];
-    crate::token![ident "iface" TIface];
+    crate::token![ident "trait" TTrait];
     crate::token![ident "where" TWhere];
     crate::token![ident "in" TIn];
     crate::token![ident "let" TLet];
@@ -226,7 +226,7 @@ fn insert_layout(
             if is_top_decl(p, stack) {
                 stack.push((p, LayoutDelim::TopDecl));
             }
-        } else if TIface::peek(cursor) {
+        } else if TTrait::peek(cursor) {
             insert_default(files, cursor, stack, tokens);
 
             let p = pos(files, cursor.file, cursor.span().start());

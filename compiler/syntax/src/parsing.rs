@@ -513,6 +513,20 @@ impl Parse for Decl {
                 vars.push(input.parse()?);
             }
 
+            let mut fundeps = Vec::new();
+
+            if let Ok(_) = input.parse::<TBar>() {
+                while !input.is_empty() && (input.peek::<TArrow>() || input.peek::<Ident>()) {
+                    fundeps.push(input.parse()?);
+
+                    if input.peek::<TComma>() {
+                        input.bump();
+                    } else {
+                        break;
+                    }
+                }
+            }
+
             let head = TraitHead {
                 span: start.merge(input.prev_span()),
                 parent: if parent.is_empty() {
@@ -521,6 +535,7 @@ impl Parse for Decl {
                     Some(parent)
                 },
                 vars,
+                fundeps,
             };
 
             let body = if input.peek::<TWhere>() {
@@ -594,6 +609,35 @@ impl Parse for DataCtor {
             name,
             tys,
         })
+    }
+}
+
+impl Parse for FunDep {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if let Ok(_) = input.parse::<TArrow>() {
+            let mut names = vec![input.parse()?];
+
+            while !input.is_empty() && input.peek::<Ident>() {
+                names.push(input.parse()?);
+            }
+
+            Ok(FunDep::Determined(names))
+        } else {
+            let mut left = vec![input.parse()?];
+
+            while !input.is_empty() && input.peek::<Ident>() {
+                left.push(input.parse()?);
+            }
+
+            let _ = input.parse::<TArrow>()?;
+            let mut right = vec![input.parse()?];
+
+            while !input.is_empty() && input.peek::<Ident>() {
+                right.push(input.parse()?);
+            }
+
+            Ok(FunDep::Determines(left, right))
+        }
     }
 }
 

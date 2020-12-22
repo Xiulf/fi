@@ -299,7 +299,7 @@ impl Debug for TraitItem {
         write!(f, "TraitItem::")?;
 
         match &self.kind {
-            IfaceItemKind::Func { ty } => {
+            TraitItemKind::Func { ty } => {
                 writeln!(
                     f,
                     "Func id = {:?}, name = {:?}",

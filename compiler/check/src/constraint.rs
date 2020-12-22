@@ -12,6 +12,12 @@ pub enum Constraint {
     Equal(Ty, Ty),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TraitCtnt {
+    pub trait_: hir::ir::HirId,
+    pub tys: List<Ty>,
+}
+
 impl<'ctx, 'db> Constrain<'ctx, 'db> {
     pub fn new(ctx: &'ctx mut Ctx<'db>) -> Self {
         Constrain { ctx }
@@ -68,5 +74,32 @@ impl fmt::Display for CsDisplay<'_> {
         match &self.0 {
             Constraint::Equal(a, b) => write!(f, "{} == {}", a.display(self.1), b.display(self.1)),
         }
+    }
+}
+
+pub struct CtntDisplay<'a>(&'a TraitCtnt, &'a dyn crate::TypeDatabase);
+
+impl TraitCtnt {
+    pub fn display<'a>(&'a self, db: &'a dyn crate::TypeDatabase) -> CtntDisplay<'a> {
+        CtntDisplay(self, db)
+    }
+}
+
+impl fmt::Display for CtntDisplay<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let CtntDisplay(this, db) = self;
+        let file = db
+            .module_tree(this.trait_.owner.lib)
+            .file(this.trait_.owner.module);
+        let hir = db.module_hir(file);
+        let item = &hir.items[&this.trait_];
+
+        item.name.fmt(f)?;
+
+        for ty in &this.tys {
+            write!(f, " {}", ty.display(*db))?;
+        }
+
+        Ok(())
     }
 }

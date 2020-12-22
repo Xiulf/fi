@@ -82,7 +82,7 @@ impl Linker for GccLinker {
     fn set_output_type(&mut self, output_type: LinkOutputType, out_filename: &Path) {
         match output_type {
             LinkOutputType::Exe => {
-                self.cmd.arg("-pie");
+                self.cmd.arg("-no-pie");
             }
             LinkOutputType::Dylib => {
                 self.build_dylib(out_filename);

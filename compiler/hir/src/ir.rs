@@ -183,19 +183,21 @@ pub enum AssocItemKind {
 #[derive(PartialEq, Eq)]
 pub struct TraitItem {
     pub id: HirId,
+    pub owner: HirId,
     pub span: Span,
     pub name: Ident,
-    pub kind: IfaceItemKind,
+    pub kind: TraitItemKind,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum IfaceItemKind {
+pub enum TraitItemKind {
     Func { ty: Type },
 }
 
 #[derive(PartialEq, Eq)]
 pub struct ImplItem {
     pub id: HirId,
+    pub owner: HirId,
     pub span: Span,
     pub name: Ident,
     pub kind: ImplItemKind,
@@ -625,6 +627,20 @@ impl Item {
                 }
             })
             .next()
+    }
+
+    pub fn trait_(&self) -> &TraitHead {
+        match &self.kind {
+            ItemKind::Trait { head, .. } => head,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn impl_(&self) -> &ImplHead {
+        match &self.kind {
+            ItemKind::Impl { head, .. } => head,
+            _ => unreachable!(),
+        }
     }
 }
 

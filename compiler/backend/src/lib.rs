@@ -58,10 +58,8 @@ pub fn assembly(
     lib: hir::ir::LibId,
     module: hir::ir::ModuleId,
 ) -> Arc<Assembly> {
-    let name = db.module_tree(lib).data(module).name;
     let mir = db.lower(lib, module);
-    let obj_file =
-        lowlang::assemble::assemble(&mir, (*db.target(lib)).clone(), &format!("{}.o", name));
+    let obj_file = lowlang::assemble::assemble(&mir, (*db.target(lib)).clone());
     let mut linker = linker::get_linker(&db.target(lib));
     let tree = db.module_tree(lib);
     let data = tree.data(module);

@@ -984,7 +984,7 @@ impl<'db> Converter<'db> {
                             items: body
                                 .decls
                                 .iter()
-                                .map(|d| self.convert_trait_decl(first.name.symbol, d))
+                                .map(|d| self.convert_trait_decl(first.name.symbol, id, d))
                                 .collect(),
                         }
                     } else {
@@ -1086,7 +1086,7 @@ impl<'db> Converter<'db> {
                         id: body_id,
                         span: body.span,
                         items: group::ImplDeclGroups::new(&body.decls)
-                            .map(|(g, d)| self.convert_impl_decl(imp.head.name.symbol, g, d))
+                            .map(|(g, d)| self.convert_impl_decl(imp.head.name.symbol, id, g, d))
                             .collect(),
                     }
                 } else {
@@ -1151,7 +1151,12 @@ impl<'db> Converter<'db> {
         id
     }
 
-    fn convert_trait_decl(&mut self, iface: ir::Symbol, decl: &ast::TraitDecl) -> ir::TraitItemRef {
+    fn convert_trait_decl(
+        &mut self,
+        iface: ir::Symbol,
+        owner: ir::HirId,
+        decl: &ast::TraitDecl,
+    ) -> ir::TraitItemRef {
         let old_id = (self.current_item, self.id_counter);
         let defindex = ir::DefIndex::from_path(
             self.module_name.symbol,
@@ -1166,7 +1171,7 @@ impl<'db> Converter<'db> {
 
         let id = self.next_id();
         let kind = match &decl.kind {
-            ast::TraitDeclKind::FuncTy { ty } => ir::IfaceItemKind::Func {
+            ast::TraitDeclKind::FuncTy { ty } => ir::TraitItemKind::Func {
                 ty: self.convert_type(ty),
             },
         };
@@ -1175,6 +1180,7 @@ impl<'db> Converter<'db> {
             ir::TraitItemId(id),
             ir::TraitItem {
                 id,
+                owner,
                 span: decl.span,
                 name: decl.name,
                 kind,
@@ -1195,6 +1201,7 @@ impl<'db> Converter<'db> {
     fn convert_impl_decl(
         &mut self,
         imp: ir::Symbol,
+        owner: ir::HirId,
         kind: group::ImplDeclGroupKind,
         decls: &[ast::ImplDecl],
     ) -> ir::ImplItemRef {
@@ -1310,6 +1317,7 @@ impl<'db> Converter<'db> {
             ir::ImplItemId(id),
             ir::ImplItem {
                 id,
+                owner,
                 span,
                 name: first.name,
                 kind,

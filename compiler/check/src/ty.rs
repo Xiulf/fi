@@ -1,3 +1,4 @@
+pub use crate::constraint::TraitCtnt;
 use hir::ir::{DefId, HirId, Symbol};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -22,6 +23,7 @@ pub enum Type {
     Tuple(List<Ty>),
     Record(List<Field>, Option<Ty>),
     App(Ty, Ty, List<Ty>),
+    Ctnt(TraitCtnt, Ty),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -87,6 +89,10 @@ impl Ty {
         Ty(Arc::new(Type::App(ty, orig, args)))
     }
 
+    pub fn ctnt(ctnt: TraitCtnt, ty: Ty) -> Self {
+        Ty(Arc::new(Type::Ctnt(ctnt, ty)))
+    }
+
     pub fn display<'a>(&'a self, db: &'a dyn crate::TypeDatabase) -> TyDisplay<'a> {
         TyDisplay(self, db)
     }
@@ -96,6 +102,7 @@ impl Ty {
             Type::ForAll(..) => 1,
             Type::Func(..) => 1,
             Type::App(..) => 1,
+            Type::Ctnt(..) => 1,
             _ => 0,
         }
     }
@@ -166,6 +173,13 @@ impl Ty {
                 for arg in args {
                     arg.collect_vars(vars);
                 }
+            }
+            Type::Ctnt(ctnt, ty) => {
+                for ty in &ctnt.tys {
+                    ty.collect_vars(vars);
+                }
+
+                ty.collect_vars(vars);
             }
             _ => {}
         }
@@ -394,6 +408,9 @@ impl fmt::Display for TyDisplay<'_> {
 
                 Ok(())
             }
+            Type::Ctnt(ctnt, ty) => {
+                write!(f, "{} => {}", ctnt.display(self.1), ty.display(self.1))
+            }
         }
     }
 }
@@ -406,7 +423,7 @@ impl fmt::Display for InferVar {
 
         while num >= 26 {
             write!(f, "{}", (b'a' + (num % 26) as u8) as char)?;
-            num -= 26;
+            num /= 26;
         }
 
         write!(f, "{}", (b'a' + num as u8) as char)
@@ -423,7 +440,7 @@ impl fmt::Display for TypeVar {
 
         while num >= 26 {
             write!(f, "{}", (b'a' + (num % 26) as u8) as char)?;
-            num -= 26;
+            num /= 26;
         }
 
         write!(f, "{}", (b'a' + num as u8) as char)

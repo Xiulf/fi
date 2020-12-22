@@ -167,6 +167,13 @@ pub struct TraitHead {
     pub span: Span,
     pub parent: Option<Vec<Constraint>>,
     pub vars: Vec<TypeVar>,
+    pub fundeps: Vec<FunDep>,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum FunDep {
+    Determined(Vec<Ident>),
+    Determines(Vec<Ident>, Vec<Ident>),
 }
 
 #[derive(PartialEq, Eq)]

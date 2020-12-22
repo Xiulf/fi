@@ -91,6 +91,13 @@ fn subst_var(ty: &Ty, ivar: &InferVar, repl: Ty) {
             subst_var(orig, ivar, repl);
         }
         Type::ForAll(_, ty) => subst_var(ty, ivar, repl),
+        Type::Ctnt(ctnt, ty) => {
+            for ty in &*ctnt.tys {
+                subst_var(ty, ivar, repl.clone());
+            }
+
+            subst_var(ty, ivar, repl);
+        }
     }
 }
 
