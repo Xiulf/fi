@@ -772,6 +772,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "typeck"
+version = "0.1.0"
+dependencies = [
+ "diagnostics",
+ "hir",
+ "salsa",
+ "source",
+]
+
+[[package]]
 name = "unicode-segmentation"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

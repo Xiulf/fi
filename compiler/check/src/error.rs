@@ -4,6 +4,7 @@ use hir::ir::Span;
 
 pub type UnifyResult = Result<Subst, UnifyError>;
 
+#[derive(Debug)]
 pub enum UnifyError {
     Mismatch,
 }

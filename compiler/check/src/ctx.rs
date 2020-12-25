@@ -1,7 +1,7 @@
 mod expr;
 mod pat;
 
-use crate::constraint::Constrain;
+use crate::constraint::{Constrain, Constraint};
 use crate::error::TypeError;
 use crate::{ty::*, TypeDatabase};
 use hir::ir;
@@ -12,6 +12,7 @@ pub struct Ctx<'db> {
     pub(crate) file: source::FileId,
     pub(crate) var_kinds: HashMap<TypeVar, Ty>,
     pub(crate) tys: HashMap<ir::HirId, (Ty, ir::Span)>,
+    pub(crate) constraints: Vec<Constraint>,
     pub(crate) errors: Vec<TypeError>,
 }
 
@@ -22,6 +23,7 @@ impl<'db> Ctx<'db> {
             file,
             var_kinds: HashMap::new(),
             tys: HashMap::new(),
+            constraints: Vec::new(),
             errors: Vec::new(),
         }
     }
@@ -118,8 +120,18 @@ impl<'db> Ctx<'db> {
 
                 Ty::for_all(vars, ty)
             }
-            ir::TypeKind::Cons { cs: _, ty: _ } => {
-                unimplemented!();
+            ir::TypeKind::Cons { cs, ty } => {
+                let ctnt = TraitCtnt {
+                    trait_: ir::HirId {
+                        owner: cs.trait_,
+                        local_id: ir::LocalId(0),
+                    },
+                    tys: cs.tys.iter().map(|t| self.hir_ty(t)).collect(),
+                };
+
+                let ty = self.hir_ty(ty);
+
+                Ty::ctnt(ctnt, ty)
             }
             ir::TypeKind::Kinded { ty, kind } => {
                 let ty_ = self.hir_ty(ty);

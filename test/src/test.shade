@@ -1,0 +1,51 @@
+module Test where
+
+import Prim (Bool(..))
+
+trait Unsafe
+
+fn a :: Unsafe => () -> ()
+fn a = ()
+-- infer a :: () -> ()
+-- () -> () === Unsafe => () -> ()
+
+-- PASS
+fn b :: Unsafe => () -> ()
+fn b = a ()
+-- infer a    :: Unsafe => () -> ()
+-- infer a () :: ?0
+-- Unsafe => () -> () === () -> ?0
+-- infer b    :: () -> ()
+-- () -> () === Unsafe => () -> ()
+
+-- FAIL
+fn c :: () -> ()
+fn c = a ()
+-- infer a    :: Unsafe => () -> ()
+-- infer a () :: ()
+-- infer c    :: () -> ()
+-- () -> () === () -> ()
+
+
+
+fn not False = True
+fn not True = False
+
+trait Eq a where
+    -- eq :: forall a. Eq a => (a, a) -> Bool
+    fn eq :: (a, a) -> Bool
+
+impl EqBool :: Eq Bool where
+    fn eq a b = if a then b else not b
+
+-- PASS
+fn d = eq True False
+-- infer eq            :: Eq ?0 => (?0, ?0) -> Bool
+-- infer True          :: Bool
+-- infer False         :: Bool
+-- infer eq True False :: ?1
+-- Eq ?0 => (?0, ?0) -> Bool === (Bool, Bool) -> ?1
+-- infer d             :: () -> Bool
+
+-- FAIL
+fn e = eq 2 3

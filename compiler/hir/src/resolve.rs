@@ -43,7 +43,7 @@ impl<'db> Resolver<'db> {
     }
 
     pub fn define(&mut self, ns: Ns, ident: Ident, res: Res) {
-        if let Some(_) = self.get(ns, ident.symbol) {
+        if let Some(_) = self.get_last(ns, ident.symbol) {
             self.db
                 .error(format!("Duplicate definition of '{}'", ident))
                 .with_label(diagnostics::Label::primary(self.file, ident.span))
@@ -55,6 +55,10 @@ impl<'db> Resolver<'db> {
 
     pub fn get(&self, ns: Ns, symbol: Symbol) -> Option<Res> {
         self.ribs[ns].iter().filter_map(|r| r.get(symbol)).last()
+    }
+
+    pub fn get_last(&self, ns: Ns, symbol: Symbol) -> Option<Res> {
+        self.ribs[ns].last().and_then(|l| l.get(symbol))
     }
 
     pub fn iter<'a>(&'a self, ns: Ns) -> impl Iterator<Item = (Symbol, Res)> + 'a {

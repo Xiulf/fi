@@ -724,11 +724,7 @@ impl<'db> Converter<'db> {
 
                             arms.push(ir::CaseArm {
                                 id: self.next_id(),
-                                span: if pats.is_empty() {
-                                    decl.name.span
-                                } else {
-                                    pats[0].span.merge(pats.last().unwrap().span)
-                                },
+                                span: decl.span,
                                 pats: pats.iter().map(|p| self.convert_pat(p)).collect(),
                                 val: self.convert_guarded(val),
                             });
@@ -1348,11 +1344,17 @@ impl<'db> Converter<'db> {
             ast::PatKind::Float { bits } => ir::PatKind::Float { bits },
             ast::PatKind::Char { val } => ir::PatKind::Char { val },
             ast::PatKind::Str { ref val } => ir::PatKind::Str { val: val.clone() },
-            ast::PatKind::Ident { name } => {
-                self.resolver.define(Ns::Values, name, ir::Res::Local(id));
+            ast::PatKind::Ident { name } => match self.resolver.get(Ns::Values, name.symbol) {
+                Some(ir::Res::Def(ir::DefKind::Ctor, ctor)) => ir::PatKind::Ctor {
+                    ctor,
+                    pats: Vec::new(),
+                },
+                _ => {
+                    self.resolver.define(Ns::Values, name, ir::Res::Local(id));
 
-                ir::PatKind::Bind { name, sub: None }
-            }
+                    ir::PatKind::Bind { name, sub: None }
+                }
+            },
             ast::PatKind::Named { name, ref pat } => {
                 self.resolver.define(Ns::Values, name, ir::Res::Local(id));
 

@@ -1608,8 +1608,10 @@ impl Expr {
             let val = input.parse()?;
 
             ExprKind::Return { val }
-        } else if let Ok(name) = input.parse::<Ident>() {
-            ExprKind::Ident { name }
+        } else if input.peek::<Ident>() {
+            ExprKind::Ident {
+                name: input.parse()?,
+            }
         } else {
             return input.error("expected '(', '{', '[', '?', 'let', 'if', 'case', 'loop', 'while', 'break', 'next', 'do', 'return', a literal or an identifier", "E0006");
         };

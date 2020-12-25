@@ -5,13 +5,3 @@ import Prim
 [main]
 fn main :: (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = 22
-
--- Integer ?0 => ?0 === Int32
-
-trait Add l r o | l r -> o, r o -> l, o l -> r where
-    fn add :: (l, r) -> o
-
-impl AddInt32 :: Add Int32 Int32 Int32 where
-    fn add a b = add_i32 a b
-
-[intrinsic] foreign fn add_i32 :: (Int32, Int32) -> Int32

@@ -34,14 +34,32 @@ impl<'db> Ctx<'db> {
             },
             ir::ExprKind::App { base, args } => {
                 let base_ty = self.infer_expr(base);
-                let arg_tys = args.iter().map(|a| self.infer_expr(a)).collect();
-                let ret_ty = Ty::infer(self.db.new_infer_var());
-                let func_ty = Ty::func(arg_tys, ret_ty.clone());
 
-                self.constrain()
-                    .equal(base_ty, base.span, func_ty, expr.span);
+                match &*base_ty {
+                    Type::Func(param_tys, ret_ty) => {
+                        if param_tys.len() != args.len() {
+                            todo!("error on wrong arg count");
+                        } else {
+                            for (param_ty, arg) in param_tys.into_iter().zip(args) {
+                                let arg_ty = self.infer_expr(arg);
 
-                ret_ty
+                                self.constrain().equal(arg_ty, arg.span, param_ty, arg.span);
+                            }
+
+                            ret_ty.clone()
+                        }
+                    }
+                    _ => {
+                        let ret_ty = Ty::infer(self.db.new_infer_var());
+                        let param_tys = args.iter().map(|a| self.infer_expr(a)).collect();
+                        let func_ty = Ty::func(param_tys, ret_ty.clone());
+
+                        self.constrain()
+                            .equal(base_ty, base.span, func_ty, base.span);
+
+                        ret_ty
+                    }
+                }
             }
             ir::ExprKind::Tuple { exprs } => {
                 let tys = exprs.iter().map(|e| self.infer_expr(e)).collect();
