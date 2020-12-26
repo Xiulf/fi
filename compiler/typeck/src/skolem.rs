@@ -33,14 +33,14 @@ impl<'db> Ctx<'db> {
     crate fn skolemize(
         &mut self,
         span: Span,
-        vars: &[TypeVar],
+        vars: &[(TypeVar, Option<Ty>)],
         skolems: Vec<Skolem>,
         ty: Ty,
         scope: SkolemScope,
     ) -> Ty {
         ty.replace_vars(
             vars.iter()
-                .copied()
+                .map(|(v, _)| *v)
                 .zip(skolems)
                 .map(|(v, s)| (v, Ty::skolem(span, v, s, scope)))
                 .collect(),

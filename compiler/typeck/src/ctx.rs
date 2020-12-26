@@ -8,6 +8,7 @@ pub struct Ctx<'db> {
     crate next_skolem: u64,
     crate next_scope: u64,
     crate subst: Substitution,
+    crate tys: HashMap<hir::ir::HirId, Ty>,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -26,6 +27,45 @@ impl<'db> Ctx<'db> {
             next_skolem: 0,
             next_scope: 0,
             subst: Substitution::empty(),
+            tys: HashMap::new(),
+        }
+    }
+
+    crate fn is_func(&self, ty: &Ty) -> bool {
+        if let Type::Ctor(id) = **ty {
+            id == self.db.lang_items().fn_ty().owner
+        } else {
+            false
+        }
+    }
+
+    crate fn is_record(&self, ty: &Ty) -> bool {
+        if let Type::Ctor(id) = **ty {
+            id == self.db.lang_items().record_ty().owner
+        } else {
+            false
+        }
+    }
+
+    crate fn instantiate(&mut self, ty: Ty) -> Ty {
+        if let Type::ForAll(vars, ret, _) = &*ty {
+            let subst = vars
+                .into_iter()
+                .map(|(v, k)| {
+                    if let Some(k) = k {
+                        (v, self.fresh_type_with_kind(ty.span(), k))
+                    } else {
+                        (v, self.fresh_type(ty.span()))
+                    }
+                })
+                .collect();
+
+            ret.clone().replace_vars(subst)
+        } else if let Type::Ctnt(ctnt, ret) = &*ty {
+            todo!();
+            // self.instantiate(ret.clone())
+        } else {
+            ty
         }
     }
 }

@@ -83,8 +83,11 @@ lang_items! {
     bool         , "bool"         , Bool        ;
     kind_type    , "type_kind"    , KindType    ;
     kind_int     , "int_kind"     , KindInt     ;
+    kind_row     , "row_kind"     , KindRow     ;
     type_info    , "type_info"    , TypeInfo    ;
     vwt          , "vwt"          , Vwt         ;
+    fn_ty        , "fn_ty"        , FnType      ;
+    record_ty    , "record_ty"    , RecordType  ;
     ptr_ty       , "ptr_ty"       , PtrType     ;
     array_ty     , "array_ty"     , ArrayType   ;
     slice_ty     , "slice_ty"     , SliceType   ;

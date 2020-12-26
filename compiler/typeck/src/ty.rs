@@ -20,7 +20,7 @@ pub enum Type {
     Ctor(DefId),
     Row(List<Field>, Option<Ty>),
     App(Ty, List<Ty>),
-    ForAll(List<TypeVar>, Ty, Option<SkolemScope>),
+    ForAll(List<(TypeVar, Option<Ty>)>, Ty, Option<SkolemScope>),
     Ctnt(Ctnt, Ty),
     Skolem(TypeVar, Skolem, SkolemScope),
 }
@@ -93,7 +93,7 @@ impl Ty {
 
     pub fn forall(
         span: Span,
-        vars: impl IntoIterator<Item = TypeVar>,
+        vars: impl IntoIterator<Item = (TypeVar, Option<Ty>)>,
         ty: Ty,
         scope: impl Into<Option<SkolemScope>>,
     ) -> Self {
@@ -162,7 +162,7 @@ impl Ty {
                     })
                     .collect::<List<_>>();
 
-                let tail = tail.map(f);
+                let tail = tail.clone().map(|t| f(t));
 
                 f(Ty::row(self.span(), fields, tail))
             }
@@ -215,7 +215,7 @@ impl Ty {
                     })
                     .collect::<Result<List<_>>>()?;
 
-                let tail = tail.map(f).transpose()?;
+                let tail = tail.clone().map(|t| f(t)).transpose()?;
 
                 f(Ty::row(self.span(), fields, tail))
             }

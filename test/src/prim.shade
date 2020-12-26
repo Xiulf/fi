@@ -18,6 +18,7 @@ alias Str = Slice Byte
 
 [lang("type_kind")] data Type
 [lang("int_kind" )] data TypeInt
+[lang("row_kind" )] data Row t
 
 [repr("u8"  )]
 [lang("bool")]
@@ -36,6 +37,12 @@ data Bool = False | True
 [repr("i128")] data Int128  :: Type
 [repr("f32" )] data Float32 :: Type
 [repr("f64" )] data Float64 :: Type
+
+[lang("fn_ty")]
+data Fn :: (Type, Type) -> Type
+
+[lang("record_ty")]
+data Record :: Row Type -> Type
 
 [repr("ptr")]
 [lang("ptr_ty")]
