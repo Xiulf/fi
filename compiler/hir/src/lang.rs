@@ -82,7 +82,8 @@ lang_items! {
     char         , "char"         , Char        ;
     bool         , "bool"         , Bool        ;
     kind_type    , "type_kind"    , KindType    ;
-    kind_int     , "int_kind"     , KindInt     ;
+    kind_figure  , "figure_kind"  , KindFigure  ;
+    kind_symbol  , "symbol_kind"  , KindSymbol  ;
     kind_row     , "row_kind"     , KindRow     ;
     type_info    , "type_info"    , TypeInfo    ;
     vwt          , "vwt"          , Vwt         ;

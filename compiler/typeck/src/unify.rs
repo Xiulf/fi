@@ -4,36 +4,55 @@ use crate::ty::*;
 use hir::ir::Span;
 
 impl<'db> Ctx<'db> {
+    /// Generate a fresh unknown.
+    crate fn fresh_unknown(&mut self) -> Unknown {
+        let u = Unknown(self.next_ty);
+        let _ = self.next_ty += 1;
+
+        u
+    }
+
     /// Generate a fresh type variable with an unknown kind.
     /// Avoid this if at all possible.
-    crate fn fresh_type(&mut self, span: Span) -> Ty {
+    crate fn fresh_type(&mut self, span: Span, file: source::FileId) -> Ty {
         let t1 = Unknown(self.next_ty);
         let t2 = Unknown(self.next_ty + 1);
-        let kind_type = self.db.lang_items().kind_type();
-        let kind_type = Ty::ctor(Span::default(), kind_type.owner);
+        let kind_type = self.ty_kind(span, file);
 
         self.next_ty += 2;
-        self.subst.unsolved.insert(UnkLevel::from(t1), kind_type);
         self.subst
             .unsolved
-            .insert(UnkLevel::from(t2), Ty::unknown(span, t1));
+            .insert(t1, (UnkLevel::from(t1), kind_type));
+        self.subst
+            .unsolved
+            .insert(t2, (UnkLevel::from(t2), Ty::unknown(span, file, t1)));
 
-        Ty::unknown(span, t2)
+        Ty::unknown(span, file, t2)
     }
 
     /// Generate a fresh type variable with a known kind.
-    crate fn fresh_type_with_kind(&mut self, span: Span, kind: Ty) -> Ty {
+    crate fn fresh_type_with_kind(&mut self, span: Span, file: source::FileId, kind: Ty) -> Ty {
         let t = Unknown(self.next_ty);
 
         self.next_ty += 1;
-        self.subst.unsolved.insert(UnkLevel::from(t), kind);
+        self.subst.unsolved.insert(t, (UnkLevel::from(t), kind));
 
-        Ty::unknown(span, t)
+        Ty::unknown(span, file, t)
     }
 
     /// Update the substitution to solve a type constraint.
     crate fn solve_type(&mut self, u: Unknown, t: Ty) -> Result<()> {
-        self.occurs_check(u, &t)?;
+        let _ = self.occurs_check(u, &t)?;
+        let k1 = self.elaborate_kind(&t)?;
+        let k2 = if let Some((_, k2)) = self.subst.unsolved.get(&u) {
+            self.subst_type(k2.clone())
+        } else {
+            panic!("Unification variable has no kind");
+        };
+
+        let t2 = self.instantiate_kind(t, k1, k2)?;
+
+        self.subst.tys.insert(u, t2);
 
         Ok(())
     }
@@ -44,7 +63,7 @@ impl<'db> Ctx<'db> {
             Type::Unknown(u) => match self.subst.tys.get(&u) {
                 None => t,
                 Some(t2) => match **t2 {
-                    Type::Unknown(u2) if u2 == u => Ty::unknown(t2.span(), u2),
+                    Type::Unknown(u2) if u2 == u => Ty::unknown(t2.span(), t2.file(), u2),
                     _ => self.subst_type(t2.clone()),
                 },
             },
@@ -79,8 +98,16 @@ impl<'db> Ctx<'db> {
                             .map(|_| self.new_skolem_constant())
                             .collect::<Vec<_>>();
 
-                        let sk1 = self.skolemize(t1.span(), v1, skolems.clone(), r1.clone(), *s1);
-                        let sk2 = self.skolemize(t2.span(), v2, skolems, r2.clone(), *s2);
+                        let sk1 = self.skolemize(
+                            t1.span(),
+                            t1.file(),
+                            v1,
+                            skolems.clone(),
+                            r1.clone(),
+                            *s1,
+                        );
+                        let sk2 =
+                            self.skolemize(t2.span(), t2.file(), v2, skolems, r2.clone(), *s2);
 
                         self.unify_types(sk1, sk2)
                     }
@@ -95,7 +122,7 @@ impl<'db> Ctx<'db> {
                         .map(|_| self.new_skolem_constant())
                         .collect::<Vec<_>>();
 
-                    let sk = self.skolemize(t1.span(), vars, skolems, ty.clone(), *sc);
+                    let sk = self.skolemize(t1.span(), t1.file(), vars, skolems, ty.clone(), *sc);
 
                     self.unify_types(sk, t2)
                 }
@@ -117,7 +144,7 @@ impl<'db> Ctx<'db> {
 
                 Ok(())
             }
-            (Type::Skolem(_, s1, _), Type::Skolem(_, s2, _)) if s1 == s2 => Ok(()),
+            (Type::Skolem(_, _, s1, _), Type::Skolem(_, _, s2, _)) if s1 == s2 => Ok(()),
             (Type::Tuple(ts1), Type::Tuple(ts2)) if ts1.len() == ts2.len() => ts1
                 .into_iter()
                 .zip(ts2)

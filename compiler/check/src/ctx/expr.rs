@@ -18,7 +18,7 @@ impl<'db> Ctx<'db> {
                     ty,
                 )
             }
-            ir::ExprKind::Ident { res } => match res {
+            ir::ExprKind::Ident { res, .. } => match res {
                 ir::Res::Error => Ty::error(),
                 ir::Res::Def(_, def) => {
                     if let Some((ty, _)) = self.tys.get(&ir::HirId {

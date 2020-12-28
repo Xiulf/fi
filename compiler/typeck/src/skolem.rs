@@ -23,7 +23,7 @@ impl<'db> Ctx<'db> {
     crate fn introduce_skolem_scope(&mut self, ty: Ty) -> Ty {
         ty.everywhere(|t| match &*t {
             Type::ForAll(vars, r, None) => {
-                Ty::forall(t.span(), vars, r.clone(), self.new_skolem_scope())
+                Ty::forall(t.span(), t.file(), vars, r.clone(), self.new_skolem_scope())
             }
             _ => t,
         })
@@ -33,6 +33,7 @@ impl<'db> Ctx<'db> {
     crate fn skolemize(
         &mut self,
         span: Span,
+        file: source::FileId,
         vars: &[(TypeVar, Option<Ty>)],
         skolems: Vec<Skolem>,
         ty: Ty,
@@ -40,9 +41,8 @@ impl<'db> Ctx<'db> {
     ) -> Ty {
         ty.replace_vars(
             vars.iter()
-                .map(|(v, _)| *v)
                 .zip(skolems)
-                .map(|(v, s)| (v, Ty::skolem(span, v, s, scope)))
+                .map(|((v, k), s)| (*v, Ty::skolem(span, file, *v, k.clone(), s, scope)))
                 .collect(),
         )
     }

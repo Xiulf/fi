@@ -7,9 +7,10 @@ impl<'db> Ctx<'db> {
     crate fn infer_body(&mut self, span: ir::Span, body: &ir::Body) -> Result<Ty> {
         let params = Ty::tuple(
             span,
+            self.file,
             body.params.iter().map(|p| {
-                let ty_kind = self.ty_kind(p.span);
-                let ty = self.fresh_type_with_kind(p.span, ty_kind);
+                let ty_kind = self.ty_kind(p.span, self.file);
+                let ty = self.fresh_type_with_kind(p.span, self.file, ty_kind);
 
                 self.tys.insert(p.id, ty.clone());
                 ty
@@ -18,18 +19,25 @@ impl<'db> Ctx<'db> {
 
         let val_ty = self.infer_expr(&body.value)?;
         let func_ty = self.db.lang_items().fn_ty();
-        let func_ty = Ty::ctor(span, func_ty.owner);
+        let func_ty = Ty::ctor(span, self.file, func_ty.owner);
 
-        Ok(Ty::app(span, func_ty, List::from([params, val_ty])))
+        Ok(Ty::app(
+            span,
+            self.file,
+            func_ty,
+            List::from([params, val_ty]),
+        ))
     }
 
     crate fn infer_pat(&mut self, pat: &ir::Pat) -> Result<Ty> {
         let ty = match &pat.kind {
-            ir::PatKind::Error => Ty::error(pat.span),
-            ir::PatKind::Wildcard => self.fresh_type_with_kind(pat.span, self.ty_kind(pat.span)),
+            ir::PatKind::Error => Ty::error(pat.span, self.file),
+            ir::PatKind::Wildcard => {
+                self.fresh_type_with_kind(pat.span, self.file, self.ty_kind(pat.span, self.file))
+            }
             ir::PatKind::Int { .. } => {
-                let ty_kind = self.ty_kind(pat.span);
-                let ty = self.fresh_type_with_kind(pat.span, ty_kind);
+                let ty_kind = self.ty_kind(pat.span, self.file);
+                let ty = self.fresh_type_with_kind(pat.span, self.file, ty_kind);
                 let _ctnt = Ctnt {
                     trait_: self.db.lang_items().integer_trait().owner,
                     tys: List::from([ty.clone()]),
@@ -38,8 +46,8 @@ impl<'db> Ctx<'db> {
                 ty
             }
             ir::PatKind::Float { .. } => {
-                let ty_kind = self.ty_kind(pat.span);
-                let ty = self.fresh_type_with_kind(pat.span, ty_kind);
+                let ty_kind = self.ty_kind(pat.span, self.file);
+                let ty = self.fresh_type_with_kind(pat.span, self.file, ty_kind);
                 let _ctnt = Ctnt {
                     trait_: self.db.lang_items().decimal_trait().owner,
                     tys: List::from([ty.clone()]),
@@ -50,10 +58,10 @@ impl<'db> Ctx<'db> {
             ir::PatKind::Char { .. } => {
                 let char_ty = self.db.lang_items().char();
 
-                Ty::ctor(pat.span, char_ty.owner)
+                Ty::ctor(pat.span, self.file, char_ty.owner)
             }
             ir::PatKind::Bind { sub: None, .. } => {
-                self.fresh_type_with_kind(pat.span, self.ty_kind(pat.span))
+                self.fresh_type_with_kind(pat.span, self.file, self.ty_kind(pat.span, self.file))
             }
             _ => unimplemented!("infer {:?}", pat),
         };
@@ -65,9 +73,9 @@ impl<'db> Ctx<'db> {
 
     crate fn infer_expr(&mut self, expr: &ir::Expr) -> Result<Ty> {
         let ty = match &expr.kind {
-            ir::ExprKind::Error => Ty::error(expr.span),
-            ir::ExprKind::Ident { res } => match res {
-                ir::Res::Error => Ty::error(expr.span),
+            ir::ExprKind::Error => Ty::error(expr.span, self.file),
+            ir::ExprKind::Ident { res, .. } => match res {
+                ir::Res::Error => Ty::error(expr.span, self.file),
                 ir::Res::Local(id) => {
                     let ty = self.tys[id].clone();
                     let ty = self.introduce_skolem_scope(ty);
@@ -106,8 +114,8 @@ impl<'db> Ctx<'db> {
                 }
             },
             ir::ExprKind::Int { .. } => {
-                let ty_kind = self.ty_kind(expr.span);
-                let ty = self.fresh_type_with_kind(expr.span, ty_kind);
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let ty = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
                 let _ctnt = Ctnt {
                     trait_: self.db.lang_items().integer_trait().owner,
                     tys: List::from([ty.clone()]),
@@ -116,8 +124,8 @@ impl<'db> Ctx<'db> {
                 ty
             }
             ir::ExprKind::Float { .. } => {
-                let ty_kind = self.ty_kind(expr.span);
-                let ty = self.fresh_type_with_kind(expr.span, ty_kind);
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let ty = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
                 let _ctnt = Ctnt {
                     trait_: self.db.lang_items().decimal_trait().owner,
                     tys: List::from([ty.clone()]),
@@ -128,7 +136,7 @@ impl<'db> Ctx<'db> {
             ir::ExprKind::Char { .. } => {
                 let char_ty = self.db.lang_items().char();
 
-                Ty::ctor(expr.span, char_ty.owner)
+                Ty::ctor(expr.span, self.file, char_ty.owner)
             }
             ir::ExprKind::Tuple { exprs } => {
                 let tys = exprs
@@ -136,7 +144,7 @@ impl<'db> Ctx<'db> {
                     .map(|e| self.infer_expr(e))
                     .collect::<Result<List<_>>>()?;
 
-                Ty::tuple(expr.span, tys)
+                Ty::tuple(expr.span, self.file, tys)
             }
             ir::ExprKind::Array { exprs } => {
                 let tys = exprs
@@ -144,9 +152,9 @@ impl<'db> Ctx<'db> {
                     .map(|e| self.infer_expr(e))
                     .collect::<Result<List<_>>>()?;
 
-                let len = Ty::int(expr.span, exprs.len() as u128);
-                let ty_kind = self.ty_kind(expr.span);
-                let el = self.fresh_type_with_kind(expr.span, ty_kind);
+                let len = Ty::int(expr.span, self.file, exprs.len() as u128);
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let el = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
 
                 tys.iter().try_for_each(|t| {
                     let t = self.instantiate(t.clone());
@@ -157,9 +165,9 @@ impl<'db> Ctx<'db> {
                     Ok(())
                 })?;
 
-                let array_ty = self.array_ty(expr.span);
+                let array_ty = self.array_ty(expr.span, self.file);
 
-                Ty::app(expr.span, array_ty, List::from([el, len]))
+                Ty::app(expr.span, self.file, array_ty, List::from([el, len]))
             }
             ir::ExprKind::Record { fields } => {
                 // self.ensure_no_duplicate_props(fields);
@@ -180,19 +188,25 @@ impl<'db> Ctx<'db> {
                     })
                     .collect::<Result<List<_>>>()?;
 
-                let row = Ty::row(expr.span, fields, None);
-                let record_ty = self.record_ty(expr.span);
+                let row = Ty::row(expr.span, self.file, fields, None);
+                let record_ty = self.record_ty(expr.span, self.file);
 
-                Ty::app(expr.span, record_ty, List::from([row]))
+                Ty::app(expr.span, self.file, record_ty, List::from([row]))
             }
             ir::ExprKind::Field { base, field } => {
-                let ty_kind = self.ty_kind(expr.span);
-                let row_kind = self.row_kind(expr.span);
-                let row_kind = Ty::app(expr.span, row_kind, List::from([ty_kind.clone()]));
-                let ret = self.fresh_type_with_kind(expr.span, ty_kind);
-                let tail = self.fresh_type_with_kind(expr.span, row_kind);
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let row_kind = self.row_kind(expr.span, self.file);
+                let row_kind = Ty::app(
+                    expr.span,
+                    self.file,
+                    row_kind,
+                    List::from([ty_kind.clone()]),
+                );
+                let ret = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
+                let tail = self.fresh_type_with_kind(expr.span, self.file, row_kind);
                 let row = Ty::row(
                     expr.span,
+                    self.file,
                     List::from([Field {
                         span: field.span,
                         name: field.symbol,
@@ -201,25 +215,25 @@ impl<'db> Ctx<'db> {
                     tail,
                 );
 
-                let record_ty = self.record_ty(expr.span);
-                let ty = Ty::app(expr.span, record_ty, List::from([row]));
+                let record_ty = self.record_ty(expr.span, self.file);
+                let ty = Ty::app(expr.span, self.file, record_ty, List::from([row]));
 
                 self.check_expr(base, ty)?;
 
                 ret
             }
             ir::ExprKind::Case { pred, arms } => {
-                let ts = self.instantiate_for_binders(pred, arms);
-                let ty_kind = self.ty_kind(expr.span);
-                let ret = self.fresh_type_with_kind(expr.span, ty_kind);
+                let ts = self.instantiate_for_binders(pred, arms)?;
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let ret = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
 
                 self.check_binders(ts, ret.clone(), arms)?;
 
                 ret
             }
             ir::ExprKind::Hole { name } => {
-                let ty_kind = self.ty_kind(expr.span);
-                let ty = self.fresh_type_with_kind(expr.span, ty_kind);
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let ty = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
 
                 self.errors.push(TypeError::HoleType(*name, ty.clone()));
 
@@ -231,5 +245,53 @@ impl<'db> Ctx<'db> {
         self.tys.insert(expr.id, ty.clone());
 
         Ok(ty)
+    }
+
+    crate fn instantiate_for_binders(
+        &mut self,
+        preds: &[ir::Expr],
+        arms: &[ir::CaseArm],
+    ) -> Result<List<Ty>> {
+        let inst = arms
+            .iter()
+            .map(|a| {
+                a.pats
+                    .iter()
+                    .map(|p| self.pat_requires_monotype(p))
+                    .collect::<Vec<_>>()
+            })
+            .fold(vec![false; preds.len()], |acc, p| {
+                acc.into_iter().zip(p).map(|(a, b)| a || b).collect()
+            });
+
+        preds
+            .iter()
+            .zip(inst)
+            .map(|(pred, inst)| {
+                let ty = self.infer_expr(pred)?;
+
+                if inst {
+                    Ok(self.instantiate(ty))
+                } else {
+                    Ok(ty)
+                }
+            })
+            .collect()
+    }
+
+    crate fn pat_requires_monotype(&mut self, pat: &ir::Pat) -> bool {
+        match &pat.kind {
+            ir::PatKind::Wildcard => false,
+            ir::PatKind::Bind { sub: None, .. } => false,
+            ir::PatKind::Bind { sub: Some(sub), .. } => self.pat_requires_monotype(sub),
+            ir::PatKind::Typed { pat, ty } => {
+                self.is_mono_type(ty) || self.pat_requires_monotype(pat)
+            }
+            _ => true,
+        }
+    }
+
+    crate fn is_mono_type(&mut self, ty: &ir::Type) -> bool {
+        self.hir_ty(ty).is_mono_type()
     }
 }

@@ -15,9 +15,9 @@ impl<'db> Ctx<'db> {
                     .into_iter()
                     .map(|(v, k)| {
                         if let Some(k) = k {
-                            (v, self.fresh_type_with_kind(t1.span(), k))
+                            (v, self.fresh_type_with_kind(t1.span(), t1.file(), k))
                         } else {
-                            (v, self.fresh_type(t1.span()))
+                            (v, self.fresh_type(t1.span(), t1.file()))
                         }
                     })
                     .collect();
@@ -32,7 +32,7 @@ impl<'db> Ctx<'db> {
                         .map(|_| self.new_skolem_constant())
                         .collect();
 
-                    let sk = self.skolemize(t2.span(), vars, skolems, r1.clone(), *sc);
+                    let sk = self.skolemize(t2.span(), t2.file(), vars, skolems, r1.clone(), *sc);
 
                     self.subsumes_elaborate(t1, sk)
                 }
@@ -73,9 +73,9 @@ impl<'db> Ctx<'db> {
                     .into_iter()
                     .map(|(v, k)| {
                         if let Some(k) = k {
-                            (v, self.fresh_type_with_kind(t1.span(), k))
+                            (v, self.fresh_type_with_kind(t1.span(), t1.file(), k))
                         } else {
-                            (v, self.fresh_type(t1.span()))
+                            (v, self.fresh_type(t1.span(), t1.file()))
                         }
                     })
                     .collect();
@@ -90,7 +90,7 @@ impl<'db> Ctx<'db> {
                         .map(|_| self.new_skolem_constant())
                         .collect();
 
-                    let sk = self.skolemize(t2.span(), vars, skolems, r1.clone(), *sc);
+                    let sk = self.skolemize(t2.span(), t2.file(), vars, skolems, r1.clone(), *sc);
 
                     self.subsumes_no_elaborate(t1, sk)
                 }

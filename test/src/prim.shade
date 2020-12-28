@@ -16,9 +16,10 @@ alias Str = Slice Byte
 -- [if(pointer_size = 32)] alias Uint = Uint32
 [if(pointer_size = 64)] alias Uint = Uint64
 
-[lang("type_kind")] data Type
-[lang("int_kind" )] data TypeInt
-[lang("row_kind" )] data Row t
+[lang("type_kind"  )] data Type
+[lang("figure_kind")] data Figure
+[lang("symbol_kind")] data Symbol
+[lang("row_kind"   )] data Row t
 
 [repr("u8"  )]
 [lang("bool")]
@@ -48,7 +49,7 @@ data Record :: Row Type -> Type
 [lang("ptr_ty")]
 data Ptr :: Type -> Type
 
-[lang("array_ty")] data Array :: (Type, TypeInt) -> Type
+[lang("array_ty")] data Array :: (Type, Figure) -> Type
 [lang("slice_ty")] data Slice :: Type -> Type
 
 [lang("integer_trait")] trait Integer t

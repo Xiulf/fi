@@ -261,7 +261,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         match &expr.kind {
             hir::ExprKind::Error => unreachable!(),
             hir::ExprKind::Hole { .. } => ir::Operand::Const(ir::Const::Undefined(ty)),
-            hir::ExprKind::Ident { res } => match res {
+            hir::ExprKind::Ident { res, .. } => match res {
                 hir::Res::Error => unreachable!(),
                 hir::Res::Def(d, id) => match d {
                     hir::DefKind::Func | hir::DefKind::Static => {
@@ -493,12 +493,14 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         match &base.kind {
             hir::ExprKind::Ident {
                 res: hir::Res::Def(hir::DefKind::Ctor, _id),
+                ..
             } => {
                 unimplemented!()
             }
             _ => {
                 if let hir::ExprKind::Ident {
                     res: hir::Res::Def(hir::DefKind::Func, id),
+                    ..
                 } = &base.kind
                 {
                     let file = self.db.module_tree(id.lib).file(id.module);
@@ -568,8 +570,9 @@ fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Type {
         Type::Int(_) => unreachable!(),
         Type::String(_) => unreachable!(),
         Type::Unknown(_) => unreachable!(),
-        Type::Skolem(_, _, _) => unreachable!(),
+        Type::Skolem(_, _, _, _) => unreachable!(),
         Type::Row(_, _) => unreachable!(),
+        Type::KindApp(_, _) => unreachable!(),
         Type::Var(var) => ir::Type::Opaque(var.0.local_id.0.to_string()),
         Type::ForAll(_, ty, _) => lower_type(db, ty),
         Type::Tuple(tys) => ir::Type::Tuple(tys.iter().map(|t| lower_type(db, t)).collect()),

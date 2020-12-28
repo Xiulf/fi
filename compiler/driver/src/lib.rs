@@ -95,7 +95,22 @@ pub fn run() {
     db.set_libs(vec![lib]);
 
     for mdata in db.module_tree(lib).toposort(&db) {
-        db.assembly(lib, mdata.id);
+        // db.assembly(lib, mdata.id);
+        use typeck::{display::Typed, TypeDatabase};
+        let hir = db.module_hir(mdata.file);
+
+        for (_, item) in &hir.items {
+            if let hir::ir::ItemKind::Func { body, .. } = &item.kind {
+                let types = db.typecheck(item.id.owner);
+
+                println!("{} :: {}", item.name, Typed(&db, &(), &types.ty));
+                println!(
+                    "{} {}",
+                    item.name,
+                    Typed(&db, &types.tys, &hir.bodies[body])
+                );
+            }
+        }
     }
 }
 

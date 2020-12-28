@@ -4,8 +4,10 @@
 
 pub mod check;
 pub mod ctx;
+pub mod display;
 pub mod error;
 pub mod infer;
+pub mod kind;
 pub mod skolem;
 pub mod subsume;
 pub mod ty;
@@ -36,7 +38,7 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
     let file = db.module_tree(id.lib).file(id.module);
     let hir = db.module_hir(file);
     let def = hir.def(id);
-    let mut ctx = ctx::Ctx::new(db);
+    let mut ctx = ctx::Ctx::new(db, file);
 
     let ty: error::Result<ty::Ty> = match def {
         ir::Def::Item(item) => match &item.kind {
@@ -68,8 +70,9 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     if !vars.is_empty() {
                         ty::Ty::forall(
                             item.span,
+                            file,
                             vars.iter()
-                                .map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span)))),
+                                .map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span, file)))),
                             ty,
                             None,
                         )
@@ -78,6 +81,11 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     }
                 }
             }
+            ir::ItemKind::Data { head, .. } => {
+                let kind = ctx.hir_ty(&head.kind);
+
+                Ok(kind)
+            }
             _ => unimplemented!(),
         },
         _ => unimplemented!(),
@@ -85,7 +93,18 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
 
     let ty = match ty {
         Ok(ty) => ty,
-        Err(_e) => ty::Ty::error(def.span()),
+        Err(e) => {
+            e.report(db);
+            ty::Ty::error(def.span(), file)
+        }
+    };
+
+    ctx.errors.drain(..).for_each(|e| e.report(db));
+
+    if db.has_errors() {
+        db.print_and_exit();
+    } else {
+        db.print();
     };
 
     Arc::new(TypecheckResult {
@@ -98,7 +117,7 @@ fn variants(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Variant> {
     let file = db.module_tree(id.lib).file(id.module);
     let hir = db.module_hir(file);
     let def = hir.def(id);
-    let mut ctx = ctx::Ctx::new(db);
+    let mut ctx = ctx::Ctx::new(db, file);
 
     if let ir::Def::Item(ir::Item {
         kind: ir::ItemKind::Data { body, .. },

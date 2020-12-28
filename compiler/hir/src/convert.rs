@@ -764,6 +764,10 @@ impl<'db> Converter<'db> {
                                 id: self.next_id(),
                                 span,
                                 kind: ir::ExprKind::Ident {
+                                    name: ir::Ident {
+                                        span,
+                                        symbol: ir::Symbol::new(format!("$p{}", p.id.local_id.0)),
+                                    },
                                     res: ir::Res::Local(p.id),
                                 },
                             })
@@ -1289,6 +1293,10 @@ impl<'db> Converter<'db> {
                                 id: self.next_id(),
                                 span,
                                 kind: ir::ExprKind::Ident {
+                                    name: ir::Ident {
+                                        span,
+                                        symbol: ir::Symbol::new(format!("?p{}", p.id.local_id.0)),
+                                    },
                                     res: ir::Res::Local(p.id),
                                 },
                             })
@@ -1484,7 +1492,7 @@ impl<'db> Converter<'db> {
                         | ir::DefKind::Ctor,
                         _,
                     )),
-                ) => ir::ExprKind::Ident { res },
+                ) => ir::ExprKind::Ident { name, res },
                 Some(_) => {
                     self.db
                         .to_diag_db()
@@ -1643,7 +1651,7 @@ impl<'db> Converter<'db> {
                                 | ir::DefKind::Ctor,
                                 _,
                             )),
-                        ) => ir::ExprKind::Ident { res },
+                        ) => ir::ExprKind::Ident { name, res },
                         Some(_) => {
                             self.db
                                 .to_diag_db()

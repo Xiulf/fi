@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 pub struct Ctx<'db> {
     crate db: &'db dyn crate::TypeDatabase,
+    crate file: source::FileId,
     crate next_ty: u64,
     crate next_skolem: u64,
     crate next_scope: u64,
@@ -14,18 +15,19 @@ pub struct Ctx<'db> {
     crate errors: Vec<TypeError>,
 }
 
-#[derive(PartialEq, Eq, Hash)]
-pub struct UnkLevel(Vec<Unknown>);
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct UnkLevel(crate Vec<Unknown>);
 
 pub struct Substitution {
     pub tys: HashMap<Unknown, Ty>,
-    pub unsolved: HashMap<UnkLevel, Ty>,
+    pub unsolved: HashMap<Unknown, (UnkLevel, Ty)>,
 }
 
 impl<'db> Ctx<'db> {
-    pub fn new(db: &'db dyn crate::TypeDatabase) -> Self {
+    pub fn new(db: &'db dyn crate::TypeDatabase, file: source::FileId) -> Self {
         Ctx {
             db,
+            file,
             next_ty: 0,
             next_skolem: 0,
             next_scope: 0,
@@ -55,28 +57,46 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    crate fn ty_kind(&self, span: ir::Span) -> Ty {
+    crate fn ty_kind(&self, span: ir::Span, file: source::FileId) -> Ty {
         let ty_kind = self.db.lang_items().kind_type();
 
-        Ty::ctor(span, ty_kind.owner)
+        Ty::ctor(span, file, ty_kind.owner)
     }
 
-    crate fn row_kind(&self, span: ir::Span) -> Ty {
+    crate fn row_kind(&self, span: ir::Span, file: source::FileId) -> Ty {
         let row_kind = self.db.lang_items().kind_row();
 
-        Ty::ctor(span, row_kind.owner)
+        Ty::ctor(span, file, row_kind.owner)
     }
 
-    crate fn record_ty(&self, span: ir::Span) -> Ty {
+    crate fn symbol_kind(&self, span: ir::Span, file: source::FileId) -> Ty {
+        let symbol_kind = self.db.lang_items().kind_symbol();
+
+        Ty::ctor(span, file, symbol_kind.owner)
+    }
+
+    crate fn figure_kind(&self, span: ir::Span, file: source::FileId) -> Ty {
+        let figure_kind = self.db.lang_items().kind_figure();
+
+        Ty::ctor(span, file, figure_kind.owner)
+    }
+
+    crate fn record_ty(&self, span: ir::Span, file: source::FileId) -> Ty {
         let record_ty = self.db.lang_items().record_ty();
 
-        Ty::ctor(span, record_ty.owner)
+        Ty::ctor(span, file, record_ty.owner)
     }
 
-    crate fn array_ty(&self, span: ir::Span) -> Ty {
+    crate fn array_ty(&self, span: ir::Span, file: source::FileId) -> Ty {
         let arr_ty = self.db.lang_items().array_ty();
 
-        Ty::ctor(span, arr_ty.owner)
+        Ty::ctor(span, file, arr_ty.owner)
+    }
+
+    crate fn func_ty(&self, span: ir::Span, file: source::FileId) -> Ty {
+        let func_ty = self.db.lang_items().fn_ty();
+
+        Ty::ctor(span, file, func_ty.owner)
     }
 
     crate fn instantiate(&mut self, ty: Ty) -> Ty {
@@ -85,9 +105,9 @@ impl<'db> Ctx<'db> {
                 .into_iter()
                 .map(|(v, k)| {
                     if let Some(k) = k {
-                        (v, self.fresh_type_with_kind(ty.span(), k))
+                        (v, self.fresh_type_with_kind(ty.span(), ty.file(), k))
                     } else {
-                        (v, self.fresh_type(ty.span()))
+                        (v, self.fresh_type(ty.span(), ty.file()))
                     }
                 })
                 .collect();
@@ -103,29 +123,31 @@ impl<'db> Ctx<'db> {
 
     crate fn hir_ty(&mut self, ty: &ir::Type) -> Ty {
         match &ty.kind {
-            ir::TypeKind::Error => Ty::error(ty.span),
-            ir::TypeKind::Int { val } => Ty::int(ty.span, *val),
+            ir::TypeKind::Error => Ty::error(ty.span, self.file),
+            ir::TypeKind::Int { val } => Ty::int(ty.span, self.file, *val),
             ir::TypeKind::Func { params, ret } => {
                 let func_ty = self.db.lang_items().fn_ty();
-                let func_ty = Ty::ctor(ty.span, func_ty.owner);
-                let params = Ty::tuple(ty.span, params.iter().map(|t| self.hir_ty(t)));
+                let func_ty = Ty::ctor(ty.span, self.file, func_ty.owner);
+                let params = Ty::tuple(ty.span, self.file, params.iter().map(|t| self.hir_ty(t)));
                 let ret = self.hir_ty(ret);
 
-                Ty::app(ty.span, func_ty, List::from([params, ret]))
+                Ty::app(ty.span, self.file, func_ty, List::from([params, ret]))
             }
-            ir::TypeKind::Infer => self.fresh_type_with_kind(ty.span, self.ty_kind(ty.span)),
+            ir::TypeKind::Infer => {
+                self.fresh_type_with_kind(ty.span, self.file, self.ty_kind(ty.span, self.file))
+            }
             ir::TypeKind::App { base, args } => {
                 let base = self.hir_ty(base);
-                let args = args.iter().map(|a| self.hir_ty(a));
+                let args = args.iter().map(|a| self.hir_ty(a)).collect::<List<_>>();
 
-                Ty::app(ty.span, base, args)
+                Ty::app(ty.span, self.file, base, args)
             }
             ir::TypeKind::Ident { res } => match res {
-                ir::Res::Error => Ty::error(ty.span),
-                ir::Res::Def(ir::DefKind::Data, id) => Ty::ctor(ty.span, *id),
+                ir::Res::Error => Ty::error(ty.span, self.file),
+                ir::Res::Def(ir::DefKind::Data, id) => Ty::ctor(ty.span, self.file, *id),
                 ir::Res::Def(ir::DefKind::Alias, id) => self.db.typecheck(*id).ty.clone(),
                 ir::Res::Def(_, _) => unreachable!(),
-                ir::Res::Local(id) => Ty::var(ty.span, TypeVar(*id)),
+                ir::Res::Local(id) => Ty::var(ty.span, self.file, TypeVar(*id)),
             },
             _ => unimplemented!("hir_ty {:?}", ty),
         }

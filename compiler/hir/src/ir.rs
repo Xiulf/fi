@@ -298,6 +298,7 @@ pub enum ExprKind {
         name: Ident,
     },
     Ident {
+        name: Ident,
         res: Res,
     },
     Int {
