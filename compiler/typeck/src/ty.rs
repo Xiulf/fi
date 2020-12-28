@@ -18,6 +18,7 @@ pub enum Type {
     Int(u128),
     String(String),
     Ctor(DefId),
+    Tuple(List<Ty>),
     Row(List<Field>, Option<Ty>),
     App(Ty, List<Ty>),
     ForAll(List<(TypeVar, Option<Ty>)>, Ty, Option<SkolemScope>),
@@ -42,6 +43,12 @@ pub struct Field {
     pub span: Span,
     pub name: Symbol,
     pub ty: Ty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Variant {
+    pub id: DefId,
+    pub tys: List<Ty>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -77,6 +84,10 @@ impl Ty {
 
     pub fn ctor(span: Span, def: DefId) -> Self {
         Ty::new(Type::Ctor(def), span)
+    }
+
+    pub fn tuple(span: Span, tys: impl IntoIterator<Item = Ty>) -> Self {
+        Ty::new(Type::Tuple(List::from_iter(tys)), span)
     }
 
     pub fn row(
@@ -152,6 +163,11 @@ impl Ty {
 
                 f(Ty::ctnt(self.span(), ctnt, t2))
             }
+            Type::Tuple(tys) => {
+                let tys = tys.iter().map(|t| f(t.clone())).collect::<List<_>>();
+
+                f(Ty::tuple(self.span(), tys))
+            }
             Type::Row(fields, tail) => {
                 let fields = fields
                     .iter()
@@ -203,6 +219,14 @@ impl Ty {
 
                 f(Ty::ctnt(self.span(), ctnt, t2))
             }
+            Type::Tuple(tys) => {
+                let tys = tys
+                    .iter()
+                    .map(|t| f(t.clone()))
+                    .collect::<Result<List<_>>>()?;
+
+                f(Ty::tuple(self.span(), tys))
+            }
             Type::Row(fields, tail) => {
                 let fields = fields
                     .iter()
@@ -243,6 +267,12 @@ impl<T> std::ops::Deref for List<T> {
 
     fn deref(&self) -> &Self::Target {
         &*self.0
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for List<T> {
+    fn from(src: [T; N]) -> Self {
+        List(Arc::new(src))
     }
 }
 

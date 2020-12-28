@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 hir = { path = "../hir" }
-check = { path = "../check" }
+typeck = { path = "../typeck" }
 lowlang = { path = "../../../lowlang/umbrella" }
 salsa = "0.16.0"
 mangling = "^0.2.2"

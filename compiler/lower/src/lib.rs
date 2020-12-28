@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[salsa::query_group(LowerDatabaseStorage)]
-pub trait LowerDatabase: check::TypeDatabase {
+pub trait LowerDatabase: typeck::TypeDatabase {
     fn lower(&self, lib: hir::LibId, module: hir::ModuleId) -> Arc<ir::Module>;
 }
 
@@ -34,7 +34,7 @@ pub struct Converter<'db> {
 pub struct BodyConverter<'db, 'c> {
     db: &'db dyn LowerDatabase,
     hir: &'db hir::Module,
-    types: Arc<check::TypeCheckResult>,
+    types: Arc<typeck::TypecheckResult>,
     builder: ir::Builder<'c>,
     decls: &'c HashMap<hir::DefId, ir::DeclId>,
     locals: HashMap<hir::HirId, ir::Local>,
@@ -202,7 +202,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
     pub fn new(
         db: &'db dyn LowerDatabase,
         hir: &'db hir::Module,
-        types: Arc<check::TypeCheckResult>,
+        types: Arc<typeck::TypecheckResult>,
         builder: ir::Builder<'c>,
         decls: &'c HashMap<hir::DefId, ir::DeclId>,
     ) -> Self {
@@ -227,26 +227,32 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
     }
 
     fn create_header(&mut self, params: &[hir::Param]) -> ir::Local {
-        use check::ty::Type;
+        use typeck::ty::Type;
         let mut ty = &self.types.ty;
 
-        if let Type::ForAll(_, ty2) = &**ty {
+        if let Type::ForAll(_, ty2, _) = &**ty {
             ty = ty2;
         }
 
-        if let Type::Func(param_tys, ret) = &**ty {
-            let ret = self.builder.create_ret(lower_type(self.db, ret));
+        if let Type::App(f, args) = &**ty {
+            if let Type::Ctor(f) = &**f {
+                if *f == self.db.lang_items().fn_ty().owner && args.len() == 2 {
+                    if let Type::Tuple(param_tys) = &*args[0] {
+                        let ret = self.builder.create_ret(lower_type(self.db, &args[1]));
 
-            for (param, ty) in params.iter().zip(param_tys) {
-                let local = self.builder.create_arg(lower_type(self.db, &ty));
+                        for (param, ty) in params.iter().zip(param_tys) {
+                            let local = self.builder.create_arg(lower_type(self.db, &ty));
 
-                self.locals.insert(param.id, local);
+                            self.locals.insert(param.id, local);
+                        }
+
+                        return ret;
+                    }
+                }
             }
-
-            ret
-        } else {
-            self.builder.create_ret(lower_type(self.db, ty))
         }
+
+        self.builder.create_ret(lower_type(self.db, ty))
     }
 
     fn convert_expr(&mut self, expr: &hir::Expr) -> ir::Operand {
@@ -307,12 +313,16 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
             hir::ExprKind::Field { base, field } => {
                 let base_ty = self.types.tys[&base.id].clone();
 
-                if let check::ty::Type::Record(fields, _) = &*base_ty {
-                    if let Some(i) = fields.iter().position(|f| f.name == field.symbol) {
-                        let op = self.convert_expr(base);
-                        let op = self.builder.placed(op, lower_type(self.db, &base_ty));
+                if let typeck::ty::Type::App(_, args) = &*base_ty {
+                    if let typeck::ty::Type::Row(fields, _) = &*args[0] {
+                        if let Some(i) = fields.iter().position(|f| f.name == field.symbol) {
+                            let op = self.convert_expr(base);
+                            let op = self.builder.placed(op, lower_type(self.db, &base_ty));
 
-                        ir::Operand::Place(op.field(i))
+                            ir::Operand::Place(op.field(i))
+                        } else {
+                            unreachable!();
+                        }
                     } else {
                         unreachable!();
                     }
@@ -550,29 +560,32 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
     }
 }
 
-fn lower_type(db: &dyn LowerDatabase, ty: &check::ty::Ty) -> ir::Type {
-    use check::ty::Type;
+fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Type {
+    use typeck::ty::Type;
 
     match &**ty {
         Type::Error => unreachable!(),
         Type::Int(_) => unreachable!(),
-        Type::Infer(_) => unreachable!(),
-        Type::Var(var) => ir::Type::Opaque(var.to_string()),
-        Type::TypeOf(id) => lower_type(db, &db.typecheck(*id).ty),
-        Type::ForAll(_, ty) => lower_type(db, ty),
-        Type::Func(args, ret) => ir::Type::Func(ir::Signature {
-            params: args.iter().map(|a| lower_type(db, a)).collect(),
-            rets: vec![lower_type(db, ret)],
-        }),
+        Type::String(_) => unreachable!(),
+        Type::Unknown(_) => unreachable!(),
+        Type::Skolem(_, _, _) => unreachable!(),
+        Type::Row(_, _) => unreachable!(),
+        Type::Var(var) => ir::Type::Opaque(var.0.local_id.0.to_string()),
+        Type::ForAll(_, ty, _) => lower_type(db, ty),
         Type::Tuple(tys) => ir::Type::Tuple(tys.iter().map(|t| lower_type(db, t)).collect()),
-        Type::Record(fields, None) => {
-            ir::Type::Tuple(fields.iter().map(|f| lower_type(db, &f.ty)).collect())
-        }
-        Type::Record(_fields, Some(_tail)) => unimplemented!(),
         Type::Ctnt(_, ty) => lower_type(db, ty),
-        Type::App(base, _, args) => match &**base {
-            Type::Data(def) => {
-                if *def == db.lang_items().ptr_ty().owner {
+        Type::App(base, args) => match &**base {
+            Type::Ctor(def) => {
+                if *def == db.lang_items().fn_ty().owner {
+                    if let Type::Tuple(params) = &*args[0] {
+                        ir::Type::Func(ir::Signature {
+                            params: params.iter().map(|t| lower_type(db, t)).collect(),
+                            rets: vec![lower_type(db, &args[1])],
+                        })
+                    } else {
+                        unreachable!();
+                    }
+                } else if *def == db.lang_items().ptr_ty().owner {
                     assert_eq!(args.len(), 1);
 
                     ir::Type::Ptr(Box::new(lower_type(db, &args[0])))
@@ -581,16 +594,18 @@ fn lower_type(db: &dyn LowerDatabase, ty: &check::ty::Ty) -> ir::Type {
                 } else if *def == db.lang_items().slice_ty().owner {
                     unimplemented!();
                 } else if *def == db.lang_items().type_info().owner {
-                    ir::Type::Type(args[0].display(db.to_ty_db()).to_string())
+                    // ir::Type::Type(args[0].display(db.to_ty_db()).to_string())
+                    ir::Type::Type(String::new())
                 } else if *def == db.lang_items().vwt().owner {
-                    ir::Type::Vwt(args[0].display(db.to_ty_db()).to_string())
+                    // ir::Type::Vwt(args[0].display(db.to_ty_db()).to_string())
+                    ir::Type::Vwt(String::new())
                 } else {
                     lower_type(db, base)
                 }
             }
             _ => lower_type(db, base),
         },
-        Type::Data(id) => {
+        Type::Ctor(id) => {
             let file = db.module_tree(id.lib).file(id.module);
             let hir = db.module_hir(file);
             let def = hir.def(*id);

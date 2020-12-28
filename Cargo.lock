@@ -290,13 +290,13 @@ name = "driver"
 version = "0.1.0"
 dependencies = [
  "backend",
- "check",
  "diagnostics",
  "hir",
  "lower",
  "salsa",
  "source",
  "syntax",
+ "typeck",
 ]
 
 [[package]]
@@ -424,11 +424,11 @@ dependencies = [
 name = "lower"
 version = "0.1.0"
 dependencies = [
- "check",
  "hir",
  "lowlang",
  "mangling",
  "salsa",
+ "typeck",
 ]
 
 [[package]]

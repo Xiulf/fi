@@ -118,6 +118,11 @@ impl<'db> Ctx<'db> {
                 Ok(())
             }
             (Type::Skolem(_, s1, _), Type::Skolem(_, s2, _)) if s1 == s2 => Ok(()),
+            (Type::Tuple(ts1), Type::Tuple(ts2)) if ts1.len() == ts2.len() => ts1
+                .into_iter()
+                .zip(ts2)
+                .map(|(t1, t2)| self.unify_types(t1, t2))
+                .collect::<Result<_>>(),
             (Type::Row(r1, t1), Type::Row(r2, t2)) => {
                 self.unify_rows(r1.clone(), t1.clone(), r2.clone(), t2.clone())
             }

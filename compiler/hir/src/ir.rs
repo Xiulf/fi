@@ -652,4 +652,12 @@ impl Def<'_> {
             Def::ImplItem(item) => item.name,
         }
     }
+
+    pub fn span(&self) -> Span {
+        match self {
+            Def::Item(item) => item.span,
+            Def::TraitItem(item) => item.span,
+            Def::ImplItem(item) => item.span,
+        }
+    }
 }

@@ -9,7 +9,7 @@ diagnostics = { path = "../diagnostics" }
 source = { path = "../source" }
 syntax = { path = "../syntax" }
 hir = { path = "../hir" }
-check = { path = "../check" }
+typeck = { path = "../typeck" }
 lower = { path = "../lower" }
 backend = { path = "../backend" }
 salsa = "^0.16.0"

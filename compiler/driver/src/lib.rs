@@ -8,7 +8,7 @@ use std::path::Path;
     source::SourceDatabaseStorage,
     syntax::SyntaxDatabaseStorage,
     hir::HirDatabaseStorage,
-    check::TypeDatabaseStorage,
+    typeck::TypeDatabaseStorage,
     lower::LowerDatabaseStorage,
     backend::BackendDatabaseStorage
 )]
@@ -17,7 +17,7 @@ pub struct CompilerDatabase {
     storage: salsa::Storage<Self>,
     diags: RefCell<Vec<diagnostics::Diagnostic>>,
     lib_ids: u32,
-    infer_ids: Cell<u64>,
+    // infer_ids: Cell<u64>,
 }
 
 impl salsa::Database for CompilerDatabase {}
@@ -31,17 +31,9 @@ impl CompilerDatabase {
     }
 }
 
-impl check::InferDb for CompilerDatabase {
-    fn to_ty_db(&self) -> &dyn check::TypeDatabase {
+impl typeck::InferDb for CompilerDatabase {
+    fn to_ty_db(&self) -> &dyn typeck::TypeDatabase {
         self
-    }
-
-    fn new_infer_var(&self) -> check::ty::InferVar {
-        let id = self.infer_ids.get();
-
-        self.infer_ids.set(id + 1);
-
-        check::ty::InferVar(id)
     }
 }
 
