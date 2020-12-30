@@ -47,14 +47,16 @@ impl<'db> Ctx<'db> {
 
                 Ok(Box::new(|_| ()))
             }
-            (Type::Ctnt(ctnt, r1), _) => {
+            (Type::Ctnt(_ctnt, r1), _) => {
                 let elaborate = self.subsumes_elaborate(r1.clone(), t2)?;
 
                 Ok(Box::new(move |e| {
                     elaborate(e);
                 }))
             }
-            (Type::App(f1, a1), Type::App(f2, a2)) if self.is_record(f1) && self.is_record(f2) => {
+            (Type::App(f1, _a1), Type::App(f2, _a2))
+                if self.is_record(f1) && self.is_record(f2) =>
+            {
                 unimplemented!();
             }
             (_, Type::App(ref base, _)) if self.is_record(base) => self.subsumes_elaborate(t2, t1),
@@ -105,7 +107,9 @@ impl<'db> Ctx<'db> {
 
                 Ok(())
             }
-            (Type::App(f1, a1), Type::App(f2, a2)) if self.is_record(f1) && self.is_record(f2) => {
+            (Type::App(f1, _a1), Type::App(f2, _a2))
+                if self.is_record(f1) && self.is_record(f2) =>
+            {
                 unimplemented!();
             }
             (_, Type::App(ref base, _)) if self.is_record(base) => {

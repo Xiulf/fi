@@ -254,7 +254,10 @@ impl Ty {
                 t1.everything(f);
                 t2.iter().for_each(|t| t.everything(f));
             }
-            Type::ForAll(_, t1, _) => {
+            Type::ForAll(vars, t1, _) => {
+                vars.iter()
+                    .filter_map(|v| v.1.as_ref())
+                    .for_each(|k| k.everything(f));
                 t1.everything(f);
             }
             Type::Ctnt(ctnt, t2) => {
@@ -292,6 +295,11 @@ impl Ty {
                 f(Ty::kind_app(self.span(), self.file(), t1, t2))
             }
             Type::ForAll(vars, t1, scope) => {
+                let vars = vars
+                    .into_iter()
+                    .map(|(v, k)| (v, k.map(|k| k.everywhere(f))))
+                    .collect::<List<_>>();
+
                 let t1 = t1.clone().everywhere(f);
 
                 f(Ty::forall(self.span(), self.file(), vars, t1, *scope))
@@ -359,6 +367,11 @@ impl Ty {
                 f(Ty::kind_app(self.span(), self.file(), t1, t2))
             }
             Type::ForAll(vars, t1, scope) => {
+                let vars = vars
+                    .into_iter()
+                    .map(|(v, k)| Ok((v, k.map(|k| k.everywhere_result(f)).transpose()?)))
+                    .collect::<Result<List<_>>>()?;
+
                 let t1 = t1.clone().everywhere_result(f)?;
 
                 f(Ty::forall(self.span(), self.file(), vars, t1, *scope))

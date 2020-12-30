@@ -260,8 +260,10 @@ impl<'db> Ctx<'db> {
             }
             ir::ExprKind::Typed { expr, ty } => {
                 let ty = self.hir_ty(ty);
-                let ty = self.introduce_skolem_scope(ty);
+                let (elab_ty, kind) = self.kind_of(ty)?;
+                let ty = self.introduce_skolem_scope(elab_ty);
 
+                self.check_type_kind(kind)?;
                 self.check_expr(expr, ty.clone())?;
 
                 ty

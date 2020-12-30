@@ -8,3 +8,6 @@ fn main argc argv = id 22
 
 fn id :: forall a. a -> a
 fn id x = x
+
+fn test :: () -> Ptr ()
+fn test = ?x

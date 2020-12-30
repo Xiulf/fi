@@ -5,8 +5,15 @@ use hir::ir;
 
 impl<'db> Ctx<'db> {
     crate fn check_body(&mut self, span: ir::Span, body: &ir::Body, ty: Ty) -> Result<()> {
+        let (elab_ty, kind) = self.kind_of(ty)?;
+
+        self.check_type_kind(kind)?;
+        self.check_body_(span, body, elab_ty)
+    }
+
+    fn check_body_(&mut self, span: ir::Span, body: &ir::Body, ty: Ty) -> Result<()> {
         match &*ty {
-            Type::Ctnt(_ctnt, ty) => self.check_body(span, body, ty.clone()),
+            Type::Ctnt(_ctnt, ty) => self.check_body_(span, body, ty.clone()),
             Type::ForAll(vars, ret, _) => {
                 let scope = self.new_skolem_scope();
                 let skolems = (0..vars.len())
@@ -14,7 +21,7 @@ impl<'db> Ctx<'db> {
                     .collect();
                 let sk = self.skolemize(ty.span(), ty.file(), vars, skolems, ret.clone(), scope);
 
-                self.check_body(span, body, sk)
+                self.check_body_(span, body, sk)
             }
             Type::App(f, a) if self.is_func(f) && a.len() == 2 => {
                 if let Type::Tuple(params) = &*a[0] {

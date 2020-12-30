@@ -32,8 +32,12 @@ impl TypedDisplay for Ty {
             Type::ForAll(vars, ty, _) => {
                 write!(f, "forall")?;
 
-                for (var, _) in vars {
-                    write!(f, " {}", var)?;
+                for (var, kind) in vars {
+                    if let Some(kind) = kind {
+                        write!(f, " ({} :: {})", var, Typed(db, &(), &kind))?;
+                    } else {
+                        write!(f, " {}", var)?;
+                    }
                 }
 
                 write!(f, ". {}", Typed(db, &(), ty))

@@ -56,6 +56,7 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                         ty = ctx.generalize(ty, item.id.owner);
                     } else {
                         ctx.check_body(item.span, &hir.bodies[body], ty.clone())?;
+                        ty = ctx.subst_type(ty);
                     }
 
                     ty

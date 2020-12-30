@@ -8,6 +8,193 @@ impl<'db> Ctx<'db> {
     crate fn infer_kind(&mut self, ty: Ty) -> Result<(Ty, Ty)> {
         match &*ty {
             Type::Error => Ok((ty.clone(), Ty::error(ty.span(), ty.file()))),
+            Type::Ctor(id) => Ok((ty.clone(), self.db.typecheck(*id).ty.clone() ^ ty.loc())),
+            Type::Ctnt(_ctnt, _ty) => unimplemented!(),
+            Type::Int(_) => Ok((ty.clone(), self.figure_kind(ty.span(), ty.file()))),
+            Type::String(_) => Ok((ty.clone(), self.symbol_kind(ty.span(), ty.file()))),
+            Type::Tuple(_) => Ok((ty.clone(), self.ty_kind(ty.span(), ty.file()))),
+            Type::Var(v) => {
+                let kind = self.tys[&v.0].clone();
+
+                Ok((ty.clone(), kind ^ ty.loc()))
+            }
+            Type::Skolem(_, None, _, _) => Err(TypeError::Internal("skolem has no kind".into())),
+            Type::Skolem(_, Some(k), _, _) => {
+                let kind = self.subst_type(k.clone());
+
+                Ok((ty.clone(), kind ^ ty.loc()))
+            }
+            Type::Unknown(u) => {
+                let kind = self.subst.unsolved[u].1.clone();
+                let kind = self.subst_type(kind);
+
+                Ok((ty.clone(), kind ^ ty.loc()))
+            }
+            Type::App(t1, t2) => {
+                let (t1, k1) = self.infer_kind(t1.clone())?;
+
+                self.infer_app_kind(ty.span(), ty.file(), t1, k1, t2)
+            }
+            Type::KindApp(t1, t2) => {
+                let (t1, kind) = self.infer_kind(t1.clone())?;
+                let t1 = self.subst_type(t1);
+                let kind = self.subst_type(kind);
+
+                if let Type::ForAll(vars, ret, _) = &*kind {
+                    let args = vars
+                        .into_iter()
+                        .zip(t2)
+                        .map(|((_v, k), t2)| {
+                            if let Some(k) = k {
+                                self.check_kind(t2, k)
+                            } else {
+                                Err(TypeError::Internal("unkinded forall binder".into()))
+                            }
+                        })
+                        .collect::<Result<List<_>>>()?;
+
+                    let repl = (&args)
+                        .into_iter()
+                        .zip(vars)
+                        .map(|(k, (v, _))| (v, k))
+                        .collect();
+
+                    let kind = ret.clone().replace_vars(repl);
+                    let ty = Ty::kind_app(ty.span(), ty.file(), t1, args);
+
+                    Ok((ty, kind))
+                } else {
+                    Err(TypeError::Internal("unkinded forall binder".into()))
+                }
+            }
+            Type::ForAll(vars, ret, sc) => {
+                let var_kinds = vars
+                    .into_iter()
+                    .map(|(v, k)| {
+                        Ok((
+                            v,
+                            match k {
+                                Some(k) => Some(
+                                    self.check_kind(k.clone(), self.ty_kind(k.span(), k.file()))?,
+                                ),
+                                None => Some(self.fresh_kind(ty.span(), ty.file())),
+                            },
+                        ))
+                    })
+                    .collect::<Result<List<_>>>()?;
+
+                for (v, k) in &var_kinds {
+                    self.tys.insert(v.0, k.unwrap());
+                }
+
+                let ty2 = self.check_kind(ret.clone(), self.ty_kind(ret.span(), ret.file()))?;
+                let ty2 = self.subst_type(ty2);
+                let unks = self.unknowns_with_kinds(ty2.unknowns());
+
+                for (u, k) in unks {
+                    self.add_unsolved(None, u, k);
+                }
+
+                let ty = Ty::forall(ty.span(), ty.file(), var_kinds, ty2, *sc);
+
+                Ok((ty.clone(), self.ty_kind(ty.span(), ty.file())))
+            }
+            _ => unimplemented!("infer kind: {}", crate::display::Typed(self.db, &(), &ty)),
+        }
+    }
+
+    fn unknowns_with_kinds(
+        &mut self,
+        uk: std::collections::HashSet<Unknown>,
+    ) -> Vec<(Unknown, Ty)> {
+        let mut uk = uk
+            .into_iter()
+            .map(|u| {
+                let (lvl, k) = self.subst.unsolved[&u].clone();
+                let k = self.subst_type(k);
+
+                (lvl, u, k)
+            })
+            .collect::<Vec<_>>();
+
+        uk.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
+
+        let mut uk = uk.into_iter().map(|(_, u, k)| (u, k)).collect::<Vec<_>>();
+
+        uk.dedup();
+        uk
+    }
+
+    fn fresh_kind(&mut self, span: Span, file: source::FileId) -> Ty {
+        self.fresh_kind_with_kind(span, file, self.ty_kind(span, file))
+    }
+
+    fn fresh_kind_with_kind(&mut self, span: Span, file: source::FileId, kind: Ty) -> Ty {
+        let u = self.fresh_unknown();
+
+        self.add_unsolved(None, u, kind);
+
+        Ty::unknown(span, file, u)
+    }
+
+    crate fn infer_app_kind(
+        &mut self,
+        span: Span,
+        file: source::FileId,
+        fn_ty: Ty,
+        fn_kind: Ty,
+        args: &List<Ty>,
+    ) -> Result<(Ty, Ty)> {
+        match &*fn_kind {
+            Type::App(f, targs) if self.is_func(f) && targs.len() == 2 => {
+                if let Type::Tuple(params) = &*targs[0] {
+                    let args = args
+                        .into_iter()
+                        .zip(params)
+                        .map(|(arg_ty, arg_kind)| self.check_kind(arg_ty, arg_kind))
+                        .collect::<Result<List<_>>>()?;
+
+                    let ty = Ty::app(span, file, fn_ty, args);
+
+                    Ok((ty, self.subst_type(targs[1].clone())))
+                } else {
+                    unreachable!();
+                }
+            }
+            Type::Unknown(u) => {
+                let lvl = self.subst.unsolved[u].0.clone();
+                let ret = self.fresh_unknown();
+                let ty_kind = self.ty_kind(span, file);
+                let args2 = (0..args.len())
+                    .map(|_| {
+                        let u = self.fresh_unknown();
+
+                        self.add_unsolved(Some(lvl.clone()), u, ty_kind.clone());
+
+                        Ty::unknown(span, file, u)
+                    })
+                    .collect::<List<_>>();
+
+                self.add_unsolved(Some(lvl), ret, ty_kind);
+
+                let ret = Ty::unknown(span, file, ret);
+                let fn_ty = self.func_ty(span, file);
+                let args3 = Ty::tuple(span, file, args2.clone());
+                let ty1 = Ty::app(span, file, fn_ty.clone(), List::from([args3, ret.clone()]));
+
+                self.solve(*u, ty1);
+
+                let args3 = args
+                    .into_iter()
+                    .zip(args2)
+                    .map(|(arg, kind)| self.check_kind(arg, kind))
+                    .collect::<Result<List<_>>>()?;
+
+                let args3 = Ty::tuple(span, file, args3);
+                let ty2 = Ty::app(span, file, fn_ty, List::from([args3]));
+
+                Ok((ty2, ret))
+            }
             _ => unimplemented!(),
         }
     }
@@ -107,14 +294,8 @@ impl<'db> Ctx<'db> {
                     .collect()
             }
             (_, _) if k1.equal(&k2) => Ok(()),
-            (Type::Unknown(u), _) => {
-                self.solve(*u, k2);
-                Ok(())
-            }
-            (_, Type::Unknown(u)) => {
-                self.solve(*u, k1);
-                Ok(())
-            }
+            (Type::Unknown(u), _) => self.solve_unknown(*u, k2),
+            (_, Type::Unknown(u)) => self.solve_unknown(*u, k1),
             (_, _) => Err(TypeError::KindMismatch(k1, k2)),
         }
     }
@@ -139,7 +320,7 @@ impl<'db> Ctx<'db> {
             }
             Type::Skolem(_, kind, _, _) => {
                 if let Some(kind) = kind {
-                    Ok(self.subst_type(kind.clone()))
+                    Ok(self.subst_type(kind.clone()) ^ ty.loc())
                 } else {
                     panic!("skolem has no kind");
                 }
@@ -147,7 +328,7 @@ impl<'db> Ctx<'db> {
             Type::Unknown(u) => {
                 let kind = self.subst.unsolved[u].1.clone();
 
-                Ok(self.subst_type(kind))
+                Ok(self.subst_type(kind) ^ ty.loc())
             }
             Type::Var(v) => {
                 let kind = self.tys[&v.0].clone();
@@ -186,6 +367,34 @@ impl<'db> Ctx<'db> {
                 }
             }
         }
+    }
+
+    crate fn promote_kind(&mut self, u2: Unknown, ty: Ty) -> Result<Ty> {
+        let lvl2 = self.subst.unsolved[&u2].0.clone();
+
+        ty.everywhere_result(&mut |t| match &*t {
+            Type::Unknown(u1) => {
+                if *u1 == u2 {
+                    panic!("infinite kind");
+                }
+
+                let (lvl1, k) = self.subst.unsolved[&u1].clone();
+
+                if lvl1 < lvl2 {
+                    Ok(t)
+                } else {
+                    let k = self.promote_kind(u2, self.subst_type(k))?;
+                    let u1_ = self.fresh_unknown();
+                    let ty = Ty::unknown(t.span(), t.file(), u1_);
+
+                    self.add_unsolved(Some(lvl2.clone()), u1_, k);
+                    self.solve(*u1, ty.clone());
+
+                    Ok(ty)
+                }
+            }
+            _ => Ok(t),
+        })
     }
 
     crate fn kind_of(&mut self, ty: Ty) -> Result<(Ty, Ty)> {
@@ -238,6 +447,15 @@ impl<'db> Ctx<'db> {
         self.solve(u, uarr.clone());
 
         Ok(uarr)
+    }
+
+    fn solve_unknown(&mut self, u: Unknown, p1: Ty) -> Result<()> {
+        let p2 = self.promote_kind(u, p1)?;
+        let w1 = self.subst.unsolved[&u].1.clone();
+        let k = self.elaborate_kind(&p2)?;
+        let _ = self.unify_kinds(self.subst_type(w1), k)?;
+
+        Ok(self.solve(u, p2))
     }
 
     fn add_unsolved(&mut self, lvl: Option<UnkLevel>, u: Unknown, kind: Ty) {
