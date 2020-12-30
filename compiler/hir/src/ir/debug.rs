@@ -476,6 +476,9 @@ impl Debug for Expr {
 
         match &self.kind {
             ExprKind::Error => write!(f, "Error id = {:?}", self.id),
+            ExprKind::Hole { name } => {
+                write!(f, "Hole id = {:?}, name = {:?}", self.id, &**name.symbol)
+            }
             ExprKind::Ident { name, res } => {
                 writeln!(f, "Ident id = {:?}, name = {:?}", self.id, &**name.symbol)?;
                 write!(indent(f), "{:?}", res)

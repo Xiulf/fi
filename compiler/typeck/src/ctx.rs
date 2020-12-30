@@ -113,11 +113,48 @@ impl<'db> Ctx<'db> {
                 .collect();
 
             ret.clone().replace_vars(subst)
-        } else if let Type::Ctnt(ctnt, ret) = &*ty {
+        } else if let Type::Ctnt(_ctnt, _ret) = &*ty {
             todo!();
             // self.instantiate(ret.clone())
         } else {
             ty
+        }
+    }
+
+    crate fn generalize(&mut self, ty: Ty, def: ir::DefId) -> Ty {
+        let uk = ty.unknowns();
+
+        if uk.is_empty() {
+            ty
+        } else {
+            let mut repl = HashMap::with_capacity(uk.len());
+            let vars = uk
+                .into_iter()
+                .map(|u| {
+                    let kind = self.subst.unsolved[&u].1.clone();
+                    let var = TypeVar(ir::HirId {
+                        owner: def,
+                        local_id: ir::LocalId(u32::max_value() - u.0 as u32),
+                    });
+
+                    let var_ty = Ty::var(ty.span(), ty.file(), var);
+
+                    self.subst.tys.insert(u, var_ty.clone());
+                    repl.insert(u, var_ty);
+
+                    (var, Some(kind))
+                })
+                .collect::<List<_>>();
+
+            let ty = ty.everywhere(&mut |t| match *t {
+                Type::Unknown(u) => match repl.get(&u) {
+                    None => t,
+                    Some(t2) => t2.clone(),
+                },
+                _ => t,
+            });
+
+            Ty::forall(ty.span(), ty.file(), vars, ty, None)
         }
     }
 
@@ -149,6 +186,15 @@ impl<'db> Ctx<'db> {
                 ir::Res::Def(_, _) => unreachable!(),
                 ir::Res::Local(id) => Ty::var(ty.span, self.file, TypeVar(*id)),
             },
+            ir::TypeKind::Forall { vars, ty: ret } => {
+                let ret = self.hir_ty(ret);
+                let vars = vars
+                    .iter()
+                    .map(|v| (TypeVar(v.id), Some(self.hir_ty(&v.kind))))
+                    .collect::<List<_>>();
+
+                Ty::forall(ty.span, self.file, vars, ret, None)
+            }
             _ => unimplemented!("hir_ty {:?}", ty),
         }
     }

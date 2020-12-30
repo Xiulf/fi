@@ -63,6 +63,16 @@ impl<'db> Ctx<'db> {
             ir::PatKind::Bind { sub: None, .. } => {
                 self.fresh_type_with_kind(pat.span, self.file, self.ty_kind(pat.span, self.file))
             }
+            ir::PatKind::Typed { pat, ty } => {
+                let ty = self.hir_ty(ty);
+                let (elab_ty, kind) = self.kind_of(ty)?;
+                let _ = self.check_type_kind(kind)?;
+                let ty1 = self.introduce_skolem_scope(elab_ty);
+                let ty2 = self.infer_pat(pat)?;
+                let _ = self.unify_types(ty1.clone(), ty2)?;
+
+                ty1
+            }
             _ => unimplemented!("infer {:?}", pat),
         };
 
@@ -222,6 +232,23 @@ impl<'db> Ctx<'db> {
 
                 ret
             }
+            ir::ExprKind::App { base, args } => {
+                let base_ty = self.infer_expr(base)?;
+
+                self.check_func_app(base_ty, args)?
+            }
+            ir::ExprKind::If { cond, then, else_ } => {
+                let bool_ty = self.db.lang_items().bool();
+                let bool_ty = Ty::ctor(cond.span, self.file, bool_ty.owner);
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let ret = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
+
+                self.check_expr(cond, bool_ty)?;
+                self.check_expr(then, ret.clone())?;
+                self.check_expr(else_, ret.clone())?;
+
+                ret
+            }
             ir::ExprKind::Case { pred, arms } => {
                 let ts = self.instantiate_for_binders(pred, arms)?;
                 let ty_kind = self.ty_kind(expr.span, self.file);
@@ -230,6 +257,14 @@ impl<'db> Ctx<'db> {
                 self.check_binders(ts, ret.clone(), arms)?;
 
                 ret
+            }
+            ir::ExprKind::Typed { expr, ty } => {
+                let ty = self.hir_ty(ty);
+                let ty = self.introduce_skolem_scope(ty);
+
+                self.check_expr(expr, ty.clone())?;
+
+                ty
             }
             ir::ExprKind::Hole { name } => {
                 let ty_kind = self.ty_kind(expr.span, self.file);

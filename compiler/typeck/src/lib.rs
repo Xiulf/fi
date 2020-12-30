@@ -44,7 +44,7 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
         ir::Def::Item(item) => match &item.kind {
             ir::ItemKind::Func { ty, body } => {
                 try {
-                    let ty = ctx.hir_ty(ty);
+                    let mut ty = ctx.hir_ty(ty);
 
                     ctx.tys.insert(item.id, ty.clone());
 
@@ -52,6 +52,8 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                         let infer = ctx.infer_body(item.span, &hir.bodies[body])?;
 
                         ctx.unify_types(ty.clone(), infer)?;
+                        ty = ctx.subst_type(ty);
+                        ty = ctx.generalize(ty, item.id.owner);
                     } else {
                         ctx.check_body(item.span, &hir.bodies[body], ty.clone())?;
                     }
@@ -82,9 +84,27 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                 }
             }
             ir::ItemKind::Data { head, .. } => {
-                let kind = ctx.hir_ty(&head.kind);
+                if let ir::TypeKind::Infer = head.kind.kind {
+                    let mut kind = ctx.ty_kind(item.span, file);
 
-                Ok(kind)
+                    if !head.vars.is_empty() {
+                        let params = (0..head.vars.len()).map(|_| {
+                            ctx.fresh_type_with_kind(item.span, file, ctx.ty_kind(item.span, file))
+                        });
+
+                        let params = ty::Ty::tuple(item.span, file, params);
+                        let func_ty = ctx.func_ty(item.span, file);
+
+                        kind =
+                            ty::Ty::app(item.span, file, func_ty, ty::List::from([params, kind]));
+                    }
+
+                    Ok(kind)
+                } else {
+                    let kind = ctx.hir_ty(&head.kind);
+
+                    Ok(kind)
+                }
             }
             _ => unimplemented!(),
         },
@@ -99,7 +119,26 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
         }
     };
 
-    ctx.errors.drain(..).for_each(|e| e.report(db));
+    let mut tys = std::mem::replace(&mut ctx.tys, Default::default());
+
+    tys.values_mut().for_each(|t| {
+        let ty = t.clone();
+        let ty = ctx.subst_type(ty);
+        let ty = skolem::unskolemize(ty);
+
+        *t = ty;
+    });
+
+    ctx.tys = tys;
+
+    for mut e in std::mem::replace(&mut ctx.errors, Vec::new()) {
+        if let error::TypeError::HoleType(name, ty) = e {
+            let loc = ty.loc();
+            e = error::TypeError::HoleType(name, ctx.subst_type(ty) ^ loc);
+        }
+
+        e.report(db)
+    }
 
     if db.has_errors() {
         db.print_and_exit();

@@ -1,7 +1,7 @@
 use crate::ty::*;
 use crate::TypeDatabase;
 use hir::ir;
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter, Result, Write};
 
 pub trait TypedDisplay<S = ()> {
     fn typed_fmt(&self, db: &dyn TypeDatabase, s: &S, f: &mut Formatter) -> Result;
@@ -20,7 +20,7 @@ impl TypedDisplay for Ty {
         match &**self {
             Type::Error => write!(f, "{{error}}"),
             Type::Unknown(u) => write!(f, "?{}", u.0),
-            Type::Skolem(v, _, _, _) => v.fmt(f),
+            Type::Skolem(v, _, _, _) => write!(f, "?{}", v),
             Type::Var(v) => v.fmt(f),
             Type::Int(i) => i.fmt(f),
             Type::String(s) => write!(f, "{:?}", s),
@@ -130,7 +130,8 @@ impl TypedDisplay<Types> for ir::Body {
             write!(f, "{} ", Typed(db, tys, param))?;
         }
 
-        write!(f, "= {}", Typed(db, tys, &self.value))
+        writeln!(f, "=")?;
+        write!(indent(f), "{}", Typed(db, tys, &self.value))
     }
 }
 
@@ -166,8 +167,43 @@ impl TypedDisplay<Types> for ir::Expr {
                 write!(f, "{} :: {}", f64::from_bits(*bits), Typed(db, &(), ty))
             }
             ir::ExprKind::Ident { name, .. } => write!(f, "{} :: {}", name, Typed(db, &(), ty)),
+            ir::ExprKind::Tuple { exprs } => {
+                write!(f, "(")?;
+
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+
+                    write!(f, "{}", Typed(db, tys, expr))?;
+                }
+
+                write!(f, ") :: {}", Typed(db, &(), ty))
+            }
+            ir::ExprKind::App { base, args } => {
+                write!(f, "({}", Typed(db, tys, &**base))?;
+
+                for arg in args {
+                    writeln!(f)?;
+                    write!(indent(f), "({})", Typed(db, tys, arg))?;
+                }
+
+                write!(f, ") :: {}", Typed(db, &(), ty))?;
+
+                Ok(())
+            }
+            ir::ExprKind::If { cond, then, else_ } => {
+                writeln!(f, "(if {}", Typed(db, tys, &**cond))?;
+                writeln!(indent(f), "then {}", Typed(db, tys, &**then))?;
+                write!(
+                    indent(f),
+                    "else {}) :: {}",
+                    Typed(db, tys, &**else_),
+                    Typed(db, &(), ty)
+                )
+            }
             ir::ExprKind::Case { pred, arms } => {
-                write!(f, "case ")?;
+                write!(f, "(case ")?;
 
                 for (i, pred) in pred.iter().enumerate() {
                     if i != 0 {
@@ -181,10 +217,10 @@ impl TypedDisplay<Types> for ir::Expr {
 
                 for arm in arms {
                     writeln!(f)?;
-                    arm.typed_fmt(db, tys, f)?;
+                    write!(indent(f), "{}", Typed(db, tys, arm))?;
                 }
 
-                Ok(())
+                write!(f, ") :: {}", Typed(db, &(), ty))
             }
             _ => unimplemented!(),
         }
@@ -216,5 +252,32 @@ impl TypedDisplay<Types> for ir::Pat {
             }
             _ => unimplemented!(),
         }
+    }
+}
+
+fn indent<'a, W: Write>(f: &'a mut W) -> Indent<'a, W> {
+    Indent(f, true, "    ")
+}
+
+struct Indent<'a, W: Write>(&'a mut W, bool, &'a str);
+
+impl<'a, W: Write> Write for Indent<'a, W> {
+    fn write_str(&mut self, s: &str) -> Result {
+        for c in s.chars() {
+            if c == '\n' {
+                self.0.write_char(c)?;
+                self.1 = true;
+                continue;
+            }
+
+            if self.1 {
+                self.0.write_str(self.2)?;
+                self.1 = false;
+            }
+
+            self.0.write_char(c)?;
+        }
+
+        Ok(())
     }
 }

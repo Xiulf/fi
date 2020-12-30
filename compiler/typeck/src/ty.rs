@@ -1,7 +1,7 @@
 use crate::error::Result;
 use hir::ir::{DefId, HirId, Span, Symbol};
 use source::FileId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::sync::Arc;
 
@@ -155,6 +155,19 @@ impl Ty {
         self.0 .2
     }
 
+    pub fn unknowns(&self) -> HashSet<Unknown> {
+        let mut set = HashSet::new();
+
+        self.everything(&mut |t| match &**t {
+            Type::Unknown(u) => {
+                set.insert(*u);
+            }
+            _ => {}
+        });
+
+        set
+    }
+
     pub fn is_mono_type(&self) -> bool {
         match **self {
             Type::ForAll(..) => false,
@@ -173,7 +186,7 @@ impl Ty {
     }
 
     pub fn replace_vars(self, vars: HashMap<TypeVar, Ty>) -> Ty {
-        self.everywhere(|t| match &*t {
+        self.everywhere(&mut |t| match &*t {
             Type::Var(v) if vars.contains_key(v) => vars[v].clone(),
             _ => t,
         })
@@ -228,96 +241,67 @@ impl Ty {
         }
     }
 
-    pub fn everywhere<F>(self, mut f: F) -> Ty
+    pub fn everything<F>(&self, f: &mut F)
+    where
+        F: FnMut(&Ty),
+    {
+        match &**self {
+            Type::App(t1, t2) => {
+                t1.everything(f);
+                t2.iter().for_each(|t| t.everything(f));
+            }
+            Type::KindApp(t1, t2) => {
+                t1.everything(f);
+                t2.iter().for_each(|t| t.everything(f));
+            }
+            Type::ForAll(_, t1, _) => {
+                t1.everything(f);
+            }
+            Type::Ctnt(ctnt, t2) => {
+                ctnt.tys.iter().for_each(|t| t.everything(f));
+                t2.everything(f);
+            }
+            Type::Tuple(tys) => {
+                tys.iter().for_each(|t| t.everything(f));
+            }
+            Type::Row(fields, tail) => {
+                fields.iter().for_each(|f1| f1.ty.everything(f));
+                tail.as_ref().map(|t| t.everything(f));
+            }
+            _ => {}
+        }
+
+        f(self);
+    }
+
+    pub fn everywhere<F>(self, f: &mut F) -> Ty
     where
         F: FnMut(Ty) -> Ty,
     {
         match &*self {
             Type::App(t1, t2) => {
-                let t1 = f(t1.clone());
-                let t2 = t2.iter().map(|t2| f(t2.clone())).collect::<List<_>>();
+                let t1 = t1.clone().everywhere(f);
+                let t2 = t2.into_iter().map(|t| t.everywhere(f)).collect::<List<_>>();
 
                 f(Ty::app(self.span(), self.file(), t1, t2))
             }
             Type::KindApp(t1, t2) => {
-                let t1 = f(t1.clone());
-                let t2 = t2.iter().map(|t2| f(t2.clone())).collect::<List<_>>();
+                let t1 = t1.clone().everywhere(f);
+                let t2 = t2.into_iter().map(|t| t.everywhere(f)).collect::<List<_>>();
 
                 f(Ty::kind_app(self.span(), self.file(), t1, t2))
             }
             Type::ForAll(vars, t1, scope) => {
-                let t1 = f(t1.clone());
+                let t1 = t1.clone().everywhere(f);
 
                 f(Ty::forall(self.span(), self.file(), vars, t1, *scope))
             }
             Type::Ctnt(ctnt, t2) => {
-                let tys = ctnt.tys.iter().map(|t1| f(t1.clone())).collect::<List<_>>();
-                let t2 = f(t2.clone());
-                let ctnt = Ctnt {
-                    tys,
-                    trait_: ctnt.trait_,
-                };
-
-                f(Ty::ctnt(self.span(), self.file(), ctnt, t2))
-            }
-            Type::Tuple(tys) => {
-                let tys = tys.iter().map(|t| f(t.clone())).collect::<List<_>>();
-
-                f(Ty::tuple(self.span(), self.file(), tys))
-            }
-            Type::Row(fields, tail) => {
-                let fields = fields
-                    .iter()
-                    .map(|f1| Field {
-                        span: f1.span,
-                        name: f1.name,
-                        ty: f(f1.ty.clone()),
-                    })
+                let tys = (&ctnt.tys)
+                    .into_iter()
+                    .map(|t| t.everywhere(f))
                     .collect::<List<_>>();
-
-                let tail = tail.clone().map(|t| f(t));
-
-                f(Ty::row(self.span(), self.file(), fields, tail))
-            }
-            _ => f(self),
-        }
-    }
-
-    pub fn everywhere_result<F>(self, mut f: F) -> Result<Ty>
-    where
-        F: FnMut(Ty) -> Result<Ty>,
-    {
-        match &*self {
-            Type::App(t1, t2) => {
-                let t1 = f(t1.clone())?;
-                let t2 = t2
-                    .iter()
-                    .map(|t2| f(t2.clone()))
-                    .collect::<Result<List<_>>>()?;
-
-                f(Ty::app(self.span(), self.file(), t1, t2))
-            }
-            Type::KindApp(t1, t2) => {
-                let t1 = f(t1.clone())?;
-                let t2 = t2
-                    .iter()
-                    .map(|t2| f(t2.clone()))
-                    .collect::<Result<List<_>>>()?;
-
-                f(Ty::kind_app(self.span(), self.file(), t1, t2))
-            }
-            Type::ForAll(vars, t1, scope) => {
-                let t1 = f(t1.clone())?;
-
-                f(Ty::forall(self.span(), self.file(), vars, t1, *scope))
-            }
-            Type::Ctnt(ctnt, t2) => {
-                let tys = ctnt
-                    .tys
-                    .iter()
-                    .map(|t1| f(t1.clone()))
-                    .collect::<Result<_>>()?;
-                let t2 = f(t2.clone())?;
+                let t2 = t2.clone().everywhere(f);
                 let ctnt = Ctnt {
                     tys,
                     trait_: ctnt.trait_,
@@ -327,25 +311,92 @@ impl Ty {
             }
             Type::Tuple(tys) => {
                 let tys = tys
-                    .iter()
-                    .map(|t| f(t.clone()))
+                    .into_iter()
+                    .map(|t| t.everywhere(f))
+                    .collect::<List<_>>();
+
+                f(Ty::tuple(self.span(), self.file(), tys))
+            }
+            Type::Row(fields, tail) => {
+                let fields = fields
+                    .into_iter()
+                    .map(|f1| Field {
+                        span: f1.span,
+                        name: f1.name,
+                        ty: f1.ty.everywhere(f),
+                    })
+                    .collect::<List<_>>();
+
+                let tail = tail.clone().map(|t| t.everywhere(f));
+
+                f(Ty::row(self.span(), self.file(), fields, tail))
+            }
+            _ => f(self),
+        }
+    }
+
+    pub fn everywhere_result<F>(self, f: &mut F) -> Result<Ty>
+    where
+        F: FnMut(Ty) -> Result<Ty>,
+    {
+        match &*self {
+            Type::App(t1, t2) => {
+                let t1 = t1.clone().everywhere_result(f)?;
+                let t2 = t2
+                    .into_iter()
+                    .map(|t| t.everywhere_result(f))
+                    .collect::<Result<List<_>>>()?;
+
+                f(Ty::app(self.span(), self.file(), t1, t2))
+            }
+            Type::KindApp(t1, t2) => {
+                let t1 = t1.clone().everywhere_result(f)?;
+                let t2 = t2
+                    .into_iter()
+                    .map(|t| t.everywhere_result(f))
+                    .collect::<Result<List<_>>>()?;
+
+                f(Ty::kind_app(self.span(), self.file(), t1, t2))
+            }
+            Type::ForAll(vars, t1, scope) => {
+                let t1 = t1.clone().everywhere_result(f)?;
+
+                f(Ty::forall(self.span(), self.file(), vars, t1, *scope))
+            }
+            Type::Ctnt(ctnt, t2) => {
+                let tys = (&ctnt.tys)
+                    .into_iter()
+                    .map(|t| t.everywhere_result(f))
+                    .collect::<Result<_>>()?;
+                let t2 = t2.clone().everywhere_result(f)?;
+                let ctnt = Ctnt {
+                    tys,
+                    trait_: ctnt.trait_,
+                };
+
+                f(Ty::ctnt(self.span(), self.file(), ctnt, t2))
+            }
+            Type::Tuple(tys) => {
+                let tys = tys
+                    .into_iter()
+                    .map(|t| t.everywhere_result(f))
                     .collect::<Result<List<_>>>()?;
 
                 f(Ty::tuple(self.span(), self.file(), tys))
             }
             Type::Row(fields, tail) => {
                 let fields = fields
-                    .iter()
+                    .into_iter()
                     .map(|f1| {
                         Ok(Field {
                             span: f1.span,
                             name: f1.name,
-                            ty: f(f1.ty.clone())?,
+                            ty: f1.ty.everywhere_result(f)?,
                         })
                     })
                     .collect::<Result<List<_>>>()?;
 
-                let tail = tail.clone().map(|t| f(t)).transpose()?;
+                let tail = tail.clone().map(|t| t.everywhere_result(f)).transpose()?;
 
                 f(Ty::row(self.span(), self.file(), fields, tail))
             }

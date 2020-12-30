@@ -25,7 +25,10 @@ alias Str = Slice Byte
 [lang("bool")]
 data Bool = False | True
 
-[repr("u32" )] data Char    :: Type
+[repr("u32" )]
+[lang("char")]
+data Char :: Type
+
 [repr("u8"  )] data Uint8   :: Type
 [repr("u16" )] data Uint16  :: Type
 [repr("u32" )] data Uint32  :: Type

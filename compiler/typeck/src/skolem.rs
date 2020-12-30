@@ -2,6 +2,13 @@ use crate::ctx::*;
 use crate::ty::*;
 use hir::ir::Span;
 
+crate fn unskolemize(ty: Ty) -> Ty {
+    ty.everywhere(&mut |t| match &*t {
+        Type::Skolem(var, ..) => Ty::var(t.span(), t.file(), *var),
+        _ => t,
+    })
+}
+
 impl<'db> Ctx<'db> {
     /// Generate a new skolem constant.
     crate fn new_skolem_constant(&mut self) -> Skolem {
@@ -21,7 +28,7 @@ impl<'db> Ctx<'db> {
 
     /// Introduce a skolem scope at every occurrence of a ForAll.
     crate fn introduce_skolem_scope(&mut self, ty: Ty) -> Ty {
-        ty.everywhere(|t| match &*t {
+        ty.everywhere(&mut |t| match &*t {
             Type::ForAll(vars, r, None) => {
                 Ty::forall(t.span(), t.file(), vars, r.clone(), self.new_skolem_scope())
             }

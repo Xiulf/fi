@@ -4,4 +4,7 @@ import Prim
 
 [main]
 fn main :: (Int32, Ptr (Ptr Byte)) -> Int32
-fn main argc argv = 22
+fn main argc argv = id 22
+
+fn id :: forall a. a -> a
+fn id x = x

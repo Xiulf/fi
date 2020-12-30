@@ -59,7 +59,7 @@ impl<'db> Ctx<'db> {
 
     /// Apply a substitution to a type.
     crate fn subst_type(&self, ty: Ty) -> Ty {
-        ty.everywhere(|t| match *t {
+        ty.everywhere(&mut |t| match *t {
             Type::Unknown(u) => match self.subst.tys.get(&u) {
                 None => t,
                 Some(t2) => match **t2 {
@@ -77,7 +77,7 @@ impl<'db> Ctx<'db> {
             Ok(())
         } else {
             t.clone()
-                .everywhere_result(|t2| match *t2 {
+                .everywhere_result(&mut |t2| match *t2 {
                     Type::Unknown(u2) if u == u2 => Err(TypeError::CyclicType(t.clone())),
                     _ => Ok(t2),
                 })
@@ -87,6 +87,9 @@ impl<'db> Ctx<'db> {
 
     /// Unify two types, updating the current substitution.
     crate fn unify_types(&mut self, t1: Ty, t2: Ty) -> Result<()> {
+        let t1 = self.subst_type(t1);
+        let t2 = self.subst_type(t2);
+
         match (&*t1, &*t2) {
             (Type::Unknown(u1), Type::Unknown(u2)) if u1 == u2 => Ok(()),
             (Type::Unknown(u), _) => self.solve_type(*u, t2),

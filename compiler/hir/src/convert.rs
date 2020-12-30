@@ -1472,13 +1472,47 @@ impl<'db> Converter<'db> {
     }
 
     fn convert_expr(&mut self, expr: &ast::Expr) -> ir::Expr {
-        if let ast::ExprKind::Parens { inner } = &expr.kind {
-            return self.convert_expr(inner);
-        }
-
         let id = self.next_id();
         let kind = match expr.kind {
-            ast::ExprKind::Parens { .. } => unreachable!(),
+            ast::ExprKind::Parens { ref inner } => {
+                if let ast::ExprKind::Ident { name } = inner.kind {
+                    match self.resolver.get(Ns::Values, name.symbol) {
+                        Some(res @ (ir::Res::Def(ir::DefKind::Func, _) | ir::Res::Local(_))) => {
+                            let func = ir::Expr {
+                                id: self.next_id(),
+                                span: inner.span,
+                                kind: ir::ExprKind::Ident { name, res },
+                            };
+
+                            ir::ExprKind::App {
+                                base: Box::new(func),
+                                args: Vec::new(),
+                            }
+                        }
+                        Some(_) => {
+                            self.db
+                                .to_diag_db()
+                                .error(format!("'{}' is not a function", name))
+                                .with_label(diagnostics::Label::primary(self.file, name.span))
+                                .finish();
+
+                            ir::ExprKind::Error
+                        }
+                        None => {
+                            self.db
+                                .to_diag_db()
+                                .error(format!("unknown function '{}'", name))
+                                .with_label(diagnostics::Label::primary(self.file, name.span))
+                                .finish();
+
+                            ir::ExprKind::Error
+                        }
+                    }
+                } else {
+                    self.id_counter -= 1;
+                    return self.convert_expr(inner);
+                }
+            }
             ast::ExprKind::Hole { name } => ir::ExprKind::Hole { name },
             ast::ExprKind::Ident { name } => match self.resolver.get(Ns::Values, name.symbol) {
                 Some(

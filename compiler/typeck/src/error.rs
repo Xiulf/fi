@@ -21,21 +21,24 @@ impl TypeError {
         match self {
             TypeError::Internal(err) => diags.error(err).finish(),
             TypeError::CyclicType(ty) => diags
-                .error(format!("cyclic type {}", Typed(db, &(), &ty)))
+                .error(format!("cyclic type `{}`", Typed(db, &(), &ty)))
                 .with_label(Label::primary(ty.file(), ty.span()))
                 .finish(),
             TypeError::Mismatch(a, b) => diags
                 .error(format!(
-                    "mismatched types {} != {}",
+                    "mismatched types `{}` != `{}`",
                     Typed(db, &(), &a),
                     Typed(db, &(), &b)
                 ))
                 .with_label(Label::primary(a.file(), a.span()))
-                .with_label(Label::secondary(b.file(), b.span()))
+                .with_label(
+                    Label::secondary(b.file(), b.span())
+                        .with_message(format!("type `{}` specified here", Typed(db, &(), &b))),
+                )
                 .finish(),
             TypeError::KindMismatch(a, b) => diags
                 .error(format!(
-                    "mismatched kinds {} != {}",
+                    "mismatched kinds `{}` != `{}`",
                     Typed(db, &(), &a),
                     Typed(db, &(), &b)
                 ))
@@ -44,7 +47,7 @@ impl TypeError {
                 .finish(),
             TypeError::HoleType(name, ty) => diags
                 .error(format!(
-                    "type hole {} was found to be of type {}",
+                    "hole '?{}' was found to be of type `{}`",
                     name,
                     Typed(db, &(), &ty)
                 ))
