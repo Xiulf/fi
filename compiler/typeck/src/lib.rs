@@ -1,5 +1,6 @@
 #![feature(crate_visibility_modifier)]
 #![feature(min_const_generics)]
+#![feature(box_patterns)]
 #![feature(try_blocks)]
 
 pub mod check;

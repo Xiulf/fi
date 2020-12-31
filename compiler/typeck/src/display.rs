@@ -17,6 +17,22 @@ impl<'a, S, T: TypedDisplay<S>> Display for Typed<'a, S, T> {
 
 impl TypedDisplay for Ty {
     fn typed_fmt(&self, db: &dyn TypeDatabase, _: &(), f: &mut Formatter) -> Result {
+        let is_func = |f: &Ty| -> bool {
+            if let Type::Ctor(f) = &**f {
+                *f == db.lang_items().fn_ty().owner
+            } else {
+                false
+            }
+        };
+
+        let is_record = |f: &Ty| -> bool {
+            if let Type::Ctor(f) = &**f {
+                *f == db.lang_items().record_ty().owner
+            } else {
+                false
+            }
+        };
+
         match &**self {
             Type::Error => write!(f, "{{error}}"),
             Type::Unknown(u) => write!(f, "?{}", u.0),
@@ -49,6 +65,28 @@ impl TypedDisplay for Ty {
                 let def = hir.def(*id);
 
                 def.name().fmt(f)
+            }
+            Type::App(fu, targs) if is_func(fu) && targs.len() == 2 => {
+                write!(
+                    f,
+                    "{} -> {}",
+                    Typed(db, &(), &targs[0]),
+                    Typed(db, &(), &targs[1])
+                )
+            }
+            Type::App(fu, targs) if is_record(fu) && targs.len() == 1 => {
+                if let Type::Row(fs, Some(tail)) = &*targs[0] {
+                    write!(
+                        f,
+                        "{{ {} | {} }}",
+                        Typed(db, &(), &fs),
+                        Typed(db, &(), tail)
+                    )
+                } else if let Type::Row(fs, None) = &*targs[0] {
+                    write!(f, "{{ {} }}", Typed(db, &(), &fs))
+                } else {
+                    unreachable!();
+                }
             }
             Type::App(base, args) | Type::KindApp(base, args) => {
                 if base.needs_parens() {
@@ -195,6 +233,15 @@ impl TypedDisplay<Types> for ir::Expr {
                 write!(f, ") :: {}", Typed(db, &(), ty))?;
 
                 Ok(())
+            }
+            ir::ExprKind::Field { base, field } => {
+                write!(
+                    f,
+                    "({}).{} :: {}",
+                    Typed(db, tys, &**base),
+                    field,
+                    Typed(db, &(), ty)
+                )
             }
             ir::ExprKind::If { cond, then, else_ } => {
                 writeln!(f, "(if {}", Typed(db, tys, &**cond))?;
