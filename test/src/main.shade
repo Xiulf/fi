@@ -5,7 +5,9 @@ import Prim
 [main]
 fn main :: (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = do
-    22
+    a <- 5
+    b <- 3
+    add_i32 a b
 
 [intrinsic]
 foreign fn add_i32 :: (Int32, Int32) -> Int32

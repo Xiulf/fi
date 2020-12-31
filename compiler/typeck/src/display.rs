@@ -243,6 +243,16 @@ impl TypedDisplay<Types> for ir::Expr {
                     Typed(db, &(), ty)
                 )
             }
+            ir::ExprKind::Do { block } => {
+                write!(f, "(do")?;
+
+                for stmt in &block.stmts {
+                    writeln!(f)?;
+                    write!(indent(f), "{}", Typed(db, tys, stmt))?;
+                }
+
+                write!(f, ") :: {}", Typed(db, &(), ty))
+            }
             ir::ExprKind::If { cond, then, else_ } => {
                 writeln!(f, "(if {}", Typed(db, tys, &**cond))?;
                 writeln!(indent(f), "then {}", Typed(db, tys, &**then))?;
@@ -274,6 +284,22 @@ impl TypedDisplay<Types> for ir::Expr {
                 write!(f, ") :: {}", Typed(db, &(), ty))
             }
             _ => unimplemented!(),
+        }
+    }
+}
+
+impl TypedDisplay<Types> for ir::Stmt {
+    fn typed_fmt(&self, db: &dyn TypeDatabase, tys: &Types, f: &mut Formatter) -> Result {
+        match &self.kind {
+            ir::StmtKind::Bind { binding } => {
+                write!(
+                    f,
+                    "{} <- {}",
+                    Typed(db, tys, &binding.pat),
+                    Typed(db, tys, &binding.val)
+                )
+            }
+            ir::StmtKind::Discard { expr } => expr.typed_fmt(db, tys, f),
         }
     }
 }

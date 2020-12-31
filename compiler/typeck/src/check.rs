@@ -122,6 +122,34 @@ impl<'db> Ctx<'db> {
 
                 ty
             }
+            (ir::ExprKind::App { base, args }, _) => {
+                let base_ty = self.infer_expr(base)?;
+                let ret = self.check_func_app(base_ty, args)?;
+                let elaborate = self.subsumes(ret, ty.clone())?;
+                let _ = elaborate(expr);
+
+                ty
+            }
+            (ir::ExprKind::Do { block }, _) => {
+                for (i, stmt) in block.stmts.iter().enumerate() {
+                    if i == block.stmts.len() - 1 {
+                        match &stmt.kind {
+                            ir::StmtKind::Discard { expr } => {
+                                self.check_expr(expr, ty.clone())?;
+                            }
+                            ir::StmtKind::Bind { .. } => {
+                                let unit = Ty::tuple(expr.span, self.file, List::empty());
+
+                                self.unify_types(ty.clone(), unit)?;
+                            }
+                        }
+                    } else {
+                        self.infer_stmt(stmt)?;
+                    }
+                }
+
+                ty
+            }
             (ir::ExprKind::If { cond, then, else_ }, _) => {
                 let bool_ty = self.db.lang_items().bool();
                 let bool_ty = Ty::ctor(cond.span, self.file, bool_ty.owner);
@@ -135,14 +163,6 @@ impl<'db> Ctx<'db> {
             (ir::ExprKind::Case { pred, arms }, _) => {
                 let tys = self.instantiate_for_binders(pred, arms)?;
                 let _ = self.check_binders(tys, ty.clone(), arms)?;
-
-                ty
-            }
-            (ir::ExprKind::App { base, args }, _) => {
-                let base_ty = self.infer_expr(base)?;
-                let ret = self.check_func_app(base_ty, args)?;
-                let elaborate = self.subsumes(ret, ty.clone())?;
-                let _ = elaborate(expr);
 
                 ty
             }

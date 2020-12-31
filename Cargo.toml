@@ -8,7 +8,6 @@ members = [
     "compiler/syntax",
     "compiler/hir",
     "compiler/typeck",
-    "compiler/check",
     "compiler/lower",
     "compiler/linker",
     "compiler/backend",

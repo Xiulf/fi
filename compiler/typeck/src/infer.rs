@@ -237,6 +237,14 @@ impl<'db> Ctx<'db> {
 
                 self.check_func_app(base_ty, args)?
             }
+            ir::ExprKind::Do { .. } => {
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let ty = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
+
+                self.check_expr(expr, ty.clone())?;
+
+                ty
+            }
             ir::ExprKind::If { cond, then, else_ } => {
                 let bool_ty = self.db.lang_items().bool();
                 let bool_ty = Ty::ctor(cond.span, self.file, bool_ty.owner);
@@ -282,6 +290,20 @@ impl<'db> Ctx<'db> {
         self.tys.insert(expr.id, ty.clone());
 
         Ok(ty)
+    }
+
+    crate fn infer_stmt(&mut self, stmt: &ir::Stmt) -> Result<Ty> {
+        match &stmt.kind {
+            ir::StmtKind::Bind { binding } => {
+                let ty = self.hir_ty(&binding.ty);
+
+                self.check_pat(&binding.pat, ty.clone())?;
+                self.check_expr(&binding.val, ty)?;
+
+                Ok(Ty::tuple(stmt.span, self.file, List::empty()))
+            }
+            ir::StmtKind::Discard { expr } => self.infer_expr(expr),
+        }
     }
 
     crate fn instantiate_for_binders(
