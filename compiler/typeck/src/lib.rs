@@ -107,6 +107,12 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     Ok(kind)
                 }
             }
+            ir::ItemKind::Foreign { ty, .. } => {
+                let ty = ctx.hir_ty(ty);
+                let ty_kind = ctx.ty_kind(ty.span(), file);
+
+                ctx.check_kind(ty, ty_kind)
+            }
             _ => unimplemented!(),
         },
         _ => unimplemented!(),

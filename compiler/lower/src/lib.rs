@@ -519,6 +519,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                             )
                         });
 
+                        // @INTRINSICS
                         return match &**item.name.symbol {
                             "unsafe_read" => {
                                 let (arg, arg_ty) = args.next().unwrap();

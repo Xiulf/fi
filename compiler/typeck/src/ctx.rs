@@ -195,6 +195,12 @@ impl<'db> Ctx<'db> {
 
                 Ty::forall(ty.span, self.file, vars, ret, None)
             }
+            ir::TypeKind::Tuple { tys } => {
+                let file = self.file;
+                let tys = tys.iter().map(|t| self.hir_ty(t));
+
+                Ty::tuple(ty.span, file, tys)
+            }
             _ => unimplemented!("hir_ty {:?}", ty),
         }
     }

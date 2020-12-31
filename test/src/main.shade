@@ -4,10 +4,15 @@ import Prim
 
 [main]
 fn main :: (Int32, Ptr (Ptr Byte)) -> Int32
-fn main argc argv = id 22
+fn main argc argv = add 3 4
 
-fn id :: forall a. a -> a
 fn id x = x
 
-fn test :: () -> Ptr ()
-fn test = ?x
+[intrinsic]
+foreign fn add_i32 :: (Int32, Int32) -> Int32
+
+trait Add l r o | l r -> o where
+    fn add :: (l, r) -> o
+
+impl addInt32 :: Add Int32 Int32 Int32 where
+    fn add a b = add_i32 a b
