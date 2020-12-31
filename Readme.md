@@ -1,30 +1,14 @@
 # Shade
-A programming language using Ruby style syntax. This project is still very much WIP. So far the language can do everything C can and it has Rust like enums.
+A programming language using Purescript style syntax. This project is still very much WIP.
 
 ## Todo
 - [ ] Windows support
-- [x] Using items from other modules (e.g. `using <namespace>`)
-- [ ] Pattern matching
-- [ ] Methods
-- [ ] Interfaces, similar to Rust traits or Swift protocols
-- [x] Reference counting garbage collection
+- [ ] Traits, similar to swift protocols and purescript typeclasses
+- [ ] Reference counting garbage collection
 - [ ] Builtin reference counting garbage collection
 
 ## Building
 To build the compiler you will need `cargo`, the easiest way to install it is via https://rustup.rs. With cargo installed run:
 ```shell
 $ cargo build
-```
-To globally install the compiler use:
-```shell
-$ cargo install
-```
-To run the test example:
-```shell
-$ cargo run -- build test --output-type=bin
-$ ./test/target/test
-
-or when installed:
-$ shadow build test --output-type=bin
-$ ./test/target/test
 ```
