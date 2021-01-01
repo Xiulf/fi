@@ -120,3 +120,65 @@ impl Linker for GccLinker {
         self.hint_dynamic();
     }
 }
+
+pub struct MsvcLinker {
+    cmd: Command,
+}
+
+impl MsvcLinker {
+    pub fn new(cmd: Command) -> Self {
+        MsvcLinker {
+            cmd,
+        }
+    }
+}
+
+impl Linker for MsvcLinker {
+    fn cmd(&mut self) -> &mut Command {
+        &mut self.cmd
+    }
+
+    fn set_output_type(&mut self, output_type: LinkOutputType, out_filename: &Path) {
+        match output_type {
+            LinkOutputType::Exe | LinkOutputType::Lib => {
+            }
+            LinkOutputType::Dylib => {
+                self.cmd.arg("/DLL");
+
+                let mut arg: OsString = "/IMPLIB:".into();
+
+                arg.push(out_filename.with_extension("dll.lib"));
+                self.cmd.arg(arg);
+            }
+        }
+    }
+
+    fn link_dylib(&mut self, name: &str) {
+        self.cmd.arg(format!("{}.lib", name));
+    }
+
+    fn link_staticlib(&mut self, name: &str) {
+        self.cmd.arg(format!("{}.lib", name));
+    }
+
+    fn include_path(&mut self, path: &Path) {
+        let mut arg = OsString::from("/LIBPATH:");
+
+        arg.push(path);
+        self.cmd.arg(arg);
+    }
+
+    fn output_filename(&mut self, path: &Path) {
+        let mut arg = OsString::from("/OUT:");
+
+        arg.push(path);
+        self.cmd.arg(arg);
+    }
+
+    fn add_object(&mut self, path: &Path) {
+        self.cmd.arg(path);
+    }
+
+    fn finalize(&mut self) {
+    }
+}

@@ -11,7 +11,11 @@ fn main argc argv = do
 fn print_args :: (Int32, Ptr (Ptr Byte)) -> ()
 fn print_args 0 _ = ()
 fn print_args n argv = do
+    puts (unsafe_read argv)
     print_args (sub_i32 n 1) (ptr_offset argv 8)
 
 [intrinsic] foreign fn sub_i32 :: (Int32, Int32) -> Int32
 [intrinsic] foreign fn ptr_offset :: forall t. (Ptr t, Int) -> Ptr t
+[intrinsic] foreign fn unsafe_read :: forall t. Ptr t -> t
+
+foreign fn puts :: Ptr Byte -> ()

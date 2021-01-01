@@ -79,24 +79,19 @@ pub fn assembly(
         let mut ab = ar::GnuBuilder::new(
             file,
             std::iter::once(
-                obj_file
+                os_str_to_bytes(obj_file
                     .path()
                     .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned(),
+                    .unwrap()),
             )
             .chain(data.children.iter().map(|&dep| {
                 let data = tree.get(dep);
                 let asm = db.assembly(lib, data.id);
 
-                asm.path()
+                os_str_to_bytes(asm.path()
                     .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned()
+                    .unwrap())
             }))
-            .map(|p| p.into_bytes())
             .collect(),
         );
 
@@ -110,10 +105,13 @@ pub fn assembly(
         }
 
         std::mem::drop(ab);
-        std::process::Command::new("ranlib")
-            .arg(&out_filename)
-            .status()
-            .unwrap();
+        
+        if cfg!(not(windows)) {
+            std::process::Command::new("ranlib")
+                .arg(&out_filename)
+                .status()
+                .unwrap();
+        }
     } else {
         linker.add_object(obj_file.path());
         linker.include_path(db.manifest(lib).package.target_dir.as_path());
@@ -136,4 +134,23 @@ pub fn assembly(
     }
 
     Arc::new(Assembly { path: out_filename })
+}
+
+#[cfg(windows)]
+fn os_str_to_bytes(os_str: &std::ffi::OsStr) -> Vec<u8> {
+    use std::os::windows::ffi::OsStrExt;
+    let utf16 = os_str.encode_wide().collect::<Vec<_>>();
+    let utf16 = utf16.as_slice();
+    let utf8 = utf16 as *const _;
+    let utf8 = unsafe { std::slice::from_raw_parts(utf8 as *const u8, utf16.len() * 2) };
+
+    utf8.to_vec()
+}
+
+#[cfg(not(windows))]
+fn os_str_to_bytes(os_str: &std::ffi::OsStr) -> Vec<u8> {
+    let utf8 = os_str as *const _ as *const [u8];
+    let utf8 = unsafe { &*utf8 };
+
+    utf8.to_vec()
 }
