@@ -5,9 +5,13 @@ import Prim
 [main]
 fn main :: (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = do
-    a <- 5
-    b <- 3
-    add_i32 a b
+    print_args argc argv
+    0
 
-[intrinsic]
-foreign fn add_i32 :: (Int32, Int32) -> Int32
+fn print_args :: (Int32, Ptr (Ptr Byte)) -> ()
+fn print_args 0 _ = ()
+fn print_args n argv = do
+    print_args (sub_i32 n 1) (ptr_offset argv 8)
+
+[intrinsic] foreign fn sub_i32 :: (Int32, Int32) -> Int32
+[intrinsic] foreign fn ptr_offset :: forall t. (Ptr t, Int) -> Ptr t

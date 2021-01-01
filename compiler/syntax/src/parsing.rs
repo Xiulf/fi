@@ -563,7 +563,7 @@ impl Parse for Decl {
                 impls.push(impl_);
             }
 
-            (Ident::dummy(), DeclKind::ImplChain { impls })
+            (impls[0].head.name, DeclKind::ImplChain { impls })
         } else {
             return input.error(
                 "expected 'foreign', 'fn', 'alias', 'data', 'trait' or 'impl'",

@@ -232,6 +232,27 @@ impl<'db> Ctx<'db> {
 
                 ret
             }
+            ir::ExprKind::Index { base, index } => {
+                let ty_kind = self.ty_kind(expr.span, self.file);
+                let figure_kind = self.figure_kind(expr.span, self.file);
+                let elem = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
+                let len = self.fresh_type_with_kind(expr.span, self.file, figure_kind);
+                let arr_ty = self.array_ty(base.span, self.file);
+                let arr_ty = Ty::app(
+                    base.span,
+                    self.file,
+                    arr_ty,
+                    List::from([elem.clone(), len]),
+                );
+
+                let uint_ty = self.db.lang_items().uint();
+                let uint_ty = self.db.typecheck(uint_ty.owner).ty.clone();
+
+                self.check_expr(index, uint_ty)?;
+                self.check_expr(base, arr_ty)?;
+
+                elem
+            }
             ir::ExprKind::App { base, args } => {
                 let base_ty = self.infer_expr(base)?;
 

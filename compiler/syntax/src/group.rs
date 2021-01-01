@@ -150,7 +150,7 @@ impl<'ast> Iterator for DeclGroups<'ast> {
 
         let mut pos = self.start;
         let name = self.decls[pos].name.symbol;
-        let kind = self.decls[pos].group_kind();
+        let mut kind = self.decls[pos].group_kind();
 
         pos += 1;
 
@@ -161,6 +161,7 @@ impl<'ast> Iterator for DeclGroups<'ast> {
             let kind2 = self.decls[pos].group_kind();
 
             if kind == kind2 {
+                kind = kind2;
                 pos += 1;
             } else {
                 break;

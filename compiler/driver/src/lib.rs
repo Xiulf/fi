@@ -1,7 +1,7 @@
 use backend::BackendDatabase;
 use hir::HirDatabase;
 use source::SourceDatabase;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::path::Path;
 
 #[salsa::database(
@@ -17,7 +17,6 @@ pub struct CompilerDatabase {
     storage: salsa::Storage<Self>,
     diags: RefCell<Vec<diagnostics::Diagnostic>>,
     lib_ids: u32,
-    // infer_ids: Cell<u64>,
 }
 
 impl salsa::Database for CompilerDatabase {}
@@ -95,14 +94,14 @@ pub fn run() {
     db.set_libs(vec![lib]);
 
     for mdata in db.module_tree(lib).toposort(&db) {
-        // db.assembly(lib, mdata.id);
+        db.assembly(lib, mdata.id);
         use typeck::{display::Typed, TypeDatabase};
         let hir = db.module_hir(mdata.file);
-        
+
         for (_, item) in &hir.items {
             if let hir::ir::ItemKind::Func { body, .. } = &item.kind {
                 let types = db.typecheck(item.id.owner);
-        
+
                 println!("{} :: {}", item.name, Typed(&db, &(), &types.ty));
                 println!(
                     "{} {}",

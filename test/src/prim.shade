@@ -14,7 +14,9 @@ alias Str = Slice Byte
 
 -- [if(pointer_size = 16)] alias Uint = Uint16
 -- [if(pointer_size = 32)] alias Uint = Uint32
-[if(pointer_size = 64)] alias Uint = Uint64
+[lang("uint")]
+[if(pointer_size = 64)]
+alias Uint = Uint64
 
 [lang("type_kind"  )] data Type
 [lang("figure_kind")] data Figure

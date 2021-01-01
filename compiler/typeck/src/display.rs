@@ -208,6 +208,8 @@ impl TypedDisplay<Types> for ir::Expr {
             ir::ExprKind::Float { bits } => {
                 write!(f, "{} :: {}", f64::from_bits(*bits), Typed(db, &(), ty))
             }
+            ir::ExprKind::Char { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
+            ir::ExprKind::Str { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
             ir::ExprKind::Ident { name, .. } => write!(f, "{} :: {}", name, Typed(db, &(), ty)),
             ir::ExprKind::Tuple { exprs } => {
                 write!(f, "(")?;
@@ -221,6 +223,19 @@ impl TypedDisplay<Types> for ir::Expr {
                 }
 
                 write!(f, ") :: {}", Typed(db, &(), ty))
+            }
+            ir::ExprKind::Array { exprs } => {
+                write!(f, "[")?;
+
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+
+                    write!(f, "{}", Typed(db, tys, expr))?;
+                }
+
+                write!(f, "] :: {}", Typed(db, &(), ty))
             }
             ir::ExprKind::App { base, args } => {
                 write!(f, "({}", Typed(db, tys, &**base))?;
@@ -240,6 +255,15 @@ impl TypedDisplay<Types> for ir::Expr {
                     "({}).{} :: {}",
                     Typed(db, tys, &**base),
                     field,
+                    Typed(db, &(), ty)
+                )
+            }
+            ir::ExprKind::Index { base, index } => {
+                write!(
+                    f,
+                    "({})[{}] :: {}",
+                    Typed(db, tys, &**base),
+                    Typed(db, tys, &**index),
                     Typed(db, &(), ty)
                 )
             }
@@ -283,6 +307,7 @@ impl TypedDisplay<Types> for ir::Expr {
 
                 write!(f, ") :: {}", Typed(db, &(), ty))
             }
+            ir::ExprKind::Typed { expr, .. } => expr.typed_fmt(db, tys, f),
             _ => unimplemented!(),
         }
     }
@@ -324,9 +349,16 @@ impl TypedDisplay<Types> for ir::Pat {
 
         match &self.kind {
             ir::PatKind::Error => write!(f, "{{error}} :: {}", Typed(db, &(), ty)),
+            ir::PatKind::Wildcard => write!(f, "_ :: {}", Typed(db, &(), ty)),
             ir::PatKind::Bind { name, sub: None } => {
                 write!(f, "{} :: {}", name, Typed(db, &(), ty))
             }
+            ir::PatKind::Int { val } => write!(f, "{} :: {}", val, Typed(db, &(), ty)),
+            ir::PatKind::Float { bits } => {
+                write!(f, "{} :: {}", f64::from_bits(*bits), Typed(db, &(), ty))
+            }
+            ir::PatKind::Char { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
+            ir::PatKind::Str { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
             _ => unimplemented!(),
         }
     }

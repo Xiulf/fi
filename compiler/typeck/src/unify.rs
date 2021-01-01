@@ -50,6 +50,14 @@ impl<'db> Ctx<'db> {
             panic!("Unification variable has no kind");
         };
 
+        println!(
+            "?{} = {}, {} == {}",
+            u.0,
+            crate::display::Typed(self.db, &(), &t),
+            crate::display::Typed(self.db, &(), &k1),
+            crate::display::Typed(self.db, &(), &k2),
+        );
+
         let t2 = self.instantiate_kind(t, k1, k2)?;
 
         self.subst.tys.insert(u, t2);

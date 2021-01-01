@@ -130,6 +130,19 @@ impl<'db> Ctx<'db> {
 
                 ty
             }
+            (ir::ExprKind::Index { base, index }, _) => {
+                let figure_kind = self.figure_kind(expr.span, self.file);
+                let len = self.fresh_type_with_kind(expr.span, self.file, figure_kind);
+                let arr_ty = self.array_ty(base.span, self.file);
+                let arr_ty = Ty::app(base.span, self.file, arr_ty, List::from([ty.clone(), len]));
+                let uint_ty = self.db.lang_items().uint();
+                let uint_ty = self.db.typecheck(uint_ty.owner).ty.clone();
+
+                self.check_expr(index, uint_ty)?;
+                self.check_expr(base, arr_ty)?;
+
+                ty
+            }
             (ir::ExprKind::Do { block }, _) => {
                 for (i, stmt) in block.stmts.iter().enumerate() {
                     if i == block.stmts.len() - 1 {
