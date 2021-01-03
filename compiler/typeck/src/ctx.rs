@@ -162,6 +162,7 @@ impl<'db> Ctx<'db> {
         match &ty.kind {
             ir::TypeKind::Error => Ty::error(ty.span, self.file),
             ir::TypeKind::Int { val } => Ty::int(ty.span, self.file, *val),
+            ir::TypeKind::Str { val } => Ty::string(ty.span, self.file, val.clone()),
             ir::TypeKind::Func { params, ret } => {
                 let func_ty = self.db.lang_items().fn_ty();
                 let func_ty = Ty::ctor(ty.span, self.file, func_ty.owner);
@@ -186,6 +187,29 @@ impl<'db> Ctx<'db> {
                 ir::Res::Def(_, _) => unreachable!(),
                 ir::Res::Local(id) => Ty::var(ty.span, self.file, TypeVar(*id)),
             },
+            ir::TypeKind::Tuple { tys } => {
+                let file = self.file;
+                let tys = tys.iter().map(|t| self.hir_ty(t));
+
+                Ty::tuple(ty.span, file, tys)
+            }
+            ir::TypeKind::Record { row } => {
+                let fields = row
+                    .fields
+                    .iter()
+                    .map(|f| Field {
+                        span: f.span,
+                        name: f.name.symbol,
+                        ty: self.hir_ty(&f.ty),
+                    })
+                    .collect::<List<_>>();
+
+                let tail = row.tail.as_ref().map(|t| self.hir_ty(t));
+                let row = Ty::row(row.span, self.file, fields, tail);
+                let record_ty = self.record_ty(ty.span, self.file);
+
+                Ty::app(ty.span, self.file, record_ty, List::from([row]))
+            }
             ir::TypeKind::Forall { vars, ty: ret } => {
                 let ret = self.hir_ty(ret);
                 let vars = vars
@@ -195,13 +219,35 @@ impl<'db> Ctx<'db> {
 
                 Ty::forall(ty.span, self.file, vars, ret, None)
             }
-            ir::TypeKind::Tuple { tys } => {
-                let file = self.file;
-                let tys = tys.iter().map(|t| self.hir_ty(t));
+            ir::TypeKind::Cons { cs, ty: ret } => {
+                let ctnt = Ctnt {
+                    trait_: cs.trait_,
+                    tys: cs.tys.iter().map(|t| self.hir_ty(t)).collect(),
+                };
 
-                Ty::tuple(ty.span, file, tys)
+                let ret = self.hir_ty(ret);
+
+                Ty::ctnt(ty.span, self.file, ctnt, ret)
             }
-            _ => unimplemented!("hir_ty {:?}", ty),
+            ir::TypeKind::Hole { name } => {
+                let ty = self.fresh_type(ty.span, self.file);
+
+                self.errors.push(TypeError::HoleType(*name, ty.clone()));
+
+                ty
+            }
+            ir::TypeKind::Kinded { ty: ret, kind } => {
+                let ret = self.hir_ty(ret);
+                let kind = self.hir_ty(kind);
+
+                match self.check_kind(ret, kind) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        e.report(self.db);
+                        Ty::error(ty.span, self.file)
+                    }
+                }
+            }
         }
     }
 }

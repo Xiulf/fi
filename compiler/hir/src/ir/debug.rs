@@ -633,6 +633,7 @@ impl Debug for Type {
                 write!(indent(f), "{:?}", res)
             }
             TypeKind::Int { val } => write!(f, "Int id = {:?}, val = {:?}", self.id, val),
+            TypeKind::Str { val } => write!(f, "Str id = {:?}, val = {:?}", self.id, val),
             TypeKind::App { base, args } => {
                 writeln!(f, "App id = {:?}", self.id)?;
                 write!(indent(f), "{:?}", base)?;

@@ -13,7 +13,10 @@ impl<'db> Ctx<'db> {
 
     fn check_body_(&mut self, span: ir::Span, body: &ir::Body, ty: Ty) -> Result<()> {
         match &*ty {
-            Type::Ctnt(_ctnt, ty) => self.check_body_(span, body, ty.clone()),
+            Type::Ctnt(_ctnt, ty) => {
+                println!("bind trait");
+                self.check_body_(span, body, ty.clone())
+            }
             Type::ForAll(vars, ret, _) => {
                 let scope = self.new_skolem_scope();
                 let skolems = (0..vars.len())
@@ -77,6 +80,11 @@ impl<'db> Ctx<'db> {
                 let _ = self.check_expr(expr, sk.clone())?;
 
                 Ty::forall(ty.span(), ty.file(), vars.clone(), t1.clone(), scope)
+            }
+            (_, Type::Ctnt(_ctnt, t1)) => {
+                println!("bind trait");
+                self.check_expr(expr, t1.clone())?;
+                ty
             }
             (_, Type::Unknown(_)) => {
                 let infer = self.infer_expr(expr)?;
@@ -253,7 +261,10 @@ impl<'db> Ctx<'db> {
 
                 self.check_func_app(repl, args)
             }
-            Type::Ctnt(..) => unimplemented!(),
+            Type::Ctnt(_ctnt, ret) => {
+                println!("find impl");
+                self.check_func_app(ret.clone(), args)
+            }
             _ => {
                 let params = args
                     .iter()

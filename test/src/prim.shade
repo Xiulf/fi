@@ -50,7 +50,7 @@ data Fn :: (Type, Type) -> Type
 [lang("record_ty")]
 data Record :: Row Type -> Type
 
-[repr("ptr")]
+[repr("ptr", valid_range = "1..")]
 [lang("ptr_ty")]
 data Ptr :: Type -> Type
 
@@ -73,3 +73,5 @@ impl IntegerI128 :: Integer Int128
 
 impl DecimalF32 :: Decimal Float32
 impl DecimalF64 :: Decimal Float64
+
+[lang("impl_ty")] data Impl (s :: Symbol)

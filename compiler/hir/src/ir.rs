@@ -436,6 +436,7 @@ pub enum TypeKind {
     Hole { name: Ident },
     Ident { res: Res },
     Int { val: u128 },
+    Str { val: String },
     App { base: Box<Type>, args: Vec<Type> },
     Tuple { tys: Vec<Type> },
     Record { row: Row },

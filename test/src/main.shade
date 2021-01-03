@@ -15,7 +15,18 @@ fn print_args n argv = do
     print_args (sub_i32 n 1) (ptr_offset argv 8)
 
 [intrinsic] foreign fn sub_i32 :: (Int32, Int32) -> Int32
-[intrinsic] foreign fn ptr_offset :: forall t. (Ptr t, Int) -> Ptr t
-[intrinsic] foreign fn unsafe_read :: forall t. Ptr t -> t
+[intrinsic] foreign fn ptr_offset :: Unsafe => forall t. (Ptr t, Int) -> Ptr t
+[intrinsic] foreign fn unsafe_read :: Unsafe => forall t. Ptr t -> t
 
 foreign fn puts :: Ptr Byte -> ()
+
+trait Unsafe
+
+-- fn zero :: forall a o. Sub a a o => a -> o
+-- fn zero a = sub a a
+-- 
+-- trait Sub l r o | l r -> o where
+--     fn sub :: (l, r) -> o
+-- 
+-- impl subInt32 :: Sub Int32 Int32 Int32 where
+--     fn sub a b = sub_i32 a b

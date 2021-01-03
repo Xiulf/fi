@@ -9,7 +9,6 @@ impl<'db> Ctx<'db> {
         match &*ty {
             Type::Error => Ok((ty.clone(), Ty::error(ty.span(), ty.file()))),
             Type::Ctor(id) => Ok((ty.clone(), self.db.typecheck(*id).ty.clone() ^ ty.loc())),
-            Type::Ctnt(_ctnt, _ty) => unimplemented!(),
             Type::Int(_) => Ok((ty.clone(), self.figure_kind(ty.span(), ty.file()))),
             Type::String(_) => Ok((ty.clone(), self.symbol_kind(ty.span(), ty.file()))),
             Type::Tuple(_) => Ok((ty.clone(), self.ty_kind(ty.span(), ty.file()))),
@@ -98,6 +97,15 @@ impl<'db> Ctx<'db> {
                 let ty = Ty::forall(ty.span(), ty.file(), var_kinds, ty2, *sc);
 
                 Ok((ty.clone(), self.ty_kind(ty.span(), ty.file())))
+            }
+            Type::Ctnt(ctnt, ret) => {
+                // @TODO: check/apply constraint
+                let ty_kind = self.ty_kind(ret.span(), ret.file());
+                let ret = self.check_kind(ret.clone(), ty_kind)?;
+                let kind = self.ty_kind(ty.span(), ty.file());
+                let ty = Ty::ctnt(ty.span(), ty.file(), ctnt.clone(), ret);
+
+                Ok((ty, kind))
             }
             _ => unimplemented!("infer kind: {}", crate::display::Typed(self.db, &(), &ty)),
         }

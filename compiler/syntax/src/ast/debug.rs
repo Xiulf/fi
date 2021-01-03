@@ -755,6 +755,7 @@ impl Debug for Type {
             }
             TypeKind::Hole { name } => write!(f, "Hole name = {:?}", &**name.symbol),
             TypeKind::Int { val } => write!(f, "Int val = {}", val),
+            TypeKind::Str { val } => write!(f, "Str val = {:?}", val),
             TypeKind::Ident { name } => write!(f, "Ident name = {:?}", &**name.symbol),
             TypeKind::Qual { module, name } => write!(
                 f,

@@ -1,4 +1,7 @@
 #![feature(label_break_value)]
+#![feature(partition_point)]
+
+pub mod pattern;
 
 use hir::ir as hir;
 use lowlang::ir;
@@ -19,6 +22,7 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
 
     let mut low = converter.finish();
 
+    // println!("{}", low);
     lowlang::analysis::mandatory(&mut low, &db.target(lib));
 
     Arc::new(low)
@@ -367,7 +371,9 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                     })
                     .collect();
 
-                self.convert_arms(preds, arms, ty)
+                let case = self.convert_arms(preds, arms);
+
+                self.compile_case(case, ty)
             }
             hir::ExprKind::Do { block } => self.convert_block(block, ty),
             hir::ExprKind::Typed { expr, .. } => self.convert_expr(expr),
@@ -382,9 +388,8 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                     let op = self.convert_expr(&binding.val);
                     let bind_ty = &self.types.tys[&binding.val.id];
                     let op = self.builder.placed(op, lower_type(self.db, bind_ty));
-                    let block = self.builder.get_block();
 
-                    self.convert_pat(op, &binding.pat, block, block);
+                    self.convert_binder_pat(op, &binding.pat);
                 }
                 hir::StmtKind::Discard { expr } => {
                     let op = self.convert_expr(expr);
@@ -404,88 +409,24 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         ir::Operand::Const(ir::Const::Undefined(ty))
     }
 
-    fn convert_arms(
-        &mut self,
-        preds: Vec<ir::Place>,
-        arms: &[hir::CaseArm],
-        ty: ir::Type,
-    ) -> ir::Operand {
-        let res = self.builder.create_tmp(ty);
-        let res = ir::Place::new(res);
-        let exit_block = self.builder.create_block();
-
-        for arm in arms {
-            let mut next = self.builder.create_block();
-
-            for (pred, pat) in preds.iter().zip(&arm.pats) {
-                next = self.convert_pat(pred.clone(), pat, next, exit_block);
-            }
-
-            self.builder.jump(next);
-            self.builder.set_block(next);
-            self.convert_guarded(&arm.val, res.clone(), exit_block);
-            self.builder.jump(exit_block);
-        }
-
-        self.builder.jump(exit_block);
-        self.builder.set_block(exit_block);
-
-        ir::Operand::Place(res)
-    }
-
-    fn convert_guarded(&mut self, guarded: &hir::Guarded, res: ir::Place, _exit_block: ir::Block) {
-        match guarded {
-            hir::Guarded::Unconditional(expr) => {
-                let val = self.convert_expr(expr);
-
-                self.builder.use_op(res, val);
-            }
-            hir::Guarded::Guarded(_) => unimplemented!(),
+    fn convert_binder_pat(&mut self, pred: ir::Place, pat: &hir::Pat) {
+        if let Some(pat) = self.convert_pat(pat, pred) {
+            self.bind_pat(pat);
         }
     }
 
-    fn convert_pat(
-        &mut self,
-        pred: ir::Place,
-        pat: &hir::Pat,
-        next_block: ir::Block,
-        exit_block: ir::Block,
-    ) -> ir::Block {
-        let ty = lower_type(self.db, &self.types.tys[&pat.id]);
-
-        match &pat.kind {
-            hir::PatKind::Error => unreachable!(),
-            hir::PatKind::Wildcard => next_block,
-            hir::PatKind::Bind { sub: None, .. } => {
-                if pred.elems.is_empty() && self.builder.local_ty(pred.local) == ty {
-                    self.locals.insert(pat.id, pred.local);
-                    next_block
-                } else {
-                    let local = self.builder.create_var(ty);
-
-                    self.locals.insert(pat.id, local);
-                    self.builder
-                        .use_op(ir::Place::new(local), ir::Operand::Place(pred));
-
-                    next_block
+    fn bind_pat(&mut self, pat: pattern::Pattern) {
+        match pat {
+            pattern::Pattern::Bind(local, place) => {
+                self.builder
+                    .use_op(ir::Place::new(local), ir::Operand::Place(place));
+            }
+            pattern::Pattern::Seq(pats) => {
+                for pat in pats {
+                    self.bind_pat(pat);
                 }
             }
-            hir::PatKind::Ctor { ctor: _, pats } => {
-                // @todo: implement this properly
-                for (i, pat) in pats.iter().enumerate() {
-                    self.convert_pat(pred.clone().field(i), pat, next_block, exit_block);
-                }
-
-                next_block
-            }
-            hir::PatKind::Record { fields } => {
-                for (i, field) in fields.iter().enumerate() {
-                    self.convert_pat(pred.clone().field(i), &field.val, next_block, exit_block);
-                }
-
-                next_block
-            }
-            _ => next_block,
+            _ => unreachable!(),
         }
     }
 

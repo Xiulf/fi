@@ -452,6 +452,7 @@ pub enum TypeKind {
     Hole { name: Ident },
     Parens { inner: Box<Type> },
     Int { val: u128 },
+    Str { val: String },
     Ident { name: Ident },
     Qual { module: Ident, name: Ident },
     App { base: Box<Type>, args: Vec<Type> },

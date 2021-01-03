@@ -108,14 +108,48 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     Ok(kind)
                 }
             }
-            ir::ItemKind::Foreign { ty, .. } => try {
-                let ty = ctx.hir_ty(ty);
-                let ty_kind = ctx.ty_kind(ty.span(), file);
-                let elab_ty = ctx.check_kind(ty, ty_kind)?;
+            ir::ItemKind::Foreign { ty, .. } => {
+                try {
+                    let ty = ctx.hir_ty(ty);
+                    let ty_kind = ctx.ty_kind(ty.span(), file);
+                    let elab_ty = ctx.check_kind(ty, ty_kind)?;
 
-                ctx.subst_type(elab_ty)
+                    ctx.subst_type(elab_ty)
+                }
             }
             _ => unimplemented!(),
+        },
+        ir::Def::TraitItem(item) => match &item.kind {
+            ir::TraitItemKind::Func { ty } => {
+                try {
+                    let ty = ctx.hir_ty(ty);
+                    let trait_ = hir.items[&item.owner].trait_();
+                    let vars = trait_
+                        .vars
+                        .iter()
+                        .map(|v| (ty::TypeVar(v.id), Some(ctx.hir_ty(&v.kind))))
+                        .collect::<ty::List<_>>();
+
+                    let ty = ty::Ty::ctnt(
+                        ty.span(),
+                        file,
+                        ty::Ctnt {
+                            trait_: item.owner.owner,
+                            tys: (&vars)
+                                .into_iter()
+                                .map(|(v, _)| ty::Ty::var(ty.span(), ty.file(), v))
+                                .collect(),
+                        },
+                        ty,
+                    );
+
+                    let ty = ty::Ty::forall(ty.span(), ty.file(), vars, ty, None);
+                    let ty_kind = ctx.ty_kind(ty.span(), file);
+                    let elab_ty = ctx.check_kind(ty, ty_kind)?;
+
+                    ctx.subst_type(elab_ty)
+                }
+            }
         },
         _ => unimplemented!(),
     };

@@ -90,9 +90,9 @@ impl<'db> Ctx<'db> {
                     let ty = self.tys[id].clone();
                     let ty = self.introduce_skolem_scope(ty);
 
-                    if let Type::Ctnt(_ctnt, _ty) = &*ty {
-                        todo!();
-                        // ty.clone()
+                    if let Type::Ctnt(_ctnt, ty) = &*ty {
+                        println!("find impl");
+                        ty.clone()
                     } else {
                         ty
                     }
@@ -115,9 +115,9 @@ impl<'db> Ctx<'db> {
 
                     let ty = self.introduce_skolem_scope(ty);
 
-                    if let Type::Ctnt(_ctnt, _ty) = &*ty {
-                        todo!();
-                        // ty.clone()
+                    if let Type::Ctnt(_ctnt, ty) = &*ty {
+                        println!("find impl");
+                        ty.clone()
                     } else {
                         ty
                     }

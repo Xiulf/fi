@@ -1881,6 +1881,7 @@ impl<'db> Converter<'db> {
                 }
             }
             ast::TypeKind::Int { val } => ir::TypeKind::Int { val },
+            ast::TypeKind::Str { ref val } => ir::TypeKind::Str { val: val.clone() },
             ast::TypeKind::App { ref base, ref args } => ir::TypeKind::App {
                 base: Box::new(self.convert_type(base)),
                 args: args.iter().map(|t| self.convert_type(t)).collect(),
