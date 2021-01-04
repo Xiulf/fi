@@ -79,6 +79,14 @@ impl<'db> Ctx<'db> {
         })
     }
 
+    /// Apply a substitution to a type.
+    crate fn subst_ctnt(&self, ctnt: Ctnt) -> Ctnt {
+        Ctnt {
+            tys: ctnt.tys.into_iter().map(|t| self.subst_type(t)).collect(),
+            ..ctnt
+        }
+    }
+
     /// Make sure that an unknown does not occur in a type.
     crate fn occurs_check(&mut self, u: Unknown, t: &Ty) -> Result<()> {
         if let Type::Unknown(_) = **t {

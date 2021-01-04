@@ -147,6 +147,22 @@ impl TypedDisplay for Ctnt {
     }
 }
 
+impl TypedDisplay for Impl {
+    fn typed_fmt(&self, db: &dyn TypeDatabase, _: &(), f: &mut Formatter) -> Result {
+        let file = db.module_tree(self.trait_.lib).file(self.trait_.module);
+        let hir = db.module_hir(file);
+        let def = hir.def(self.trait_);
+
+        def.name().fmt(f)?;
+
+        for ty in &self.tys {
+            write!(f, " {}", Typed(db, &(), &ty))?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Display for TypeVar {
     fn fmt(&self, f: &mut Formatter) -> Result {
         let mut num = if self.0.local_id.0 > i32::max_value as u32 {

@@ -1,4 +1,4 @@
-[out_type("staticlib")]
+-- [out_type("staticlib")]
 module Prim where
 
 alias Byte = Uint8
@@ -60,18 +60,18 @@ data Ptr :: Type -> Type
 [lang("integer_trait")] trait Integer t
 [lang("decimal_trait")] trait Decimal t
 
-impl IntegerU8   :: Integer Uint8
-impl IntegerU16  :: Integer Uint16
-impl IntegerU32  :: Integer Uint32
-impl IntegerU64  :: Integer Uint64
-impl Integeru128 :: Integer Uint128
-impl IntegerI8   :: Integer Int8
-impl IntegerI16  :: Integer Int16
-impl IntegerI32  :: Integer Int32
-impl IntegerI64  :: Integer Int64
-impl IntegerI128 :: Integer Int128
+impl integerU8   :: Integer Uint8
+impl integerU16  :: Integer Uint16
+impl integerU32  :: Integer Uint32
+impl integerU64  :: Integer Uint64
+impl integeru128 :: Integer Uint128
+impl integerI8   :: Integer Int8
+impl integerI16  :: Integer Int16
+impl integerI32  :: Integer Int32
+impl integerI64  :: Integer Int64
+impl integerI128 :: Integer Int128
 
-impl DecimalF32 :: Decimal Float32
-impl DecimalF64 :: Decimal Float64
+impl decimalF32 :: Decimal Float32
+impl decimalF64 :: Decimal Float64
 
 [lang("impl_ty")] data Impl (s :: Symbol)

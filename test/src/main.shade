@@ -1,14 +1,15 @@
 module Main where
 
-import Prim
+import Core
 
 [main]
-fn main :: (Int32, Ptr (Ptr Byte)) -> Int32
+fn main :: Unsafe => (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = do
-    print_args argc argv
-    0
+    -- print_args argc argv
+    add 1 2
+    -- 0
 
-fn print_args :: (Int32, Ptr (Ptr Byte)) -> ()
+fn print_args :: Unsafe => (Int32, Ptr (Ptr Byte)) -> ()
 fn print_args 0 _ = ()
 fn print_args n argv = do
     puts (unsafe_read argv)

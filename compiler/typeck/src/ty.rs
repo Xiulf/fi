@@ -55,6 +55,15 @@ pub struct Variant {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ctnt {
+    pub span: Span,
+    pub file: FileId,
+    pub trait_: DefId,
+    pub tys: List<Ty>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Impl {
+    pub id: DefId,
     pub trait_: DefId,
     pub tys: List<Ty>,
 }
@@ -310,10 +319,7 @@ impl Ty {
                     .map(|t| t.everywhere(f))
                     .collect::<List<_>>();
                 let t2 = t2.clone().everywhere(f);
-                let ctnt = Ctnt {
-                    tys,
-                    trait_: ctnt.trait_,
-                };
+                let ctnt = Ctnt { tys, ..*ctnt };
 
                 f(Ty::ctnt(self.span(), self.file(), ctnt, t2))
             }
@@ -382,10 +388,7 @@ impl Ty {
                     .map(|t| t.everywhere_result(f))
                     .collect::<Result<_>>()?;
                 let t2 = t2.clone().everywhere_result(f)?;
-                let ctnt = Ctnt {
-                    tys,
-                    trait_: ctnt.trait_,
-                };
+                let ctnt = Ctnt { tys, ..*ctnt };
 
                 f(Ty::ctnt(self.span(), self.file(), ctnt, t2))
             }
@@ -490,6 +493,18 @@ impl<T: Clone> Iterator for ListIter<T> {
             self.1 += 1;
 
             Some(self.0[self.1 - 1].clone())
+        }
+    }
+}
+
+impl std::ops::BitXor<(Span, FileId)> for Ctnt {
+    type Output = Self;
+
+    fn bitxor(self, rhs: (Span, FileId)) -> Self {
+        Ctnt {
+            span: rhs.0,
+            file: rhs.1,
+            ..self
         }
     }
 }

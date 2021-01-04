@@ -11,7 +11,15 @@ impl<'db> Ctx<'db> {
             Type::Ctor(id) => Ok((ty.clone(), self.db.typecheck(*id).ty.clone() ^ ty.loc())),
             Type::Int(_) => Ok((ty.clone(), self.figure_kind(ty.span(), ty.file()))),
             Type::String(_) => Ok((ty.clone(), self.symbol_kind(ty.span(), ty.file()))),
-            Type::Tuple(_) => Ok((ty.clone(), self.ty_kind(ty.span(), ty.file()))),
+            Type::Tuple(tys) => {
+                for ty in tys {
+                    let ty_kind = self.ty_kind(ty.span(), ty.file());
+
+                    self.check_kind(ty, ty_kind)?;
+                }
+
+                Ok((ty.clone(), self.ty_kind(ty.span(), ty.file())))
+            }
             Type::Var(v) => {
                 let kind = self.tys[&v.0].clone();
 

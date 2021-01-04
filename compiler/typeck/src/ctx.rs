@@ -12,6 +12,8 @@ pub struct Ctx<'db> {
     crate next_scope: u64,
     crate subst: Substitution,
     crate tys: HashMap<ir::HirId, Ty>,
+    crate bounds: Vec<Ctnt>,
+    crate ctnts: Vec<(ir::HirId, Ctnt, Vec<Ctnt>)>,
     crate errors: Vec<TypeError>,
 }
 
@@ -33,6 +35,8 @@ impl<'db> Ctx<'db> {
             next_scope: 0,
             subst: Substitution::empty(),
             tys: HashMap::new(),
+            bounds: Vec::new(),
+            ctnts: Vec::new(),
             errors: Vec::new(),
         }
     }
@@ -119,6 +123,15 @@ impl<'db> Ctx<'db> {
         } else {
             ty
         }
+    }
+
+    crate fn constrain(&self, unsolved: Vec<Ctnt>, ty: Ty) -> Ty {
+        let span = ty.span();
+        let file = ty.file();
+
+        unsolved
+            .into_iter()
+            .rfold(ty, |ret, ctnt| Ty::ctnt(span, file, ctnt, ret))
     }
 
     crate fn generalize(&mut self, ty: Ty, def: ir::DefId) -> Ty {
@@ -221,6 +234,8 @@ impl<'db> Ctx<'db> {
             }
             ir::TypeKind::Cons { cs, ty: ret } => {
                 let ctnt = Ctnt {
+                    span: cs.span,
+                    file: self.file,
                     trait_: cs.trait_,
                     tys: cs.tys.iter().map(|t| self.hir_ty(t)).collect(),
                 };

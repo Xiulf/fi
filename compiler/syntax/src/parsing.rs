@@ -87,7 +87,7 @@ impl Parse for Module {
         }
 
         let _ = input.parse::<TModule>()?;
-        let name = input.parse()?;
+        let name = Module::parse_name(input)?;
         let exports = input.parse()?;
         let _ = input.parse::<TWhere>()?;
         let _ = input.parse::<LytStart>()?;
@@ -125,6 +125,28 @@ impl Parse for Module {
             exports,
             imports,
             decls,
+        })
+    }
+}
+
+impl Module {
+    fn parse_name(input: ParseStream) -> Result<Ident> {
+        let mut parts = vec![input.parse::<Ident>()?];
+
+        while !input.is_empty() && input.peek::<TDot>() {
+            input.parse::<TDot>()?;
+            parts.push(input.parse()?);
+        }
+
+        Ok(Ident {
+            span: parts[0].span.merge(parts[parts.len() - 1].span),
+            symbol: Symbol::new(
+                parts
+                    .into_iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<_>>()
+                    .join("."),
+            ),
         })
     }
 }
@@ -296,7 +318,7 @@ impl Parse for ImportDecl {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let _ = input.parse::<TImport>()?;
-        let module = input.parse()?;
+        let module = Module::parse_name(input)?;
         let names = if input.peek::<THiding>() || input.peek::<TLParen>() {
             let hiding = input.parse::<THiding>().is_ok();
             let _ = input.parse::<TLParen>()?;

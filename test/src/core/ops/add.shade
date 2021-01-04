@@ -1,0 +1,11 @@
+module Core.Ops.Add where
+
+import Prim
+
+trait Add l r o | l r -> o where
+    fn add :: (l, r) -> o
+
+impl addInt32 :: Add Int32 Int32 Int32 where
+    fn add a b = add_i32 a b
+
+[intrinsic] foreign fn add_i32 :: (Int32, Int32) -> Int32

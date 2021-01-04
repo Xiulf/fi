@@ -134,6 +134,13 @@ pub struct TraitHead {
     pub span: Span,
     pub parent: Vec<Constraint>,
     pub vars: Vec<TypeVar>,
+    pub fundeps: Vec<FunDep>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct FunDep {
+    pub determiners: Vec<usize>,
+    pub determined: Vec<usize>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -151,7 +158,7 @@ pub struct TraitItemRef {
     pub kind: AssocItemKind,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ImplHead {
     pub id: HirId,
     pub span: Span,
@@ -422,14 +429,14 @@ pub struct CaseArm {
     pub val: Guarded,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Type {
     pub id: HirId,
     pub span: Span,
     pub kind: TypeKind,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind {
     Error,
     Infer,
@@ -446,7 +453,7 @@ pub enum TypeKind {
     Kinded { ty: Box<Type>, kind: Box<Type> },
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Row {
     pub id: HirId,
     pub span: Span,
@@ -454,7 +461,7 @@ pub struct Row {
     pub tail: Option<Box<Type>>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RowField {
     pub id: HirId,
     pub span: Span,
@@ -462,7 +469,7 @@ pub struct RowField {
     pub ty: Type,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TypeVar {
     pub id: HirId,
     pub span: Span,
@@ -470,7 +477,7 @@ pub struct TypeVar {
     pub kind: Type,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Constraint {
     pub id: HirId,
     pub span: Span,
@@ -504,6 +511,15 @@ impl DefId {
             lib: LibId(0),
             module: ModuleId(0, 0),
             index: DefIndex(0, 0),
+        }
+    }
+}
+
+impl Into<HirId> for DefId {
+    fn into(self) -> HirId {
+        HirId {
+            owner: self,
+            local_id: LocalId(0),
         }
     }
 }

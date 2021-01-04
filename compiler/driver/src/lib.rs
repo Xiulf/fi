@@ -34,6 +34,10 @@ impl typeck::InferDb for CompilerDatabase {
     fn to_ty_db(&self) -> &dyn typeck::TypeDatabase {
         self
     }
+
+    fn to_hir_db(&self) -> &dyn hir::HirDatabase {
+        self
+    }
 }
 
 impl diagnostics::Diagnostics for CompilerDatabase {
@@ -94,7 +98,6 @@ pub fn run() {
     db.set_libs(vec![lib]);
 
     for mdata in db.module_tree(lib).toposort(&db) {
-        db.assembly(lib, mdata.id);
         // use typeck::{display::Typed, TypeDatabase};
         // let hir = db.module_hir(mdata.file);
         //
@@ -110,6 +113,7 @@ pub fn run() {
         //         );
         //     }
         // }
+        db.assembly(lib, mdata.id);
     }
 }
 

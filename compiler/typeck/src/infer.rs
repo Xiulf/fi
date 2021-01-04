@@ -39,6 +39,8 @@ impl<'db> Ctx<'db> {
                 let ty_kind = self.ty_kind(pat.span, self.file);
                 let ty = self.fresh_type_with_kind(pat.span, self.file, ty_kind);
                 let _ctnt = Ctnt {
+                    span: pat.span,
+                    file: self.file,
                     trait_: self.db.lang_items().integer_trait().owner,
                     tys: List::from([ty.clone()]),
                 };
@@ -49,6 +51,8 @@ impl<'db> Ctx<'db> {
                 let ty_kind = self.ty_kind(pat.span, self.file);
                 let ty = self.fresh_type_with_kind(pat.span, self.file, ty_kind);
                 let _ctnt = Ctnt {
+                    span: pat.span,
+                    file: self.file,
                     trait_: self.db.lang_items().decimal_trait().owner,
                     tys: List::from([ty.clone()]),
                 };
@@ -90,8 +94,13 @@ impl<'db> Ctx<'db> {
                     let ty = self.tys[id].clone();
                     let ty = self.introduce_skolem_scope(ty);
 
-                    if let Type::Ctnt(_ctnt, ty) = &*ty {
-                        println!("find impl");
+                    if let Type::Ctnt(ctnt, ty) = &*ty {
+                        self.ctnts.push((
+                            expr.id,
+                            ctnt.clone() ^ (expr.span, self.file),
+                            self.bounds.clone(),
+                        ));
+
                         ty.clone()
                     } else {
                         ty
@@ -115,8 +124,13 @@ impl<'db> Ctx<'db> {
 
                     let ty = self.introduce_skolem_scope(ty);
 
-                    if let Type::Ctnt(_ctnt, ty) = &*ty {
-                        println!("find impl");
+                    if let Type::Ctnt(ctnt, ty) = &*ty {
+                        self.ctnts.push((
+                            expr.id,
+                            ctnt.clone() ^ (expr.span, self.file),
+                            self.bounds.clone(),
+                        ));
+
                         ty.clone()
                     } else {
                         ty
@@ -126,20 +140,28 @@ impl<'db> Ctx<'db> {
             ir::ExprKind::Int { .. } => {
                 let ty_kind = self.ty_kind(expr.span, self.file);
                 let ty = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
-                let _ctnt = Ctnt {
+                let ctnt = Ctnt {
+                    span: expr.span,
+                    file: self.file,
                     trait_: self.db.lang_items().integer_trait().owner,
                     tys: List::from([ty.clone()]),
                 };
+
+                self.ctnts.push((expr.id, ctnt, Vec::new()));
 
                 ty
             }
             ir::ExprKind::Float { .. } => {
                 let ty_kind = self.ty_kind(expr.span, self.file);
                 let ty = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
-                let _ctnt = Ctnt {
+                let ctnt = Ctnt {
+                    span: expr.span,
+                    file: self.file,
                     trait_: self.db.lang_items().decimal_trait().owner,
                     tys: List::from([ty.clone()]),
                 };
+
+                self.ctnts.push((expr.id, ctnt, Vec::new()));
 
                 ty
             }
@@ -256,7 +278,7 @@ impl<'db> Ctx<'db> {
             ir::ExprKind::App { base, args } => {
                 let base_ty = self.infer_expr(base)?;
 
-                self.check_func_app(base_ty, args)?
+                self.check_func_app(base.id, base_ty, args)?
             }
             ir::ExprKind::Do { .. } => {
                 let ty_kind = self.ty_kind(expr.span, self.file);

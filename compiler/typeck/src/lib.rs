@@ -6,6 +6,7 @@
 pub mod check;
 pub mod ctx;
 pub mod display;
+pub mod entailment;
 pub mod error;
 pub mod infer;
 pub mod kind;
@@ -23,10 +24,13 @@ pub trait TypeDatabase: hir::HirDatabase + InferDb {
     fn typecheck(&self, id: ir::DefId) -> Arc<TypecheckResult>;
 
     fn variants(&self, id: ir::DefId) -> ty::List<ty::Variant>;
+
+    fn impls(&self, id: ir::DefId) -> ty::List<ty::Impl>;
 }
 
 pub trait InferDb {
     fn to_ty_db(&self) -> &dyn TypeDatabase;
+    fn to_hir_db(&self) -> &dyn hir::HirDatabase;
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -45,20 +49,25 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
         ir::Def::Item(item) => match &item.kind {
             ir::ItemKind::Func { ty, body } => {
                 try {
-                    let mut ty = ctx.hir_ty(ty);
+                    let ty = ctx.hir_ty(ty);
 
                     ctx.tys.insert(item.id, ty.clone());
 
-                    if let ty::Type::Unknown(_) = *ty {
+                    let (mut ty, should_generalize) = if let ty::Type::Unknown(_) = *ty {
                         let infer = ctx.infer_body(item.span, &hir.bodies[body])?;
+                        let _ = ctx.unify_types(ty.clone(), infer.clone())?;
 
-                        ctx.unify_types(ty.clone(), infer)?;
-                        ty = ctx.subst_type(ty);
-                        ty = ctx.generalize(ty, item.id.owner);
+                        (infer, true)
                     } else {
                         ctx.check_body(item.span, &hir.bodies[body], ty.clone())?;
-                        ty = ctx.subst_type(ty);
-                    }
+                        (ty, false)
+                    };
+
+                    let unsolved = ctx.solve_ctnts(should_generalize)?;
+
+                    ty = ctx.subst_type(ty);
+                    ty = ctx.constrain(unsolved, ty);
+                    ty = ctx.generalize(ty, item.id.owner);
 
                     ty
                 }
@@ -134,6 +143,8 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                         ty.span(),
                         file,
                         ty::Ctnt {
+                            span: ty.span(),
+                            file: ty.file(),
                             trait_: item.owner.owner,
                             tys: (&vars)
                                 .into_iter()
@@ -227,4 +238,52 @@ fn variants(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Variant> {
     } else {
         unreachable!()
     }
+}
+
+fn impls(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Impl> {
+    use salsa::debug::{DebugQueryTable, TableEntry};
+    use salsa::plumbing::get_query_table;
+    let file = db.module_tree(id.lib).file(id.module);
+    let hir = db.module_hir(file);
+    let trait_ = hir.items[&id.into()].trait_();
+    let mut ctx = ctx::Ctx::new(db, file);
+    let impls: Vec<TableEntry<source::FileId, Arc<ir::Module>>> =
+        get_query_table::<hir::ModuleHirQuery>(db.to_hir_db()).entries();
+
+    let impls = impls
+        .into_iter()
+        .map(|entry| entry.key)
+        .flat_map(|file| {
+            let module = db.module_hir(file);
+
+            module
+                .items
+                .values()
+                .filter_map(|item| match &item.kind {
+                    ir::ItemKind::Impl {
+                        chain,
+                        index,
+                        head,
+                        body: _,
+                    } if head.trait_ == id => Some((item.id, chain.clone(), *index, head.clone())),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    impls
+        .into_iter()
+        .map(|(id, chain, index, head)| {
+            let tys = head.tys.iter().map(|t| ctx.hir_ty(t)).collect();
+
+            // @TODO: check constraints
+
+            ty::Impl {
+                trait_: trait_.id.owner,
+                id: id.owner,
+                tys,
+            }
+        })
+        .collect()
 }

@@ -9,6 +9,7 @@ pub enum TypeError {
     Mismatch(Ty, Ty),
     KindMismatch(Ty, Ty),
     HoleType(Ident, Ty),
+    NoImpl(Ctnt),
 }
 
 impl TypeError {
@@ -52,6 +53,10 @@ impl TypeError {
                     Typed(db, &(), &ty)
                 ))
                 .with_label(Label::primary(ty.file(), ty.span()))
+                .finish(),
+            TypeError::NoImpl(ctnt) => diags
+                .error(format!("no impl found for `{}`", Typed(db, &(), &ctnt)))
+                .with_label(Label::primary(ctnt.file, ctnt.span))
                 .finish(),
         }
     }

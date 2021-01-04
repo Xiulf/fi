@@ -959,7 +959,11 @@ impl<'db> Converter<'db> {
                     self.resolver.push_rib(Ns::Types);
 
                     let head_id = self.next_id();
-                    let vars = head.vars.iter().map(|v| self.convert_type_var(v)).collect();
+                    let vars = head
+                        .vars
+                        .iter()
+                        .map(|v| self.convert_type_var(v))
+                        .collect::<Vec<_>>();
                     let parent = if let Some(parent) = &head.parent {
                         parent
                             .iter()
@@ -969,11 +973,42 @@ impl<'db> Converter<'db> {
                         Vec::new()
                     };
 
+                    let fundeps = head
+                        .fundeps
+                        .iter()
+                        .map(|fundep| match fundep {
+                            ast::FunDep::Determined(d) => ir::FunDep {
+                                determiners: Vec::new(),
+                                determined: d
+                                    .iter()
+                                    .filter_map(|d| {
+                                        vars.iter().position(|v| v.name.symbol == d.symbol)
+                                    })
+                                    .collect(),
+                            },
+                            ast::FunDep::Determines(a, b) => ir::FunDep {
+                                determiners: a
+                                    .iter()
+                                    .filter_map(|d| {
+                                        vars.iter().position(|v| v.name.symbol == d.symbol)
+                                    })
+                                    .collect(),
+                                determined: b
+                                    .iter()
+                                    .filter_map(|d| {
+                                        vars.iter().position(|v| v.name.symbol == d.symbol)
+                                    })
+                                    .collect(),
+                            },
+                        })
+                        .collect();
+
                     let head = ir::TraitHead {
                         id: head_id,
                         span: head.span,
                         parent,
                         vars,
+                        fundeps,
                     };
 
                     let body_id = self.next_id();

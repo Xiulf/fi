@@ -13,9 +13,11 @@ impl<'db> Ctx<'db> {
 
     fn check_body_(&mut self, span: ir::Span, body: &ir::Body, ty: Ty) -> Result<()> {
         match &*ty {
-            Type::Ctnt(_ctnt, ty) => {
-                println!("bind trait");
-                self.check_body_(span, body, ty.clone())
+            Type::Ctnt(ctnt, ty) => {
+                self.bounds.push(ctnt.clone());
+                self.check_body_(span, body, ty.clone())?;
+                self.bounds.pop().unwrap();
+                Ok(())
             }
             Type::ForAll(vars, ret, _) => {
                 let scope = self.new_skolem_scope();
@@ -81,9 +83,10 @@ impl<'db> Ctx<'db> {
 
                 Ty::forall(ty.span(), ty.file(), vars.clone(), t1.clone(), scope)
             }
-            (_, Type::Ctnt(_ctnt, t1)) => {
-                println!("bind trait");
+            (_, Type::Ctnt(ctnt, t1)) => {
+                self.bounds.push(ctnt.clone());
                 self.check_expr(expr, t1.clone())?;
+                self.bounds.pop().unwrap();
                 ty
             }
             (_, Type::Unknown(_)) => {
@@ -132,7 +135,7 @@ impl<'db> Ctx<'db> {
             }
             (ir::ExprKind::App { base, args }, _) => {
                 let base_ty = self.infer_expr(base)?;
-                let ret = self.check_func_app(base_ty, args)?;
+                let ret = self.check_func_app(base.id, base_ty, args)?;
                 let elaborate = self.subsumes(ret, ty.clone())?;
                 let _ = elaborate(expr);
 
@@ -221,7 +224,7 @@ impl<'db> Ctx<'db> {
         Ok(())
     }
 
-    crate fn check_func_app(&mut self, f_ty: Ty, args: &[ir::Expr]) -> Result<Ty> {
+    crate fn check_func_app(&mut self, f_id: ir::HirId, f_ty: Ty, args: &[ir::Expr]) -> Result<Ty> {
         let f_ty = self.subst_type(f_ty);
 
         match &*f_ty {
@@ -259,11 +262,12 @@ impl<'db> Ctx<'db> {
 
                 let repl = ret.clone().replace_vars(repl);
 
-                self.check_func_app(repl, args)
+                self.check_func_app(f_id, repl, args)
             }
-            Type::Ctnt(_ctnt, ret) => {
-                println!("find impl");
-                self.check_func_app(ret.clone(), args)
+            Type::Ctnt(ctnt, ret) => {
+                self.ctnts
+                    .push((f_id, ctnt.clone() ^ f_ty.loc(), self.bounds.clone()));
+                self.check_func_app(f_id, ret.clone(), args)
             }
             _ => {
                 let params = args

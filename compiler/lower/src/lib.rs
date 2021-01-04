@@ -221,7 +221,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
     }
 
     pub fn convert(mut self, body: &hir::Body) {
-        let ret = self.create_header(&body.params);
+        let ret = self.create_header(&body.params, self.types.ty.clone());
         let entry = self.builder.create_block();
         let _ = self.builder.set_block(entry);
         let res = self.convert_expr(&body.value);
@@ -230,33 +230,29 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         self.builder.return_();
     }
 
-    fn create_header(&mut self, params: &[hir::Param]) -> ir::Local {
+    fn create_header(&mut self, params: &[hir::Param], ty: typeck::ty::Ty) -> ir::Local {
         use typeck::ty::Type;
-        let mut ty = &self.types.ty;
 
-        if let Type::ForAll(_, ty2, _) = &**ty {
-            ty = ty2;
-        }
+        match &*ty {
+            Type::ForAll(_, t2, _) => self.create_header(params, t2.clone()),
+            Type::Ctnt(_, t2) => self.create_header(params, t2.clone()),
+            Type::App(f, args) if is_func_ty(self.db, f) => {
+                if let Type::Tuple(param_tys) = &*args[0] {
+                    let ret = self.builder.create_ret(lower_type(self.db, &args[1]));
 
-        if let Type::App(f, args) = &**ty {
-            if let Type::Ctor(f) = &**f {
-                if *f == self.db.lang_items().fn_ty().owner && args.len() == 2 {
-                    if let Type::Tuple(param_tys) = &*args[0] {
-                        let ret = self.builder.create_ret(lower_type(self.db, &args[1]));
+                    for (param, ty) in params.iter().zip(param_tys) {
+                        let local = self.builder.create_arg(lower_type(self.db, &ty));
 
-                        for (param, ty) in params.iter().zip(param_tys) {
-                            let local = self.builder.create_arg(lower_type(self.db, &ty));
-
-                            self.locals.insert(param.id, local);
-                        }
-
-                        return ret;
+                        self.locals.insert(param.id, local);
                     }
+
+                    ret
+                } else {
+                    unreachable!();
                 }
             }
+            _ => self.builder.create_ret(lower_type(self.db, &ty)),
         }
-
-        self.builder.create_ret(lower_type(self.db, ty))
     }
 
     fn convert_expr(&mut self, expr: &hir::Expr) -> ir::Operand {
@@ -501,6 +497,14 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 ir::Operand::Place(res)
             }
         }
+    }
+}
+
+fn is_func_ty(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> bool {
+    if let typeck::ty::Type::Ctor(id) = &**ty {
+        *id == db.lang_items().fn_ty().owner
+    } else {
+        false
     }
 }
 
