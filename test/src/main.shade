@@ -5,9 +5,8 @@ import Core
 [main]
 fn main :: Unsafe => (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = do
-    -- print_args argc argv
-    add 1 2
-    -- 0
+    print_args argc argv
+    add (1 :: Int32) (2 :: Int32)
 
 fn print_args :: Unsafe => (Int32, Ptr (Ptr Byte)) -> ()
 fn print_args 0 _ = ()

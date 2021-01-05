@@ -66,6 +66,8 @@ pub struct Impl {
     pub id: DefId,
     pub trait_: DefId,
     pub tys: List<Ty>,
+    pub chain: List<HirId>,
+    pub chain_index: usize,
 }
 
 impl Ty {
@@ -454,6 +456,12 @@ impl<T> std::ops::Deref for List<T> {
 impl<T, const N: usize> From<[T; N]> for List<T> {
     fn from(src: [T; N]) -> Self {
         List(Arc::new(src))
+    }
+}
+
+impl<T> From<Vec<T>> for List<T> {
+    fn from(src: Vec<T>) -> Self {
+        List(src.into())
     }
 }
 

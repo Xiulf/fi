@@ -654,9 +654,23 @@ impl Item {
         }
     }
 
+    pub fn trait_body(&self) -> &TraitBody {
+        match &self.kind {
+            ItemKind::Trait { body, .. } => body,
+            _ => unreachable!(),
+        }
+    }
+
     pub fn impl_(&self) -> &ImplHead {
         match &self.kind {
             ItemKind::Impl { head, .. } => head,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn impl_body(&self) -> &ImplBody {
+        match &self.kind {
+            ItemKind::Impl { body, .. } => body,
             _ => unreachable!(),
         }
     }

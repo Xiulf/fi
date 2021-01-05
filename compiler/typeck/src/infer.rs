@@ -94,23 +94,23 @@ impl<'db> Ctx<'db> {
                     let ty = self.tys[id].clone();
                     let ty = self.introduce_skolem_scope(ty);
 
-                    if let Type::Ctnt(ctnt, ty) = &*ty {
+                    (if let Type::Ctnt(ctnt, ty) = &*ty {
                         self.ctnts.push((
                             expr.id,
                             ctnt.clone() ^ (expr.span, self.file),
-                            self.bounds.clone(),
+                            self.ctnt_ctx.clone(),
                         ));
 
                         ty.clone()
                     } else {
                         ty
-                    }
+                    }) ^ (expr.span, self.file)
                 }
                 ir::Res::Def(ir::DefKind::Ctor, id) => {
                     let ty = self.db.typecheck(*id).ty.clone();
-                    let ty = self.instantiate(ty);
+                    let ty = self.instantiate(expr.id, ty);
 
-                    self.introduce_skolem_scope(ty)
+                    self.introduce_skolem_scope(ty) ^ (expr.span, self.file)
                 }
                 ir::Res::Def(_, id) => {
                     let ty = if let Some(ty) = self.tys.get(&ir::HirId {
@@ -124,17 +124,17 @@ impl<'db> Ctx<'db> {
 
                     let ty = self.introduce_skolem_scope(ty);
 
-                    if let Type::Ctnt(ctnt, ty) = &*ty {
+                    (if let Type::Ctnt(ctnt, ty) = &*ty {
                         self.ctnts.push((
                             expr.id,
                             ctnt.clone() ^ (expr.span, self.file),
-                            self.bounds.clone(),
+                            self.ctnt_ctx.clone(),
                         ));
 
                         ty.clone()
                     } else {
                         ty
-                    }
+                    }) ^ (expr.span, self.file)
                 }
             },
             ir::ExprKind::Int { .. } => {
@@ -188,11 +188,11 @@ impl<'db> Ctx<'db> {
                 let ty_kind = self.ty_kind(expr.span, self.file);
                 let el = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
 
-                tys.iter().try_for_each(|t| {
-                    let t = self.instantiate(t.clone());
+                tys.iter().zip(exprs).try_for_each(|(t, e)| {
+                    let t = self.instantiate(e.id, t.clone());
 
                     self.unify_types(el.clone(), t.clone())?;
-                    self.tys.insert(expr.id, t);
+                    self.tys.insert(e.id, t);
 
                     Ok(())
                 })?;
@@ -212,7 +212,7 @@ impl<'db> Ctx<'db> {
                             span: f.span,
                             name: f.name.symbol,
                             ty: if let ir::ExprKind::Ident { .. } = f.val.kind {
-                                self.instantiate(ty)
+                                self.instantiate(f.val.id, ty)
                             } else {
                                 ty
                             },
@@ -373,7 +373,7 @@ impl<'db> Ctx<'db> {
                 let ty = self.infer_expr(pred)?;
 
                 if inst {
-                    Ok(self.instantiate(ty))
+                    Ok(self.instantiate(pred.id, ty))
                 } else {
                     Ok(ty)
                 }

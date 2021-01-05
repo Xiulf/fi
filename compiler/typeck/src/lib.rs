@@ -37,6 +37,17 @@ pub trait InferDb {
 pub struct TypecheckResult {
     pub ty: ty::Ty,
     pub tys: HashMap<ir::HirId, ty::Ty>,
+    pub bounds: HashMap<ir::HirId, BoundInfo>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct BoundInfo {
+    pub source: BoundSource,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BoundSource {
+    Impl(ir::DefId),
 }
 
 fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
@@ -162,7 +173,39 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                 }
             }
         },
-        _ => unimplemented!(),
+        ir::Def::ImplItem(item) => match &item.kind {
+            ir::ImplItemKind::Func { ty, body } => {
+                try {
+                    let ty = ctx.hir_ty(ty);
+                    let imp = hir.items[&item.owner].impl_();
+                    let trait_ = hir.items[&imp.trait_.into()].trait_body();
+                    let trait_item = trait_
+                        .items
+                        .iter()
+                        .find(|it| it.name.symbol == item.name.symbol)
+                        .unwrap();
+
+                    ctx.tys.insert(item.id, ty.clone());
+
+                    let (ty, should_generalize) = if let ty::Type::Unknown(_) = *ty {
+                        let infer = ctx.infer_body(item.span, &hir.bodies[body])?;
+                        let _ = ctx.unify_types(ty.clone(), infer.clone())?;
+
+                        (infer, true)
+                    } else {
+                        ctx.check_body(item.span, &hir.bodies[body], ty.clone())?;
+                        (ty, false)
+                    };
+
+                    let _unsolved = ctx.solve_ctnts(should_generalize)?;
+                    let expected = db.typecheck(trait_item.id.0.owner).ty.clone();
+                    let expected = ctx.instantiate(item.id, expected);
+
+                    ctx.unify_types(expected, ty.clone())?;
+                    ctx.subst_type(ty)
+                }
+            }
+        },
     };
 
     let ty = match ty {
@@ -202,7 +245,8 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
 
     Arc::new(TypecheckResult {
         ty,
-        tys: ctx.finish(),
+        tys: ctx.tys,
+        bounds: ctx.bounds,
     })
 }
 
@@ -282,6 +326,8 @@ fn impls(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Impl> {
             ty::Impl {
                 trait_: trait_.id.owner,
                 id: id.owner,
+                chain: chain.into(),
+                chain_index: index,
                 tys,
             }
         })

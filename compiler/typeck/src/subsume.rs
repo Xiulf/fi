@@ -4,11 +4,19 @@ use crate::ty::*;
 use hir::ir::Expr;
 
 impl<'db> Ctx<'db> {
-    crate fn subsumes(&mut self, t1: Ty, t2: Ty) -> Result<Box<dyn Fn(&Expr) -> ()>> {
+    crate fn subsumes<'s>(
+        &mut self,
+        t1: Ty,
+        t2: Ty,
+    ) -> Result<Box<dyn Fn(&mut Ctx<'s>, &Expr) -> () + 's>> {
         self.subsumes_elaborate(t1, t2)
     }
 
-    fn subsumes_elaborate(&mut self, t1: Ty, t2: Ty) -> Result<Box<dyn Fn(&Expr) -> ()>> {
+    fn subsumes_elaborate<'s>(
+        &mut self,
+        t1: Ty,
+        t2: Ty,
+    ) -> Result<Box<dyn Fn(&mut Ctx<'s>, &Expr) -> () + 's>> {
         match (&*t1, &*t2) {
             (Type::ForAll(vars, r1, _), _) => {
                 let subst = vars
@@ -45,13 +53,20 @@ impl<'db> Ctx<'db> {
                     self.subsumes_no_elaborate(a1, a2)?;
                 }
 
-                Ok(Box::new(|_| ()))
+                Ok(Box::new(|_, _| ()))
             }
-            (Type::Ctnt(_ctnt, r1), _) => {
+            (Type::Ctnt(ctnt, r1), _) => {
                 let elaborate = self.subsumes_elaborate(r1.clone(), t2)?;
+                let ctnt = ctnt.clone();
 
-                Ok(Box::new(move |e| {
-                    elaborate(e);
+                Ok(Box::new(move |ctx, e| {
+                    ctx.ctnts.push((
+                        e.id,
+                        ctnt.clone() ^ (e.span, ctx.file),
+                        ctx.ctnt_ctx.clone(),
+                    ));
+
+                    elaborate(ctx, e);
                 }))
             }
             (Type::App(f1, _a1), Type::App(f2, _a2))
@@ -63,7 +78,7 @@ impl<'db> Ctx<'db> {
             (_, _) => {
                 self.unify_types(t1, t2)?;
 
-                Ok(Box::new(|_| ()))
+                Ok(Box::new(|_, _| ()))
             }
         }
     }

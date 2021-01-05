@@ -9,3 +9,4 @@ diagnostics = { path = "../diagnostics" }
 source = { path = "../source" }
 hir = { path = "../hir" }
 salsa = "0.16.0"
+itertools = "0.10.0"

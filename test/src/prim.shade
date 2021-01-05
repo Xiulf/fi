@@ -21,7 +21,7 @@ alias Uint = Uint64
 [lang("type_kind"  )] data Type
 [lang("figure_kind")] data Figure
 [lang("symbol_kind")] data Symbol
-[lang("row_kind"   )] data Row t
+[lang("row_kind"   )] data Row (t :: Type)
 
 [repr("u8"  )]
 [lang("bool")]

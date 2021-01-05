@@ -735,7 +735,7 @@ impl Parse for Impl {
         let mut tys = Vec::new();
 
         while !input.is_empty() && Type::peek(input) {
-            tys.push(input.parse()?);
+            tys.push(Type::atom(input)?);
         }
 
         let head = ImplHead {

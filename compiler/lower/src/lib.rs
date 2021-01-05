@@ -154,6 +154,27 @@ impl<'db> Converter<'db> {
             }
         }
 
+        for (_, item) in &hir.impl_items {
+            match &item.kind {
+                hir::ImplItemKind::Func { .. } => {
+                    let ty = self.db.typecheck(item.id.owner);
+                    let declid = self.decls.next_idx();
+
+                    decls.insert(item.id.owner, declid);
+                    self.decls.insert(
+                        declid,
+                        ir::Decl {
+                            id: declid,
+                            name: self.link_name(item.id.owner).unwrap(),
+                            ty: lower_type(self.db, &ty.ty),
+                            linkage: ir::Linkage::Export,
+                            attrs: ir::Attrs { c_abi: false },
+                        },
+                    );
+                }
+            }
+        }
+
         for (_, item) in &hir.items {
             match &item.kind {
                 hir::ItemKind::Func { body, .. } => {
@@ -171,6 +192,23 @@ impl<'db> Converter<'db> {
                 hir::ItemKind::Static { .. } => unimplemented!(),
                 hir::ItemKind::Const { .. } => unimplemented!(),
                 _ => {}
+            }
+        }
+
+        for (_, item) in &hir.impl_items {
+            match &item.kind {
+                hir::ImplItemKind::Func { body, .. } => {
+                    let body = &hir.bodies[body];
+                    let ty = self.db.typecheck(item.id.owner);
+                    let declid = decls[&item.id.owner];
+                    let bodyid = self.bodies.next_idx();
+                    let mut b = ir::Body::new(bodyid, declid);
+                    let builder = ir::Builder::new(&mut b);
+                    let conv = BodyConverter::new(self.db, hir, ty, builder, &decls);
+
+                    conv.convert(body);
+                    self.bodies.insert(bodyid, b);
+                }
             }
         }
     }
@@ -442,48 +480,74 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 {
                     let file = self.db.module_tree(id.lib).file(id.module);
                     let hir = self.db.module_hir(file);
-                    let item_id = hir::HirId {
-                        owner: *id,
-                        local_id: hir::LocalId(0),
-                    };
+                    let item_id = (*id).into();
 
-                    if hir.items[&item_id].is_intrinsic() {
-                        let item = &hir.items[&item_id];
-                        let mut args = args.iter().map(|a| {
-                            (
-                                self.convert_expr(a),
-                                lower_type(self.db, &self.types.tys[&a.id]),
-                            )
-                        });
+                    if let Some(item) = hir.items.get(&item_id) {
+                        if item.is_intrinsic() {
+                            let mut args = args.iter().map(|a| {
+                                (
+                                    self.convert_expr(a),
+                                    lower_type(self.db, &self.types.tys[&a.id]),
+                                )
+                            });
 
-                        // @INTRINSICS
-                        return match &**item.name.symbol {
-                            "unsafe_read" => {
-                                let (arg, arg_ty) = args.next().unwrap();
-                                let place = self.builder.placed(arg, arg_ty);
+                            // @INTRINSICS
+                            return match &**item.name.symbol {
+                                "unsafe_read" => {
+                                    let (arg, arg_ty) = args.next().unwrap();
+                                    let place = self.builder.placed(arg, arg_ty);
 
-                                ir::Operand::Place(place.deref())
-                            }
-                            "unsafe_store" => {
-                                let (ptr, ptr_ty) = args.next().unwrap();
-                                let val = args.next().unwrap().0;
-                                let place = self.builder.placed(ptr, ptr_ty);
+                                    ir::Operand::Place(place.deref())
+                                }
+                                "unsafe_store" => {
+                                    let (ptr, ptr_ty) = args.next().unwrap();
+                                    let val = args.next().unwrap().0;
+                                    let place = self.builder.placed(ptr, ptr_ty);
 
-                                self.builder.use_op(place.deref(), val);
+                                    self.builder.use_op(place.deref(), val);
 
-                                ir::Operand::Const(ir::Const::Tuple(Vec::new()))
-                            }
-                            _ => {
-                                let args = args.map(|(a, _)| a).collect();
-                                let res = self.builder.create_tmp(ty);
+                                    ir::Operand::Const(ir::Const::Tuple(Vec::new()))
+                                }
+                                _ => {
+                                    let args = args.map(|(a, _)| a).collect();
+                                    let res = self.builder.create_tmp(ty);
+                                    let res = ir::Place::new(res);
+
+                                    self.builder.intrinsic(
+                                        res.clone(),
+                                        item.name.to_string(),
+                                        args,
+                                    );
+
+                                    ir::Operand::Place(res)
+                                }
+                            };
+                        }
+                    } else if let Some(item) = hir.trait_items.get(&hir::TraitItemId(item_id)) {
+                        let bound = &self.types.bounds[&base.id];
+
+                        match bound.source {
+                            typeck::BoundSource::Impl(id) => {
+                                let file = self.db.module_tree(id.lib).file(id.module);
+                                let hir = self.db.module_hir(file);
+                                let imp = hir.items[&id.into()].impl_body();
+                                let method = imp
+                                    .items
+                                    .iter()
+                                    .find(|it| it.name.symbol == item.name.symbol)
+                                    .unwrap();
+
+                                let method = self.decls[&method.id.0.owner];
+                                let method = ir::Operand::Const(ir::Const::Addr(method));
+                                let args = args.iter().map(|a| self.convert_expr(a)).collect();
+                                let res = self.builder.create_tmp(ty.clone());
                                 let res = ir::Place::new(res);
 
-                                self.builder
-                                    .intrinsic(res.clone(), item.name.to_string(), args);
+                                self.builder.call(vec![res.clone()], method, args);
 
-                                ir::Operand::Place(res)
+                                return ir::Operand::Place(res);
                             }
-                        };
+                        }
                     }
                 }
 

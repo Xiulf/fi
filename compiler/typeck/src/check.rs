@@ -14,9 +14,9 @@ impl<'db> Ctx<'db> {
     fn check_body_(&mut self, span: ir::Span, body: &ir::Body, ty: Ty) -> Result<()> {
         match &*ty {
             Type::Ctnt(ctnt, ty) => {
-                self.bounds.push(ctnt.clone());
+                self.ctnt_ctx.push(ctnt.clone());
                 self.check_body_(span, body, ty.clone())?;
-                self.bounds.pop().unwrap();
+                self.ctnt_ctx.pop().unwrap();
                 Ok(())
             }
             Type::ForAll(vars, ret, _) => {
@@ -49,7 +49,7 @@ impl<'db> Ctx<'db> {
         let ty = match (&pat.kind, &*ty) {
             (_, Type::Unknown(_)) => {
                 let infer = self.infer_pat(pat)?;
-                let infer = self.instantiate(infer);
+                let infer = self.instantiate(pat.id, infer);
                 let _ = self.unify_types(infer, ty.clone())?;
 
                 ty
@@ -84,14 +84,14 @@ impl<'db> Ctx<'db> {
                 Ty::forall(ty.span(), ty.file(), vars.clone(), t1.clone(), scope)
             }
             (_, Type::Ctnt(ctnt, t1)) => {
-                self.bounds.push(ctnt.clone());
+                self.ctnt_ctx.push(ctnt.clone());
                 self.check_expr(expr, t1.clone())?;
-                self.bounds.pop().unwrap();
+                self.ctnt_ctx.pop().unwrap();
                 ty
             }
             (_, Type::Unknown(_)) => {
                 let infer = self.infer_expr(expr)?;
-                let infer = self.instantiate(infer);
+                let infer = self.instantiate(expr.id, infer);
                 let _ = self.unify_types(infer.clone(), ty)?;
 
                 infer
@@ -110,7 +110,7 @@ impl<'db> Ctx<'db> {
                     let lhs = self.introduce_skolem_scope(lhs);
                     let ty = self.introduce_skolem_scope(ty);
                     let elaborate = self.subsumes(lhs, ty.clone())?;
-                    let _ = elaborate(expr);
+                    let _ = elaborate(self, expr);
 
                     ty
                 }
@@ -119,7 +119,7 @@ impl<'db> Ctx<'db> {
                     let lhs = self.introduce_skolem_scope(lhs);
                     let ty = self.introduce_skolem_scope(ty);
                     let elaborate = self.subsumes(lhs, ty.clone())?;
-                    let _ = elaborate(expr);
+                    let _ = elaborate(self, expr);
 
                     ty
                 }
@@ -137,7 +137,7 @@ impl<'db> Ctx<'db> {
                 let base_ty = self.infer_expr(base)?;
                 let ret = self.check_func_app(base.id, base_ty, args)?;
                 let elaborate = self.subsumes(ret, ty.clone())?;
-                let _ = elaborate(expr);
+                let _ = elaborate(self, expr);
 
                 ty
             }
@@ -206,7 +206,7 @@ impl<'db> Ctx<'db> {
                 let ty2 = self.introduce_skolem_scope(elab_ty2);
                 let elaborate = self.subsumes(ty1.clone(), ty2.clone())?;
                 let _ = self.check_expr(expr2, ty1)?;
-                let _ = elaborate(expr);
+                let _ = elaborate(self, expr);
 
                 ty2
             }
@@ -214,7 +214,7 @@ impl<'db> Ctx<'db> {
                 let infer = self.infer_expr(expr)?;
                 let elaborate = self.subsumes(infer, ty.clone())?;
 
-                elaborate(expr);
+                elaborate(self, expr);
                 ty
             }
         };
@@ -224,6 +224,7 @@ impl<'db> Ctx<'db> {
         Ok(())
     }
 
+    #[track_caller]
     crate fn check_func_app(&mut self, f_id: ir::HirId, f_ty: Ty, args: &[ir::Expr]) -> Result<Ty> {
         let f_ty = self.subst_type(f_ty);
 
@@ -262,12 +263,13 @@ impl<'db> Ctx<'db> {
 
                 let repl = ret.clone().replace_vars(repl);
 
-                self.check_func_app(f_id, repl, args)
+                self.check_func_app(f_id, repl ^ f_ty.loc(), args)
             }
             Type::Ctnt(ctnt, ret) => {
                 self.ctnts
-                    .push((f_id, ctnt.clone() ^ f_ty.loc(), self.bounds.clone()));
-                self.check_func_app(f_id, ret.clone(), args)
+                    .push((f_id, ctnt.clone() ^ f_ty.loc(), self.ctnt_ctx.clone()));
+
+                self.check_func_app(f_id, ret.clone() ^ f_ty.loc(), args)
             }
             _ => {
                 let params = args
@@ -275,7 +277,7 @@ impl<'db> Ctx<'db> {
                     .map(|a| {
                         let ty = self.infer_expr(a)?;
 
-                        Ok(self.instantiate(ty))
+                        Ok(self.instantiate(a.id, ty))
                     })
                     .collect::<Result<List<_>>>()?;
 

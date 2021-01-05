@@ -12,7 +12,8 @@ pub struct Ctx<'db> {
     crate next_scope: u64,
     crate subst: Substitution,
     crate tys: HashMap<ir::HirId, Ty>,
-    crate bounds: Vec<Ctnt>,
+    crate bounds: HashMap<ir::HirId, crate::BoundInfo>,
+    crate ctnt_ctx: Vec<Ctnt>,
     crate ctnts: Vec<(ir::HirId, Ctnt, Vec<Ctnt>)>,
     crate errors: Vec<TypeError>,
 }
@@ -35,7 +36,8 @@ impl<'db> Ctx<'db> {
             next_scope: 0,
             subst: Substitution::empty(),
             tys: HashMap::new(),
-            bounds: Vec::new(),
+            bounds: HashMap::new(),
+            ctnt_ctx: Vec::new(),
             ctnts: Vec::new(),
             errors: Vec::new(),
         }
@@ -103,7 +105,7 @@ impl<'db> Ctx<'db> {
         Ty::ctor(span, file, func_ty.owner)
     }
 
-    crate fn instantiate(&mut self, ty: Ty) -> Ty {
+    crate fn instantiate(&mut self, id: ir::HirId, ty: Ty) -> Ty {
         if let Type::ForAll(vars, ret, _) = &*ty {
             let subst = vars
                 .into_iter()
@@ -116,10 +118,10 @@ impl<'db> Ctx<'db> {
                 })
                 .collect();
 
-            ret.clone().replace_vars(subst)
-        } else if let Type::Ctnt(_ctnt, _ret) = &*ty {
-            todo!();
-            // self.instantiate(ret.clone())
+            self.instantiate(id, ret.clone().replace_vars(subst))
+        } else if let Type::Ctnt(ctnt, ret) = &*ty {
+            self.ctnts.push((id, ctnt.clone(), self.ctnt_ctx.clone()));
+            self.instantiate(id, ret.clone())
         } else {
             ty
         }
