@@ -232,8 +232,12 @@ impl<'db> Converter<'db> {
                     format!("{}.{}", hir.name, item.name)
                 }
             }
-            hir::Def::TraitItem(item) => format!("{}.{}", hir.name, item.name),
-            hir::Def::ImplItem(item) => format!("{}.{}", hir.name, item.name),
+            hir::Def::TraitItem(_) => return None,
+            hir::Def::ImplItem(item) => {
+                let owner = hir.def(item.owner.owner);
+
+                format!("{}.{}.{}", hir.name, owner.name(), item.name)
+            }
         };
 
         Some(mangling::mangle(name.bytes()))

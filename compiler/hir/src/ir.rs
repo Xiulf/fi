@@ -244,6 +244,7 @@ pub enum DefKind {
     Data,
     Ctor,
     Trait,
+    Impl,
 }
 
 #[derive(PartialEq, Eq)]

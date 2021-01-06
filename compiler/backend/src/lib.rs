@@ -78,59 +78,89 @@ pub fn assembly(
         let file = std::fs::File::create(&out_filename).unwrap();
         let mut ab = ar::GnuBuilder::new(
             file,
-            std::iter::once(
-                os_str_to_bytes(obj_file
-                    .path()
-                    .file_name()
-                    .unwrap()),
-            )
-            .chain(data.children.iter().map(|&dep| {
-                let data = tree.get(dep);
-                let asm = db.assembly(lib, data.id);
-
-                os_str_to_bytes(asm.path()
-                    .file_name()
-                    .unwrap())
-            }))
-            .collect(),
+            std::iter::once(os_str_to_bytes(obj_file.path().file_name().unwrap()))
+                .chain(dep_idents(db, lib, &tree, &data.children))
+                .collect(),
         );
 
         ab.append_path(obj_file.path()).unwrap();
 
-        for &dep in &data.children {
-            let data = tree.get(dep);
-            let asm = db.assembly(lib, data.id);
-
-            ab.append_path(asm.path()).unwrap();
-        }
+        dep_paths(&mut ab, db, lib, &tree, &data.children);
 
         std::mem::drop(ab);
-        
+
         if cfg!(not(windows)) {
             std::process::Command::new("ranlib")
                 .arg(&out_filename)
                 .status()
                 .unwrap();
         }
+
+        fn dep_idents(
+            db: &dyn BackendDatabase,
+            lib: hir::ir::LibId,
+            tree: &hir::module_tree::ModuleTree,
+            deps: &[hir::module_tree::ModuleIndex],
+        ) -> Vec<Vec<u8>> {
+            deps.iter()
+                .copied()
+                .flat_map(|dep| {
+                    let data = tree.get(dep);
+                    let asm = db.assembly(lib, data.id);
+
+                    std::iter::once(os_str_to_bytes(asm.path().file_name().unwrap()))
+                        .chain(dep_idents(db, lib, tree, &data.children))
+                })
+                .collect()
+        }
+
+        fn dep_paths<T: std::io::Write>(
+            ab: &mut ar::GnuBuilder<T>,
+            db: &dyn BackendDatabase,
+            lib: hir::ir::LibId,
+            tree: &hir::module_tree::ModuleTree,
+            deps: &[hir::module_tree::ModuleIndex],
+        ) {
+            for &dep in deps {
+                let data = tree.get(dep);
+                let asm = db.assembly(lib, data.id);
+
+                ab.append_path(asm.path()).unwrap();
+                dep_paths(ab, db, lib, tree, &data.children);
+            }
+        }
     } else {
         linker.add_object(obj_file.path());
         linker.include_path(db.manifest(lib).package.target_dir.as_path());
+        linker.runtime_path(db.manifest(lib).package.target_dir.as_path());
 
-        for &dep in &data.children {
-            let data = tree.get(dep);
-            let _ = db.assembly(lib, data.id);
-
-            match db.link_type(lib, data.id) {
-                linker::LinkOutputType::Exe => unreachable!(),
-                linker::LinkOutputType::Lib => linker.link_staticlib(&**data.name.symbol),
-                linker::LinkOutputType::Dylib => linker.link_dylib(&**data.name.symbol),
-            }
-        }
+        dep_paths(&mut *linker, db, lib, &tree, &data.children);
 
         linker.finalize();
         linker.set_output_type(out_type, &out_filename);
         linker.output_filename(&out_filename);
         linker.cmd().status().unwrap();
+
+        fn dep_paths(
+            linker: &mut dyn linker::linker::Linker,
+            db: &dyn BackendDatabase,
+            lib: hir::ir::LibId,
+            tree: &hir::module_tree::ModuleTree,
+            deps: &[hir::module_tree::ModuleIndex],
+        ) {
+            for &dep in deps {
+                let data = tree.get(dep);
+                let _ = db.assembly(lib, data.id);
+
+                match db.link_type(lib, data.id) {
+                    linker::LinkOutputType::Exe => unreachable!(),
+                    linker::LinkOutputType::Lib => linker.link_staticlib(&**data.name.symbol),
+                    linker::LinkOutputType::Dylib => linker.link_dylib(&**data.name.symbol),
+                }
+
+                dep_paths(linker, db, lib, tree, &data.children);
+            }
+        }
     }
 
     Arc::new(Assembly { path: out_filename })

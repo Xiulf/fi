@@ -2,8 +2,6 @@ pub mod linker;
 use std::ffi::OsStr;
 use std::process::Command;
 
-use linker::MsvcLinker;
-
 #[cfg(not(windows))]
 pub fn get_linker(_target: &target_lexicon::Triple) -> Box<dyn linker::Linker> {
     Box::new(linker::GccLinker::new(Command::new("cc"), false)) as Box<dyn linker::Linker>
@@ -11,7 +9,7 @@ pub fn get_linker(_target: &target_lexicon::Triple) -> Box<dyn linker::Linker> {
 
 #[cfg(windows)]
 pub fn get_linker(_target: &target_lexicon::Triple) -> Box<dyn linker::Linker> {
-    Box::new(MsvcLinker::new(Command::new("link.exe"))) as Box<dyn linker::Linker>
+    Box::new(linker::MsvcLinker::new(Command::new("link.exe"))) as Box<dyn linker::Linker>
 }
 
 pub fn extension(output_type: LinkOutputType, target: &target_lexicon::Triple) -> &'static OsStr {

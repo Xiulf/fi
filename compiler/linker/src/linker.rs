@@ -9,6 +9,7 @@ pub trait Linker {
     fn link_dylib(&mut self, name: &str);
     fn link_staticlib(&mut self, name: &str);
     fn include_path(&mut self, path: &Path);
+    fn runtime_path(&mut self, path: &Path);
     fn output_filename(&mut self, path: &Path);
     fn add_object(&mut self, path: &Path);
     fn finalize(&mut self);
@@ -108,6 +109,11 @@ impl Linker for GccLinker {
         self.cmd.arg(format!("-L{}", path.display()));
     }
 
+    fn runtime_path(&mut self, path: &Path) {
+        self.cmd.arg("-Wl,-rpath");
+        self.cmd.arg(path);
+    }
+
     fn output_filename(&mut self, path: &Path) {
         self.cmd.arg("-o").arg(path);
     }
@@ -127,9 +133,7 @@ pub struct MsvcLinker {
 
 impl MsvcLinker {
     pub fn new(cmd: Command) -> Self {
-        MsvcLinker {
-            cmd,
-        }
+        MsvcLinker { cmd }
     }
 }
 
@@ -140,8 +144,7 @@ impl Linker for MsvcLinker {
 
     fn set_output_type(&mut self, output_type: LinkOutputType, out_filename: &Path) {
         match output_type {
-            LinkOutputType::Exe | LinkOutputType::Lib => {
-            }
+            LinkOutputType::Exe | LinkOutputType::Lib => {}
             LinkOutputType::Dylib => {
                 self.cmd.arg("/DLL");
 
@@ -168,6 +171,10 @@ impl Linker for MsvcLinker {
         self.cmd.arg(arg);
     }
 
+    fn runtime_path(&mut self, path: &Path) {
+        unimplemented!();
+    }
+
     fn output_filename(&mut self, path: &Path) {
         let mut arg = OsString::from("/OUT:");
 
@@ -179,6 +186,5 @@ impl Linker for MsvcLinker {
         self.cmd.arg(path);
     }
 
-    fn finalize(&mut self) {
-    }
+    fn finalize(&mut self) {}
 }

@@ -21,12 +21,3 @@ fn print_args n argv = do
 foreign fn puts :: Ptr Byte -> ()
 
 trait Unsafe
-
--- fn zero :: forall a o. Sub a a o => a -> o
--- fn zero a = sub a a
--- 
--- trait Sub l r o | l r -> o where
---     fn sub :: (l, r) -> o
--- 
--- impl subInt32 :: Sub Int32 Int32 Int32 where
---     fn sub a b = sub_i32 a b

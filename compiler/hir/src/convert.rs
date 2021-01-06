@@ -393,7 +393,26 @@ impl<'db> Converter<'db> {
                     ),
                 });
             }
-            ir::ItemKind::Impl { .. } => {}
+            ir::ItemKind::Impl { body, .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Impl, item.id.owner),
+                    module: file,
+                    ns: Ns::Values,
+                    group: Some(
+                        body.items
+                            .iter()
+                            .map(|item| ir::Export {
+                                name: item.name.symbol,
+                                res: ir::Res::Def(ir::DefKind::Func, item.id.0.owner),
+                                module: file,
+                                ns: Ns::Values,
+                                group: None,
+                            })
+                            .collect(),
+                    ),
+                });
+            }
         }
     }
 
@@ -558,6 +577,18 @@ impl<'db> Converter<'db> {
     }
 
     fn register_single_import(&mut self, span: ir::Span, export: ir::Export) {
+        if let ir::Res::Def(ir::DefKind::Impl, _) = export.res {
+            if let Some(group) = export.group {
+                for exp in group {
+                    if let ir::Res::Def(ir::DefKind::Func | ir::DefKind::Static, id) = exp.res {
+                        self.imports.push(id);
+                    }
+                }
+            }
+
+            return;
+        }
+
         self.resolver.define(
             export.ns,
             ir::Ident {
