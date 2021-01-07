@@ -1,7 +1,7 @@
 module Data.Bool where
 
-[lang("bool")]
-data Bool = False | True
+import Prim (Bool(..))
+import Core.Cmp
 
 fn not False = True
 fn not True = False
@@ -11,3 +11,12 @@ fn and True b = b
 
 fn or False b = b
 fn or True _ = True
+
+impl eqBool :: Eq Bool Bool where
+    fn eq True x = x
+    fn eq False x = not x
+
+impl ordBool :: Ord Bool Bool where
+    fn cmp False True = Lt
+    fn cmp True False = Gt
+    fn cmp _ _ = Eq

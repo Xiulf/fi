@@ -22,6 +22,7 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
 
     let mut low = converter.finish();
 
+    // println!("{}", low);
     lowlang::analysis::mandatory(&mut low, &db.target(lib));
 
     Arc::new(low)
@@ -430,7 +431,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         }
     }
 
-    fn convert_block(&mut self, block: &hir::Block, ty: ir::Type) -> ir::Operand {
+    fn convert_block(&mut self, block: &hir::Block, ty: ir::Ty) -> ir::Operand {
         for (i, stmt) in block.stmts.iter().enumerate() {
             match &stmt.kind {
                 hir::StmtKind::Bind { binding } => {
@@ -479,7 +480,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         }
     }
 
-    fn convert_app(&mut self, base: &hir::Expr, args: &[hir::Expr], ty: ir::Type) -> ir::Operand {
+    fn convert_app(&mut self, base: &hir::Expr, args: &[hir::Expr], ty: ir::Ty) -> ir::Operand {
         match &base.kind {
             hir::ExprKind::Ident {
                 res: hir::Res::Def(hir::DefKind::Ctor, id),
@@ -608,7 +609,7 @@ fn is_func_ty(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> bool {
     }
 }
 
-fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Type {
+fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Ty {
     use typeck::ty::Type;
 
     match &**ty {
@@ -619,35 +620,37 @@ fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Type {
         Type::Skolem(_, _, _, _) => unreachable!(),
         Type::Row(_, _) => unreachable!(),
         Type::KindApp(_, _) => unreachable!(),
-        Type::Var(var) => ir::Type::Opaque(var.0.local_id.0.to_string()),
+        Type::Var(var) => ir::Ty::new(ir::Type::Opaque(var.0.local_id.0.to_string())),
         Type::ForAll(_, ty, _) => lower_type(db, ty),
-        Type::Tuple(tys) => ir::Type::Tuple(tys.iter().map(|t| lower_type(db, t)).collect()),
+        Type::Tuple(tys) => ir::Ty::new(ir::Type::Tuple(
+            tys.iter().map(|t| lower_type(db, t)).collect(),
+        )),
         Type::Ctnt(_, ty) => lower_type(db, ty),
         Type::App(base, args) => match &**base {
             Type::Ctor(def) => {
                 if *def == db.lang_items().fn_ty().owner {
                     if let Type::Tuple(params) = &*args[0] {
-                        ir::Type::Func(ir::Signature {
+                        ir::Ty::new(ir::Type::Func(ir::Signature {
                             params: params.iter().map(|t| lower_type(db, t)).collect(),
                             rets: vec![lower_type(db, &args[1])],
-                        })
+                        }))
                     } else {
                         unreachable!();
                     }
                 } else if *def == db.lang_items().ptr_ty().owner {
                     assert_eq!(args.len(), 1);
 
-                    ir::Type::Ptr(Box::new(lower_type(db, &args[0])))
+                    ir::Ty::new(ir::Type::Ptr(Box::new(lower_type(db, &args[0]))))
                 } else if *def == db.lang_items().array_ty().owner {
                     unimplemented!();
                 } else if *def == db.lang_items().slice_ty().owner {
                     unimplemented!();
                 } else if *def == db.lang_items().type_info().owner {
                     // ir::Type::Type(args[0].display(db.to_ty_db()).to_string())
-                    ir::Type::Type(String::new())
+                    ir::Ty::new(ir::Type::Type(String::new()))
                 } else if *def == db.lang_items().vwt().owner {
                     // ir::Type::Vwt(args[0].display(db.to_ty_db()).to_string())
-                    ir::Type::Vwt(String::new())
+                    ir::Ty::new(ir::Type::Vwt(String::new()))
                 } else {
                     lower_type(db, base)
                 }
@@ -658,43 +661,69 @@ fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Type {
             let file = db.module_tree(id.lib).file(id.module);
             let hir = db.module_hir(file);
             let def = hir.def(*id);
-
-            if let hir::Def::Item(item) = def {
-                if let Some(repr) = item.repr() {
-                    return match repr {
-                        "u8" => ir::Type::U8,
-                        "u16" => ir::Type::U16,
-                        "u32" => ir::Type::U32,
-                        "u64" => ir::Type::U64,
-                        "u128" => ir::Type::U128,
-                        "i8" => ir::Type::I8,
-                        "i16" => ir::Type::I16,
-                        "i32" => ir::Type::I32,
-                        "i64" => ir::Type::I64,
-                        "i128" => ir::Type::I128,
-                        "f32" => ir::Type::F32,
-                        "f64" => ir::Type::F64,
-                        _ => unreachable!("unknown repr {}", repr),
-                    };
-                }
-            }
-
             let variants = db.variants(*id);
 
-            if variants.len() == 1 {
-                ir::Type::Tuple(variants[0].tys.iter().map(|t| lower_type(db, t)).collect())
+            let mut ty = if variants.len() == 1 {
+                ir::Ty::new(ir::Type::Tuple(
+                    variants[0].tys.iter().map(|t| lower_type(db, t)).collect(),
+                ))
             } else {
                 let tys = variants
                     .iter()
                     .map(|v| {
                         let tys = v.tys.iter().map(|t| lower_type(db, t)).collect();
 
-                        ir::Type::Tuple(tys)
+                        ir::Ty::new(ir::Type::Tuple(tys))
                     })
                     .collect();
 
-                ir::Type::Tagged(tys)
+                ir::Ty::new(ir::Type::Tagged(tys))
+            };
+
+            if let hir::Def::Item(item) = def {
+                if let Some(repr) = item.repr() {
+                    use ir::layout::*;
+                    let target = db.target(id.lib);
+
+                    ty = ty.with_abi(match repr {
+                        "u8" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, false), &target))
+                        }
+                        "u16" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, false), &target))
+                        }
+                        "u32" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, false), &target))
+                        }
+                        "u64" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, false), &target))
+                        }
+                        "u128" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, false), &target))
+                        }
+                        "i8" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, true), &target))
+                        }
+                        "i16" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, true), &target))
+                        }
+                        "i32" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, true), &target))
+                        }
+                        "i64" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, true), &target))
+                        }
+                        "i128" => {
+                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, true), &target))
+                        }
+                        "f32" => Abi::Scalar(Scalar::unit(Primitive::F32, &target)),
+                        "f64" => Abi::Scalar(Scalar::unit(Primitive::F64, &target)),
+                        _ => unreachable!("unknown repr {}", repr),
+                    });
+                }
             }
+
+            ty
         }
     }
 }

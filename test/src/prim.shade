@@ -22,6 +22,10 @@ alias Uint = Uint64
 [lang("symbol_kind")] data Symbol
 [lang("row_kind"   )] data Row (t :: Type)
 
+[repr("u8")]
+[lang("bool")]
+data Bool = False | True
+
 [repr("u32" )]
 [lang("char")]
 data Char :: Type

@@ -209,7 +209,9 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                 try {
                     let ty = ctx.hir_ty(ty);
                     let imp = hir.items[&item.owner].impl_();
-                    let trait_ = hir.items[&imp.trait_.into()].trait_body();
+                    let trait_file = db.module_tree(imp.trait_.lib).file(imp.trait_.module);
+                    let trait_hir = db.module_hir(trait_file);
+                    let trait_ = trait_hir.items[&imp.trait_.into()].trait_body();
                     let trait_item = trait_
                         .items
                         .iter()

@@ -39,7 +39,7 @@ impl Pattern {
 }
 
 impl<'db, 'c> BodyConverter<'db, 'c> {
-    pub(crate) fn compile_case(&mut self, case: Case, ty: ir::Type) -> ir::Operand {
+    pub(crate) fn compile_case(&mut self, case: Case, ty: ir::Ty) -> ir::Operand {
         if !case.arms.is_empty() && case.arms[0].matches_all() {
             self.compile_guarded(case.arms[0].guard, None)
         } else {
@@ -203,7 +203,9 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                     .position(|id| hir.items[id].name.symbol == ctor.name.symbol)
                     .unwrap();
 
-                let discr = self.builder.create_tmp(ir::Type::Discr(Box::new(ty)));
+                let discr = self
+                    .builder
+                    .create_tmp(ir::Ty::new(ir::Type::Discr(Box::new(ty))));
                 let discr = ir::Place::new(discr);
 
                 self.builder.get_discr(discr.clone(), pred);

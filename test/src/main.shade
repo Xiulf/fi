@@ -6,7 +6,7 @@ import Core
 fn main :: Unsafe => (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = do
     print_args argc argv
-    add argc 2
+    if eq True False then 4 else 5
 
 fn print_args :: Unsafe => (Int32, Ptr (Ptr Byte)) -> ()
 fn print_args 0 _ = ()
