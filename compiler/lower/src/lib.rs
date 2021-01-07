@@ -22,7 +22,6 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
 
     let mut low = converter.finish();
 
-    // println!("{}", low);
     lowlang::analysis::mandatory(&mut low, &db.target(lib));
 
     Arc::new(low)
@@ -303,11 +302,23 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         match &expr.kind {
             hir::ExprKind::Error => unreachable!(),
             hir::ExprKind::Hole { .. } => ir::Operand::Const(ir::Const::Undefined(ty)),
-            hir::ExprKind::Ident { res, .. } => match res {
+            hir::ExprKind::Ident { res, name } => match res {
                 hir::Res::Error => unreachable!(),
                 hir::Res::Def(d, id) => match d {
                     hir::DefKind::Func | hir::DefKind::Static => {
                         ir::Operand::Const(ir::Const::Addr(self.decls[id]))
+                    }
+                    hir::DefKind::Ctor => {
+                        let file = self.db.module_tree(id.lib).file(id.module);
+                        let hir = self.db.module_hir(file);
+                        let ctor = hir.items[&(*id).into()].ctor();
+                        let data = hir.items[&ctor.0].data_body();
+                        let idx = data
+                            .iter()
+                            .position(|id| hir.items[id].name.symbol == name.symbol)
+                            .unwrap();
+
+                        ir::Operand::Const(ir::Const::Variant(idx, Vec::new(), ty))
                     }
                     _ => unreachable!(),
                 },
@@ -471,10 +482,31 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
     fn convert_app(&mut self, base: &hir::Expr, args: &[hir::Expr], ty: ir::Type) -> ir::Operand {
         match &base.kind {
             hir::ExprKind::Ident {
-                res: hir::Res::Def(hir::DefKind::Ctor, _id),
-                ..
+                res: hir::Res::Def(hir::DefKind::Ctor, id),
+                name,
             } => {
-                unimplemented!()
+                let file = self.db.module_tree(id.lib).file(id.module);
+                let hir = self.db.module_hir(file);
+                let ctor = hir.items[&(*id).into()].ctor();
+                let data = hir.items[&ctor.0].data_body();
+                let idx = data
+                    .iter()
+                    .position(|id| hir.items[id].name.symbol == name.symbol)
+                    .unwrap();
+
+                let res = self.builder.create_tmp(ty);
+                let res = ir::Place::new(res);
+                let as_variant = res.clone().downcast(idx);
+
+                for (i, arg) in args.iter().enumerate() {
+                    let op = self.convert_expr(arg);
+
+                    self.builder.use_op(as_variant.clone().field(i), op);
+                }
+
+                self.builder.set_discr(res.clone(), idx as u128);
+
+                ir::Operand::Place(res)
             }
             _ => {
                 if let hir::ExprKind::Ident {
@@ -652,7 +684,16 @@ fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Type {
             if variants.len() == 1 {
                 ir::Type::Tuple(variants[0].tys.iter().map(|t| lower_type(db, t)).collect())
             } else {
-                unimplemented!();
+                let tys = variants
+                    .iter()
+                    .map(|v| {
+                        let tys = v.tys.iter().map(|t| lower_type(db, t)).collect();
+
+                        ir::Type::Tuple(tys)
+                    })
+                    .collect();
+
+                ir::Type::Tagged(tys)
             }
         }
     }

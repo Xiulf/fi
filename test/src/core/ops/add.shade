@@ -2,7 +2,7 @@ module Core.Ops.Add where
 
 import Prim
 
-trait Add l r o | l r -> o where
+trait Add l r o | l r -> o, l o -> r, r o -> l where
     fn add :: (l, r) -> o
 
 impl addInt8 :: Add Int8 Int8 Int8 where

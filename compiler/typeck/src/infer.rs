@@ -67,6 +67,29 @@ impl<'db> Ctx<'db> {
             ir::PatKind::Bind { sub: None, .. } => {
                 self.fresh_type_with_kind(pat.span, self.file, self.ty_kind(pat.span, self.file))
             }
+            ir::PatKind::Ctor { ctor, pats } => {
+                let ty = self.db.typecheck(*ctor).ty.clone();
+                let ty = self.instantiate(pat.id, ty);
+                let ty = self.introduce_skolem_scope(ty);
+                let (args, ret) = match &*ty {
+                    Type::App(f, targs) if self.is_func(f) => {
+                        if let Type::Tuple(args) = &*targs[0] {
+                            (args.clone(), targs[1].clone())
+                        } else {
+                            unreachable!();
+                        }
+                    }
+                    _ => (List::empty(), ty),
+                };
+
+                assert_eq!(args.len(), pats.len());
+
+                for (pat, arg) in pats.into_iter().zip(args) {
+                    self.check_pat(pat, arg)?;
+                }
+
+                ret
+            }
             ir::PatKind::Typed { pat, ty } => {
                 let ty = self.hir_ty(ty);
                 let (elab_ty, kind) = self.kind_of(ty)?;

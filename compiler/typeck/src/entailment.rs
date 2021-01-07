@@ -27,10 +27,10 @@ impl<'db> Ctx<'db> {
         Ok(solved)
     }
 
-    fn generalize_pass(&mut self, _should_generalize: bool) -> Result<Vec<Ctnt>> {
-        // for (id, ctnt, ctx) in self.ctnts.clone() {
-        //     self.entails(SolverOpts::new(should_generalize, false), 0, id, ctnt, ctx)?;
-        // }
+    fn generalize_pass(&mut self, should_generalize: bool) -> Result<Vec<Ctnt>> {
+        for (id, ctnt, ctx) in self.ctnts.clone() {
+            self.entails(SolverOpts::new(should_generalize, false), 0, id, ctnt, ctx)?;
+        }
 
         Ok(self.ctnts.drain(..).map(|(_, c, _)| c).collect())
     }

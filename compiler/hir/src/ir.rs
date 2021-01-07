@@ -648,6 +648,27 @@ impl Item {
             .next()
     }
 
+    pub fn data(&self) -> &DataHead {
+        match &self.kind {
+            ItemKind::Data { head, .. } => head,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn data_body(&self) -> &[HirId] {
+        match &self.kind {
+            ItemKind::Data { body, .. } => body,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn ctor(&self) -> (HirId, &[Type]) {
+        match &self.kind {
+            ItemKind::DataCtor { data, tys } => (*data, tys),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn trait_(&self) -> &TraitHead {
         match &self.kind {
             ItemKind::Trait { head, .. } => head,

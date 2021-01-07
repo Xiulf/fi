@@ -1,3 +1,4 @@
 module Core.Ops (module Ops) where
 
 import Core.Ops.Add as Ops
+import Core.Ops.Sub as Ops

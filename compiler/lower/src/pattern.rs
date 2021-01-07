@@ -193,6 +193,23 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 }
             }
             hir::PatKind::Int { val } => Some(Pattern::Switch(ir::Operand::Place(pred), *val)),
+            hir::PatKind::Ctor { ctor, pats } => {
+                let file = self.db.module_tree(ctor.lib).file(ctor.module);
+                let hir = self.db.module_hir(file);
+                let ctor = &hir.items[&(*ctor).into()];
+                let data = hir.items[&ctor.ctor().0].data_body();
+                let idx = data
+                    .iter()
+                    .position(|id| hir.items[id].name.symbol == ctor.name.symbol)
+                    .unwrap();
+
+                let discr = self.builder.create_tmp(ir::Type::Discr(Box::new(ty)));
+                let discr = ir::Place::new(discr);
+
+                self.builder.get_discr(discr.clone(), pred);
+
+                Some(Pattern::Switch(ir::Operand::Place(discr), idx as u128))
+            }
             _ => unimplemented!(),
         }
     }

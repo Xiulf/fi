@@ -6,15 +6,14 @@ import Core
 fn main :: Unsafe => (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = do
     print_args argc argv
-    add (1 :: Int32) (2 :: Int32)
+    add argc 2
 
 fn print_args :: Unsafe => (Int32, Ptr (Ptr Byte)) -> ()
 fn print_args 0 _ = ()
 fn print_args n argv = do
     puts (unsafe_read argv)
-    print_args (sub_i32 n 1) (ptr_offset argv 8)
+    print_args (sub n 1) (ptr_offset argv 8)
 
-[intrinsic] foreign fn sub_i32 :: (Int32, Int32) -> Int32
 [intrinsic] foreign fn ptr_offset :: Unsafe => forall t. (Ptr t, Int) -> Ptr t
 [intrinsic] foreign fn unsafe_read :: Unsafe => forall t. Ptr t -> t
 

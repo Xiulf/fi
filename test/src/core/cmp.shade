@@ -1,0 +1,14 @@
+module Core.Cmp where
+
+import Data.Bool
+
+trait Eq l r | l -> r, r -> l where
+    fn eq :: (l, r) -> Bool
+
+data Ordering = Lt | Eq | Gt
+
+trait Eq l r => Ord l r | l -> r, r -> l where
+    fn cmp :: (l, r) -> Ordering
+
+-- fn ne :: forall l r. Eq l r => (l, r) -> Bool
+-- fn ne a b = not (eq a b)

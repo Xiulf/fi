@@ -128,6 +128,37 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     Ok(kind)
                 }
             }
+            ir::ItemKind::DataCtor { data, tys } => {
+                try {
+                    let data = hir.items[data].data();
+                    let mut ty = ty::Ty::ctor(item.span, file, data.id.owner);
+
+                    if !tys.is_empty() {
+                        let args =
+                            ty::Ty::tuple(item.span, file, tys.iter().map(|t| ctx.hir_ty(t)));
+
+                        let func_ty = ctx.func_ty(item.span, file);
+
+                        ty = ty::Ty::app(item.span, file, func_ty, ty::List::from([args, ty]));
+                    }
+
+                    if !data.vars.is_empty() {
+                        ty = ty::Ty::forall(
+                            item.span,
+                            file,
+                            data.vars
+                                .iter()
+                                .map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span, file)))),
+                            ty,
+                            None,
+                        );
+                    }
+
+                    let ty_kind = ctx.ty_kind(item.span, file);
+
+                    ctx.check_kind(ty, ty_kind)?
+                }
+            }
             ir::ItemKind::Foreign { ty, .. } => {
                 try {
                     let ty = ctx.hir_ty(ty);
