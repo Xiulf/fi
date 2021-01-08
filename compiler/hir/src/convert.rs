@@ -211,6 +211,12 @@ impl<'db> Converter<'db> {
     }
 
     fn register_exports(&mut self, exports: &ast::Exports) {
+        self._register_exports(exports);
+        self.exports.sort_by_key(|e| e.res);
+        self.exports.dedup_by_key(|e| e.res);
+    }
+
+    fn _register_exports(&mut self, exports: &ast::Exports) {
         match exports {
             ast::Exports::All => {
                 for (_, item) in &self.items {

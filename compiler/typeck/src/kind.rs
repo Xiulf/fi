@@ -211,8 +211,34 @@ impl<'db> Ctx<'db> {
 
                 Ok((ty2, ret))
             }
-            _ => unimplemented!(),
+            Type::ForAll(..) => unimplemented!(),
+            _ => Err(self.cant_apply_types(fn_ty, args)),
         }
+    }
+
+    fn cant_apply_types(&mut self, fn_ty: Ty, args: &List<Ty>) -> TypeError {
+        let arg_kinds = args
+            .into_iter()
+            .filter_map(|a| self.infer_kind(a).ok().map(|(_, k)| k))
+            .collect::<List<_>>();
+        let args2 = Ty::tuple(Default::default(), self.file, arg_kinds);
+        let ret = self.fresh_kind(Default::default(), self.file);
+        let func_ty = self.func_ty(Default::default(), self.file);
+        let fn_ty2 = Ty::app(
+            Default::default(),
+            self.file,
+            func_ty,
+            List::from([args2, ret]),
+        );
+
+        let _ = self.check_kind(fn_ty.clone(), fn_ty2);
+        let ty = Ty::app(Default::default(), self.file, fn_ty, args.clone());
+        let msg = format!(
+            "cannot apply types to type: `{}`",
+            crate::display::Typed(self.db, &(), &ty)
+        );
+
+        TypeError::Internal(msg)
     }
 
     crate fn check_kind(&mut self, ty: Ty, k2: Ty) -> Result<Ty> {
@@ -386,7 +412,15 @@ impl<'db> Ctx<'db> {
     }
 
     crate fn promote_kind(&mut self, u2: Unknown, ty: Ty) -> Result<Ty> {
-        let lvl2 = self.subst.unsolved[&u2].0.clone();
+        let lvl2 = match self.subst.unsolved.get(&u2) {
+            Some((lvl2, _)) => lvl2.clone(),
+            None => {
+                return Err(TypeError::Internal(format!(
+                    "unsolved unification variable ?{} is not bound",
+                    u2.0
+                )))
+            }
+        };
 
         ty.everywhere_result(&mut |t| match &*t {
             Type::Unknown(u1) => {

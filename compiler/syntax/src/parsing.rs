@@ -283,7 +283,7 @@ impl Parse for Export {
             ExportKind::Any
         };
 
-        let name = input.parse::<Ident>()?;
+        let name = Module::parse_name(input)?;
 
         if let Ok(_) = input.parse::<TLParen>() {
             let ctors = if let Ok(_) = input.parse::<TDblDot>() {
@@ -623,7 +623,7 @@ impl Parse for DataCtor {
         let mut tys = Vec::new();
 
         while !input.is_empty() && Type::peek(input) {
-            tys.push(Type::infix(input)?);
+            tys.push(Type::atom(input)?);
         }
 
         Ok(DataCtor {

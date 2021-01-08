@@ -1,0 +1,9 @@
+module Data.Monoid where
+
+import Data.Semigroup
+
+trait Semigroup m => Monoid m where
+    fn mempty :: () -> m
+
+impl monoidUnit :: Monoid () where
+    fn mempty = ()

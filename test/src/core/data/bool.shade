@@ -1,5 +1,6 @@
-module Data.Bool where
+module Data.Bool (module Data.Bool, module B) where
 
+import Prim (Bool(..)) as B
 import Prim (Bool(..))
 import Core.Cmp
 

@@ -1,12 +1,18 @@
 module Main where
 
-import Core
+import Prim
+import Data.List
+import Core.Ops.Sub
 
 [main]
 fn main :: Unsafe => (Int32, Ptr (Ptr Byte)) -> Int32
 fn main argc argv = do
+    c <- Cons 'c' Nil
+    b <- Cons 'b' c
+    a <- Cons 'a' b
+
     print_args argc argv
-    if eq True False then 4 else 5
+    0
 
 fn print_args :: Unsafe => (Int32, Ptr (Ptr Byte)) -> ()
 fn print_args 0 _ = ()

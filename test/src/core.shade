@@ -4,3 +4,6 @@ import Prim as C
 import Core.Ops as C
 import Core.Cmp as C
 import Data.Bool as C
+import Data.List as C
+import Data.Semigroup as C
+import Data.Monoid as C

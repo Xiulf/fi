@@ -1,0 +1,7 @@
+module Data.Semigroup where
+
+trait Semigroup a where
+    fn append :: (a, a) -> a
+
+impl semigroupUnit :: Semigroup () where
+    fn append _ _ = ()

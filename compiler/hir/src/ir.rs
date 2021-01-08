@@ -228,14 +228,14 @@ pub struct Param {
     pub span: Span,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Res {
     Error,
     Def(DefKind, DefId),
     Local(HirId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DefKind {
     Func,
     Const,
