@@ -610,7 +610,24 @@ fn is_func_ty(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> bool {
 }
 
 fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Ty {
+    lower_type_rec(db, ty, None, 0)
+}
+
+fn lower_type_rec<'a>(
+    db: &dyn LowerDatabase,
+    ty: &'a typeck::ty::Ty,
+    mut base: Option<&'a typeck::ty::Ty>,
+    lvl: usize,
+) -> ir::Ty {
     use typeck::ty::Type;
+
+    if let Some(base) = base {
+        if base == ty {
+            return ir::Ty::new(ir::Type::Recurse(lvl));
+        }
+    } else {
+        base = Some(ty);
+    }
 
     match &**ty {
         Type::Error => unreachable!(),
@@ -621,18 +638,23 @@ fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Ty {
         Type::Row(_, _) => unreachable!(),
         Type::KindApp(_, _) => unreachable!(),
         Type::Var(var) => ir::Ty::new(ir::Type::Opaque(var.0.local_id.0.to_string())),
-        Type::ForAll(_, ty, _) => lower_type(db, ty),
+        Type::ForAll(_, ty, _) => lower_type_rec(db, ty, base, lvl),
         Type::Tuple(tys) => ir::Ty::new(ir::Type::Tuple(
-            tys.iter().map(|t| lower_type(db, t)).collect(),
+            tys.iter()
+                .map(|t| lower_type_rec(db, t, base, lvl + 1))
+                .collect(),
         )),
-        Type::Ctnt(_, ty) => lower_type(db, ty),
-        Type::App(base, args) => match &**base {
+        Type::Ctnt(_, ty) => lower_type_rec(db, ty, base, lvl),
+        Type::App(f, args) => match &**f {
             Type::Ctor(def) => {
                 if *def == db.lang_items().fn_ty().owner {
                     if let Type::Tuple(params) = &*args[0] {
                         ir::Ty::new(ir::Type::Func(ir::Signature {
-                            params: params.iter().map(|t| lower_type(db, t)).collect(),
-                            rets: vec![lower_type(db, &args[1])],
+                            params: params
+                                .iter()
+                                .map(|t| lower_type_rec(db, t, base, lvl + 1))
+                                .collect(),
+                            rets: vec![lower_type_rec(db, &args[1], base, lvl + 1)],
                         }))
                     } else {
                         unreachable!();
@@ -645,17 +667,17 @@ fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Ty {
                     unimplemented!();
                 } else if *def == db.lang_items().slice_ty().owner {
                     unimplemented!();
-                } else if *def == db.lang_items().type_info().owner {
-                    // ir::Type::Type(args[0].display(db.to_ty_db()).to_string())
-                    ir::Ty::new(ir::Type::Type(String::new()))
-                } else if *def == db.lang_items().vwt().owner {
-                    // ir::Type::Vwt(args[0].display(db.to_ty_db()).to_string())
-                    ir::Ty::new(ir::Type::Vwt(String::new()))
+                // } else if *def == db.lang_items().type_info().owner {
+                // ir::Type::Type(args[0].display(db.to_ty_db()).to_string())
+                // ir::Ty::new(ir::Type::Type(String::new()))
+                // } else if *def == db.lang_items().vwt().owner {
+                // ir::Type::Vwt(args[0].display(db.to_ty_db()).to_string())
+                // ir::Ty::new(ir::Type::Vwt(String::new()))
                 } else {
-                    lower_type(db, base)
+                    lower_type_rec(db, f, base, lvl)
                 }
             }
-            _ => lower_type(db, base),
+            _ => lower_type_rec(db, f, base, lvl),
         },
         Type::Ctor(id) => {
             let file = db.module_tree(id.lib).file(id.module);
@@ -665,13 +687,21 @@ fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Ty {
 
             let mut ty = if variants.len() == 1 {
                 ir::Ty::new(ir::Type::Tuple(
-                    variants[0].tys.iter().map(|t| lower_type(db, t)).collect(),
+                    variants[0]
+                        .tys
+                        .iter()
+                        .map(|t| lower_type_rec(db, t, base, lvl + 1))
+                        .collect(),
                 ))
             } else {
                 let tys = variants
                     .iter()
                     .map(|v| {
-                        let tys = v.tys.iter().map(|t| lower_type(db, t)).collect();
+                        let tys = v
+                            .tys
+                            .iter()
+                            .map(|t| lower_type_rec(db, t, base, lvl + 1))
+                            .collect();
 
                         ir::Ty::new(ir::Type::Tuple(tys))
                     })

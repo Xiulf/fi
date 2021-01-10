@@ -484,6 +484,9 @@ impl Debug for Expr {
                 write!(indent(f), "{:?}", res)
             }
             ExprKind::Int { val } => write!(f, "Int id = {:?}, val = {:?}", self.id, val),
+            ExprKind::Float { bits } => write!(f, "Float id = {:?}, bits = {:?}", self.id, bits),
+            ExprKind::Char { val } => write!(f, "Char id = {:?}, val = {:?}", self.id, val),
+            ExprKind::Str { val } => write!(f, "Str id = {:?}, val = {:?}", self.id, val),
             ExprKind::App { base, args } => {
                 writeln!(f, "App id = {:?}", self.id)?;
                 write!(indent(f), "{:?}", base)?;

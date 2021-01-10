@@ -72,3 +72,5 @@ impl integerI128 :: Integer Int128
 
 impl decimalF32 :: Decimal Float32
 impl decimalF64 :: Decimal Float64
+
+trait Unsafe

@@ -21,6 +21,8 @@ use std::sync::Arc;
 
 #[salsa::query_group(TypeDatabaseStorage)]
 pub trait TypeDatabase: hir::HirDatabase + InferDb {
+    fn typeck_module(&self, id: ir::ModuleId) -> Arc<TypecheckResult>;
+
     fn typecheck(&self, id: ir::DefId) -> Arc<TypecheckResult>;
 
     fn variants(&self, id: ir::DefId) -> ty::List<ty::Variant>;
@@ -48,6 +50,10 @@ pub struct BoundInfo {
 #[derive(Debug, PartialEq, Eq)]
 pub enum BoundSource {
     Impl(ir::DefId),
+}
+
+fn typeck_module(db: &dyn TypeDatabase, id: ir::ModuleId) -> Arc<TypecheckResult> {
+    unimplemented!();
 }
 
 fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
@@ -110,9 +116,12 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     let mut kind = ctx.ty_kind(item.span, file);
 
                     if !head.vars.is_empty() {
-                        let params = (0..head.vars.len()).map(|_| {
-                            ctx.fresh_type_with_kind(item.span, file, ctx.ty_kind(item.span, file))
-                        });
+                        // let params = (0..head.vars.len()).map(|_| {
+                        //     ctx.fresh_type_with_kind(item.span, file, ctx.ty_kind(item.span, file))
+                        // });
+
+                        // for now data types can only be paramaterized by types
+                        let params = head.vars.iter().map(|v| ctx.ty_kind(v.span, file));
 
                         let params = ty::Ty::tuple(item.span, file, params);
                         let func_ty = ctx.func_ty(item.span, file);
@@ -132,6 +141,17 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                 try {
                     let data = hir.items[data].data();
                     let mut ty = ty::Ty::ctor(item.span, file, data.id.owner);
+
+                    if !data.vars.is_empty() {
+                        ty = ty::Ty::app(
+                            item.span,
+                            file,
+                            ty,
+                            data.vars
+                                .iter()
+                                .map(|v| ty::Ty::var(v.span, file, ty::TypeVar(v.id))),
+                        );
+                    }
 
                     if !tys.is_empty() {
                         let args =
@@ -155,8 +175,9 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     }
 
                     let ty_kind = ctx.ty_kind(item.span, file);
+                    let ty = ctx.check_kind(ty, ty_kind)?;
 
-                    ctx.check_kind(ty, ty_kind)?
+                    ty
                 }
             }
             ir::ItemKind::Foreign { ty, .. } => {

@@ -2,27 +2,10 @@ module Main where
 
 import Prim
 import Data.List
-import Core.Ops.Sub
 
 [main]
-fn main :: Unsafe => (Int32, Ptr (Ptr Byte)) -> Int32
-fn main argc argv = do
+fn main :: () -> ()
+fn main = do
     c <- Cons 'c' Nil
     b <- Cons 'b' c
     a <- Cons 'a' b
-
-    print_args argc argv
-    0
-
-fn print_args :: Unsafe => (Int32, Ptr (Ptr Byte)) -> ()
-fn print_args 0 _ = ()
-fn print_args n argv = do
-    puts (unsafe_read argv)
-    print_args (sub n 1) (ptr_offset argv 8)
-
-[intrinsic] foreign fn ptr_offset :: Unsafe => forall t. (Ptr t, Int) -> Ptr t
-[intrinsic] foreign fn unsafe_read :: Unsafe => forall t. Ptr t -> t
-
-foreign fn puts :: Ptr Byte -> ()
-
-trait Unsafe

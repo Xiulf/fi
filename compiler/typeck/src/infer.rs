@@ -111,7 +111,7 @@ impl<'db> Ctx<'db> {
     crate fn infer_expr(&mut self, expr: &ir::Expr) -> Result<Ty> {
         let ty = match &expr.kind {
             ir::ExprKind::Error => Ty::error(expr.span, self.file),
-            ir::ExprKind::Ident { res, .. } => match res {
+            ir::ExprKind::Ident { res, name } => match res {
                 ir::Res::Error => Ty::error(expr.span, self.file),
                 ir::Res::Local(id) => {
                     let ty = self.tys[id].clone();

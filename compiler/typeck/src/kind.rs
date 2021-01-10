@@ -161,13 +161,26 @@ impl<'db> Ctx<'db> {
         fn_kind: Ty,
         args: &List<Ty>,
     ) -> Result<(Ty, Ty)> {
+        println!(
+            "{} :: {}",
+            crate::display::Typed(self.db, &(), &fn_ty),
+            crate::display::Typed(self.db, &(), &fn_kind)
+        );
         match &*fn_kind {
             Type::App(f, targs) if self.is_func(f) && targs.len() == 2 => {
                 if let Type::Tuple(params) = &*targs[0] {
+                    assert_eq!(args.len(), params.len());
                     let args = args
                         .into_iter()
                         .zip(params)
-                        .map(|(arg_ty, arg_kind)| self.check_kind(arg_ty, arg_kind))
+                        .map(|(arg_ty, arg_kind)| {
+                            // println!(
+                            //     "{} :: {}",
+                            //     crate::display::Typed(self.db, &(), &arg_ty),
+                            //     crate::display::Typed(self.db, &(), &arg_kind)
+                            // );
+                            self.check_kind(arg_ty, arg_kind)
+                        })
                         .collect::<Result<List<_>>>()?;
 
                     let ty = Ty::app(span, file, fn_ty, args);
