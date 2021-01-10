@@ -25,7 +25,7 @@ pub trait TypeDatabase: hir::HirDatabase + InferDb {
 
     fn typecheck(&self, id: ir::DefId) -> Arc<TypecheckResult>;
 
-    fn variants(&self, id: ir::DefId) -> ty::List<ty::Variant>;
+    fn variants(&self, id: ir::DefId, args: ty::List<ty::Ty>) -> ty::List<ty::Variant>;
 
     fn impls(&self, id: ir::DefId) -> ty::List<ty::Impl>;
 }
@@ -304,22 +304,32 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
     })
 }
 
-fn variants(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Variant> {
+fn variants(db: &dyn TypeDatabase, id: ir::DefId, args: ty::List<ty::Ty>) -> ty::List<ty::Variant> {
     let file = db.module_tree(id.lib).file(id.module);
     let hir = db.module_hir(file);
     let def = hir.def(id);
     let mut ctx = ctx::Ctx::new(db, file);
 
     if let ir::Def::Item(ir::Item {
-        kind: ir::ItemKind::Data { body, .. },
+        kind: ir::ItemKind::Data { head, body },
         ..
     }) = def
     {
+        let vars = head
+            .vars
+            .iter()
+            .zip(args)
+            .map(|(v, ty)| (ty::TypeVar(v.id), ty))
+            .collect::<HashMap<_, _>>();
+
         body.iter()
             .filter_map(|ctor_id| {
                 if let ir::Def::Item(item) = hir.def(ctor_id.owner) {
                     if let ir::ItemKind::DataCtor { data: _, tys } = &item.kind {
-                        let tys = tys.iter().map(|t| ctx.hir_ty(t)).collect();
+                        let tys = tys
+                            .iter()
+                            .map(|t| ctx.hir_ty(t).replace_vars(vars.clone()))
+                            .collect();
 
                         Some(ty::Variant {
                             id: ctor_id.owner,

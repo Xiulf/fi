@@ -164,6 +164,7 @@ impl<'db> Ctx<'db> {
                             ir::StmtKind::Bind { .. } => {
                                 let unit = Ty::tuple(expr.span, self.file, List::empty());
 
+                                self.infer_stmt(stmt)?;
                                 self.unify_types(ty.clone(), unit)?;
                             }
                         }

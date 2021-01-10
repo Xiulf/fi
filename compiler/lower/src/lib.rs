@@ -22,8 +22,8 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
 
     let mut low = converter.finish();
 
-    // println!("{}", low);
     lowlang::analysis::mandatory(&mut low, &db.target(lib));
+    println!("{}", low);
 
     Arc::new(low)
 }
@@ -609,24 +609,36 @@ fn is_func_ty(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> bool {
     }
 }
 
+fn is_recursive(ty: &typeck::ty::Ty, variants: &[typeck::ty::Variant]) -> bool {
+    let mut res = false;
+
+    variants.iter().for_each(|v| {
+        v.tys.iter().for_each(|t| {
+            t.everything(&mut |t| {
+                res = res || t.equal(ty);
+            });
+        });
+    });
+
+    res
+}
+
 fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Ty {
-    lower_type_rec(db, ty, None, 0)
+    lower_type_rec(db, ty, Vec::new(), 0)
 }
 
 fn lower_type_rec<'a>(
     db: &dyn LowerDatabase,
     ty: &'a typeck::ty::Ty,
-    mut base: Option<&'a typeck::ty::Ty>,
+    mut base: Vec<(&'a typeck::ty::Ty, usize)>,
     lvl: usize,
 ) -> ir::Ty {
     use typeck::ty::Type;
 
-    if let Some(base) = base {
-        if base == ty {
-            return ir::Ty::new(ir::Type::Recurse(lvl));
+    for &(base, l) in &base {
+        if base.equal(ty) {
+            return ir::Ty::new(ir::Type::Recurse(lvl - l));
         }
-    } else {
-        base = Some(ty);
     }
 
     match &**ty {
@@ -641,7 +653,7 @@ fn lower_type_rec<'a>(
         Type::ForAll(_, ty, _) => lower_type_rec(db, ty, base, lvl),
         Type::Tuple(tys) => ir::Ty::new(ir::Type::Tuple(
             tys.iter()
-                .map(|t| lower_type_rec(db, t, base, lvl + 1))
+                .map(|t| lower_type_rec(db, t, base.clone(), lvl + 1))
                 .collect(),
         )),
         Type::Ctnt(_, ty) => lower_type_rec(db, ty, base, lvl),
@@ -652,7 +664,7 @@ fn lower_type_rec<'a>(
                         ir::Ty::new(ir::Type::Func(ir::Signature {
                             params: params
                                 .iter()
-                                .map(|t| lower_type_rec(db, t, base, lvl + 1))
+                                .map(|t| lower_type_rec(db, t, base.clone(), lvl + 1))
                                 .collect(),
                             rets: vec![lower_type_rec(db, &args[1], base, lvl + 1)],
                         }))
@@ -662,98 +674,117 @@ fn lower_type_rec<'a>(
                 } else if *def == db.lang_items().ptr_ty().owner {
                     assert_eq!(args.len(), 1);
 
-                    ir::Ty::new(ir::Type::Ptr(Box::new(lower_type(db, &args[0]))))
+                    ir::Ty::new(ir::Type::Ptr(Box::new(lower_type_rec(
+                        db,
+                        &args[0],
+                        base,
+                        lvl + 1,
+                    ))))
                 } else if *def == db.lang_items().array_ty().owner {
                     unimplemented!();
                 } else if *def == db.lang_items().slice_ty().owner {
                     unimplemented!();
-                // } else if *def == db.lang_items().type_info().owner {
-                // ir::Type::Type(args[0].display(db.to_ty_db()).to_string())
-                // ir::Ty::new(ir::Type::Type(String::new()))
-                // } else if *def == db.lang_items().vwt().owner {
-                // ir::Type::Vwt(args[0].display(db.to_ty_db()).to_string())
-                // ir::Ty::new(ir::Type::Vwt(String::new()))
                 } else {
-                    lower_type_rec(db, f, base, lvl)
+                    base.push((ty, lvl));
+                    lower_type_ctor(db, ty, *def, args.clone(), base, lvl)
                 }
             }
             _ => lower_type_rec(db, f, base, lvl),
         },
         Type::Ctor(id) => {
-            let file = db.module_tree(id.lib).file(id.module);
-            let hir = db.module_hir(file);
-            let def = hir.def(*id);
-            let variants = db.variants(*id);
-
-            let mut ty = if variants.len() == 1 {
-                ir::Ty::new(ir::Type::Tuple(
-                    variants[0]
-                        .tys
-                        .iter()
-                        .map(|t| lower_type_rec(db, t, base, lvl + 1))
-                        .collect(),
-                ))
-            } else {
-                let tys = variants
-                    .iter()
-                    .map(|v| {
-                        let tys = v
-                            .tys
-                            .iter()
-                            .map(|t| lower_type_rec(db, t, base, lvl + 1))
-                            .collect();
-
-                        ir::Ty::new(ir::Type::Tuple(tys))
-                    })
-                    .collect();
-
-                ir::Ty::new(ir::Type::Tagged(tys))
-            };
-
-            if let hir::Def::Item(item) = def {
-                if let Some(repr) = item.repr() {
-                    use ir::layout::*;
-                    let target = db.target(id.lib);
-
-                    ty = ty.with_abi(match repr {
-                        "u8" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, false), &target))
-                        }
-                        "u16" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, false), &target))
-                        }
-                        "u32" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, false), &target))
-                        }
-                        "u64" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, false), &target))
-                        }
-                        "u128" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, false), &target))
-                        }
-                        "i8" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, true), &target))
-                        }
-                        "i16" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, true), &target))
-                        }
-                        "i32" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, true), &target))
-                        }
-                        "i64" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, true), &target))
-                        }
-                        "i128" => {
-                            Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, true), &target))
-                        }
-                        "f32" => Abi::Scalar(Scalar::unit(Primitive::F32, &target)),
-                        "f64" => Abi::Scalar(Scalar::unit(Primitive::F64, &target)),
-                        _ => unreachable!("unknown repr {}", repr),
-                    });
-                }
-            }
-
-            ty
+            base.push((ty, lvl));
+            lower_type_ctor(db, ty, *id, typeck::ty::List::empty(), base, lvl)
         }
     }
+}
+
+fn lower_type_ctor(
+    db: &dyn LowerDatabase,
+    orig_ty: &typeck::ty::Ty,
+    id: hir::DefId,
+    args: typeck::ty::List<typeck::ty::Ty>,
+    base: Vec<(&typeck::ty::Ty, usize)>,
+    lvl: usize,
+) -> ir::Ty {
+    let file = db.module_tree(id.lib).file(id.module);
+    let hir = db.module_hir(file);
+    let def = hir.def(id);
+    let variants = db.variants(id, args);
+    let recursive = is_recursive(orig_ty, &variants);
+
+    let mut ty = if variants.is_empty() {
+        if let hir::Def::Item(item) = def {
+            if let Some(repr) = item.repr() {
+                return ir::Ty::new(match repr {
+                    "u8" => ir::Type::U8,
+                    "u16" => ir::Type::U16,
+                    "u32" => ir::Type::U32,
+                    "u64" => ir::Type::U64,
+                    "u128" => ir::Type::U128,
+                    "i8" => ir::Type::I8,
+                    "i16" => ir::Type::I16,
+                    "i32" => ir::Type::I32,
+                    "i64" => ir::Type::I64,
+                    "i128" => ir::Type::I128,
+                    "f32" => ir::Type::F32,
+                    "f64" => ir::Type::F64,
+                    _ => unreachable!("unknown repr {}", repr),
+                });
+            }
+        }
+
+        unreachable!("data type with no constructors must have a repr attribute");
+    } else if variants.len() == 1 {
+        ir::Ty::new(ir::Type::Tuple(
+            variants[0]
+                .tys
+                .iter()
+                .map(|t| lower_type_rec(db, t, base.clone(), lvl + 1 + recursive as usize))
+                .collect(),
+        ))
+    } else {
+        let tys = variants
+            .iter()
+            .map(|v| {
+                let tys = v
+                    .tys
+                    .iter()
+                    .map(|t| lower_type_rec(db, t, base.clone(), lvl + 2 + recursive as usize))
+                    .collect();
+
+                ir::Ty::new(ir::Type::Tuple(tys))
+            })
+            .collect();
+
+        ir::Ty::new(ir::Type::Tagged(tys))
+    };
+
+    if let hir::Def::Item(item) = def {
+        if let Some(repr) = item.repr() {
+            use ir::layout::*;
+            let target = db.target(id.lib);
+
+            ty = ty.with_abi(match repr {
+                "u8" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, false), &target)),
+                "u16" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, false), &target)),
+                "u32" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, false), &target)),
+                "u64" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, false), &target)),
+                "u128" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, false), &target)),
+                "i8" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, true), &target)),
+                "i16" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, true), &target)),
+                "i32" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, true), &target)),
+                "i64" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, true), &target)),
+                "i128" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, true), &target)),
+                "f32" => Abi::Scalar(Scalar::unit(Primitive::F32, &target)),
+                "f64" => Abi::Scalar(Scalar::unit(Primitive::F64, &target)),
+                _ => unreachable!("unknown repr {}", repr),
+            });
+        }
+    }
+
+    if recursive {
+        ty = ir::Ty::new(ir::Type::Box(Box::new(ty)));
+    }
+
+    ty
 }

@@ -375,6 +375,21 @@ impl TypedDisplay<Types> for ir::Pat {
             }
             ir::PatKind::Char { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
             ir::PatKind::Str { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
+            ir::PatKind::Ctor { ctor, pats } => {
+                let file = db.module_tree(ctor.lib).file(ctor.module);
+                let hir = db.module_hir(file);
+                let def = hir.def(*ctor);
+
+                write!(f, "({}", def.name())?;
+
+                for pat in pats {
+                    write!(f, " ")?;
+                    pat.typed_fmt(db, tys, f)?;
+                }
+
+                write!(f, ") :: ")?;
+                ty.typed_fmt(db, &(), f)
+            }
             _ => unimplemented!(),
         }
     }

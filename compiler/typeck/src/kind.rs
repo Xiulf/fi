@@ -161,11 +161,6 @@ impl<'db> Ctx<'db> {
         fn_kind: Ty,
         args: &List<Ty>,
     ) -> Result<(Ty, Ty)> {
-        println!(
-            "{} :: {}",
-            crate::display::Typed(self.db, &(), &fn_ty),
-            crate::display::Typed(self.db, &(), &fn_kind)
-        );
         match &*fn_kind {
             Type::App(f, targs) if self.is_func(f) && targs.len() == 2 => {
                 if let Type::Tuple(params) = &*targs[0] {
