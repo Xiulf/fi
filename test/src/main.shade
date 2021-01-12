@@ -4,8 +4,15 @@ import Prim
 import Data.List
 
 [main]
-fn main :: () -> ()
+fn main :: () -> Int32
 fn main = do
-    c <- Cons 'c' Nil
-    b <- Cons 'b' c
-    a <- Cons 'a' b
+    c <- Cons 24 Nil
+    b <- Cons 23 c
+    a <- Cons 22 b
+    head a
+
+fn head :: List Int32 -> Int32
+fn head (Cons x _) = x
+
+fn tail :: List Int32 -> List Int32
+fn tail (Cons _ xs) = xs

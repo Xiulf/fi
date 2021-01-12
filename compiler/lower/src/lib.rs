@@ -22,8 +22,8 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
 
     let mut low = converter.finish();
 
+    // println!("{}", low);
     lowlang::analysis::mandatory(&mut low, &db.target(lib));
-    println!("{}", low);
 
     Arc::new(low)
 }
@@ -318,8 +318,13 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                             .iter()
                             .position(|id| hir.items[id].name.symbol == name.symbol)
                             .unwrap();
+                        let cs = if let ir::Type::Box(to) = ty.kind {
+                            ir::Const::Ptr(Box::new(ir::Const::Variant(idx, Vec::new(), *to)))
+                        } else {
+                            ir::Const::Variant(idx, Vec::new(), ty)
+                        };
 
-                        ir::Operand::Const(ir::Const::Variant(idx, Vec::new(), ty))
+                        ir::Operand::Const(cs)
                     }
                     _ => unreachable!(),
                 },
@@ -445,12 +450,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                     let op = self.convert_expr(expr);
 
                     if i == block.stmts.len() - 1 {
-                        let res = self.builder.create_tmp(ty);
-                        let res = ir::Place::new(res);
-
-                        self.builder.use_op(res.clone(), op);
-
-                        return ir::Operand::Place(res);
+                        return op;
                     }
                 }
             }

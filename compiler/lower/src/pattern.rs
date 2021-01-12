@@ -208,9 +208,38 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                     .create_tmp(ir::Ty::new(ir::Type::Discr(Box::new(ty))));
                 let discr = ir::Place::new(discr);
 
-                self.builder.get_discr(discr.clone(), pred);
+                self.builder.get_discr(discr.clone(), pred.clone());
 
-                Some(Pattern::Switch(ir::Operand::Place(discr), idx as u128))
+                let variant = pred.downcast(idx);
+                let preds = (0..pats.len())
+                    .map(|i| variant.clone().field(i))
+                    .collect::<Vec<_>>();
+
+                let sub = self.convert_pats(&preds, pats);
+                let pat = Pattern::Switch(ir::Operand::Place(discr), idx as u128);
+
+                match sub {
+                    Pattern::Or(mut pats) => {
+                        pats.insert(0, pat);
+
+                        Some(Pattern::Or(pats))
+                    }
+                    Pattern::And(mut pats) => {
+                        pats.insert(0, pat);
+
+                        Some(Pattern::And(pats))
+                    }
+                    Pattern::Seq(mut pats) if !pats.is_empty() => {
+                        if let Pattern::And(pats2) = &mut pats[0] {
+                            pats2.insert(0, pat);
+                        } else {
+                            pats.insert(0, pat);
+                        }
+
+                        Some(Pattern::Seq(pats))
+                    }
+                    _ => Some(pat),
+                }
             }
             _ => unimplemented!(),
         }
