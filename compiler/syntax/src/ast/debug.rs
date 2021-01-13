@@ -783,13 +783,9 @@ impl Debug for Type {
 
                 Ok(())
             }
-            TypeKind::Func { params, ret } => {
+            TypeKind::Func { param, ret } => {
                 writeln!(f, "Func")?;
-
-                for param in params {
-                    writeln!(indent(f), "{:?}", param)?;
-                }
-
+                writeln!(indent(f), "{:?}", param)?;
                 write!(indent(f), "{:?}", ret)
             }
             TypeKind::Forall { vars, ret } => {

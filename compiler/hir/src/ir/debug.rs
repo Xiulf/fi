@@ -662,13 +662,9 @@ impl Debug for Type {
                 writeln!(f, "Record id = {:?}", self.id)?;
                 write!(indent(f), "{:?}", row)
             }
-            TypeKind::Func { params, ret } => {
+            TypeKind::Func { param, ret } => {
                 writeln!(f, "Func id = {:?}", self.id)?;
-
-                for param in params {
-                    writeln!(indent(f), "{:?}", param)?;
-                }
-
+                writeln!(indent(f), "{:?}", param)?;
                 write!(indent(f), "{:?}", ret)
             }
             TypeKind::Forall { vars, ty } => {

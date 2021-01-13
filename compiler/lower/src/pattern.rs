@@ -49,12 +49,22 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
             let last = case.arms.len() - 1;
 
             for (i, arm) in case.arms.into_iter().enumerate() {
-                if arm.matches_all() || i == last {
+                if arm.matches_all() {
                     let block = self.compile_pattern(arm.pat, exit_block);
 
                     self.builder.set_block(block);
                     self.compile_guarded(arm.guard, Some(res.clone()));
                     self.builder.jump(exit_block);
+                    break;
+                } else if i == last {
+                    let next = self.builder.create_block();
+                    let block = self.compile_pattern(arm.pat, next);
+
+                    self.builder.set_block(block);
+                    self.compile_guarded(arm.guard, Some(res.clone()));
+                    self.builder.jump(exit_block);
+                    self.builder.set_block(next);
+                    self.builder.abort();
                     break;
                 } else {
                     let next = self.builder.create_block();

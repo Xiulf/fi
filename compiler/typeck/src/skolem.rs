@@ -29,9 +29,14 @@ impl<'db> Ctx<'db> {
     /// Introduce a skolem scope at every occurrence of a ForAll.
     crate fn introduce_skolem_scope(&mut self, ty: Ty) -> Ty {
         ty.everywhere(&mut |t| match &*t {
-            Type::ForAll(vars, r, None) => {
-                Ty::forall(t.span(), t.file(), vars, r.clone(), self.new_skolem_scope())
-            }
+            Type::ForAll(var, k, r, None) => Ty::forall(
+                t.span(),
+                t.file(),
+                *var,
+                k.clone(),
+                r.clone(),
+                self.new_skolem_scope(),
+            ),
             _ => t,
         })
     }
@@ -41,16 +46,15 @@ impl<'db> Ctx<'db> {
         &mut self,
         span: Span,
         file: source::FileId,
-        vars: &[(TypeVar, Option<Ty>)],
-        skolems: Vec<Skolem>,
+        var: TypeVar,
+        kind: Option<Ty>,
+        skolem: Skolem,
         ty: Ty,
         scope: SkolemScope,
     ) -> Ty {
-        ty.replace_vars(
-            vars.iter()
-                .zip(skolems)
-                .map(|((v, k), s)| (*v, Ty::skolem(span, file, *v, k.clone(), s, scope)))
-                .collect(),
-        )
+        let mut vars = std::collections::HashMap::new();
+
+        vars.insert(var, Ty::skolem(span, file, var, kind, skolem, scope));
+        ty.replace_vars(vars)
     }
 }

@@ -44,7 +44,7 @@ data Char :: Type
 [repr("f64" )] data Float64 :: Type
 
 [lang("fn_ty")]
-data Fn :: (Type, Type) -> Type
+data Fn :: Type -> Type
 
 [lang("record_ty")]
 data Record :: Row Type -> Type

@@ -1964,11 +1964,8 @@ impl<'db> Converter<'db> {
             ast::TypeKind::Record { ref row } => ir::TypeKind::Record {
                 row: self.convert_row(row),
             },
-            ast::TypeKind::Func {
-                ref params,
-                ref ret,
-            } => ir::TypeKind::Func {
-                params: params.iter().map(|t| self.convert_type(t)).collect(),
+            ast::TypeKind::Func { ref param, ref ret } => ir::TypeKind::Func {
+                param: Box::new(self.convert_type(param)),
                 ret: Box::new(self.convert_type(ret)),
             },
             ast::TypeKind::Forall { ref vars, ref ret } => {

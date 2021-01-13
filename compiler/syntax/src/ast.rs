@@ -457,7 +457,7 @@ pub enum TypeKind {
     Qual { module: Ident, name: Ident },
     App { base: Box<Type>, args: Vec<Type> },
     Tuple { tys: Vec<Type> },
-    Func { params: Vec<Type>, ret: Box<Type> },
+    Func { param: Box<Type>, ret: Box<Type> },
     Forall { vars: Vec<TypeVar>, ret: Box<Type> },
     Cons { cs: Constraint, ty: Box<Type> },
     Record { row: Row },

@@ -1778,11 +1778,7 @@ impl Type {
             Ok(Type {
                 span: start.merge(input.prev_span()),
                 kind: TypeKind::Func {
-                    params: match ty.kind {
-                        TypeKind::Parens { inner } => vec![*inner],
-                        TypeKind::Tuple { tys } => tys,
-                        _ => vec![ty],
-                    },
+                    param: Box::new(ty),
                     ret,
                 },
             })

@@ -22,7 +22,7 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
 
     let mut low = converter.finish();
 
-    // println!("{}", low);
+    println!("{}", low);
     lowlang::analysis::mandatory(&mut low, &db.target(lib));
 
     Arc::new(low)

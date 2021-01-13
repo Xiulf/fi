@@ -448,7 +448,7 @@ pub enum TypeKind {
     App { base: Box<Type>, args: Vec<Type> },
     Tuple { tys: Vec<Type> },
     Record { row: Row },
-    Func { params: Vec<Type>, ret: Box<Type> },
+    Func { param: Box<Type>, ret: Box<Type> },
     Forall { vars: Vec<TypeVar>, ty: Box<Type> },
     Cons { cs: Constraint, ty: Box<Type> },
     Kinded { ty: Box<Type>, kind: Box<Type> },

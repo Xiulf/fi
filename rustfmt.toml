@@ -1,0 +1,5 @@
+binop_separator = "Back"
+empty_item_single_line = false
+blank_lines_upper_bound = 1
+max_width = 160
+overflow_delimited_expr = true

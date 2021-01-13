@@ -21,9 +21,9 @@ pub enum Type {
     Ctor(DefId),
     Tuple(List<Ty>),
     Row(List<Field>, Option<Ty>),
-    App(Ty, List<Ty>),
-    KindApp(Ty, List<Ty>),
-    ForAll(List<(TypeVar, Option<Ty>)>, Ty, Option<SkolemScope>),
+    App(Ty, Ty),
+    KindApp(Ty, Ty),
+    ForAll(TypeVar, Option<Ty>, Ty, Option<SkolemScope>),
     Ctnt(Ctnt, Ty),
     Skolem(TypeVar, Option<Ty>, Skolem, SkolemScope),
 }
@@ -112,31 +112,23 @@ impl Ty {
         Ty::new(Type::Row(List::from_iter(fields), tail.into()), span, file)
     }
 
-    pub fn app(span: Span, file: FileId, base: Ty, args: impl IntoIterator<Item = Ty>) -> Self {
-        Ty::new(Type::App(base, List::from_iter(args)), span, file)
+    pub fn app(span: Span, file: FileId, base: Ty, arg: Ty) -> Self {
+        Ty::new(Type::App(base, arg), span, file)
     }
 
-    pub fn kind_app(
-        span: Span,
-        file: FileId,
-        base: Ty,
-        args: impl IntoIterator<Item = Ty>,
-    ) -> Self {
-        Ty::new(Type::KindApp(base, List::from_iter(args)), span, file)
+    pub fn kind_app(span: Span, file: FileId, base: Ty, arg: Ty) -> Self {
+        Ty::new(Type::KindApp(base, arg), span, file)
     }
 
     pub fn forall(
         span: Span,
         file: FileId,
-        vars: impl IntoIterator<Item = (TypeVar, Option<Ty>)>,
+        var: TypeVar,
+        kind: impl Into<Option<Ty>>,
         ty: Ty,
         scope: impl Into<Option<SkolemScope>>,
     ) -> Self {
-        Ty::new(
-            Type::ForAll(List::from_iter(vars), ty, scope.into()),
-            span,
-            file,
-        )
+        Ty::new(Type::ForAll(var, kind.into(), ty, scope.into()), span, file)
     }
 
     pub fn ctnt(span: Span, file: FileId, ctnt: Ctnt, ty: Ty) -> Self {
@@ -217,22 +209,18 @@ impl Ty {
             (Type::Skolem(a1, None, c1, d1), Type::Skolem(a2, None, c2, d2)) => {
                 a1 == a2 && c1 == c2 && d1 == d2
             }
-            (Type::ForAll(a1, b1, c1), Type::ForAll(a2, b2, c2)) => {
-                a1.iter()
-                    .zip(a2.iter())
-                    .all(|((v1, k1), (v2, k2))| match (k1, k2) {
-                        (Some(k1), Some(k2)) => v1 == v2 && k1.equal(k2),
-                        (None, None) => v1 == v2,
+            (Type::ForAll(a1, b1, c1, d1), Type::ForAll(a2, b2, c2, d2)) => {
+                a1 == a2
+                    && match (b1, b2) {
+                        (Some(b1), Some(b2)) => b1.equal(b2),
                         _ => false,
-                    })
-                    && b1.equal(b2)
-                    && c1 == c2
+                    }
+                    && c1.equal(c2)
+                    && d1 == d2
             }
             (Type::Tuple(a), Type::Tuple(b)) => a.iter().zip(b.iter()).all(|(a, b)| a.equal(b)),
             (Type::App(a1, b1), Type::App(a2, b2))
-            | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => {
-                a1.equal(a2) && b1.iter().zip(b2.iter()).all(|(a, b)| a.equal(b))
-            }
+            | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => a1.equal(a2) && b1.equal(b2),
             (Type::Ctnt(a1, b1), Type::Ctnt(a2, b2)) => {
                 a1.trait_ == a2.trait_
                     && a1.tys.iter().zip(a2.tys.iter()).all(|(a, b)| a.equal(b))
@@ -259,16 +247,14 @@ impl Ty {
         match &**self {
             Type::App(t1, t2) => {
                 t1.everything(f);
-                t2.iter().for_each(|t| t.everything(f));
+                t2.everything(f);
             }
             Type::KindApp(t1, t2) => {
                 t1.everything(f);
-                t2.iter().for_each(|t| t.everything(f));
+                t2.everything(f);
             }
-            Type::ForAll(vars, t1, _) => {
-                vars.iter()
-                    .filter_map(|v| v.1.as_ref())
-                    .for_each(|k| k.everything(f));
+            Type::ForAll(_, k1, t1, _) => {
+                k1.as_ref().map(|k1| k1.everything(f));
                 t1.everything(f);
             }
             Type::Ctnt(ctnt, t2) => {
@@ -295,25 +281,21 @@ impl Ty {
         match &*self {
             Type::App(t1, t2) => {
                 let t1 = t1.clone().everywhere(f);
-                let t2 = t2.into_iter().map(|t| t.everywhere(f)).collect::<List<_>>();
+                let t2 = t2.clone().everywhere(f);
 
                 f(Ty::app(self.span(), self.file(), t1, t2))
             }
             Type::KindApp(t1, t2) => {
                 let t1 = t1.clone().everywhere(f);
-                let t2 = t2.into_iter().map(|t| t.everywhere(f)).collect::<List<_>>();
+                let t2 = t2.clone().everywhere(f);
 
                 f(Ty::kind_app(self.span(), self.file(), t1, t2))
             }
-            Type::ForAll(vars, t1, scope) => {
-                let vars = vars
-                    .into_iter()
-                    .map(|(v, k)| (v, k.map(|k| k.everywhere(f))))
-                    .collect::<List<_>>();
-
+            Type::ForAll(var, k1, t1, scope) => {
+                let k1 = k1.clone().map(|k1| k1.everywhere(f));
                 let t1 = t1.clone().everywhere(f);
 
-                f(Ty::forall(self.span(), self.file(), vars, t1, *scope))
+                f(Ty::forall(self.span(), self.file(), *var, k1, t1, *scope))
             }
             Type::Ctnt(ctnt, t2) => {
                 let tys = (&ctnt.tys)
@@ -358,31 +340,21 @@ impl Ty {
         match &*self {
             Type::App(t1, t2) => {
                 let t1 = t1.clone().everywhere_result(f)?;
-                let t2 = t2
-                    .into_iter()
-                    .map(|t| t.everywhere_result(f))
-                    .collect::<Result<List<_>>>()?;
+                let t2 = t2.clone().everywhere_result(f)?;
 
                 f(Ty::app(self.span(), self.file(), t1, t2))
             }
             Type::KindApp(t1, t2) => {
                 let t1 = t1.clone().everywhere_result(f)?;
-                let t2 = t2
-                    .into_iter()
-                    .map(|t| t.everywhere_result(f))
-                    .collect::<Result<List<_>>>()?;
+                let t2 = t2.clone().everywhere_result(f)?;
 
                 f(Ty::kind_app(self.span(), self.file(), t1, t2))
             }
-            Type::ForAll(vars, t1, scope) => {
-                let vars = vars
-                    .into_iter()
-                    .map(|(v, k)| Ok((v, k.map(|k| k.everywhere_result(f)).transpose()?)))
-                    .collect::<Result<List<_>>>()?;
-
+            Type::ForAll(var, k1, t1, scope) => {
+                let k1 = k1.clone().map(|k1| k1.everywhere_result(f)).transpose()?;
                 let t1 = t1.clone().everywhere_result(f)?;
 
-                f(Ty::forall(self.span(), self.file(), vars, t1, *scope))
+                f(Ty::forall(self.span(), self.file(), *var, k1, t1, *scope))
             }
             Type::Ctnt(ctnt, t2) => {
                 let tys = (&ctnt.tys)
