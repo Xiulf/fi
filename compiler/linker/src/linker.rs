@@ -171,7 +171,7 @@ impl Linker for MsvcLinker {
         self.cmd.arg(arg);
     }
 
-    fn runtime_path(&mut self, path: &Path) {
+    fn runtime_path(&mut self, _path: &Path) {
         unimplemented!();
     }
 
@@ -186,5 +186,6 @@ impl Linker for MsvcLinker {
         self.cmd.arg(path);
     }
 
-    fn finalize(&mut self) {}
+    fn finalize(&mut self) {
+    }
 }

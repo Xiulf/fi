@@ -52,7 +52,7 @@ pub enum BoundSource {
     Impl(ir::DefId),
 }
 
-fn typeck_module(db: &dyn TypeDatabase, id: ir::ModuleId) -> Arc<TypecheckResult> {
+fn typeck_module(_db: &dyn TypeDatabase, _id: ir::ModuleId) -> Arc<TypecheckResult> {
     unimplemented!();
 }
 
@@ -89,26 +89,19 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     ty
                 }
             }
-            ir::ItemKind::Alias {
-                vars,
-                value,
-                kind: _,
-            } => {
+            ir::ItemKind::Alias { vars, value, kind: _ } => {
                 try {
-                    let ty = ctx.hir_ty(value);
+                    let mut ty = ctx.hir_ty(value);
 
                     if !vars.is_empty() {
-                        ty::Ty::forall(
-                            item.span,
-                            file,
-                            vars.iter()
-                                .map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span, file)))),
-                            ty,
-                            None,
-                        )
-                    } else {
-                        ty
+                        let vars = vars.iter().map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span, file)))).collect::<Vec<_>>();
+
+                        for (v, k) in vars.into_iter().rev() {
+                            ty = ty::Ty::forall(item.span, file, v, k, ty, None);
+                        }
                     }
+
+                    ty
                 }
             }
             ir::ItemKind::Data { head, .. } => {
@@ -121,13 +114,12 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                         // });
 
                         // for now data types can only be paramaterized by types
-                        let params = head.vars.iter().map(|v| ctx.ty_kind(v.span, file));
-
-                        let params = ty::Ty::tuple(item.span, file, params);
+                        let params = head.vars.iter().map(|v| ctx.ty_kind(v.span, file)).collect::<Vec<_>>();
                         let func_ty = ctx.func_ty(item.span, file);
 
-                        kind =
-                            ty::Ty::app(item.span, file, func_ty, ty::List::from([params, kind]));
+                        for param in params.into_iter().rev() {
+                            kind = ty::Ty::app(item.span, file, ty::Ty::app(item.span, file, func_ty.clone(), param), kind);
+                        }
                     }
 
                     Ok(kind)
@@ -143,35 +135,30 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     let mut ty = ty::Ty::ctor(item.span, file, data.id.owner);
 
                     if !data.vars.is_empty() {
-                        ty = ty::Ty::app(
-                            item.span,
-                            file,
-                            ty,
-                            data.vars
-                                .iter()
-                                .map(|v| ty::Ty::var(v.span, file, ty::TypeVar(v.id))),
-                        );
+                        for var in &data.vars {
+                            ty = ty::Ty::app(item.span, file, ty, ty::Ty::var(var.span, file, ty::TypeVar(var.id)));
+                        }
                     }
 
                     if !tys.is_empty() {
-                        let args =
-                            ty::Ty::tuple(item.span, file, tys.iter().map(|t| ctx.hir_ty(t)));
-
+                        let args = tys.iter().map(|t| ctx.hir_ty(t)).collect::<Vec<_>>();
                         let func_ty = ctx.func_ty(item.span, file);
 
-                        ty = ty::Ty::app(item.span, file, func_ty, ty::List::from([args, ty]));
+                        for arg in args.into_iter().rev() {
+                            ty = ty::Ty::app(item.span, file, ty::Ty::app(item.span, file, func_ty.clone(), arg), ty);
+                        }
                     }
 
                     if !data.vars.is_empty() {
-                        ty = ty::Ty::forall(
-                            item.span,
-                            file,
-                            data.vars
-                                .iter()
-                                .map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span, file)))),
-                            ty,
-                            None,
-                        );
+                        let vars = data
+                            .vars
+                            .iter()
+                            .map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span, file))))
+                            .collect::<Vec<_>>();
+
+                        for (v, k) in vars.into_iter().rev() {
+                            ty = ty::Ty::forall(item.span, file, v, k, ty, None);
+                        }
                     }
 
                     let ty_kind = ctx.ty_kind(item.span, file);
@@ -196,28 +183,24 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                 try {
                     let ty = ctx.hir_ty(ty);
                     let trait_ = hir.items[&item.owner].trait_();
-                    let vars = trait_
-                        .vars
-                        .iter()
-                        .map(|v| (ty::TypeVar(v.id), Some(ctx.hir_ty(&v.kind))))
-                        .collect::<ty::List<_>>();
+                    let vars = trait_.vars.iter().map(|v| (ty::TypeVar(v.id), Some(ctx.hir_ty(&v.kind)))).collect::<Vec<_>>();
 
-                    let ty = ty::Ty::ctnt(
+                    let mut ty = ty::Ty::ctnt(
                         ty.span(),
                         file,
                         ty::Ctnt {
                             span: ty.span(),
                             file: ty.file(),
                             trait_: item.owner.owner,
-                            tys: (&vars)
-                                .into_iter()
-                                .map(|(v, _)| ty::Ty::var(ty.span(), ty.file(), v))
-                                .collect(),
+                            tys: vars.iter().map(|(v, _)| ty::Ty::var(ty.span(), ty.file(), *v)).collect(),
                         },
                         ty,
                     );
 
-                    let ty = ty::Ty::forall(ty.span(), ty.file(), vars, ty, None);
+                    for (v, k) in vars.into_iter().rev() {
+                        ty = ty::Ty::forall(item.span, file, v, k, ty, None);
+                    }
+
                     let ty_kind = ctx.ty_kind(ty.span(), file);
                     let elab_ty = ctx.check_kind(ty, ty_kind)?;
 
@@ -233,11 +216,7 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
                     let trait_file = db.module_tree(imp.trait_.lib).file(imp.trait_.module);
                     let trait_hir = db.module_hir(trait_file);
                     let trait_ = trait_hir.items[&imp.trait_.into()].trait_body();
-                    let trait_item = trait_
-                        .items
-                        .iter()
-                        .find(|it| it.name.symbol == item.name.symbol)
-                        .unwrap();
+                    let trait_item = trait_.items.iter().find(|it| it.name.symbol == item.name.symbol).unwrap();
 
                     ctx.tys.insert(item.id, ty.clone());
 
@@ -315,26 +294,15 @@ fn variants(db: &dyn TypeDatabase, id: ir::DefId, args: ty::List<ty::Ty>) -> ty:
         ..
     }) = def
     {
-        let vars = head
-            .vars
-            .iter()
-            .zip(args)
-            .map(|(v, ty)| (ty::TypeVar(v.id), ty))
-            .collect::<HashMap<_, _>>();
+        let vars = head.vars.iter().zip(args).map(|(v, ty)| (ty::TypeVar(v.id), ty)).collect::<HashMap<_, _>>();
 
         body.iter()
             .filter_map(|ctor_id| {
                 if let ir::Def::Item(item) = hir.def(ctor_id.owner) {
                     if let ir::ItemKind::DataCtor { data: _, tys } = &item.kind {
-                        let tys = tys
-                            .iter()
-                            .map(|t| ctx.hir_ty(t).replace_vars(vars.clone()))
-                            .collect();
+                        let tys = tys.iter().map(|t| ctx.hir_ty(t).replace_vars(vars.clone())).collect();
 
-                        Some(ty::Variant {
-                            id: ctor_id.owner,
-                            tys,
-                        })
+                        Some(ty::Variant { id: ctor_id.owner, tys })
                     } else {
                         None
                     }
@@ -355,8 +323,7 @@ fn impls(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Impl> {
     let hir = db.module_hir(file);
     let trait_ = hir.items[&id.into()].trait_();
     let mut ctx = ctx::Ctx::new(db, file);
-    let impls: Vec<TableEntry<source::FileId, Arc<ir::Module>>> =
-        get_query_table::<hir::ModuleHirQuery>(db.to_hir_db()).entries();
+    let impls: Vec<TableEntry<source::FileId, Arc<ir::Module>>> = get_query_table::<hir::ModuleHirQuery>(db.to_hir_db()).entries();
 
     let impls = impls
         .into_iter()
@@ -368,12 +335,7 @@ fn impls(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Impl> {
                 .items
                 .values()
                 .filter_map(|item| match &item.kind {
-                    ir::ItemKind::Impl {
-                        chain,
-                        index,
-                        head,
-                        body: _,
-                    } if head.trait_ == id => Some((item.id, chain.clone(), *index, head.clone())),
+                    ir::ItemKind::Impl { chain, index, head, body: _ } if head.trait_ == id => Some((item.id, chain.clone(), *index, head.clone())),
                     _ => None,
                 })
                 .collect::<Vec<_>>()

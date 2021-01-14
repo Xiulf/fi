@@ -65,16 +65,7 @@ impl<'db> Ctx<'db> {
                 let ty = self.db.typecheck(*ctor).ty.clone();
                 let ty = self.instantiate(pat.id, ty);
                 let ty = self.introduce_skolem_scope(ty);
-                let (args, ret) = match &*ty {
-                    Type::App(f, targs) if self.is_func(f) => {
-                        if let Type::Tuple(args) = &*targs[0] {
-                            (args.clone(), targs[1].clone())
-                        } else {
-                            unreachable!();
-                        }
-                    }
-                    _ => (List::empty(), ty),
-                };
+                let (args, ret) = self.args(ty);
 
                 assert_eq!(args.len(), pats.len());
 
@@ -105,7 +96,7 @@ impl<'db> Ctx<'db> {
     crate fn infer_expr(&mut self, expr: &ir::Expr) -> Result<Ty> {
         let ty = match &expr.kind {
             ir::ExprKind::Error => Ty::error(expr.span, self.file),
-            ir::ExprKind::Ident { res, name } => match res {
+            ir::ExprKind::Ident { res, .. } => match res {
                 ir::Res::Error => Ty::error(expr.span, self.file),
                 ir::Res::Local(id) => {
                     let ty = self.tys[id].clone();
@@ -202,7 +193,7 @@ impl<'db> Ctx<'db> {
 
                 let array_ty = self.array_ty(expr.span, self.file);
 
-                Ty::app(expr.span, self.file, array_ty, List::from([el, len]))
+                Ty::app(expr.span, self.file, Ty::app(expr.span, self.file, array_ty, el), len)
             }
             ir::ExprKind::Record { fields } => {
                 // self.ensure_no_duplicate_props(fields);
@@ -226,12 +217,12 @@ impl<'db> Ctx<'db> {
                 let row = Ty::row(expr.span, self.file, fields, None);
                 let record_ty = self.record_ty(expr.span, self.file);
 
-                Ty::app(expr.span, self.file, record_ty, List::from([row]))
+                Ty::app(expr.span, self.file, record_ty, row)
             }
             ir::ExprKind::Field { base, field } => {
                 let ty_kind = self.ty_kind(expr.span, self.file);
                 let row_kind = self.row_kind(expr.span, self.file);
-                let row_kind = Ty::app(expr.span, self.file, row_kind, List::from([ty_kind.clone()]));
+                let row_kind = Ty::app(expr.span, self.file, row_kind, ty_kind.clone());
                 let ret = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
                 let tail = self.fresh_type_with_kind(expr.span, self.file, row_kind);
                 let row = Ty::row(
@@ -246,7 +237,7 @@ impl<'db> Ctx<'db> {
                 );
 
                 let record_ty = self.record_ty(expr.span, self.file);
-                let ty = Ty::app(expr.span, self.file, record_ty, List::from([row]));
+                let ty = Ty::app(expr.span, self.file, record_ty, row);
 
                 self.check_expr(base, ty)?;
 
@@ -258,8 +249,7 @@ impl<'db> Ctx<'db> {
                 let elem = self.fresh_type_with_kind(expr.span, self.file, ty_kind);
                 let len = self.fresh_type_with_kind(expr.span, self.file, figure_kind);
                 let arr_ty = self.array_ty(base.span, self.file);
-                let arr_ty = Ty::app(base.span, self.file, arr_ty, List::from([elem.clone(), len]));
-
+                let arr_ty = Ty::app(base.span, self.file, Ty::app(base.span, self.file, arr_ty, elem.clone()), len);
                 let uint_ty = self.db.lang_items().uint();
                 let uint_ty = self.db.typecheck(uint_ty.owner).ty.clone();
 
@@ -268,10 +258,10 @@ impl<'db> Ctx<'db> {
 
                 elem
             }
-            ir::ExprKind::App { base, args } => {
+            ir::ExprKind::App { base, arg } => {
                 let base_ty = self.infer_expr(base)?;
 
-                self.check_func_app(base.id, base_ty, args)?
+                self.check_func_app(base.id, base_ty, arg)?
             }
             ir::ExprKind::Do { .. } => {
                 let ty_kind = self.ty_kind(expr.span, self.file);

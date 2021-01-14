@@ -153,7 +153,7 @@ impl<'db> Ctx<'db> {
     /// Unify two rows, updating the current substitution.
     /// Common labels are identified and unified. Remaining labels and types are unified with a
     /// trailing row unification variable, if appropriate.
-    crate fn unify_rows(&mut self, r1: List<Field>, t1: Option<Ty>, r2: List<Field>, t2: Option<Ty>) -> Result<()> {
+    crate fn unify_rows(&mut self, _r1: List<Field>, _t1: Option<Ty>, _r2: List<Field>, _t2: Option<Ty>) -> Result<()> {
         Ok(())
     }
 }

@@ -1,9 +1,9 @@
-module Core.Ops.Sub where
+module Core.Ops.Sub (Sub(..)) where
 
 import Prim
 
 trait Sub l r o | l r -> o, l o -> r, r o -> l where
-    fn sub :: (l, r) -> o
+    fn sub :: l -> r -> o
 
 impl subInt8 :: Sub Int8 Int8 Int8 where
     fn sub a b = sub_i8 a b
@@ -35,14 +35,14 @@ impl subUint64 :: Sub Uint64 Uint64 Uint64 where
 impl subUint128 :: Sub Uint128 Uint128 Uint128 where
     fn sub a b = sub_u128 a b
 
-[intrinsic] foreign fn sub_i8 :: (Int8, Int8) -> Int8
-[intrinsic] foreign fn sub_i16 :: (Int16, Int16) -> Int16
-[intrinsic] foreign fn sub_i32 :: (Int32, Int32) -> Int32
-[intrinsic] foreign fn sub_i64 :: (Int64, Int64) -> Int64
-[intrinsic] foreign fn sub_i128 :: (Int128, Int128) -> Int128
+[intrinsic] foreign fn sub_i8 :: Int8 -> Int8 -> Int8
+[intrinsic] foreign fn sub_i16 :: Int16 -> Int16 -> Int16
+[intrinsic] foreign fn sub_i32 :: Int32 -> Int32 -> Int32
+[intrinsic] foreign fn sub_i64 :: Int64 -> Int64 -> Int64
+[intrinsic] foreign fn sub_i128 :: Int128 -> Int128 -> Int128
 
-[intrinsic] foreign fn sub_u8 :: (Uint8, Uint8) -> Uint8
-[intrinsic] foreign fn sub_u16 :: (Uint16, Uint16) -> Uint16
-[intrinsic] foreign fn sub_u32 :: (Uint32, Uint32) -> Uint32
-[intrinsic] foreign fn sub_u64 :: (Uint64, Uint64) -> Uint64
-[intrinsic] foreign fn sub_u128 :: (Uint128, Uint128) -> Uint128
+[intrinsic] foreign fn sub_u8 :: Uint8 -> Uint8 -> Uint8
+[intrinsic] foreign fn sub_u16 :: Uint16 -> Uint16 -> Uint16
+[intrinsic] foreign fn sub_u32 :: Uint32 -> Uint32 -> Uint32
+[intrinsic] foreign fn sub_u64 :: Uint64 -> Uint64 -> Uint64
+[intrinsic] foreign fn sub_u128 :: Uint128 -> Uint128 -> Uint128

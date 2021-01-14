@@ -166,7 +166,7 @@ impl<'db> Ctx<'db> {
                 self.add_unsolved(None, u, kind.clone());
                 us.insert(*var, Ty::unknown(span, file, u));
 
-                let fn_kind = ret.replace_vars(us);
+                let fn_kind = ret.clone().replace_vars(us);
                 let fn_ty = Ty::kind_app(span, file, fn_ty, Ty::unknown(span, file, u));
 
                 self.infer_app_kind(span, file, fn_ty, fn_kind, arg)
@@ -176,12 +176,12 @@ impl<'db> Ctx<'db> {
     }
 
     fn cant_apply_types<T>(&mut self, fn_ty: Ty, arg: Ty) -> Result<T> {
-        let arg_kind = self.infer_kind(arg)?.1;
+        let arg_kind = self.infer_kind(arg.clone())?.1;
         let ret = self.fresh_kind(Default::default(), self.file);
         let func_ty = self.func_ty(Default::default(), self.file);
         let kind = Ty::app(Default::default(), self.file, func_ty, arg_kind);
         let kind = Ty::app(Default::default(), self.file, kind, ret);
-        let _ = self.check_kind(fn_ty, kind)?;
+        let _ = self.check_kind(fn_ty.clone(), kind)?;
         let ty = Ty::app(Default::default(), self.file, fn_ty, arg);
         let msg = format!("cannot apply types to type: `{}`", crate::display::Typed(self.db, &(), &ty));
 

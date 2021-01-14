@@ -105,19 +105,31 @@ impl<'db> Ctx<'db> {
         Ty::ctor(span, file, func_ty.owner)
     }
 
-    crate fn instantiate(&mut self, id: ir::HirId, ty: Ty) -> Ty {
-        if let Type::ForAll(vars, ret, _) = &*ty {
-            let subst = vars
-                .into_iter()
-                .map(|(v, k)| {
-                    if let Some(k) = k {
-                        (v, self.fresh_type_with_kind(ty.span(), ty.file(), k))
-                    } else {
-                        (v, self.fresh_type(ty.span(), ty.file()))
-                    }
-                })
-                .collect();
+    pub fn args(&self, mut ret: Ty) -> (List<Ty>, Ty) {
+        let mut args = Vec::new();
 
+        while let Type::App(b, r) = &*ret {
+            match &**b {
+                Type::App(f, a) if self.is_func(f) => {
+                    args.push(a.clone());
+                    ret = r.clone();
+                }
+                _ => break,
+            }
+        }
+
+        (args.into(), ret)
+    }
+
+    crate fn instantiate(&mut self, id: ir::HirId, ty: Ty) -> Ty {
+        if let Type::ForAll(var, kind, ret, _) = &*ty {
+            let mut subst = HashMap::new();
+            let ty = match kind {
+                Some(k) => self.fresh_type_with_kind(ty.span(), ty.file(), k.clone()),
+                None => self.fresh_type(ty.span(), ty.file()),
+            };
+
+            subst.insert(*var, ty);
             self.instantiate(id, ret.clone().replace_vars(subst))
         } else if let Type::Ctnt(ctnt, ret) = &*ty {
             self.ctnts.push((id, ctnt.clone(), self.ctnt_ctx.clone()));
@@ -131,9 +143,7 @@ impl<'db> Ctx<'db> {
         let span = ty.span();
         let file = ty.file();
 
-        unsolved
-            .into_iter()
-            .rfold(ty, |ret, ctnt| Ty::ctnt(span, file, ctnt, ret))
+        unsolved.into_iter().rfold(ty, |ret, ctnt| Ty::ctnt(span, file, ctnt, ret))
     }
 
     crate fn generalize(&mut self, ty: Ty, def: ir::DefId) -> Ty {
@@ -159,9 +169,9 @@ impl<'db> Ctx<'db> {
 
                     (var, Some(kind))
                 })
-                .collect::<List<_>>();
+                .collect::<Vec<_>>();
 
-            let ty = ty.everywhere(&mut |t| match *t {
+            let mut ty = ty.everywhere(&mut |t| match *t {
                 Type::Unknown(u) => match repl.get(&u) {
                     None => t,
                     Some(t2) => t2.clone(),
@@ -169,7 +179,11 @@ impl<'db> Ctx<'db> {
                 _ => t,
             });
 
-            Ty::forall(ty.span(), ty.file(), vars, ty, None)
+            for (v, k) in vars.into_iter().rev() {
+                ty = Ty::forall(ty.span(), ty.file(), v, k, ty, None);
+            }
+
+            ty
         }
     }
 
@@ -178,22 +192,19 @@ impl<'db> Ctx<'db> {
             ir::TypeKind::Error => Ty::error(ty.span, self.file),
             ir::TypeKind::Int { val } => Ty::int(ty.span, self.file, *val),
             ir::TypeKind::Str { val } => Ty::string(ty.span, self.file, val.clone()),
-            ir::TypeKind::Func { params, ret } => {
-                let func_ty = self.db.lang_items().fn_ty();
-                let func_ty = Ty::ctor(ty.span, self.file, func_ty.owner);
-                let params = Ty::tuple(ty.span, self.file, params.iter().map(|t| self.hir_ty(t)));
+            ir::TypeKind::Func { param, ret } => {
+                let func_ty = self.func_ty(ty.span, self.file);
+                let param = self.hir_ty(param);
                 let ret = self.hir_ty(ret);
 
-                Ty::app(ty.span, self.file, func_ty, List::from([params, ret]))
+                Ty::app(ty.span, self.file, Ty::app(ty.span, self.file, func_ty, param), ret)
             }
-            ir::TypeKind::Infer => {
-                self.fresh_type_with_kind(ty.span, self.file, self.ty_kind(ty.span, self.file))
-            }
-            ir::TypeKind::App { base, args } => {
+            ir::TypeKind::Infer => self.fresh_type_with_kind(ty.span, self.file, self.ty_kind(ty.span, self.file)),
+            ir::TypeKind::App { base, arg } => {
                 let base = self.hir_ty(base);
-                let args = args.iter().map(|a| self.hir_ty(a)).collect::<List<_>>();
+                let arg = self.hir_ty(arg);
 
-                Ty::app(ty.span, self.file, base, args)
+                Ty::app(ty.span, self.file, base, arg)
             }
             ir::TypeKind::Ident { res } => match res {
                 ir::Res::Error => Ty::error(ty.span, self.file),
@@ -223,16 +234,17 @@ impl<'db> Ctx<'db> {
                 let row = Ty::row(row.span, self.file, fields, tail);
                 let record_ty = self.record_ty(ty.span, self.file);
 
-                Ty::app(ty.span, self.file, record_ty, List::from([row]))
+                Ty::app(ty.span, self.file, record_ty, row)
             }
             ir::TypeKind::Forall { vars, ty: ret } => {
-                let ret = self.hir_ty(ret);
-                let vars = vars
-                    .iter()
-                    .map(|v| (TypeVar(v.id), Some(self.hir_ty(&v.kind))))
-                    .collect::<List<_>>();
+                let mut ret = self.hir_ty(ret);
+                let vars = vars.iter().map(|v| (TypeVar(v.id), Some(self.hir_ty(&v.kind)))).collect::<Vec<_>>();
 
-                Ty::forall(ty.span, self.file, vars, ret, None)
+                for (v, k) in vars.into_iter().rev() {
+                    ret = Ty::forall(ty.span, self.file, v, k, ret, None);
+                }
+
+                ret
             }
             ir::TypeKind::Cons { cs, ty: ret } => {
                 let ctnt = Ctnt {

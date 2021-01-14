@@ -45,12 +45,7 @@ struct QualModule {
 }
 
 impl<'db> Converter<'db> {
-    pub fn new(
-        db: &'db (dyn HirDatabase + 'db),
-        lib: source::LibId,
-        file: source::FileId,
-        module_name: ir::Ident,
-    ) -> Self {
+    pub fn new(db: &'db (dyn HirDatabase + 'db), lib: source::LibId, file: source::FileId, module_name: ir::Ident) -> Self {
         Converter {
             db,
             lib,
@@ -113,96 +108,44 @@ impl<'db> Converter<'db> {
     fn register_decl(&mut self, group: &[ast::Decl]) {
         let (defpath, defkind, ns) = match &group[0].kind {
             ast::DeclKind::Foreign {
-                kind: ast::ForeignKind::Func,
-                ..
-            } => (
-                ir::DefPath::Value(group[0].name.symbol),
-                ir::DefKind::Func,
-                Ns::Values,
-            ),
+                kind: ast::ForeignKind::Func, ..
+            } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Func, Ns::Values),
             ast::DeclKind::Foreign {
                 kind: ast::ForeignKind::Static,
                 ..
-            } => (
-                ir::DefPath::Value(group[0].name.symbol),
-                ir::DefKind::Static,
-                Ns::Values,
-            ),
-            ast::DeclKind::FuncTy { .. } | ast::DeclKind::Func { .. } => (
-                ir::DefPath::Value(group[0].name.symbol),
-                ir::DefKind::Func,
-                Ns::Values,
-            ),
-            ast::DeclKind::ConstTy { .. } | ast::DeclKind::Const { .. } => (
-                ir::DefPath::Value(group[0].name.symbol),
-                ir::DefKind::Const,
-                Ns::Values,
-            ),
-            ast::DeclKind::StaticTy { .. } | ast::DeclKind::Static { .. } => (
-                ir::DefPath::Value(group[0].name.symbol),
-                ir::DefKind::Static,
-                Ns::Values,
-            ),
-            ast::DeclKind::AliasKind { .. } | ast::DeclKind::Alias { .. } => (
-                ir::DefPath::Type(group[0].name.symbol),
-                ir::DefKind::Alias,
-                Ns::Types,
-            ),
-            ast::DeclKind::DataKind { .. } | ast::DeclKind::Data { .. } => (
-                ir::DefPath::Type(group[0].name.symbol),
-                ir::DefKind::Data,
-                Ns::Types,
-            ),
-            ast::DeclKind::Trait { .. } => (
-                ir::DefPath::Type(group[0].name.symbol),
-                ir::DefKind::Trait,
-                Ns::Types,
-            ),
+            } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Static, Ns::Values),
+            ast::DeclKind::FuncTy { .. } | ast::DeclKind::Func { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Func, Ns::Values),
+            ast::DeclKind::ConstTy { .. } | ast::DeclKind::Const { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Const, Ns::Values),
+            ast::DeclKind::StaticTy { .. } | ast::DeclKind::Static { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Static, Ns::Values),
+            ast::DeclKind::AliasKind { .. } | ast::DeclKind::Alias { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Alias, Ns::Types),
+            ast::DeclKind::DataKind { .. } | ast::DeclKind::Data { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Data, Ns::Types),
+            ast::DeclKind::Trait { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Trait, Ns::Types),
             ast::DeclKind::ImplChain { .. } => return,
         };
 
         let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[defpath]);
         let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
-        self.resolver
-            .define(ns, group[0].name, ir::Res::Def(defkind, defid));
+        self.resolver.define(ns, group[0].name, ir::Res::Def(defkind, defid));
 
         for decl in group {
             match &decl.kind {
-                ast::DeclKind::Data {
-                    body: Some(ctors), ..
-                } => {
+                ast::DeclKind::Data { body: Some(ctors), .. } => {
                     for ctor in ctors {
-                        let defindex = ir::DefIndex::from_path(
-                            self.module_name.symbol,
-                            &[defpath, ir::DefPath::Value(ctor.name.symbol)],
-                        );
+                        let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[defpath, ir::DefPath::Value(ctor.name.symbol)]);
 
                         let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
-                        self.resolver.define(
-                            Ns::Values,
-                            ctor.name,
-                            ir::Res::Def(ir::DefKind::Ctor, defid),
-                        );
+                        self.resolver.define(Ns::Values, ctor.name, ir::Res::Def(ir::DefKind::Ctor, defid));
                     }
                 }
-                ast::DeclKind::Trait {
-                    body: Some(body), ..
-                } => {
+                ast::DeclKind::Trait { body: Some(body), .. } => {
                     for decl in &body.decls {
-                        let defindex = ir::DefIndex::from_path(
-                            self.module_name.symbol,
-                            &[defpath, ir::DefPath::Value(decl.name.symbol)],
-                        );
+                        let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[defpath, ir::DefPath::Value(decl.name.symbol)]);
 
                         let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
-                        self.resolver.define(
-                            Ns::Values,
-                            decl.name,
-                            ir::Res::Def(ir::DefKind::Func, defid),
-                        );
+                        self.resolver.define(Ns::Values, decl.name, ir::Res::Def(ir::DefKind::Func, defid));
                     }
                 }
                 _ => {}
@@ -227,18 +170,11 @@ impl<'db> Converter<'db> {
                 for export in exports {
                     match &export.kind {
                         ast::ExportKind::Module => {
-                            if let Some(qmod) =
-                                self.modules.iter().find(|m| m.name == export.name.symbol)
-                            {
+                            if let Some(qmod) = self.modules.iter().find(|m| m.name == export.name.symbol) {
                                 self.exports.extend(qmod.exports.clone());
                             } else if export.name.symbol == self.module_name.symbol {
                                 for (_, item) in &self.items {
-                                    Self::register_single_export(
-                                        &mut self.exports,
-                                        self.file,
-                                        item,
-                                        &self.items,
-                                    );
+                                    Self::register_single_export(&mut self.exports, self.file, item, &self.items);
                                 }
                             } else {
                                 self.db
@@ -249,59 +185,36 @@ impl<'db> Converter<'db> {
                             }
                         }
                         _ => {
-                            if let Some(item) = self
-                                .items
-                                .values()
-                                .find(|i| i.name.symbol == export.name.symbol)
-                            {
+                            if let Some(item) = self.items.values().find(|i| i.name.symbol == export.name.symbol) {
                                 if let ast::ExportKind::Group(grp) = &export.kind {
-                                    Self::register_single_export_grp(
-                                        self.db,
-                                        &mut self.exports,
-                                        self.file,
-                                        item,
-                                        &self.items,
-                                        export.name.span,
-                                        grp,
-                                    );
+                                    Self::register_single_export_grp(self.db, &mut self.exports, self.file, item, &self.items, export.name.span, grp);
                                 } else {
-                                    Self::register_single_export(
-                                        &mut self.exports,
-                                        self.file,
-                                        item,
-                                        &self.items,
-                                    );
+                                    Self::register_single_export(&mut self.exports, self.file, item, &self.items);
                                 }
                             } else {
                                 self.db
                                     .to_diag_db()
-                                    .error(format!(
-                                        "module '{}' does not contain '{}'",
-                                        self.module_name, export.name
-                                    ))
-                                    .with_label(diagnostics::Label::primary(
-                                        self.file,
-                                        export.name.span,
-                                    ))
+                                    .error(format!("module '{}' does not contain '{}'", self.module_name, export.name))
+                                    .with_label(diagnostics::Label::primary(self.file, export.name.span))
                                     .finish();
                             }
                         }
+                    }
+                }
+
+                for (_, item) in &self.items {
+                    if let ir::ItemKind::Impl { .. } = &item.kind {
+                        Self::register_single_export(&mut self.exports, self.file, item, &self.items);
                     }
                 }
             }
         }
     }
 
-    fn register_single_export(
-        exports: &mut Vec<ir::Export>,
-        file: source::FileId,
-        item: &ir::Item,
-        items: &BTreeMap<ir::HirId, ir::Item>,
-    ) {
+    fn register_single_export(exports: &mut Vec<ir::Export>, file: source::FileId, item: &ir::Item, items: &BTreeMap<ir::HirId, ir::Item>) {
         match &item.kind {
             ir::ItemKind::Foreign {
-                kind: ir::ForeignKind::Func,
-                ..
+                kind: ir::ForeignKind::Func, ..
             } => {
                 exports.push(ir::Export {
                     name: item.name.symbol,
@@ -312,8 +225,7 @@ impl<'db> Converter<'db> {
                 });
             }
             ir::ItemKind::Foreign {
-                kind: ir::ForeignKind::Static,
-                ..
+                kind: ir::ForeignKind::Static, ..
             } => {
                 exports.push(ir::Export {
                     name: item.name.symbol,
@@ -442,9 +354,7 @@ impl<'db> Converter<'db> {
                         names
                             .iter()
                             .filter_map(|name| {
-                                if let Some(ctor) =
-                                    body.iter().find(|c| items[*c].name.symbol == name.symbol)
-                                {
+                                if let Some(ctor) = body.iter().find(|c| items[*c].name.symbol == name.symbol) {
                                     Some(ir::Export {
                                         name: items[ctor].name.symbol,
                                         res: ir::Res::Def(ir::DefKind::Ctor, ctor.owner),
@@ -454,10 +364,7 @@ impl<'db> Converter<'db> {
                                     })
                                 } else {
                                     db.to_diag_db()
-                                        .error(format!(
-                                            "'{}' does not have constructor '{}'",
-                                            item.name, name
-                                        ))
+                                        .error(format!("'{}' does not have constructor '{}'", item.name, name))
                                         .with_label(diagnostics::Label::primary(file, name.span))
                                         .finish();
 
@@ -488,9 +395,7 @@ impl<'db> Converter<'db> {
                         names
                             .iter()
                             .filter_map(|name| {
-                                if let Some(decl) =
-                                    body.items.iter().find(|d| d.name.symbol == name.symbol)
-                                {
+                                if let Some(decl) = body.items.iter().find(|d| d.name.symbol == name.symbol) {
                                     Some(ir::Export {
                                         name: decl.name.symbol,
                                         res: ir::Res::Def(ir::DefKind::Func, decl.id.0.owner),
@@ -500,10 +405,7 @@ impl<'db> Converter<'db> {
                                     })
                                 } else {
                                     db.to_diag_db()
-                                        .error(format!(
-                                            "'{}' does not have method '{}'",
-                                            item.name, name
-                                        ))
+                                        .error(format!("'{}' does not have method '{}'", item.name, name))
                                         .with_label(diagnostics::Label::primary(file, name.span))
                                         .finish();
 
@@ -551,30 +453,17 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn import_qual(
-        &mut self,
-        imp_mod: &ir::Module,
-        imports: &Option<(bool, Vec<ast::Import>)>,
-        alias: ir::Ident,
-    ) {
+    fn import_qual(&mut self, imp_mod: &ir::Module, imports: &Option<(bool, Vec<ast::Import>)>, alias: ir::Ident) {
         let exports = self.collect_exports(imp_mod, imports);
 
         if let Some(qmod) = self.modules.iter_mut().find(|m| m.name == alias.symbol) {
             qmod.exports.extend(exports);
         } else {
-            self.modules.push(QualModule {
-                name: alias.symbol,
-                exports,
-            });
+            self.modules.push(QualModule { name: alias.symbol, exports });
         }
     }
 
-    fn import_normal(
-        &mut self,
-        imp_mod: &ir::Module,
-        imports: &Option<(bool, Vec<ast::Import>)>,
-        span: ir::Span,
-    ) {
+    fn import_normal(&mut self, imp_mod: &ir::Module, imports: &Option<(bool, Vec<ast::Import>)>, span: ir::Span) {
         let exports = self.collect_exports(imp_mod, imports);
 
         for export in exports {
@@ -595,14 +484,7 @@ impl<'db> Converter<'db> {
             return;
         }
 
-        self.resolver.define(
-            export.ns,
-            ir::Ident {
-                symbol: export.name,
-                span,
-            },
-            export.res,
-        );
+        self.resolver.define(export.ns, ir::Ident { symbol: export.name, span }, export.res);
 
         if let ir::Res::Def(ir::DefKind::Func | ir::DefKind::Static, id) = export.res {
             self.imports.push(id);
@@ -615,11 +497,7 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn collect_exports(
-        &self,
-        module: &ir::Module,
-        imports: &Option<(bool, Vec<ast::Import>)>,
-    ) -> Vec<ir::Export> {
+    fn collect_exports(&self, module: &ir::Module, imports: &Option<(bool, Vec<ast::Import>)>) -> Vec<ir::Export> {
         let mut exports = module.exports.clone();
 
         if let Some((hiding, imports)) = imports {
@@ -630,22 +508,14 @@ impl<'db> Converter<'db> {
 
                 exports
             } else {
-                imports
-                    .iter()
-                    .filter_map(|import| self.find_export(module, &mut exports, import))
-                    .collect()
+                imports.iter().filter_map(|import| self.find_export(module, &mut exports, import)).collect()
             }
         } else {
             exports
         }
     }
 
-    fn find_export(
-        &self,
-        module: &ir::Module,
-        exports: &mut Vec<ir::Export>,
-        import: &ast::Import,
-    ) -> Option<ir::Export> {
+    fn find_export(&self, module: &ir::Module, exports: &mut Vec<ir::Export>, import: &ast::Import) -> Option<ir::Export> {
         if let Some(idx) = exports.iter().position(|e| e.name == import.name.symbol) {
             let mut export = exports.swap_remove(idx);
 
@@ -660,13 +530,8 @@ impl<'db> Converter<'db> {
                                 } else {
                                     self.db
                                         .to_diag_db()
-                                        .error(format!(
-                                            "module '{}' does not export '{}'",
-                                            module.name, name
-                                        ))
-                                        .with_label(diagnostics::Label::primary(
-                                            self.file, name.span,
-                                        ))
+                                        .error(format!("module '{}' does not export '{}'", module.name, name))
+                                        .with_label(diagnostics::Label::primary(self.file, name.span))
                                         .finish();
 
                                     None
@@ -687,10 +552,7 @@ impl<'db> Converter<'db> {
         } else {
             self.db
                 .to_diag_db()
-                .error(format!(
-                    "module '{}' does not export '{}'",
-                    module.name, import.name
-                ))
+                .error(format!("module '{}' does not export '{}'", module.name, import.name))
                 .with_label(diagnostics::Label::primary(self.file, import.name.span))
                 .finish();
 
@@ -707,13 +569,10 @@ impl<'db> Converter<'db> {
     fn convert_decl(&mut self, kind: group::DeclGroupKind, decls: &[ast::Decl]) {
         let first = &decls[0];
         let defpath = match kind {
-            group::DeclGroupKind::Foreign
-            | group::DeclGroupKind::Func(_)
-            | group::DeclGroupKind::Const(_)
-            | group::DeclGroupKind::Static(_) => ir::DefPath::Value(first.name.symbol),
-            group::DeclGroupKind::Alias(_)
-            | group::DeclGroupKind::Data(_)
-            | group::DeclGroupKind::Trait => ir::DefPath::Type(first.name.symbol),
+            group::DeclGroupKind::Foreign | group::DeclGroupKind::Func(_) | group::DeclGroupKind::Const(_) | group::DeclGroupKind::Static(_) => {
+                ir::DefPath::Value(first.name.symbol)
+            }
+            group::DeclGroupKind::Alias(_) | group::DeclGroupKind::Data(_) | group::DeclGroupKind::Trait => ir::DefPath::Type(first.name.symbol),
             group::DeclGroupKind::Impl => return self.convert_impl_chain(first),
         };
 
@@ -812,14 +671,7 @@ impl<'db> Converter<'db> {
                     },
                 };
 
-                self.bodies.insert(
-                    body_id,
-                    ir::Body {
-                        id: body_id,
-                        params,
-                        value,
-                    },
-                );
+                self.bodies.insert(body_id, ir::Body { id: body_id, params, value });
 
                 ir::ItemKind::Func { ty, body: body_id }
             }
@@ -853,14 +705,11 @@ impl<'db> Converter<'db> {
                     }
                 };
 
-                self.bodies.insert(
-                    body_id,
-                    ir::Body {
-                        id: body_id,
-                        params: Vec::new(),
-                        value: val,
-                    },
-                );
+                self.bodies.insert(body_id, ir::Body {
+                    id: body_id,
+                    params: Vec::new(),
+                    value: val,
+                });
 
                 ir::ItemKind::Const { ty, body: body_id }
             }
@@ -894,14 +743,11 @@ impl<'db> Converter<'db> {
                     }
                 };
 
-                self.bodies.insert(
-                    body_id,
-                    ir::Body {
-                        id: body_id,
-                        params: Vec::new(),
-                        value: val,
-                    },
-                );
+                self.bodies.insert(body_id, ir::Body {
+                    id: body_id,
+                    params: Vec::new(),
+                    value: val,
+                });
 
                 ir::ItemKind::Static { ty, body: body_id }
             }
@@ -962,11 +808,7 @@ impl<'db> Converter<'db> {
                                 vars = head.vars.iter().map(|v| self.convert_type_var(v)).collect();
 
                                 if let Some(body2) = body2 {
-                                    body.extend(
-                                        body2
-                                            .iter()
-                                            .map(|c| self.convert_data_ctor(defpath, id, c)),
-                                    );
+                                    body.extend(body2.iter().map(|c| self.convert_data_ctor(defpath, id, c)));
                                 }
 
                                 self.resolver.pop_rib(Ns::Types);
@@ -996,16 +838,9 @@ impl<'db> Converter<'db> {
                     self.resolver.push_rib(Ns::Types);
 
                     let head_id = self.next_id();
-                    let vars = head
-                        .vars
-                        .iter()
-                        .map(|v| self.convert_type_var(v))
-                        .collect::<Vec<_>>();
+                    let vars = head.vars.iter().map(|v| self.convert_type_var(v)).collect::<Vec<_>>();
                     let parent = if let Some(parent) = &head.parent {
-                        parent
-                            .iter()
-                            .filter_map(|c| self.convert_constraint(c))
-                            .collect()
+                        parent.iter().filter_map(|c| self.convert_constraint(c)).collect()
                     } else {
                         Vec::new()
                     };
@@ -1016,26 +851,11 @@ impl<'db> Converter<'db> {
                         .map(|fundep| match fundep {
                             ast::FunDep::Determined(d) => ir::FunDep {
                                 determiners: Vec::new(),
-                                determined: d
-                                    .iter()
-                                    .filter_map(|d| {
-                                        vars.iter().position(|v| v.name.symbol == d.symbol)
-                                    })
-                                    .collect(),
+                                determined: d.iter().filter_map(|d| vars.iter().position(|v| v.name.symbol == d.symbol)).collect(),
                             },
                             ast::FunDep::Determines(a, b) => ir::FunDep {
-                                determiners: a
-                                    .iter()
-                                    .filter_map(|d| {
-                                        vars.iter().position(|v| v.name.symbol == d.symbol)
-                                    })
-                                    .collect(),
-                                determined: b
-                                    .iter()
-                                    .filter_map(|d| {
-                                        vars.iter().position(|v| v.name.symbol == d.symbol)
-                                    })
-                                    .collect(),
+                                determiners: a.iter().filter_map(|d| vars.iter().position(|v| v.name.symbol == d.symbol)).collect(),
+                                determined: b.iter().filter_map(|d| vars.iter().position(|v| v.name.symbol == d.symbol)).collect(),
                             },
                         })
                         .collect();
@@ -1053,11 +873,7 @@ impl<'db> Converter<'db> {
                         ir::TraitBody {
                             id: body_id,
                             span: body.span,
-                            items: body
-                                .decls
-                                .iter()
-                                .map(|d| self.convert_trait_decl(first.name.symbol, id, d))
-                                .collect(),
+                            items: body.decls.iter().map(|d| self.convert_trait_decl(first.name.symbol, id, d)).collect(),
                         }
                     } else {
                         ir::TraitBody {
@@ -1093,10 +909,7 @@ impl<'db> Converter<'db> {
             let mut chain = Vec::new();
 
             for imp in impls {
-                let defindex = ir::DefIndex::from_path(
-                    self.module_name.symbol,
-                    &[ir::DefPath::Type(imp.head.name.symbol)],
-                );
+                let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[ir::DefPath::Type(imp.head.name.symbol)]);
 
                 let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
@@ -1114,9 +927,7 @@ impl<'db> Converter<'db> {
 
                 let head_id = self.next_id();
                 let cs = if let Some(cs) = &imp.head.cs {
-                    cs.iter()
-                        .filter_map(|c| self.convert_constraint(c))
-                        .collect()
+                    cs.iter().filter_map(|c| self.convert_constraint(c)).collect()
                 } else {
                     Vec::new()
                 };
@@ -1169,36 +980,25 @@ impl<'db> Converter<'db> {
                     }
                 };
 
-                self.items.insert(
+                self.items.insert(id, ir::Item {
                     id,
-                    ir::Item {
-                        id,
-                        span: imp.span,
-                        attrs: decl.attrs.clone(),
-                        name: imp.head.name,
-                        kind: ir::ItemKind::Impl {
-                            chain: chain.clone(),
-                            index: i,
-                            head,
-                            body,
-                        },
+                    span: imp.span,
+                    attrs: decl.attrs.clone(),
+                    name: imp.head.name,
+                    kind: ir::ItemKind::Impl {
+                        chain: chain.clone(),
+                        index: i,
+                        head,
+                        body,
                     },
-                );
+                });
             }
         }
     }
 
-    fn convert_data_ctor(
-        &mut self,
-        parent: ir::DefPath,
-        data: ir::HirId,
-        ctor: &ast::DataCtor,
-    ) -> ir::HirId {
+    fn convert_data_ctor(&mut self, parent: ir::DefPath, data: ir::HirId, ctor: &ast::DataCtor) -> ir::HirId {
         let old_id = (self.current_item, self.id_counter);
-        let defindex = ir::DefIndex::from_path(
-            self.module_name.symbol,
-            &[parent, ir::DefPath::Value(ctor.name.symbol)],
-        );
+        let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[parent, ir::DefPath::Value(ctor.name.symbol)]);
 
         self.current_item = ir::DefId::new(self.lib, self.module_id, defindex);
         self.id_counter = 0;
@@ -1209,55 +1009,36 @@ impl<'db> Converter<'db> {
         self.current_item = old_id.0;
         self.id_counter = old_id.1;
 
-        self.items.insert(
+        self.items.insert(id, ir::Item {
             id,
-            ir::Item {
-                id,
-                span: ctor.span,
-                name: ctor.name,
-                attrs: Vec::new(),
-                kind: ir::ItemKind::DataCtor { data, tys },
-            },
-        );
+            span: ctor.span,
+            name: ctor.name,
+            attrs: Vec::new(),
+            kind: ir::ItemKind::DataCtor { data, tys },
+        });
 
         id
     }
 
-    fn convert_trait_decl(
-        &mut self,
-        iface: ir::Symbol,
-        owner: ir::HirId,
-        decl: &ast::TraitDecl,
-    ) -> ir::TraitItemRef {
+    fn convert_trait_decl(&mut self, iface: ir::Symbol, owner: ir::HirId, decl: &ast::TraitDecl) -> ir::TraitItemRef {
         let old_id = (self.current_item, self.id_counter);
-        let defindex = ir::DefIndex::from_path(
-            self.module_name.symbol,
-            &[
-                ir::DefPath::Type(iface),
-                ir::DefPath::Value(decl.name.symbol),
-            ],
-        );
+        let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[ir::DefPath::Type(iface), ir::DefPath::Value(decl.name.symbol)]);
 
         self.current_item = ir::DefId::new(self.lib, self.module_id, defindex);
         self.id_counter = 0;
 
         let id = self.next_id();
         let kind = match &decl.kind {
-            ast::TraitDeclKind::FuncTy { ty } => ir::TraitItemKind::Func {
-                ty: self.convert_type(ty),
-            },
+            ast::TraitDeclKind::FuncTy { ty } => ir::TraitItemKind::Func { ty: self.convert_type(ty) },
         };
 
-        self.trait_items.insert(
-            ir::TraitItemId(id),
-            ir::TraitItem {
-                id,
-                owner,
-                span: decl.span,
-                name: decl.name,
-                kind,
-            },
-        );
+        self.trait_items.insert(ir::TraitItemId(id), ir::TraitItem {
+            id,
+            owner,
+            span: decl.span,
+            name: decl.name,
+            kind,
+        });
 
         self.current_item = old_id.0;
         self.id_counter = old_id.1;
@@ -1270,24 +1051,12 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn convert_impl_decl(
-        &mut self,
-        imp: ir::Symbol,
-        owner: ir::HirId,
-        kind: group::ImplDeclGroupKind,
-        decls: &[ast::ImplDecl],
-    ) -> ir::ImplItemRef {
+    fn convert_impl_decl(&mut self, imp: ir::Symbol, owner: ir::HirId, kind: group::ImplDeclGroupKind, decls: &[ast::ImplDecl]) -> ir::ImplItemRef {
         let first = &decls[0];
         let old_id = (self.current_item, self.id_counter);
-        let defindex = ir::DefIndex::from_path(
-            self.module_name.symbol,
-            &[
-                ir::DefPath::Type(imp),
-                match kind {
-                    group::ImplDeclGroupKind::Func(_) => ir::DefPath::Value(first.name.symbol),
-                },
-            ],
-        );
+        let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[ir::DefPath::Type(imp), match kind {
+            group::ImplDeclGroupKind::Func(_) => ir::DefPath::Value(first.name.symbol),
+        }]);
 
         self.current_item = ir::DefId::new(self.lib, self.module_id, defindex);
         self.id_counter = 0;
@@ -1376,29 +1145,19 @@ impl<'db> Converter<'db> {
                     },
                 };
 
-                self.bodies.insert(
-                    body_id,
-                    ir::Body {
-                        id: body_id,
-                        params,
-                        value,
-                    },
-                );
+                self.bodies.insert(body_id, ir::Body { id: body_id, params, value });
 
                 ir::ImplItemKind::Func { ty, body: body_id }
             }
         };
 
-        self.impl_items.insert(
-            ir::ImplItemId(id),
-            ir::ImplItem {
-                id,
-                owner,
-                span,
-                name: first.name,
-                kind,
-            },
-        );
+        self.impl_items.insert(ir::ImplItemId(id), ir::ImplItem {
+            id,
+            owner,
+            span,
+            name: first.name,
+            kind,
+        });
 
         self.current_item = old_id.0;
         self.id_counter = old_id.1;
@@ -1425,10 +1184,7 @@ impl<'db> Converter<'db> {
             ast::PatKind::Char { val } => ir::PatKind::Char { val },
             ast::PatKind::Str { ref val } => ir::PatKind::Str { val: val.clone() },
             ast::PatKind::Ident { name } => match self.resolver.get(Ns::Values, name.symbol) {
-                Some(ir::Res::Def(ir::DefKind::Ctor, ctor)) => ir::PatKind::Ctor {
-                    ctor,
-                    pats: Vec::new(),
-                },
+                Some(ir::Res::Def(ir::DefKind::Ctor, ctor)) => ir::PatKind::Ctor { ctor, pats: Vec::new() },
                 _ => {
                     self.resolver.define(Ns::Values, name, ir::Res::Local(id));
 
@@ -1443,32 +1199,30 @@ impl<'db> Converter<'db> {
                     sub: Some(Box::new(self.convert_pat(pat))),
                 }
             }
-            ast::PatKind::Ctor { name, ref pats } => {
-                match self.resolver.get(Ns::Values, name.symbol) {
-                    Some(ir::Res::Def(ir::DefKind::Ctor, ctor)) => ir::PatKind::Ctor {
-                        ctor,
-                        pats: pats.iter().map(|p| self.convert_pat(p)).collect(),
-                    },
-                    Some(_) => {
-                        self.db
-                            .to_diag_db()
-                            .error(format!("'{}' is not a constructor", name))
-                            .with_label(diagnostics::Label::primary(self.file, name.span))
-                            .finish();
+            ast::PatKind::Ctor { name, ref pats } => match self.resolver.get(Ns::Values, name.symbol) {
+                Some(ir::Res::Def(ir::DefKind::Ctor, ctor)) => ir::PatKind::Ctor {
+                    ctor,
+                    pats: pats.iter().map(|p| self.convert_pat(p)).collect(),
+                },
+                Some(_) => {
+                    self.db
+                        .to_diag_db()
+                        .error(format!("'{}' is not a constructor", name))
+                        .with_label(diagnostics::Label::primary(self.file, name.span))
+                        .finish();
 
-                        ir::PatKind::Error
-                    }
-                    None => {
-                        self.db
-                            .to_diag_db()
-                            .error(format!("unknown constructor '{}'", name))
-                            .with_label(diagnostics::Label::primary(self.file, name.span))
-                            .finish();
-
-                        ir::PatKind::Error
-                    }
+                    ir::PatKind::Error
                 }
-            }
+                None => {
+                    self.db
+                        .to_diag_db()
+                        .error(format!("unknown constructor '{}'", name))
+                        .with_label(diagnostics::Label::primary(self.file, name.span))
+                        .finish();
+
+                    ir::PatKind::Error
+                }
+            },
             ast::PatKind::Array { ref pats } => ir::PatKind::Array {
                 pats: pats.iter().map(|p| self.convert_pat(p)).collect(),
             },
@@ -1484,17 +1238,10 @@ impl<'db> Converter<'db> {
             },
         };
 
-        ir::Pat {
-            id,
-            span: pat.span,
-            kind,
-        }
+        ir::Pat { id, span: pat.span, kind }
     }
 
-    fn convert_field_pat(
-        &mut self,
-        field: &ast::RecordField<ast::Pat>,
-    ) -> ir::RecordField<ir::Pat> {
+    fn convert_field_pat(&mut self, field: &ast::RecordField<ast::Pat>) -> ir::RecordField<ir::Pat> {
         match *field {
             ast::RecordField::Field { name, ref val } => ir::RecordField {
                 id: self.next_id(),
@@ -1506,8 +1253,7 @@ impl<'db> Converter<'db> {
                 let field_id = self.next_id();
                 let pat_id = self.next_id();
 
-                self.resolver
-                    .define(Ns::Values, name, ir::Res::Local(pat_id));
+                self.resolver.define(Ns::Values, name, ir::Res::Local(pat_id));
 
                 ir::RecordField {
                     id: field_id,
@@ -1525,12 +1271,8 @@ impl<'db> Converter<'db> {
 
     fn convert_guarded(&mut self, guarded: &ast::Guarded) -> ir::Guarded {
         match guarded {
-            ast::Guarded::Unconditional(expr) => {
-                ir::Guarded::Unconditional(self.convert_expr(expr))
-            }
-            ast::Guarded::Guarded(guards) => {
-                ir::Guarded::Guarded(guards.iter().map(|g| self.convert_guard(g)).collect())
-            }
+            ast::Guarded::Unconditional(expr) => ir::Guarded::Unconditional(self.convert_expr(expr)),
+            ast::Guarded::Guarded(guards) => ir::Guarded::Guarded(guards.iter().map(|g| self.convert_guard(g)).collect()),
         }
     }
 
@@ -1547,58 +1289,14 @@ impl<'db> Converter<'db> {
         let id = self.next_id();
         let kind = match expr.kind {
             ast::ExprKind::Parens { ref inner } => {
-                if let ast::ExprKind::Ident { name } = inner.kind {
-                    match self.resolver.get(Ns::Values, name.symbol) {
-                        Some(res @ (ir::Res::Def(ir::DefKind::Func, _) | ir::Res::Local(_))) => {
-                            let func = ir::Expr {
-                                id: self.next_id(),
-                                span: inner.span,
-                                kind: ir::ExprKind::Ident { name, res },
-                            };
-
-                            ir::ExprKind::App {
-                                base: Box::new(func),
-                                args: Vec::new(),
-                            }
-                        }
-                        Some(_) => {
-                            self.db
-                                .to_diag_db()
-                                .error(format!("'{}' is not a function", name))
-                                .with_label(diagnostics::Label::primary(self.file, name.span))
-                                .finish();
-
-                            ir::ExprKind::Error
-                        }
-                        None => {
-                            self.db
-                                .to_diag_db()
-                                .error(format!("unknown function '{}'", name))
-                                .with_label(diagnostics::Label::primary(self.file, name.span))
-                                .finish();
-
-                            ir::ExprKind::Error
-                        }
-                    }
-                } else {
-                    self.id_counter -= 1;
-                    return self.convert_expr(inner);
-                }
+                self.id_counter -= 1;
+                return self.convert_expr(inner);
             }
             ast::ExprKind::Hole { name } => ir::ExprKind::Hole { name },
             ast::ExprKind::Ident { name } => match self.resolver.get(Ns::Values, name.symbol) {
-                Some(
-                    res
-                    @
-                    (ir::Res::Local(_)
-                    | ir::Res::Def(
-                        ir::DefKind::Func
-                        | ir::DefKind::Const
-                        | ir::DefKind::Static
-                        | ir::DefKind::Ctor,
-                        _,
-                    )),
-                ) => ir::ExprKind::Ident { name, res },
+                Some(res @ (ir::Res::Local(_) | ir::Res::Def(ir::DefKind::Func | ir::DefKind::Const | ir::DefKind::Static | ir::DefKind::Ctor, _))) => {
+                    ir::ExprKind::Ident { name, res }
+                }
                 Some(_) => {
                     self.db
                         .to_diag_db()
@@ -1622,9 +1320,9 @@ impl<'db> Converter<'db> {
             ast::ExprKind::Float { bits } => ir::ExprKind::Float { bits },
             ast::ExprKind::Char { val } => ir::ExprKind::Char { val },
             ast::ExprKind::Str { ref val } => ir::ExprKind::Str { val: val.clone() },
-            ast::ExprKind::App { ref base, ref args } => ir::ExprKind::App {
+            ast::ExprKind::App { ref base, ref arg } => ir::ExprKind::App {
                 base: Box::new(self.convert_expr(base)),
-                args: args.iter().map(|e| self.convert_expr(e)).collect(),
+                arg: Box::new(self.convert_expr(arg)),
             },
             ast::ExprKind::Array { ref exprs } => ir::ExprKind::Array {
                 exprs: exprs.iter().map(|e| self.convert_expr(e)).collect(),
@@ -1639,10 +1337,7 @@ impl<'db> Converter<'db> {
                 base: Box::new(self.convert_expr(base)),
                 field,
             },
-            ast::ExprKind::Index {
-                ref base,
-                ref index,
-            } => ir::ExprKind::Index {
+            ast::ExprKind::Index { ref base, ref index } => ir::ExprKind::Index {
                 base: Box::new(self.convert_expr(base)),
                 index: Box::new(self.convert_expr(index)),
             },
@@ -1650,11 +1345,7 @@ impl<'db> Converter<'db> {
                 lhs: Box::new(self.convert_expr(lhs)),
                 rhs: Box::new(self.convert_expr(rhs)),
             },
-            ast::ExprKind::Infix {
-                op,
-                ref lhs,
-                ref rhs,
-            } => ir::ExprKind::Infix {
+            ast::ExprKind::Infix { op, ref lhs, ref rhs } => ir::ExprKind::Infix {
                 op,
                 lhs: Box::new(self.convert_expr(lhs)),
                 rhs: Box::new(self.convert_expr(rhs)),
@@ -1667,15 +1358,10 @@ impl<'db> Converter<'db> {
                 op,
                 lhs: Box::new(self.convert_expr(lhs)),
             },
-            ast::ExprKind::Let {
-                ref bindings,
-                ref body,
-            } => {
+            ast::ExprKind::Let { ref bindings, ref body } => {
                 self.resolver.push_rib(Ns::Values);
 
-                let bindings = group::LetBindingGroups::new(bindings)
-                    .filter_map(|b| self.convert_let_binding(b))
-                    .collect();
+                let bindings = group::LetBindingGroups::new(bindings).filter_map(|b| self.convert_let_binding(b)).collect();
 
                 let body = self.convert_expr(body);
 
@@ -1686,11 +1372,7 @@ impl<'db> Converter<'db> {
                     body: Box::new(body),
                 }
             }
-            ast::ExprKind::If {
-                ref cond,
-                ref then,
-                ref else_,
-            } => ir::ExprKind::If {
+            ast::ExprKind::If { ref cond, ref then, ref else_ } => ir::ExprKind::If {
                 cond: Box::new(self.convert_expr(cond)),
                 then: Box::new(self.convert_expr(then)),
                 else_: Box::new(self.convert_expr(else_)),
@@ -1720,17 +1402,10 @@ impl<'db> Converter<'db> {
             },
         };
 
-        ir::Expr {
-            id,
-            span: expr.span,
-            kind,
-        }
+        ir::Expr { id, span: expr.span, kind }
     }
 
-    fn convert_field_expr(
-        &mut self,
-        field: &ast::RecordField<ast::Expr>,
-    ) -> ir::RecordField<ir::Expr> {
+    fn convert_field_expr(&mut self, field: &ast::RecordField<ast::Expr>) -> ir::RecordField<ir::Expr> {
         match *field {
             ast::RecordField::Field { name, ref val } => ir::RecordField {
                 id: self.next_id(),
@@ -1746,18 +1421,9 @@ impl<'db> Converter<'db> {
                     id: self.next_id(),
                     span: name.span,
                     kind: match self.resolver.get(Ns::Values, name.symbol) {
-                        Some(
-                            res
-                            @
-                            (ir::Res::Local(_)
-                            | ir::Res::Def(
-                                ir::DefKind::Func
-                                | ir::DefKind::Const
-                                | ir::DefKind::Static
-                                | ir::DefKind::Ctor,
-                                _,
-                            )),
-                        ) => ir::ExprKind::Ident { name, res },
+                        Some(res @ (ir::Res::Local(_) | ir::Res::Def(ir::DefKind::Func | ir::DefKind::Const | ir::DefKind::Static | ir::DefKind::Ctor, _))) => {
+                            ir::ExprKind::Ident { name, res }
+                        }
                         Some(_) => {
                             self.db
                                 .to_diag_db()
@@ -1791,19 +1457,13 @@ impl<'db> Converter<'db> {
 
         self.resolver.pop_rib(Ns::Values);
 
-        ir::Block {
-            id,
-            span: block.span,
-            stmts,
-        }
+        ir::Block { id, span: block.span, stmts }
     }
 
     fn convert_stmt(&mut self, stmt: &ast::Stmt) -> ir::Stmt {
         let id = self.next_id();
         let kind = match stmt.kind {
-            ast::StmtKind::Discard { ref expr } => ir::StmtKind::Discard {
-                expr: self.convert_expr(expr),
-            },
+            ast::StmtKind::Discard { ref expr } => ir::StmtKind::Discard { expr: self.convert_expr(expr) },
             ast::StmtKind::Bind { ref pat, ref val } => ir::StmtKind::Bind {
                 binding: ir::Binding {
                     id: self.next_id(),
@@ -1819,11 +1479,7 @@ impl<'db> Converter<'db> {
             },
         };
 
-        ir::Stmt {
-            id,
-            span: stmt.span,
-            kind,
-        }
+        ir::Stmt { id, span: stmt.span, kind }
     }
 
     fn convert_let_binding(&mut self, bindings: &[ast::LetBinding]) -> Option<ir::Binding> {
@@ -1883,12 +1539,7 @@ impl<'db> Converter<'db> {
             ast::TypeKind::Parens { .. } => unreachable!(),
             ast::TypeKind::Hole { name } => ir::TypeKind::Hole { name },
             ast::TypeKind::Ident { name } => match self.resolver.get(Ns::Types, name.symbol) {
-                Some(
-                    res
-                    @
-                    (ir::Res::Local(_)
-                    | ir::Res::Def(ir::DefKind::Alias | ir::DefKind::Data, _)),
-                ) => ir::TypeKind::Ident { res },
+                Some(res @ (ir::Res::Local(_) | ir::Res::Def(ir::DefKind::Alias | ir::DefKind::Data, _))) => ir::TypeKind::Ident { res },
                 Some(_) => {
                     self.db
                         .to_diag_db()
@@ -1908,34 +1559,15 @@ impl<'db> Converter<'db> {
                     ir::TypeKind::Error
                 }
             },
-            ast::TypeKind::Qual { module, name } => {
-                match self.modules.iter().find(|m| m.name == module.symbol) {
-                    Some(qmod) => match qmod.exports.iter().find(|e| e.name == name.symbol) {
-                        Some(e) => match e.res {
-                            ir::Res::Def(ir::DefKind::Alias | ir::DefKind::Data, _) => {
-                                ir::TypeKind::Ident { res: e.res }
-                            }
-                            _ => {
-                                self.db
-                                    .to_diag_db()
-                                    .error(format!("'{}.{}' is not a type", module, name))
-                                    .with_label(diagnostics::Label::primary(
-                                        self.file,
-                                        module.span.merge(name.span),
-                                    ))
-                                    .finish();
-
-                                ir::TypeKind::Error
-                            }
-                        },
-                        None => {
+            ast::TypeKind::Qual { module, name } => match self.modules.iter().find(|m| m.name == module.symbol) {
+                Some(qmod) => match qmod.exports.iter().find(|e| e.name == name.symbol) {
+                    Some(e) => match e.res {
+                        ir::Res::Def(ir::DefKind::Alias | ir::DefKind::Data, _) => ir::TypeKind::Ident { res: e.res },
+                        _ => {
                             self.db
                                 .to_diag_db()
-                                .error(format!("unknown type '{}.{}'", module, name))
-                                .with_label(diagnostics::Label::primary(
-                                    self.file,
-                                    module.span.merge(name.span),
-                                ))
+                                .error(format!("'{}.{}' is not a type", module, name))
+                                .with_label(diagnostics::Label::primary(self.file, module.span.merge(name.span)))
                                 .finish();
 
                             ir::TypeKind::Error
@@ -1944,26 +1576,33 @@ impl<'db> Converter<'db> {
                     None => {
                         self.db
                             .to_diag_db()
-                            .error(format!("unknown qualified module '{}'", module))
-                            .with_label(diagnostics::Label::primary(self.file, module.span))
+                            .error(format!("unknown type '{}.{}'", module, name))
+                            .with_label(diagnostics::Label::primary(self.file, module.span.merge(name.span)))
                             .finish();
 
                         ir::TypeKind::Error
                     }
+                },
+                None => {
+                    self.db
+                        .to_diag_db()
+                        .error(format!("unknown qualified module '{}'", module))
+                        .with_label(diagnostics::Label::primary(self.file, module.span))
+                        .finish();
+
+                    ir::TypeKind::Error
                 }
-            }
+            },
             ast::TypeKind::Int { val } => ir::TypeKind::Int { val },
             ast::TypeKind::Str { ref val } => ir::TypeKind::Str { val: val.clone() },
-            ast::TypeKind::App { ref base, ref args } => ir::TypeKind::App {
+            ast::TypeKind::App { ref base, ref arg } => ir::TypeKind::App {
                 base: Box::new(self.convert_type(base)),
-                args: args.iter().map(|t| self.convert_type(t)).collect(),
+                arg: Box::new(self.convert_type(arg)),
             },
             ast::TypeKind::Tuple { ref tys } => ir::TypeKind::Tuple {
                 tys: tys.iter().map(|t| self.convert_type(t)).collect(),
             },
-            ast::TypeKind::Record { ref row } => ir::TypeKind::Record {
-                row: self.convert_row(row),
-            },
+            ast::TypeKind::Record { ref row } => ir::TypeKind::Record { row: self.convert_row(row) },
             ast::TypeKind::Func { ref param, ref ret } => ir::TypeKind::Func {
                 param: Box::new(self.convert_type(param)),
                 ret: Box::new(self.convert_type(ret)),
@@ -1976,10 +1615,7 @@ impl<'db> Converter<'db> {
 
                 self.resolver.pop_rib(Ns::Types);
 
-                ir::TypeKind::Forall {
-                    vars,
-                    ty: Box::new(ty),
-                }
+                ir::TypeKind::Forall { vars, ty: Box::new(ty) }
             }
             ast::TypeKind::Cons { ref cs, ref ty } => match self.convert_constraint(cs) {
                 Some(cs) => ir::TypeKind::Cons {
@@ -1994,22 +1630,14 @@ impl<'db> Converter<'db> {
             },
         };
 
-        ir::Type {
-            id,
-            span: ty.span,
-            kind,
-        }
+        ir::Type { id, span: ty.span, kind }
     }
 
     fn convert_row(&mut self, row: &ast::Row) -> ir::Row {
         ir::Row {
             id: self.next_id(),
             span: row.span,
-            fields: row
-                .fields
-                .iter()
-                .map(|f| self.convert_row_field(f))
-                .collect(),
+            fields: row.fields.iter().map(|f| self.convert_row_field(f)).collect(),
             tail: row.tail.as_deref().map(|t| Box::new(self.convert_type(t))),
         }
     }
@@ -2060,11 +1688,7 @@ impl<'db> Converter<'db> {
         match cs {
             ast::Constraint::CS { iface, tys } => Some(ir::Constraint {
                 id: self.next_id(),
-                span: iface.span.merge(if tys.is_empty() {
-                    iface.span
-                } else {
-                    tys.last().unwrap().span
-                }),
+                span: iface.span.merge(if tys.is_empty() { iface.span } else { tys.last().unwrap().span }),
                 trait_: match self.resolver.get(Ns::Types, iface.symbol) {
                     Some(ir::Res::Def(ir::DefKind::Trait, iface)) => iface,
                     Some(_) => {

@@ -83,11 +83,7 @@ impl Debug for Module {
 
 impl Debug for Export {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        writeln!(
-            f,
-            "Export name = {:?}, module = {:?}, ns = {:?}",
-            &**self.name, self.module, self.ns
-        )?;
+        writeln!(f, "Export name = {:?}, module = {:?}, ns = {:?}", &**self.name, self.module, self.ns)?;
         write!(indent(f), "{:?}", self.res)
     }
 }
@@ -98,19 +94,11 @@ impl Debug for Item {
 
         match &self.kind {
             ItemKind::Foreign { ty, kind } => {
-                writeln!(
-                    f,
-                    "Foreign id = {:?}, name = {:?}, kind = {:?}",
-                    self.id, &**self.name.symbol, kind
-                )?;
+                writeln!(f, "Foreign id = {:?}, name = {:?}, kind = {:?}", self.id, &**self.name.symbol, kind)?;
                 write!(indent(f), "{:?}", ty)
             }
             ItemKind::Func { ty, body } => {
-                writeln!(
-                    f,
-                    "Func id = {:?}, name = {:?}, body = {:?}",
-                    self.id, &**self.name.symbol, body
-                )?;
+                writeln!(f, "Func id = {:?}, name = {:?}, body = {:?}", self.id, &**self.name.symbol, body)?;
 
                 for attr in &self.attrs {
                     writeln!(indent(f), "{:?}", attr)?;
@@ -119,27 +107,15 @@ impl Debug for Item {
                 write!(indent(f), "{:?}", ty)
             }
             ItemKind::Const { ty, body } => {
-                writeln!(
-                    f,
-                    "Const id = {:?}, name = {:?}, body = {:?}",
-                    self.id, &**self.name.symbol, body
-                )?;
+                writeln!(f, "Const id = {:?}, name = {:?}, body = {:?}", self.id, &**self.name.symbol, body)?;
                 write!(indent(f), "{:?}", ty)
             }
             ItemKind::Static { ty, body } => {
-                writeln!(
-                    f,
-                    "Static id = {:?}, name = {:?}, body = {:?}",
-                    self.id, &**self.name.symbol, body
-                )?;
+                writeln!(f, "Static id = {:?}, name = {:?}, body = {:?}", self.id, &**self.name.symbol, body)?;
                 write!(indent(f), "{:?}", ty)
             }
             ItemKind::Alias { kind, vars, value } => {
-                writeln!(
-                    f,
-                    "Alias id = {:?}, name = {:?}",
-                    self.id, &**self.name.symbol
-                )?;
+                writeln!(f, "Alias id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
 
                 for var in vars {
                     writeln!(indent(f), "{:?}", var)?;
@@ -149,21 +125,13 @@ impl Debug for Item {
                 write!(indent(f), "{:?}", kind)
             }
             ItemKind::Data { head, body } => {
-                writeln!(
-                    f,
-                    "Data id = {:?}, name = {:?}",
-                    self.id, &**self.name.symbol
-                )?;
+                writeln!(f, "Data id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
 
                 writeln!(f, "           ctors = {:?}", body)?;
                 write!(indent(f), "{:?}", head)
             }
             ItemKind::DataCtor { data, tys } => {
-                write!(
-                    f,
-                    "DataCtor id = {:?}, name = {:?}, data = {:?}",
-                    self.id, &**self.name.symbol, data
-                )?;
+                write!(f, "DataCtor id = {:?}, name = {:?}, data = {:?}", self.id, &**self.name.symbol, data)?;
 
                 for ty in tys {
                     writeln!(f)?;
@@ -173,25 +141,12 @@ impl Debug for Item {
                 Ok(())
             }
             ItemKind::Trait { head, body } => {
-                writeln!(
-                    f,
-                    "Trait id = {:?}, name = {:?}",
-                    self.id, &**self.name.symbol
-                )?;
+                writeln!(f, "Trait id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
                 writeln!(indent(f), "{:?}", head)?;
                 write!(indent(f), "{:?}", body)
             }
-            ItemKind::Impl {
-                chain,
-                index,
-                head,
-                body,
-            } => {
-                writeln!(
-                    f,
-                    "Impl id = {:?}, name = {:?}",
-                    self.id, &**self.name.symbol
-                )?;
+            ItemKind::Impl { chain, index, head, body } => {
+                writeln!(f, "Impl id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
                 writeln!(f, "           index = {:?}, chain = {:?}", index, chain)?;
                 writeln!(indent(f), "{:?}", head)?;
                 write!(indent(f), "{:?}", body)
@@ -245,11 +200,7 @@ impl Debug for TraitBody {
 
 impl Debug for TraitItemRef {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(
-            f,
-            "TraitItemRef id = {:?}, name = {:?}, kind = {:?}",
-            self.id, &**self.name.symbol, self.kind
-        )
+        write!(f, "TraitItemRef id = {:?}, name = {:?}, kind = {:?}", self.id, &**self.name.symbol, self.kind)
     }
 }
 
@@ -286,11 +237,7 @@ impl Debug for ImplBody {
 
 impl Debug for ImplItemRef {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(
-            f,
-            "ImplItemRef id = {:?}, name = {:?}, kind = {:?}",
-            self.id, &**self.name.symbol, self.kind
-        )
+        write!(f, "ImplItemRef id = {:?}, name = {:?}, kind = {:?}", self.id, &**self.name.symbol, self.kind)
     }
 }
 
@@ -300,11 +247,7 @@ impl Debug for TraitItem {
 
         match &self.kind {
             TraitItemKind::Func { ty } => {
-                writeln!(
-                    f,
-                    "Func id = {:?}, name = {:?}",
-                    self.id, &**self.name.symbol
-                )?;
+                writeln!(f, "Func id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
                 writeln!(indent(f), "{:?}", ty)
             }
         }
@@ -317,11 +260,7 @@ impl Debug for ImplItem {
 
         match &self.kind {
             ImplItemKind::Func { ty, body } => {
-                writeln!(
-                    f,
-                    "Func id = {:?}, name = {:?}, body = {:?}",
-                    self.id, &**self.name.symbol, body
-                )?;
+                writeln!(f, "Func id = {:?}, name = {:?}, body = {:?}", self.id, &**self.name.symbol, body)?;
                 writeln!(indent(f), "{:?}", ty)
             }
         }
@@ -430,11 +369,7 @@ impl Debug for Pat {
 
 impl<T: Debug> Debug for RecordField<T> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        writeln!(
-            f,
-            "RecordField id = {:?}, name = {:?}",
-            self.id, &**self.name.symbol
-        )?;
+        writeln!(f, "RecordField id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
         write!(indent(f), "{:?}", self.val)
     }
 }
@@ -487,14 +422,10 @@ impl Debug for Expr {
             ExprKind::Float { bits } => write!(f, "Float id = {:?}, bits = {:?}", self.id, bits),
             ExprKind::Char { val } => write!(f, "Char id = {:?}, val = {:?}", self.id, val),
             ExprKind::Str { val } => write!(f, "Str id = {:?}, val = {:?}", self.id, val),
-            ExprKind::App { base, args } => {
+            ExprKind::App { base, arg } => {
                 writeln!(f, "App id = {:?}", self.id)?;
-                write!(indent(f), "{:?}", base)?;
-
-                for arg in args {
-                    writeln!(f)?;
-                    write!(indent(f), "{:?}", arg)?;
-                }
+                writeln!(indent(f), "{:?}", base)?;
+                write!(indent(f), "{:?}", arg)?;
 
                 Ok(())
             }
@@ -637,14 +568,10 @@ impl Debug for Type {
             }
             TypeKind::Int { val } => write!(f, "Int id = {:?}, val = {:?}", self.id, val),
             TypeKind::Str { val } => write!(f, "Str id = {:?}, val = {:?}", self.id, val),
-            TypeKind::App { base, args } => {
+            TypeKind::App { base, arg } => {
                 writeln!(f, "App id = {:?}", self.id)?;
-                write!(indent(f), "{:?}", base)?;
-
-                for arg in args {
-                    writeln!(f)?;
-                    write!(indent(f), "{:?}", arg)?;
-                }
+                writeln!(indent(f), "{:?}", base)?;
+                write!(indent(f), "{:?}", arg)?;
 
                 Ok(())
             }
@@ -710,33 +637,21 @@ impl Debug for Row {
 
 impl Debug for RowField {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        writeln!(
-            f,
-            "RowField id = {:?}, name = {:?}",
-            self.id, &**self.name.symbol
-        )?;
+        writeln!(f, "RowField id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
         write!(indent(f), "{:?}", self.ty)
     }
 }
 
 impl Debug for TypeVar {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        writeln!(
-            f,
-            "TypeVar id = {:?}, name = {:?}",
-            self.id, &**self.name.symbol
-        )?;
+        writeln!(f, "TypeVar id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
         write!(indent(f), "{:?}", self.kind)
     }
 }
 
 impl Debug for Constraint {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(
-            f,
-            "Constraint id = {:?}, trait = {:?}",
-            self.id, self.trait_
-        )?;
+        write!(f, "Constraint id = {:?}, trait = {:?}", self.id, self.trait_)?;
 
         for ty in &self.tys {
             writeln!(f)?;

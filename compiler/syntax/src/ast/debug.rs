@@ -96,11 +96,7 @@ impl Debug for Exports {
 
 impl Debug for Export {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(
-            f,
-            "Export name = {:?}, kind = {:?}",
-            &**self.name.symbol, self.kind
-        )
+        write!(f, "Export name = {:?}, kind = {:?}", &**self.name.symbol, self.kind)
     }
 }
 
@@ -127,11 +123,7 @@ impl Debug for ImportDecl {
 
 impl Debug for Import {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(
-            f,
-            "Import name = {:?}, kind = {:?}",
-            &**self.name.symbol, self.kind
-        )
+        write!(f, "Import name = {:?}, kind = {:?}", &**self.name.symbol, self.kind)
     }
 }
 
@@ -141,11 +133,7 @@ impl Debug for Decl {
 
         match &self.kind {
             DeclKind::Foreign { ty, kind } => {
-                writeln!(
-                    f,
-                    "Foreign name = {:?}, kind = {:?}",
-                    &**self.name.symbol, kind
-                )?;
+                writeln!(f, "Foreign name = {:?}, kind = {:?}", &**self.name.symbol, kind)?;
                 write!(indent(f), "{:?}", ty)
             }
             DeclKind::FuncTy { ty } => {
@@ -557,14 +545,10 @@ impl Debug for Expr {
             ExprKind::Float { bits } => write!(f, "Float bits = {}", bits),
             ExprKind::Char { val } => write!(f, "Char val = {:?}", val),
             ExprKind::Str { val } => write!(f, "Str val = {:?}", val),
-            ExprKind::App { base, args } => {
+            ExprKind::App { base, arg } => {
                 writeln!(f, "App")?;
-                write!(indent(f), "{:?}", base)?;
-
-                for arg in args {
-                    writeln!(f)?;
-                    write!(indent(f), "{:?}", arg)?;
-                }
+                writeln!(indent(f), "{:?}", base)?;
+                write!(indent(f), "{:?}", arg)?;
 
                 Ok(())
             }
@@ -757,19 +741,11 @@ impl Debug for Type {
             TypeKind::Int { val } => write!(f, "Int val = {}", val),
             TypeKind::Str { val } => write!(f, "Str val = {:?}", val),
             TypeKind::Ident { name } => write!(f, "Ident name = {:?}", &**name.symbol),
-            TypeKind::Qual { module, name } => write!(
-                f,
-                "Qual module = {:?} name = {:?}",
-                &**module.symbol, &**name.symbol
-            ),
-            TypeKind::App { base, args } => {
+            TypeKind::Qual { module, name } => write!(f, "Qual module = {:?} name = {:?}", &**module.symbol, &**name.symbol),
+            TypeKind::App { base, arg } => {
                 writeln!(f, "App")?;
-                write!(indent(f), "{:?}", base)?;
-
-                for arg in args {
-                    writeln!(f)?;
-                    write!(indent(f), "{:?}", arg)?;
-                }
+                writeln!(indent(f), "{:?}", base)?;
+                write!(indent(f), "{:?}", arg)?;
 
                 Ok(())
             }

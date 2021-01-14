@@ -22,7 +22,7 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
 
     let mut low = converter.finish();
 
-    println!("{}", low);
+    // println!("{}", low);
     lowlang::analysis::mandatory(&mut low, &db.target(lib));
 
     Arc::new(low)
@@ -37,7 +37,7 @@ pub struct Converter<'db> {
 
 pub struct BodyConverter<'db, 'c> {
     db: &'db dyn LowerDatabase,
-    hir: &'db hir::Module,
+    _hir: &'db hir::Module,
     types: Arc<typeck::TypecheckResult>,
     builder: ir::Builder<'c>,
     decls: &'c HashMap<hir::DefId, ir::DeclId>,
@@ -74,22 +74,19 @@ impl<'db> Converter<'db> {
 
             if let Some(link_name) = self.link_name(id) {
                 decls.insert(id, declid);
-                self.decls.insert(
-                    declid,
-                    ir::Decl {
-                        id: declid,
-                        name: link_name,
-                        ty: lower_type(self.db, &ty.ty),
-                        linkage: ir::Linkage::Import,
-                        attrs: if let hir::Def::Item(item) = def {
-                            ir::Attrs {
-                                c_abi: item.abi() == Some("C"),
-                            }
-                        } else {
-                            ir::Attrs::default()
-                        },
+                self.decls.insert(declid, ir::Decl {
+                    id: declid,
+                    name: link_name,
+                    ty: lower_type(self.db, &ty.ty),
+                    linkage: ir::Linkage::Import,
+                    attrs: if let hir::Def::Item(item) = def {
+                        ir::Attrs {
+                            c_abi: item.abi() == Some("C"),
+                        }
+                    } else {
+                        ir::Attrs::default()
                     },
-                );
+                });
             }
         }
 
@@ -98,56 +95,65 @@ impl<'db> Converter<'db> {
                 hir::ItemKind::Func { .. } => {
                     let ty = self.db.typecheck(item.id.owner);
                     let declid = self.decls.next_idx();
+                    let mut ty = lower_type(self.db, &ty.ty);
+
+                    if !matches!(ty.kind, ir::Type::Func(_)) {
+                        ty = ir::Ty::new(ir::Type::Func(ir::Signature {
+                            params: Vec::new(),
+                            rets: vec![ty],
+                        }));
+                    }
 
                     decls.insert(item.id.owner, declid);
-                    self.decls.insert(
-                        declid,
-                        ir::Decl {
-                            id: declid,
-                            name: self.link_name(item.id.owner).unwrap(),
-                            ty: lower_type(self.db, &ty.ty),
-                            linkage: ir::Linkage::Export,
-                            attrs: ir::Attrs {
-                                c_abi: item.abi() == Some("C"),
-                            },
+                    self.decls.insert(declid, ir::Decl {
+                        id: declid,
+                        name: self.link_name(item.id.owner).unwrap(),
+                        ty,
+                        linkage: ir::Linkage::Export,
+                        attrs: ir::Attrs {
+                            c_abi: item.abi() == Some("C"),
                         },
-                    );
+                    });
                 }
                 hir::ItemKind::Static { .. } => {
                     let ty = self.db.typecheck(item.id.owner);
                     let declid = self.decls.next_idx();
 
                     decls.insert(item.id.owner, declid);
-                    self.decls.insert(
-                        declid,
-                        ir::Decl {
-                            id: declid,
-                            name: self.link_name(item.id.owner).unwrap(),
-                            ty: lower_type(self.db, &ty.ty),
-                            linkage: ir::Linkage::Export,
-                            attrs: ir::Attrs::default(),
-                        },
-                    );
+                    self.decls.insert(declid, ir::Decl {
+                        id: declid,
+                        name: self.link_name(item.id.owner).unwrap(),
+                        ty: lower_type(self.db, &ty.ty),
+                        linkage: ir::Linkage::Export,
+                        attrs: ir::Attrs::default(),
+                    });
                 }
                 hir::ItemKind::Const { .. } => unimplemented!(),
-                hir::ItemKind::Foreign { .. } => {
+                hir::ItemKind::Foreign { kind, .. } => {
                     if !item.is_intrinsic() {
                         let ty = self.db.typecheck(item.id.owner);
                         let declid = self.decls.next_idx();
+                        let mut ty = lower_type(self.db, &ty.ty);
+
+                        if let hir::ForeignKind::Func = kind {
+                            if !matches!(ty.kind, ir::Type::Func(_)) {
+                                ty = ir::Ty::new(ir::Type::Func(ir::Signature {
+                                    params: Vec::new(),
+                                    rets: vec![ty],
+                                }));
+                            }
+                        }
 
                         decls.insert(item.id.owner, declid);
-                        self.decls.insert(
-                            declid,
-                            ir::Decl {
-                                id: declid,
-                                name: item.name.to_string(),
-                                ty: lower_type(self.db, &ty.ty),
-                                linkage: ir::Linkage::Export,
-                                attrs: ir::Attrs {
-                                    c_abi: item.abi() == Some("C"),
-                                },
+                        self.decls.insert(declid, ir::Decl {
+                            id: declid,
+                            name: item.name.to_string(),
+                            ty,
+                            linkage: ir::Linkage::Export,
+                            attrs: ir::Attrs {
+                                c_abi: item.abi() == Some("C"),
                             },
-                        );
+                        });
                     }
                 }
                 _ => {}
@@ -161,16 +167,13 @@ impl<'db> Converter<'db> {
                     let declid = self.decls.next_idx();
 
                     decls.insert(item.id.owner, declid);
-                    self.decls.insert(
-                        declid,
-                        ir::Decl {
-                            id: declid,
-                            name: self.link_name(item.id.owner).unwrap(),
-                            ty: lower_type(self.db, &ty.ty),
-                            linkage: ir::Linkage::Export,
-                            attrs: ir::Attrs { c_abi: false },
-                        },
-                    );
+                    self.decls.insert(declid, ir::Decl {
+                        id: declid,
+                        name: self.link_name(item.id.owner).unwrap(),
+                        ty: lower_type(self.db, &ty.ty),
+                        linkage: ir::Linkage::Export,
+                        attrs: ir::Attrs { c_abi: false },
+                    });
                 }
             }
         }
@@ -247,14 +250,14 @@ impl<'db> Converter<'db> {
 impl<'db, 'c> BodyConverter<'db, 'c> {
     pub fn new(
         db: &'db dyn LowerDatabase,
-        hir: &'db hir::Module,
+        _hir: &'db hir::Module,
         types: Arc<typeck::TypecheckResult>,
         builder: ir::Builder<'c>,
         decls: &'c HashMap<hir::DefId, ir::DeclId>,
     ) -> Self {
         BodyConverter {
             db,
-            hir,
+            _hir,
             types,
             builder,
             decls,
@@ -276,24 +279,20 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         use typeck::ty::Type;
 
         match &*ty {
-            Type::ForAll(_, t2, _) => self.create_header(params, t2.clone()),
+            Type::ForAll(_, _, t2, _) => self.create_header(params, t2.clone()),
             Type::Ctnt(_, t2) => self.create_header(params, t2.clone()),
-            Type::App(f, args) if is_func_ty(self.db, f) => {
-                if let Type::Tuple(param_tys) = &*args[0] {
-                    let ret = self.builder.create_ret(lower_type(self.db, &args[1]));
+            _ => {
+                let (args, ret) = ty_get_args(self.db, ty);
+                let ret = self.builder.create_ret(lower_type(self.db, &ret));
 
-                    for (param, ty) in params.iter().zip(param_tys) {
-                        let local = self.builder.create_arg(lower_type(self.db, &ty));
+                for (param, ty) in params.iter().zip(args) {
+                    let local = self.builder.create_arg(lower_type(self.db, &ty));
 
-                        self.locals.insert(param.id, local);
-                    }
-
-                    ret
-                } else {
-                    unreachable!();
+                    self.locals.insert(param.id, local);
                 }
+
+                ret
             }
-            _ => self.builder.create_ret(lower_type(self.db, &ty)),
         }
     }
 
@@ -306,18 +305,13 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
             hir::ExprKind::Ident { res, name } => match res {
                 hir::Res::Error => unreachable!(),
                 hir::Res::Def(d, id) => match d {
-                    hir::DefKind::Func | hir::DefKind::Static => {
-                        ir::Operand::Const(ir::Const::Addr(self.decls[id]))
-                    }
+                    hir::DefKind::Func | hir::DefKind::Static => ir::Operand::Const(ir::Const::Addr(self.decls[id])),
                     hir::DefKind::Ctor => {
                         let file = self.db.module_tree(id.lib).file(id.module);
                         let hir = self.db.module_hir(file);
                         let ctor = hir.items[&(*id).into()].ctor();
                         let data = hir.items[&ctor.0].data_body();
-                        let idx = data
-                            .iter()
-                            .position(|id| hir.items[id].name.symbol == name.symbol)
-                            .unwrap();
+                        let idx = data.iter().position(|id| hir.items[id].name.symbol == name.symbol).unwrap();
                         let cs = if let ir::Type::Box(to) = ty.kind {
                             ir::Const::Ptr(Box::new(ir::Const::Variant(idx, Vec::new(), *to)))
                         } else {
@@ -331,12 +325,21 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 hir::Res::Local(id) => ir::Operand::Place(ir::Place::new(self.locals[id].clone())),
             },
             hir::ExprKind::Int { val } => ir::Operand::Const(ir::Const::Scalar(*val, ty)),
-            hir::ExprKind::Float { bits } => {
-                ir::Operand::Const(ir::Const::Scalar(*bits as u128, ty))
-            }
+            hir::ExprKind::Float { bits } => ir::Operand::Const(ir::Const::Scalar(*bits as u128, ty)),
             hir::ExprKind::Char { val } => ir::Operand::Const(ir::Const::Scalar(*val as u128, ty)),
             hir::ExprKind::Str { val: _ } => unimplemented!(),
-            hir::ExprKind::App { base, args } => self.convert_app(base, args, ty),
+            hir::ExprKind::App { base, arg } => {
+                let mut base = base;
+                let mut args = vec![&**arg];
+
+                while let hir::ExprKind::App { base: b, arg } = &base.kind {
+                    base = b;
+                    args.push(&**arg);
+                }
+
+                args.reverse();
+                self.convert_app(base, args, ty)
+            }
             hir::ExprKind::Tuple { exprs } => {
                 if exprs.is_empty() {
                     ir::Operand::Const(ir::Const::Tuple(Vec::new()))
@@ -372,8 +375,8 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
             hir::ExprKind::Field { base, field } => {
                 let base_ty = self.types.tys[&base.id].clone();
 
-                if let typeck::ty::Type::App(_, args) = &*base_ty {
-                    if let typeck::ty::Type::Row(fields, _) = &*args[0] {
+                if let typeck::ty::Type::App(_, arg) = &*base_ty {
+                    if let typeck::ty::Type::Row(fields, _) = &**arg {
                         if let Some(i) = fields.iter().position(|f| f.name == field.symbol) {
                             let op = self.convert_expr(base);
                             let op = self.builder.placed(op, lower_type(self.db, &base_ty));
@@ -397,8 +400,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 let else_block = self.builder.create_block();
                 let exit_block = self.builder.create_block();
 
-                self.builder
-                    .switch(cond, vec![0], vec![else_block, then_block]);
+                self.builder.switch(cond, vec![0], vec![else_block, then_block]);
                 self.builder.set_block(then_block);
 
                 let then = self.convert_expr(then);
@@ -468,8 +470,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
     fn bind_pat(&mut self, pat: pattern::Pattern) {
         match pat {
             pattern::Pattern::Bind(local, place) => {
-                self.builder
-                    .use_op(ir::Place::new(local), ir::Operand::Place(place));
+                self.builder.use_op(ir::Place::new(local), ir::Operand::Place(place));
             }
             pattern::Pattern::Seq(pats) => {
                 for pat in pats {
@@ -480,7 +481,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         }
     }
 
-    fn convert_app(&mut self, base: &hir::Expr, args: &[hir::Expr], ty: ir::Ty) -> ir::Operand {
+    fn convert_app(&mut self, base: &hir::Expr, args: Vec<&hir::Expr>, ty: ir::Ty) -> ir::Operand {
         match &base.kind {
             hir::ExprKind::Ident {
                 res: hir::Res::Def(hir::DefKind::Ctor, id),
@@ -490,10 +491,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 let hir = self.db.module_hir(file);
                 let ctor = hir.items[&(*id).into()].ctor();
                 let data = hir.items[&ctor.0].data_body();
-                let idx = data
-                    .iter()
-                    .position(|id| hir.items[id].name.symbol == name.symbol)
-                    .unwrap();
+                let idx = data.iter().position(|id| hir.items[id].name.symbol == name.symbol).unwrap();
 
                 let res = self.builder.create_tmp(ty);
                 let res = ir::Place::new(res);
@@ -521,12 +519,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
 
                     if let Some(item) = hir.items.get(&item_id) {
                         if item.is_intrinsic() {
-                            let mut args = args.iter().map(|a| {
-                                (
-                                    self.convert_expr(a),
-                                    lower_type(self.db, &self.types.tys[&a.id]),
-                                )
-                            });
+                            let mut args = args.iter().map(|a| (self.convert_expr(a), lower_type(self.db, &self.types.tys[&a.id])));
 
                             // @INTRINSICS
                             return match &**item.name.symbol {
@@ -550,11 +543,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                                     let res = self.builder.create_tmp(ty);
                                     let res = ir::Place::new(res);
 
-                                    self.builder.intrinsic(
-                                        res.clone(),
-                                        item.name.to_string(),
-                                        args,
-                                    );
+                                    self.builder.intrinsic(res.clone(), item.name.to_string(), args);
 
                                     ir::Operand::Place(res)
                                 }
@@ -568,12 +557,7 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                                 let file = self.db.module_tree(id.lib).file(id.module);
                                 let hir = self.db.module_hir(file);
                                 let imp = hir.items[&id.into()].impl_body();
-                                let method = imp
-                                    .items
-                                    .iter()
-                                    .find(|it| it.name.symbol == item.name.symbol)
-                                    .unwrap();
-
+                                let method = imp.items.iter().find(|it| it.name.symbol == item.name.symbol).unwrap();
                                 let method = self.decls[&method.id.0.owner];
                                 let method = ir::Operand::Const(ir::Const::Addr(method));
                                 let args = args.iter().map(|a| self.convert_expr(a)).collect();
@@ -623,16 +607,27 @@ fn is_recursive(ty: &typeck::ty::Ty, variants: &[typeck::ty::Variant]) -> bool {
     res
 }
 
+fn ty_get_args(db: &dyn LowerDatabase, mut ret: typeck::ty::Ty) -> (Vec<typeck::ty::Ty>, typeck::ty::Ty) {
+    let mut args = Vec::new();
+
+    while let typeck::ty::Type::App(b, r) = &*ret {
+        match &**b {
+            typeck::ty::Type::App(f, a) if is_func_ty(db, f) => {
+                args.push(a.clone());
+                ret = r.clone();
+            }
+            _ => break,
+        }
+    }
+
+    (args, ret)
+}
+
 fn lower_type(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> ir::Ty {
     lower_type_rec(db, ty, Vec::new(), 0)
 }
 
-fn lower_type_rec<'a>(
-    db: &dyn LowerDatabase,
-    ty: &'a typeck::ty::Ty,
-    mut base: Vec<(&'a typeck::ty::Ty, usize)>,
-    lvl: usize,
-) -> ir::Ty {
+fn lower_type_rec<'a>(db: &dyn LowerDatabase, ty: &'a typeck::ty::Ty, mut base: Vec<(&'a typeck::ty::Ty, usize)>, lvl: usize) -> ir::Ty {
     use typeck::ty::Type;
 
     for &(base, l) in &base {
@@ -650,50 +645,48 @@ fn lower_type_rec<'a>(
         Type::Row(_, _) => unreachable!(),
         Type::KindApp(_, _) => unreachable!(),
         Type::Var(var) => ir::Ty::new(ir::Type::Opaque(var.0.local_id.0.to_string())),
-        Type::ForAll(_, ty, _) => lower_type_rec(db, ty, base, lvl),
-        Type::Tuple(tys) => ir::Ty::new(ir::Type::Tuple(
-            tys.iter()
-                .map(|t| lower_type_rec(db, t, base.clone(), lvl + 1))
-                .collect(),
-        )),
+        Type::ForAll(_, _, ty, _) => lower_type_rec(db, ty, base, lvl),
+        Type::Tuple(tys) => ir::Ty::new(ir::Type::Tuple(tys.iter().map(|t| lower_type_rec(db, t, base.clone(), lvl + 1)).collect())),
         Type::Ctnt(_, ty) => lower_type_rec(db, ty, base, lvl),
-        Type::App(f, args) => match &**f {
-            Type::Ctor(def) => {
-                if *def == db.lang_items().fn_ty().owner {
-                    if let Type::Tuple(params) = &*args[0] {
-                        ir::Ty::new(ir::Type::Func(ir::Signature {
-                            params: params
-                                .iter()
-                                .map(|t| lower_type_rec(db, t, base.clone(), lvl + 1))
-                                .collect(),
-                            rets: vec![lower_type_rec(db, &args[1], base, lvl + 1)],
-                        }))
-                    } else {
-                        unreachable!();
-                    }
-                } else if *def == db.lang_items().ptr_ty().owner {
-                    assert_eq!(args.len(), 1);
+        Type::App(f, arg) => {
+            let mut f2 = f;
+            let mut args = vec![arg.clone()];
 
-                    ir::Ty::new(ir::Type::Ptr(Box::new(lower_type_rec(
-                        db,
-                        &args[0],
-                        base,
-                        lvl + 1,
-                    ))))
-                } else if *def == db.lang_items().array_ty().owner {
-                    unimplemented!();
-                } else if *def == db.lang_items().slice_ty().owner {
-                    unimplemented!();
-                } else {
-                    base.push((ty, lvl));
-                    lower_type_ctor(db, ty, *def, args.clone(), base, lvl)
-                }
+            while let Type::App(b, arg) = &**f2 {
+                f2 = b;
+                args.push(arg.clone());
             }
-            _ => lower_type_rec(db, f, base, lvl),
-        },
+
+            args.reverse();
+
+            match &**f2 {
+                Type::Ctor(def) => {
+                    if *def == db.lang_items().fn_ty().owner {
+                        let (args, ret) = ty_get_args(db, ty.clone());
+
+                        ir::Ty::new(ir::Type::Func(ir::Signature {
+                            params: args.iter().map(|t| lower_type_rec(db, t, base.clone(), lvl + 1)).collect(),
+                            rets: vec![lower_type_rec(db, &ret, base, lvl + 1)],
+                        }))
+                    } else if *def == db.lang_items().ptr_ty().owner {
+                        assert_eq!(args.len(), 1);
+
+                        ir::Ty::new(ir::Type::Ptr(Box::new(lower_type_rec(db, &args[0], base, lvl + 1))))
+                    } else if *def == db.lang_items().array_ty().owner {
+                        unimplemented!();
+                    } else if *def == db.lang_items().slice_ty().owner {
+                        unimplemented!();
+                    } else {
+                        base.push((ty, lvl));
+                        lower_type_ctor(db, ty, *def, args, base, lvl)
+                    }
+                }
+                _ => lower_type_rec(db, f2, base, lvl),
+            }
+        }
         Type::Ctor(id) => {
             base.push((ty, lvl));
-            lower_type_ctor(db, ty, *id, typeck::ty::List::empty(), base, lvl)
+            lower_type_ctor(db, ty, *id, Vec::new(), base, lvl)
         }
     }
 }
@@ -702,14 +695,14 @@ fn lower_type_ctor(
     db: &dyn LowerDatabase,
     orig_ty: &typeck::ty::Ty,
     id: hir::DefId,
-    args: typeck::ty::List<typeck::ty::Ty>,
+    args: Vec<typeck::ty::Ty>,
     base: Vec<(&typeck::ty::Ty, usize)>,
     lvl: usize,
 ) -> ir::Ty {
     let file = db.module_tree(id.lib).file(id.module);
     let hir = db.module_hir(file);
     let def = hir.def(id);
-    let variants = db.variants(id, args);
+    let variants = db.variants(id, args.into());
     let recursive = is_recursive(orig_ty, &variants);
 
     let mut ty = if variants.is_empty() {

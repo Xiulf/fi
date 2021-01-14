@@ -45,15 +45,13 @@ impl TypedDisplay for Ty {
             Type::Row(fs, Some(tail)) => {
                 write!(f, "({} | {})", Typed(db, &(), &fs), Typed(db, &(), tail))
             }
-            Type::ForAll(vars, ty, _) => {
-                write!(f, "forall")?;
+            Type::ForAll(var, kind, ty, _) => {
+                write!(f, "forall ")?;
 
-                for (var, kind) in vars {
-                    if let Some(kind) = kind {
-                        write!(f, " ({} :: {})", var, Typed(db, &(), &kind))?;
-                    } else {
-                        write!(f, " {}", var)?;
-                    }
+                if let Some(kind) = kind {
+                    write!(f, "({} :: {})", var, Typed(db, &(), kind))?;
+                } else {
+                    write!(f, "{}", var)?;
                 }
 
                 write!(f, ". {}", Typed(db, &(), ty))
@@ -66,46 +64,56 @@ impl TypedDisplay for Ty {
 
                 def.name().fmt(f)
             }
-            Type::App(fu, targs) if is_func(fu) && targs.len() == 2 => {
-                write!(
-                    f,
-                    "{} -> {}",
-                    Typed(db, &(), &targs[0]),
-                    Typed(db, &(), &targs[1])
-                )
-            }
-            Type::App(fu, targs) if is_record(fu) && targs.len() == 1 => {
-                if let Type::Row(fs, Some(tail)) = &*targs[0] {
-                    write!(
-                        f,
-                        "{{ {} | {} }}",
-                        Typed(db, &(), &fs),
-                        Typed(db, &(), tail)
-                    )
-                } else if let Type::Row(fs, None) = &*targs[0] {
-                    write!(f, "{{ {} }}", Typed(db, &(), &fs))
-                } else {
-                    unreachable!();
-                }
-            }
-            Type::App(base, args) | Type::KindApp(base, args) => {
-                if base.needs_parens() {
-                    write!(f, "({})", Typed(db, &(), base))?;
-                } else {
-                    base.typed_fmt(db, &(), f)?;
-                }
-
-                for arg in args.iter() {
-                    write!(f, " ")?;
-
-                    if arg.needs_parens() {
-                        write!(f, "({})", Typed(db, &(), arg))?;
+            Type::App(b, r) => match &**b {
+                Type::App(fu, a) if is_func(fu) => {
+                    if a.needs_parens() {
+                        write!(f, "({})", Typed(db, &(), a))?;
                     } else {
-                        arg.typed_fmt(db, &(), f)?;
+                        a.typed_fmt(db, &(), f)?;
+                    }
+
+                    write!(f, " -> ")?;
+                    r.typed_fmt(db, &(), f)
+                }
+                _ if is_record(b) => {
+                    if let Type::Row(fs, Some(tail)) = &**r {
+                        write!(f, "{{ {} | {} }}", Typed(db, &(), &fs), Typed(db, &(), tail))
+                    } else if let Type::Row(fs, None) = &**r {
+                        write!(f, "{{ {} }}", Typed(db, &(), &fs))
+                    } else {
+                        unreachable!();
                     }
                 }
+                _ => {
+                    if b.needs_parens() {
+                        write!(f, "({})", Typed(db, &(), b))?;
+                    } else {
+                        b.typed_fmt(db, &(), f)?;
+                    }
 
-                Ok(())
+                    write!(f, " ")?;
+
+                    if r.needs_parens() {
+                        write!(f, "({})", Typed(db, &(), r))
+                    } else {
+                        r.typed_fmt(db, &(), f)
+                    }
+                }
+            },
+            Type::KindApp(b, r) => {
+                if b.needs_parens() {
+                    write!(f, "({})", Typed(db, &(), b))?;
+                } else {
+                    b.typed_fmt(db, &(), f)?;
+                }
+
+                write!(f, " ")?;
+
+                if r.needs_parens() {
+                    write!(f, "({})", Typed(db, &(), r))
+                } else {
+                    r.typed_fmt(db, &(), f)
+                }
             }
         }
     }
@@ -195,12 +203,7 @@ impl TypedDisplay<Types> for ir::Body {
 
 impl TypedDisplay<Types> for ir::Param {
     fn typed_fmt(&self, db: &dyn TypeDatabase, tys: &Types, f: &mut Formatter) -> Result {
-        write!(
-            f,
-            "($p{} :: {})",
-            self.id.local_id.0,
-            Typed(db, &(), &tys[&self.id])
-        )
+        write!(f, "($p{} :: {})", self.id.local_id.0, Typed(db, &(), &tys[&self.id]))
     }
 }
 
@@ -253,35 +256,18 @@ impl TypedDisplay<Types> for ir::Expr {
 
                 write!(f, "] :: {}", Typed(db, &(), ty))
             }
-            ir::ExprKind::App { base, args } => {
-                write!(f, "({}", Typed(db, tys, &**base))?;
-
-                for arg in args {
-                    writeln!(f)?;
-                    write!(indent(f), "({})", Typed(db, tys, arg))?;
-                }
-
+            ir::ExprKind::App { base, arg } => {
+                writeln!(f, "({}", Typed(db, tys, &**base))?;
+                write!(indent(f), "({})", Typed(db, tys, &**arg))?;
                 write!(f, ") :: {}", Typed(db, &(), ty))?;
 
                 Ok(())
             }
             ir::ExprKind::Field { base, field } => {
-                write!(
-                    f,
-                    "({}).{} :: {}",
-                    Typed(db, tys, &**base),
-                    field,
-                    Typed(db, &(), ty)
-                )
+                write!(f, "({}).{} :: {}", Typed(db, tys, &**base), field, Typed(db, &(), ty))
             }
             ir::ExprKind::Index { base, index } => {
-                write!(
-                    f,
-                    "({})[{}] :: {}",
-                    Typed(db, tys, &**base),
-                    Typed(db, tys, &**index),
-                    Typed(db, &(), ty)
-                )
+                write!(f, "({})[{}] :: {}", Typed(db, tys, &**base), Typed(db, tys, &**index), Typed(db, &(), ty))
             }
             ir::ExprKind::Do { block } => {
                 write!(f, "(do")?;
@@ -296,12 +282,7 @@ impl TypedDisplay<Types> for ir::Expr {
             ir::ExprKind::If { cond, then, else_ } => {
                 writeln!(f, "(if {}", Typed(db, tys, &**cond))?;
                 writeln!(indent(f), "then {}", Typed(db, tys, &**then))?;
-                write!(
-                    indent(f),
-                    "else {}) :: {}",
-                    Typed(db, tys, &**else_),
-                    Typed(db, &(), ty)
-                )
+                write!(indent(f), "else {}) :: {}", Typed(db, tys, &**else_), Typed(db, &(), ty))
             }
             ir::ExprKind::Case { pred, arms } => {
                 write!(f, "(case ")?;
@@ -333,12 +314,7 @@ impl TypedDisplay<Types> for ir::Stmt {
     fn typed_fmt(&self, db: &dyn TypeDatabase, tys: &Types, f: &mut Formatter) -> Result {
         match &self.kind {
             ir::StmtKind::Bind { binding } => {
-                write!(
-                    f,
-                    "{} <- {}",
-                    Typed(db, tys, &binding.pat),
-                    Typed(db, tys, &binding.val)
-                )
+                write!(f, "{} <- {}", Typed(db, tys, &binding.pat), Typed(db, tys, &binding.val))
             }
             ir::StmtKind::Discard { expr } => expr.typed_fmt(db, tys, f),
         }

@@ -103,25 +103,12 @@ impl SolverOpts {
 }
 
 impl<'db> Ctx<'db> {
-    fn entails(
-        &mut self,
-        opts: SolverOpts,
-        i: usize,
-        id: ir::HirId,
-        ctnt: Ctnt,
-        ctx: Vec<Ctnt>,
-    ) -> Result<bool> {
-        let file = self
-            .db
-            .module_tree(ctnt.trait_.lib)
-            .file(ctnt.trait_.module);
+    fn entails(&mut self, opts: SolverOpts, i: usize, id: ir::HirId, ctnt: Ctnt, ctx: Vec<Ctnt>) -> Result<bool> {
+        let file = self.db.module_tree(ctnt.trait_.lib).file(ctnt.trait_.module);
         let hir = self.db.module_hir(file);
         let trait_ = hir.items[&ctnt.trait_.into()].trait_();
         let deps = &trait_.fundeps;
-        let tys = (&ctnt.tys)
-            .into_iter()
-            .map(|t| self.subst_type(t))
-            .collect::<Vec<_>>();
+        let tys = (&ctnt.tys).into_iter().map(|t| self.subst_type(t)).collect::<Vec<_>>();
 
         let mut impls = ctx
             .into_iter()
@@ -153,11 +140,7 @@ impl<'db> Ctx<'db> {
                     .flat_map(|(_, g)| g)
                     .collect::<Vec<_>>();
 
-                impls.sort_by(|a, b| {
-                    a.chain
-                        .cmp(&b.chain)
-                        .then(a.chain_index.cmp(&b.chain_index))
-                });
+                impls.sort_by(|a, b| a.chain.cmp(&b.chain).then(a.chain_index.cmp(&b.chain_index)));
 
                 impls
                     .into_iter()
@@ -188,12 +171,9 @@ impl<'db> Ctx<'db> {
                         self.unify_types(inferred, t2)?;
                     }
 
-                    self.bounds.insert(
-                        id,
-                        crate::BoundInfo {
-                            source: crate::BoundSource::Impl(imp.id),
-                        },
-                    );
+                    self.bounds.insert(id, crate::BoundInfo {
+                        source: crate::BoundSource::Impl(imp.id),
+                    });
 
                     Ok(true)
                 }
@@ -203,12 +183,7 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn unique<T>(
-        &self,
-        opts: SolverOpts,
-        ctnt: Ctnt,
-        mut info: Vec<(T, Impl)>,
-    ) -> Result<EntailsResult<T>> {
+    fn unique<T>(&self, opts: SolverOpts, ctnt: Ctnt, mut info: Vec<(T, Impl)>) -> Result<EntailsResult<T>> {
         if info.is_empty() {
             if opts.defer_errors {
                 Ok(EntailsResult::Deferred)
@@ -226,12 +201,7 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn matches(
-        &mut self,
-        deps: &[ir::FunDep],
-        imp: impl ImplLike,
-        tys: Vec<Ty>,
-    ) -> Matched<Matching<Vec<Ty>>> {
+    fn matches(&mut self, deps: &[ir::FunDep], imp: impl ImplLike, tys: Vec<Ty>) -> Matched<Matching<Vec<Ty>>> {
         let matched = tys
             .clone()
             .into_iter()
@@ -251,10 +221,7 @@ impl<'db> Ctx<'db> {
                 Matched::Unknown
             }
         } else {
-            let determined = deps
-                .iter()
-                .flat_map(|dep| dep.determined.iter().copied())
-                .collect::<HashSet<_>>();
+            let determined = deps.iter().flat_map(|dep| dep.determined.iter().copied()).collect::<HashSet<_>>();
 
             let solved = matched
                 .into_iter()
@@ -276,11 +243,7 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn covers(
-        &mut self,
-        deps: &[ir::FunDep],
-        matched: &[(Matched<()>, Matching<Vec<Ty>>)],
-    ) -> bool {
+    fn covers(&mut self, deps: &[ir::FunDep], matched: &[(Matched<()>, Matching<Vec<Ty>>)]) -> bool {
         let expected = (0..matched.len()).collect::<HashSet<_>>();
         let initial_set = matched
             .into_iter()
@@ -301,16 +264,8 @@ impl<'db> Ctx<'db> {
 
         fn apply_all(deps: &[ir::FunDep], s: HashSet<usize>) -> HashSet<usize> {
             deps.iter().rfold(s, |s, dep| {
-                if dep
-                    .determiners
-                    .iter()
-                    .copied()
-                    .collect::<HashSet<_>>()
-                    .is_subset(&s)
-                {
-                    s.into_iter()
-                        .chain(dep.determined.iter().copied())
-                        .collect()
+                if dep.determiners.iter().copied().collect::<HashSet<_>>().is_subset(&s) {
+                    s.into_iter().chain(dep.determined.iter().copied()).collect()
                 } else {
                     s
                 }
@@ -325,9 +280,7 @@ impl<'db> Ctx<'db> {
     fn type_heads_eq(a: Ty, b: Ty, subst: &mut Matching<Vec<Ty>>) -> Matched<()> {
         match (&*a, &*b) {
             (Type::Unknown(a), Type::Unknown(b)) if a == b => Matched::Match(()),
-            (Type::Skolem(_, _, s1, _), Type::Skolem(_, _, s2, _)) if s1 == s2 => {
-                Matched::Match(())
-            }
+            (Type::Skolem(_, _, s1, _), Type::Skolem(_, _, s2, _)) if s1 == s2 => Matched::Match(()),
             (_, Type::Var(v)) => {
                 subst.entry(*v).or_default().push(a);
                 Matched::Match(())
@@ -339,19 +292,15 @@ impl<'db> Ctx<'db> {
             (Type::Ctor(a), Type::Ctor(b)) if a == b => Matched::Match(()),
             (Type::Int(a), Type::Int(b)) if a == b => Matched::Match(()),
             (Type::String(a), Type::String(b)) if a == b => Matched::Match(()),
-            (Type::App(a, ar), Type::App(b, br)) if ar.len() == br.len() => {
-                let base = Self::type_heads_eq(a.clone(), b.clone(), subst);
+            (Type::App(a1, a2), Type::App(b1, b2)) => {
+                let base = Self::type_heads_eq(a1.clone(), b1.clone(), subst);
 
-                ar.into_iter()
-                    .zip(br)
-                    .fold(base, |m, (a, b)| m.then(Self::type_heads_eq(a, b, subst)))
+                base.then(Self::type_heads_eq(a2.clone(), b2.clone(), subst))
             }
-            (Type::KindApp(a, ar), Type::KindApp(b, br)) if ar.len() == br.len() => {
-                let base = Self::type_heads_eq(a.clone(), b.clone(), subst);
+            (Type::KindApp(a1, a2), Type::KindApp(b1, b2)) => {
+                let base = Self::type_heads_eq(a1.clone(), b1.clone(), subst);
 
-                ar.into_iter()
-                    .zip(br)
-                    .fold(base, |m, (a, b)| m.then(Self::type_heads_eq(a, b, subst)))
+                base.then(Self::type_heads_eq(a2.clone(), b2.clone(), subst))
             }
             (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => {
                 if a.is_empty() {
@@ -361,8 +310,7 @@ impl<'db> Ctx<'db> {
                     let mut b = b.into_iter();
                     let base = Self::types_eq(a.next().unwrap(), b.next().unwrap());
 
-                    a.zip(b)
-                        .fold(base, |m, (a, b)| m.then(Self::types_eq(a, b)))
+                    a.zip(b).fold(base, |m, (a, b)| m.then(Self::types_eq(a, b)))
                 }
             }
             (Type::Row(_, _), Type::Row(_, _)) => unimplemented!(),
@@ -395,19 +343,15 @@ impl<'db> Ctx<'db> {
             (Type::Ctor(a), Type::Ctor(b)) if a == b => Matched::Match(()),
             (Type::Int(a), Type::Int(b)) if a == b => Matched::Match(()),
             (Type::String(a), Type::String(b)) if a == b => Matched::Match(()),
-            (Type::App(a, ar), Type::App(b, br)) if ar.len() == br.len() => {
-                let base = Self::types_eq(a.clone(), b.clone());
+            (Type::App(a1, a2), Type::App(b1, b2)) => {
+                let base = Self::types_eq(a1.clone(), b1.clone());
 
-                ar.into_iter()
-                    .zip(br)
-                    .fold(base, |m, (a, b)| m.then(Self::types_eq(a, b)))
+                base.then(Self::types_eq(a2.clone(), b2.clone()))
             }
-            (Type::KindApp(a, ar), Type::KindApp(b, br)) if ar.len() == br.len() => {
-                let base = Self::types_eq(a.clone(), b.clone());
+            (Type::KindApp(a1, a2), Type::KindApp(b1, b2)) => {
+                let base = Self::types_eq(a1.clone(), b1.clone());
 
-                ar.into_iter()
-                    .zip(br)
-                    .fold(base, |m, (a, b)| m.then(Self::types_eq(a, b)))
+                base.then(Self::types_eq(a2.clone(), b2.clone()))
             }
             (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => {
                 if a.is_empty() {
@@ -417,8 +361,7 @@ impl<'db> Ctx<'db> {
                     let mut b = b.into_iter();
                     let base = Self::types_eq(a.next().unwrap(), b.next().unwrap());
 
-                    a.zip(b)
-                        .fold(base, |m, (a, b)| m.then(Self::types_eq(a, b)))
+                    a.zip(b).fold(base, |m, (a, b)| m.then(Self::types_eq(a, b)))
                 }
             }
             (_, _) => Matched::Apart,

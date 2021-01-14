@@ -302,95 +302,32 @@ pub struct Expr {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ExprKind {
     Error,
-    Hole {
-        name: Ident,
-    },
-    Ident {
-        name: Ident,
-        res: Res,
-    },
-    Int {
-        val: u128,
-    },
-    Float {
-        bits: u64,
-    },
-    Char {
-        val: char,
-    },
-    Str {
-        val: String,
-    },
-    App {
-        base: Box<Expr>,
-        args: Vec<Expr>,
-    },
-    Array {
-        exprs: Vec<Expr>,
-    },
-    Tuple {
-        exprs: Vec<Expr>,
-    },
-    Record {
-        fields: Vec<RecordField<Expr>>,
-    },
-    Field {
-        base: Box<Expr>,
-        field: Ident,
-    },
-    Index {
-        base: Box<Expr>,
-        index: Box<Expr>,
-    },
-    Assign {
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
-    Infix {
-        op: InfixOp,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
-    Prefix {
-        op: PrefixOp,
-        rhs: Box<Expr>,
-    },
-    Postfix {
-        op: PostfixOp,
-        lhs: Box<Expr>,
-    },
-    Let {
-        bindings: Vec<Binding>,
-        body: Box<Expr>,
-    },
-    If {
-        cond: Box<Expr>,
-        then: Box<Expr>,
-        else_: Box<Expr>,
-    },
-    Case {
-        pred: Vec<Expr>,
-        arms: Vec<CaseArm>,
-    },
-    Loop {
-        body: Block,
-    },
-    While {
-        cond: Box<Expr>,
-        body: Block,
-    },
+    Hole { name: Ident },
+    Ident { name: Ident, res: Res },
+    Int { val: u128 },
+    Float { bits: u64 },
+    Char { val: char },
+    Str { val: String },
+    App { base: Box<Expr>, arg: Box<Expr> },
+    Array { exprs: Vec<Expr> },
+    Tuple { exprs: Vec<Expr> },
+    Record { fields: Vec<RecordField<Expr>> },
+    Field { base: Box<Expr>, field: Ident },
+    Index { base: Box<Expr>, index: Box<Expr> },
+    Assign { lhs: Box<Expr>, rhs: Box<Expr> },
+    Infix { op: InfixOp, lhs: Box<Expr>, rhs: Box<Expr> },
+    Prefix { op: PrefixOp, rhs: Box<Expr> },
+    Postfix { op: PostfixOp, lhs: Box<Expr> },
+    Let { bindings: Vec<Binding>, body: Box<Expr> },
+    If { cond: Box<Expr>, then: Box<Expr>, else_: Box<Expr> },
+    Case { pred: Vec<Expr>, arms: Vec<CaseArm> },
+    Loop { body: Block },
+    While { cond: Box<Expr>, body: Block },
     Break {},
     Next {},
-    Do {
-        block: Block,
-    },
-    Return {
-        val: Box<Expr>,
-    },
-    Typed {
-        expr: Box<Expr>,
-        ty: Type,
-    },
+    Do { block: Block },
+    Return { val: Box<Expr> },
+    Typed { expr: Box<Expr>, ty: Type },
 }
 
 #[derive(PartialEq, Eq)]
@@ -445,7 +382,7 @@ pub enum TypeKind {
     Ident { res: Res },
     Int { val: u128 },
     Str { val: String },
-    App { base: Box<Type>, args: Vec<Type> },
+    App { base: Box<Type>, arg: Box<Type> },
     Tuple { tys: Vec<Type> },
     Record { row: Row },
     Func { param: Box<Type>, ret: Box<Type> },
@@ -580,13 +517,7 @@ impl Module {
 
         self.attrs
             .iter()
-            .filter_map(|a| {
-                if a.name.symbol == out_type {
-                    a.str_arg()
-                } else {
-                    None
-                }
-            })
+            .filter_map(|a| if a.name.symbol == out_type { a.str_arg() } else { None })
             .next()
     }
 }
@@ -621,31 +552,13 @@ impl Item {
     pub fn repr(&self) -> Option<&str> {
         let repr = Symbol::new("repr");
 
-        self.attrs
-            .iter()
-            .filter_map(|a| {
-                if a.name.symbol == repr {
-                    a.str_arg()
-                } else {
-                    None
-                }
-            })
-            .next()
+        self.attrs.iter().filter_map(|a| if a.name.symbol == repr { a.str_arg() } else { None }).next()
     }
 
     pub fn abi(&self) -> Option<&str> {
         let repr = Symbol::new("abi");
 
-        self.attrs
-            .iter()
-            .filter_map(|a| {
-                if a.name.symbol == repr {
-                    a.str_arg()
-                } else {
-                    None
-                }
-            })
-            .next()
+        self.attrs.iter().filter_map(|a| if a.name.symbol == repr { a.str_arg() } else { None }).next()
     }
 
     pub fn data(&self) -> &DataHead {

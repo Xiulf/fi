@@ -1,9 +1,9 @@
-module Core.Ops.Add where
+module Core.Ops.Add (Add(..)) where
 
 import Prim
 
 trait Add l r o | l r -> o, l o -> r, r o -> l where
-    fn add :: (l, r) -> o
+    fn add :: l -> r -> o
 
 impl addInt8 :: Add Int8 Int8 Int8 where
     fn add a b = add_i8 a b
@@ -35,14 +35,14 @@ impl addUint64 :: Add Uint64 Uint64 Uint64 where
 impl addUint128 :: Add Uint128 Uint128 Uint128 where
     fn add a b = add_u128 a b
 
-[intrinsic] foreign fn add_i8 :: (Int8, Int8) -> Int8
-[intrinsic] foreign fn add_i16 :: (Int16, Int16) -> Int16
-[intrinsic] foreign fn add_i32 :: (Int32, Int32) -> Int32
-[intrinsic] foreign fn add_i64 :: (Int64, Int64) -> Int64
-[intrinsic] foreign fn add_i128 :: (Int128, Int128) -> Int128
+[intrinsic] foreign fn add_i8 :: Int8 -> Int8 -> Int8
+[intrinsic] foreign fn add_i16 :: Int16 -> Int16 -> Int16
+[intrinsic] foreign fn add_i32 :: Int32 -> Int32 -> Int32
+[intrinsic] foreign fn add_i64 :: Int64 -> Int64 -> Int64
+[intrinsic] foreign fn add_i128 :: Int128 -> Int128 -> Int128
 
-[intrinsic] foreign fn add_u8 :: (Uint8, Uint8) -> Uint8
-[intrinsic] foreign fn add_u16 :: (Uint16, Uint16) -> Uint16
-[intrinsic] foreign fn add_u32 :: (Uint32, Uint32) -> Uint32
-[intrinsic] foreign fn add_u64 :: (Uint64, Uint64) -> Uint64
-[intrinsic] foreign fn add_u128 :: (Uint128, Uint128) -> Uint128
+[intrinsic] foreign fn add_u8 :: Uint8 -> Uint8 -> Uint8
+[intrinsic] foreign fn add_u16 :: Uint16 -> Uint16 -> Uint16
+[intrinsic] foreign fn add_u32 :: Uint32 -> Uint32 -> Uint32
+[intrinsic] foreign fn add_u64 :: Uint64 -> Uint64 -> Uint64
+[intrinsic] foreign fn add_u128 :: Uint128 -> Uint128 -> Uint128

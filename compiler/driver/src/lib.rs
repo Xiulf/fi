@@ -19,7 +19,8 @@ pub struct CompilerDatabase {
     lib_ids: u32,
 }
 
-impl salsa::Database for CompilerDatabase {}
+impl salsa::Database for CompilerDatabase {
+}
 
 impl CompilerDatabase {
     fn next_lib(&mut self) -> source::LibId {
@@ -73,24 +74,14 @@ impl diagnostics::Diagnostics for CompilerDatabase {
 }
 
 pub fn run() {
+    let start = std::time::Instant::now();
     let mut db = CompilerDatabase::default();
     let mut files = source::Files::new();
     let mut lib_files = Vec::new();
     let lib = db.next_lib();
-    let manifest = source::opts::Manifest::load(
-        &diagnostics::UnsafeReporter::new(&files),
-        &mut files,
-        &std::path::PathBuf::from("test"),
-    );
+    let manifest = source::opts::Manifest::load(&diagnostics::UnsafeReporter::new(&files), &mut files, &std::path::PathBuf::from("test"));
 
-    register_files(
-        &mut db,
-        &mut files,
-        &mut lib_files,
-        lib,
-        manifest.package.src_dir.as_ref().unwrap(),
-    )
-    .unwrap();
+    register_files(&mut db, &mut files, &mut lib_files, lib, manifest.package.src_dir.as_ref().unwrap()).unwrap();
 
     db.set_manifest(lib, std::sync::Arc::new(manifest));
     db.set_files(std::sync::Arc::new(files));
@@ -106,15 +97,15 @@ pub fn run() {
         //         let types = db.typecheck(item.id.owner);
         //
         //         println!("{} :: {}", item.name, Typed(&db, &(), &types.ty));
-        //         println!(
-        //             "{} {}",
-        //             item.name,
-        //             Typed(&db, &types.tys, &hir.bodies[body])
-        //         );
+        //         println!("{} {}", item.name, Typed(&db, &types.tys, &hir.bodies[body]));
         //     }
         // }
         db.assembly(lib, mdata.id);
     }
+
+    let elapsed = start.elapsed();
+
+    println!("\x1B[1;32m\x1B[1mCompiled\x1B[0m {} in {:?}", db.manifest(lib).package.name, elapsed);
 }
 
 fn register_files(

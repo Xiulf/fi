@@ -19,29 +19,26 @@ impl<'db> Ctx<'db> {
                 self.ctnt_ctx.pop().unwrap();
                 Ok(())
             }
-            Type::ForAll(vars, ret, _) => {
+            Type::ForAll(var, kind, ret, _) => {
                 let scope = self.new_skolem_scope();
-                let skolems = (0..vars.len())
-                    .map(|_| self.new_skolem_constant())
-                    .collect();
-                let sk = self.skolemize(ty.span(), ty.file(), vars, skolems, ret.clone(), scope);
+                let skolem = self.new_skolem_constant();
+                let sk = self.skolemize(ty.span(), ty.file(), *var, kind.clone(), skolem, ret.clone(), scope);
 
                 self.check_body_(span, body, sk)
             }
-            Type::App(f, a) if self.is_func(f) && a.len() == 2 => {
-                if let Type::Tuple(params) = &*a[0] {
-                    let ret = a[1].clone();
+            _ => {
+                let (args, ret) = self.args(ty.clone());
 
-                    for (param, ty) in body.params.iter().zip(params) {
-                        self.tys.insert(param.id, ty);
-                    }
-
-                    self.check_expr(&body.value, ret)
-                } else {
-                    unreachable!();
+                if args.len() != body.params.len() {
+                    return Err(TypeError::IncorrectArity(self.file, span, ty));
                 }
+
+                for (param, ty) in body.params.iter().zip(args) {
+                    self.tys.insert(param.id, ty);
+                }
+
+                self.check_expr(&body.value, ret)
             }
-            _ => unreachable!(),
         }
     }
 
@@ -73,15 +70,13 @@ impl<'db> Ctx<'db> {
 
     crate fn check_expr(&mut self, expr: &ir::Expr, ty: Ty) -> Result<()> {
         let ty = match (&expr.kind, &*ty) {
-            (_, Type::ForAll(vars, t1, _)) => {
+            (_, Type::ForAll(var, k1, t1, _)) => {
                 let scope = self.new_skolem_scope();
-                let skolems = (0..vars.len())
-                    .map(|_| self.new_skolem_constant())
-                    .collect();
-                let sk = self.skolemize(t1.span(), t1.file(), vars, skolems, t1.clone(), scope);
+                let skolem = self.new_skolem_constant();
+                let sk = self.skolemize(t1.span(), t1.file(), *var, k1.clone(), skolem, t1.clone(), scope);
                 let _ = self.check_expr(expr, sk.clone())?;
 
-                Ty::forall(ty.span(), ty.file(), vars.clone(), t1.clone(), scope)
+                Ty::forall(ty.span(), ty.file(), *var, k1.clone(), t1.clone(), scope)
             }
             (_, Type::Ctnt(ctnt, t1)) => {
                 self.ctnt_ctx.push(ctnt.clone());
@@ -133,9 +128,9 @@ impl<'db> Ctx<'db> {
 
                 ty
             }
-            (ir::ExprKind::App { base, args }, _) => {
+            (ir::ExprKind::App { base, arg }, _) => {
                 let base_ty = self.infer_expr(base)?;
-                let ret = self.check_func_app(base.id, base_ty, args)?;
+                let ret = self.check_func_app(base.id, base_ty, arg)?;
                 let elaborate = self.subsumes(ret, ty.clone())?;
                 let _ = elaborate(self, expr);
 
@@ -145,7 +140,7 @@ impl<'db> Ctx<'db> {
                 let figure_kind = self.figure_kind(expr.span, self.file);
                 let len = self.fresh_type_with_kind(expr.span, self.file, figure_kind);
                 let arr_ty = self.array_ty(base.span, self.file);
-                let arr_ty = Ty::app(base.span, self.file, arr_ty, List::from([ty.clone(), len]));
+                let arr_ty = Ty::app(base.span, self.file, Ty::app(base.span, self.file, arr_ty, ty.clone()), len);
                 let uint_ty = self.db.lang_items().uint();
                 let uint_ty = self.db.typecheck(uint_ty.owner).ty.clone();
 
@@ -191,13 +186,7 @@ impl<'db> Ctx<'db> {
 
                 ty
             }
-            (
-                ir::ExprKind::Typed {
-                    expr: expr2,
-                    ty: ty1,
-                },
-                _,
-            ) => {
+            (ir::ExprKind::Typed { expr: expr2, ty: ty1 }, _) => {
                 let ty1 = self.hir_ty(ty1);
                 let (elab_ty1, kind1) = self.kind_of(ty1)?;
                 let (elab_ty2, kind2) = self.kind_of(ty.clone())?;
@@ -226,72 +215,56 @@ impl<'db> Ctx<'db> {
     }
 
     #[track_caller]
-    crate fn check_func_app(&mut self, f_id: ir::HirId, f_ty: Ty, args: &[ir::Expr]) -> Result<Ty> {
+    crate fn check_func_app(&mut self, f_id: ir::HirId, f_ty: Ty, arg: &ir::Expr) -> Result<Ty> {
         let f_ty = self.subst_type(f_ty);
 
         match &*f_ty {
-            Type::App(f, targs) if targs.len() == 2 => {
-                let fn_ty = self.func_ty(f.span(), f.file());
-                let _ = self.unify_types(f.clone(), fn_ty)?;
+            Type::App(b, r) => match &**b {
+                Type::App(f, a) => {
+                    let func_ty = self.func_ty(f.span(), f.file());
+                    let _ = self.unify_types(f.clone(), func_ty)?;
+                    let _ = self.check_expr(arg, a.clone())?;
 
-                if let Type::Tuple(params) = &*targs[0] {
-                    assert_eq!(params.len(), args.len());
-
-                    for (param, arg) in params.into_iter().zip(args) {
-                        self.check_expr(arg, param)?;
-                    }
-                } else {
-                    let params = args
-                        .iter()
-                        .map(|a| self.infer_expr(a))
-                        .collect::<Result<List<_>>>()?;
-
-                    let params = Ty::tuple(targs[0].span(), targs[0].file(), params);
-
-                    self.unify_types(targs[0].clone(), params)?;
+                    Ok(r.clone())
                 }
+                _ => {
+                    let param = self.infer_expr(arg)?;
+                    let param = self.instantiate(arg.id, param);
+                    let ty_kind = self.ty_kind(f_ty.span(), f_ty.file());
+                    let ret = self.fresh_type_with_kind(f_ty.span(), f_ty.file(), ty_kind);
+                    let func_ty = self.func_ty(f_ty.span(), f_ty.file());
+                    let inferred = Ty::app(f_ty.span(), f_ty.file(), Ty::app(f_ty.span(), f_ty.file(), func_ty, param), ret.clone());
 
-                Ok(targs[1].clone())
-            }
-            Type::ForAll(vars, ret, _) => {
-                let repl = vars
-                    .into_iter()
-                    .map(|(v, k)| match k {
-                        Some(k) => (v, self.fresh_type_with_kind(f_ty.span(), f_ty.file(), k)),
-                        None => (v, self.fresh_type(f_ty.span(), f_ty.file())),
-                    })
-                    .collect();
+                    self.unify_types(f_ty, inferred)?;
+
+                    Ok(ret)
+                }
+            },
+            Type::ForAll(var, kind, ret, _) => {
+                let mut repl = std::collections::HashMap::new();
+                let u = match kind {
+                    Some(k) => self.fresh_type_with_kind(f_ty.span(), f_ty.file(), k.clone()),
+                    None => return Err(TypeError::Internal("unelaborated forall".into())),
+                };
+
+                repl.insert(*var, u);
 
                 let repl = ret.clone().replace_vars(repl);
 
-                self.check_func_app(f_id, repl ^ f_ty.loc(), args)
+                self.check_func_app(f_id, repl ^ f_ty.loc(), arg)
             }
             Type::Ctnt(ctnt, ret) => {
-                self.ctnts
-                    .push((f_id, ctnt.clone() ^ f_ty.loc(), self.ctnt_ctx.clone()));
+                self.ctnts.push((f_id, ctnt.clone() ^ f_ty.loc(), self.ctnt_ctx.clone()));
 
-                self.check_func_app(f_id, ret.clone() ^ f_ty.loc(), args)
+                self.check_func_app(f_id, ret.clone() ^ f_ty.loc(), arg)
             }
             _ => {
-                let params = args
-                    .iter()
-                    .map(|a| {
-                        let ty = self.infer_expr(a)?;
-
-                        Ok(self.instantiate(a.id, ty))
-                    })
-                    .collect::<Result<List<_>>>()?;
-
-                let params = Ty::tuple(f_ty.span(), f_ty.file(), params);
+                let param = self.infer_expr(arg)?;
+                let param = self.instantiate(arg.id, param);
                 let ty_kind = self.ty_kind(f_ty.span(), f_ty.file());
                 let ret = self.fresh_type_with_kind(f_ty.span(), f_ty.file(), ty_kind);
                 let func_ty = self.func_ty(f_ty.span(), f_ty.file());
-                let inferred = Ty::app(
-                    f_ty.span(),
-                    f_ty.file(),
-                    func_ty,
-                    List::from([params, ret.clone()]),
-                );
+                let inferred = Ty::app(f_ty.span(), f_ty.file(), Ty::app(f_ty.span(), f_ty.file(), func_ty, param), ret.clone());
 
                 self.unify_types(f_ty, inferred)?;
 

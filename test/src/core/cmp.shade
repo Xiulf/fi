@@ -1,16 +1,16 @@
-module Core.Cmp where
+module Core.Cmp (Ordering(..), Eq(..), Ord(..)) where
 
 import Prim (Bool)
 import Data.Semigroup
 import Data.Monoid
 
 trait Eq l r | l -> r, r -> l where
-    fn eq :: (l, r) -> Bool
+    fn eq :: l -> r -> Bool
 
 data Ordering = Lt | Eq | Gt
 
 trait Eq l r => Ord l r | l -> r, r -> l where
-    fn cmp :: (l, r) -> Ordering
+    fn cmp :: l -> r -> Ordering
 
 impl eqOrdering :: Eq Ordering Ordering where
     fn eq Lt Lt = True

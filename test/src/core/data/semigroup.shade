@@ -1,7 +1,7 @@
-module Data.Semigroup where
+module Data.Semigroup (Semigroup(..)) where
 
 trait Semigroup a where
-    fn append :: (a, a) -> a
+    fn append :: a -> a -> a
 
 impl semigroupUnit :: Semigroup () where
     fn append _ _ = ()

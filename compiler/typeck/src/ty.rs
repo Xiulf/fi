@@ -103,12 +103,7 @@ impl Ty {
         Ty::new(Type::Tuple(List::from_iter(tys)), span, file)
     }
 
-    pub fn row(
-        span: Span,
-        file: FileId,
-        fields: impl IntoIterator<Item = Field>,
-        tail: impl Into<Option<Ty>>,
-    ) -> Self {
+    pub fn row(span: Span, file: FileId, fields: impl IntoIterator<Item = Field>, tail: impl Into<Option<Ty>>) -> Self {
         Ty::new(Type::Row(List::from_iter(fields), tail.into()), span, file)
     }
 
@@ -120,14 +115,7 @@ impl Ty {
         Ty::new(Type::KindApp(base, arg), span, file)
     }
 
-    pub fn forall(
-        span: Span,
-        file: FileId,
-        var: TypeVar,
-        kind: impl Into<Option<Ty>>,
-        ty: Ty,
-        scope: impl Into<Option<SkolemScope>>,
-    ) -> Self {
+    pub fn forall(span: Span, file: FileId, var: TypeVar, kind: impl Into<Option<Ty>>, ty: Ty, scope: impl Into<Option<SkolemScope>>) -> Self {
         Ty::new(Type::ForAll(var, kind.into(), ty, scope.into()), span, file)
     }
 
@@ -135,14 +123,7 @@ impl Ty {
         Ty::new(Type::Ctnt(ctnt, ty), span, file)
     }
 
-    pub fn skolem(
-        span: Span,
-        file: FileId,
-        var: TypeVar,
-        kind: impl Into<Option<Ty>>,
-        skolem: Skolem,
-        scope: SkolemScope,
-    ) -> Self {
+    pub fn skolem(span: Span, file: FileId, var: TypeVar, kind: impl Into<Option<Ty>>, skolem: Skolem, scope: SkolemScope) -> Self {
         Ty::new(Type::Skolem(var, kind.into(), skolem, scope), span, file)
     }
 
@@ -203,39 +184,22 @@ impl Ty {
             (Type::Unknown(a), Type::Unknown(b)) => a == b,
             (Type::Var(a), Type::Var(b)) => a == b,
             (Type::Ctor(a), Type::Ctor(b)) => a == b,
-            (Type::Skolem(a1, Some(b1), c1, d1), Type::Skolem(a2, Some(b2), c2, d2)) => {
-                a1 == a2 && b1.equal(b2) && c1 == c2 && d1 == d2
-            }
-            (Type::Skolem(a1, None, c1, d1), Type::Skolem(a2, None, c2, d2)) => {
-                a1 == a2 && c1 == c2 && d1 == d2
-            }
+            (Type::Skolem(a1, Some(b1), c1, d1), Type::Skolem(a2, Some(b2), c2, d2)) => a1 == a2 && b1.equal(b2) && c1 == c2 && d1 == d2,
+            (Type::Skolem(a1, None, c1, d1), Type::Skolem(a2, None, c2, d2)) => a1 == a2 && c1 == c2 && d1 == d2,
             (Type::ForAll(a1, b1, c1, d1), Type::ForAll(a2, b2, c2, d2)) => {
-                a1 == a2
-                    && match (b1, b2) {
+                a1 == a2 &&
+                    match (b1, b2) {
                         (Some(b1), Some(b2)) => b1.equal(b2),
                         _ => false,
-                    }
-                    && c1.equal(c2)
-                    && d1 == d2
+                    } &&
+                    c1.equal(c2) &&
+                    d1 == d2
             }
             (Type::Tuple(a), Type::Tuple(b)) => a.iter().zip(b.iter()).all(|(a, b)| a.equal(b)),
-            (Type::App(a1, b1), Type::App(a2, b2))
-            | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => a1.equal(a2) && b1.equal(b2),
-            (Type::Ctnt(a1, b1), Type::Ctnt(a2, b2)) => {
-                a1.trait_ == a2.trait_
-                    && a1.tys.iter().zip(a2.tys.iter()).all(|(a, b)| a.equal(b))
-                    && b1.equal(b2)
-            }
-            (Type::Row(a1, Some(b1)), Type::Row(a2, Some(b2))) => {
-                a1.iter()
-                    .zip(a2.iter())
-                    .all(|(a, b)| a.name == b.name && a.ty.equal(&b.ty))
-                    && b1.equal(b2)
-            }
-            (Type::Row(a1, None), Type::Row(a2, None)) => a1
-                .iter()
-                .zip(a2.iter())
-                .all(|(a, b)| a.name == b.name && a.ty.equal(&b.ty)),
+            (Type::App(a1, b1), Type::App(a2, b2)) | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => a1.equal(a2) && b1.equal(b2),
+            (Type::Ctnt(a1, b1), Type::Ctnt(a2, b2)) => a1.trait_ == a2.trait_ && a1.tys.iter().zip(a2.tys.iter()).all(|(a, b)| a.equal(b)) && b1.equal(b2),
+            (Type::Row(a1, Some(b1)), Type::Row(a2, Some(b2))) => a1.iter().zip(a2.iter()).all(|(a, b)| a.name == b.name && a.ty.equal(&b.ty)) && b1.equal(b2),
+            (Type::Row(a1, None), Type::Row(a2, None)) => a1.iter().zip(a2.iter()).all(|(a, b)| a.name == b.name && a.ty.equal(&b.ty)),
             (_, _) => false,
         }
     }
@@ -298,20 +262,14 @@ impl Ty {
                 f(Ty::forall(self.span(), self.file(), *var, k1, t1, *scope))
             }
             Type::Ctnt(ctnt, t2) => {
-                let tys = (&ctnt.tys)
-                    .into_iter()
-                    .map(|t| t.everywhere(f))
-                    .collect::<List<_>>();
+                let tys = (&ctnt.tys).into_iter().map(|t| t.everywhere(f)).collect::<List<_>>();
                 let t2 = t2.clone().everywhere(f);
                 let ctnt = Ctnt { tys, ..*ctnt };
 
                 f(Ty::ctnt(self.span(), self.file(), ctnt, t2))
             }
             Type::Tuple(tys) => {
-                let tys = tys
-                    .into_iter()
-                    .map(|t| t.everywhere(f))
-                    .collect::<List<_>>();
+                let tys = tys.into_iter().map(|t| t.everywhere(f)).collect::<List<_>>();
 
                 f(Ty::tuple(self.span(), self.file(), tys))
             }
@@ -357,20 +315,14 @@ impl Ty {
                 f(Ty::forall(self.span(), self.file(), *var, k1, t1, *scope))
             }
             Type::Ctnt(ctnt, t2) => {
-                let tys = (&ctnt.tys)
-                    .into_iter()
-                    .map(|t| t.everywhere_result(f))
-                    .collect::<Result<_>>()?;
+                let tys = (&ctnt.tys).into_iter().map(|t| t.everywhere_result(f)).collect::<Result<_>>()?;
                 let t2 = t2.clone().everywhere_result(f)?;
                 let ctnt = Ctnt { tys, ..*ctnt };
 
                 f(Ty::ctnt(self.span(), self.file(), ctnt, t2))
             }
             Type::Tuple(tys) => {
-                let tys = tys
-                    .into_iter()
-                    .map(|t| t.everywhere_result(f))
-                    .collect::<Result<List<_>>>()?;
+                let tys = tys.into_iter().map(|t| t.everywhere_result(f)).collect::<Result<List<_>>>()?;
 
                 f(Ty::tuple(self.span(), self.file(), tys))
             }

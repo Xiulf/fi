@@ -97,50 +97,19 @@ pub struct Decl {
 
 #[derive(PartialEq, Eq)]
 pub enum DeclKind {
-    Foreign {
-        ty: Type,
-        kind: ForeignKind,
-    },
-    FuncTy {
-        ty: Type,
-    },
-    Func {
-        pats: Vec<Pat>,
-        val: Guarded,
-    },
-    ConstTy {
-        ty: Type,
-    },
-    Const {
-        val: Expr,
-    },
-    StaticTy {
-        ty: Type,
-    },
-    Static {
-        val: Expr,
-    },
-    AliasKind {
-        kind: Type,
-    },
-    Alias {
-        vars: Vec<TypeVar>,
-        ty: Type,
-    },
-    DataKind {
-        kind: Type,
-    },
-    Data {
-        head: DataHead,
-        body: Option<Vec<DataCtor>>,
-    },
-    Trait {
-        head: TraitHead,
-        body: Option<TraitBody>,
-    },
-    ImplChain {
-        impls: Vec<Impl>,
-    },
+    Foreign { ty: Type, kind: ForeignKind },
+    FuncTy { ty: Type },
+    Func { pats: Vec<Pat>, val: Guarded },
+    ConstTy { ty: Type },
+    Const { val: Expr },
+    StaticTy { ty: Type },
+    Static { val: Expr },
+    AliasKind { kind: Type },
+    Alias { vars: Vec<TypeVar>, ty: Type },
+    DataKind { kind: Type },
+    Data { head: DataHead, body: Option<Vec<DataCtor>> },
+    Trait { head: TraitHead, body: Option<TraitBody> },
+    ImplChain { impls: Vec<Impl> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -279,97 +248,33 @@ pub struct Expr {
 
 #[derive(PartialEq, Eq)]
 pub enum ExprKind {
-    Hole {
-        name: Ident,
-    },
-    Parens {
-        inner: Box<Expr>,
-    },
-    Ident {
-        name: Ident,
-    },
-    Int {
-        val: u128,
-    },
-    Float {
-        bits: u64,
-    },
-    Char {
-        val: char,
-    },
-    Str {
-        val: String,
-    },
-    App {
-        base: Box<Expr>,
-        args: Vec<Expr>,
-    },
-    Array {
-        exprs: Vec<Expr>,
-    },
-    Tuple {
-        exprs: Vec<Expr>,
-    },
-    Record {
-        fields: Vec<RecordField<Expr>>,
-    },
-    Field {
-        base: Box<Expr>,
-        field: Ident,
-    },
-    Index {
-        base: Box<Expr>,
-        index: Box<Expr>,
-    },
-    Assign {
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
-    Infix {
-        op: InfixOp,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
-    Prefix {
-        op: PrefixOp,
-        rhs: Box<Expr>,
-    },
-    Postfix {
-        op: PostfixOp,
-        lhs: Box<Expr>,
-    },
-    Let {
-        bindings: Vec<LetBinding>,
-        body: Box<Expr>,
-    },
-    If {
-        cond: Box<Expr>,
-        then: Box<Expr>,
-        else_: Box<Expr>,
-    },
-    Case {
-        pred: Vec<Expr>,
-        arms: Vec<CaseArm>,
-    },
-    Loop {
-        body: Block,
-    },
-    While {
-        cond: Box<Expr>,
-        body: Block,
-    },
+    Hole { name: Ident },
+    Parens { inner: Box<Expr> },
+    Ident { name: Ident },
+    Int { val: u128 },
+    Float { bits: u64 },
+    Char { val: char },
+    Str { val: String },
+    App { base: Box<Expr>, arg: Box<Expr> },
+    Array { exprs: Vec<Expr> },
+    Tuple { exprs: Vec<Expr> },
+    Record { fields: Vec<RecordField<Expr>> },
+    Field { base: Box<Expr>, field: Ident },
+    Index { base: Box<Expr>, index: Box<Expr> },
+    Assign { lhs: Box<Expr>, rhs: Box<Expr> },
+    Infix { op: InfixOp, lhs: Box<Expr>, rhs: Box<Expr> },
+    Prefix { op: PrefixOp, rhs: Box<Expr> },
+    Postfix { op: PostfixOp, lhs: Box<Expr> },
+    Let { bindings: Vec<LetBinding>, body: Box<Expr> },
+    If { cond: Box<Expr>, then: Box<Expr>, else_: Box<Expr> },
+    Case { pred: Vec<Expr>, arms: Vec<CaseArm> },
+    Loop { body: Block },
+    While { cond: Box<Expr>, body: Block },
     Break {},
     Next {},
-    Do {
-        block: Block,
-    },
-    Return {
-        val: Box<Expr>,
-    },
-    Typed {
-        expr: Box<Expr>,
-        ty: Type,
-    },
+    Do { block: Block },
+    Return { val: Box<Expr> },
+    Typed { expr: Box<Expr>, ty: Type },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -455,7 +360,7 @@ pub enum TypeKind {
     Str { val: String },
     Ident { name: Ident },
     Qual { module: Ident, name: Ident },
-    App { base: Box<Type>, args: Vec<Type> },
+    App { base: Box<Type>, arg: Box<Type> },
     Tuple { tys: Vec<Type> },
     Func { param: Box<Type>, ret: Box<Type> },
     Forall { vars: Vec<TypeVar>, ret: Box<Type> },
