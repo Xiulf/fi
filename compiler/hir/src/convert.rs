@@ -117,6 +117,7 @@ impl<'db> Converter<'db> {
             ast::DeclKind::FuncTy { .. } | ast::DeclKind::Func { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Func, Ns::Values),
             ast::DeclKind::ConstTy { .. } | ast::DeclKind::Const { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Const, Ns::Values),
             ast::DeclKind::StaticTy { .. } | ast::DeclKind::Static { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Static, Ns::Values),
+            ast::DeclKind::Fixity { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Fixity, Ns::Values),
             ast::DeclKind::AliasKind { .. } | ast::DeclKind::Alias { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Alias, Ns::Types),
             ast::DeclKind::DataKind { .. } | ast::DeclKind::Data { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Data, Ns::Types),
             ast::DeclKind::Trait { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Trait, Ns::Types),
@@ -257,6 +258,15 @@ impl<'db> Converter<'db> {
                 exports.push(ir::Export {
                     name: item.name.symbol,
                     res: ir::Res::Def(ir::DefKind::Static, item.id.owner),
+                    module: file,
+                    ns: Ns::Values,
+                    group: None,
+                });
+            }
+            ir::ItemKind::Fixity { .. } => {
+                exports.push(ir::Export {
+                    name: item.name.symbol,
+                    res: ir::Res::Def(ir::DefKind::Fixity, item.id.owner),
                     module: file,
                     ns: Ns::Values,
                     group: None,
@@ -569,9 +579,11 @@ impl<'db> Converter<'db> {
     fn convert_decl(&mut self, kind: group::DeclGroupKind, decls: &[ast::Decl]) {
         let first = &decls[0];
         let defpath = match kind {
-            group::DeclGroupKind::Foreign | group::DeclGroupKind::Func(_) | group::DeclGroupKind::Const(_) | group::DeclGroupKind::Static(_) => {
-                ir::DefPath::Value(first.name.symbol)
-            }
+            group::DeclGroupKind::Foreign |
+            group::DeclGroupKind::Func(_) |
+            group::DeclGroupKind::Const(_) |
+            group::DeclGroupKind::Static(_) |
+            group::DeclGroupKind::Fixity => ir::DefPath::Value(first.name.symbol),
             group::DeclGroupKind::Alias(_) | group::DeclGroupKind::Data(_) | group::DeclGroupKind::Trait => ir::DefPath::Type(first.name.symbol),
             group::DeclGroupKind::Impl => return self.convert_impl_chain(first),
         };
@@ -750,6 +762,9 @@ impl<'db> Converter<'db> {
                 });
 
                 ir::ItemKind::Static { ty, body: body_id }
+            }
+            group::DeclGroupKind::Fixity => {
+                unimplemented!();
             }
             group::DeclGroupKind::Alias(_) => {
                 let mut kind = None;
@@ -1345,18 +1360,31 @@ impl<'db> Converter<'db> {
                 lhs: Box::new(self.convert_expr(lhs)),
                 rhs: Box::new(self.convert_expr(rhs)),
             },
-            ast::ExprKind::Infix { op, ref lhs, ref rhs } => ir::ExprKind::Infix {
-                op,
-                lhs: Box::new(self.convert_expr(lhs)),
-                rhs: Box::new(self.convert_expr(rhs)),
-            },
-            ast::ExprKind::Prefix { op, ref rhs } => ir::ExprKind::Prefix {
-                op,
-                rhs: Box::new(self.convert_expr(rhs)),
-            },
-            ast::ExprKind::Postfix { op, ref lhs } => ir::ExprKind::Postfix {
-                op,
-                lhs: Box::new(self.convert_expr(lhs)),
+            ast::ExprKind::Infix { op, ref lhs, ref rhs } => match self.resolver.get(Ns::Values, op.symbol) {
+                Some(res) => ir::ExprKind::App {
+                    base: Box::new(ir::Expr {
+                        id: self.next_id(),
+                        span: expr.span,
+                        kind: ir::ExprKind::App {
+                            base: Box::new(ir::Expr {
+                                id: self.next_id(),
+                                span: op.span,
+                                kind: ir::ExprKind::Ident { name: op, res },
+                            }),
+                            arg: Box::new(self.convert_expr(lhs)),
+                        },
+                    }),
+                    arg: Box::new(self.convert_expr(rhs)),
+                },
+                None => {
+                    self.db
+                        .to_diag_db()
+                        .error(format!("unknown operator '{}'", op))
+                        .with_label(diagnostics::Label::primary(self.file, op.span))
+                        .finish();
+
+                    ir::ExprKind::Error
+                }
             },
             ast::ExprKind::Let { ref bindings, ref body } => {
                 self.resolver.push_rib(Ns::Values);
@@ -1381,20 +1409,8 @@ impl<'db> Converter<'db> {
                 pred: pred.iter().map(|p| self.convert_expr(p)).collect(),
                 arms: arms.iter().map(|a| self.convert_case_arm(a)).collect(),
             },
-            ast::ExprKind::Loop { ref body } => ir::ExprKind::Loop {
-                body: self.convert_block(body),
-            },
-            ast::ExprKind::While { ref cond, ref body } => ir::ExprKind::While {
-                cond: Box::new(self.convert_expr(cond)),
-                body: self.convert_block(body),
-            },
-            ast::ExprKind::Break {} => ir::ExprKind::Break {},
-            ast::ExprKind::Next {} => ir::ExprKind::Next {},
             ast::ExprKind::Do { ref block } => ir::ExprKind::Do {
                 block: self.convert_block(block),
-            },
-            ast::ExprKind::Return { ref val } => ir::ExprKind::Return {
-                val: Box::new(self.convert_expr(val)),
             },
             ast::ExprKind::Typed { ref expr, ref ty } => ir::ExprKind::Typed {
                 expr: Box::new(self.convert_expr(expr)),

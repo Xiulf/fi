@@ -96,29 +96,45 @@ impl Ident {
     }
 
     pub fn peek_any(cursor: parser::buffer::Cursor) -> bool {
-        cursor.ident().is_some()
+        match cursor.any() {
+            Some((
+                parser::lexer::Token {
+                    span: _,
+                    kind: parser::lexer::TokenType::Name,
+                },
+                _,
+            )) => true,
+            _ => false,
+        }
     }
 }
 
-impl<D> parser::parse::Parse<D> for Ident {
-    fn parse(input: parser::parse::ParseStream<D>) -> parser::error::Result<Self> {
-        let ident = input.parse::<parser::ident::Ident>()?;
+impl parser::parse::Parse for Ident {
+    fn parse(input: parser::parse::ParseStream) -> parser::parse::Result<Self> {
+        let ident = input.parse::<parser::token::TName>()?;
+        let text = input.cursor().text(ident.span);
 
         Ok(Ident {
             span: ident.span,
-            symbol: Symbol::new(ident.name),
+            symbol: Symbol::new(text),
         })
     }
 }
 
 impl parser::token::Token for Ident {
     fn peek(cursor: parser::buffer::Cursor) -> bool {
-        match cursor.ident() {
-            Some((ident, _)) => match ident.name.as_str() {
+        match cursor.any() {
+            Some((
+                parser::lexer::Token {
+                    span,
+                    kind: parser::lexer::TokenType::Name,
+                },
+                _,
+            )) => match cursor.text(span) {
                 "where" | "then" | "else" | "of" | "do" => false,
                 _ => true,
             },
-            None => false,
+            _ => false,
         }
     }
 

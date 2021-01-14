@@ -2,10 +2,7 @@ use crate::ast::*;
 
 impl Module {
     pub fn decl_groups(&self) -> DeclGroups {
-        DeclGroups {
-            decls: &self.decls,
-            start: 0,
-        }
+        DeclGroups { decls: &self.decls, start: 0 }
     }
 }
 
@@ -20,6 +17,7 @@ pub enum DeclGroupKind {
     Func(bool),
     Const(bool),
     Static(bool),
+    Fixity,
     Alias(bool),
     Data(bool),
     Trait,
@@ -63,6 +61,7 @@ impl Decl {
             DeclKind::Const { .. } => DeclGroupKind::Const(false),
             DeclKind::StaticTy { .. } => DeclGroupKind::Static(true),
             DeclKind::Static { .. } => DeclGroupKind::Static(false),
+            DeclKind::Fixity { .. } => DeclGroupKind::Fixity,
             DeclKind::AliasKind { .. } => DeclGroupKind::Alias(true),
             DeclKind::Alias { .. } => DeclGroupKind::Alias(false),
             DeclKind::DataKind { .. } => DeclGroupKind::Data(true),
@@ -80,6 +79,7 @@ impl DeclGroupKind {
             DeclGroupKind::Func(_) => usize::max_value(),
             DeclGroupKind::Const(_) => 2,
             DeclGroupKind::Static(_) => 2,
+            DeclGroupKind::Fixity => 1,
             DeclGroupKind::Alias(_) => 2,
             DeclGroupKind::Data(_) => 2,
             DeclGroupKind::Trait => 1,
@@ -97,13 +97,9 @@ impl PartialEq for DeclGroupKind {
             (Func(true), Func(false)) => true,
             (Func(false), Func(false)) => true,
             (Const(true), Const(false)) => true,
-            // (Const(false), Const(false)) => true,
             (Static(true), Static(false)) => true,
-            // (Static(false), Static(false)) => true,
             (Alias(true), Alias(false)) => true,
-            // (Alias(false), Alias(false)) => true,
             (Data(true), Data(false)) => true,
-            // (Data(false), Data(false)) => true,
             (Trait, Trait) => true,
             (Impl, Impl) => true,
             _ => false,
@@ -154,10 +150,7 @@ impl<'ast> Iterator for DeclGroups<'ast> {
 
         pos += 1;
 
-        while pos < self.decls.len()
-            && self.decls[pos].name.symbol == name
-            && pos - self.start < kind.max()
-        {
+        while pos < self.decls.len() && self.decls[pos].name.symbol == name && pos - self.start < kind.max() {
             let kind2 = self.decls[pos].group_kind();
 
             if kind == kind2 {
@@ -188,10 +181,7 @@ impl<'ast> Iterator for ImplDeclGroups<'ast> {
 
         pos += 1;
 
-        while pos < self.decls.len()
-            && self.decls[pos].name.symbol == name
-            && pos - self.start < kind.max()
-        {
+        while pos < self.decls.len() && self.decls[pos].name.symbol == name && pos - self.start < kind.max() {
             let kind2 = self.decls[pos].group_kind();
 
             if kind == kind2 {

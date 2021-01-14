@@ -1,0 +1,9 @@
+[package]
+name = "lexer"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+codespan = "0.9.5"
+unicode-xid = "0.2.0"

@@ -4,7 +4,7 @@ pub use codespan::Span;
 use data_structures::stable_hasher;
 pub use source::LibId;
 use std::collections::BTreeMap;
-pub use syntax::ast::{AttrArg, Attribute, ForeignKind, InfixOp, PostfixOp, PrefixOp};
+pub use syntax::ast::{Assoc, AttrArg, Attribute, ForeignKind, Prec};
 pub use syntax::symbol::{Ident, Symbol};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -94,6 +94,11 @@ pub enum ItemKind {
     Static {
         ty: Type,
         body: BodyId,
+    },
+    Fixity {
+        assoc: Assoc,
+        prec: Prec,
+        func: HirId,
     },
     Alias {
         kind: Type,
@@ -240,6 +245,7 @@ pub enum DefKind {
     Func,
     Const,
     Static,
+    Fixity,
     Alias,
     Data,
     Ctor,
@@ -315,18 +321,10 @@ pub enum ExprKind {
     Field { base: Box<Expr>, field: Ident },
     Index { base: Box<Expr>, index: Box<Expr> },
     Assign { lhs: Box<Expr>, rhs: Box<Expr> },
-    Infix { op: InfixOp, lhs: Box<Expr>, rhs: Box<Expr> },
-    Prefix { op: PrefixOp, rhs: Box<Expr> },
-    Postfix { op: PostfixOp, lhs: Box<Expr> },
     Let { bindings: Vec<Binding>, body: Box<Expr> },
     If { cond: Box<Expr>, then: Box<Expr>, else_: Box<Expr> },
     Case { pred: Vec<Expr>, arms: Vec<CaseArm> },
-    Loop { body: Block },
-    While { cond: Box<Expr>, body: Block },
-    Break {},
-    Next {},
     Do { block: Block },
-    Return { val: Box<Expr> },
     Typed { expr: Box<Expr>, ty: Type },
 }
 

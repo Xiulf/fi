@@ -56,9 +56,9 @@ impl Debug for AttrArg {
         write!(f, "AttrArg::")?;
 
         match self {
-            AttrArg::Literal(lit) => write!(f, "Literal val = {}", lit),
+            AttrArg::Literal(lit) => write!(f, "Literal val = {:?}", lit),
             AttrArg::Field(name, val) => {
-                write!(f, "Field name = {:?}, val = {}", &**name.symbol, val)
+                write!(f, "Field name = {:?}, val = {:?}", &**name.symbol, val)
             }
             AttrArg::Call(name, args) => {
                 write!(f, "Call name = {:?}", &**name.symbol)?;
@@ -193,6 +193,13 @@ impl Debug for Decl {
                 }
 
                 write!(indent(f), "{:?}", val)
+            }
+            DeclKind::Fixity { assoc, prec, func } => {
+                writeln!(
+                    f,
+                    "Fixity name = {:?}, assoc = {:?}, prec = {:?}, func = {:?}",
+                    &**self.name.symbol, assoc, prec, &**func.symbol
+                )
             }
             DeclKind::AliasKind { kind } => {
                 writeln!(f, "AliasKind name = {:?}", &**self.name.symbol)?;
@@ -597,17 +604,9 @@ impl Debug for Expr {
                 write!(indent(f), "{:?}", rhs)
             }
             ExprKind::Infix { op, lhs, rhs } => {
-                writeln!(f, "Infix op = {:?}", op)?;
+                writeln!(f, "Infix op = {:?}", &**op.symbol)?;
                 writeln!(indent(f), "{:?}", lhs)?;
                 write!(indent(f), "{:?}", rhs)
-            }
-            ExprKind::Prefix { op, rhs } => {
-                writeln!(f, "Prefix op = {:?}", op)?;
-                write!(indent(f), "{:?}", rhs)
-            }
-            ExprKind::Postfix { op, lhs } => {
-                writeln!(f, "Postfix op = {:?}", op)?;
-                write!(indent(f), "{:?}", lhs)
             }
             ExprKind::Let { bindings, body } => {
                 writeln!(f, "Let")?;
@@ -639,24 +638,9 @@ impl Debug for Expr {
 
                 Ok(())
             }
-            ExprKind::Loop { body } => {
-                writeln!(f, "Loop")?;
-                write!(indent(f), "{:?}", body)
-            }
-            ExprKind::While { cond, body } => {
-                writeln!(f, "While")?;
-                writeln!(indent(f), "{:?}", cond)?;
-                write!(indent(f), "{:?}", body)
-            }
-            ExprKind::Break {} => write!(f, "Break"),
-            ExprKind::Next {} => write!(f, "Next"),
             ExprKind::Do { block } => {
                 writeln!(f, "Do")?;
                 write!(indent(f), "{:?}", block)
-            }
-            ExprKind::Return { val } => {
-                writeln!(f, "Return")?;
-                write!(indent(f), "{:?}", val)
             }
             ExprKind::Typed { expr, ty } => {
                 writeln!(f, "Typed")?;

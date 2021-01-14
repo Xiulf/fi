@@ -8,6 +8,6 @@ edition = "2018"
 data_structures = { path = "../data_structures" }
 diagnostics = { path = "../diagnostics" }
 source = { path = "../source" }
-parser = { path = "./parser" }
+parser = { path = "../parser" }
 codespan = "0.9.5"
 salsa = "0.16.0"

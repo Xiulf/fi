@@ -2,7 +2,6 @@ mod debug;
 
 pub use crate::symbol::{Ident, Symbol};
 pub use codespan::Span;
-pub use parser::literal::Literal;
 
 #[derive(PartialEq, Eq)]
 pub struct Module {
@@ -32,6 +31,14 @@ pub enum AttrArg {
     Literal(Literal),
     Field(Ident, Literal),
     Call(Ident, Vec<AttrArg>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Literal {
+    Int(Span, u128),
+    Float(Span, u64),
+    Char(Span, char),
+    String(Span, String),
 }
 
 #[derive(PartialEq, Eq)]
@@ -104,6 +111,7 @@ pub enum DeclKind {
     Const { val: Expr },
     StaticTy { ty: Type },
     Static { val: Expr },
+    Fixity { assoc: Assoc, prec: Prec, func: Ident },
     AliasKind { kind: Type },
     Alias { vars: Vec<TypeVar>, ty: Type },
     DataKind { kind: Type },
@@ -116,6 +124,27 @@ pub enum DeclKind {
 pub enum ForeignKind {
     Func,
     Static,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Assoc {
+    Left,
+    Right,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Prec {
+    Zero,
+    One,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
 }
 
 #[derive(PartialEq, Eq)]
@@ -262,52 +291,13 @@ pub enum ExprKind {
     Field { base: Box<Expr>, field: Ident },
     Index { base: Box<Expr>, index: Box<Expr> },
     Assign { lhs: Box<Expr>, rhs: Box<Expr> },
-    Infix { op: InfixOp, lhs: Box<Expr>, rhs: Box<Expr> },
-    Prefix { op: PrefixOp, rhs: Box<Expr> },
-    Postfix { op: PostfixOp, lhs: Box<Expr> },
+    Infix { op: Ident, lhs: Box<Expr>, rhs: Box<Expr> },
     Let { bindings: Vec<LetBinding>, body: Box<Expr> },
     If { cond: Box<Expr>, then: Box<Expr>, else_: Box<Expr> },
     Case { pred: Vec<Expr>, arms: Vec<CaseArm> },
-    Loop { body: Block },
-    While { cond: Box<Expr>, body: Block },
-    Break {},
-    Next {},
     Do { block: Block },
-    Return { val: Box<Expr> },
     Typed { expr: Box<Expr>, ty: Type },
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum InfixOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-    And,
-    Or,
-    BitAnd,
-    BitOr,
-    BitXor,
-    Shl,
-    Shr,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum PrefixOp {
-    Neg,
-    Not,
-    BitNot,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum PostfixOp {}
 
 #[derive(PartialEq, Eq)]
 pub struct Block {
@@ -399,8 +389,8 @@ impl Attribute {
     pub fn str_arg(&self) -> Option<&str> {
         let body = self.body.as_ref()?;
 
-        if let [AttrArg::Literal(Literal::String(s))] = &body.args[..] {
-            Some(&s.text)
+        if let [AttrArg::Literal(Literal::String(_, s))] = &body.args[..] {
+            Some(s)
         } else {
             None
         }

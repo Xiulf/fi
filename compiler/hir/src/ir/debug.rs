@@ -114,6 +114,13 @@ impl Debug for Item {
                 writeln!(f, "Static id = {:?}, name = {:?}, body = {:?}", self.id, &**self.name.symbol, body)?;
                 write!(indent(f), "{:?}", ty)
             }
+            ItemKind::Fixity { assoc, prec, func } => {
+                write!(
+                    f,
+                    "Fixity id = {:?}, name = {:?}, assoc = {:?}, prec = {:?}, func = {:?}",
+                    self.id, &**self.name.symbol, assoc, prec, func,
+                )
+            }
             ItemKind::Alias { kind, vars, value } => {
                 writeln!(f, "Alias id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
 
@@ -467,19 +474,6 @@ impl Debug for Expr {
                 }
 
                 Ok(())
-            }
-            ExprKind::Infix { op, lhs, rhs } => {
-                writeln!(f, "Infix id = {:?}, op = {:?}", self.id, op)?;
-                writeln!(indent(f), "{:?}", lhs)?;
-                write!(indent(f), "{:?}", rhs)
-            }
-            ExprKind::Prefix { op, rhs } => {
-                writeln!(f, "Prefix id = {:?}, op = {:?}", self.id, op)?;
-                write!(indent(f), "{:?}", rhs)
-            }
-            ExprKind::Postfix { op, lhs } => {
-                writeln!(f, "Postfix id = {:?}, op = {:?}", self.id, op)?;
-                write!(indent(f), "{:?}", lhs)
             }
             ExprKind::If { cond, then, else_ } => {
                 writeln!(f, "If id = {:?}", self.id)?;

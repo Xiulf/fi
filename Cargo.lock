@@ -389,6 +389,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lexer"
+version = "0.1.0"
+dependencies = [
+ "codespan",
+ "unicode-xid",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -507,11 +515,11 @@ dependencies = [
 
 [[package]]
 name = "parser"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "codespan",
  "codespan-reporting",
- "unicode-xid",
+ "lexer",
 ]
 
 [[package]]
