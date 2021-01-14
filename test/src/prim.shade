@@ -44,7 +44,7 @@ data Char :: Type
 [repr("f64" )] data Float64 :: Type
 
 [lang("fn_ty")]
-data Fn :: Type -> Type
+data Fn :: Type -> Type -> Type
 
 [lang("record_ty")]
 data Record :: Row Type -> Type
@@ -53,7 +53,7 @@ data Record :: Row Type -> Type
 [lang("ptr_ty")]
 data Ptr :: Type -> Type
 
-[lang("array_ty")] data Array :: (Type, Figure) -> Type
+[lang("array_ty")] data Array :: Type -> Figure -> Type
 [lang("slice_ty")] data Slice :: Type -> Type
 
 [lang("integer_trait")] trait Integer t

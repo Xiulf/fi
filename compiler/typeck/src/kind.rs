@@ -40,59 +40,34 @@ impl<'db> Ctx<'db> {
             Type::App(t1, t2) => {
                 let (t1, k1) = self.infer_kind(t1.clone())?;
 
-                self.infer_app_kind(ty.span(), ty.file(), t1, k1, t2)
+                self.infer_app_kind(ty.span(), ty.file(), t1, k1, t2.clone())
             }
             Type::KindApp(t1, t2) => {
                 let (t1, kind) = self.infer_kind(t1.clone())?;
                 let t1 = self.subst_type(t1);
                 let kind = self.subst_type(kind);
 
-                if let Type::ForAll(vars, ret, _) = &*kind {
-                    let args = vars
-                        .into_iter()
-                        .zip(t2)
-                        .map(|((_v, k), t2)| {
-                            if let Some(k) = k {
-                                self.check_kind(t2, k)
-                            } else {
-                                Err(TypeError::Internal("unkinded forall binder".into()))
-                            }
-                        })
-                        .collect::<Result<List<_>>>()?;
+                if let Type::ForAll(var, Some(kind), ret, _) = &*kind {
+                    let mut repl = HashMap::new();
+                    let t2 = self.check_kind(t2.clone(), kind.clone())?;
 
-                    let repl = (&args)
-                        .into_iter()
-                        .zip(vars)
-                        .map(|(k, (v, _))| (v, k))
-                        .collect();
+                    repl.insert(*var, t2.clone());
 
                     let kind = ret.clone().replace_vars(repl);
-                    let ty = Ty::kind_app(ty.span(), ty.file(), t1, args);
+                    let ty = Ty::kind_app(ty.span(), ty.file(), t1, t2);
 
                     Ok((ty, kind))
                 } else {
                     Err(TypeError::Internal("unkinded forall binder".into()))
                 }
             }
-            Type::ForAll(vars, ret, sc) => {
-                let var_kinds = vars
-                    .into_iter()
-                    .map(|(v, k)| {
-                        Ok((
-                            v,
-                            match k {
-                                Some(k) => Some(
-                                    self.check_kind(k.clone(), self.ty_kind(k.span(), k.file()))?,
-                                ),
-                                None => Some(self.fresh_kind(ty.span(), ty.file())),
-                            },
-                        ))
-                    })
-                    .collect::<Result<List<_>>>()?;
+            Type::ForAll(var, kind, ret, sc) => {
+                let kind = match kind {
+                    Some(k) => self.check_kind(k.clone(), self.ty_kind(k.span(), k.file()))?,
+                    None => self.fresh_kind(ty.span(), ty.file()),
+                };
 
-                for (v, k) in &var_kinds {
-                    self.tys.insert(v.0, k.unwrap());
-                }
+                self.tys.insert(var.0, kind.clone());
 
                 let ty2 = self.check_kind(ret.clone(), self.ty_kind(ret.span(), ret.file()))?;
                 let ty2 = self.subst_type(ty2);
@@ -102,7 +77,7 @@ impl<'db> Ctx<'db> {
                     self.add_unsolved(None, u, k);
                 }
 
-                let ty = Ty::forall(ty.span(), ty.file(), var_kinds, ty2, *sc);
+                let ty = Ty::forall(ty.span(), ty.file(), *var, kind, ty2, *sc);
 
                 Ok((ty.clone(), self.ty_kind(ty.span(), ty.file())))
             }
@@ -119,10 +94,7 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn unknowns_with_kinds(
-        &mut self,
-        uk: std::collections::HashSet<Unknown>,
-    ) -> Vec<(Unknown, Ty)> {
+    fn unknowns_with_kinds(&mut self, uk: std::collections::HashSet<Unknown>) -> Vec<(Unknown, Ty)> {
         let mut uk = uk
             .into_iter()
             .map(|u| {
@@ -153,100 +125,67 @@ impl<'db> Ctx<'db> {
         Ty::unknown(span, file, u)
     }
 
-    crate fn infer_app_kind(
-        &mut self,
-        span: Span,
-        file: source::FileId,
-        fn_ty: Ty,
-        fn_kind: Ty,
-        args: &List<Ty>,
-    ) -> Result<(Ty, Ty)> {
+    crate fn infer_app_kind(&mut self, span: Span, file: source::FileId, fn_ty: Ty, fn_kind: Ty, arg: Ty) -> Result<(Ty, Ty)> {
         match &*fn_kind {
-            Type::App(f, targs) if self.is_func(f) && targs.len() == 2 => {
-                if let Type::Tuple(params) = &*targs[0] {
-                    assert_eq!(args.len(), params.len());
-                    let args = args
-                        .into_iter()
-                        .zip(params)
-                        .map(|(arg_ty, arg_kind)| {
-                            // println!(
-                            //     "{} :: {}",
-                            //     crate::display::Typed(self.db, &(), &arg_ty),
-                            //     crate::display::Typed(self.db, &(), &arg_kind)
-                            // );
-                            self.check_kind(arg_ty, arg_kind)
-                        })
-                        .collect::<Result<List<_>>>()?;
+            Type::App(b, ret_kind) => match &**b {
+                Type::App(f, arg_kind) if self.is_func(f) => {
+                    let arg = self.check_kind(arg, arg_kind.clone())?;
+                    let ty = Ty::app(span, file, fn_ty, arg);
+                    let kind = self.subst_type(ret_kind.clone());
 
-                    let ty = Ty::app(span, file, fn_ty, args);
-
-                    Ok((ty, self.subst_type(targs[1].clone())))
-                } else {
-                    unreachable!();
+                    Ok((ty, kind))
                 }
-            }
+                _ => self.cant_apply_types(fn_ty, arg),
+            },
             Type::Unknown(u) => {
                 let lvl = self.subst.unsolved[u].0.clone();
-                let ret = self.fresh_unknown();
+                let u1 = self.fresh_unknown();
+                let u2 = self.fresh_unknown();
                 let ty_kind = self.ty_kind(span, file);
-                let args2 = (0..args.len())
-                    .map(|_| {
-                        let u = self.fresh_unknown();
 
-                        self.add_unsolved(Some(lvl.clone()), u, ty_kind.clone());
+                self.add_unsolved(Some(lvl.clone()), u1, ty_kind.clone());
+                self.add_unsolved(Some(lvl), u2, ty_kind);
 
-                        Ty::unknown(span, file, u)
-                    })
-                    .collect::<List<_>>();
+                let u1 = Ty::unknown(span, file, u1);
+                let u2 = Ty::unknown(span, file, u2);
+                let func_ty = self.func_ty(span, file);
+                let func_ty = Ty::app(span, file, func_ty, u1.clone());
+                let func_ty = Ty::app(span, file, func_ty, u2.clone());
 
-                self.add_unsolved(Some(lvl), ret, ty_kind);
+                self.solve(*u, func_ty);
 
-                let ret = Ty::unknown(span, file, ret);
-                let fn_ty = self.func_ty(span, file);
-                let args3 = Ty::tuple(span, file, args2.clone());
-                let ty1 = Ty::app(span, file, fn_ty.clone(), List::from([args3, ret.clone()]));
+                let arg = self.check_kind(arg, u1)?;
+                let ty = Ty::app(span, file, fn_ty, arg);
 
-                self.solve(*u, ty1);
-
-                let args3 = args
-                    .into_iter()
-                    .zip(args2)
-                    .map(|(arg, kind)| self.check_kind(arg, kind))
-                    .collect::<Result<List<_>>>()?;
-
-                let args3 = Ty::tuple(span, file, args3);
-                let ty2 = Ty::app(span, file, fn_ty, List::from([args3]));
-
-                Ok((ty2, ret))
+                Ok((ty, u2))
             }
-            Type::ForAll(..) => unimplemented!(),
-            _ => Err(self.cant_apply_types(fn_ty, args)),
+            Type::ForAll(var, Some(kind), ret, _) => {
+                let mut us = HashMap::new();
+                let u = self.fresh_unknown();
+
+                self.add_unsolved(None, u, kind.clone());
+                us.insert(*var, Ty::unknown(span, file, u));
+
+                let fn_kind = ret.replace_vars(us);
+                let fn_ty = Ty::kind_app(span, file, fn_ty, Ty::unknown(span, file, u));
+
+                self.infer_app_kind(span, file, fn_ty, fn_kind, arg)
+            }
+            _ => self.cant_apply_types(fn_ty, arg),
         }
     }
 
-    fn cant_apply_types(&mut self, fn_ty: Ty, args: &List<Ty>) -> TypeError {
-        let arg_kinds = args
-            .into_iter()
-            .filter_map(|a| self.infer_kind(a).ok().map(|(_, k)| k))
-            .collect::<List<_>>();
-        let args2 = Ty::tuple(Default::default(), self.file, arg_kinds);
+    fn cant_apply_types<T>(&mut self, fn_ty: Ty, arg: Ty) -> Result<T> {
+        let arg_kind = self.infer_kind(arg)?.1;
         let ret = self.fresh_kind(Default::default(), self.file);
         let func_ty = self.func_ty(Default::default(), self.file);
-        let fn_ty2 = Ty::app(
-            Default::default(),
-            self.file,
-            func_ty,
-            List::from([args2, ret]),
-        );
+        let kind = Ty::app(Default::default(), self.file, func_ty, arg_kind);
+        let kind = Ty::app(Default::default(), self.file, kind, ret);
+        let _ = self.check_kind(fn_ty, kind)?;
+        let ty = Ty::app(Default::default(), self.file, fn_ty, arg);
+        let msg = format!("cannot apply types to type: `{}`", crate::display::Typed(self.db, &(), &ty));
 
-        let _ = self.check_kind(fn_ty.clone(), fn_ty2);
-        let ty = Ty::app(Default::default(), self.file, fn_ty, args.clone());
-        let msg = format!(
-            "cannot apply types to type: `{}`",
-            crate::display::Typed(self.db, &(), &ty)
-        );
-
-        TypeError::Internal(msg)
+        Err(TypeError::Internal(msg))
     }
 
     crate fn check_kind(&mut self, ty: Ty, k2: Ty) -> Result<Ty> {
@@ -265,15 +204,14 @@ impl<'db> Ctx<'db> {
 
     crate fn instantiate_kind(&mut self, ty: Ty, k1: Ty, k2: Ty) -> Result<Ty> {
         match &*k1 {
-            Type::ForAll(vars, ret, _) if k2.is_mono_type() => {
-                let args = vars
-                    .into_iter()
-                    .map(|(_, k)| self.fresh_type_with_kind(ty.span(), ty.file(), k.unwrap()))
-                    .collect::<List<_>>();
+            Type::ForAll(var, Some(kind), ret, _) if k2.is_mono_type() => {
+                let mut us = HashMap::new();
+                let u = self.fresh_kind_with_kind(k1.span(), k1.file(), kind.clone());
 
-                let us = vars.into_iter().map(|v| v.0).zip(args.clone()).collect();
+                us.insert(*var, u.clone());
+
                 let a = ret.clone().replace_vars(us);
-                let ty = Ty::kind_app(ty.span(), ty.file(), ty, args);
+                let ty = Ty::kind_app(ty.span(), ty.file(), ty, u);
 
                 self.instantiate_kind(ty, a, k2)
             }
@@ -287,61 +225,53 @@ impl<'db> Ctx<'db> {
 
     crate fn subsumes_kind(&mut self, k1: Ty, k2: Ty) -> Result<()> {
         match (&*k1, &*k2) {
-            (Type::App(f1, a1), Type::App(f2, a2))
-                if self.is_func(f1) && self.is_func(f2) && a1.len() == 2 && a2.len() == 2 =>
-            {
-                self.subsumes_kind(a2[0].clone(), a1[0].clone())?;
-                self.subsumes_kind(
-                    self.subst_type(a1[1].clone()),
-                    self.subst_type(a2[1].clone()),
-                )
-            }
-            (_, Type::ForAll(vars, ret, sc)) => {
+            (_, Type::ForAll(var, kind, ret, sc)) => {
                 let sc = sc.unwrap_or_else(|| self.new_skolem_scope());
-                let skolems = (0..vars.len())
-                    .map(|_| self.new_skolem_constant())
-                    .collect();
-                let sk = self.skolemize(k2.span(), k2.file(), vars, skolems, ret.clone(), sc);
+                let skolem = self.new_skolem_constant();
+                let sk = self.skolemize(k2.span(), k2.file(), *var, kind.clone(), skolem, ret.clone(), sc);
 
                 self.subsumes_kind(k1, sk)
             }
-            (Type::ForAll(vars, ret, _), _) => {
-                let subst = vars
-                    .into_iter()
-                    .map(|(v, k)| {
-                        (
-                            v,
-                            self.fresh_type_with_kind(k1.span(), k1.file(), k.unwrap()),
-                        )
-                    })
-                    .collect();
+            (Type::ForAll(var, Some(kind), ret, _), _) => {
+                let mut subst = HashMap::new();
+                let a = self.fresh_kind_with_kind(k1.span(), k1.file(), kind.clone());
+
+                subst.insert(*var, a);
 
                 self.subsumes_kind(ret.clone().replace_vars(subst), k2)
             }
-            (Type::Unknown(u), Type::App(f, a)) if self.is_func(f) && a.len() == 2 => {
-                let f = self.solve_unknown_as_func(k1.span(), k1.file(), *u)?;
+            (Type::Unknown(u), Type::App(b, _)) => match &**b {
+                Type::App(f, _) if self.is_func(f) => {
+                    let f = self.solve_unknown_as_func(k1.span(), k1.file(), *u)?;
 
-                self.subsumes_kind(f, k2)
-            }
-            (Type::App(f, a), Type::Unknown(u)) if self.is_func(f) && a.len() == 2 => {
-                let f = self.solve_unknown_as_func(k2.span(), k2.file(), *u)?;
+                    self.subsumes_kind(f, k2)
+                }
+                _ => self.unify_kinds(k1, k2),
+            },
+            (Type::App(b, _), Type::Unknown(u)) => match &**b {
+                Type::App(f, _) if self.is_func(f) => {
+                    let f = self.solve_unknown_as_func(k2.span(), k2.file(), *u)?;
 
-                self.subsumes_kind(k1, f)
-            }
+                    self.subsumes_kind(k1, f)
+                }
+                _ => self.unify_kinds(k1, k2),
+            },
+            (Type::App(b1, r1), Type::App(b2, r2)) => match (&**b1, &**b2) {
+                (Type::App(f1, a1), Type::App(f2, a2)) if self.is_func(f1) && self.is_func(f2) => {
+                    self.subsumes_kind(a2.clone(), a1.clone())?;
+                    self.subsumes_kind(self.subst_type(r1.clone()), self.subst_type(r2.clone()))
+                }
+                (_, _) => self.unify_kinds(k1, k2),
+            },
             (_, _) => self.unify_kinds(k1, k2),
         }
     }
 
     crate fn unify_kinds(&mut self, k1: Ty, k2: Ty) -> Result<()> {
         match (&*k1, &*k2) {
-            (Type::App(a1, b1), Type::App(a2, b2))
-            | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => {
+            (Type::App(a1, b1), Type::App(a2, b2)) | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => {
                 self.unify_kinds(a1.clone(), a2.clone())?;
-
-                b1.into_iter()
-                    .zip(b2)
-                    .map(|(a, b)| self.unify_kinds(a, b))
-                    .collect()
+                self.unify_kinds(self.subst_type(b1.clone()), self.subst_type(b2.clone()))
             }
             (_, _) if k1.equal(&k2) => Ok(()),
             (Type::Unknown(u), _) => self.solve_unknown(*u, k2),
@@ -365,7 +295,7 @@ impl<'db> Ctx<'db> {
                     let k1 = self.elaborate_kind(&fields[0].ty)?;
                     let kind_row = self.row_kind(ty.span(), ty.file());
 
-                    Ok(Ty::app(ty.span(), ty.file(), kind_row, List::from([k1])))
+                    Ok(Ty::app(ty.span(), ty.file(), kind_row, k1))
                 }
             }
             Type::Skolem(_, kind, _, _) => {
@@ -387,29 +317,28 @@ impl<'db> Ctx<'db> {
                 Ok(kind ^ ty.loc())
             }
             Type::Ctor(id) => Ok(self.db.typecheck(*id).ty.clone()),
-            Type::App(base, _) => {
+            Type::App(base, arg) => {
                 let k1 = self.elaborate_kind(base)?;
 
                 match &*k1 {
-                    Type::App(f, a) if self.is_func(f) && a.len() == 2 => {
-                        Ok(a[1].clone() ^ ty.loc())
-                    }
                     Type::Unknown(u) => {
                         self.solve_unknown_as_func(k1.span(), k1.file(), *u)?;
                         self.elaborate_kind(ty)
                     }
-                    _ => panic!("cannot apply types"),
+                    Type::App(b, r) => match &**b {
+                        Type::App(f, _) if self.is_func(f) => Ok(r.clone() ^ ty.loc()),
+                        _ => self.cant_apply_types(base.clone(), arg.clone()),
+                    },
+                    _ => self.cant_apply_types(base.clone(), arg.clone()),
                 }
             }
-            Type::KindApp(base, args) => {
+            Type::KindApp(base, arg) => {
                 let k1 = self.elaborate_kind(base)?;
 
-                if let Type::ForAll(vars, ret, _) = &*k1 {
-                    let repl = vars
-                        .into_iter()
-                        .zip(args)
-                        .map(|((v, _), arg)| (v, self.subst_type(arg)))
-                        .collect();
+                if let Type::ForAll(var, _, ret, _) = &*k1 {
+                    let mut repl = HashMap::new();
+
+                    repl.insert(*var, self.subst_type(arg.clone()));
 
                     Ok(ret.clone().replace_vars(repl) ^ ty.loc())
                 } else {
@@ -422,12 +351,7 @@ impl<'db> Ctx<'db> {
     crate fn promote_kind(&mut self, u2: Unknown, ty: Ty) -> Result<Ty> {
         let lvl2 = match self.subst.unsolved.get(&u2) {
             Some((lvl2, _)) => lvl2.clone(),
-            None => {
-                return Err(TypeError::Internal(format!(
-                    "unsolved unification variable ?{} is not bound",
-                    u2.0
-                )))
-            }
+            None => return Err(TypeError::Internal(format!("unsolved unification variable ?{} is not bound", u2.0))),
         };
 
         ty.everywhere_result(&mut |t| match &*t {
@@ -470,22 +394,18 @@ impl<'db> Ctx<'db> {
         Ok((vars, ty, kind))
     }
 
-    crate fn complete_var_list(&self, ty: &Ty) -> HashMap<TypeVar, Ty> {
-        if let Type::ForAll(vars, ..) = &**ty {
-            vars.into_iter()
-                .filter_map(|(v, k)| Some((v, k?)))
-                .collect()
-        } else {
-            HashMap::new()
+    crate fn complete_var_list(&self, mut ty: &Ty) -> HashMap<TypeVar, Ty> {
+        let mut list = HashMap::new();
+
+        while let Type::ForAll(var, k, r, _) = &**ty {
+            list.insert(*var, k.clone().unwrap());
+            ty = r;
         }
+
+        list
     }
 
-    fn solve_unknown_as_func(
-        &mut self,
-        span: Span,
-        file: source::FileId,
-        u: Unknown,
-    ) -> Result<Ty> {
+    fn solve_unknown_as_func(&mut self, span: Span, file: source::FileId, u: Unknown) -> Result<Ty> {
         let lvl = self.subst.unsolved[&u].0.clone();
         let u1 = self.fresh_unknown();
         let u2 = self.fresh_unknown();
@@ -494,13 +414,9 @@ impl<'db> Ctx<'db> {
         self.add_unsolved(Some(lvl), u2, self.ty_kind(span, file));
 
         let func = self.func_ty(span, file);
-        let args = Ty::tuple(span, file, List::from([Ty::unknown(span, file, u1)]));
-        let uarr = Ty::app(
-            span,
-            file,
-            func,
-            List::from([args, Ty::unknown(span, file, u2)]),
-        );
+        let arg = Ty::unknown(span, file, u1);
+        let uarr = Ty::app(span, file, func, arg);
+        let uarr = Ty::app(span, file, uarr, Ty::unknown(span, file, u2));
 
         self.solve(u, uarr.clone());
 
