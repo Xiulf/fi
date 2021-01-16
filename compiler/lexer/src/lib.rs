@@ -180,12 +180,13 @@ impl<'src> Lexer<'src> {
             c => Err(LexicalError::UnknownChar(self.start, c)),
         }?;
 
-        self.queue.push_back(token);
         self.do_layout(start, token);
         self.next()
     }
 
     fn skip(&mut self) {
+        self.start = self.pos;
+
         while !self.eof() {
             match self.peek() {
                 c if c.is_whitespace() => self.advance(),

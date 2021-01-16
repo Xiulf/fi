@@ -23,11 +23,11 @@ fn parse(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> {
         }
     };
 
-    for tok in &tokens {
-        println!("{:?}", tok);
-    }
-
-    println!();
+    // for tok in &tokens {
+    //     println!("{:>16?}: {:?}", tok.kind, lexer.text(tok.span));
+    // }
+    //
+    // println!();
 
     let tokens = parser::buffer::TokenBuffer::new(id, tokens);
     let buffer = parser::parse::ParseBuffer::new(tokens.begin(&source), codespan::Span::default());
