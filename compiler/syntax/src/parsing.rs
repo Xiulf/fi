@@ -996,10 +996,15 @@ impl<T: Parse> Parse for RecordField<T> {
     fn parse(input: ParseStream) -> Result<Self> {
         let name = input.parse()?;
 
-        if let Ok(_) = input.parse::<TColon>() {
-            let val = input.parse()?;
+        if input.peek::<TOperator>() {
+            if input.cursor().text(input.span()) == ":" {
+                let _ = input.parse::<TOperator>()?;
+                let val = input.parse()?;
 
-            Ok(RecordField::Field { name, val })
+                Ok(RecordField::Field { name, val })
+            } else {
+                Ok(RecordField::Pun { name })
+            }
         } else {
             Ok(RecordField::Pun { name })
         }
@@ -1153,42 +1158,7 @@ impl Expr {
     }
 
     fn prefix(input: ParseStream) -> Result<Self> {
-        // let start = input.span();
-        //
-        // if input.peek::<TNeg>() && !input.peek::<TArrow>() {
-        //     let _ = input.parse::<TNeg>()?;
-        //     let rhs = Expr::prefix(input)?;
-        //
-        //     Ok(Expr {
-        //         span: start.merge(input.prev_span()),
-        //         kind: ExprKind::Prefix {
-        //             op: PrefixOp::Neg,
-        //             rhs: Box::new(rhs),
-        //         },
-        //     })
-        // } else if let Ok(_) = input.parse::<TNot>() {
-        //     let rhs = Expr::prefix(input)?;
-        //
-        //     Ok(Expr {
-        //         span: start.merge(input.prev_span()),
-        //         kind: ExprKind::Prefix {
-        //             op: PrefixOp::Not,
-        //             rhs: Box::new(rhs),
-        //         },
-        //     })
-        // } else if let Ok(_) = input.parse::<TBitNot>() {
-        //     let rhs = Expr::prefix(input)?;
-        //
-        //     Ok(Expr {
-        //         span: start.merge(input.prev_span()),
-        //         kind: ExprKind::Prefix {
-        //             op: PrefixOp::BitNot,
-        //             rhs: Box::new(rhs),
-        //         },
-        //     })
-        // } else {
         Expr::postfix(input)
-        // }
     }
 
     fn postfix(input: ParseStream) -> Result<Self> {
@@ -1343,6 +1313,14 @@ impl Expr {
             let block = input.parse()?;
 
             ExprKind::Do { block }
+        } else if let Ok(TSymbol { span }) = input.parse() {
+            let text = input.cursor().text(span);
+            let name = Ident {
+                span,
+                symbol: Symbol::new(&text[1..text.len() - 1]),
+            };
+
+            ExprKind::Ident { name }
         } else if input.peek::<Ident>() {
             ExprKind::Ident { name: input.parse()? }
         } else {

@@ -11,6 +11,9 @@ use std::sync::Arc;
 
 #[salsa::query_group(HirDatabaseStorage)]
 pub trait HirDatabase: syntax::SyntaxDatabase {
+    #[salsa::invoke(module_tree::load_external)]
+    fn external_modules(&self, lib: source::LibId) -> Arc<Vec<module_tree::ExternalModuleData>>;
+
     #[salsa::invoke(ModuleTree::query)]
     fn module_tree(&self, lib: source::LibId) -> Arc<ModuleTree>;
 

@@ -1,5 +1,6 @@
 use crate::HirDatabase;
 use data_structures::index_vec::IndexVec;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use syntax::symbol::Ident;
 
@@ -16,6 +17,14 @@ pub struct ModuleData {
     pub children: Vec<ModuleIndex>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalModuleData {
+    pub file: source::FileId,
+    pub id: crate::ir::ModuleId,
+    pub name: Ident,
+    pub exports: Vec<crate::ir::Export>,
+}
+
 data_structures::index_vec::define_index_type! {
     pub struct ModuleIndex = u32;
 }
@@ -23,13 +32,9 @@ data_structures::index_vec::define_index_type! {
 impl ModuleTree {
     pub fn query(db: &dyn HirDatabase, lib: source::LibId) -> Arc<Self> {
         let files = db.lib_files(lib);
-        let asts = files
-            .iter()
-            .map(|&file| (file, db.parse(file)))
-            .collect::<Vec<_>>();
-        let mut tree = ModuleTree {
-            data: IndexVec::new(),
-        };
+        let asts = files.iter().map(|&file| (file, db.parse(file))).collect::<Vec<_>>();
+        let mut tree = ModuleTree { data: IndexVec::new() };
+        let deps = db.external_modules(lib);
 
         for (file, ast) in &asts {
             tree.data.push(ModuleData {
@@ -42,17 +47,12 @@ impl ModuleTree {
 
         for (i, (file, ast)) in asts.into_iter().enumerate() {
             for import in &ast.imports {
-                if let Some(index) = tree
-                    .data
-                    .iter()
-                    .position(|d| d.name.symbol == import.module.symbol)
-                {
-                    tree.data[ModuleIndex::from(i)]
-                        .children
-                        .push(ModuleIndex::from(index));
+                if let Some(index) = tree.data.iter().position(|d| d.name.symbol == import.module.symbol) {
+                    tree.data[ModuleIndex::from(i)].children.push(ModuleIndex::from(index));
+                } else if deps.iter().any(|d| d.name.symbol == import.module.symbol) {
                 } else {
                     db.to_diag_db()
-                        .error(format!("Unknown module '{}'", import.module))
+                        .error(format!("unknown module '{}'", import.module))
                         .with_label(diagnostics::Label::primary(file, import.module.span))
                         .finish();
                 }
@@ -104,23 +104,13 @@ impl ModuleTree {
             .collect::<Vec<_>>();
 
         let mut res = Vec::with_capacity(graph.len());
-        let mut bases = graph
-            .drain_filter(|(_, d)| d.children.is_empty())
-            .collect::<Vec<_>>();
+        let mut bases = graph.drain_filter(|(_, d)| d.children.is_empty()).collect::<Vec<_>>();
 
         while let Some((node_idx, node)) = bases.pop() {
             res.push(node);
 
-            while let Some(idx) = graph
-                .iter()
-                .position(|(_, n)| n.children.contains(&node_idx))
-            {
-                let cidx = graph[idx]
-                    .1
-                    .children
-                    .iter()
-                    .position(|c| c == &node_idx)
-                    .unwrap();
+            while let Some(idx) = graph.iter().position(|(_, n)| n.children.contains(&node_idx)) {
+                let cidx = graph[idx].1.children.iter().position(|c| c == &node_idx).unwrap();
 
                 graph[idx].1.children.remove(cidx);
 
@@ -133,15 +123,45 @@ impl ModuleTree {
         if graph.is_empty() {
             res
         } else {
-            let mut error = diags.error("Cyclic modules");
+            let mut error = diags.error("cyclic modules");
 
             for (_, module) in graph {
-                error =
-                    error.with_label(diagnostics::Label::primary(module.file, module.name.span));
+                error = error.with_label(diagnostics::Label::primary(module.file, module.name.span));
             }
 
             error.finish();
             diags.print_and_exit();
         }
     }
+}
+
+pub fn save_external(db: &dyn HirDatabase, lib: source::LibId) {
+    let manifest = db.manifest(lib);
+    let path = format!("{}/meta/modules", manifest.package.target_dir.display());
+    let file = std::fs::File::create(path).unwrap();
+    let tree = db.module_tree(lib);
+    let data = tree
+        .data
+        .iter()
+        .map(|data| ExternalModuleData {
+            file: data.file,
+            id: data.id,
+            name: data.name,
+            exports: db.module_hir(data.file).exports.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    bincode::serialize_into(file, &data).unwrap();
+}
+
+pub fn load_external(db: &dyn HirDatabase, lib: source::LibId) -> Arc<Vec<ExternalModuleData>> {
+    Arc::new(db.deps(lib).into_iter().flat_map(|dep| load_external_lib(db, dep)).collect())
+}
+
+fn load_external_lib(db: &dyn HirDatabase, lib: source::LibId) -> Vec<ExternalModuleData> {
+    let manifest = db.manifest(lib);
+    let path = format!("{}/meta/modules", manifest.package.target_dir.display());
+    let file = std::fs::File::open(path).unwrap();
+
+    bincode::deserialize_from(file).unwrap()
 }

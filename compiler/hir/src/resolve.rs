@@ -16,7 +16,7 @@ pub struct PerNs<T> {
     types: T,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Ns {
     Values,
     Types,
@@ -62,20 +62,13 @@ impl<'db> Resolver<'db> {
     }
 
     pub fn iter<'a>(&'a self, ns: Ns) -> impl Iterator<Item = (Symbol, Res)> + 'a {
-        self.ribs[ns]
-            .last()
-            .unwrap()
-            .names
-            .iter()
-            .map(|(k, v)| (*k, *v))
+        self.ribs[ns].last().unwrap().names.iter().map(|(k, v)| (*k, *v))
     }
 }
 
 impl Rib {
     pub fn new() -> Self {
-        Rib {
-            names: HashMap::new(),
-        }
+        Rib { names: HashMap::new() }
     }
 
     pub fn get(&self, symbol: Symbol) -> Option<Res> {

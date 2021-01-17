@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 driver = { path = "../driver" }
+source = { path = "../source" }
+clap = "2.33.3"
+toml = "^0.5.7"

@@ -8,11 +8,7 @@ pub trait BackendDatabase: lower::LowerDatabase {
     fn link_type(&self, lib: hir::ir::LibId, module: hir::ir::ModuleId) -> linker::LinkOutputType;
 }
 
-fn link_type(
-    db: &dyn BackendDatabase,
-    lib: hir::ir::LibId,
-    module: hir::ir::ModuleId,
-) -> linker::LinkOutputType {
+fn link_type(db: &dyn BackendDatabase, lib: hir::ir::LibId, module: hir::ir::ModuleId) -> linker::LinkOutputType {
     let file = db.module_tree(lib).file(module);
     let hir = db.module_hir(file);
 
@@ -53,11 +49,7 @@ impl Assembly {
     }
 }
 
-pub fn assembly(
-    db: &dyn BackendDatabase,
-    lib: hir::ir::LibId,
-    module: hir::ir::ModuleId,
-) -> Arc<Assembly> {
+pub fn assembly(db: &dyn BackendDatabase, lib: hir::ir::LibId, module: hir::ir::ModuleId) -> Arc<Assembly> {
     let mir = db.lower(lib, module);
     let obj_file = lowlang::assemble::assemble(&mir, (*db.target(lib)).clone());
     let mut linker = linker::get_linker(&db.target(lib));
@@ -90,10 +82,7 @@ pub fn assembly(
         std::mem::drop(ab);
 
         if cfg!(not(windows)) {
-            std::process::Command::new("ranlib")
-                .arg(&out_filename)
-                .status()
-                .unwrap();
+            std::process::Command::new("ranlib").arg(&out_filename).status().unwrap();
         }
 
         fn dep_idents(
@@ -108,8 +97,7 @@ pub fn assembly(
                     let data = tree.get(dep);
                     let asm = db.assembly(lib, data.id);
 
-                    std::iter::once(os_str_to_bytes(asm.path().file_name().unwrap()))
-                        .chain(dep_idents(db, lib, tree, &data.children))
+                    std::iter::once(os_str_to_bytes(asm.path().file_name().unwrap())).chain(dep_idents(db, lib, tree, &data.children))
                 })
                 .collect()
         }

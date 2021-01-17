@@ -116,7 +116,6 @@ tokens! {
     TFatArrow,    FatArrow,      "=>"
     TDblColon,    DoubleColon,   "::"
     TDblDot,      DoubleDot,     ".."
-    TColon,       Colon,         ":"
     TDot,         Dot,           "."
     TComma,       Comma,         ","
     TPipe,        Pipe,          "|"

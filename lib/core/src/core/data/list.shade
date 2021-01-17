@@ -9,6 +9,8 @@ data List a
     = Nil
     | Cons a (List a)
 
+infixr 6 Cons as (:)
+
 -- impl listEq :: Eq a => Eq (List a) where
 --     fn eq (Cons x xs) (Cons y ys) = and (eq x y) (eq xs ys)
 --     fn eq Nil Nil = True

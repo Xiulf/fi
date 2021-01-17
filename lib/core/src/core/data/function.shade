@@ -1,0 +1,9 @@
+module Data.Function where
+
+infixr 0 apply as ($)
+
+fn id :: forall a. a -> a
+fn id x = x
+
+fn apply :: forall a b. (a -> b) -> a -> b
+fn apply f a = f a

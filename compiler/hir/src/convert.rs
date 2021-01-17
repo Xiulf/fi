@@ -44,6 +44,31 @@ struct QualModule {
     exports: Vec<ir::Export>,
 }
 
+trait ModuleLike {
+    fn exports(&self) -> Vec<ir::Export>;
+    fn name(&self) -> ir::Ident;
+}
+
+impl ModuleLike for ir::Module {
+    fn exports(&self) -> Vec<ir::Export> {
+        self.exports.clone()
+    }
+
+    fn name(&self) -> ir::Ident {
+        self.name
+    }
+}
+
+impl ModuleLike for crate::module_tree::ExternalModuleData {
+    fn exports(&self) -> Vec<ir::Export> {
+        self.exports.clone()
+    }
+
+    fn name(&self) -> ir::Ident {
+        self.name
+    }
+}
+
 impl<'db> Converter<'db> {
     pub fn new(db: &'db (dyn HirDatabase + 'db), lib: source::LibId, file: source::FileId, module_name: ir::Ident) -> Self {
         Converter {
@@ -453,17 +478,28 @@ impl<'db> Converter<'db> {
 
     fn register_import(&mut self, import: &ast::ImportDecl) {
         let module_tree = self.db.module_tree(self.lib);
-        let module_data = module_tree.find(import.module.symbol).unwrap();
-        let module = self.db.module_hir(module_data.file);
 
-        if let Some(alias) = &import.qual {
-            self.import_qual(&module, &import.names, *alias);
+        if let Some(module_data) = module_tree.find(import.module.symbol) {
+            let module = self.db.module_hir(module_data.file);
+
+            if let Some(alias) = &import.qual {
+                self.import_qual(&*module, &import.names, *alias);
+            } else {
+                self.import_normal(&*module, &import.names, import.span);
+            }
         } else {
-            self.import_normal(&module, &import.names, import.span);
+            let modules = self.db.external_modules(self.lib);
+            let module_data = modules.iter().find(|m| m.name.symbol == import.module.symbol).unwrap();
+
+            if let Some(alias) = &import.qual {
+                self.import_qual(module_data, &import.names, *alias);
+            } else {
+                self.import_normal(module_data, &import.names, import.span);
+            }
         }
     }
 
-    fn import_qual(&mut self, imp_mod: &ir::Module, imports: &Option<(bool, Vec<ast::Import>)>, alias: ir::Ident) {
+    fn import_qual(&mut self, imp_mod: &dyn ModuleLike, imports: &Option<(bool, Vec<ast::Import>)>, alias: ir::Ident) {
         let exports = self.collect_exports(imp_mod, imports);
 
         if let Some(qmod) = self.modules.iter_mut().find(|m| m.name == alias.symbol) {
@@ -473,7 +509,7 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn import_normal(&mut self, imp_mod: &ir::Module, imports: &Option<(bool, Vec<ast::Import>)>, span: ir::Span) {
+    fn import_normal(&mut self, imp_mod: &dyn ModuleLike, imports: &Option<(bool, Vec<ast::Import>)>, span: ir::Span) {
         let exports = self.collect_exports(imp_mod, imports);
 
         for export in exports {
@@ -507,8 +543,8 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn collect_exports(&self, module: &ir::Module, imports: &Option<(bool, Vec<ast::Import>)>) -> Vec<ir::Export> {
-        let mut exports = module.exports.clone();
+    fn collect_exports(&self, module: &dyn ModuleLike, imports: &Option<(bool, Vec<ast::Import>)>) -> Vec<ir::Export> {
+        let mut exports = module.exports();
 
         if let Some((hiding, imports)) = imports {
             if *hiding {
@@ -525,7 +561,7 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn find_export(&self, module: &ir::Module, exports: &mut Vec<ir::Export>, import: &ast::Import) -> Option<ir::Export> {
+    fn find_export(&self, module: &dyn ModuleLike, exports: &mut Vec<ir::Export>, import: &ast::Import) -> Option<ir::Export> {
         if let Some(idx) = exports.iter().position(|e| e.name == import.name.symbol) {
             let mut export = exports.swap_remove(idx);
 
@@ -540,7 +576,7 @@ impl<'db> Converter<'db> {
                                 } else {
                                     self.db
                                         .to_diag_db()
-                                        .error(format!("module '{}' does not export '{}'", module.name, name))
+                                        .error(format!("module '{}' does not export '{}'", module.name(), name))
                                         .with_label(diagnostics::Label::primary(self.file, name.span))
                                         .finish();
 
@@ -562,7 +598,7 @@ impl<'db> Converter<'db> {
         } else {
             self.db
                 .to_diag_db()
-                .error(format!("module '{}' does not export '{}'", module.name, import.name))
+                .error(format!("module '{}' does not export '{}'", module.name(), import.name))
                 .with_label(diagnostics::Label::primary(self.file, import.name.span))
                 .finish();
 
@@ -1344,6 +1380,19 @@ impl<'db> Converter<'db> {
                 Some(res @ (ir::Res::Local(_) | ir::Res::Def(ir::DefKind::Func | ir::DefKind::Const | ir::DefKind::Static | ir::DefKind::Ctor, _))) => {
                     ir::ExprKind::Ident { name, res }
                 }
+                Some(ir::Res::Def(ir::DefKind::Fixity, id)) => {
+                    let res = if id.module == self.module_id && id.lib == self.lib {
+                        self.items[&id.into()].fixity().2
+                    } else {
+                        // @TODO: do this differently
+                        let file = self.db.module_tree(id.lib).file(id.module);
+                        let hir = self.db.module_hir(file);
+
+                        hir.items[&id.into()].fixity().2
+                    };
+
+                    ir::ExprKind::Ident { name, res }
+                }
                 Some(_) => {
                     self.db
                         .to_diag_db()
@@ -1392,10 +1441,7 @@ impl<'db> Converter<'db> {
                 lhs: Box::new(self.convert_expr(lhs)),
                 rhs: Box::new(self.convert_expr(rhs)),
             },
-            ast::ExprKind::Infix { op, ref lhs, ref rhs } => match self.find_operator(op) {
-                Some(id) => self.convert_infix(expr.span, lhs, rhs, id, op),
-                None => ir::ExprKind::Error,
-            },
+            ast::ExprKind::Infix { .. } => self.convert_infix(expr),
             ast::ExprKind::Let { ref bindings, ref body } => {
                 self.resolver.push_rib(Ns::Values);
 
@@ -1507,12 +1553,15 @@ impl<'db> Converter<'db> {
                 None => return ir::ExprKind::Error,
                 Some(id) => {
                     if id.module == self.module_id && id.lib == self.lib {
-                        self.items[&id.into()].fixity()
+                        let (a, b, c) = self.items[&id.into()].fixity();
+
+                        (a, b, c, *op)
                     } else {
                         let file = self.db.module_tree(id.lib).file(id.module);
                         let hir = self.db.module_hir(file);
+                        let (a, b, c) = hir.items[&id.into()].fixity();
 
-                        hir.items[&id.into()].fixity()
+                        (a, b, c, *op)
                     }
                 }
             };
@@ -1523,6 +1572,108 @@ impl<'db> Converter<'db> {
         }
 
         exprs.push(self.convert_expr(expr));
+        exprs.reverse();
+        ops.reverse();
+
+        self._convert_infix(exprs, ops)
+    }
+
+    fn _convert_infix(&mut self, mut exprs: Vec<ir::Expr>, mut ops: Vec<(ir::Assoc, ir::Prec, ir::Res, ir::Ident)>) -> ir::ExprKind {
+        let (assoc, prec, func, op) = ops.pop().unwrap();
+
+        if let Some(&(assoc2, prec2, func2, op2)) = ops.last() {
+            if assoc == ir::Assoc::None && func == func2 {
+                self.db
+                    .to_diag_db()
+                    .error(format!("non-associative operator '{}' should only occur once", op))
+                    .with_label(diagnostics::Label::primary(self.file, op.span))
+                    .with_label(diagnostics::Label::primary(self.file, op2.span))
+                    .with_note("use parentheses to resolve this ambiguity")
+                    .finish();
+
+                ir::ExprKind::Error
+            } else if assoc != assoc2 && prec == prec2 {
+                self.db
+                    .to_diag_db()
+                    .error("ambiguous operators")
+                    .with_label(diagnostics::Label::primary(self.file, op.span))
+                    .with_label(diagnostics::Label::primary(self.file, op2.span))
+                    .with_note("use parentheses to resolve this ambiguity")
+                    .finish();
+
+                ir::ExprKind::Error
+            } else if (assoc == ir::Assoc::Right && func == func2) || prec2 > prec {
+                let lhs = exprs.pop().unwrap();
+                let rhs_span = exprs.last().unwrap().span.merge(exprs[0].span);
+                let rhs = self._convert_infix(exprs, ops);
+
+                ir::ExprKind::App {
+                    base: Box::new(ir::Expr {
+                        span: lhs.span.merge(rhs_span),
+                        id: self.next_id(),
+                        kind: ir::ExprKind::App {
+                            base: Box::new(ir::Expr {
+                                span: op.span,
+                                id: self.next_id(),
+                                kind: ir::ExprKind::Ident { name: op, res: func },
+                            }),
+                            arg: Box::new(lhs),
+                        },
+                    }),
+                    arg: Box::new(ir::Expr {
+                        span: rhs_span,
+                        id: self.next_id(),
+                        kind: rhs,
+                    }),
+                }
+            } else if (assoc == ir::Assoc::Left && func == func2) || prec > prec2 {
+                let lhs = exprs.pop().unwrap();
+                let rhs = exprs.pop().unwrap();
+
+                exprs.push(ir::Expr {
+                    span: lhs.span.merge(rhs.span),
+                    id: self.next_id(),
+                    kind: ir::ExprKind::App {
+                        base: Box::new(ir::Expr {
+                            span: lhs.span.merge(rhs.span),
+                            id: self.next_id(),
+                            kind: ir::ExprKind::App {
+                                base: Box::new(ir::Expr {
+                                    span: op.span,
+                                    id: self.next_id(),
+                                    kind: ir::ExprKind::Ident { name: op, res: func },
+                                }),
+                                arg: Box::new(lhs),
+                            },
+                        }),
+                        arg: Box::new(rhs),
+                    },
+                });
+
+                self._convert_infix(exprs, ops)
+            } else {
+                unreachable!("convert_infix({}, {})", op, op2);
+            }
+        } else {
+            let lhs = exprs.pop().unwrap();
+            let rhs = exprs.pop().unwrap();
+
+            ir::ExprKind::App {
+                base: Box::new(ir::Expr {
+                    span: lhs.span.merge(rhs.span),
+                    id: self.next_id(),
+                    kind: ir::ExprKind::App {
+                        base: Box::new(ir::Expr {
+                            span: op.span,
+                            id: self.next_id(),
+                            kind: ir::ExprKind::Ident { name: op, res: func },
+                        }),
+                        arg: Box::new(lhs),
+                    },
+                }),
+                arg: Box::new(rhs),
+            }
+        }
     }
 
     fn convert_block(&mut self, block: &ast::Block) -> ir::Block {

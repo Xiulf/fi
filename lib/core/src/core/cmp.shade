@@ -1,8 +1,10 @@
-module Core.Cmp (Ordering(..), Eq(..), Ord(..)) where
+module Core.Cmp (Ordering(..), Eq(..), Ord(..), (==)) where
 
 import Prim (Bool)
 import Data.Semigroup
 import Data.Monoid
+
+infix 4 eq as (==)
 
 trait Eq l r | l -> r, r -> l where
     fn eq :: l -> r -> Bool

@@ -5,8 +5,9 @@ authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+data_structures = { path = "../data_structures" }
 diagnostics = { path = "../diagnostics" }
-codespan = "0.9.5"
+codespan = { version = "0.9.5", features = ["serialization"] }
 salsa = "0.16.0"
 target-lexicon = "^0.11.0"
 serde = { version = "^1.0.117", features = ["derive"] }

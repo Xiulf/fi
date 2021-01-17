@@ -1,32 +1,19 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use target_lexicon::Triple;
+pub use target_lexicon::Triple;
 
-#[derive(Debug)]
-pub struct Opts {
-    pub project_dir: PathBuf,
-    pub target: Triple,
-    pub out_type: OutputType,
-}
-
-#[derive(Debug)]
-pub enum OutputType {
-    Bin,
-    Lib,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub package: Package,
     #[serde(default)]
     pub dependencies: HashMap<String, Dependency>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Package {
     pub name: String,
-    pub version: Option<String>,
+    pub version: String,
     pub authors: Option<Vec<String>>,
     pub src_dir: Option<PathBuf>,
     #[serde(skip)]
@@ -37,7 +24,7 @@ pub struct Package {
     pub target: Triple,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Dependency {
     Path { path: PathBuf },
@@ -55,18 +42,12 @@ fn ser_triple<S: serde::Serializer>(triple: &Triple, s: S) -> Result<S::Ok, S::E
 }
 
 impl Manifest {
-    pub fn load(
-        diags: &dyn diagnostics::Diagnostics,
-        files: &mut crate::Files,
-        dir: &Path,
-    ) -> Self {
+    pub fn load(diags: &dyn diagnostics::Diagnostics, files: &mut crate::Files, dir: &Path) -> Self {
         let manifest_path = format!("{}/shadow.toml", dir.display());
         let manifest_src = match std::fs::read_to_string(&manifest_path) {
             Ok(s) => s,
             Err(_) => {
-                diags
-                    .error(format!("no shadow.toml file found in {}", dir.display()))
-                    .finish();
+                diags.error(format!("no shadow.toml file found in {}", dir.display())).finish();
                 diags.print_and_exit();
             }
         };
@@ -86,10 +67,7 @@ impl Manifest {
 
                 diags
                     .error("invalid shadow.toml file")
-                    .with_label(
-                        diagnostics::Label::primary(manifest_file, span)
-                            .with_message(e.to_string()),
-                    )
+                    .with_label(diagnostics::Label::primary(manifest_file, span).with_message(e.to_string()))
                     .finish();
 
                 diags.print_and_exit();

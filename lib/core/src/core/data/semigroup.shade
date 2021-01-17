@@ -1,5 +1,7 @@
 module Data.Semigroup (Semigroup(..)) where
 
+infixr 5 append as (<>)
+
 trait Semigroup a where
     fn append :: a -> a -> a
 

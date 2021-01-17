@@ -11,7 +11,7 @@ pub struct Symbol(usize);
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SymbolData(Box<str>);
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Ident {
     pub span: Span,
     pub symbol: Symbol,
@@ -161,16 +161,16 @@ impl<CTX> stable_hasher::HashStable<CTX> for Symbol {
     }
 }
 
-// impl serde::Serialize for Symbol {
-//     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-//         self.to_string().serialize(s)
-//     }
-// }
-//
-// impl<'de> serde::Deserialize<'de> for Symbol {
-//     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-//         let text = <String>::deserialize(d)?;
-//
-//         Ok(Symbol::new(text))
-//     }
-// }
+impl serde::Serialize for Symbol {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.to_string().serialize(s)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Symbol {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = <String>::deserialize(d)?;
+
+        Ok(Symbol::new(text))
+    }
+}

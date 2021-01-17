@@ -2,15 +2,16 @@ mod debug;
 
 pub use codespan::Span;
 use data_structures::stable_hasher;
+use serde::{Deserialize, Serialize};
 pub use source::LibId;
 use std::collections::BTreeMap;
 pub use syntax::ast::{Assoc, AttrArg, Attribute, ForeignKind, Prec};
 pub use syntax::symbol::{Ident, Symbol};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleId(u64, u64);
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct DefIndex(u64, u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -19,20 +20,20 @@ pub enum DefPath {
     Type(Symbol),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct DefId {
     pub lib: LibId,
     pub module: ModuleId,
     pub index: DefIndex,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct HirId {
     pub owner: DefId,
     pub local_id: LocalId,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct LocalId(pub u32);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -59,7 +60,7 @@ pub struct Module {
     pub body_ids: Vec<BodyId>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Export {
     pub name: Symbol,
     pub res: Res,
@@ -233,14 +234,14 @@ pub struct Param {
     pub span: Span,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Res {
     Error,
     Def(DefKind, DefId),
     Local(HirId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DefKind {
     Func,
     Const,
@@ -444,7 +445,7 @@ impl DefId {
 
     pub fn dummy() -> Self {
         DefId {
-            lib: LibId(0),
+            lib: LibId(0, 0),
             module: ModuleId(0, 0),
             index: DefIndex(0, 0),
         }
