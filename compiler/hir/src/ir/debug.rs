@@ -115,11 +115,13 @@ impl Debug for Item {
                 write!(indent(f), "{:?}", ty)
             }
             ItemKind::Fixity { assoc, prec, func } => {
-                write!(
+                writeln!(
                     f,
-                    "Fixity id = {:?}, name = {:?}, assoc = {:?}, prec = {:?}, func = {:?}",
-                    self.id, &**self.name.symbol, assoc, prec, func,
-                )
+                    "Fixity id = {:?}, name = {:?}, assoc = {:?}, prec = {:?}",
+                    self.id, &**self.name.symbol, assoc, prec,
+                )?;
+
+                write!(indent(f), "{:?}", func)
             }
             ItemKind::Alias { kind, vars, value } => {
                 writeln!(f, "Alias id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;

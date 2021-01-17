@@ -1,3 +1,5 @@
+#![feature(or_patterns)]
+
 mod layout;
 
 use codespan::{ByteIndex, ByteOffset, Span};
@@ -77,6 +79,9 @@ struct Pos(usize, usize, ByteIndex);
 #[derive(Debug)]
 pub enum LexicalError {
     UnknownChar(ByteIndex, char),
+    InvalidCharLiteral(Span),
+    UnterminatedString(Span),
+    InvalidEscape(Span),
 }
 
 pub type Result<T> = std::result::Result<T, LexicalError>;
@@ -177,6 +182,9 @@ impl<'src> Lexer<'src> {
             c if c.is_xid_start() => self.name(),
             c if bsearch_range_table(c, OP_START) => self.operator(),
             '0'..='9' => self.number(ch),
+            'r' if self.peek() == '"' => self.string(true),
+            '"' => self.string(false),
+            '\'' => self.char(),
             c => Err(LexicalError::UnknownChar(self.start, c)),
         }?;
 
@@ -295,6 +303,69 @@ impl<'src> Lexer<'src> {
             Ok(self.token(TokenType::Float))
         } else {
             Ok(self.token(TokenType::Int))
+        }
+    }
+
+    fn char(&mut self) -> Result<Token> {
+        match self.peek() {
+            '\\' => {
+                self.advance();
+                self.escape()?;
+            }
+            '\'' => return Err(LexicalError::InvalidCharLiteral(self.span())),
+            _ => self.advance(),
+        }
+
+        if self.peek() == '\'' {
+            self.advance();
+            Ok(self.token(TokenType::Char))
+        } else {
+            self.advance();
+            Err(LexicalError::InvalidCharLiteral(self.span()))
+        }
+    }
+
+    fn string(&mut self, raw: bool) -> Result<Token> {
+        while !self.eof() {
+            match self.peek() {
+                '"' => break,
+                '\\' if !raw => {
+                    self.advance();
+                    self.escape()?;
+                }
+                _ => self.advance(),
+            }
+        }
+
+        if self.peek() == '"' {
+            self.advance();
+
+            if raw {
+                Ok(self.token(TokenType::RawString))
+            } else {
+                Ok(self.token(TokenType::String))
+            }
+        } else {
+            self.advance();
+            Err(LexicalError::UnterminatedString(self.span()))
+        }
+    }
+
+    fn escape(&mut self) -> Result<char> {
+        let start = self.pos - ByteOffset::from_char_len('\\');
+        let ch = self.peek();
+
+        self.advance();
+
+        match ch {
+            '"' => Ok('"'),
+            '\'' => Ok('\''),
+            '\\' => Ok('\\'),
+            'n' => Ok('\n'),
+            'r' => Ok('\r'),
+            't' => Ok('\t'),
+            '0' => Ok('\0'),
+            _ => Err(LexicalError::InvalidEscape(Span::new(start, self.pos))),
         }
     }
 

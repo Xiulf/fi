@@ -764,7 +764,39 @@ impl<'db> Converter<'db> {
                 ir::ItemKind::Static { ty, body: body_id }
             }
             group::DeclGroupKind::Fixity => {
-                unimplemented!();
+                let decl = &decls[0];
+
+                if let ast::DeclKind::Fixity { assoc, prec, func } = &decl.kind {
+                    let func = match self.resolver.get(Ns::Values, func.symbol) {
+                        Some(ir::Res::Def(def @ (ir::DefKind::Func | ir::DefKind::Ctor), id)) => ir::Res::Def(def, id),
+                        Some(_) => {
+                            self.db
+                                .to_diag_db()
+                                .error(format!("'{}' is not a function or constructor", func))
+                                .with_label(diagnostics::Label::primary(self.file, func.span))
+                                .finish();
+
+                            return;
+                        }
+                        None => {
+                            self.db
+                                .to_diag_db()
+                                .error(format!("unknown function '{}'", func))
+                                .with_label(diagnostics::Label::primary(self.file, func.span))
+                                .finish();
+
+                            return;
+                        }
+                    };
+
+                    ir::ItemKind::Fixity {
+                        assoc: *assoc,
+                        prec: *prec,
+                        func,
+                    }
+                } else {
+                    unreachable!();
+                }
             }
             group::DeclGroupKind::Alias(_) => {
                 let mut kind = None;
@@ -1360,31 +1392,9 @@ impl<'db> Converter<'db> {
                 lhs: Box::new(self.convert_expr(lhs)),
                 rhs: Box::new(self.convert_expr(rhs)),
             },
-            ast::ExprKind::Infix { op, ref lhs, ref rhs } => match self.resolver.get(Ns::Values, op.symbol) {
-                Some(res) => ir::ExprKind::App {
-                    base: Box::new(ir::Expr {
-                        id: self.next_id(),
-                        span: expr.span,
-                        kind: ir::ExprKind::App {
-                            base: Box::new(ir::Expr {
-                                id: self.next_id(),
-                                span: op.span,
-                                kind: ir::ExprKind::Ident { name: op, res },
-                            }),
-                            arg: Box::new(self.convert_expr(lhs)),
-                        },
-                    }),
-                    arg: Box::new(self.convert_expr(rhs)),
-                },
-                None => {
-                    self.db
-                        .to_diag_db()
-                        .error(format!("unknown operator '{}'", op))
-                        .with_label(diagnostics::Label::primary(self.file, op.span))
-                        .finish();
-
-                    ir::ExprKind::Error
-                }
+            ast::ExprKind::Infix { op, ref lhs, ref rhs } => match self.find_operator(op) {
+                Some(id) => self.convert_infix(expr.span, lhs, rhs, id, op),
+                None => ir::ExprKind::Error,
             },
             ast::ExprKind::Let { ref bindings, ref body } => {
                 self.resolver.push_rib(Ns::Values);
@@ -1462,6 +1472,57 @@ impl<'db> Converter<'db> {
                 },
             },
         }
+    }
+
+    fn find_operator(&mut self, name: ir::Ident) -> Option<ir::DefId> {
+        match self.resolver.get(Ns::Values, name.symbol) {
+            Some(ir::Res::Def(ir::DefKind::Fixity, id)) => Some(id),
+            Some(_) => {
+                self.db
+                    .to_diag_db()
+                    .error(format!("'{}' is not an operator", name))
+                    .with_label(diagnostics::Label::primary(self.file, name.span))
+                    .finish();
+
+                None
+            }
+            None => {
+                self.db
+                    .to_diag_db()
+                    .error(format!("unknown operator '{}'", name))
+                    .with_label(diagnostics::Label::primary(self.file, name.span))
+                    .finish();
+
+                None
+            }
+        }
+    }
+
+    fn convert_infix(&mut self, mut expr: &ast::Expr) -> ir::ExprKind {
+        let mut exprs = Vec::with_capacity(2);
+        let mut ops = Vec::with_capacity(1);
+
+        while let ast::ExprKind::Infix { op, lhs, rhs } = &expr.kind {
+            let op = match self.find_operator(*op) {
+                None => return ir::ExprKind::Error,
+                Some(id) => {
+                    if id.module == self.module_id && id.lib == self.lib {
+                        self.items[&id.into()].fixity()
+                    } else {
+                        let file = self.db.module_tree(id.lib).file(id.module);
+                        let hir = self.db.module_hir(file);
+
+                        hir.items[&id.into()].fixity()
+                    }
+                }
+            };
+
+            ops.push(op);
+            exprs.push(self.convert_expr(lhs));
+            expr = &**rhs;
+        }
+
+        exprs.push(self.convert_expr(expr));
     }
 
     fn convert_block(&mut self, block: &ast::Block) -> ir::Block {

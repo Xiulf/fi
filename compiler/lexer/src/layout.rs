@@ -9,12 +9,6 @@ impl LayoutDelim {
     }
 }
 
-impl Pos {
-    fn before(self, s: &str) -> Self {
-        Pos(self.0, self.1 - s.chars().count(), self.2 - ByteOffset::from_str_len(s))
-    }
-}
-
 fn is_top_decl(pos: Pos, stack: &[(Pos, LayoutDelim)]) -> bool {
     match stack {
         [(_, LayoutDelim::Root), (pos2, LayoutDelim::Where)] => pos2.1 == pos.1,
@@ -49,9 +43,10 @@ impl<'src> Lexer<'src> {
         let pos = Pos(self.line, self.col, self.pos);
         let _ = self.skip();
         let next_pos = Pos(self.line, self.col, self.pos);
-        // println!("{:?}: {:?}", kind, self.text(span));
 
         if let [.., (_, LayoutDelim::Attr)] = self.stack[..] {
+            self.queue.push_back(token);
+
             if let Token {
                 kind: TokenType::RightBracket, ..
             } = token
@@ -91,7 +86,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
                 "data" => {
-                    self.insert_default(start, start);
+                    self.insert_default(start);
                     self.queue.push_back(token);
 
                     if is_top_decl(start, &self.stack) {
@@ -101,7 +96,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
                 "trait" => {
-                    self.insert_default(start, start);
+                    self.insert_default(start);
                     self.queue.push_back(token);
 
                     if is_top_decl(start, &self.stack) {
@@ -110,18 +105,171 @@ impl<'src> Lexer<'src> {
                         self.stack.pop().unwrap();
                     }
                 }
+                "let" => {
+                    self.insert_default(start);
+                    self.queue.push_back(token);
+
+                    match self.stack[..] {
+                        [.., (_, LayoutDelim::Prop)] => {
+                            self.stack.pop().unwrap();
+                        }
+                        [.., (p, LayoutDelim::Do)] if p.1 == start.1 => {
+                            self.insert_start(LayoutDelim::LetStmt, next_pos);
+                        }
+                        _ => {
+                            self.insert_start(LayoutDelim::Let, next_pos);
+                        }
+                    }
+                }
+                "in" => {
+                    let mut c = Collapse::new(self.queue.len());
+
+                    c.collapse(
+                        start,
+                        |_, _, lyt| match lyt {
+                            LayoutDelim::Let => false,
+                            LayoutDelim::Do => false,
+                            _ => lyt.is_indented(),
+                        },
+                        &mut self.stack,
+                        &mut self.queue,
+                    );
+
+                    match self.stack[..] {
+                        [.., (_, LayoutDelim::Do), (_, LayoutDelim::LetStmt)] => {
+                            self.stack.pop().unwrap();
+                            self.stack.pop().unwrap();
+                            self.queue.push_back(Token {
+                                span: Span::new(start.2, start.2),
+                                kind: TokenType::LayoutEnd,
+                            });
+
+                            self.queue.push_back(Token {
+                                span: Span::new(start.2, start.2),
+                                kind: TokenType::LayoutEnd,
+                            });
+
+                            self.queue.push_back(token);
+                        }
+                        [.., (_, lyt)] if lyt.is_indented() => {
+                            self.stack.pop().unwrap();
+                            self.queue.push_back(Token {
+                                span: Span::new(start.2, start.2),
+                                kind: TokenType::LayoutEnd,
+                            });
+
+                            self.queue.push_back(token);
+                        }
+                        _ => {
+                            c.restore(&mut self.stack, &mut self.queue);
+                            self.insert_default(start);
+
+                            if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                                self.stack.pop().unwrap();
+                            }
+                        }
+                    }
+                }
                 "do" => {
-                    self.insert_default(start, start);
+                    self.insert_default(start);
                     self.queue.push_back(token);
 
                     if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                         self.stack.pop().unwrap();
                     } else {
-                        self.insert_start(LayoutDelim::Do, pos);
+                        self.insert_start(LayoutDelim::Do, next_pos);
+                    }
+                }
+                "case" => {
+                    self.insert_default(start);
+                    self.queue.push_back(token);
+
+                    if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                        self.stack.pop().unwrap();
+                    } else {
+                        self.insert_start(LayoutDelim::Case, pos);
+                    }
+                }
+                "of" => {
+                    Collapse::new(self.queue.len()).collapse(start, indented_p, &mut self.stack, &mut self.queue);
+
+                    if let [.., (_, LayoutDelim::Case)] = self.stack[..] {
+                        self.stack.pop().unwrap();
+                        self.queue.push_back(token);
+                        self.insert_start(LayoutDelim::Of, next_pos);
+                        self.stack.push((next_pos, LayoutDelim::CaseBinders));
+                    } else {
+                        self.insert_default(start);
+
+                        if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                            self.stack.pop().unwrap();
+                        }
+                    }
+                }
+                "if" => {
+                    self.insert_default(start);
+                    self.queue.push_back(token);
+
+                    if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                        self.stack.pop().unwrap();
+                    } else {
+                        self.stack.push((start, LayoutDelim::If));
+                    }
+                }
+                "then" => {
+                    let mut c = Collapse::new(self.queue.len());
+
+                    c.collapse(start, indented_p, &mut self.stack, &mut self.queue);
+
+                    if let [.., (_, LayoutDelim::If)] = self.stack[..] {
+                        self.stack.pop().unwrap();
+                        self.queue.push_back(token);
+                        self.stack.push((start, LayoutDelim::Then));
+                    } else {
+                        c.restore(&mut self.stack, &mut self.queue);
+                        self.insert_default(start);
+
+                        if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                            self.stack.pop().unwrap();
+                        }
+                    }
+                }
+                "else" => {
+                    let mut c = Collapse::new(self.queue.len());
+
+                    c.collapse(start, indented_p, &mut self.stack, &mut self.queue);
+
+                    if let [.., (_, LayoutDelim::Then)] = self.stack[..] {
+                        self.stack.pop().unwrap();
+                        self.queue.push_back(token);
+                    } else {
+                        c.restore(&mut self.stack, &mut self.queue);
+                        Collapse::new(self.queue.len()).collapse(start, offside_p, &mut self.stack, &mut self.queue);
+
+                        if is_top_decl(start, &self.stack) {
+                            self.queue.push_back(token);
+                        } else {
+                            self.insert_sep(start);
+                            self.queue.push_back(token);
+
+                            if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                                self.stack.pop().unwrap();
+                            }
+                        }
+                    }
+                }
+                "forall" => {
+                    self.insert_default(start);
+                    self.queue.push_back(token);
+
+                    if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                        self.stack.pop().unwrap();
+                    } else {
+                        self.stack.push((start, LayoutDelim::Forall));
                     }
                 }
                 _ => {
-                    self.insert_default(start, start);
+                    self.insert_default(start);
                     self.queue.push_back(token);
 
                     if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
@@ -129,6 +277,47 @@ impl<'src> Lexer<'src> {
                     }
                 }
             },
+            TokenType::RightArrow => {
+                Collapse::new(self.queue.len()).collapse(
+                    start,
+                    |s, p, lyt| match lyt {
+                        LayoutDelim::Do => true,
+                        LayoutDelim::Of => false,
+                        _ => offside_end_p(s, p, lyt),
+                    },
+                    &mut self.stack,
+                    &mut self.queue,
+                );
+
+                if let [.., (_, LayoutDelim::CaseBinders | LayoutDelim::CaseGuard)] = self.stack[..] {
+                    self.stack.pop().unwrap();
+                }
+
+                self.queue.push_back(token);
+            }
+            TokenType::Equals => {
+                let mut c = Collapse::new(self.queue.len());
+
+                c.collapse(
+                    start,
+                    |_, _, lyt| match lyt {
+                        LayoutDelim::Where => true,
+                        LayoutDelim::Let => true,
+                        LayoutDelim::LetStmt => true,
+                        _ => false,
+                    },
+                    &mut self.stack,
+                    &mut self.queue,
+                );
+
+                if let [.., (_, LayoutDelim::DeclGuard)] = self.stack[..] {
+                    self.queue.push_back(token);
+                } else {
+                    c.restore(&mut self.stack, &mut self.queue);
+                    self.insert_default(start);
+                    self.queue.push_back(token);
+                }
+            }
             TokenType::Pipe => {
                 let mut c = Collapse::new(self.queue.len());
 
@@ -146,75 +335,46 @@ impl<'src> Lexer<'src> {
                     }
                     _ => {
                         c.restore(&mut self.stack, &mut self.queue);
-                        self.insert_default(start, next_pos);
+                        self.insert_default(start);
                     }
                 }
 
                 self.queue.push_back(token);
-            }
-            TokenType::Equals => {
-                let mut c = Collapse::new(self.queue.len());
-
-                c.collapse(
-                    start,
-                    |_, _, lyt| match lyt {
-                        LayoutDelim::Where => true,
-                        LayoutDelim::Let => true,
-                        _ => false,
-                    },
-                    &mut self.stack,
-                    &mut self.queue,
-                );
-
-                if let [.., (_, LayoutDelim::DeclGuard)] = self.stack[..] {
-                    self.queue.push_back(token);
-                } else {
-                    c.restore(&mut self.stack, &mut self.queue);
-                    self.queue.push_back(token);
-                    self.insert_default(start, next_pos);
-                }
             }
             TokenType::Comma => {
                 Collapse::new(self.queue.len()).collapse(start, indented_p, &mut self.stack, &mut self.queue);
                 self.queue.push_back(token);
 
                 if let [.., (_, LayoutDelim::Brace)] = self.stack[..] {
-                    self.stack.push((pos, LayoutDelim::Prop));
+                    self.stack.push((start, LayoutDelim::Prop));
                 }
             }
-            TokenType::DoubleDot => {
-                Collapse::new(self.queue.len()).collapse(start, offside_p, &mut self.stack, &mut self.queue);
-                self.queue.push_back(token);
-                self.insert_sep(next_pos);
-            }
             TokenType::Dot => {
+                self.insert_default(start);
                 self.queue.push_back(token);
-                self.insert_default(start, next_pos);
 
                 if let [.., (_, LayoutDelim::Forall)] = self.stack[..] {
                     self.stack.pop().unwrap();
                 } else {
-                    self.stack.push((pos, LayoutDelim::Prop));
+                    self.stack.push((start, LayoutDelim::Prop));
                 }
             }
             TokenType::LeftParen => {
-                self.insert_default(start, pos);
+                self.insert_default(start);
                 self.queue.push_back(token);
                 self.stack.push((pos, LayoutDelim::Paren));
             }
             TokenType::LeftBrace => {
-                self.insert_default(start, pos);
+                self.insert_default(start);
                 self.queue.push_back(token);
                 self.stack.push((pos, LayoutDelim::Brace));
                 self.stack.push((pos, LayoutDelim::Prop));
             }
             TokenType::LeftBracket => {
-                self.insert_default(start, pos);
+                self.insert_default(start);
                 self.queue.push_back(token);
 
-                let before = start.before("[");
-
-                if is_top_decl(before, &self.stack) {
+                if is_top_decl(start, &self.stack) {
                     self.stack.push((pos, LayoutDelim::Attr));
                 } else {
                     self.stack.push((pos, LayoutDelim::Square));
@@ -258,13 +418,13 @@ impl<'src> Lexer<'src> {
             }
             _ => {
                 self.queue.push_back(token);
-                self.insert_default(pos, next_pos);
+                self.insert_default(pos);
             }
         }
     }
 
-    fn insert_default(&mut self, start: Pos, pos: Pos) {
-        Collapse::new(self.queue.len()).collapse(start, offside_p, &mut self.stack, &mut self.queue);
+    fn insert_default(&mut self, pos: Pos) {
+        Collapse::new(self.queue.len()).collapse(pos, offside_p, &mut self.stack, &mut self.queue);
 
         self.insert_sep(pos);
     }

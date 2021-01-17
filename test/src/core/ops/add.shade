@@ -1,38 +1,40 @@
-module Core.Ops.Add (Add(..)) where
+module Core.Ops.Add (Add(..), (+)) where
 
 import Prim
 
-trait Add l r o | l r -> o, l o -> r, r o -> l where
-    fn add :: l -> r -> o
+infixl 6 add as (+)
 
-impl addInt8 :: Add Int8 Int8 Int8 where
+trait Add a where
+    fn add :: a -> a -> a
+
+impl addInt8 :: Add Int8 where
     fn add a b = add_i8 a b
 
-impl addInt16 :: Add Int16 Int16 Int16 where
+impl addInt16 :: Add Int16 where
     fn add a b = add_i16 a b
 
-impl addInt32 :: Add Int32 Int32 Int32 where
+impl addInt32 :: Add Int32 where
     fn add a b = add_i32 a b
 
-impl addInt64 :: Add Int64 Int64 Int64 where
+impl addInt64 :: Add Int64 where
     fn add a b = add_i64 a b
 
-impl addInt128 :: Add Int128 Int128 Int128 where
+impl addInt128 :: Add Int128 where
     fn add a b = add_i128 a b
 
-impl addUint8 :: Add Uint8 Uint8 Uint8 where
+impl addUint8 :: Add Uint8 where
     fn add a b = add_u8 a b
 
-impl addUint16 :: Add Uint16 Uint16 Uint16 where
+impl addUint16 :: Add Uint16 where
     fn add a b = add_u16 a b
 
-impl addUint32 :: Add Uint32 Uint32 Uint32 where
+impl addUint32 :: Add Uint32 where
     fn add a b = add_u32 a b
 
-impl addUint64 :: Add Uint64 Uint64 Uint64 where
+impl addUint64 :: Add Uint64 where
     fn add a b = add_u64 a b
 
-impl addUint128 :: Add Uint128 Uint128 Uint128 where
+impl addUint128 :: Add Uint128 where
     fn add a b = add_u128 a b
 
 [intrinsic] foreign fn add_i8 :: Int8 -> Int8 -> Int8

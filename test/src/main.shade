@@ -5,4 +5,4 @@ import Core
 [main]
 fn main :: Int32
 fn main = do
-    add 1 (2 :: Int32)
+    3 + 5 + 2

@@ -1,4 +1,5 @@
 mod debug;
+mod display;
 
 pub use crate::symbol::{Ident, Symbol};
 pub use codespan::Span;
@@ -133,7 +134,7 @@ pub enum Assoc {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Prec {
     Zero,
     One,

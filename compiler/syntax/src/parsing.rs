@@ -12,6 +12,9 @@ parser::keywords! {
     TFn, "fn"
     TConst, "const"
     TStatic, "static"
+    TInfixl, "infixl"
+    TInfixr, "infixr"
+    TInfix, "infix"
     TAlias, "alias"
     TData, "data"
     TTrait, "trait"
@@ -97,22 +100,6 @@ impl Module {
 
 impl Parse for Attribute {
     fn parse(input: ParseStream) -> Result<Self> {
-        // if let Ok(attr) = input.parse::<Attr>() {
-        //     Ok(Attribute {
-        //         span: attr.span,
-        //         name: Ident {
-        //             span: attr.span,
-        //             symbol: Symbol::new("doc"),
-        //         },
-        //         body: Some(AttrBody {
-        //             span: attr.span,
-        //             args: vec![AttrArg::Literal(Literal::String(StringLiteral {
-        //                 span: Span::new(attr.span.start() + codespan::ByteOffset::from_str_len("--|"), attr.span.end()),
-        //                 text: attr.text,
-        //             }))],
-        //         }),
-        //     })
-        // } else {
         let start = input.span();
         let _ = input.parse::<TLBracket>()?;
         let name = input.parse()?;
@@ -125,13 +112,11 @@ impl Parse for Attribute {
             name,
             body,
         })
-        // }
     }
 }
 
 impl Attribute {
     fn peek(input: ParseStream) -> bool {
-        // input.peek::<Attr>() || input.peek::<TLBracket>()
         input.peek::<TLBracket>()
     }
 }
@@ -207,15 +192,19 @@ impl Parse for Literal {
             Ok(Literal::Float(span, val.to_bits()))
         } else if let Ok(TChar { span }) = input.parse() {
             let text = input.cursor().text(span);
+            let text = &text[1..text.len() - 1];
             let val = text.parse::<char>().unwrap();
 
             Ok(Literal::Char(span, val))
         } else if let Ok(TString { span }) = input.parse() {
             let text = input.cursor().text(span);
+            let text = &text[1..text.len() - 1];
+            // TODO: parse escape sequences
 
             Ok(Literal::String(span, text.into()))
         } else if let Ok(TRawString { span }) = input.parse() {
             let text = input.cursor().text(span);
+            let text = &text[2..text.len() - 1];
 
             Ok(Literal::String(span, text.into()))
         } else {
@@ -268,7 +257,16 @@ impl Parse for Export {
             ExportKind::Any
         };
 
-        let name = Module::parse_name(input)?;
+        let name = if let Ok(TSymbol { span }) = input.parse() {
+            let text = input.cursor().text(span);
+
+            Ident {
+                span,
+                symbol: Symbol::new(&text[1..text.len() - 1]),
+            }
+        } else {
+            Module::parse_name(input)?
+        };
 
         if let Ok(_) = input.parse::<TLParen>() {
             let ctors = if let Ok(_) = input.parse::<TDblDot>() {
@@ -338,7 +336,17 @@ impl Parse for ImportDecl {
 impl Parse for Import {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
-        let name = input.parse::<Ident>()?;
+        let name = if let Ok(TSymbol { span }) = input.parse() {
+            let text = input.cursor().text(span);
+
+            Ident {
+                span,
+                symbol: Symbol::new(&text[1..text.len() - 1]),
+            }
+        } else {
+            input.parse::<Ident>()?
+        };
+
         let kind = if let Ok(_) = input.parse::<TLParen>() {
             let ctors = if let Ok(_) = input.parse::<TDblDot>() {
                 ImportGroup::All
@@ -445,6 +453,46 @@ impl Parse for Decl {
             };
 
             (name, kind)
+        } else if input.peek::<TInfixl>() || input.peek::<TInfixr>() || input.peek::<TInfix>() {
+            let assoc = if let Ok(_) = input.parse::<TInfixl>() {
+                Assoc::Left
+            } else if let Ok(_) = input.parse::<TInfixr>() {
+                Assoc::Right
+            } else {
+                input.parse::<TInfix>()?;
+                Assoc::None
+            };
+
+            let TInt { span } = input.parse()?;
+            let prec = match input.cursor().text(span) {
+                "0" => Prec::Zero,
+                "1" => Prec::One,
+                "2" => Prec::Two,
+                "3" => Prec::Three,
+                "4" => Prec::Four,
+                "5" => Prec::Five,
+                "6" => Prec::Six,
+                "7" => Prec::Seven,
+                "8" => Prec::Eight,
+                "9" => Prec::Nine,
+                _ => {
+                    return Err(ParseError {
+                        span,
+                        expected: "0, 1, 2, 3, 4, 5, 6, 7, 8 or 0".into(),
+                    })
+                }
+            };
+
+            let func = input.parse()?;
+            let _ = input.parse::<TAs>()?;
+            let op = input.parse::<TSymbol>()?;
+            let op_text = input.cursor().text(op.span);
+            let op = Ident {
+                span: op.span,
+                symbol: Symbol::new(&op_text[1..op_text.len() - 1]),
+            };
+
+            (op, DeclKind::Fixity { assoc, prec, func })
         } else if let Ok(_) = input.parse::<TAlias>() {
             let name = input.parse()?;
             let kind = if let Ok(_) = input.parse::<TDblColon>() {
@@ -584,6 +632,9 @@ impl Decl {
             input.peek::<TFn>() ||
             input.peek::<TConst>() ||
             input.peek::<TStatic>() ||
+            input.peek::<TInfixl>() ||
+            input.peek::<TInfixr>() ||
+            input.peek::<TInfix>() ||
             input.peek::<TAlias>() ||
             input.peek::<TData>() ||
             input.peek::<TTrait>() ||

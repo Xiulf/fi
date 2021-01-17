@@ -98,7 +98,7 @@ pub enum ItemKind {
     Fixity {
         assoc: Assoc,
         prec: Prec,
-        func: HirId,
+        func: Res,
     },
     Alias {
         kind: Type,
@@ -557,6 +557,13 @@ impl Item {
         let repr = Symbol::new("abi");
 
         self.attrs.iter().filter_map(|a| if a.name.symbol == repr { a.str_arg() } else { None }).next()
+    }
+
+    pub fn fixity(&self) -> (Assoc, Prec, Res) {
+        match self.kind {
+            ItemKind::Fixity { assoc, prec, func } => (assoc, prec, func),
+            _ => unreachable!(),
+        }
     }
 
     pub fn data(&self) -> &DataHead {

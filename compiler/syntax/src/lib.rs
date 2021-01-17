@@ -23,17 +23,20 @@ fn parse(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> {
         }
     };
 
-    // for tok in &tokens {
-    //     println!("{:>16?}: {:?}", tok.kind, lexer.text(tok.span));
+    // if lexer.text(tokens[1].span) == "Main" {
+    //     for tok in &tokens {
+    //         println!("{:?}: {:?}", tok.kind, lexer.text(tok.span));
+    //     }
     // }
-    //
-    // println!();
 
     let tokens = parser::buffer::TokenBuffer::new(id, tokens);
     let buffer = parser::parse::ParseBuffer::new(tokens.begin(&source), codespan::Span::default());
 
     match buffer.parse::<ast::Module>() {
-        Ok(module) => Arc::new(module),
+        Ok(module) => {
+            // println!("{}", module);
+            Arc::new(module)
+        }
         Err(e) => {
             report_parse_error(db, id, e);
             db.print_and_exit();
@@ -47,6 +50,21 @@ fn report_lex_error(db: &dyn SyntaxDatabase, file: source::FileId, error: parser
             .to_diag_db()
             .error(format!("unknown character {:?}", ch))
             .with_label(diagnostics::Label::primary(file, ast::Span::new(idx, idx)))
+            .finish(),
+        parser::lexer::LexicalError::InvalidCharLiteral(span) => db
+            .to_diag_db()
+            .error("invalid character literal")
+            .with_label(diagnostics::Label::primary(file, span))
+            .finish(),
+        parser::lexer::LexicalError::UnterminatedString(span) => db
+            .to_diag_db()
+            .error("unterminated string literal")
+            .with_label(diagnostics::Label::primary(file, span))
+            .finish(),
+        parser::lexer::LexicalError::InvalidEscape(span) => db
+            .to_diag_db()
+            .error("invalid character escape sequence")
+            .with_label(diagnostics::Label::primary(file, span))
             .finish(),
     }
 }

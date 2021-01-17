@@ -1,6 +1,8 @@
-module Core.Ops.Sub (Sub(..)) where
+module Core.Ops.Sub (Sub(..), (-)) where
 
 import Prim
+
+infixl 6 sub as (-)
 
 trait Sub l r o | l r -> o, l o -> r, r o -> l where
     fn sub :: l -> r -> o
