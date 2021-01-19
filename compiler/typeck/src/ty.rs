@@ -5,13 +5,13 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Ty(Arc<(Type, Span, FileId)>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct List<T>(Arc<[T]>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Type {
     Error,
     Unknown(Unknown),
@@ -28,43 +28,49 @@ pub enum Type {
     Skolem(TypeVar, Option<Ty>, Skolem, SkolemScope),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Unknown(pub u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct TypeVar(pub HirId);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Skolem(pub u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SkolemScope(pub u64);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Field {
     pub span: Span,
     pub name: Symbol,
     pub ty: Ty,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Variant {
     pub id: DefId,
     pub tys: List<Ty>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct Variants {
+    pub vars: List<TypeVar>,
+    pub variants: List<Variant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Ctnt {
     pub span: Span,
     pub file: FileId,
-    pub trait_: DefId,
+    pub class: DefId,
     pub tys: List<Ty>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Impl {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct Instance {
     pub id: DefId,
-    pub trait_: DefId,
+    pub class: DefId,
     pub tys: List<Ty>,
     pub chain: List<HirId>,
     pub chain_index: usize,
@@ -143,10 +149,10 @@ impl Ty {
         let mut set = HashSet::new();
 
         self.everything(&mut |t| match &**t {
-            Type::Unknown(u) => {
+            | Type::Unknown(u) => {
                 set.insert(*u);
-            }
-            _ => {}
+            },
+            | _ => {},
         });
 
         set
@@ -154,53 +160,55 @@ impl Ty {
 
     pub fn is_mono_type(&self) -> bool {
         match **self {
-            Type::ForAll(..) => false,
-            _ => true,
+            | Type::ForAll(..) => false,
+            | _ => true,
         }
     }
 
     pub fn needs_parens(&self) -> bool {
         match &**self {
-            Type::ForAll(..) => true,
-            Type::App(..) => true,
-            Type::KindApp(..) => true,
-            Type::Ctnt(..) => true,
-            _ => false,
+            | Type::ForAll(..) => true,
+            | Type::App(..) => true,
+            | Type::KindApp(..) => true,
+            | Type::Ctnt(..) => true,
+            | _ => false,
         }
     }
 
     pub fn replace_vars(self, vars: HashMap<TypeVar, Ty>) -> Ty {
         self.everywhere(&mut |t| match &*t {
-            Type::Var(v) if vars.contains_key(v) => vars[v].clone(),
-            _ => t,
+            | Type::Var(v) if vars.contains_key(v) => vars[v].clone(),
+            | _ => t,
         })
     }
 
     pub fn equal(&self, other: &Self) -> bool {
         match (&**self, &**other) {
-            (Type::Error, Type::Error) => true,
-            (Type::Int(a), Type::Int(b)) => a == b,
-            (Type::String(a), Type::String(b)) => a == b,
-            (Type::Unknown(a), Type::Unknown(b)) => a == b,
-            (Type::Var(a), Type::Var(b)) => a == b,
-            (Type::Ctor(a), Type::Ctor(b)) => a == b,
-            (Type::Skolem(a1, Some(b1), c1, d1), Type::Skolem(a2, Some(b2), c2, d2)) => a1 == a2 && b1.equal(b2) && c1 == c2 && d1 == d2,
-            (Type::Skolem(a1, None, c1, d1), Type::Skolem(a2, None, c2, d2)) => a1 == a2 && c1 == c2 && d1 == d2,
-            (Type::ForAll(a1, b1, c1, d1), Type::ForAll(a2, b2, c2, d2)) => {
-                a1 == a2 &&
-                    match (b1, b2) {
-                        (Some(b1), Some(b2)) => b1.equal(b2),
-                        _ => false,
-                    } &&
-                    c1.equal(c2) &&
-                    d1 == d2
-            }
-            (Type::Tuple(a), Type::Tuple(b)) => a.iter().zip(b.iter()).all(|(a, b)| a.equal(b)),
-            (Type::App(a1, b1), Type::App(a2, b2)) | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => a1.equal(a2) && b1.equal(b2),
-            (Type::Ctnt(a1, b1), Type::Ctnt(a2, b2)) => a1.trait_ == a2.trait_ && a1.tys.iter().zip(a2.tys.iter()).all(|(a, b)| a.equal(b)) && b1.equal(b2),
-            (Type::Row(a1, Some(b1)), Type::Row(a2, Some(b2))) => a1.iter().zip(a2.iter()).all(|(a, b)| a.name == b.name && a.ty.equal(&b.ty)) && b1.equal(b2),
-            (Type::Row(a1, None), Type::Row(a2, None)) => a1.iter().zip(a2.iter()).all(|(a, b)| a.name == b.name && a.ty.equal(&b.ty)),
-            (_, _) => false,
+            | (Type::Error, Type::Error) => true,
+            | (Type::Int(a), Type::Int(b)) => a == b,
+            | (Type::String(a), Type::String(b)) => a == b,
+            | (Type::Unknown(a), Type::Unknown(b)) => a == b,
+            | (Type::Var(a), Type::Var(b)) => a == b,
+            | (Type::Ctor(a), Type::Ctor(b)) => a == b,
+            | (Type::Skolem(a1, Some(b1), c1, d1), Type::Skolem(a2, Some(b2), c2, d2)) => a1 == a2 && b1.equal(b2) && c1 == c2 && d1 == d2,
+            | (Type::Skolem(a1, None, c1, d1), Type::Skolem(a2, None, c2, d2)) => a1 == a2 && c1 == c2 && d1 == d2,
+            | (Type::ForAll(a1, b1, c1, d1), Type::ForAll(a2, b2, c2, d2)) => {
+                a1 == a2
+                    && match (b1, b2) {
+                        | (Some(b1), Some(b2)) => b1.equal(b2),
+                        | _ => false,
+                    }
+                    && c1.equal(c2)
+                    && d1 == d2
+            },
+            | (Type::Tuple(a), Type::Tuple(b)) => a.iter().zip(b.iter()).all(|(a, b)| a.equal(b)),
+            | (Type::App(a1, b1), Type::App(a2, b2)) | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => a1.equal(a2) && b1.equal(b2),
+            | (Type::Ctnt(a1, b1), Type::Ctnt(a2, b2)) => a1.class == a2.class && a1.tys.iter().zip(a2.tys.iter()).all(|(a, b)| a.equal(b)) && b1.equal(b2),
+            | (Type::Row(a1, Some(b1)), Type::Row(a2, Some(b2))) => {
+                a1.iter().zip(a2.iter()).all(|(a, b)| a.name == b.name && a.ty.equal(&b.ty)) && b1.equal(b2)
+            },
+            | (Type::Row(a1, None), Type::Row(a2, None)) => a1.iter().zip(a2.iter()).all(|(a, b)| a.name == b.name && a.ty.equal(&b.ty)),
+            | (_, _) => false,
         }
     }
 
@@ -209,30 +217,30 @@ impl Ty {
         F: FnMut(&Ty),
     {
         match &**self {
-            Type::App(t1, t2) => {
+            | Type::App(t1, t2) => {
                 t1.everything(f);
                 t2.everything(f);
-            }
-            Type::KindApp(t1, t2) => {
+            },
+            | Type::KindApp(t1, t2) => {
                 t1.everything(f);
                 t2.everything(f);
-            }
-            Type::ForAll(_, k1, t1, _) => {
+            },
+            | Type::ForAll(_, k1, t1, _) => {
                 k1.as_ref().map(|k1| k1.everything(f));
                 t1.everything(f);
-            }
-            Type::Ctnt(ctnt, t2) => {
+            },
+            | Type::Ctnt(ctnt, t2) => {
                 ctnt.tys.iter().for_each(|t| t.everything(f));
                 t2.everything(f);
-            }
-            Type::Tuple(tys) => {
+            },
+            | Type::Tuple(tys) => {
                 tys.iter().for_each(|t| t.everything(f));
-            }
-            Type::Row(fields, tail) => {
+            },
+            | Type::Row(fields, tail) => {
                 fields.iter().for_each(|f1| f1.ty.everything(f));
                 tail.as_ref().map(|t| t.everything(f));
-            }
-            _ => {}
+            },
+            | _ => {},
         }
 
         f(self);
@@ -243,37 +251,37 @@ impl Ty {
         F: FnMut(Ty) -> Ty,
     {
         match &*self {
-            Type::App(t1, t2) => {
+            | Type::App(t1, t2) => {
                 let t1 = t1.clone().everywhere(f);
                 let t2 = t2.clone().everywhere(f);
 
                 f(Ty::app(self.span(), self.file(), t1, t2))
-            }
-            Type::KindApp(t1, t2) => {
+            },
+            | Type::KindApp(t1, t2) => {
                 let t1 = t1.clone().everywhere(f);
                 let t2 = t2.clone().everywhere(f);
 
                 f(Ty::kind_app(self.span(), self.file(), t1, t2))
-            }
-            Type::ForAll(var, k1, t1, scope) => {
+            },
+            | Type::ForAll(var, k1, t1, scope) => {
                 let k1 = k1.clone().map(|k1| k1.everywhere(f));
                 let t1 = t1.clone().everywhere(f);
 
                 f(Ty::forall(self.span(), self.file(), *var, k1, t1, *scope))
-            }
-            Type::Ctnt(ctnt, t2) => {
+            },
+            | Type::Ctnt(ctnt, t2) => {
                 let tys = (&ctnt.tys).into_iter().map(|t| t.everywhere(f)).collect::<List<_>>();
                 let t2 = t2.clone().everywhere(f);
                 let ctnt = Ctnt { tys, ..*ctnt };
 
                 f(Ty::ctnt(self.span(), self.file(), ctnt, t2))
-            }
-            Type::Tuple(tys) => {
+            },
+            | Type::Tuple(tys) => {
                 let tys = tys.into_iter().map(|t| t.everywhere(f)).collect::<List<_>>();
 
                 f(Ty::tuple(self.span(), self.file(), tys))
-            }
-            Type::Row(fields, tail) => {
+            },
+            | Type::Row(fields, tail) => {
                 let fields = fields
                     .into_iter()
                     .map(|f1| Field {
@@ -286,8 +294,8 @@ impl Ty {
                 let tail = tail.clone().map(|t| t.everywhere(f));
 
                 f(Ty::row(self.span(), self.file(), fields, tail))
-            }
-            _ => f(self),
+            },
+            | _ => f(self),
         }
     }
 
@@ -296,37 +304,37 @@ impl Ty {
         F: FnMut(Ty) -> Result<Ty>,
     {
         match &*self {
-            Type::App(t1, t2) => {
+            | Type::App(t1, t2) => {
                 let t1 = t1.clone().everywhere_result(f)?;
                 let t2 = t2.clone().everywhere_result(f)?;
 
                 f(Ty::app(self.span(), self.file(), t1, t2))
-            }
-            Type::KindApp(t1, t2) => {
+            },
+            | Type::KindApp(t1, t2) => {
                 let t1 = t1.clone().everywhere_result(f)?;
                 let t2 = t2.clone().everywhere_result(f)?;
 
                 f(Ty::kind_app(self.span(), self.file(), t1, t2))
-            }
-            Type::ForAll(var, k1, t1, scope) => {
+            },
+            | Type::ForAll(var, k1, t1, scope) => {
                 let k1 = k1.clone().map(|k1| k1.everywhere_result(f)).transpose()?;
                 let t1 = t1.clone().everywhere_result(f)?;
 
                 f(Ty::forall(self.span(), self.file(), *var, k1, t1, *scope))
-            }
-            Type::Ctnt(ctnt, t2) => {
+            },
+            | Type::Ctnt(ctnt, t2) => {
                 let tys = (&ctnt.tys).into_iter().map(|t| t.everywhere_result(f)).collect::<Result<_>>()?;
                 let t2 = t2.clone().everywhere_result(f)?;
                 let ctnt = Ctnt { tys, ..*ctnt };
 
                 f(Ty::ctnt(self.span(), self.file(), ctnt, t2))
-            }
-            Type::Tuple(tys) => {
+            },
+            | Type::Tuple(tys) => {
                 let tys = tys.into_iter().map(|t| t.everywhere_result(f)).collect::<Result<List<_>>>()?;
 
                 f(Ty::tuple(self.span(), self.file(), tys))
-            }
-            Type::Row(fields, tail) => {
+            },
+            | Type::Row(fields, tail) => {
                 let fields = fields
                     .into_iter()
                     .map(|f1| {
@@ -341,8 +349,8 @@ impl Ty {
                 let tail = tail.clone().map(|t| t.everywhere_result(f)).transpose()?;
 
                 f(Ty::row(self.span(), self.file(), fields, tail))
-            }
-            _ => f(self),
+            },
+            | _ => f(self),
         }
     }
 }
@@ -438,5 +446,20 @@ impl std::ops::BitXor<(Span, FileId)> for Ctnt {
             file: rhs.1,
             ..self
         }
+    }
+}
+
+impl Variants {
+    pub fn apply(self, args: List<Ty>) -> List<Variant> {
+        assert_eq!(self.vars.len(), args.len());
+        let subst = self.vars.into_iter().zip(args).collect::<HashMap<_, _>>();
+
+        self.variants
+            .into_iter()
+            .map(|v| Variant {
+                id: v.id,
+                tys: v.tys.into_iter().map(|t| t.replace_vars(subst.clone())).collect(),
+            })
+            .collect()
     }
 }

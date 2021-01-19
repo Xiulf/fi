@@ -110,12 +110,7 @@ impl DiagnosticBuilder<'_> {
     }
 
     pub fn finish(self) {
-        let DiagnosticBuilder {
-            rep,
-            diag,
-            labels,
-            notes,
-        } = self;
+        let DiagnosticBuilder { rep, diag, labels, notes } = self;
 
         rep.report(diag.with_labels(labels).with_notes(notes));
     }
@@ -149,9 +144,9 @@ where
 
     fn has_errors(&self) -> bool {
         self.diags.borrow().iter().any(|d| match d.severity {
-            Severity::Bug => true,
-            Severity::Error => true,
-            _ => false,
+            | Severity::Bug => true,
+            | Severity::Error => true,
+            | _ => false,
         })
     }
 

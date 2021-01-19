@@ -20,17 +20,17 @@ pub enum DeclGroupKind {
     Fixity,
     Alias(bool),
     Data(bool),
-    Trait,
-    Impl,
+    Class,
+    Instance,
 }
 
-pub struct ImplDeclGroups<'ast> {
-    decls: &'ast [ImplDecl],
+pub struct InstanceDeclGroup<'ast> {
+    decls: &'ast [InstanceDecl],
     start: usize,
 }
 
 #[derive(Clone, Copy)]
-pub enum ImplDeclGroupKind {
+pub enum InstanceDeclGroupKind {
     Func(bool),
 }
 
@@ -39,9 +39,9 @@ pub struct LetBindingGroups<'ast> {
     start: usize,
 }
 
-impl<'ast> ImplDeclGroups<'ast> {
-    pub fn new(decls: &'ast [ImplDecl]) -> Self {
-        ImplDeclGroups { decls, start: 0 }
+impl<'ast> InstanceDeclGroup<'ast> {
+    pub fn new(decls: &'ast [InstanceDecl]) -> Self {
+        InstanceDeclGroup { decls, start: 0 }
     }
 }
 
@@ -54,20 +54,20 @@ impl<'ast> LetBindingGroups<'ast> {
 impl Decl {
     fn group_kind(&self) -> DeclGroupKind {
         match &self.kind {
-            DeclKind::Foreign { .. } => DeclGroupKind::Foreign,
-            DeclKind::FuncTy { .. } => DeclGroupKind::Func(true),
-            DeclKind::Func { .. } => DeclGroupKind::Func(false),
-            DeclKind::ConstTy { .. } => DeclGroupKind::Const(true),
-            DeclKind::Const { .. } => DeclGroupKind::Const(false),
-            DeclKind::StaticTy { .. } => DeclGroupKind::Static(true),
-            DeclKind::Static { .. } => DeclGroupKind::Static(false),
-            DeclKind::Fixity { .. } => DeclGroupKind::Fixity,
-            DeclKind::AliasKind { .. } => DeclGroupKind::Alias(true),
-            DeclKind::Alias { .. } => DeclGroupKind::Alias(false),
-            DeclKind::DataKind { .. } => DeclGroupKind::Data(true),
-            DeclKind::Data { .. } => DeclGroupKind::Data(false),
-            DeclKind::Trait { .. } => DeclGroupKind::Trait,
-            DeclKind::ImplChain { .. } => DeclGroupKind::Impl,
+            | DeclKind::Foreign { .. } => DeclGroupKind::Foreign,
+            | DeclKind::FuncTy { .. } => DeclGroupKind::Func(true),
+            | DeclKind::Func { .. } => DeclGroupKind::Func(false),
+            | DeclKind::ConstTy { .. } => DeclGroupKind::Const(true),
+            | DeclKind::Const { .. } => DeclGroupKind::Const(false),
+            | DeclKind::StaticTy { .. } => DeclGroupKind::Static(true),
+            | DeclKind::Static { .. } => DeclGroupKind::Static(false),
+            | DeclKind::Fixity { .. } => DeclGroupKind::Fixity,
+            | DeclKind::AliasKind { .. } => DeclGroupKind::Alias(true),
+            | DeclKind::Alias { .. } => DeclGroupKind::Alias(false),
+            | DeclKind::DataKind { .. } => DeclGroupKind::Data(true),
+            | DeclKind::Data { .. } => DeclGroupKind::Data(false),
+            | DeclKind::Class { .. } => DeclGroupKind::Class,
+            | DeclKind::InstanceChain { .. } => DeclGroupKind::Instance,
         }
     }
 }
@@ -75,15 +75,15 @@ impl Decl {
 impl DeclGroupKind {
     fn max(&self) -> usize {
         match self {
-            DeclGroupKind::Foreign => 1,
-            DeclGroupKind::Func(_) => usize::max_value(),
-            DeclGroupKind::Const(_) => 2,
-            DeclGroupKind::Static(_) => 2,
-            DeclGroupKind::Fixity => 1,
-            DeclGroupKind::Alias(_) => 2,
-            DeclGroupKind::Data(_) => 2,
-            DeclGroupKind::Trait => 1,
-            DeclGroupKind::Impl => 1,
+            | DeclGroupKind::Foreign => 1,
+            | DeclGroupKind::Func(_) => usize::max_value(),
+            | DeclGroupKind::Const(_) => 2,
+            | DeclGroupKind::Static(_) => 2,
+            | DeclGroupKind::Fixity => 1,
+            | DeclGroupKind::Alias(_) => 2,
+            | DeclGroupKind::Data(_) => 2,
+            | DeclGroupKind::Class => 1,
+            | DeclGroupKind::Instance => 1,
         }
     }
 }
@@ -93,45 +93,45 @@ impl PartialEq for DeclGroupKind {
         use DeclGroupKind::*;
 
         match (self, other) {
-            (Foreign, Foreign) => true,
-            (Func(true), Func(false)) => true,
-            (Func(false), Func(false)) => true,
-            (Const(true), Const(false)) => true,
-            (Static(true), Static(false)) => true,
-            (Alias(true), Alias(false)) => true,
-            (Data(true), Data(false)) => true,
-            (Trait, Trait) => true,
-            (Impl, Impl) => true,
-            _ => false,
+            | (Foreign, Foreign) => true,
+            | (Func(true), Func(false)) => true,
+            | (Func(false), Func(false)) => true,
+            | (Const(true), Const(false)) => true,
+            | (Static(true), Static(false)) => true,
+            | (Alias(true), Alias(false)) => true,
+            | (Data(true), Data(false)) => true,
+            | (Class, Class) => true,
+            | (Instance, Instance) => true,
+            | _ => false,
         }
     }
 }
 
-impl ImplDecl {
-    fn group_kind(&self) -> ImplDeclGroupKind {
+impl InstanceDecl {
+    fn group_kind(&self) -> InstanceDeclGroupKind {
         match &self.kind {
-            ImplDeclKind::FuncTy { .. } => ImplDeclGroupKind::Func(true),
-            ImplDeclKind::Func { .. } => ImplDeclGroupKind::Func(false),
+            | InstanceDeclKind::FuncTy { .. } => InstanceDeclGroupKind::Func(true),
+            | InstanceDeclKind::Func { .. } => InstanceDeclGroupKind::Func(false),
         }
     }
 }
 
-impl ImplDeclGroupKind {
+impl InstanceDeclGroupKind {
     fn max(&self) -> usize {
         match self {
-            ImplDeclGroupKind::Func(_) => usize::max_value(),
+            | InstanceDeclGroupKind::Func(_) => usize::max_value(),
         }
     }
 }
 
-impl PartialEq for ImplDeclGroupKind {
+impl PartialEq for InstanceDeclGroupKind {
     fn eq(&self, other: &Self) -> bool {
-        use ImplDeclGroupKind::*;
+        use InstanceDeclGroupKind::*;
 
         match (self, other) {
-            (Func(true), Func(false)) => true,
-            (Func(false), Func(false)) => true,
-            _ => false,
+            | (Func(true), Func(false)) => true,
+            | (Func(false), Func(false)) => true,
+            | _ => false,
         }
     }
 }
@@ -167,8 +167,8 @@ impl<'ast> Iterator for DeclGroups<'ast> {
     }
 }
 
-impl<'ast> Iterator for ImplDeclGroups<'ast> {
-    type Item = (ImplDeclGroupKind, &'ast [ImplDecl]);
+impl<'ast> Iterator for InstanceDeclGroup<'ast> {
+    type Item = (InstanceDeclGroupKind, &'ast [InstanceDecl]);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.start >= self.decls.len() {
@@ -209,11 +209,11 @@ impl<'ast> Iterator for LetBindingGroups<'ast> {
         let end;
 
         match self.bindings[self.start].kind {
-            LetBindingKind::Type { .. } => match self.bindings[self.start + 1].kind {
-                LetBindingKind::Type { .. } => end = start + 1,
-                LetBindingKind::Value { .. } => end = start + 2,
+            | LetBindingKind::Type { .. } => match self.bindings[self.start + 1].kind {
+                | LetBindingKind::Type { .. } => end = start + 1,
+                | LetBindingKind::Value { .. } => end = start + 2,
             },
-            LetBindingKind::Value { .. } => end = start + 1,
+            | LetBindingKind::Value { .. } => end = start + 1,
         }
 
         self.start = end;

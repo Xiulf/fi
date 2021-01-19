@@ -13,11 +13,11 @@ fn and True b = b
 fn or False b = b
 fn or True _ = True
 
-impl eqBool :: Eq Bool Bool where
+instance eqBool :: Eq Bool Bool where
     fn eq True x = x
     fn eq False x = not x
 
-impl ordBool :: Ord Bool Bool where
+instance ordBool :: Ord Bool Bool where
     fn cmp False True = Lt
     fn cmp True False = Gt
     fn cmp _ _ = Eq

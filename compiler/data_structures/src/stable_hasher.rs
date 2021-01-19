@@ -356,8 +356,8 @@ where
     fn hash_stable(&self, ctx: &mut CTX, hasher: &mut StableHasher) {
         mem::discriminant(self).hash_stable(ctx, hasher);
         match *self {
-            Ok(ref x) => x.hash_stable(ctx, hasher),
-            Err(ref x) => x.hash_stable(ctx, hasher),
+            | Ok(ref x) => x.hash_stable(ctx, hasher),
+            | Err(ref x) => x.hash_stable(ctx, hasher),
         }
     }
 }
@@ -435,10 +435,7 @@ where
     V: HashStable<HCX>,
 {
     fn hash_stable(&self, hcx: &mut HCX, hasher: &mut StableHasher) {
-        let mut entries: Vec<_> = self
-            .iter()
-            .map(|(k, v)| (k.to_stable_hash_key(hcx), v))
-            .collect();
+        let mut entries: Vec<_> = self.iter().map(|(k, v)| (k.to_stable_hash_key(hcx), v)).collect();
         entries.sort_unstable_by(|&(ref sk1, _), &(ref sk2, _)| sk1.cmp(sk2));
         entries.hash_stable(hcx, hasher);
     }
@@ -455,22 +452,15 @@ where
     }
 }
 
-pub fn hash_stable_hashmap<HCX, K, V, R, SK, F>(
-    hcx: &mut HCX,
-    hasher: &mut StableHasher,
-    map: &::std::collections::HashMap<K, V, R>,
-    to_stable_hash_key: F,
-) where
+pub fn hash_stable_hashmap<HCX, K, V, R, SK, F>(hcx: &mut HCX, hasher: &mut StableHasher, map: &::std::collections::HashMap<K, V, R>, to_stable_hash_key: F)
+where
     K: Eq,
     V: HashStable<HCX>,
     R: BuildHasher,
     SK: HashStable<HCX> + Ord,
     F: Fn(&K, &HCX) -> SK,
 {
-    let mut entries: Vec<_> = map
-        .iter()
-        .map(|(k, v)| (to_stable_hash_key(k, hcx), v))
-        .collect();
+    let mut entries: Vec<_> = map.iter().map(|(k, v)| (to_stable_hash_key(k, hcx), v)).collect();
     entries.sort_unstable_by(|&(ref sk1, _), &(ref sk2, _)| sk1.cmp(sk2));
     entries.hash_stable(hcx, hasher);
 }

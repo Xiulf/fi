@@ -1,6 +1,4 @@
-pub use stable_deref_trait::{
-    CloneStableDeref as CloneStableAddress, StableDeref as StableAddress,
-};
+pub use stable_deref_trait::{CloneStableDeref as CloneStableAddress, StableDeref as StableAddress};
 use std::mem;
 
 /// An owning reference.
@@ -35,7 +33,8 @@ pub struct OwningRefMut<O, T: ?Sized> {
 /// This is used in form of a trait object for keeping
 /// something around to (virtually) call the destructor.
 pub trait Erased {}
-impl<T> Erased for T {}
+impl<T> Erased for T {
+}
 
 /// Helper trait for erasing the concrete type of what an owner dereferences to,
 /// for example `Box<T> -> Box<Erased>`. This would be unneeded with
@@ -93,10 +92,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
         O: StableAddress,
         O: Deref<Target = T>,
     {
-        OwningRef {
-            reference: &*o,
-            owner: o,
-        }
+        OwningRef { reference: &*o, owner: o }
     }
 
     /// Like `new`, but doesn’t require `O` to implement the `StableAddress` trait.
@@ -108,10 +104,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     where
         O: Deref<Target = T>,
     {
-        OwningRef {
-            reference: &*o,
-            owner: o,
-        }
+        OwningRef { reference: &*o, owner: o }
     }
 
     /// Converts `self` into a new owning reference that points at something reachable
@@ -310,10 +303,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
         O: StableAddress,
         O: DerefMut<Target = T>,
     {
-        OwningRefMut {
-            reference: &mut *o,
-            owner: o,
-        }
+        OwningRefMut { reference: &mut *o, owner: o }
     }
 
     /// Like `new`, but doesn’t require `O` to implement the `StableAddress` trait.
@@ -325,10 +315,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     where
         O: DerefMut<Target = T>,
     {
-        OwningRefMut {
-            reference: &mut *o,
-            owner: o,
-        }
+        OwningRefMut { reference: &mut *o, owner: o }
     }
 
     /// Converts `self` into a new _shared_ owning reference that points at
@@ -671,10 +658,7 @@ where
             h = f(o.deref() as *const O::Target);
         }
 
-        OwningHandle {
-            handle: h,
-            _owner: o,
-        }
+        OwningHandle { handle: h, _owner: o }
     }
 
     /// Creates a new OwningHandle. The provided callback will be invoked with
@@ -690,10 +674,7 @@ where
             h = f(o.deref() as *const O::Target)?;
         }
 
-        Ok(OwningHandle {
-            handle: h,
-            _owner: o,
-        })
+        Ok(OwningHandle { handle: h, _owner: o })
     }
 }
 
@@ -730,7 +711,8 @@ impl<O, T: ?Sized> DerefMut for OwningRefMut<O, T> {
     }
 }
 
-unsafe impl<O, T: ?Sized> StableAddress for OwningRef<O, T> {}
+unsafe impl<O, T: ?Sized> StableAddress for OwningRef<O, T> {
+}
 
 impl<O, T: ?Sized> AsRef<T> for OwningRef<O, T> {
     fn as_ref(&self) -> &T {
@@ -797,12 +779,7 @@ where
     T: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "OwningRef {{ owner: {:?}, reference: {:?} }}",
-            self.owner(),
-            &**self
-        )
+        write!(f, "OwningRef {{ owner: {:?}, reference: {:?} }}", self.owner(), &**self)
     }
 }
 
@@ -812,12 +789,7 @@ where
     T: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "OwningRefMut {{ owner: {:?}, reference: {:?} }}",
-            self.owner(),
-            &**self
-        )
+        write!(f, "OwningRefMut {{ owner: {:?}, reference: {:?} }}", self.owner(), &**self)
     }
 }
 
@@ -833,7 +805,9 @@ where
     }
 }
 
-unsafe impl<O, T: ?Sized> CloneStableAddress for OwningRef<O, T> where O: CloneStableAddress {}
+unsafe impl<O, T: ?Sized> CloneStableAddress for OwningRef<O, T> where O: CloneStableAddress
+{
+}
 
 unsafe impl<O, T: ?Sized> Send for OwningRef<O, T>
 where
@@ -876,7 +850,9 @@ where
     }
 }
 
-impl<O, T: ?Sized> Eq for OwningRef<O, T> where T: Eq {}
+impl<O, T: ?Sized> Eq for OwningRef<O, T> where T: Eq
+{
+}
 
 impl<O, T: ?Sized> PartialOrd for OwningRef<O, T>
 where
@@ -914,7 +890,9 @@ where
     }
 }
 
-impl<O, T: ?Sized> Eq for OwningRefMut<O, T> where T: Eq {}
+impl<O, T: ?Sized> Eq for OwningRefMut<O, T> where T: Eq
+{
+}
 
 impl<O, T: ?Sized> PartialOrd for OwningRefMut<O, T>
 where

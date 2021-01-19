@@ -143,51 +143,51 @@ impl<'src> Lexer<'src> {
         self.advance();
 
         let token = match ch {
-            '(' if bsearch_range_table(self.peek(), OP_START) => self.symbol(),
-            '(' => Ok(self.token(TokenType::LeftParen)),
-            ')' => Ok(self.token(TokenType::RightParen)),
-            '{' => Ok(self.token(TokenType::LeftBrace)),
-            '}' => Ok(self.token(TokenType::RightBrace)),
-            '[' => Ok(self.token(TokenType::LeftBracket)),
-            ']' => Ok(self.token(TokenType::RightBracket)),
-            '<' if self.peek() == '-' => {
+            | '(' if bsearch_range_table(self.peek(), OP_START) => self.symbol(),
+            | '(' => Ok(self.token(TokenType::LeftParen)),
+            | ')' => Ok(self.token(TokenType::RightParen)),
+            | '{' => Ok(self.token(TokenType::LeftBrace)),
+            | '}' => Ok(self.token(TokenType::RightBrace)),
+            | '[' => Ok(self.token(TokenType::LeftBracket)),
+            | ']' => Ok(self.token(TokenType::RightBracket)),
+            | '<' if self.peek() == '-' => {
                 self.advance();
                 Ok(self.token(TokenType::LeftArrow))
-            }
-            '-' if self.peek() == '>' => {
+            },
+            | '-' if self.peek() == '>' => {
                 self.advance();
                 Ok(self.token(TokenType::RightArrow))
-            }
-            '=' if self.peek() == '>' => {
+            },
+            | '=' if self.peek() == '>' => {
                 self.advance();
                 Ok(self.token(TokenType::FatArrow))
-            }
-            ':' if self.peek() == ':' => {
+            },
+            | ':' if self.peek() == ':' => {
                 self.advance();
                 Ok(self.token(TokenType::DoubleColon))
-            }
-            '.' if self.peek() == '.' => {
+            },
+            | '.' if self.peek() == '.' => {
                 self.advance();
                 Ok(self.token(TokenType::DoubleDot))
-            }
-            '.' => Ok(self.token(TokenType::Dot)),
-            ',' => Ok(self.token(TokenType::Comma)),
-            '|' if bsearch_range_table(self.peek(), OP_CONT) => self.operator(),
-            '|' => Ok(self.token(TokenType::Pipe)),
-            '=' if bsearch_range_table(self.peek(), OP_CONT) => self.operator(),
-            '=' => Ok(self.token(TokenType::Equals)),
-            '?' if bsearch_range_table(self.peek(), OP_CONT) => self.operator(),
-            '?' => Ok(self.token(TokenType::Qmark)),
-            '@' if bsearch_range_table(self.peek(), OP_CONT) => self.operator(),
-            '@' => Ok(self.token(TokenType::At)),
-            '_' => Ok(self.token(TokenType::Underscore)),
-            c if c.is_xid_start() => self.name(),
-            c if bsearch_range_table(c, OP_START) => self.operator(),
-            '0'..='9' => self.number(ch),
-            'r' if self.peek() == '"' => self.string(true),
-            '"' => self.string(false),
-            '\'' => self.char(),
-            c => Err(LexicalError::UnknownChar(self.start, c)),
+            },
+            | '.' => Ok(self.token(TokenType::Dot)),
+            | ',' => Ok(self.token(TokenType::Comma)),
+            | '|' if bsearch_range_table(self.peek(), OP_CONT) => self.operator(),
+            | '|' => Ok(self.token(TokenType::Pipe)),
+            | '=' if bsearch_range_table(self.peek(), OP_CONT) => self.operator(),
+            | '=' => Ok(self.token(TokenType::Equals)),
+            | '?' if bsearch_range_table(self.peek(), OP_CONT) => self.operator(),
+            | '?' => Ok(self.token(TokenType::Qmark)),
+            | '@' if bsearch_range_table(self.peek(), OP_CONT) => self.operator(),
+            | '@' => Ok(self.token(TokenType::At)),
+            | '_' => Ok(self.token(TokenType::Underscore)),
+            | c if c.is_xid_start() => self.name(),
+            | c if bsearch_range_table(c, OP_START) => self.operator(),
+            | '0'..='9' => self.number(ch),
+            | 'r' if self.peek() == '"' => self.string(true),
+            | '"' => self.string(false),
+            | '\'' => self.char(),
+            | c => Err(LexicalError::UnknownChar(self.start, c)),
         }?;
 
         self.do_layout(start, token);
@@ -199,15 +199,15 @@ impl<'src> Lexer<'src> {
 
         while !self.eof() {
             match self.peek() {
-                c if c.is_whitespace() => self.advance(),
-                '-' if self.peek_n(1) == '-' => {
+                | c if c.is_whitespace() => self.advance(),
+                | '-' if self.peek_n(1) == '-' => {
                     self.advance();
 
                     while !self.eof() && self.peek() != '\n' {
                         self.advance();
                     }
-                }
-                _ => break,
+                },
+                | _ => break,
             }
         }
     }
@@ -256,19 +256,19 @@ impl<'src> Lexer<'src> {
 
         if start == '0' {
             match self.peek() {
-                'x' => {
+                | 'x' => {
                     self.advance();
                     kind = NumKind::Hexadecimal;
-                }
-                'o' => {
+                },
+                | 'o' => {
                     self.advance();
                     kind = NumKind::Octal;
-                }
-                'b' => {
+                },
+                | 'b' => {
                     self.advance();
                     kind = NumKind::Binary;
-                }
-                _ => {}
+                },
+                | _ => {},
             }
         }
 
@@ -310,12 +310,12 @@ impl<'src> Lexer<'src> {
 
     fn char(&mut self) -> Result<Token> {
         match self.peek() {
-            '\\' => {
+            | '\\' => {
                 self.advance();
                 self.escape()?;
-            }
-            '\'' => return Err(LexicalError::InvalidCharLiteral(self.span())),
-            _ => self.advance(),
+            },
+            | '\'' => return Err(LexicalError::InvalidCharLiteral(self.span())),
+            | _ => self.advance(),
         }
 
         if self.peek() == '\'' {
@@ -330,12 +330,12 @@ impl<'src> Lexer<'src> {
     fn string(&mut self, raw: bool) -> Result<Token> {
         while !self.eof() {
             match self.peek() {
-                '"' => break,
-                '\\' if !raw => {
+                | '"' => break,
+                | '\\' if !raw => {
                     self.advance();
                     self.escape()?;
-                }
-                _ => self.advance(),
+                },
+                | _ => self.advance(),
             }
         }
 
@@ -360,14 +360,14 @@ impl<'src> Lexer<'src> {
         self.advance();
 
         match ch {
-            '"' => Ok('"'),
-            '\'' => Ok('\''),
-            '\\' => Ok('\\'),
-            'n' => Ok('\n'),
-            'r' => Ok('\r'),
-            't' => Ok('\t'),
-            '0' => Ok('\0'),
-            _ => Err(LexicalError::InvalidEscape(Span::new(start, self.pos))),
+            | '"' => Ok('"'),
+            | '\'' => Ok('\''),
+            | '\\' => Ok('\\'),
+            | 'n' => Ok('\n'),
+            | 'r' => Ok('\r'),
+            | 't' => Ok('\t'),
+            | '0' => Ok('\0'),
+            | _ => Err(LexicalError::InvalidEscape(Span::new(start, self.pos))),
         }
     }
 

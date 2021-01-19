@@ -21,30 +21,30 @@ impl TypeError {
         let diags = db.to_diag_db();
 
         match self {
-            TypeError::Internal(err) => diags.error(err).finish(),
-            TypeError::CyclicType(ty) => diags
+            | TypeError::Internal(err) => diags.error(err).finish(),
+            | TypeError::CyclicType(ty) => diags
                 .error(format!("cyclic type `{}`", Typed(db, &(), &ty)))
                 .with_label(Label::primary(ty.file(), ty.span()))
                 .finish(),
-            TypeError::Mismatch(a, b) => diags
+            | TypeError::Mismatch(a, b) => diags
                 .error(format!("mismatched types `{}` != `{}`", Typed(db, &(), &a), Typed(db, &(), &b)))
                 .with_label(Label::primary(a.file(), a.span()))
                 .with_label(Label::secondary(b.file(), b.span()).with_message(format!("type `{}` specified here", Typed(db, &(), &b))))
                 .finish(),
-            TypeError::KindMismatch(a, b) => diags
+            | TypeError::KindMismatch(a, b) => diags
                 .error(format!("mismatched kinds `{}` != `{}`", Typed(db, &(), &a), Typed(db, &(), &b)))
                 .with_label(Label::primary(a.file(), a.span()))
                 .with_label(Label::secondary(b.file(), b.span()))
                 .finish(),
-            TypeError::HoleType(name, ty) => diags
+            | TypeError::HoleType(name, ty) => diags
                 .error(format!("hole '?{}' was found to be of type `{}`", name, Typed(db, &(), &ty)))
                 .with_label(Label::primary(ty.file(), ty.span()))
                 .finish(),
-            TypeError::NoImpl(ctnt) => diags
+            | TypeError::NoImpl(ctnt) => diags
                 .error(format!("no impl found for `{}`", Typed(db, &(), &ctnt)))
                 .with_label(Label::primary(ctnt.file, ctnt.span))
                 .finish(),
-            TypeError::IncorrectArity(file, span, ty) => diags
+            | TypeError::IncorrectArity(file, span, ty) => diags
                 .error(format!("incorrect arity"))
                 .with_label(Label::primary(file, span))
                 .with_label(Label::secondary(ty.file(), ty.span()))

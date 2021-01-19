@@ -29,11 +29,11 @@ impl Arm<'_> {
 impl Pattern {
     pub fn checked(&self) -> bool {
         match self {
-            Pattern::Switch(..) => true,
-            Pattern::And(_) => true,
-            Pattern::Or(_) => true,
-            Pattern::Seq(ps) => ps.iter().any(Pattern::checked),
-            Pattern::Bind(..) => false,
+            | Pattern::Switch(..) => true,
+            | Pattern::And(_) => true,
+            | Pattern::Or(_) => true,
+            | Pattern::Seq(ps) => ps.iter().any(Pattern::checked),
+            | Pattern::Bind(..) => false,
         }
     }
 }
@@ -85,18 +85,17 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
 
     fn compile_pattern(&mut self, pat: Pattern, next_block: ir::Block) -> ir::Block {
         match pat {
-            Pattern::Bind(local, place) => {
-                self.builder
-                    .use_op(ir::Place::new(local), ir::Operand::Place(place));
+            | Pattern::Bind(local, place) => {
+                self.builder.use_op(ir::Place::new(local), ir::Operand::Place(place));
                 self.builder.get_block()
-            }
-            Pattern::Switch(op, val) => {
+            },
+            | Pattern::Switch(op, val) => {
                 let block = self.builder.create_block();
                 let _ = self.builder.switch(op, vec![val], vec![block, next_block]);
 
                 block
-            }
-            Pattern::Seq(mut pats) => {
+            },
+            | Pattern::Seq(mut pats) => {
                 if !pats.is_empty() && pats[0].checked() {
                     let block = self.compile_pattern(pats.remove(0), next_block);
 
@@ -114,8 +113,8 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
 
                     self.builder.get_block()
                 }
-            }
-            Pattern::And(pats) => {
+            },
+            | Pattern::And(pats) => {
                 let mut block = self.builder.get_block();
 
                 for pat in pats {
@@ -124,14 +123,14 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 }
 
                 block
-            }
-            _ => unimplemented!(),
+            },
+            | _ => unimplemented!(),
         }
     }
 
     fn compile_guarded(&mut self, guard: &hir::Guarded, place: Option<ir::Place>) -> ir::Operand {
         match guard {
-            hir::Guarded::Unconditional(expr) => {
+            | hir::Guarded::Unconditional(expr) => {
                 if let Some(place) = place {
                     let op = self.convert_expr(expr);
 
@@ -140,16 +139,12 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 } else {
                     self.convert_expr(expr)
                 }
-            }
-            hir::Guarded::Guarded(_) => unimplemented!(),
+            },
+            | hir::Guarded::Guarded(_) => unimplemented!(),
         }
     }
 
-    pub(crate) fn convert_arms<'hir>(
-        &mut self,
-        preds: Vec<ir::Place>,
-        arms: &'hir [hir::CaseArm],
-    ) -> Case<'hir> {
+    pub(crate) fn convert_arms<'hir>(&mut self, preds: Vec<ir::Place>, arms: &'hir [hir::CaseArm]) -> Case<'hir> {
         Case {
             arms: arms
                 .iter()
@@ -188,8 +183,8 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
         let ty = lower_type(self.db, &self.types.tys[&pat.id]);
 
         match &pat.kind {
-            hir::PatKind::Wildcard => None,
-            hir::PatKind::Bind { sub: None, .. } => {
+            | hir::PatKind::Wildcard => None,
+            | hir::PatKind::Bind { sub: None, .. } => {
                 if pred.elems.is_empty() && self.builder.local_ty(pred.local) == ty {
                     self.locals.insert(pat.id, pred.local);
 
@@ -201,45 +196,40 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
 
                     Some(Pattern::Bind(local, pred))
                 }
-            }
-            hir::PatKind::Int { val } => Some(Pattern::Switch(ir::Operand::Place(pred), *val)),
-            hir::PatKind::Ctor { ctor, pats } => {
+            },
+            | hir::PatKind::Int { val } => Some(Pattern::Switch(ir::Operand::Place(pred), *val)),
+            | hir::PatKind::Ctor { ctor, pats } => {
+                println!("convert_pat before");
                 let file = self.db.module_tree(ctor.lib).file(ctor.module);
+                println!("convert_pat after");
                 let hir = self.db.module_hir(file);
                 let ctor = &hir.items[&(*ctor).into()];
                 let data = hir.items[&ctor.ctor().0].data_body();
-                let idx = data
-                    .iter()
-                    .position(|id| hir.items[id].name.symbol == ctor.name.symbol)
-                    .unwrap();
+                let idx = data.iter().position(|id| hir.items[id].name.symbol == ctor.name.symbol).unwrap();
 
-                let discr = self
-                    .builder
-                    .create_tmp(ir::Ty::new(ir::Type::Discr(Box::new(ty))));
+                let discr = self.builder.create_tmp(ir::Ty::new(ir::Type::Discr(Box::new(ty))));
                 let discr = ir::Place::new(discr);
 
                 self.builder.get_discr(discr.clone(), pred.clone());
 
                 let variant = pred.downcast(idx);
-                let preds = (0..pats.len())
-                    .map(|i| variant.clone().field(i))
-                    .collect::<Vec<_>>();
+                let preds = (0..pats.len()).map(|i| variant.clone().field(i)).collect::<Vec<_>>();
 
                 let sub = self.convert_pats(&preds, pats);
                 let pat = Pattern::Switch(ir::Operand::Place(discr), idx as u128);
 
                 match sub {
-                    Pattern::Or(mut pats) => {
+                    | Pattern::Or(mut pats) => {
                         pats.insert(0, pat);
 
                         Some(Pattern::Or(pats))
-                    }
-                    Pattern::And(mut pats) => {
+                    },
+                    | Pattern::And(mut pats) => {
                         pats.insert(0, pat);
 
                         Some(Pattern::And(pats))
-                    }
-                    Pattern::Seq(mut pats) if !pats.is_empty() => {
+                    },
+                    | Pattern::Seq(mut pats) if !pats.is_empty() => {
                         if let Pattern::And(pats2) = &mut pats[0] {
                             pats2.insert(0, pat);
                         } else {
@@ -247,11 +237,11 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                         }
 
                         Some(Pattern::Seq(pats))
-                    }
-                    _ => Some(pat),
+                    },
+                    | _ => Some(pat),
                 }
-            }
-            _ => unimplemented!(),
+            },
+            | _ => unimplemented!(),
         }
     }
 }

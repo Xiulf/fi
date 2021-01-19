@@ -10,3 +10,5 @@ source = { path = "../source" }
 hir = { path = "../hir" }
 salsa = "0.16.0"
 itertools = "0.10.0"
+serde = { version = "^1.0.117", features = ["derive"] }
+bincode = "1.3.1"

@@ -41,10 +41,10 @@ pub struct SipHasher128 {
     // `processed`, and then repetition of that pattern until hashing is done.
     // This is the basis for the ordering of fields below. However, in practice
     // the cache miss-rate for data access is extremely low regardless of order.
-    nbuf: usize, // how many bytes in buf are valid
+    nbuf: usize,                                         // how many bytes in buf are valid
     buf: [MaybeUninit<u64>; BUFFER_WITH_SPILL_CAPACITY], // unprocessed bytes le
-    state: State, // hash State
-    processed: usize, // how many bytes we've processed
+    state: State,                                        // hash State
+    processed: usize,                                    // how many bytes we've processed
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -263,11 +263,7 @@ impl SipHasher128 {
         // This function should only be called when the write fills the buffer.
         // Therefore, when size == 1, the new `self.nbuf` must be zero. The size
         // is statically known, so the branch is optimized away.
-        self.nbuf = if size == 1 {
-            0
-        } else {
-            nbuf + size - BUFFER_SIZE
-        };
+        self.nbuf = if size == 1 { 0 } else { nbuf + size - BUFFER_SIZE };
         self.processed += BUFFER_SIZE;
     }
 
@@ -343,9 +339,7 @@ impl SipHasher128 {
         let extra_bytes_left = input_left % ELEM_SIZE;
 
         for _ in 0..elems_left {
-            let elem = (msg.as_ptr().add(processed) as *const u64)
-                .read_unaligned()
-                .to_le();
+            let elem = (msg.as_ptr().add(processed) as *const u64).read_unaligned().to_le();
             self.state.v3 ^= elem;
             Sip24Rounds::c_rounds(&mut self.state);
             self.state.v0 ^= elem;

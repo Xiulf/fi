@@ -39,9 +39,9 @@ impl diagnostics::Diagnostics for CompilerDatabase {
 
     fn has_errors(&self) -> bool {
         self.diags.borrow().iter().any(|d| match d.severity {
-            diagnostics::Severity::Bug => true,
-            diagnostics::Severity::Error => true,
-            _ => false,
+            | diagnostics::Severity::Bug => true,
+            | diagnostics::Severity::Error => true,
+            | _ => false,
         })
     }
 

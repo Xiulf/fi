@@ -43,7 +43,7 @@ struct SolverOpts {
 }
 
 enum EntailsResult<T> {
-    Solved(T, Impl),
+    Solved(T, Instance),
     Unsolved(Ctnt),
     Deferred,
 }
@@ -58,38 +58,38 @@ enum Matched<T> {
 impl Matched<()> {
     fn then(self, other: Self) -> Self {
         match (self, other) {
-            (Matched::Match(_), Matched::Match(_)) => Matched::Match(()),
-            (Matched::Apart, _) => Matched::Apart,
-            (_, Matched::Apart) => Matched::Apart,
-            (_, _) => Matched::Unknown,
+            | (Matched::Match(_), Matched::Match(_)) => Matched::Match(()),
+            | (Matched::Apart, _) => Matched::Apart,
+            | (_, Matched::Apart) => Matched::Apart,
+            | (_, _) => Matched::Unknown,
         }
     }
 }
 
 type Matching<T> = HashMap<TypeVar, T>;
 
-trait ImplLike: crate::display::TypedDisplay<()> {
+trait InstanceLike: crate::display::TypedDisplay<()> {
     fn tys(&self) -> &List<Ty>;
     fn trait_(&self) -> ir::DefId;
 }
 
-impl ImplLike for Impl {
+impl InstanceLike for Instance {
     fn tys(&self) -> &List<Ty> {
         &self.tys
     }
 
     fn trait_(&self) -> ir::DefId {
-        self.trait_
+        self.class
     }
 }
 
-impl ImplLike for Ctnt {
+impl InstanceLike for Ctnt {
     fn tys(&self) -> &List<Ty> {
         &self.tys
     }
 
     fn trait_(&self) -> ir::DefId {
-        self.trait_
+        self.class
     }
 }
 
@@ -104,33 +104,40 @@ impl SolverOpts {
 
 impl<'db> Ctx<'db> {
     fn entails(&mut self, opts: SolverOpts, i: usize, id: ir::HirId, ctnt: Ctnt, ctx: Vec<Ctnt>) -> Result<bool> {
-        let file = self.db.module_tree(ctnt.trait_.lib).file(ctnt.trait_.module);
-        let hir = self.db.module_hir(file);
-        let trait_ = hir.items[&ctnt.trait_.into()].trait_();
-        let deps = &trait_.fundeps;
+        let deps = if ctnt.class.lib == self.db.lib() {
+            let file = self.db.module_tree(ctnt.class.lib).file(ctnt.class.module);
+            let hir = self.db.module_hir(file);
+
+            hir.items[&ctnt.class.into()].class().fundeps.clone()
+        } else {
+            let external = self.db.external_types(ctnt.class.lib, ctnt.class.module);
+
+            external.classes[&ctnt.class].deps.clone()
+        };
+
         let tys = (&ctnt.tys).into_iter().map(|t| self.subst_type(t)).collect::<Vec<_>>();
 
-        let mut impls = ctx
+        let mut instances = ctx
             .into_iter()
-            .filter(|c| c.trait_ == ctnt.trait_)
-            .filter_map(|imp| match self.matches(deps, imp.clone(), tys.clone()) {
-                Matched::Apart => None,
-                Matched::Unknown => None,
-                Matched::Match(t) => Some((t, imp)),
+            .filter(|c| c.class == ctnt.class)
+            .filter_map(|instance| match self.matches(&deps, instance.clone(), tys.clone()) {
+                | Matched::Apart => None,
+                | Matched::Unknown => None,
+                | Matched::Match(t) => Some((t, instance)),
             });
 
-        if let Some((_subst, _imp)) = impls.next() {
+        if let Some((_subst, _instance)) = instances.next() {
             self.ctnts.remove(i);
             Ok(true)
         } else if ctnt.tys.is_empty() {
             Err(TypeError::NoImpl(ctnt))
         } else {
             let ctnt = self.subst_ctnt(ctnt);
-            let impls = self.db.impls(ctnt.trait_);
+            let instances = self.db.instances(ctnt.class);
             let matches = {
                 use itertools::Itertools;
                 let mut chain = List::empty();
-                let mut impls = (&impls.into_iter().group_by(|i| {
+                let mut instances = (&instances.into_iter().group_by(|i| {
                     let eq = i.chain == chain;
 
                     chain = i.chain.clone();
@@ -140,20 +147,20 @@ impl<'db> Ctx<'db> {
                     .flat_map(|(_, g)| g)
                     .collect::<Vec<_>>();
 
-                impls.sort_by(|a, b| a.chain.cmp(&b.chain).then(a.chain_index.cmp(&b.chain_index)));
+                instances.sort_by(|a, b| a.chain.cmp(&b.chain).then(a.chain_index.cmp(&b.chain_index)));
 
-                impls
+                instances
                     .into_iter()
-                    .filter_map(|imp| match self.matches(deps, imp.clone(), tys.clone()) {
-                        Matched::Apart => None,
-                        Matched::Unknown => None,
-                        Matched::Match(t) => Some((t, imp)),
+                    .filter_map(|instance| match self.matches(&deps, instance.clone(), tys.clone()) {
+                        | Matched::Apart => None,
+                        | Matched::Unknown => None,
+                        | Matched::Match(t) => Some((t, instance)),
                     })
                     .collect()
             };
 
             match self.unique(opts, ctnt.clone(), matches)? {
-                EntailsResult::Solved(subst, imp) => {
+                | EntailsResult::Solved(subst, instance) => {
                     self.ctnts.remove(i);
 
                     for tys in subst.values() {
@@ -165,25 +172,25 @@ impl<'db> Ctx<'db> {
                         .map(|(k, mut v)| (k, self.subst_type(v.swap_remove(0))))
                         .collect::<Matching<_>>();
 
-                    for (t1, t2) in imp.tys.into_iter().zip(tys) {
+                    for (t1, t2) in instance.tys.into_iter().zip(tys) {
                         let inferred = t1.replace_vars(subst.clone());
 
                         self.unify_types(inferred, t2)?;
                     }
 
                     self.bounds.insert(id, crate::BoundInfo {
-                        source: crate::BoundSource::Impl(imp.id),
+                        source: crate::BoundSource::Instance(instance.id),
                     });
 
                     Ok(true)
-                }
-                EntailsResult::Unsolved(_ctnt) => Ok(false),
-                EntailsResult::Deferred => Ok(false),
+                },
+                | EntailsResult::Unsolved(_ctnt) => Ok(false),
+                | EntailsResult::Deferred => Ok(false),
             }
         }
     }
 
-    fn unique<T>(&self, opts: SolverOpts, ctnt: Ctnt, mut info: Vec<(T, Impl)>) -> Result<EntailsResult<T>> {
+    fn unique<T>(&self, opts: SolverOpts, ctnt: Ctnt, mut info: Vec<(T, Instance)>) -> Result<EntailsResult<T>> {
         if info.is_empty() {
             if opts.defer_errors {
                 Ok(EntailsResult::Deferred)
@@ -201,11 +208,11 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn matches(&mut self, deps: &[ir::FunDep], imp: impl ImplLike, tys: Vec<Ty>) -> Matched<Matching<Vec<Ty>>> {
+    fn matches(&mut self, deps: &[ir::FunDep], instance: impl InstanceLike, tys: Vec<Ty>) -> Matched<Matching<Vec<Ty>>> {
         let matched = tys
             .clone()
             .into_iter()
-            .zip(imp.tys())
+            .zip(instance.tys())
             .map(|(a, b)| {
                 let mut subst = Matching::new();
                 let m = Self::type_heads_eq(a, b, &mut subst);
@@ -279,30 +286,30 @@ impl<'db> Ctx<'db> {
 
     fn type_heads_eq(a: Ty, b: Ty, subst: &mut Matching<Vec<Ty>>) -> Matched<()> {
         match (&*a, &*b) {
-            (Type::Unknown(a), Type::Unknown(b)) if a == b => Matched::Match(()),
-            (Type::Skolem(_, _, s1, _), Type::Skolem(_, _, s2, _)) if s1 == s2 => Matched::Match(()),
-            (_, Type::Var(v)) => {
+            | (Type::Unknown(a), Type::Unknown(b)) if a == b => Matched::Match(()),
+            | (Type::Skolem(_, _, s1, _), Type::Skolem(_, _, s2, _)) if s1 == s2 => Matched::Match(()),
+            | (_, Type::Var(v)) => {
                 subst.entry(*v).or_default().push(a);
                 Matched::Match(())
-            }
-            (Type::Var(v), _) => {
+            },
+            | (Type::Var(v), _) => {
                 subst.entry(*v).or_default().push(b);
                 Matched::Match(())
-            }
-            (Type::Ctor(a), Type::Ctor(b)) if a == b => Matched::Match(()),
-            (Type::Int(a), Type::Int(b)) if a == b => Matched::Match(()),
-            (Type::String(a), Type::String(b)) if a == b => Matched::Match(()),
-            (Type::App(a1, a2), Type::App(b1, b2)) => {
+            },
+            | (Type::Ctor(a), Type::Ctor(b)) if a == b => Matched::Match(()),
+            | (Type::Int(a), Type::Int(b)) if a == b => Matched::Match(()),
+            | (Type::String(a), Type::String(b)) if a == b => Matched::Match(()),
+            | (Type::App(a1, a2), Type::App(b1, b2)) => {
                 let base = Self::type_heads_eq(a1.clone(), b1.clone(), subst);
 
                 base.then(Self::type_heads_eq(a2.clone(), b2.clone(), subst))
-            }
-            (Type::KindApp(a1, a2), Type::KindApp(b1, b2)) => {
+            },
+            | (Type::KindApp(a1, a2), Type::KindApp(b1, b2)) => {
                 let base = Self::type_heads_eq(a1.clone(), b1.clone(), subst);
 
                 base.then(Self::type_heads_eq(a2.clone(), b2.clone(), subst))
-            }
-            (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => {
+            },
+            | (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => {
                 if a.is_empty() {
                     Matched::Match(())
                 } else {
@@ -312,10 +319,10 @@ impl<'db> Ctx<'db> {
 
                     a.zip(b).fold(base, |m, (a, b)| m.then(Self::types_eq(a, b)))
                 }
-            }
-            (Type::Row(_, _), Type::Row(_, _)) => unimplemented!(),
-            (Type::Unknown(_), _) => Matched::Unknown,
-            (_, _) => Matched::Apart,
+            },
+            | (Type::Row(_, _), Type::Row(_, _)) => unimplemented!(),
+            | (Type::Unknown(_), _) => Matched::Unknown,
+            | (_, _) => Matched::Apart,
         }
     }
 
@@ -327,33 +334,33 @@ impl<'db> Ctx<'db> {
         }
 
         match m {
-            Matched::Match(_) => Matched::Match(matched),
-            Matched::Unknown => Matched::Unknown,
-            Matched::Apart => Matched::Apart,
+            | Matched::Match(_) => Matched::Match(matched),
+            | Matched::Unknown => Matched::Unknown,
+            | Matched::Apart => Matched::Apart,
         }
     }
 
     fn types_eq(a: Ty, b: Ty) -> Matched<()> {
         match (&*a, &*b) {
-            (Type::Unknown(a), Type::Unknown(b)) if a == b => Matched::Match(()),
-            (Type::Skolem(_, _, a, _), Type::Skolem(_, _, b, _)) if a == b => Matched::Match(()),
-            (Type::Skolem(..), _) => Matched::Unknown,
-            (_, Type::Skolem(..)) => Matched::Unknown,
-            (Type::Var(a), Type::Var(b)) if a == b => Matched::Match(()),
-            (Type::Ctor(a), Type::Ctor(b)) if a == b => Matched::Match(()),
-            (Type::Int(a), Type::Int(b)) if a == b => Matched::Match(()),
-            (Type::String(a), Type::String(b)) if a == b => Matched::Match(()),
-            (Type::App(a1, a2), Type::App(b1, b2)) => {
+            | (Type::Unknown(a), Type::Unknown(b)) if a == b => Matched::Match(()),
+            | (Type::Skolem(_, _, a, _), Type::Skolem(_, _, b, _)) if a == b => Matched::Match(()),
+            | (Type::Skolem(..), _) => Matched::Unknown,
+            | (_, Type::Skolem(..)) => Matched::Unknown,
+            | (Type::Var(a), Type::Var(b)) if a == b => Matched::Match(()),
+            | (Type::Ctor(a), Type::Ctor(b)) if a == b => Matched::Match(()),
+            | (Type::Int(a), Type::Int(b)) if a == b => Matched::Match(()),
+            | (Type::String(a), Type::String(b)) if a == b => Matched::Match(()),
+            | (Type::App(a1, a2), Type::App(b1, b2)) => {
                 let base = Self::types_eq(a1.clone(), b1.clone());
 
                 base.then(Self::types_eq(a2.clone(), b2.clone()))
-            }
-            (Type::KindApp(a1, a2), Type::KindApp(b1, b2)) => {
+            },
+            | (Type::KindApp(a1, a2), Type::KindApp(b1, b2)) => {
                 let base = Self::types_eq(a1.clone(), b1.clone());
 
                 base.then(Self::types_eq(a2.clone(), b2.clone()))
-            }
-            (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => {
+            },
+            | (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => {
                 if a.is_empty() {
                     Matched::Match(())
                 } else {
@@ -363,8 +370,8 @@ impl<'db> Ctx<'db> {
 
                     a.zip(b).fold(base, |m, (a, b)| m.then(Self::types_eq(a, b)))
                 }
-            }
-            (_, _) => Matched::Apart,
+            },
+            | (_, _) => Matched::Apart,
         }
     }
 

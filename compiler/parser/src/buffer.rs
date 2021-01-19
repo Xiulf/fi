@@ -18,13 +18,7 @@ pub struct TokenBuffer {
 }
 
 impl<'a> Cursor<'a> {
-    pub fn new(
-        file: codespan::FileId,
-        src: &'a str,
-        ptr: *const Token,
-        start: *const Token,
-        end: *const Token,
-    ) -> Self {
+    pub fn new(file: codespan::FileId, src: &'a str, ptr: *const Token, start: *const Token, end: *const Token) -> Self {
         Cursor {
             file,
             src,
@@ -56,15 +50,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn bump(self) -> Self {
-        unsafe {
-            Cursor::new(
-                self.file,
-                self.src,
-                self.ptr.offset(1),
-                self.start,
-                self.end,
-            )
-        }
+        unsafe { Cursor::new(self.file, self.src, self.ptr.offset(1), self.start, self.end) }
     }
 
     pub fn eof(&self) -> bool {
@@ -88,7 +74,8 @@ impl TokenBuffer {
     pub fn begin<'a>(&self, src: &'a str) -> Cursor<'a> {
         if self.tokens.is_empty() {
             struct UnsafeSyncToken(Token);
-            unsafe impl Sync for UnsafeSyncToken {}
+            unsafe impl Sync for UnsafeSyncToken {
+            }
             static EMPTY_TOKEN: UnsafeSyncToken = UnsafeSyncToken(Token {
                 span: Span::initial(),
                 kind: TokenType::EOF,
@@ -103,13 +90,7 @@ impl TokenBuffer {
                 marker: PhantomData,
             }
         } else {
-            Cursor::new(
-                self.file,
-                src,
-                &self.tokens[0],
-                &self.tokens[0],
-                &self.tokens[self.tokens.len() - 1],
-            )
+            Cursor::new(self.file, src, &self.tokens[0], &self.tokens[0], &self.tokens[self.tokens.len() - 1])
         }
     }
 }

@@ -64,14 +64,14 @@ impl<'db> Ctx<'db> {
     /// Apply a substitution to a type.
     crate fn subst_type(&self, ty: Ty) -> Ty {
         ty.everywhere(&mut |t| match *t {
-            Type::Unknown(u) => match self.subst.tys.get(&u) {
-                None => t,
-                Some(t2) => match **t2 {
-                    Type::Unknown(u2) if u2 == u => Ty::unknown(t2.span(), t2.file(), u2),
-                    _ => self.subst_type(t2.clone()),
+            | Type::Unknown(u) => match self.subst.tys.get(&u) {
+                | None => t,
+                | Some(t2) => match **t2 {
+                    | Type::Unknown(u2) if u2 == u => Ty::unknown(t2.span(), t2.file(), u2),
+                    | _ => self.subst_type(t2.clone()),
                 },
             },
-            _ => t,
+            | _ => t,
         })
     }
 
@@ -90,8 +90,8 @@ impl<'db> Ctx<'db> {
         } else {
             t.clone()
                 .everywhere_result(&mut |t2| match *t2 {
-                    Type::Unknown(u2) if u == u2 => Err(TypeError::CyclicType(t.clone())),
-                    _ => Ok(t2),
+                    | Type::Unknown(u2) if u == u2 => Err(TypeError::CyclicType(t.clone())),
+                    | _ => Ok(t2),
                 })
                 .map(|_| ())
         }
@@ -103,50 +103,50 @@ impl<'db> Ctx<'db> {
         let t2 = self.subst_type(t2);
 
         match (&*t1, &*t2) {
-            (Type::Unknown(u1), Type::Unknown(u2)) if u1 == u2 => Ok(()),
-            (Type::Unknown(u), _) => self.solve_type(*u, t2),
-            (_, Type::Unknown(u)) => self.solve_type(*u, t1),
-            (Type::ForAll(v1, k1, r1, s1), Type::ForAll(v2, k2, r2, s2)) => match (s1, s2) {
-                (Some(s1), Some(s2)) => {
+            | (Type::Unknown(u1), Type::Unknown(u2)) if u1 == u2 => Ok(()),
+            | (Type::Unknown(u), _) => self.solve_type(*u, t2),
+            | (_, Type::Unknown(u)) => self.solve_type(*u, t1),
+            | (Type::ForAll(v1, k1, r1, s1), Type::ForAll(v2, k2, r2, s2)) => match (s1, s2) {
+                | (Some(s1), Some(s2)) => {
                     let skolem = self.new_skolem_constant();
                     let sk1 = self.skolemize(t1.span(), t1.file(), *v1, k1.clone(), skolem, r1.clone(), *s1);
                     let sk2 = self.skolemize(t2.span(), t2.file(), *v2, k2.clone(), skolem, r2.clone(), *s2);
 
                     self.unify_types(sk1, sk2)
-                }
-                (_, _) => Err(TypeError::Internal("unify_types: unspecified skolem scope".into())),
+                },
+                | (_, _) => Err(TypeError::Internal("unify_types: unspecified skolem scope".into())),
             },
-            (Type::ForAll(var, k, ty, sc), _) => match sc {
-                Some(sc) => {
+            | (Type::ForAll(var, k, ty, sc), _) => match sc {
+                | Some(sc) => {
                     let skolem = self.new_skolem_constant();
                     let sk = self.skolemize(t1.span(), t1.file(), *var, k.clone(), skolem, ty.clone(), *sc);
 
                     self.unify_types(sk, t2)
-                }
-                _ => Err(TypeError::Internal("unify_types: unspecified skolem scope".into())),
+                },
+                | _ => Err(TypeError::Internal("unify_types: unspecified skolem scope".into())),
             },
-            (_, Type::ForAll(..)) => self.unify_types(t2, t1),
-            (Type::Var(v1), Type::Var(v2)) if v1 == v2 => Ok(()),
-            (Type::Ctor(c1), Type::Ctor(c2)) if c1 == c2 => Ok(()),
-            (Type::Int(i1), Type::Int(i2)) if i1 == i2 => Ok(()),
-            (Type::String(s1), Type::String(s2)) if s1 == s2 => Ok(()),
-            (Type::App(a1, b1), Type::App(a2, b2)) => {
+            | (_, Type::ForAll(..)) => self.unify_types(t2, t1),
+            | (Type::Var(v1), Type::Var(v2)) if v1 == v2 => Ok(()),
+            | (Type::Ctor(c1), Type::Ctor(c2)) if c1 == c2 => Ok(()),
+            | (Type::Int(i1), Type::Int(i2)) if i1 == i2 => Ok(()),
+            | (Type::String(s1), Type::String(s2)) if s1 == s2 => Ok(()),
+            | (Type::App(a1, b1), Type::App(a2, b2)) => {
                 self.unify_types(a1.clone(), a2.clone())?;
                 self.unify_types(b1.clone(), b2.clone())
-            }
-            (Type::Skolem(_, _, s1, _), Type::Skolem(_, _, s2, _)) if s1 == s2 => Ok(()),
-            (Type::Tuple(ts1), Type::Tuple(ts2)) if ts1.len() == ts2.len() => {
+            },
+            | (Type::Skolem(_, _, s1, _), Type::Skolem(_, _, s2, _)) if s1 == s2 => Ok(()),
+            | (Type::Tuple(ts1), Type::Tuple(ts2)) if ts1.len() == ts2.len() => {
                 ts1.into_iter().zip(ts2).map(|(t1, t2)| self.unify_types(t1, t2)).collect::<Result<_>>()
-            }
-            (Type::Row(r1, t1), Type::Row(r2, t2)) => self.unify_rows(r1.clone(), t1.clone(), r2.clone(), t2.clone()),
-            (Type::Ctnt(c1, r1), Type::Ctnt(c2, r2)) if c1.trait_ == c2.trait_ => {
+            },
+            | (Type::Row(r1, t1), Type::Row(r2, t2)) => self.unify_rows(r1.clone(), t1.clone(), r2.clone(), t2.clone()),
+            | (Type::Ctnt(c1, r1), Type::Ctnt(c2, r2)) if c1.class == c2.class => {
                 for (t1, t2) in (&c1.tys).into_iter().zip(&c2.tys) {
                     self.unify_types(t1, t2)?;
                 }
 
                 self.unify_types(r1.clone(), r2.clone())
-            }
-            (_, _) => Err(TypeError::Mismatch(t1, t2)),
+            },
+            | (_, _) => Err(TypeError::Mismatch(t1, t2)),
         }
     }
 

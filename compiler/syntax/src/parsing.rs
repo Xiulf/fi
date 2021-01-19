@@ -17,8 +17,8 @@ parser::keywords! {
     TInfix, "infix"
     TAlias, "alias"
     TData, "data"
-    TTrait, "trait"
-    TImpl, "impl"
+    TClass, "class"
+    TInstance, "instance"
     TForall, "forall"
     TIf, "if"
     TThen, "then"
@@ -465,22 +465,22 @@ impl Parse for Decl {
 
             let TInt { span } = input.parse()?;
             let prec = match input.cursor().text(span) {
-                "0" => Prec::Zero,
-                "1" => Prec::One,
-                "2" => Prec::Two,
-                "3" => Prec::Three,
-                "4" => Prec::Four,
-                "5" => Prec::Five,
-                "6" => Prec::Six,
-                "7" => Prec::Seven,
-                "8" => Prec::Eight,
-                "9" => Prec::Nine,
-                _ => {
+                | "0" => Prec::Zero,
+                | "1" => Prec::One,
+                | "2" => Prec::Two,
+                | "3" => Prec::Three,
+                | "4" => Prec::Four,
+                | "5" => Prec::Five,
+                | "6" => Prec::Six,
+                | "7" => Prec::Seven,
+                | "8" => Prec::Eight,
+                | "9" => Prec::Nine,
+                | _ => {
                     return Err(ParseError {
                         span,
                         expected: "0, 1, 2, 3, 4, 5, 6, 7, 8 or 0".into(),
                     })
-                }
+                },
             };
 
             let func = input.parse()?;
@@ -548,7 +548,7 @@ impl Parse for Decl {
             };
 
             (name, kind)
-        } else if let Ok(_) = input.parse::<TTrait>() {
+        } else if let Ok(_) = input.parse::<TClass>() {
             let mut parent = Vec::new();
             let mut fork = input.fork();
 
@@ -581,7 +581,7 @@ impl Parse for Decl {
                 }
             }
 
-            let head = TraitHead {
+            let head = ClassHead {
                 span: start.merge(input.prev_span()),
                 parent: if parent.is_empty() { None } else { Some(parent) },
                 vars,
@@ -590,29 +590,29 @@ impl Parse for Decl {
 
             let body = if input.peek::<TWhere>() { Some(input.parse()?) } else { None };
 
-            (name, DeclKind::Trait { head, body })
-        } else if input.peek::<TImpl>() {
-            let mut impls = vec![input.parse::<Impl>()?];
+            (name, DeclKind::Class { head, body })
+        } else if input.peek::<TInstance>() {
+            let mut impls = vec![input.parse::<Instance>()?];
 
             while !input.is_empty() && input.peek::<TElse>() {
                 let _ = input.parse::<TElse>()?;
-                let impl_ = input.parse::<Impl>()?;
+                let impl_ = input.parse::<Instance>()?;
 
                 if impl_.head.iface.symbol != impls[0].head.iface.symbol {
                     return Err(ParseError {
                         span: impl_.head.iface.span,
-                        expected: "impl chains must implement the same interface".into(),
+                        expected: "instance chains must all implement the same class".into(),
                     });
                 }
 
                 impls.push(impl_);
             }
 
-            (impls[0].head.name, DeclKind::ImplChain { impls })
+            (impls[0].head.name, DeclKind::InstanceChain { instances: impls })
         } else {
             return Err(ParseError {
                 span: input.span(),
-                expected: "foreign, fn, static, const, infixl, infixr, infix, alias, data, trait or impl".into(),
+                expected: "foreign, fn, static, const, infixl, infixr, infix, alias, data, class or instance".into(),
             });
         };
 
@@ -627,18 +627,18 @@ impl Parse for Decl {
 
 impl Decl {
     fn peek(input: ParseStream) -> bool {
-        Attribute::peek(input) ||
-            input.peek::<TForeign>() ||
-            input.peek::<TFn>() ||
-            input.peek::<TConst>() ||
-            input.peek::<TStatic>() ||
-            input.peek::<TInfixl>() ||
-            input.peek::<TInfixr>() ||
-            input.peek::<TInfix>() ||
-            input.peek::<TAlias>() ||
-            input.peek::<TData>() ||
-            input.peek::<TTrait>() ||
-            input.peek::<TImpl>()
+        Attribute::peek(input)
+            || input.peek::<TForeign>()
+            || input.peek::<TFn>()
+            || input.peek::<TConst>()
+            || input.peek::<TStatic>()
+            || input.peek::<TInfixl>()
+            || input.peek::<TInfixr>()
+            || input.peek::<TInfix>()
+            || input.peek::<TAlias>()
+            || input.peek::<TData>()
+            || input.peek::<TClass>()
+            || input.peek::<TInstance>()
     }
 }
 
@@ -689,14 +689,14 @@ impl Parse for FunDep {
     }
 }
 
-impl Parse for TraitBody {
+impl Parse for ClassBody {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let _ = input.parse::<TWhere>()?;
         let _ = input.parse::<TLytStart>()?;
         let mut decls = Vec::new();
 
-        while !input.is_empty() && TraitDecl::peek(input) {
+        while !input.is_empty() && ClassDecl::peek(input) {
             decls.push(input.parse()?);
 
             if input.peek::<TLytEnd>() {
@@ -708,14 +708,14 @@ impl Parse for TraitBody {
 
         input.parse::<TLytEnd>()?;
 
-        Ok(TraitBody {
+        Ok(ClassBody {
             span: start.merge(input.prev_span()),
             decls,
         })
     }
 }
 
-impl Parse for TraitDecl {
+impl Parse for ClassDecl {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let (name, kind) = if let Ok(_) = input.parse::<TFn>() {
@@ -723,7 +723,7 @@ impl Parse for TraitDecl {
             let _ = input.parse::<TDblColon>()?;
             let ty = input.parse()?;
 
-            (name, TraitDeclKind::FuncTy { ty })
+            (name, ClassDeclKind::FuncTy { ty })
         } else {
             return Err(ParseError {
                 span: input.span(),
@@ -731,7 +731,7 @@ impl Parse for TraitDecl {
             });
         };
 
-        Ok(TraitDecl {
+        Ok(ClassDecl {
             span: start.merge(input.prev_span()),
             name,
             kind,
@@ -739,16 +739,16 @@ impl Parse for TraitDecl {
     }
 }
 
-impl TraitDecl {
+impl ClassDecl {
     fn peek(input: ParseStream) -> bool {
         input.peek::<TFn>()
     }
 }
 
-impl Parse for Impl {
+impl Parse for Instance {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
-        let _ = input.parse::<TImpl>()?;
+        let _ = input.parse::<TInstance>()?;
         let name = input.parse()?;
         let _ = input.parse::<TDblColon>()?;
         let mut cs = Vec::new();
@@ -767,7 +767,7 @@ impl Parse for Impl {
             tys.push(Type::atom(input)?);
         }
 
-        let head = ImplHead {
+        let head = InstanceHead {
             span: start.merge(input.prev_span()),
             name,
             cs: if cs.is_empty() { None } else { Some(cs) },
@@ -777,7 +777,7 @@ impl Parse for Impl {
 
         let body = if input.peek::<TWhere>() { Some(input.parse()?) } else { None };
 
-        Ok(Impl {
+        Ok(Instance {
             span: start.merge(input.prev_span()),
             head,
             body,
@@ -785,14 +785,14 @@ impl Parse for Impl {
     }
 }
 
-impl Parse for ImplBody {
+impl Parse for InstanceBody {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let _ = input.parse::<TWhere>()?;
         let _ = input.parse::<TLytStart>()?;
         let mut decls = Vec::new();
 
-        while !input.is_empty() && ImplDecl::peek(input) {
+        while !input.is_empty() && InstanceDecl::peek(input) {
             decls.push(input.parse()?);
 
             if input.peek::<TLytEnd>() {
@@ -804,14 +804,14 @@ impl Parse for ImplBody {
 
         input.parse::<TLytEnd>()?;
 
-        Ok(ImplBody {
+        Ok(InstanceBody {
             span: start.merge(input.prev_span()),
             decls,
         })
     }
 }
 
-impl Parse for ImplDecl {
+impl Parse for InstanceDecl {
     fn parse(input: ParseStream) -> Result<Self> {
         let start = input.span();
         let (name, kind) = if let Ok(_) = input.parse::<TFn>() {
@@ -819,7 +819,7 @@ impl Parse for ImplDecl {
             let kind = if let Ok(_) = input.parse::<TDblColon>() {
                 let ty = input.parse()?;
 
-                ImplDeclKind::FuncTy { ty }
+                InstanceDeclKind::FuncTy { ty }
             } else {
                 let mut pats = Vec::new();
 
@@ -829,7 +829,7 @@ impl Parse for ImplDecl {
 
                 let val = input.parse()?;
 
-                ImplDeclKind::Func { pats, val }
+                InstanceDeclKind::Func { pats, val }
             };
 
             (name, kind)
@@ -840,7 +840,7 @@ impl Parse for ImplDecl {
             });
         };
 
-        Ok(ImplDecl {
+        Ok(InstanceDecl {
             span: start.merge(input.prev_span()),
             name,
             kind,
@@ -848,7 +848,7 @@ impl Parse for ImplDecl {
     }
 }
 
-impl ImplDecl {
+impl InstanceDecl {
     fn peek(input: ParseStream) -> bool {
         input.peek::<TFn>()
     }
@@ -965,10 +965,10 @@ impl Pat {
             PatKind::Array { pats }
         } else if let Ok(lit) = input.parse::<Literal>() {
             match lit {
-                Literal::Int(_, val) => PatKind::Int { val },
-                Literal::Float(_, bits) => PatKind::Float { bits },
-                Literal::Char(_, val) => PatKind::Char { val },
-                Literal::String(_, val) => PatKind::Str { val },
+                | Literal::Int(_, val) => PatKind::Int { val },
+                | Literal::Float(_, bits) => PatKind::Float { bits },
+                | Literal::Char(_, val) => PatKind::Char { val },
+                | Literal::String(_, val) => PatKind::Str { val },
             }
         } else if let Ok(_) = input.parse::<TUnderscore>() {
             PatKind::Wildcard
@@ -1256,10 +1256,10 @@ impl Expr {
             ExprKind::Hole { name }
         } else if let Ok(lit) = input.parse::<Literal>() {
             match lit {
-                Literal::Int(_, val) => ExprKind::Int { val },
-                Literal::Float(_, bits) => ExprKind::Float { bits },
-                Literal::Char(_, val) => ExprKind::Char { val },
-                Literal::String(_, val) => ExprKind::Str { val },
+                | Literal::Int(_, val) => ExprKind::Int { val },
+                | Literal::Float(_, bits) => ExprKind::Float { bits },
+                | Literal::Char(_, val) => ExprKind::Char { val },
+                | Literal::String(_, val) => ExprKind::Str { val },
             }
         } else if let Ok(_) = input.parse::<TLet>() {
             let _ = input.parse::<TLytStart>()?;
@@ -1337,12 +1337,12 @@ impl Expr {
     }
 
     fn peek(input: ParseStream) -> bool {
-        input.peek::<TLParen>() ||
-            input.peek::<TLBrace>() ||
-            input.peek::<TQmark>() ||
-            input.peek::<TSymbol>() ||
-            input.peek::<Ident>() ||
-            input.peek::<Literal>()
+        input.peek::<TLParen>()
+            || input.peek::<TLBrace>()
+            || input.peek::<TQmark>()
+            || input.peek::<TSymbol>()
+            || input.peek::<Ident>()
+            || input.peek::<Literal>()
     }
 }
 
@@ -1650,7 +1650,7 @@ impl Parse for Constraint {
                 tys.push(Type::atom(input)?);
             }
 
-            Ok(Constraint::CS { iface, tys })
+            Ok(Constraint::CS { class: iface, tys })
         }
     }
 }

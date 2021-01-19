@@ -40,13 +40,10 @@ impl<T> Sharded<T> {
     #[inline]
     pub fn new(mut value: impl FnMut() -> T) -> Self {
         // Create a vector of the values we want
-        let mut values: SmallVec<[_; SHARDS]> = (0..SHARDS)
-            .map(|_| CacheAligned(Lock::new(value())))
-            .collect();
+        let mut values: SmallVec<[_; SHARDS]> = (0..SHARDS).map(|_| CacheAligned(Lock::new(value()))).collect();
 
         // Create an uninitialized array
-        let mut shards: mem::MaybeUninit<[CacheAligned<Lock<T>>; SHARDS]> =
-            mem::MaybeUninit::uninit();
+        let mut shards: mem::MaybeUninit<[CacheAligned<Lock<T>>; SHARDS]> = mem::MaybeUninit::uninit();
 
         unsafe {
             // Copy the values into our array
@@ -56,9 +53,7 @@ impl<T> Sharded<T> {
             // Ignore the content of the vector
             values.set_len(0);
 
-            Sharded {
-                shards: shards.assume_init(),
-            }
+            Sharded { shards: shards.assume_init() }
         }
     }
 
@@ -125,12 +120,12 @@ impl<K: Eq + Hash + Copy> ShardedHashMap<K, ()> {
         let entry = shard.raw_entry_mut().from_key_hashed_nocheck(hash, value);
 
         match entry {
-            RawEntryMut::Occupied(e) => *e.key(),
-            RawEntryMut::Vacant(e) => {
+            | RawEntryMut::Occupied(e) => *e.key(),
+            | RawEntryMut::Vacant(e) => {
                 let v = make();
                 e.insert_hashed_nocheck(hash, v, ());
                 v
-            }
+            },
         }
     }
 
@@ -145,12 +140,12 @@ impl<K: Eq + Hash + Copy> ShardedHashMap<K, ()> {
         let entry = shard.raw_entry_mut().from_key_hashed_nocheck(hash, &value);
 
         match entry {
-            RawEntryMut::Occupied(e) => *e.key(),
-            RawEntryMut::Vacant(e) => {
+            | RawEntryMut::Occupied(e) => *e.key(),
+            | RawEntryMut::Vacant(e) => {
                 let v = make(value);
                 e.insert_hashed_nocheck(hash, v, ());
                 v
-            }
+            },
         }
     }
 }
@@ -165,10 +160,7 @@ impl<K: Eq + Hash + Copy + IntoPointer> ShardedHashMap<K, ()> {
         let hash = make_hash(&value);
         let shard = self.get_shard_by_hash(hash).lock();
         let value = value.into_pointer();
-        shard
-            .raw_entry()
-            .from_hash(hash, |entry| entry.into_pointer() == value)
-            .is_some()
+        shard.raw_entry().from_hash(hash, |entry| entry.into_pointer() == value).is_some()
     }
 }
 

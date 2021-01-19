@@ -56,21 +56,21 @@ data Ptr :: Type -> Type
 [lang("array_ty")] data Array :: Type -> Figure -> Type
 [lang("slice_ty")] data Slice :: Type -> Type
 
-[lang("integer_trait")] trait Integer t
-[lang("decimal_trait")] trait Decimal t
+[lang("integer_trait")] class Integer t
+[lang("decimal_trait")] class Decimal t
 
-impl integerU8   :: Integer Uint8
-impl integerU16  :: Integer Uint16
-impl integerU32  :: Integer Uint32
-impl integerU64  :: Integer Uint64
-impl integeru128 :: Integer Uint128
-impl integerI8   :: Integer Int8
-impl integerI16  :: Integer Int16
-impl integerI32  :: Integer Int32
-impl integerI64  :: Integer Int64
-impl integerI128 :: Integer Int128
+instance integerU8   :: Integer Uint8
+instance integerU16  :: Integer Uint16
+instance integerU32  :: Integer Uint32
+instance integerU64  :: Integer Uint64
+instance integeru128 :: Integer Uint128
+instance integerI8   :: Integer Int8
+instance integerI16  :: Integer Int16
+instance integerI32  :: Integer Int32
+instance integerI64  :: Integer Int64
+instance integerI128 :: Integer Int128
 
-impl decimalF32 :: Decimal Float32
-impl decimalF64 :: Decimal Float64
+instance decimalF32 :: Decimal Float32
+instance decimalF64 :: Decimal Float64
 
-trait Unsafe
+class Unsafe

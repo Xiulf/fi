@@ -110,11 +110,11 @@ impl<'db> Ctx<'db> {
 
         while let Type::App(b, r) = &*ret {
             match &**b {
-                Type::App(f, a) if self.is_func(f) => {
+                | Type::App(f, a) if self.is_func(f) => {
                     args.push(a.clone());
                     ret = r.clone();
-                }
-                _ => break,
+                },
+                | _ => break,
             }
         }
 
@@ -125,8 +125,8 @@ impl<'db> Ctx<'db> {
         if let Type::ForAll(var, kind, ret, _) = &*ty {
             let mut subst = HashMap::new();
             let ty = match kind {
-                Some(k) => self.fresh_type_with_kind(ty.span(), ty.file(), k.clone()),
-                None => self.fresh_type(ty.span(), ty.file()),
+                | Some(k) => self.fresh_type_with_kind(ty.span(), ty.file(), k.clone()),
+                | None => self.fresh_type(ty.span(), ty.file()),
             };
 
             subst.insert(*var, ty);
@@ -172,11 +172,11 @@ impl<'db> Ctx<'db> {
                 .collect::<Vec<_>>();
 
             let mut ty = ty.everywhere(&mut |t| match *t {
-                Type::Unknown(u) => match repl.get(&u) {
-                    None => t,
-                    Some(t2) => t2.clone(),
+                | Type::Unknown(u) => match repl.get(&u) {
+                    | None => t,
+                    | Some(t2) => t2.clone(),
                 },
-                _ => t,
+                | _ => t,
             });
 
             for (v, k) in vars.into_iter().rev() {
@@ -189,37 +189,37 @@ impl<'db> Ctx<'db> {
 
     crate fn hir_ty(&mut self, ty: &ir::Type) -> Ty {
         match &ty.kind {
-            ir::TypeKind::Error => Ty::error(ty.span, self.file),
-            ir::TypeKind::Int { val } => Ty::int(ty.span, self.file, *val),
-            ir::TypeKind::Str { val } => Ty::string(ty.span, self.file, val.clone()),
-            ir::TypeKind::Func { param, ret } => {
+            | ir::TypeKind::Error => Ty::error(ty.span, self.file),
+            | ir::TypeKind::Int { val } => Ty::int(ty.span, self.file, *val),
+            | ir::TypeKind::Str { val } => Ty::string(ty.span, self.file, val.clone()),
+            | ir::TypeKind::Func { param, ret } => {
                 let func_ty = self.func_ty(ty.span, self.file);
                 let param = self.hir_ty(param);
                 let ret = self.hir_ty(ret);
 
                 Ty::app(ty.span, self.file, Ty::app(ty.span, self.file, func_ty, param), ret)
-            }
-            ir::TypeKind::Infer => self.fresh_type_with_kind(ty.span, self.file, self.ty_kind(ty.span, self.file)),
-            ir::TypeKind::App { base, arg } => {
+            },
+            | ir::TypeKind::Infer => self.fresh_type_with_kind(ty.span, self.file, self.ty_kind(ty.span, self.file)),
+            | ir::TypeKind::App { base, arg } => {
                 let base = self.hir_ty(base);
                 let arg = self.hir_ty(arg);
 
                 Ty::app(ty.span, self.file, base, arg)
-            }
-            ir::TypeKind::Ident { res } => match res {
-                ir::Res::Error => Ty::error(ty.span, self.file),
-                ir::Res::Def(ir::DefKind::Data, id) => Ty::ctor(ty.span, self.file, *id),
-                ir::Res::Def(ir::DefKind::Alias, id) => self.db.typecheck(*id).ty.clone(),
-                ir::Res::Def(_, _) => unreachable!(),
-                ir::Res::Local(id) => Ty::var(ty.span, self.file, TypeVar(*id)),
             },
-            ir::TypeKind::Tuple { tys } => {
+            | ir::TypeKind::Ident { res } => match res {
+                | ir::Res::Error => Ty::error(ty.span, self.file),
+                | ir::Res::Def(ir::DefKind::Data, id) => Ty::ctor(ty.span, self.file, *id),
+                | ir::Res::Def(ir::DefKind::Alias, id) => self.db.typecheck(*id).ty.clone(),
+                | ir::Res::Def(_, _) => unreachable!(),
+                | ir::Res::Local(id) => Ty::var(ty.span, self.file, TypeVar(*id)),
+            },
+            | ir::TypeKind::Tuple { tys } => {
                 let file = self.file;
                 let tys = tys.iter().map(|t| self.hir_ty(t));
 
                 Ty::tuple(ty.span, file, tys)
-            }
-            ir::TypeKind::Record { row } => {
+            },
+            | ir::TypeKind::Record { row } => {
                 let fields = row
                     .fields
                     .iter()
@@ -235,8 +235,8 @@ impl<'db> Ctx<'db> {
                 let record_ty = self.record_ty(ty.span, self.file);
 
                 Ty::app(ty.span, self.file, record_ty, row)
-            }
-            ir::TypeKind::Forall { vars, ty: ret } => {
+            },
+            | ir::TypeKind::Forall { vars, ty: ret } => {
                 let mut ret = self.hir_ty(ret);
                 let vars = vars.iter().map(|v| (TypeVar(v.id), Some(self.hir_ty(&v.kind)))).collect::<Vec<_>>();
 
@@ -245,38 +245,38 @@ impl<'db> Ctx<'db> {
                 }
 
                 ret
-            }
-            ir::TypeKind::Cons { cs, ty: ret } => {
+            },
+            | ir::TypeKind::Cons { cs, ty: ret } => {
                 let ctnt = Ctnt {
                     span: cs.span,
                     file: self.file,
-                    trait_: cs.trait_,
+                    class: cs.trait_,
                     tys: cs.tys.iter().map(|t| self.hir_ty(t)).collect(),
                 };
 
                 let ret = self.hir_ty(ret);
 
                 Ty::ctnt(ty.span, self.file, ctnt, ret)
-            }
-            ir::TypeKind::Hole { name } => {
+            },
+            | ir::TypeKind::Hole { name } => {
                 let ty = self.fresh_type(ty.span, self.file);
 
                 self.errors.push(TypeError::HoleType(*name, ty.clone()));
 
                 ty
-            }
-            ir::TypeKind::Kinded { ty: ret, kind } => {
+            },
+            | ir::TypeKind::Kinded { ty: ret, kind } => {
                 let ret = self.hir_ty(ret);
                 let kind = self.hir_ty(kind);
 
                 match self.check_kind(ret, kind) {
-                    Ok(v) => v,
-                    Err(e) => {
+                    | Ok(v) => v,
+                    | Err(e) => {
                         e.report(self.db);
                         Ty::error(ty.span, self.file)
-                    }
+                    },
                 }
-            }
+            },
         }
     }
 }

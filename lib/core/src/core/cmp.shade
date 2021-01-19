@@ -6,21 +6,21 @@ import Data.Monoid
 
 infix 4 eq as (==)
 
-trait Eq l r | l -> r, r -> l where
+class Eq l r | l -> r, r -> l where
     fn eq :: l -> r -> Bool
 
 data Ordering = Lt | Eq | Gt
 
-trait Eq l r => Ord l r | l -> r, r -> l where
+class Eq l r => Ord l r | l -> r, r -> l where
     fn cmp :: l -> r -> Ordering
 
-impl eqOrdering :: Eq Ordering Ordering where
+instance eqOrdering :: Eq Ordering Ordering where
     fn eq Lt Lt = True
     fn eq Eq Eq = True
     fn eq Gt Gt = True
     fn eq _ _ = False
 
-impl ordOrdering :: Ord Ordering Ordering where
+instance ordOrdering :: Ord Ordering Ordering where
     fn cmp Lt Lt = Eq
     fn cmp Lt _ = Lt
     fn cmp _ Lt = Gt
@@ -29,7 +29,7 @@ impl ordOrdering :: Ord Ordering Ordering where
     fn cmp _ Gt = Gt
     fn cmp Eq Eq = Eq
 
-impl semigroupOrdering :: Semigroup Ordering where
+instance semigroupOrdering :: Semigroup Ordering where
     fn append Lt _ = Lt
     fn append Gt _ = Gt
     fn append Eq y = y

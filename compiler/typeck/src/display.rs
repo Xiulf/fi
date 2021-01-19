@@ -34,18 +34,18 @@ impl TypedDisplay for Ty {
         };
 
         match &**self {
-            Type::Error => write!(f, "{{error}}"),
-            Type::Unknown(u) => write!(f, "?{}", u.0),
-            Type::Skolem(v, _, _, _) => write!(f, "?{}", v),
-            Type::Var(v) => v.fmt(f),
-            Type::Int(i) => i.fmt(f),
-            Type::String(s) => write!(f, "{:?}", s),
-            Type::Tuple(ts) => write!(f, "({})", Typed(db, &(), &ts)),
-            Type::Row(fs, None) => write!(f, "({})", Typed(db, &(), &fs)),
-            Type::Row(fs, Some(tail)) => {
+            | Type::Error => write!(f, "{{error}}"),
+            | Type::Unknown(u) => write!(f, "?{}", u.0),
+            | Type::Skolem(v, _, _, _) => write!(f, "?{}", v),
+            | Type::Var(v) => v.fmt(f),
+            | Type::Int(i) => i.fmt(f),
+            | Type::String(s) => write!(f, "{:?}", s),
+            | Type::Tuple(ts) => write!(f, "({})", Typed(db, &(), &ts)),
+            | Type::Row(fs, None) => write!(f, "({})", Typed(db, &(), &fs)),
+            | Type::Row(fs, Some(tail)) => {
                 write!(f, "({} | {})", Typed(db, &(), &fs), Typed(db, &(), tail))
-            }
-            Type::ForAll(var, kind, ty, _) => {
+            },
+            | Type::ForAll(var, kind, ty, _) => {
                 write!(f, "forall ")?;
 
                 if let Some(kind) = kind {
@@ -55,17 +55,23 @@ impl TypedDisplay for Ty {
                 }
 
                 write!(f, ". {}", Typed(db, &(), ty))
-            }
-            Type::Ctnt(ctnt, ty) => write!(f, "{} => {}", Typed(db, &(), ctnt), Typed(db, &(), ty)),
-            Type::Ctor(id) => {
-                let file = db.module_tree(id.lib).file(id.module);
-                let hir = db.module_hir(file);
-                let def = hir.def(*id);
+            },
+            | Type::Ctnt(ctnt, ty) => write!(f, "{} => {}", Typed(db, &(), ctnt), Typed(db, &(), ty)),
+            | Type::Ctor(id) => {
+                if id.lib == db.lib() {
+                    let file = db.module_tree(id.lib).file(id.module);
+                    let hir = db.module_hir(file);
+                    let def = hir.def(*id);
 
-                def.name().fmt(f)
-            }
-            Type::App(b, r) => match &**b {
-                Type::App(fu, a) if is_func(fu) => {
+                    def.name().fmt(f)
+                } else {
+                    let external = db.external_item_data(id.lib, id.module);
+
+                    external.items[id].0.fmt(f)
+                }
+            },
+            | Type::App(b, r) => match &**b {
+                | Type::App(fu, a) if is_func(fu) => {
                     if a.needs_parens() {
                         write!(f, "({})", Typed(db, &(), a))?;
                     } else {
@@ -74,8 +80,8 @@ impl TypedDisplay for Ty {
 
                     write!(f, " -> ")?;
                     r.typed_fmt(db, &(), f)
-                }
-                _ if is_record(b) => {
+                },
+                | _ if is_record(b) => {
                     if let Type::Row(fs, Some(tail)) = &**r {
                         write!(f, "{{ {} | {} }}", Typed(db, &(), &fs), Typed(db, &(), tail))
                     } else if let Type::Row(fs, None) = &**r {
@@ -83,8 +89,8 @@ impl TypedDisplay for Ty {
                     } else {
                         unreachable!();
                     }
-                }
-                _ => {
+                },
+                | _ => {
                     if b.needs_parens() {
                         write!(f, "({})", Typed(db, &(), b))?;
                     } else {
@@ -98,9 +104,9 @@ impl TypedDisplay for Ty {
                     } else {
                         r.typed_fmt(db, &(), f)
                     }
-                }
+                },
             },
-            Type::KindApp(b, r) => {
+            | Type::KindApp(b, r) => {
                 if b.needs_parens() {
                     write!(f, "({})", Typed(db, &(), b))?;
                 } else {
@@ -114,7 +120,7 @@ impl TypedDisplay for Ty {
                 } else {
                     r.typed_fmt(db, &(), f)
                 }
-            }
+            },
         }
     }
 }
@@ -141,11 +147,17 @@ impl TypedDisplay for Field {
 
 impl TypedDisplay for Ctnt {
     fn typed_fmt(&self, db: &dyn TypeDatabase, _: &(), f: &mut Formatter) -> Result {
-        let file = db.module_tree(self.trait_.lib).file(self.trait_.module);
-        let hir = db.module_hir(file);
-        let def = hir.def(self.trait_);
+        if self.class.lib == db.lib() {
+            let file = db.module_tree(self.class.lib).file(self.class.module);
+            let hir = db.module_hir(file);
+            let def = hir.def(self.class);
 
-        def.name().fmt(f)?;
+            def.name().fmt(f)?;
+        } else {
+            let external = db.external_item_data(self.class.lib, self.class.module);
+
+            external.items[&self.class].0.fmt(f)?;
+        }
 
         for ty in &self.tys {
             write!(f, " {}", Typed(db, &(), &ty))?;
@@ -155,13 +167,19 @@ impl TypedDisplay for Ctnt {
     }
 }
 
-impl TypedDisplay for Impl {
+impl TypedDisplay for Instance {
     fn typed_fmt(&self, db: &dyn TypeDatabase, _: &(), f: &mut Formatter) -> Result {
-        let file = db.module_tree(self.trait_.lib).file(self.trait_.module);
-        let hir = db.module_hir(file);
-        let def = hir.def(self.trait_);
+        if self.class.lib == db.lib() {
+            let file = db.module_tree(self.class.lib).file(self.class.module);
+            let hir = db.module_hir(file);
+            let def = hir.def(self.class);
 
-        def.name().fmt(f)?;
+            def.name().fmt(f)?;
+        } else {
+            let external = db.external_item_data(self.class.lib, self.class.module);
+
+            external.items[&self.class].0.fmt(f)?;
+        }
 
         for ty in &self.tys {
             write!(f, " {}", Typed(db, &(), &ty))?;
@@ -210,8 +228,8 @@ impl TypedDisplay<Types> for ir::Param {
 impl TypedDisplay<Types> for ir::Guarded {
     fn typed_fmt(&self, db: &dyn TypeDatabase, tys: &Types, f: &mut Formatter) -> Result {
         match self {
-            ir::Guarded::Unconditional(expr) => write!(f, "-> {}", Typed(db, tys, expr)),
-            ir::Guarded::Guarded(_exprs) => unimplemented!(),
+            | ir::Guarded::Unconditional(expr) => write!(f, "-> {}", Typed(db, tys, expr)),
+            | ir::Guarded::Guarded(_exprs) => unimplemented!(),
         }
     }
 }
@@ -221,16 +239,16 @@ impl TypedDisplay<Types> for ir::Expr {
         let ty = &tys[&self.id];
 
         match &self.kind {
-            ir::ExprKind::Error => write!(f, "{{error}} :: {}", Typed(db, &(), ty)),
-            ir::ExprKind::Hole { name } => write!(f, "?{} :: {}", name, Typed(db, &(), ty)),
-            ir::ExprKind::Int { val } => write!(f, "{} :: {}", val, Typed(db, &(), ty)),
-            ir::ExprKind::Float { bits } => {
+            | ir::ExprKind::Error => write!(f, "{{error}} :: {}", Typed(db, &(), ty)),
+            | ir::ExprKind::Hole { name } => write!(f, "?{} :: {}", name, Typed(db, &(), ty)),
+            | ir::ExprKind::Int { val } => write!(f, "{} :: {}", val, Typed(db, &(), ty)),
+            | ir::ExprKind::Float { bits } => {
                 write!(f, "{} :: {}", f64::from_bits(*bits), Typed(db, &(), ty))
-            }
-            ir::ExprKind::Char { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
-            ir::ExprKind::Str { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
-            ir::ExprKind::Ident { name, .. } => write!(f, "{} :: {}", name, Typed(db, &(), ty)),
-            ir::ExprKind::Tuple { exprs } => {
+            },
+            | ir::ExprKind::Char { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
+            | ir::ExprKind::Str { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
+            | ir::ExprKind::Ident { name, .. } => write!(f, "{} :: {}", name, Typed(db, &(), ty)),
+            | ir::ExprKind::Tuple { exprs } => {
                 write!(f, "(")?;
 
                 for (i, expr) in exprs.iter().enumerate() {
@@ -242,8 +260,8 @@ impl TypedDisplay<Types> for ir::Expr {
                 }
 
                 write!(f, ") :: {}", Typed(db, &(), ty))
-            }
-            ir::ExprKind::Array { exprs } => {
+            },
+            | ir::ExprKind::Array { exprs } => {
                 write!(f, "[")?;
 
                 for (i, expr) in exprs.iter().enumerate() {
@@ -255,21 +273,21 @@ impl TypedDisplay<Types> for ir::Expr {
                 }
 
                 write!(f, "] :: {}", Typed(db, &(), ty))
-            }
-            ir::ExprKind::App { base, arg } => {
+            },
+            | ir::ExprKind::App { base, arg } => {
                 writeln!(f, "({}", Typed(db, tys, &**base))?;
                 write!(indent(f), "({})", Typed(db, tys, &**arg))?;
                 write!(f, ") :: {}", Typed(db, &(), ty))?;
 
                 Ok(())
-            }
-            ir::ExprKind::Field { base, field } => {
+            },
+            | ir::ExprKind::Field { base, field } => {
                 write!(f, "({}).{} :: {}", Typed(db, tys, &**base), field, Typed(db, &(), ty))
-            }
-            ir::ExprKind::Index { base, index } => {
+            },
+            | ir::ExprKind::Index { base, index } => {
                 write!(f, "({})[{}] :: {}", Typed(db, tys, &**base), Typed(db, tys, &**index), Typed(db, &(), ty))
-            }
-            ir::ExprKind::Do { block } => {
+            },
+            | ir::ExprKind::Do { block } => {
                 write!(f, "(do")?;
 
                 for stmt in &block.stmts {
@@ -278,13 +296,13 @@ impl TypedDisplay<Types> for ir::Expr {
                 }
 
                 write!(f, ") :: {}", Typed(db, &(), ty))
-            }
-            ir::ExprKind::If { cond, then, else_ } => {
+            },
+            | ir::ExprKind::If { cond, then, else_ } => {
                 writeln!(f, "(if {}", Typed(db, tys, &**cond))?;
                 writeln!(indent(f), "then {}", Typed(db, tys, &**then))?;
                 write!(indent(f), "else {}) :: {}", Typed(db, tys, &**else_), Typed(db, &(), ty))
-            }
-            ir::ExprKind::Case { pred, arms } => {
+            },
+            | ir::ExprKind::Case { pred, arms } => {
                 write!(f, "(case ")?;
 
                 for (i, pred) in pred.iter().enumerate() {
@@ -303,9 +321,9 @@ impl TypedDisplay<Types> for ir::Expr {
                 }
 
                 write!(f, ") :: {}", Typed(db, &(), ty))
-            }
-            ir::ExprKind::Typed { expr, .. } => expr.typed_fmt(db, tys, f),
-            _ => unimplemented!(),
+            },
+            | ir::ExprKind::Typed { expr, .. } => expr.typed_fmt(db, tys, f),
+            | _ => unimplemented!(),
         }
     }
 }
@@ -313,10 +331,10 @@ impl TypedDisplay<Types> for ir::Expr {
 impl TypedDisplay<Types> for ir::Stmt {
     fn typed_fmt(&self, db: &dyn TypeDatabase, tys: &Types, f: &mut Formatter) -> Result {
         match &self.kind {
-            ir::StmtKind::Bind { binding } => {
+            | ir::StmtKind::Bind { binding } => {
                 write!(f, "{} <- {}", Typed(db, tys, &binding.pat), Typed(db, tys, &binding.val))
-            }
-            ir::StmtKind::Discard { expr } => expr.typed_fmt(db, tys, f),
+            },
+            | ir::StmtKind::Discard { expr } => expr.typed_fmt(db, tys, f),
         }
     }
 }
@@ -340,23 +358,29 @@ impl TypedDisplay<Types> for ir::Pat {
         let ty = &tys[&self.id];
 
         match &self.kind {
-            ir::PatKind::Error => write!(f, "{{error}} :: {}", Typed(db, &(), ty)),
-            ir::PatKind::Wildcard => write!(f, "_ :: {}", Typed(db, &(), ty)),
-            ir::PatKind::Bind { name, sub: None } => {
+            | ir::PatKind::Error => write!(f, "{{error}} :: {}", Typed(db, &(), ty)),
+            | ir::PatKind::Wildcard => write!(f, "_ :: {}", Typed(db, &(), ty)),
+            | ir::PatKind::Bind { name, sub: None } => {
                 write!(f, "{} :: {}", name, Typed(db, &(), ty))
-            }
-            ir::PatKind::Int { val } => write!(f, "{} :: {}", val, Typed(db, &(), ty)),
-            ir::PatKind::Float { bits } => {
+            },
+            | ir::PatKind::Int { val } => write!(f, "{} :: {}", val, Typed(db, &(), ty)),
+            | ir::PatKind::Float { bits } => {
                 write!(f, "{} :: {}", f64::from_bits(*bits), Typed(db, &(), ty))
-            }
-            ir::PatKind::Char { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
-            ir::PatKind::Str { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
-            ir::PatKind::Ctor { ctor, pats } => {
-                let file = db.module_tree(ctor.lib).file(ctor.module);
-                let hir = db.module_hir(file);
-                let def = hir.def(*ctor);
+            },
+            | ir::PatKind::Char { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
+            | ir::PatKind::Str { val } => write!(f, "{:?} :: {}", val, Typed(db, &(), ty)),
+            | ir::PatKind::Ctor { ctor, pats } => {
+                if ctor.lib == db.lib() {
+                    let file = db.module_tree(ctor.lib).file(ctor.module);
+                    let hir = db.module_hir(file);
+                    let def = hir.def(*ctor);
 
-                write!(f, "({}", def.name())?;
+                    write!(f, "({}", def.name())?;
+                } else {
+                    let external = db.external_item_data(ctor.lib, ctor.module);
+
+                    write!(f, "({}", external.items[ctor].0)?;
+                }
 
                 for pat in pats {
                     write!(f, " ")?;
@@ -365,8 +389,8 @@ impl TypedDisplay<Types> for ir::Pat {
 
                 write!(f, ") :: ")?;
                 ty.typed_fmt(db, &(), f)
-            }
-            _ => unimplemented!(),
+            },
+            | _ => unimplemented!(),
         }
     }
 }

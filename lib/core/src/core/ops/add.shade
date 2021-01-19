@@ -4,37 +4,37 @@ import Prim
 
 infixl 6 add as (+)
 
-trait Add a where
+class Add a where
     fn add :: a -> a -> a
 
-impl addInt8 :: Add Int8 where
+instance addInt8 :: Add Int8 where
     fn add a b = add_i8 a b
 
-impl addInt16 :: Add Int16 where
+instance addInt16 :: Add Int16 where
     fn add a b = add_i16 a b
 
-impl addInt32 :: Add Int32 where
+instance addInt32 :: Add Int32 where
     fn add a b = add_i32 a b
 
-impl addInt64 :: Add Int64 where
+instance addInt64 :: Add Int64 where
     fn add a b = add_i64 a b
 
-impl addInt128 :: Add Int128 where
+instance addInt128 :: Add Int128 where
     fn add a b = add_i128 a b
 
-impl addUint8 :: Add Uint8 where
+instance addUint8 :: Add Uint8 where
     fn add a b = add_u8 a b
 
-impl addUint16 :: Add Uint16 where
+instance addUint16 :: Add Uint16 where
     fn add a b = add_u16 a b
 
-impl addUint32 :: Add Uint32 where
+instance addUint32 :: Add Uint32 where
     fn add a b = add_u32 a b
 
-impl addUint64 :: Add Uint64 where
+instance addUint64 :: Add Uint64 where
     fn add a b = add_u64 a b
 
-impl addUint128 :: Add Uint128 where
+instance addUint128 :: Add Uint128 where
     fn add a b = add_u128 a b
 
 [intrinsic] foreign fn add_i8 :: Int8 -> Int8 -> Int8

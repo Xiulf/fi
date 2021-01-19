@@ -2,8 +2,8 @@ module Data.Semigroup (Semigroup(..)) where
 
 infixr 5 append as (<>)
 
-trait Semigroup a where
+class Semigroup a where
     fn append :: a -> a -> a
 
-impl semigroupUnit :: Semigroup () where
+instance semigroupUnit :: Semigroup () where
     fn append _ _ = ()

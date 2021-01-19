@@ -45,17 +45,17 @@ impl Manifest {
     pub fn load(diags: &dyn diagnostics::Diagnostics, files: &mut crate::Files, dir: &Path) -> Self {
         let manifest_path = format!("{}/shadow.toml", dir.display());
         let manifest_src = match std::fs::read_to_string(&manifest_path) {
-            Ok(s) => s,
-            Err(_) => {
+            | Ok(s) => s,
+            | Err(_) => {
                 diags.error(format!("no shadow.toml file found in {}", dir.display())).finish();
                 diags.print_and_exit();
-            }
+            },
         };
 
         let manifest_file = files.add(manifest_path, manifest_src.into());
         let mut manifest: Manifest = match toml::from_str(&files.source(manifest_file)) {
-            Ok(m) => m,
-            Err(e) => {
+            | Ok(m) => m,
+            | Err(e) => {
                 let span = if let Some((line, col)) = e.line_col() {
                     let span = files.line_span(manifest_file, line as u32).unwrap();
                     let index = span.start() + codespan::ByteOffset::from(col as i64);
@@ -71,20 +71,20 @@ impl Manifest {
                     .finish();
 
                 diags.print_and_exit();
-            }
+            },
         };
 
         match &mut manifest.package.src_dir {
-            Some(entry) => {
+            | Some(entry) => {
                 if entry.is_relative() {
                     *entry = format!("{}/{}", dir.display(), entry.display()).into();
                 }
-            }
-            None => {
+            },
+            | None => {
                 let path = format!("{}/src", dir.display());
 
                 manifest.package.src_dir = Some(path.into());
-            }
+            },
         }
 
         manifest.package.target_dir = format!("{}/target", dir.display()).into();

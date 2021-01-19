@@ -15,3 +15,4 @@ backend = { path = "../backend" }
 salsa = "^0.16.0"
 serde = { version = "^1.0.117", features = ["derive"] }
 bincode = "1.3.1"
+relative-path = "1.3.2"

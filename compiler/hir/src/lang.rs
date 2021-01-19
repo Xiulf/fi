@@ -15,32 +15,35 @@ macro_rules! lang_items {
         impl LangItems {
             pub fn collect(db: &dyn crate::HirDatabase) -> std::sync::Arc<Self> {
                 let lang_attr = syntax::symbol::Symbol::new("lang");
-                let libs = db.libs();
-                let find = |name| {
-                    libs.iter()
-                        .filter_map(|lib| db
-                            .lib_files(*lib).iter()
-                            .map(|file| db.module_hir(*file))
-                            .filter_map(|hir| hir.items
-                                .values()
-                                .filter_map(|item| {
-                                    if let Some(_) = item.attrs.iter()
-                                        .find(|attr| attr.name.symbol == lang_attr && attr.str_arg() == Some(name))
-                                    {
-                                        Some(item.id)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .next()
-                            )
-                            .next()
-                        )
-                        .next()
-                };
+                let mut ids = [None; lang_items!(@count $($name)*)];
+                const NAMES: [&'static str; lang_items!(@count $($name)*)] = [$($attr),*];
+
+                for &file in &*db.lib_files(db.lib()) {
+                    let hir = db.module_hir(file);
+
+                    for item in hir.items.values() {
+                        if let Some(attr) = item.attrs.iter().find(|attr| attr.name.symbol == lang_attr) {
+                            if let Some(idx) = NAMES.iter().position(|n| attr.str_arg() == Some(n)) {
+                                ids[idx] = Some(item.id);
+                            }
+                        }
+                    }
+                }
+
+                for module in &*db.external_modules(db.lib()) {
+                    let items = db.external_item_data(module.lib, module.id);
+
+                    for (id, (_, attrs)) in &items.items {
+                        if let Some(attr) = attrs.iter().find(|attr| attr.name.symbol == lang_attr) {
+                            if let Some(idx) = NAMES.iter().position(|n| attr.str_arg() == Some(n)) {
+                                ids[idx] = Some((*id).into());
+                            }
+                        }
+                    }
+                }
 
                 std::sync::Arc::new(LangItems {
-                    ids: [$(find($attr)),*],
+                    ids,
                 })
             }
 

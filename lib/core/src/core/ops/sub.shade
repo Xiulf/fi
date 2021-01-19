@@ -4,37 +4,37 @@ import Prim
 
 infixl 6 sub as (-)
 
-trait Sub a where
+class Sub a where
     fn sub :: a -> a-> a
 
-impl subInt8 :: Sub Int8 where
+instance subInt8 :: Sub Int8 where
     fn sub a b = sub_i8 a b
 
-impl subInt16 :: Sub Int16 where
+instance subInt16 :: Sub Int16 where
     fn sub a b = sub_i16 a b
 
-impl subInt32 :: Sub Int32 where
+instance subInt32 :: Sub Int32 where
     fn sub a b = sub_i32 a b
 
-impl subInt64 :: Sub Int64 where
+instance subInt64 :: Sub Int64 where
     fn sub a b = sub_i64 a b
 
-impl subInt128 :: Sub Int128 where
+instance subInt128 :: Sub Int128 where
     fn sub a b = sub_i128 a b
 
-impl subUint8 :: Sub Uint8 where
+instance subUint8 :: Sub Uint8 where
     fn sub a b = sub_u8 a b
 
-impl subUint16 :: Sub Uint16 where
+instance subUint16 :: Sub Uint16 where
     fn sub a b = sub_u16 a b
 
-impl subUint32 :: Sub Uint32 where
+instance subUint32 :: Sub Uint32 where
     fn sub a b = sub_u32 a b
 
-impl subUint64 :: Sub Uint64 where
+instance subUint64 :: Sub Uint64 where
     fn sub a b = sub_u64 a b
 
-impl subUint128 :: Sub Uint128 where
+instance subUint128 :: Sub Uint128 where
     fn sub a b = sub_u128 a b
 
 [intrinsic] foreign fn sub_i8 :: Int8 -> Int8 -> Int8

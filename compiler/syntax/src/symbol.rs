@@ -97,14 +97,14 @@ impl Ident {
 
     pub fn peek_any(cursor: parser::buffer::Cursor) -> bool {
         match cursor.any() {
-            Some((
+            | Some((
                 parser::lexer::Token {
                     span: _,
                     kind: parser::lexer::TokenType::Name,
                 },
                 _,
             )) => true,
-            _ => false,
+            | _ => false,
         }
     }
 }
@@ -124,17 +124,17 @@ impl parser::parse::Parse for Ident {
 impl parser::token::Token for Ident {
     fn peek(cursor: parser::buffer::Cursor) -> bool {
         match cursor.any() {
-            Some((
+            | Some((
                 parser::lexer::Token {
                     span,
                     kind: parser::lexer::TokenType::Name,
                 },
                 _,
             )) => match cursor.text(span) {
-                "where" | "then" | "else" | "of" | "do" => false,
-                _ => true,
+                | "where" | "then" | "else" | "of" | "do" => false,
+                | _ => true,
             },
-            _ => false,
+            | _ => false,
         }
     }
 

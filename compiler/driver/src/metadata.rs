@@ -17,7 +17,11 @@ impl CompilerDatabase {
     pub fn store_metadata(&self, lib: source::LibId) {
         let tree = self.module_tree(lib);
         let files = self.files();
-        let assemblies = tree.data.iter().map(|data| (data.id, self.assembly(lib, data.id).path().to_owned())).collect();
+        let assemblies = tree
+            .toposort(self)
+            .into_iter()
+            .map(|data| (data.id, self.assembly(lib, data.id).path().to_owned()))
+            .collect();
         let last_modified = self
             .lib_files(lib)
             .iter()
@@ -33,6 +37,8 @@ impl CompilerDatabase {
 
         bincode::serialize_into(file, &LibMetadata { assemblies, last_modified }).unwrap();
         hir::module_tree::save_external(self, lib);
+        hir::store_item_data(self, lib);
+        typeck::external::store_external(self, lib);
     }
 
     pub fn load_metadata(&self, lib: source::LibId) -> Option<LibMetadata> {

@@ -64,9 +64,9 @@ impl Display for AttrBody {
 impl Display for AttrArg {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
-            AttrArg::Literal(lit) => lit.fmt(f),
-            AttrArg::Field(name, lit) => write!(f, "{} = {}", name, lit),
-            AttrArg::Call(name, args) => {
+            | AttrArg::Literal(lit) => lit.fmt(f),
+            | AttrArg::Field(name, lit) => write!(f, "{} = {}", name, lit),
+            | AttrArg::Call(name, args) => {
                 write!(f, "{}(", name)?;
 
                 for (i, arg) in args.iter().enumerate() {
@@ -78,7 +78,7 @@ impl Display for AttrArg {
                 }
 
                 write!(f, ")")
-            }
+            },
         }
     }
 }
@@ -86,10 +86,10 @@ impl Display for AttrArg {
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
-            Literal::Int(_, val) => val.fmt(f),
-            Literal::Float(_, bits) => f64::from_bits(*bits).fmt(f),
-            Literal::Char(_, val) => std::fmt::Debug::fmt(val, f),
-            Literal::String(_, val) => std::fmt::Debug::fmt(val, f),
+            | Literal::Int(_, val) => val.fmt(f),
+            | Literal::Float(_, bits) => f64::from_bits(*bits).fmt(f),
+            | Literal::Char(_, val) => std::fmt::Debug::fmt(val, f),
+            | Literal::String(_, val) => std::fmt::Debug::fmt(val, f),
         }
     }
 }
@@ -97,8 +97,8 @@ impl Display for Literal {
 impl Display for Exports {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
-            Exports::All => Ok(()),
-            Exports::Some(exports) => {
+            | Exports::All => Ok(()),
+            | Exports::Some(exports) => {
                 write!(f, " (")?;
 
                 for (i, export) in exports.iter().enumerate() {
@@ -110,7 +110,7 @@ impl Display for Exports {
                 }
 
                 write!(f, ")")
-            }
+            },
         }
     }
 }
@@ -118,13 +118,13 @@ impl Display for Exports {
 impl Display for Export {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
-            ExportKind::Module => write!(f, "module {}", self.name),
-            ExportKind::Group(grp) => {
+            | ExportKind::Module => write!(f, "module {}", self.name),
+            | ExportKind::Group(grp) => {
                 write!(f, "{}(", self.name)?;
                 grp.fmt(f)?;
                 write!(f, ")")
-            }
-            ExportKind::Any => self.name.fmt(f),
+            },
+            | ExportKind::Any => self.name.fmt(f),
         }
     }
 }
@@ -132,8 +132,8 @@ impl Display for Export {
 impl Display for ExportGroup {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
-            ExportGroup::All => write!(f, ".."),
-            ExportGroup::Some(names) => {
+            | ExportGroup::All => write!(f, ".."),
+            | ExportGroup::Some(names) => {
                 for (i, name) in names.iter().enumerate() {
                     if i != 0 {
                         write!(f, ", ")?;
@@ -143,7 +143,7 @@ impl Display for ExportGroup {
                 }
 
                 Ok(())
-            }
+            },
         }
     }
 }
@@ -181,12 +181,12 @@ impl Display for ImportDecl {
 impl Display for Import {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match &self.kind {
-            ImportKind::Group(grp) => {
+            | ImportKind::Group(grp) => {
                 write!(f, "{}(", self.name)?;
                 grp.fmt(f)?;
                 write!(f, ")")
-            }
-            ImportKind::Any => self.name.fmt(f),
+            },
+            | ImportKind::Any => self.name.fmt(f),
         }
     }
 }
@@ -194,8 +194,8 @@ impl Display for Import {
 impl Display for ImportGroup {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
-            ImportGroup::All => write!(f, ".."),
-            ImportGroup::Some(names) => {
+            | ImportGroup::All => write!(f, ".."),
+            | ImportGroup::Some(names) => {
                 for (i, name) in names.iter().enumerate() {
                     if i != 0 {
                         write!(f, ", ")?;
@@ -205,7 +205,7 @@ impl Display for ImportGroup {
                 }
 
                 Ok(())
-            }
+            },
         }
     }
 }
@@ -217,48 +217,48 @@ impl Display for Decl {
         }
 
         match &self.kind {
-            DeclKind::Foreign { .. } => {
+            | DeclKind::Foreign { .. } => {
                 write!(f, "foreign {}", self.name)
-            }
-            DeclKind::FuncTy { .. } => {
+            },
+            | DeclKind::FuncTy { .. } => {
                 write!(f, "fn {}", self.name)
-            }
-            DeclKind::Func { .. } => {
+            },
+            | DeclKind::Func { .. } => {
                 write!(f, "fn {}", self.name)
-            }
-            DeclKind::StaticTy { .. } => {
+            },
+            | DeclKind::StaticTy { .. } => {
                 write!(f, "static {}", self.name)
-            }
-            DeclKind::Static { .. } => {
+            },
+            | DeclKind::Static { .. } => {
                 write!(f, "static {}", self.name)
-            }
-            DeclKind::ConstTy { .. } => {
+            },
+            | DeclKind::ConstTy { .. } => {
                 write!(f, "const {}", self.name)
-            }
-            DeclKind::Const { .. } => {
+            },
+            | DeclKind::Const { .. } => {
                 write!(f, "const {}", self.name)
-            }
-            DeclKind::Fixity { .. } => {
+            },
+            | DeclKind::Fixity { .. } => {
                 write!(f, "fixity {}", self.name)
-            }
-            DeclKind::AliasKind { .. } => {
+            },
+            | DeclKind::AliasKind { .. } => {
                 write!(f, "alias {}", self.name)
-            }
-            DeclKind::Alias { .. } => {
+            },
+            | DeclKind::Alias { .. } => {
                 write!(f, "alias {}", self.name)
-            }
-            DeclKind::DataKind { .. } => {
+            },
+            | DeclKind::DataKind { .. } => {
                 write!(f, "data {}", self.name)
-            }
-            DeclKind::Data { .. } => {
+            },
+            | DeclKind::Data { .. } => {
                 write!(f, "data {}", self.name)
-            }
-            DeclKind::Trait { .. } => {
-                write!(f, "trait {}", self.name)
-            }
-            DeclKind::ImplChain { .. } => {
-                write!(f, "impl {}", self.name)
-            }
+            },
+            | DeclKind::Class { .. } => {
+                write!(f, "class {}", self.name)
+            },
+            | DeclKind::InstanceChain { .. } => {
+                write!(f, "instance {}", self.name)
+            },
         }
     }
 }

@@ -11,14 +11,14 @@ data List a
 
 infixr 6 Cons as (:)
 
--- impl listEq :: Eq a => Eq (List a) where
+-- instance listEq :: Eq a => Eq (List a) where
 --     fn eq (Cons x xs) (Cons y ys) = and (eq x y) (eq xs ys)
 --     fn eq Nil Nil = True
 --     fn eq _ _ = False
 -- 
--- impl monoidList :: Eq (List a) where
+-- instance monoidList :: Eq (List a) where
 --     fn mempty = Nil
 -- 
--- impl semigroupList :: Semigroup (List a) where
+-- instance semigroupList :: Semigroup (List a) where
 --     fn append (Cons x xs) ys = Cons x (append xs ys)
-    -- fn append Nil ys = ys
+--     fn append Nil ys = ys

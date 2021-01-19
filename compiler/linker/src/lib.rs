@@ -14,20 +14,20 @@ pub fn get_linker(_target: &target_lexicon::Triple) -> Box<dyn linker::Linker> {
 
 pub fn extension(output_type: LinkOutputType, target: &target_lexicon::Triple) -> &'static OsStr {
     OsStr::new(match target.operating_system {
-        target_lexicon::OperatingSystem::Windows => match output_type {
-            LinkOutputType::Exe => ".exe",
-            LinkOutputType::Lib => ".lib",
-            LinkOutputType::Dylib => ".dll",
+        | target_lexicon::OperatingSystem::Windows => match output_type {
+            | LinkOutputType::Exe => ".exe",
+            | LinkOutputType::Lib => ".lib",
+            | LinkOutputType::Dylib => ".dll",
         },
-        target_lexicon::OperatingSystem::MacOSX { .. } => match output_type {
-            LinkOutputType::Exe => ".app",
-            LinkOutputType::Lib => ".a",
-            LinkOutputType::Dylib => ".dylib",
+        | target_lexicon::OperatingSystem::MacOSX { .. } => match output_type {
+            | LinkOutputType::Exe => ".app",
+            | LinkOutputType::Lib => ".a",
+            | LinkOutputType::Dylib => ".dylib",
         },
-        _ => match output_type {
-            LinkOutputType::Exe => "",
-            LinkOutputType::Lib => ".a",
-            LinkOutputType::Dylib => ".so",
+        | _ => match output_type {
+            | LinkOutputType::Exe => "",
+            | LinkOutputType::Lib => ".a",
+            | LinkOutputType::Dylib => ".so",
         },
     })
 }

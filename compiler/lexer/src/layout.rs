@@ -3,16 +3,16 @@ use super::*;
 impl LayoutDelim {
     fn is_indented(self) -> bool {
         match self {
-            LayoutDelim::Let | LayoutDelim::LetStmt | LayoutDelim::Where | LayoutDelim::Of | LayoutDelim::Do => true,
-            _ => false,
+            | LayoutDelim::Let | LayoutDelim::LetStmt | LayoutDelim::Where | LayoutDelim::Of | LayoutDelim::Do => true,
+            | _ => false,
         }
     }
 }
 
 fn is_top_decl(pos: Pos, stack: &[(Pos, LayoutDelim)]) -> bool {
     match stack {
-        [(_, LayoutDelim::Root), (pos2, LayoutDelim::Where)] => pos2.1 == pos.1,
-        _ => false,
+        | [(_, LayoutDelim::Root), (pos2, LayoutDelim::Where)] => pos2.1 == pos.1,
+        | _ => false,
     }
 }
 
@@ -21,20 +21,20 @@ struct Collapse(Vec<(Pos, LayoutDelim)>, usize);
 impl<'src> Lexer<'src> {
     pub(crate) fn unwind(&mut self) {
         match self.stack[..] {
-            [] => {}
-            [.., (_, LayoutDelim::Root)] => {
+            | [] => {},
+            | [.., (_, LayoutDelim::Root)] => {
                 self.stack.pop().unwrap();
                 self.queue.push_back(self.token(TokenType::EOF));
-            }
-            [.., (_, lyt)] if lyt.is_indented() => {
+            },
+            | [.., (_, lyt)] if lyt.is_indented() => {
                 self.queue.push_back(self.token(TokenType::LayoutEnd));
                 self.stack.pop().unwrap();
                 self.unwind();
-            }
-            [.., _] => {
+            },
+            | [.., _] => {
                 self.stack.pop().unwrap();
                 self.unwind();
-            }
+            },
         }
     }
 
@@ -59,8 +59,8 @@ impl<'src> Lexer<'src> {
         }
 
         match kind {
-            TokenType::Name => match self.text(span) {
-                "where" => {
+            | TokenType::Name => match self.text(span) {
+                | "where" => {
                     if let [.., (_, LayoutDelim::TopDeclHead)] = self.stack[..] {
                         self.stack.pop().unwrap();
                         self.queue.push_back(token);
@@ -84,8 +84,8 @@ impl<'src> Lexer<'src> {
                         self.queue.push_back(token);
                         self.insert_start(LayoutDelim::Where, next_pos);
                     }
-                }
-                "data" => {
+                },
+                | "data" => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
@@ -94,8 +94,8 @@ impl<'src> Lexer<'src> {
                     } else if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                         self.stack.pop().unwrap();
                     }
-                }
-                "trait" => {
+                },
+                | "class" => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
@@ -104,39 +104,39 @@ impl<'src> Lexer<'src> {
                     } else if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                         self.stack.pop().unwrap();
                     }
-                }
-                "let" => {
+                },
+                | "let" => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
                     match self.stack[..] {
-                        [.., (_, LayoutDelim::Prop)] => {
+                        | [.., (_, LayoutDelim::Prop)] => {
                             self.stack.pop().unwrap();
-                        }
-                        [.., (p, LayoutDelim::Do)] if p.1 == start.1 => {
+                        },
+                        | [.., (p, LayoutDelim::Do)] if p.1 == start.1 => {
                             self.insert_start(LayoutDelim::LetStmt, next_pos);
-                        }
-                        _ => {
+                        },
+                        | _ => {
                             self.insert_start(LayoutDelim::Let, next_pos);
-                        }
+                        },
                     }
-                }
-                "in" => {
+                },
+                | "in" => {
                     let mut c = Collapse::new(self.queue.len());
 
                     c.collapse(
                         start,
                         |_, _, lyt| match lyt {
-                            LayoutDelim::Let => false,
-                            LayoutDelim::Do => false,
-                            _ => lyt.is_indented(),
+                            | LayoutDelim::Let => false,
+                            | LayoutDelim::Do => false,
+                            | _ => lyt.is_indented(),
                         },
                         &mut self.stack,
                         &mut self.queue,
                     );
 
                     match self.stack[..] {
-                        [.., (_, LayoutDelim::Do), (_, LayoutDelim::LetStmt)] => {
+                        | [.., (_, LayoutDelim::Do), (_, LayoutDelim::LetStmt)] => {
                             self.stack.pop().unwrap();
                             self.stack.pop().unwrap();
                             self.queue.push_back(Token {
@@ -150,8 +150,8 @@ impl<'src> Lexer<'src> {
                             });
 
                             self.queue.push_back(token);
-                        }
-                        [.., (_, lyt)] if lyt.is_indented() => {
+                        },
+                        | [.., (_, lyt)] if lyt.is_indented() => {
                             self.stack.pop().unwrap();
                             self.queue.push_back(Token {
                                 span: Span::new(start.2, start.2),
@@ -159,18 +159,18 @@ impl<'src> Lexer<'src> {
                             });
 
                             self.queue.push_back(token);
-                        }
-                        _ => {
+                        },
+                        | _ => {
                             c.restore(&mut self.stack, &mut self.queue);
                             self.insert_default(start);
 
                             if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                                 self.stack.pop().unwrap();
                             }
-                        }
+                        },
                     }
-                }
-                "do" => {
+                },
+                | "do" => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
@@ -179,8 +179,8 @@ impl<'src> Lexer<'src> {
                     } else {
                         self.insert_start(LayoutDelim::Do, next_pos);
                     }
-                }
-                "case" => {
+                },
+                | "case" => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
@@ -189,8 +189,8 @@ impl<'src> Lexer<'src> {
                     } else {
                         self.insert_start(LayoutDelim::Case, pos);
                     }
-                }
-                "of" => {
+                },
+                | "of" => {
                     Collapse::new(self.queue.len()).collapse(start, indented_p, &mut self.stack, &mut self.queue);
 
                     if let [.., (_, LayoutDelim::Case)] = self.stack[..] {
@@ -205,8 +205,8 @@ impl<'src> Lexer<'src> {
                             self.stack.pop().unwrap();
                         }
                     }
-                }
-                "if" => {
+                },
+                | "if" => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
@@ -215,8 +215,8 @@ impl<'src> Lexer<'src> {
                     } else {
                         self.stack.push((start, LayoutDelim::If));
                     }
-                }
-                "then" => {
+                },
+                | "then" => {
                     let mut c = Collapse::new(self.queue.len());
 
                     c.collapse(start, indented_p, &mut self.stack, &mut self.queue);
@@ -233,8 +233,8 @@ impl<'src> Lexer<'src> {
                             self.stack.pop().unwrap();
                         }
                     }
-                }
-                "else" => {
+                },
+                | "else" => {
                     let mut c = Collapse::new(self.queue.len());
 
                     c.collapse(start, indented_p, &mut self.stack, &mut self.queue);
@@ -257,8 +257,8 @@ impl<'src> Lexer<'src> {
                             }
                         }
                     }
-                }
-                "forall" => {
+                },
+                | "forall" => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
@@ -267,23 +267,23 @@ impl<'src> Lexer<'src> {
                     } else {
                         self.stack.push((start, LayoutDelim::Forall));
                     }
-                }
-                _ => {
+                },
+                | _ => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
                     if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                         self.stack.pop().unwrap();
                     }
-                }
+                },
             },
-            TokenType::RightArrow => {
+            | TokenType::RightArrow => {
                 Collapse::new(self.queue.len()).collapse(
                     start,
                     |s, p, lyt| match lyt {
-                        LayoutDelim::Do => true,
-                        LayoutDelim::Of => false,
-                        _ => offside_end_p(s, p, lyt),
+                        | LayoutDelim::Do => true,
+                        | LayoutDelim::Of => false,
+                        | _ => offside_end_p(s, p, lyt),
                     },
                     &mut self.stack,
                     &mut self.queue,
@@ -294,17 +294,17 @@ impl<'src> Lexer<'src> {
                 }
 
                 self.queue.push_back(token);
-            }
-            TokenType::Equals => {
+            },
+            | TokenType::Equals => {
                 let mut c = Collapse::new(self.queue.len());
 
                 c.collapse(
                     start,
                     |_, _, lyt| match lyt {
-                        LayoutDelim::Where => true,
-                        LayoutDelim::Let => true,
-                        LayoutDelim::LetStmt => true,
-                        _ => false,
+                        | LayoutDelim::Where => true,
+                        | LayoutDelim::Let => true,
+                        | LayoutDelim::LetStmt => true,
+                        | _ => false,
                     },
                     &mut self.stack,
                     &mut self.queue,
@@ -317,39 +317,39 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start);
                     self.queue.push_back(token);
                 }
-            }
-            TokenType::Pipe => {
+            },
+            | TokenType::Pipe => {
                 let mut c = Collapse::new(self.queue.len());
 
                 c.collapse(start, offside_end_p, &mut self.stack, &mut self.queue);
 
                 match self.stack[..] {
-                    [.., (_, LayoutDelim::Of)] => {
+                    | [.., (_, LayoutDelim::Of)] => {
                         self.stack.push((pos, LayoutDelim::CaseGuard));
-                    }
-                    [.., (_, LayoutDelim::Let)] => {
+                    },
+                    | [.., (_, LayoutDelim::Let)] => {
                         self.stack.push((pos, LayoutDelim::DeclGuard));
-                    }
-                    [.., (_, LayoutDelim::Where)] => {
+                    },
+                    | [.., (_, LayoutDelim::Where)] => {
                         self.stack.push((pos, LayoutDelim::DeclGuard));
-                    }
-                    _ => {
+                    },
+                    | _ => {
                         c.restore(&mut self.stack, &mut self.queue);
                         self.insert_default(start);
-                    }
+                    },
                 }
 
                 self.queue.push_back(token);
-            }
-            TokenType::Comma => {
+            },
+            | TokenType::Comma => {
                 Collapse::new(self.queue.len()).collapse(start, indented_p, &mut self.stack, &mut self.queue);
                 self.queue.push_back(token);
 
                 if let [.., (_, LayoutDelim::Brace)] = self.stack[..] {
                     self.stack.push((start, LayoutDelim::Prop));
                 }
-            }
-            TokenType::Dot => {
+            },
+            | TokenType::Dot => {
                 self.insert_default(start);
                 self.queue.push_back(token);
 
@@ -358,19 +358,19 @@ impl<'src> Lexer<'src> {
                 } else {
                     self.stack.push((start, LayoutDelim::Prop));
                 }
-            }
-            TokenType::LeftParen => {
+            },
+            | TokenType::LeftParen => {
                 self.insert_default(start);
                 self.queue.push_back(token);
                 self.stack.push((pos, LayoutDelim::Paren));
-            }
-            TokenType::LeftBrace => {
+            },
+            | TokenType::LeftBrace => {
                 self.insert_default(start);
                 self.queue.push_back(token);
                 self.stack.push((pos, LayoutDelim::Brace));
                 self.stack.push((pos, LayoutDelim::Prop));
-            }
-            TokenType::LeftBracket => {
+            },
+            | TokenType::LeftBracket => {
                 self.insert_default(start);
                 self.queue.push_back(token);
 
@@ -379,8 +379,8 @@ impl<'src> Lexer<'src> {
                 } else {
                     self.stack.push((pos, LayoutDelim::Square));
                 }
-            }
-            TokenType::RightParen => {
+            },
+            | TokenType::RightParen => {
                 Collapse::new(self.queue.len()).collapse(pos, indented_p, &mut self.stack, &mut self.queue);
 
                 if let [.., (_, LayoutDelim::Paren)] = self.stack[..] {
@@ -388,8 +388,8 @@ impl<'src> Lexer<'src> {
                 }
 
                 self.queue.push_back(token);
-            }
-            TokenType::RightBrace => {
+            },
+            | TokenType::RightBrace => {
                 Collapse::new(self.queue.len()).collapse(pos, indented_p, &mut self.stack, &mut self.queue);
 
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
@@ -401,8 +401,8 @@ impl<'src> Lexer<'src> {
                 }
 
                 self.queue.push_back(token);
-            }
-            TokenType::RightBracket => {
+            },
+            | TokenType::RightBracket => {
                 Collapse::new(self.queue.len()).collapse(pos, indented_p, &mut self.stack, &mut self.queue);
 
                 if let [.., (_, LayoutDelim::Square)] = self.stack[..] {
@@ -410,16 +410,16 @@ impl<'src> Lexer<'src> {
                 }
 
                 self.queue.push_back(token);
-            }
-            TokenType::Operator => {
+            },
+            | TokenType::Operator => {
                 Collapse::new(self.queue.len()).collapse(pos, offside_end_p, &mut self.stack, &mut self.queue);
                 self.insert_sep(next_pos);
                 self.queue.push_back(token);
-            }
-            _ => {
+            },
+            | _ => {
                 self.queue.push_back(token);
                 self.insert_default(pos);
-            }
+            },
         }
     }
 
@@ -431,34 +431,34 @@ impl<'src> Lexer<'src> {
 
     fn insert_start(&mut self, lyt: LayoutDelim, pos: Pos) {
         match self.stack.iter().find(|s| s.1.is_indented()) {
-            Some((start, _)) if pos.1 <= start.1 => {}
-            _ => {
+            | Some((start, _)) if pos.1 <= start.1 => {},
+            | _ => {
                 self.stack.push((pos, lyt));
                 self.queue.push_back(self.token(TokenType::LayoutStart));
-            }
+            },
         }
     }
 
     fn insert_sep(&mut self, pos: Pos) {
         match self.stack[..] {
-            [.., (start, LayoutDelim::TopDecl)] if sep_p(pos, start) => {
+            | [.., (start, LayoutDelim::TopDecl)] if sep_p(pos, start) => {
                 self.stack.pop().unwrap();
                 self.queue.push_back(self.token(TokenType::LayoutSep));
-            }
-            [.., (start, LayoutDelim::TopDeclHead)] if sep_p(pos, start) => {
+            },
+            | [.., (start, LayoutDelim::TopDeclHead)] if sep_p(pos, start) => {
                 self.stack.pop().unwrap();
                 self.queue.push_back(self.token(TokenType::LayoutSep));
-            }
-            [.., (start, lyt)] if indent_sep_p(pos, start, lyt) => match lyt {
-                LayoutDelim::Of => {
+            },
+            | [.., (start, lyt)] if indent_sep_p(pos, start, lyt) => match lyt {
+                | LayoutDelim::Of => {
                     self.stack.push((start, LayoutDelim::CaseBinders));
                     self.queue.push_back(self.token(TokenType::LayoutSep));
-                }
-                _ => {
+                },
+                | _ => {
                     self.queue.push_back(self.token(TokenType::LayoutSep));
-                }
+                },
             },
-            _ => {}
+            | _ => {},
         }
     }
 }
@@ -490,7 +490,7 @@ impl Collapse {
 
     fn collapse(&mut self, start: Pos, p: fn(Pos, Pos, LayoutDelim) -> bool, stack: &mut Vec<(Pos, LayoutDelim)>, tokens: &mut VecDeque<Token>) {
         match stack[..] {
-            [.., (lyt_pos, lyt)] if p(start, lyt_pos, lyt) => {
+            | [.., (lyt_pos, lyt)] if p(start, lyt_pos, lyt) => {
                 self.0.push(stack.pop().unwrap());
                 self.collapse(start, p, stack, tokens);
 
@@ -500,8 +500,8 @@ impl Collapse {
                         kind: TokenType::LayoutEnd,
                     });
                 }
-            }
-            _ => {}
+            },
+            | _ => {},
         }
     }
 

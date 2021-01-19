@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 pub use syntax::ast::{Assoc, AttrArg, Attribute, ForeignKind, Prec};
 pub use syntax::symbol::{Ident, Symbol};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleId(u64, u64);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -40,10 +40,10 @@ pub struct LocalId(pub u32);
 pub struct BodyId(pub HirId);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TraitItemId(pub HirId);
+pub struct ClassItemId(pub HirId);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ImplItemId(pub HirId);
+pub struct InstanceItemId(pub HirId);
 
 #[derive(PartialEq, Eq)]
 pub struct Module {
@@ -54,8 +54,8 @@ pub struct Module {
     pub exports: Vec<Export>,
     pub imports: Vec<DefId>,
     pub items: BTreeMap<HirId, Item>,
-    pub trait_items: BTreeMap<TraitItemId, TraitItem>,
-    pub impl_items: BTreeMap<ImplItemId, ImplItem>,
+    pub class_items: BTreeMap<ClassItemId, ClassItem>,
+    pub instance_items: BTreeMap<InstanceItemId, InstanceItem>,
     pub bodies: BTreeMap<BodyId, Body>,
     pub body_ids: Vec<BodyId>,
 }
@@ -114,15 +114,15 @@ pub enum ItemKind {
         data: HirId,
         tys: Vec<Type>,
     },
-    Trait {
-        head: TraitHead,
-        body: TraitBody,
+    Class {
+        head: ClassHead,
+        body: ClassBody,
     },
-    Impl {
+    Instance {
         chain: Vec<HirId>,
         index: usize,
-        head: ImplHead,
-        body: ImplBody,
+        head: InstanceHead,
+        body: InstanceBody,
     },
 }
 
@@ -135,7 +135,7 @@ pub struct DataHead {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct TraitHead {
+pub struct ClassHead {
     pub id: HirId,
     pub span: Span,
     pub parent: Vec<Constraint>,
@@ -143,29 +143,29 @@ pub struct TraitHead {
     pub fundeps: Vec<FunDep>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FunDep {
     pub determiners: Vec<usize>,
     pub determined: Vec<usize>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct TraitBody {
+pub struct ClassBody {
     pub id: HirId,
     pub span: Span,
-    pub items: Vec<TraitItemRef>,
+    pub items: Vec<ClassItemRef>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct TraitItemRef {
-    pub id: TraitItemId,
+pub struct ClassItemRef {
+    pub id: ClassItemId,
     pub span: Span,
     pub name: Ident,
     pub kind: AssocItemKind,
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct ImplHead {
+pub struct InstanceHead {
     pub id: HirId,
     pub span: Span,
     pub cs: Vec<Constraint>,
@@ -174,15 +174,15 @@ pub struct ImplHead {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct ImplBody {
+pub struct InstanceBody {
     pub id: HirId,
     pub span: Span,
-    pub items: Vec<ImplItemRef>,
+    pub items: Vec<InstanceItemRef>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct ImplItemRef {
-    pub id: ImplItemId,
+pub struct InstanceItemRef {
+    pub id: InstanceItemId,
     pub span: Span,
     pub name: Ident,
     pub kind: AssocItemKind,
@@ -194,30 +194,30 @@ pub enum AssocItemKind {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct TraitItem {
+pub struct ClassItem {
     pub id: HirId,
     pub owner: HirId,
     pub span: Span,
     pub name: Ident,
-    pub kind: TraitItemKind,
+    pub kind: ClassItemKind,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum TraitItemKind {
+pub enum ClassItemKind {
     Func { ty: Type },
 }
 
 #[derive(PartialEq, Eq)]
-pub struct ImplItem {
+pub struct InstanceItem {
     pub id: HirId,
     pub owner: HirId,
     pub span: Span,
     pub name: Ident,
-    pub kind: ImplItemKind,
+    pub kind: InstanceItemKind,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ImplItemKind {
+pub enum InstanceItemKind {
     Func { ty: Type, body: BodyId },
 }
 
@@ -482,17 +482,17 @@ impl<CTX> stable_hasher::HashStable<CTX> for DefPath {
         std::mem::discriminant(self).hash_stable(ctx, hasher);
 
         match self {
-            DefPath::Value(s) | DefPath::Type(s) => {
+            | DefPath::Value(s) | DefPath::Type(s) => {
                 s.hash_stable(ctx, hasher);
-            }
+            },
         }
     }
 }
 
 pub enum Def<'a> {
     Item(&'a Item),
-    TraitItem(&'a TraitItem),
-    ImplItem(&'a ImplItem),
+    TraitItem(&'a ClassItem),
+    ImplItem(&'a InstanceItem),
 }
 
 impl Module {
@@ -504,10 +504,10 @@ impl Module {
 
         if let Some(item) = self.items.get(&hir_id) {
             Def::Item(item)
-        } else if let Some(trait_item) = self.trait_items.get(&TraitItemId(hir_id)) {
+        } else if let Some(trait_item) = self.class_items.get(&ClassItemId(hir_id)) {
             Def::TraitItem(trait_item)
         } else {
-            Def::ImplItem(&self.impl_items[&ImplItemId(hir_id)])
+            Def::ImplItem(&self.instance_items[&InstanceItemId(hir_id)])
         }
     }
 
@@ -562,57 +562,57 @@ impl Item {
 
     pub fn fixity(&self) -> (Assoc, Prec, Res) {
         match self.kind {
-            ItemKind::Fixity { assoc, prec, func } => (assoc, prec, func),
-            _ => unreachable!(),
+            | ItemKind::Fixity { assoc, prec, func } => (assoc, prec, func),
+            | _ => unreachable!(),
         }
     }
 
     pub fn data(&self) -> &DataHead {
         match &self.kind {
-            ItemKind::Data { head, .. } => head,
-            _ => unreachable!(),
+            | ItemKind::Data { head, .. } => head,
+            | _ => unreachable!(),
         }
     }
 
     pub fn data_body(&self) -> &[HirId] {
         match &self.kind {
-            ItemKind::Data { body, .. } => body,
-            _ => unreachable!(),
+            | ItemKind::Data { body, .. } => body,
+            | _ => unreachable!(),
         }
     }
 
     pub fn ctor(&self) -> (HirId, &[Type]) {
         match &self.kind {
-            ItemKind::DataCtor { data, tys } => (*data, tys),
-            _ => unreachable!(),
+            | ItemKind::DataCtor { data, tys } => (*data, tys),
+            | _ => unreachable!(),
         }
     }
 
-    pub fn trait_(&self) -> &TraitHead {
+    pub fn class(&self) -> &ClassHead {
         match &self.kind {
-            ItemKind::Trait { head, .. } => head,
-            _ => unreachable!(),
+            | ItemKind::Class { head, .. } => head,
+            | _ => unreachable!(),
         }
     }
 
-    pub fn trait_body(&self) -> &TraitBody {
+    pub fn trait_body(&self) -> &ClassBody {
         match &self.kind {
-            ItemKind::Trait { body, .. } => body,
-            _ => unreachable!(),
+            | ItemKind::Class { body, .. } => body,
+            | _ => unreachable!(),
         }
     }
 
-    pub fn impl_(&self) -> &ImplHead {
+    pub fn impl_(&self) -> &InstanceHead {
         match &self.kind {
-            ItemKind::Impl { head, .. } => head,
-            _ => unreachable!(),
+            | ItemKind::Instance { head, .. } => head,
+            | _ => unreachable!(),
         }
     }
 
-    pub fn impl_body(&self) -> &ImplBody {
+    pub fn impl_body(&self) -> &InstanceBody {
         match &self.kind {
-            ItemKind::Impl { body, .. } => body,
-            _ => unreachable!(),
+            | ItemKind::Instance { body, .. } => body,
+            | _ => unreachable!(),
         }
     }
 }
@@ -620,17 +620,17 @@ impl Item {
 impl Def<'_> {
     pub fn name(&self) -> Ident {
         match self {
-            Def::Item(item) => item.name,
-            Def::TraitItem(item) => item.name,
-            Def::ImplItem(item) => item.name,
+            | Def::Item(item) => item.name,
+            | Def::TraitItem(item) => item.name,
+            | Def::ImplItem(item) => item.name,
         }
     }
 
     pub fn span(&self) -> Span {
         match self {
-            Def::Item(item) => item.span,
-            Def::TraitItem(item) => item.span,
-            Def::ImplItem(item) => item.span,
+            | Def::Item(item) => item.span,
+            | Def::TraitItem(item) => item.span,
+            | Def::ImplItem(item) => item.span,
         }
     }
 }

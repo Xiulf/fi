@@ -417,10 +417,14 @@ cfg_if::cfg_if! {
     }
 }
 
-pub fn assert_sync<T: ?Sized + Sync>() {}
-pub fn assert_send<T: ?Sized + Send>() {}
-pub fn assert_send_val<T: ?Sized + Send>(_t: &T) {}
-pub fn assert_send_sync_val<T: ?Sized + Sync + Send>(_t: &T) {}
+pub fn assert_sync<T: ?Sized + Sync>() {
+}
+pub fn assert_send<T: ?Sized + Send>() {
+}
+pub fn assert_send_val<T: ?Sized + Send>(_t: &T) {
+}
+pub fn assert_send_sync_val<T: ?Sized + Sync + Send>(_t: &T) {
+}
 
 pub trait HashMapExt<K, V> {
     /// Same as HashMap::insert, but it may panic if there's already an
@@ -430,9 +434,7 @@ pub trait HashMapExt<K, V> {
 
 impl<K: Eq + Hash, V: Eq, S: BuildHasher> HashMapExt<K, V> for HashMap<K, V, S> {
     fn insert_same(&mut self, key: K, value: V) {
-        self.entry(key)
-            .and_modify(|old| assert!(*old == value))
-            .or_insert(value);
+        self.entry(key).and_modify(|old| assert!(*old == value)).or_insert(value);
     }
 }
 
@@ -616,9 +618,11 @@ pub struct OneThread<T> {
 }
 
 #[cfg(parallel_compiler)]
-unsafe impl<T> std::marker::Sync for OneThread<T> {}
+unsafe impl<T> std::marker::Sync for OneThread<T> {
+}
 #[cfg(parallel_compiler)]
-unsafe impl<T> std::marker::Send for OneThread<T> {}
+unsafe impl<T> std::marker::Send for OneThread<T> {
+}
 
 impl<T> OneThread<T> {
     #[inline(always)]

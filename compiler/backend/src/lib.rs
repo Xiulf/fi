@@ -9,15 +9,17 @@ pub trait BackendDatabase: lower::LowerDatabase {
 }
 
 fn link_type(db: &dyn BackendDatabase, lib: hir::ir::LibId, module: hir::ir::ModuleId) -> linker::LinkOutputType {
+    println!("link_type before");
     let file = db.module_tree(lib).file(module);
+    println!("link_type after");
     let hir = db.module_hir(file);
 
     if let Some(out_ty) = hir.out_type() {
         match out_ty {
-            "exe" => linker::LinkOutputType::Exe,
-            "staticlib" => linker::LinkOutputType::Lib,
-            "dylib" => linker::LinkOutputType::Dylib,
-            _ => panic!("invalid output type: {}", out_ty),
+            | "exe" => linker::LinkOutputType::Exe,
+            | "staticlib" => linker::LinkOutputType::Lib,
+            | "dylib" => linker::LinkOutputType::Dylib,
+            | _ => panic!("invalid output type: {}", out_ty),
         }
     } else {
         let has_main = hir.items.values().any(|item| item.is_main());
@@ -32,9 +34,9 @@ fn link_type(db: &dyn BackendDatabase, lib: hir::ir::LibId, module: hir::ir::Mod
 
 fn lib_prefix(out_type: linker::LinkOutputType) -> &'static str {
     match out_type {
-        linker::LinkOutputType::Exe => "",
-        linker::LinkOutputType::Lib => "lib",
-        linker::LinkOutputType::Dylib => "lib",
+        | linker::LinkOutputType::Exe => "",
+        | linker::LinkOutputType::Lib => "lib",
+        | linker::LinkOutputType::Dylib => "lib",
     }
 }
 
@@ -53,7 +55,9 @@ pub fn assembly(db: &dyn BackendDatabase, lib: hir::ir::LibId, module: hir::ir::
     let mir = db.lower(lib, module);
     let obj_file = lowlang::assemble::assemble(&mir, (*db.target(lib)).clone());
     let mut linker = linker::get_linker(&db.target(lib));
+    println!("assembly before");
     let tree = db.module_tree(lib);
+    println!("assembly after");
     let data = tree.data(module);
     let out_type = db.link_type(lib, module);
     let extension = linker::extension(out_type, &db.target(lib));
@@ -141,9 +145,9 @@ pub fn assembly(db: &dyn BackendDatabase, lib: hir::ir::LibId, module: hir::ir::
                 let _ = db.assembly(lib, data.id);
 
                 match db.link_type(lib, data.id) {
-                    linker::LinkOutputType::Exe => unreachable!(),
-                    linker::LinkOutputType::Lib => linker.link_staticlib(&**data.name.symbol),
-                    linker::LinkOutputType::Dylib => linker.link_dylib(&**data.name.symbol),
+                    | linker::LinkOutputType::Exe => unreachable!(),
+                    | linker::LinkOutputType::Lib => linker.link_staticlib(&**data.name.symbol),
+                    | linker::LinkOutputType::Dylib => linker.link_dylib(&**data.name.symbol),
                 }
 
                 dep_paths(linker, db, lib, tree, &data.children);

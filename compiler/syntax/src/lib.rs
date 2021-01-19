@@ -16,11 +16,11 @@ fn parse(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> {
     let source = db.file_content(id);
     let mut lexer = parser::lexer::Lexer::new(&source);
     let tokens = match lexer.collect::<Result<Vec<_>, _>>() {
-        Ok(tokens) => tokens,
-        Err(error) => {
+        | Ok(tokens) => tokens,
+        | Err(error) => {
             report_lex_error(db, id, error);
             db.print_and_exit();
-        }
+        },
     };
 
     // if lexer.text(tokens[1].span) == "Main" {
@@ -33,35 +33,35 @@ fn parse(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> {
     let buffer = parser::parse::ParseBuffer::new(tokens.begin(&source), codespan::Span::default());
 
     match buffer.parse::<ast::Module>() {
-        Ok(module) => {
+        | Ok(module) => {
             // println!("{}", module);
             Arc::new(module)
-        }
-        Err(e) => {
+        },
+        | Err(e) => {
             report_parse_error(db, id, e);
             db.print_and_exit();
-        }
+        },
     }
 }
 
 fn report_lex_error(db: &dyn SyntaxDatabase, file: source::FileId, error: parser::lexer::LexicalError) {
     match error {
-        parser::lexer::LexicalError::UnknownChar(idx, ch) => db
+        | parser::lexer::LexicalError::UnknownChar(idx, ch) => db
             .to_diag_db()
             .error(format!("unknown character {:?}", ch))
             .with_label(diagnostics::Label::primary(file, ast::Span::new(idx, idx)))
             .finish(),
-        parser::lexer::LexicalError::InvalidCharLiteral(span) => db
+        | parser::lexer::LexicalError::InvalidCharLiteral(span) => db
             .to_diag_db()
             .error("invalid character literal")
             .with_label(diagnostics::Label::primary(file, span))
             .finish(),
-        parser::lexer::LexicalError::UnterminatedString(span) => db
+        | parser::lexer::LexicalError::UnterminatedString(span) => db
             .to_diag_db()
             .error("unterminated string literal")
             .with_label(diagnostics::Label::primary(file, span))
             .finish(),
-        parser::lexer::LexicalError::InvalidEscape(span) => db
+        | parser::lexer::LexicalError::InvalidEscape(span) => db
             .to_diag_db()
             .error("invalid character escape sequence")
             .with_label(diagnostics::Label::primary(file, span))

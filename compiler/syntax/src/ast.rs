@@ -14,27 +14,27 @@ pub struct Module {
     pub decls: Vec<Decl>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Attribute {
     pub span: Span,
     pub name: Ident,
     pub body: Option<AttrBody>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AttrBody {
     pub span: Span,
     pub args: Vec<AttrArg>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AttrArg {
     Literal(Literal),
     Field(Ident, Literal),
     Call(Ident, Vec<AttrArg>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Literal {
     Int(Span, u128),
     Float(Span, u64),
@@ -117,8 +117,8 @@ pub enum DeclKind {
     Alias { vars: Vec<TypeVar>, ty: Type },
     DataKind { kind: Type },
     Data { head: DataHead, body: Option<Vec<DataCtor>> },
-    Trait { head: TraitHead, body: Option<TraitBody> },
-    ImplChain { impls: Vec<Impl> },
+    Class { head: ClassHead, body: Option<ClassBody> },
+    InstanceChain { instances: Vec<Instance> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,14 +127,14 @@ pub enum ForeignKind {
     Static,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Assoc {
     Left,
     Right,
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum Prec {
     Zero,
     One,
@@ -162,7 +162,7 @@ pub struct DataCtor {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct TraitHead {
+pub struct ClassHead {
     pub span: Span,
     pub parent: Option<Vec<Constraint>>,
     pub vars: Vec<TypeVar>,
@@ -176,32 +176,32 @@ pub enum FunDep {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct TraitBody {
+pub struct ClassBody {
     pub span: Span,
-    pub decls: Vec<TraitDecl>,
+    pub decls: Vec<ClassDecl>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct TraitDecl {
+pub struct ClassDecl {
     pub span: Span,
     pub name: Ident,
-    pub kind: TraitDeclKind,
+    pub kind: ClassDeclKind,
 }
 
 #[derive(PartialEq, Eq)]
-pub enum TraitDeclKind {
+pub enum ClassDeclKind {
     FuncTy { ty: Type },
 }
 
 #[derive(PartialEq, Eq)]
-pub struct Impl {
+pub struct Instance {
     pub span: Span,
-    pub head: ImplHead,
-    pub body: Option<ImplBody>,
+    pub head: InstanceHead,
+    pub body: Option<InstanceBody>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct ImplHead {
+pub struct InstanceHead {
     pub span: Span,
     pub name: Ident,
     pub cs: Option<Vec<Constraint>>,
@@ -210,20 +210,20 @@ pub struct ImplHead {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct ImplBody {
+pub struct InstanceBody {
     pub span: Span,
-    pub decls: Vec<ImplDecl>,
+    pub decls: Vec<InstanceDecl>,
 }
 
 #[derive(PartialEq, Eq)]
-pub struct ImplDecl {
+pub struct InstanceDecl {
     pub span: Span,
     pub name: Ident,
-    pub kind: ImplDeclKind,
+    pub kind: InstanceDeclKind,
 }
 
 #[derive(PartialEq, Eq)]
-pub enum ImplDeclKind {
+pub enum InstanceDeclKind {
     FuncTy { ty: Type },
     Func { pats: Vec<Pat>, val: Guarded },
 }
@@ -382,7 +382,7 @@ pub enum TypeVar {
 
 #[derive(PartialEq, Eq)]
 pub enum Constraint {
-    CS { iface: Ident, tys: Vec<Type> },
+    CS { class: Ident, tys: Vec<Type> },
     Parens { inner: Box<Constraint> },
 }
 

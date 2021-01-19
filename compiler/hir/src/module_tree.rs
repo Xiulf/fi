@@ -19,6 +19,7 @@ pub struct ModuleData {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExternalModuleData {
+    pub lib: source::LibId,
     pub file: source::FileId,
     pub id: crate::ir::ModuleId,
     pub name: Ident,
@@ -144,6 +145,7 @@ pub fn save_external(db: &dyn HirDatabase, lib: source::LibId) {
         .data
         .iter()
         .map(|data| ExternalModuleData {
+            lib,
             file: data.file,
             id: data.id,
             name: data.name,

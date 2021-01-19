@@ -82,16 +82,16 @@ impl Linker for GccLinker {
 
     fn set_output_type(&mut self, output_type: LinkOutputType, out_filename: &Path) {
         match output_type {
-            LinkOutputType::Exe => {
+            | LinkOutputType::Exe => {
                 self.cmd.arg("-no-pie");
-            }
-            LinkOutputType::Dylib => {
+            },
+            | LinkOutputType::Dylib => {
                 self.build_dylib(out_filename);
-            }
-            LinkOutputType::Lib => {
+            },
+            | LinkOutputType::Lib => {
                 self.cmd.arg("-static");
                 self.build_dylib(out_filename);
-            }
+            },
         }
     }
 
@@ -144,15 +144,15 @@ impl Linker for MsvcLinker {
 
     fn set_output_type(&mut self, output_type: LinkOutputType, out_filename: &Path) {
         match output_type {
-            LinkOutputType::Exe | LinkOutputType::Lib => {}
-            LinkOutputType::Dylib => {
+            | LinkOutputType::Exe | LinkOutputType::Lib => {},
+            | LinkOutputType::Dylib => {
                 self.cmd.arg("/DLL");
 
                 let mut arg: OsString = "/IMPLIB:".into();
 
                 arg.push(out_filename.with_extension("dll.lib"));
                 self.cmd.arg(arg);
-            }
+            },
         }
     }
 
