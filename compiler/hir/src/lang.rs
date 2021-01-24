@@ -1,8 +1,9 @@
 use crate::ir::HirId;
+use std::collections::HashMap;
 
 macro_rules! lang_items {
     ($($name:ident, $attr:literal, $variant:ident;)*) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
         pub enum LangItem {
             $($variant),*
         }
@@ -14,9 +15,16 @@ macro_rules! lang_items {
 
         impl LangItems {
             pub fn collect(db: &dyn crate::HirDatabase) -> std::sync::Arc<Self> {
+                // let start = std::time::Instant::now();
                 let lang_attr = syntax::symbol::Symbol::new("lang");
                 let mut ids = [None; lang_items!(@count $($name)*)];
                 const NAMES: [&'static str; lang_items!(@count $($name)*)] = [$($attr),*];
+
+                for lib in db.deps(db.lib()) {
+                    for (item, id) in load_external(db, lib) {
+                        ids[item as usize] = Some(id);
+                    }
+                }
 
                 for &file in &*db.lib_files(db.lib()) {
                     let hir = db.module_hir(file);
@@ -30,17 +38,7 @@ macro_rules! lang_items {
                     }
                 }
 
-                for module in &*db.external_modules(db.lib()) {
-                    let items = db.external_item_data(module.lib, module.id);
-
-                    for (id, (_, attrs)) in &items.items {
-                        if let Some(attr) = attrs.iter().find(|attr| attr.name.symbol == lang_attr) {
-                            if let Some(idx) = NAMES.iter().position(|n| attr.str_arg() == Some(n)) {
-                                ids[idx] = Some((*id).into());
-                            }
-                        }
-                    }
-                }
+                // println!("lang_items in {:?}", start.elapsed());
 
                 std::sync::Arc::new(LangItems {
                     ids,
@@ -88,4 +86,27 @@ lang_items! {
     decimal_trait, "decimal_trait", DecimalTrait;
     // basic_copy, "BASIC_COPY", BasicCopy;
     // basic_drop, "BASIC_DROP", BasicDrop;
+}
+
+fn load_external(db: &dyn crate::HirDatabase, lib: source::LibId) -> HashMap<LangItem, HirId> {
+    let manifest = db.manifest(lib);
+    let path = manifest.package.target_dir.join("meta/lang_items");
+    let file = std::fs::File::open(path).unwrap();
+
+    bincode::deserialize_from(file).unwrap()
+}
+
+pub fn store_external(db: &dyn crate::HirDatabase, lib: source::LibId) {
+    let manifest = db.manifest(lib);
+    let path = manifest.package.target_dir.join("meta/lang_items");
+    let file = std::fs::File::create(path).unwrap();
+    let data = db
+        .lang_items()
+        .ids
+        .iter()
+        .enumerate()
+        .filter_map(|(i, id)| Some((unsafe { std::mem::transmute(i as u8) }, (*id)?)))
+        .collect::<HashMap<LangItem, HirId>>();
+
+    bincode::serialize_into(file, &data).unwrap();
 }

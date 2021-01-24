@@ -1,6 +1,8 @@
 #![feature(label_break_value)]
 #![feature(partition_point)]
+#![feature(iterator_fold_self)]
 
+pub mod javascript;
 pub mod pattern;
 
 use hir::ir as hir;
@@ -11,11 +13,15 @@ use std::sync::Arc;
 #[salsa::query_group(LowerDatabaseStorage)]
 pub trait LowerDatabase: typeck::TypeDatabase {
     fn lower(&self, lib: hir::LibId, module: hir::ModuleId) -> Arc<ir::Module>;
+
+    #[salsa::invoke(javascript::lower)]
+    fn lower_js(&self, lib: hir::LibId, module: hir::ModuleId) -> Arc<javascript::JsModule>;
 }
 
 pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> Arc<ir::Module> {
     let file = db.module_tree(lib).file(module);
     let hir = db.module_hir(file);
+    // let start = std::time::Instant::now();
     let mut converter = Converter::new(db);
 
     converter.convert(&hir);
@@ -23,7 +29,8 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
     let mut low = converter.finish();
 
     // println!("{}", low);
-    lowlang::analysis::mandatory(&mut low, &db.target(lib));
+    lowlang::analysis::mandatory(&mut low, db.target(lib).triple());
+    // println!("lowered in {:?}", start.elapsed());
 
     Arc::new(low)
 }
@@ -242,8 +249,8 @@ impl<'db> Converter<'db> {
                         format!("{}.{}", hir.name, item.name)
                     }
                 },
-                | hir::Def::TraitItem(_) => return None,
-                | hir::Def::ImplItem(item) => {
+                | hir::Def::ClassItem(_) => return None,
+                | hir::Def::InstanceItem(item) => {
                     let owner = hir.def(item.owner.owner);
 
                     format!("{}.{}.{}", hir.name, owner.name(), item.name)
@@ -259,7 +266,15 @@ impl<'db> Converter<'db> {
             } else {
                 let module = self.db.external_modules(self.db.lib()).iter().find(|m| m.id == id.module).unwrap().name;
 
-                format!("{}.{}", module, external.items[&id].0)
+                match external.items[&id].2 {
+                    | ::hir::ExternalItemOrigin::Item => format!("{}.{}", module, external.items[&id].0),
+                    | ::hir::ExternalItemOrigin::InstanceItem(instance) => {
+                        let instace_name = external.items[&instance].0;
+
+                        format!("{}.{}.{}", module, instace_name, external.items[&id].0)
+                    },
+                    | ::hir::ExternalItemOrigin::ClassItem(_) => return None,
+                }
             }
         };
 
@@ -545,75 +560,28 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
             | _ => {
                 if let hir::ExprKind::Ident {
                     res: hir::Res::Def(hir::DefKind::Func, id),
-                    ..
+                    name,
                 } = &base.kind
                 {
-                    println!("convert_app before");
-                    let file = self.db.module_tree(id.lib).file(id.module);
-                    println!("convert_app after");
-                    let hir = self.db.module_hir(file);
-                    let item_id = (*id).into();
+                    if id.lib != self.db.lib() {
+                        let external = self.db.external_item_data(id.lib, id.module);
 
-                    if let Some(item) = hir.items.get(&item_id) {
-                        if item.is_intrinsic() {
-                            let mut args = args.iter().map(|a| (self.convert_expr(a), lower_type(self.db, &self.types.tys[&a.id])));
-
-                            // @INTRINSICS
-                            return match &**item.name.symbol {
-                                | "unsafe_read" => {
-                                    let (arg, arg_ty) = args.next().unwrap();
-                                    let place = self.builder.placed(arg, arg_ty);
-
-                                    ir::Operand::Place(place.deref())
-                                },
-                                | "unsafe_store" => {
-                                    let (ptr, ptr_ty) = args.next().unwrap();
-                                    let val = args.next().unwrap().0;
-                                    let place = self.builder.placed(ptr, ptr_ty);
-
-                                    self.builder.use_op(place.deref(), val);
-
-                                    ir::Operand::Const(ir::Const::Tuple(Vec::new()))
-                                },
-                                | _ => {
-                                    let args = args.map(|(a, _)| a).collect();
-                                    let res = self.builder.create_tmp(ty);
-                                    let res = ir::Place::new(res);
-
-                                    self.builder.intrinsic(res.clone(), item.name.to_string(), args);
-
-                                    ir::Operand::Place(res)
-                                },
-                            };
+                        if external.is_intrinsic(id) {
+                            return self.convert_intrinsic(name, args, ty);
+                        } else if let ::hir::ExternalItemOrigin::ClassItem(_) = external.items[id].2 {
+                            return self.convert_bound_app(&base.id, args, external.items[id].0, ty);
                         }
-                    } else if let Some(item) = hir.class_items.get(&hir::ClassItemId(item_id)) {
-                        let bound = &self.types.bounds[&base.id];
+                    } else {
+                        let file = self.db.module_tree(id.lib).file(id.module);
+                        let hir = self.db.module_hir(file);
+                        let item_id = (*id).into();
 
-                        match bound.source {
-                            | typeck::BoundSource::Instance(id) => {
-                                let method = if id.lib == self.db.lib() {
-                                    let file = self.db.module_tree(id.lib).file(id.module);
-                                    let hir = self.db.module_hir(file);
-                                    let imp = hir.items[&id.into()].impl_body();
-                                    let method = imp.items.iter().find(|it| it.name.symbol == item.name.symbol).unwrap();
-
-                                    self.decls[&method.id.0.owner]
-                                } else {
-                                    let external = self.db.external_item_data(id.lib, id.module);
-                                    let item = external.classes[&item.owner.owner].iter().find(|(n, _)| n.symbol == item.name.symbol).unwrap();
-
-                                    self.decls[&item.1.owner]
-                                };
-
-                                let method = ir::Operand::Const(ir::Const::Addr(method));
-                                let args = args.iter().map(|a| self.convert_expr(a)).collect();
-                                let res = self.builder.create_tmp(ty.clone());
-                                let res = ir::Place::new(res);
-
-                                self.builder.call(vec![res.clone()], method, args);
-
-                                return ir::Operand::Place(res);
-                            },
+                        if let Some(item) = hir.items.get(&item_id) {
+                            if item.is_intrinsic() {
+                                return self.convert_intrinsic(&item.name, args, ty);
+                            }
+                        } else if let Some(item) = hir.class_items.get(&hir::ClassItemId(item_id)) {
+                            return self.convert_bound_app(&base.id, args, item.name, ty);
                         }
                     }
                 }
@@ -626,6 +594,69 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
                 self.builder.call(vec![res.clone()], base, args);
 
                 ir::Operand::Place(res)
+            },
+        }
+    }
+
+    fn convert_intrinsic(&mut self, name: &hir::Ident, args: Vec<&hir::Expr>, ty: ir::Ty) -> ir::Operand {
+        let mut args = args.into_iter().map(|a| (self.convert_expr(a), lower_type(self.db, &self.types.tys[&a.id])));
+
+        // @INTRINSICS
+        match &**name.symbol {
+            | "unsafe_read" => {
+                let (arg, arg_ty) = args.next().unwrap();
+                let place = self.builder.placed(arg, arg_ty);
+
+                ir::Operand::Place(place.deref())
+            },
+            | "unsafe_store" => {
+                let (ptr, ptr_ty) = args.next().unwrap();
+                let val = args.next().unwrap().0;
+                let place = self.builder.placed(ptr, ptr_ty);
+
+                self.builder.use_op(place.deref(), val);
+
+                ir::Operand::Const(ir::Const::Tuple(Vec::new()))
+            },
+            | _ => {
+                let args = args.map(|(a, _)| a).collect();
+                let res = self.builder.create_tmp(ty);
+                let res = ir::Place::new(res);
+
+                self.builder.intrinsic(res.clone(), name.to_string(), args);
+
+                ir::Operand::Place(res)
+            },
+        }
+    }
+
+    fn convert_bound_app(&mut self, base_id: &hir::HirId, args: Vec<&hir::Expr>, item_name: hir::Ident, ty: ir::Ty) -> ir::Operand {
+        let bound = &self.types.bounds[base_id];
+
+        match bound.source {
+            | typeck::BoundSource::Instance(id) => {
+                let method = if id.lib == self.db.lib() {
+                    let file = self.db.module_tree(id.lib).file(id.module);
+                    let hir = self.db.module_hir(file);
+                    let imp = hir.items[&id.into()].instance_body();
+                    let method = imp.items.iter().find(|it| it.name.symbol == item_name.symbol).unwrap();
+
+                    self.decls[&method.id.0.owner]
+                } else {
+                    let external = self.db.external_item_data(id.lib, id.module);
+                    let item = external.instances[&id].iter().find(|(n, _)| n.symbol == item_name.symbol).unwrap();
+
+                    self.decls[&item.1.owner]
+                };
+
+                let method = ir::Operand::Const(ir::Const::Addr(method));
+                let args = args.iter().map(|a| self.convert_expr(a)).collect();
+                let res = self.builder.create_tmp(ty.clone());
+                let res = ir::Place::new(res);
+
+                self.builder.call(vec![res.clone()], method, args);
+
+                return ir::Operand::Place(res);
             },
         }
     }
@@ -814,20 +845,21 @@ fn lower_type_ctor(
     if let Some(repr) = repr {
         use ir::layout::*;
         let target = db.target(id.lib);
+        let target = target.triple();
 
         ty = ty.with_abi(match repr.as_str() {
-            | "u8" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, false), &target)),
-            | "u16" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, false), &target)),
-            | "u32" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, false), &target)),
-            | "u64" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, false), &target)),
-            | "u128" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, false), &target)),
-            | "i8" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, true), &target)),
-            | "i16" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, true), &target)),
-            | "i32" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, true), &target)),
-            | "i64" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, true), &target)),
-            | "i128" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, true), &target)),
-            | "f32" => Abi::Scalar(Scalar::unit(Primitive::F32, &target)),
-            | "f64" => Abi::Scalar(Scalar::unit(Primitive::F64, &target)),
+            | "u8" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, false), target)),
+            | "u16" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, false), target)),
+            | "u32" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, false), target)),
+            | "u64" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, false), target)),
+            | "u128" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, false), target)),
+            | "i8" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I8, true), target)),
+            | "i16" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I16, true), target)),
+            | "i32" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I32, true), target)),
+            | "i64" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I64, true), target)),
+            | "i128" => Abi::Scalar(Scalar::unit(Primitive::Int(Integer::I128, true), target)),
+            | "f32" => Abi::Scalar(Scalar::unit(Primitive::F32, target)),
+            | "f64" => Abi::Scalar(Scalar::unit(Primitive::F64, target)),
             | _ => unreachable!("unknown repr {}", repr),
         });
     }

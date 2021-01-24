@@ -7,6 +7,7 @@ use std::collections::HashMap;
 pub struct Ctx<'db> {
     crate db: &'db dyn crate::TypeDatabase,
     crate file: source::FileId,
+    crate module: ir::ModuleId,
     crate next_ty: u64,
     crate next_skolem: u64,
     crate next_scope: u64,
@@ -16,6 +17,8 @@ pub struct Ctx<'db> {
     crate ctnt_ctx: Vec<Ctnt>,
     crate ctnts: Vec<(ir::HirId, Ctnt, Vec<Ctnt>)>,
     crate errors: Vec<TypeError>,
+    crate module_types: crate::ModuleTypes,
+    crate all_instances: HashMap<ir::DefId, std::sync::Arc<Vec<Instance>>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -27,10 +30,11 @@ pub struct Substitution {
 }
 
 impl<'db> Ctx<'db> {
-    pub fn new(db: &'db dyn crate::TypeDatabase, file: source::FileId) -> Self {
+    pub fn new(db: &'db dyn crate::TypeDatabase, file: source::FileId, module: ir::ModuleId) -> Self {
         Ctx {
             db,
             file,
+            module,
             next_ty: 0,
             next_skolem: 0,
             next_scope: 0,
@@ -40,6 +44,13 @@ impl<'db> Ctx<'db> {
             ctnt_ctx: Vec::new(),
             ctnts: Vec::new(),
             errors: Vec::new(),
+            module_types: crate::ModuleTypes {
+                items: HashMap::new(),
+                variants: HashMap::new(),
+                classes: HashMap::new(),
+                instances: HashMap::new(),
+            },
+            all_instances: HashMap::new(),
         }
     }
 
@@ -119,6 +130,29 @@ impl<'db> Ctx<'db> {
         }
 
         (args.into(), ret)
+    }
+
+    pub fn finalize(&mut self) {
+        for mut e in std::mem::replace(&mut self.errors, Vec::new()) {
+            if let TypeError::HoleType(name, ty) = e {
+                let loc = ty.loc();
+                e = TypeError::HoleType(name, self.subst_type(ty) ^ loc);
+            }
+
+            e.report(self.db);
+        }
+
+        let mut tys = std::mem::replace(&mut self.tys, HashMap::new());
+
+        tys.values_mut().for_each(|t| {
+            let ty = t.clone();
+            let ty = self.subst_type(ty);
+            let ty = crate::skolem::unskolemize(ty);
+
+            *t = ty;
+        });
+
+        self.tys = tys;
     }
 
     crate fn instantiate(&mut self, id: ir::HirId, ty: Ty) -> Ty {
@@ -209,7 +243,7 @@ impl<'db> Ctx<'db> {
             | ir::TypeKind::Ident { res } => match res {
                 | ir::Res::Error => Ty::error(ty.span, self.file),
                 | ir::Res::Def(ir::DefKind::Data, id) => Ty::ctor(ty.span, self.file, *id),
-                | ir::Res::Def(ir::DefKind::Alias, id) => self.db.typecheck(*id).ty.clone(),
+                | ir::Res::Def(ir::DefKind::Alias, id) => self.typeck_def(*id),
                 | ir::Res::Def(_, _) => unreachable!(),
                 | ir::Res::Local(id) => Ty::var(ty.span, self.file, TypeVar(*id)),
             },

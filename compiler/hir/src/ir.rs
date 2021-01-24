@@ -169,7 +169,7 @@ pub struct InstanceHead {
     pub id: HirId,
     pub span: Span,
     pub cs: Vec<Constraint>,
-    pub trait_: DefId,
+    pub class: DefId,
     pub tys: Vec<Type>,
 }
 
@@ -250,8 +250,8 @@ pub enum DefKind {
     Alias,
     Data,
     Ctor,
-    Trait,
-    Impl,
+    Class,
+    Instance,
 }
 
 #[derive(PartialEq, Eq)]
@@ -491,8 +491,8 @@ impl<CTX> stable_hasher::HashStable<CTX> for DefPath {
 
 pub enum Def<'a> {
     Item(&'a Item),
-    TraitItem(&'a ClassItem),
-    ImplItem(&'a InstanceItem),
+    ClassItem(&'a ClassItem),
+    InstanceItem(&'a InstanceItem),
 }
 
 impl Module {
@@ -505,9 +505,9 @@ impl Module {
         if let Some(item) = self.items.get(&hir_id) {
             Def::Item(item)
         } else if let Some(trait_item) = self.class_items.get(&ClassItemId(hir_id)) {
-            Def::TraitItem(trait_item)
+            Def::ClassItem(trait_item)
         } else {
-            Def::ImplItem(&self.instance_items[&InstanceItemId(hir_id)])
+            Def::InstanceItem(&self.instance_items[&InstanceItemId(hir_id)])
         }
     }
 
@@ -595,21 +595,21 @@ impl Item {
         }
     }
 
-    pub fn trait_body(&self) -> &ClassBody {
+    pub fn class_body(&self) -> &ClassBody {
         match &self.kind {
             | ItemKind::Class { body, .. } => body,
             | _ => unreachable!(),
         }
     }
 
-    pub fn impl_(&self) -> &InstanceHead {
+    pub fn instance(&self) -> &InstanceHead {
         match &self.kind {
             | ItemKind::Instance { head, .. } => head,
             | _ => unreachable!(),
         }
     }
 
-    pub fn impl_body(&self) -> &InstanceBody {
+    pub fn instance_body(&self) -> &InstanceBody {
         match &self.kind {
             | ItemKind::Instance { body, .. } => body,
             | _ => unreachable!(),
@@ -621,16 +621,16 @@ impl Def<'_> {
     pub fn name(&self) -> Ident {
         match self {
             | Def::Item(item) => item.name,
-            | Def::TraitItem(item) => item.name,
-            | Def::ImplItem(item) => item.name,
+            | Def::ClassItem(item) => item.name,
+            | Def::InstanceItem(item) => item.name,
         }
     }
 
     pub fn span(&self) -> Span {
         match self {
             | Def::Item(item) => item.span,
-            | Def::TraitItem(item) => item.span,
-            | Def::ImplItem(item) => item.span,
+            | Def::ClassItem(item) => item.span,
+            | Def::InstanceItem(item) => item.span,
         }
     }
 }

@@ -32,7 +32,7 @@ pub fn extension(output_type: LinkOutputType, target: &target_lexicon::Triple) -
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LinkOutputType {
     Exe,
     Lib,

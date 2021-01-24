@@ -41,7 +41,7 @@ impl TypeError {
                 .with_label(Label::primary(ty.file(), ty.span()))
                 .finish(),
             | TypeError::NoImpl(ctnt) => diags
-                .error(format!("no impl found for `{}`", Typed(db, &(), &ctnt)))
+                .error(format!("no instance found for `{}`", Typed(db, &(), &ctnt)))
                 .with_label(Label::primary(ctnt.file, ctnt.span))
                 .finish(),
             | TypeError::IncorrectArity(file, span, ty) => diags

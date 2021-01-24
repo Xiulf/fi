@@ -12,7 +12,10 @@ fn main() {
 
     if let Some(matches) = matches.subcommand_matches("build") {
         let project_dir = matches.value_of("input").unwrap().into();
-        let opts = driver::Opts { project_dir };
+        let opts = driver::Opts {
+            compiler_version: clap::crate_version!().to_string(),
+            project_dir,
+        };
 
         driver::run(opts);
     } else if let Some(matches) = matches.subcommand_matches("new") {
@@ -24,7 +27,7 @@ fn main() {
                 authors: None,
                 src_dir: None,
                 target_dir: Default::default(),
-                target: source::opts::Triple::host(),
+                target: Default::default(),
             },
             dependencies: Default::default(),
         };

@@ -4,5 +4,7 @@ import Core
 
 [main]
 fn main :: Int32
-fn main = do
-    3 + 5 + 2
+fn main = twice 4
+
+fn twice :: forall a. Add a => a -> a
+fn twice a = add a a

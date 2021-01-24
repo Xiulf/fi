@@ -101,7 +101,7 @@ impl<'db> Ctx<'db> {
                     ty
                 },
                 | ir::Res::Def(_, id) => {
-                    let lhs = self.db.typecheck(*id).ty.clone();
+                    let lhs = self.typeck_def(*id);
                     let lhs = self.introduce_skolem_scope(lhs);
                     let ty = self.introduce_skolem_scope(ty);
                     let elaborate = self.subsumes(lhs, ty.clone())?;
@@ -142,7 +142,7 @@ impl<'db> Ctx<'db> {
                 let arr_ty = self.array_ty(base.span, self.file);
                 let arr_ty = Ty::app(base.span, self.file, Ty::app(base.span, self.file, arr_ty, ty.clone()), len);
                 let uint_ty = self.db.lang_items().uint();
-                let uint_ty = self.db.typecheck(uint_ty.owner).ty.clone();
+                let uint_ty = self.typeck_def(uint_ty.owner);
 
                 self.check_expr(index, uint_ty)?;
                 self.check_expr(base, arr_ty)?;

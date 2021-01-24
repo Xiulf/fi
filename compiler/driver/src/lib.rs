@@ -6,6 +6,7 @@ use source::SourceDatabase;
 use std::path::{Path, PathBuf};
 
 pub struct Opts {
+    pub compiler_version: String,
     pub project_dir: PathBuf,
 }
 
@@ -15,7 +16,15 @@ pub struct RunResult {
     pub db: db::CompilerDatabase,
 }
 
-pub fn run(opts: Opts) -> RunResult {
+pub fn run(opts: Opts) {
+    let start = std::time::Instant::now();
+    let _ = _run(opts);
+    let elapsed = start.elapsed();
+
+    println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {}", DisplayDuration(elapsed));
+}
+
+fn _run(opts: Opts) -> RunResult {
     let mut db = db::CompilerDatabase::default();
     let mut files = source::Files::new();
     let mut lib_files = Vec::new();
@@ -30,13 +39,17 @@ pub fn run(opts: Opts) -> RunResult {
             | source::opts::Dependency::Path { path } => {
                 let opts = if path.is_relative() {
                     Opts {
+                        compiler_version: opts.compiler_version.clone(),
                         project_dir: RelativePath::from_path(&opts.project_dir.join(path)).unwrap().normalize().to_string().into(),
                     }
                 } else {
-                    Opts { project_dir: path.clone() }
+                    Opts {
+                        compiler_version: opts.compiler_version.clone(),
+                        project_dir: path.clone(),
+                    }
                 };
 
-                let res = run(opts);
+                let res = _run(opts);
 
                 deps.push(res.lib);
                 deps_changed |= res.changed;
@@ -46,7 +59,6 @@ pub fn run(opts: Opts) -> RunResult {
         }
     }
 
-    let start = std::time::Instant::now();
     let _ = std::fs::create_dir_all(format!("{}/meta/items", manifest.package.target_dir.display()));
     let _ = std::fs::create_dir_all(format!("{}/meta/types", manifest.package.target_dir.display()));
 
@@ -73,34 +85,20 @@ pub fn run(opts: Opts) -> RunResult {
         });
 
         if none_changed && meta.last_modified.len() == db.lib_files(lib).len() && !deps_changed {
-            let elapsed = start.elapsed();
-
-            println!("\x1B[1;32m\x1B[1mCompiled\x1B[0m {} in {:?}", db.manifest(lib).package.name, elapsed);
-
             return RunResult { lib, db, changed: false };
         }
     }
 
-    // for mdata in db.module_tree(lib).toposort(&db) {
-    //     // use typeck::{display::Typed, TypeDatabase};
-    //     // let hir = db.module_hir(mdata.file);
-    //     //
-    //     // for (_, item) in &hir.items {
-    //     //     if let hir::ir::ItemKind::Func { body, .. } = &item.kind {
-    //     //         let types = db.typecheck(item.id.owner);
-    //     //
-    //     //         println!("{} :: {}", item.name, Typed(&db, &(), &types.ty));
-    //     //         println!("{} {}", item.name, Typed(&db, &types.tys, &hir.bodies[body]));
-    //     //     }
-    //     // }
-    //     db.assembly(lib, mdata.id);
-    // }
+    let manifest = db.manifest(lib);
 
-    db.store_metadata(lib);
+    println!(
+        "  \x1B[1;32m\x1B[1mCompiling\x1B[0m {} v{} ({})",
+        manifest.package.name,
+        manifest.package.version,
+        opts.project_dir.display()
+    );
 
-    let elapsed = start.elapsed();
-
-    println!("\x1B[1;32m\x1B[1mCompiled\x1B[0m {} in {:?}", db.manifest(lib).package.name, elapsed);
+    db.store_metadata(lib, opts.compiler_version);
 
     RunResult { lib, db, changed: true }
 }
@@ -127,4 +125,26 @@ fn register_files(
     }
 
     Ok(())
+}
+
+struct DisplayDuration(std::time::Duration);
+
+impl std::fmt::Display for DisplayDuration {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let DisplayDuration(d) = self;
+        let mut millis = d.subsec_millis();
+
+        while millis >= 100 {
+            millis /= 10;
+        }
+
+        if d.as_secs() > 0 {
+            write!(f, "{}.", d.as_secs())?;
+            write!(f, "{}s", millis)
+        } else if d.subsec_millis() >= 100 {
+            write!(f, "0.{}s", millis)
+        } else {
+            write!(f, "{}ms", millis)
+        }
+    }
 }

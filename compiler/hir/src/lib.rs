@@ -30,10 +30,18 @@ pub trait HirDatabase: syntax::SyntaxDatabase {
 #[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalItemData {
     pub file: source::FileId,
-    pub items: HashMap<ir::DefId, (ir::Ident, Vec<ir::Attribute>)>,
+    pub items: HashMap<ir::DefId, (ir::Ident, Vec<ir::Attribute>, ExternalItemOrigin)>,
     pub datas: HashMap<ir::DefId, Vec<(ir::Ident, ir::HirId)>>,
     pub classes: HashMap<ir::DefId, Vec<(ir::Ident, ir::HirId)>>,
+    pub instances: HashMap<ir::DefId, Vec<(ir::Ident, ir::HirId)>>,
     pub fixities: HashMap<ir::DefId, (ir::Assoc, ir::Prec, ir::Res)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ExternalItemOrigin {
+    Item,
+    ClassItem(ir::DefId),
+    InstanceItem(ir::DefId),
 }
 
 pub fn store_item_data(db: &dyn HirDatabase, lib: source::LibId) {
@@ -46,6 +54,7 @@ pub fn store_item_data(db: &dyn HirDatabase, lib: source::LibId) {
         let mut items = HashMap::new();
         let mut datas = HashMap::new();
         let mut classes = HashMap::new();
+        let mut instances = HashMap::new();
         let mut fixities = HashMap::new();
 
         for item in hir.items.values() {
@@ -55,23 +64,34 @@ pub fn store_item_data(db: &dyn HirDatabase, lib: source::LibId) {
                 | ir::ItemKind::Const { .. }
                 | ir::ItemKind::DataCtor { .. }
                 | ir::ItemKind::Foreign { .. }
-                | ir::ItemKind::Alias { .. }
-                | ir::ItemKind::Instance { .. } => {
-                    items.insert(item.id.owner, (item.name, item.attrs.clone()));
+                | ir::ItemKind::Alias { .. } => {
+                    items.insert(item.id.owner, (item.name, item.attrs.clone(), ExternalItemOrigin::Item));
                 },
                 | ir::ItemKind::Data { body, .. } => {
-                    items.insert(item.id.owner, (item.name, item.attrs.clone()));
+                    items.insert(item.id.owner, (item.name, item.attrs.clone(), ExternalItemOrigin::Item));
                     datas.insert(item.id.owner, body.iter().map(|id| (hir.items[id].name, *id)).collect());
                 },
                 | ir::ItemKind::Class { body, .. } => {
-                    items.insert(item.id.owner, (item.name, item.attrs.clone()));
+                    items.insert(item.id.owner, (item.name, item.attrs.clone(), ExternalItemOrigin::Item));
                     classes.insert(item.id.owner, body.items.iter().map(|item| (item.name, item.id.0)).collect());
                 },
+                | ir::ItemKind::Instance { body, .. } => {
+                    items.insert(item.id.owner, (item.name, item.attrs.clone(), ExternalItemOrigin::Item));
+                    instances.insert(item.id.owner, body.items.iter().map(|item| (item.name, item.id.0)).collect());
+                },
                 | ir::ItemKind::Fixity { assoc, prec, func } => {
-                    items.insert(item.id.owner, (item.name, item.attrs.clone()));
+                    items.insert(item.id.owner, (item.name, item.attrs.clone(), ExternalItemOrigin::Item));
                     fixities.insert(item.id.owner, (*assoc, *prec, *func));
                 },
             }
+        }
+
+        for item in hir.class_items.values() {
+            items.insert(item.id.owner, (item.name, Vec::new(), ExternalItemOrigin::ClassItem(item.owner.owner)));
+        }
+
+        for item in hir.instance_items.values() {
+            items.insert(item.id.owner, (item.name, Vec::new(), ExternalItemOrigin::InstanceItem(item.owner.owner)));
         }
 
         let data = ExternalItemData {
@@ -79,6 +99,7 @@ pub fn store_item_data(db: &dyn HirDatabase, lib: source::LibId) {
             items,
             datas,
             classes,
+            instances,
             fixities,
         };
 

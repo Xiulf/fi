@@ -5,7 +5,7 @@ import Prim
 infixl 6 sub as (-)
 
 class Sub a where
-    fn sub :: a -> a-> a
+    fn sub :: a -> a -> a
 
 instance subInt8 :: Sub Int8 where
     fn sub a b = sub_i8 a b

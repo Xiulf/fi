@@ -18,10 +18,8 @@ pub struct Package {
     pub src_dir: Option<PathBuf>,
     #[serde(skip)]
     pub target_dir: PathBuf,
-    #[serde(default = "Triple::host")]
-    #[serde(deserialize_with = "deser_triple")]
-    #[serde(serialize_with = "ser_triple")]
-    pub target: Triple,
+    #[serde(default)]
+    pub target: Target,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,15 +28,47 @@ pub enum Dependency {
     Path { path: PathBuf },
 }
 
-fn deser_triple<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Triple, D::Error> {
-    use std::str::FromStr;
-    let string = <&'_ str>::deserialize(d)?;
-
-    Triple::from_str(&string).map_err(serde::de::Error::custom)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    Native(Triple),
+    Javascript,
 }
 
-fn ser_triple<S: serde::Serializer>(triple: &Triple, s: S) -> Result<S::Ok, S::Error> {
-    triple.to_string().serialize(s)
+impl Target {
+    pub fn triple(&self) -> &Triple {
+        match self {
+            | Target::Native(triple) => triple,
+            | _ => unreachable!(),
+        }
+    }
+}
+
+impl Default for Target {
+    fn default() -> Self {
+        Target::Native(Triple::host())
+    }
+}
+
+impl<'de> Deserialize<'de> for Target {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Target, D::Error> {
+        use std::str::FromStr;
+        let string = <&'de str>::deserialize(d)?;
+
+        if string == "javascript" {
+            Ok(Target::Javascript)
+        } else {
+            Ok(Target::Native(Triple::from_str(string).map_err(serde::de::Error::custom)?))
+        }
+    }
+}
+
+impl Serialize for Target {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            | Target::Javascript => String::from("javascript").serialize(s),
+            | Target::Native(triple) => triple.to_string().serialize(s),
+        }
+    }
 }
 
 impl Manifest {

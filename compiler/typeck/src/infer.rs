@@ -62,7 +62,7 @@ impl<'db> Ctx<'db> {
             },
             | ir::PatKind::Bind { sub: None, .. } => self.fresh_type_with_kind(pat.span, self.file, self.ty_kind(pat.span, self.file)),
             | ir::PatKind::Ctor { ctor, pats } => {
-                let ty = self.db.typecheck(*ctor).ty.clone();
+                let ty = self.typeck_def(*ctor);
                 let ty = self.instantiate(pat.id, ty);
                 let ty = self.introduce_skolem_scope(ty);
                 let (args, ret) = self.args(ty);
@@ -111,19 +111,16 @@ impl<'db> Ctx<'db> {
                     }) ^ (expr.span, self.file)
                 },
                 | ir::Res::Def(ir::DefKind::Ctor, id) => {
-                    let ty = self.db.typecheck(*id).ty.clone();
+                    let ty = self.typeck_def(*id);
                     let ty = self.instantiate(expr.id, ty);
 
                     self.introduce_skolem_scope(ty) ^ (expr.span, self.file)
                 },
                 | ir::Res::Def(_, id) => {
-                    let ty = if let Some(ty) = self.tys.get(&ir::HirId {
-                        owner: *id,
-                        local_id: ir::LocalId(0),
-                    }) {
+                    let ty = if let Some(ty) = self.tys.get(&(*id).into()) {
                         ty.clone()
                     } else {
-                        self.db.typecheck(*id).ty.clone()
+                        self.typeck_def(*id)
                     };
 
                     let ty = self.introduce_skolem_scope(ty);
@@ -251,7 +248,7 @@ impl<'db> Ctx<'db> {
                 let arr_ty = self.array_ty(base.span, self.file);
                 let arr_ty = Ty::app(base.span, self.file, Ty::app(base.span, self.file, arr_ty, elem.clone()), len);
                 let uint_ty = self.db.lang_items().uint();
-                let uint_ty = self.db.typecheck(uint_ty.owner).ty.clone();
+                let uint_ty = self.typeck_def(uint_ty.owner);
 
                 self.check_expr(index, uint_ty)?;
                 self.check_expr(base, arr_ty)?;

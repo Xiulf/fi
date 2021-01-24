@@ -8,7 +8,7 @@ impl<'db> Ctx<'db> {
     crate fn infer_kind(&mut self, ty: Ty) -> Result<(Ty, Ty)> {
         match &*ty {
             | Type::Error => Ok((ty.clone(), Ty::error(ty.span(), ty.file()))),
-            | Type::Ctor(id) => Ok((ty.clone(), self.db.typecheck(*id).ty.clone() ^ ty.loc())),
+            | Type::Ctor(id) => Ok((ty.clone(), self.typeck_def(*id) ^ ty.loc())),
             | Type::Int(_) => Ok((ty.clone(), self.figure_kind(ty.span(), ty.file()))),
             | Type::String(_) => Ok((ty.clone(), self.symbol_kind(ty.span(), ty.file()))),
             | Type::Tuple(tys) => {
@@ -22,6 +22,7 @@ impl<'db> Ctx<'db> {
             },
             | Type::Var(v) => {
                 let kind = self.tys[&v.0].clone();
+                let kind = self.subst_type(kind);
 
                 Ok((ty.clone(), kind ^ ty.loc()))
             },
@@ -113,7 +114,7 @@ impl<'db> Ctx<'db> {
         uk
     }
 
-    fn fresh_kind(&mut self, span: Span, file: source::FileId) -> Ty {
+    crate fn fresh_kind(&mut self, span: Span, file: source::FileId) -> Ty {
         self.fresh_kind_with_kind(span, file, self.ty_kind(span, file))
     }
 
@@ -316,7 +317,7 @@ impl<'db> Ctx<'db> {
 
                 Ok(kind ^ ty.loc())
             },
-            | Type::Ctor(id) => Ok(self.db.typecheck(*id).ty.clone()),
+            | Type::Ctor(id) => Ok(self.typeck_def(*id)),
             | Type::App(base, arg) => {
                 let k1 = self.elaborate_kind(base)?;
 

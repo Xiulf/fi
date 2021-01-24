@@ -1,32 +1,32 @@
 use super::*;
 
 #[derive(Debug)]
-pub struct Case<'hir> {
-    arms: Vec<Arm<'hir>>,
+pub struct Case<'hir, L = ir::Local, P = ir::Place, O = ir::Operand> {
+    pub(crate) arms: Vec<Arm<'hir, L, P, O>>,
 }
 
 #[derive(Debug)]
-pub struct Arm<'hir> {
-    pat: Pattern,
-    guard: &'hir hir::Guarded,
+pub struct Arm<'hir, L = ir::Local, P = ir::Place, O = ir::Operand> {
+    pub(crate) pat: Pattern<L, P, O>,
+    pub(crate) guard: &'hir hir::Guarded,
 }
 
 #[derive(Debug)]
-pub enum Pattern {
-    Seq(Vec<Pattern>),
-    Bind(ir::Local, ir::Place),
-    Switch(ir::Operand, u128),
-    And(Vec<Pattern>),
-    Or(Vec<Pattern>),
+pub enum Pattern<L = ir::Local, P = ir::Place, O = ir::Operand> {
+    Seq(Vec<Pattern<L, P, O>>),
+    Bind(L, P),
+    Switch(O, u128),
+    And(Vec<Pattern<L, P, O>>),
+    Or(Vec<Pattern<L, P, O>>),
 }
 
-impl Arm<'_> {
+impl<L, P, O> Arm<'_, L, P, O> {
     pub fn matches_all(&self) -> bool {
         !self.pat.checked()
     }
 }
 
-impl Pattern {
+impl<L, P, O> Pattern<L, P, O> {
     pub fn checked(&self) -> bool {
         match self {
             | Pattern::Switch(..) => true,
@@ -199,9 +199,8 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
             },
             | hir::PatKind::Int { val } => Some(Pattern::Switch(ir::Operand::Place(pred), *val)),
             | hir::PatKind::Ctor { ctor, pats } => {
-                println!("convert_pat before");
+                // @TODO
                 let file = self.db.module_tree(ctor.lib).file(ctor.module);
-                println!("convert_pat after");
                 let hir = self.db.module_hir(file);
                 let ctor = &hir.items[&(*ctor).into()];
                 let data = hir.items[&ctor.ctor().0].data_body();

@@ -1,6 +1,4 @@
 use crate::db::CompilerDatabase;
-use backend::BackendDatabase;
-use hir::HirDatabase;
 use serde::{Deserialize, Serialize};
 use source::SourceDatabase;
 use std::collections::HashMap;
@@ -9,19 +7,13 @@ use std::time::SystemTime;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LibMetadata {
-    pub assemblies: HashMap<hir::ir::ModuleId, PathBuf>,
+    pub compiler_version: String,
     pub last_modified: HashMap<PathBuf, SystemTime>,
 }
 
 impl CompilerDatabase {
-    pub fn store_metadata(&self, lib: source::LibId) {
-        let tree = self.module_tree(lib);
+    pub fn store_metadata(&self, lib: source::LibId, compiler_version: String) {
         let files = self.files();
-        let assemblies = tree
-            .toposort(self)
-            .into_iter()
-            .map(|data| (data.id, self.assembly(lib, data.id).path().to_owned()))
-            .collect();
         let last_modified = self
             .lib_files(lib)
             .iter()
@@ -35,10 +27,16 @@ impl CompilerDatabase {
 
         let file = std::fs::File::create(format!("{}/meta/lib", self.manifest(lib).package.target_dir.display())).unwrap();
 
-        bincode::serialize_into(file, &LibMetadata { assemblies, last_modified }).unwrap();
-        hir::module_tree::save_external(self, lib);
-        hir::store_item_data(self, lib);
+        backend::store_external_assemblies(self, lib);
         typeck::external::store_external(self, lib);
+        hir::store_item_data(self, lib);
+        hir::module_tree::save_external(self, lib);
+        hir::lang::store_external(self, lib);
+        bincode::serialize_into(file, &LibMetadata {
+            compiler_version,
+            last_modified,
+        })
+        .unwrap();
     }
 
     pub fn load_metadata(&self, lib: source::LibId) -> Option<LibMetadata> {

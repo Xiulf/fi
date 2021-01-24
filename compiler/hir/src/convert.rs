@@ -6,7 +6,10 @@ use std::sync::Arc;
 use syntax::{ast, group};
 
 pub fn convert(db: &dyn HirDatabase, file: source::FileId) -> Arc<ir::Module> {
+    // let start = std::time::Instant::now();
     let ast = db.parse(file);
+    // println!("parsed in {:?}", start.elapsed());
+    // let start = std::time::Instant::now();
     let lib = db.file_lib(file);
     let mut converter = Converter::new(db, lib, file, ast.name);
 
@@ -17,6 +20,8 @@ pub fn convert(db: &dyn HirDatabase, file: source::FileId) -> Arc<ir::Module> {
     } else {
         db.print();
     }
+
+    // println!("hir::convert in {:?}", start.elapsed());
 
     converter.finish(&ast)
 }
@@ -145,7 +150,7 @@ impl<'db> Converter<'db> {
             | ast::DeclKind::Fixity { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Fixity, Ns::Values),
             | ast::DeclKind::AliasKind { .. } | ast::DeclKind::Alias { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Alias, Ns::Types),
             | ast::DeclKind::DataKind { .. } | ast::DeclKind::Data { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Data, Ns::Types),
-            | ast::DeclKind::Class { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Trait, Ns::Types),
+            | ast::DeclKind::Class { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Class, Ns::Types),
             | ast::DeclKind::InstanceChain { .. } => return,
         };
 
@@ -329,7 +334,7 @@ impl<'db> Converter<'db> {
             | ir::ItemKind::Class { body, .. } => {
                 exports.push(ir::Export {
                     name: item.name.symbol,
-                    res: ir::Res::Def(ir::DefKind::Trait, item.id.owner),
+                    res: ir::Res::Def(ir::DefKind::Class, item.id.owner),
                     module: file,
                     ns: Ns::Types,
                     group: Some(
@@ -349,7 +354,7 @@ impl<'db> Converter<'db> {
             | ir::ItemKind::Instance { body, .. } => {
                 exports.push(ir::Export {
                     name: item.name.symbol,
-                    res: ir::Res::Def(ir::DefKind::Impl, item.id.owner),
+                    res: ir::Res::Def(ir::DefKind::Instance, item.id.owner),
                     module: file,
                     ns: Ns::Values,
                     group: Some(
@@ -423,7 +428,7 @@ impl<'db> Converter<'db> {
             | ir::ItemKind::Class { body, .. } => {
                 exports.push(ir::Export {
                     name: item.name.symbol,
-                    res: ir::Res::Def(ir::DefKind::Trait, item.id.owner),
+                    res: ir::Res::Def(ir::DefKind::Class, item.id.owner),
                     module: file,
                     ns: Ns::Types,
                     group: Some(if let ast::ExportGroup::Some(names) = grp {
@@ -518,7 +523,7 @@ impl<'db> Converter<'db> {
     }
 
     fn register_single_import(&mut self, span: ir::Span, export: ir::Export) {
-        if let ir::Res::Def(ir::DefKind::Impl, _) = export.res {
+        if let ir::Res::Def(ir::DefKind::Instance, _) = export.res {
             if let Some(group) = export.group {
                 for exp in group {
                     if let ir::Res::Def(ir::DefKind::Func | ir::DefKind::Static, id) = exp.res {
@@ -1017,7 +1022,7 @@ impl<'db> Converter<'db> {
 
                 let tys = imp.head.tys.iter().map(|t| self.convert_type(t)).collect();
                 let trait_ = match self.resolver.get(Ns::Types, imp.head.iface.symbol) {
-                    | Some(ir::Res::Def(ir::DefKind::Trait, iface)) => iface,
+                    | Some(ir::Res::Def(ir::DefKind::Class, iface)) => iface,
                     | Some(_) => {
                         self.db
                             .to_diag_db()
@@ -1042,7 +1047,7 @@ impl<'db> Converter<'db> {
                     id: head_id,
                     span: imp.head.span,
                     cs,
-                    trait_,
+                    class: trait_,
                     tys,
                 };
 
@@ -1926,7 +1931,7 @@ impl<'db> Converter<'db> {
                 id: self.next_id(),
                 span: iface.span.merge(if tys.is_empty() { iface.span } else { tys.last().unwrap().span }),
                 trait_: match self.resolver.get(Ns::Types, iface.symbol) {
-                    | Some(ir::Res::Def(ir::DefKind::Trait, iface)) => iface,
+                    | Some(ir::Res::Def(ir::DefKind::Class, iface)) => iface,
                     | Some(_) => {
                         self.db
                             .to_diag_db()

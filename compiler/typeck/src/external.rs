@@ -31,49 +31,29 @@ pub fn store_external(db: &dyn TypeDatabase, lib: source::LibId) {
     for data in &db.module_tree(lib).data {
         let file = std::fs::File::create(format!("{}/{:?}", path, data.id)).unwrap();
         let hir = db.module_hir(data.file);
-        let mut types = HashMap::new();
-        let mut variants = HashMap::new();
-        let mut classes = HashMap::new();
-        let mut instances = HashMap::new();
-        let ctx = ctx::Ctx::new(db, data.file);
-
-        for item in hir.items.values() {
-            match &item.kind {
-                | ir::ItemKind::Func { .. }
-                | ir::ItemKind::Static { .. }
-                | ir::ItemKind::Const { .. }
-                | ir::ItemKind::Foreign { .. }
-                | ir::ItemKind::DataCtor { .. } => {
-                    types.insert(item.id.owner, db.typecheck(item.id.owner).ty.clone());
-                },
-                | ir::ItemKind::Alias { .. } => {
-                    types.insert(item.id.owner, db.typecheck(item.id.owner).ty.clone());
-                },
-                | ir::ItemKind::Data { .. } => {
-                    types.insert(item.id.owner, db.typecheck(item.id.owner).ty.clone());
-                    variants.insert(item.id.owner, db.variants(item.id.owner));
-                },
-                | ir::ItemKind::Class { head, body } => {
-                    classes.insert(item.id.owner, ExternalClass {
-                        var_kinds: head.vars.iter().map(|v| (ty::TypeVar(v.id), ctx.ty_kind(v.span, data.file))).collect(),
+        let types = db.typeck_module(lib, data.id);
+        let items = types.items.iter().map(|(k, v)| (*k, v.ty.clone())).collect();
+        let variants = types.variants.clone();
+        let classes = types
+            .classes
+            .iter()
+            .map(|(id, ct)| {
+                if let ir::ItemKind::Class { head, body } = &hir.items[&(*id).into()].kind {
+                    (*id, ExternalClass {
+                        var_kinds: ct.var_kinds.clone(),
                         deps: head.fundeps.clone(),
                         items: body.items.iter().map(|i| (i.name, i.id.0)).collect(),
-                    });
-                },
-                | ir::ItemKind::Instance { head, .. } => {
-                    instances.entry(head.trait_).or_insert(Vec::new()).push(db.instance(item.id.owner));
-                },
-                | _ => {},
-            }
-        }
+                    })
+                } else {
+                    unreachable!();
+                }
+            })
+            .collect();
 
-        for item in hir.instance_items.values() {
-            types.insert(item.id.owner, db.typecheck(item.id.owner).ty.clone());
-        }
-
+        let instances = types.instances.clone();
         let data = ExternalTypeData {
             file: data.file,
-            types,
+            types: items,
             variants,
             classes,
             instances,

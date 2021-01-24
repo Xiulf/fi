@@ -31,7 +31,7 @@ pub trait SourceDatabase: salsa::Database {
     #[salsa::input]
     fn manifest(&self, lib: LibId) -> Arc<opts::Manifest>;
 
-    fn target(&self, lib: LibId) -> Arc<target_lexicon::Triple>;
+    fn target(&self, lib: LibId) -> Arc<opts::Target>;
 
     fn file_content(&self, id: FileId) -> Arc<str>;
 }
@@ -40,7 +40,7 @@ pub trait Upcast<T: ?Sized> {
     fn upcast(&self) -> &T;
 }
 
-fn target(db: &dyn SourceDatabase, lib: LibId) -> Arc<target_lexicon::Triple> {
+fn target(db: &dyn SourceDatabase, lib: LibId) -> Arc<opts::Target> {
     Arc::new(db.manifest(lib).package.target.clone())
 }
 

@@ -63,11 +63,14 @@ name = "backend"
 version = "0.1.0"
 dependencies = [
  "ar",
+ "bincode",
  "hir",
  "linker",
  "lower",
  "lowlang",
  "salsa",
+ "serde",
+ "source",
 ]
 
 [[package]]
@@ -482,6 +485,7 @@ dependencies = [
 name = "linker"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "target-lexicon",
 ]
 

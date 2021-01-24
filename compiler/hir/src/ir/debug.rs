@@ -221,7 +221,7 @@ impl Debug for ClassItemRef {
 
 impl Debug for InstanceHead {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "InstanceHead id = {:?}, trait = {:?}", self.id, self.trait_)?;
+        write!(f, "InstanceHead id = {:?}, trait = {:?}", self.id, self.class)?;
 
         for c in &self.cs {
             writeln!(f)?;

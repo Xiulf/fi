@@ -10,6 +10,7 @@ pub mod entailment;
 pub mod error;
 pub mod external;
 pub mod infer;
+pub mod items;
 pub mod kind;
 pub mod skolem;
 pub mod subsume;
@@ -25,15 +26,11 @@ pub trait TypeDatabase: hir::HirDatabase + InferDb {
     #[salsa::invoke(external::load_external)]
     fn external_types(&self, lib: source::LibId, module: ir::ModuleId) -> Arc<external::ExternalTypeData>;
 
-    fn typeck_module(&self, id: ir::ModuleId) -> Arc<TypecheckResult>;
+    fn typeck_module(&self, lib: source::LibId, module: ir::ModuleId) -> Arc<ModuleTypes>;
 
     fn typecheck(&self, id: ir::DefId) -> Arc<TypecheckResult>;
 
     fn variants(&self, id: ir::DefId) -> ty::Variants;
-
-    fn instance(&self, id: ir::DefId) -> ty::Instance;
-
-    fn instances(&self, id: ir::DefId) -> ty::List<ty::Instance>;
 }
 
 pub trait InferDb {
@@ -41,25 +38,60 @@ pub trait InferDb {
     fn to_hir_db(&self) -> &dyn hir::HirDatabase;
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypecheckResult {
     pub ty: ty::Ty,
     pub tys: HashMap<ir::HirId, ty::Ty>,
     pub bounds: HashMap<ir::HirId, BoundInfo>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoundInfo {
     pub source: BoundSource,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundSource {
     Instance(ir::DefId),
 }
 
-fn typeck_module(_db: &dyn TypeDatabase, _id: ir::ModuleId) -> Arc<TypecheckResult> {
-    unimplemented!();
+#[derive(Debug, PartialEq, Eq)]
+pub struct ModuleTypes {
+    pub items: HashMap<ir::DefId, TypecheckResult>,
+    pub variants: HashMap<ir::DefId, ty::Variants>,
+    pub classes: HashMap<ir::DefId, ClassTypes>,
+    pub instances: HashMap<ir::DefId, Vec<ty::Instance>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassTypes {
+    pub var_kinds: HashMap<ty::TypeVar, ty::Ty>,
+}
+
+fn typeck_module(db: &dyn TypeDatabase, lib: source::LibId, module: ir::ModuleId) -> Arc<ModuleTypes> {
+    let file = db.module_tree(lib).file(module);
+    let hir = db.module_hir(file);
+    let mut ctx = ctx::Ctx::new(db, file, module);
+
+    for id in hir.items.keys() {
+        ctx.typeck_def(id.owner);
+    }
+
+    for id in hir.class_items.keys() {
+        ctx.typeck_def(id.0.owner);
+    }
+
+    for id in hir.instance_items.keys() {
+        ctx.typeck_def(id.0.owner);
+    }
+
+    if db.has_errors() {
+        db.print_and_exit();
+    } else {
+        db.print();
+    };
+
+    Arc::new(ctx.module_types)
 }
 
 fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
@@ -73,333 +105,103 @@ fn typecheck(db: &dyn TypeDatabase, id: ir::DefId) -> Arc<TypecheckResult> {
             bounds: HashMap::new(),
         })
     } else {
-        let file = db.module_tree(id.lib).file(id.module);
-        let hir = db.module_hir(file);
-        let def = hir.def(id);
-        let mut ctx = ctx::Ctx::new(db, file);
+        let types = db.typeck_module(id.lib, id.module);
+        let ty = types.items[&id].clone();
 
-        let ty: error::Result<ty::Ty> = match def {
-            | ir::Def::Item(item) => match &item.kind {
-                | ir::ItemKind::Func { ty, body } => {
-                    try {
-                        let ty = ctx.hir_ty(ty);
-
-                        ctx.tys.insert(item.id, ty.clone());
-
-                        let (mut ty, should_generalize) = if let ty::Type::Unknown(_) = *ty {
-                            let infer = ctx.infer_body(item.span, &hir.bodies[body])?;
-                            let _ = ctx.unify_types(ty.clone(), infer.clone())?;
-
-                            (infer, true)
-                        } else {
-                            ctx.check_body(item.span, &hir.bodies[body], ty.clone())?;
-                            (ty, false)
-                        };
-
-                        let unsolved = ctx.solve_ctnts(should_generalize)?;
-
-                        ty = ctx.subst_type(ty);
-                        ty = ctx.constrain(unsolved, ty);
-                        ty = ctx.generalize(ty, item.id.owner);
-
-                        ty
-                    }
-                },
-                | ir::ItemKind::Alias { vars, value, kind: _ } => {
-                    try {
-                        let mut ty = ctx.hir_ty(value);
-
-                        if !vars.is_empty() {
-                            let vars = vars.iter().map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span, file)))).collect::<Vec<_>>();
-
-                            for (v, k) in vars.into_iter().rev() {
-                                ty = ty::Ty::forall(item.span, file, v, k, ty, None);
-                            }
-                        }
-
-                        ty
-                    }
-                },
-                | ir::ItemKind::Data { head, .. } => {
-                    if let ir::TypeKind::Infer = head.kind.kind {
-                        let mut kind = ctx.ty_kind(item.span, file);
-
-                        if !head.vars.is_empty() {
-                            // let params = (0..head.vars.len()).map(|_| {
-                            //     ctx.fresh_type_with_kind(item.span, file, ctx.ty_kind(item.span, file))
-                            // });
-
-                            // for now data types can only be paramaterized by types
-                            let params = head.vars.iter().map(|v| ctx.ty_kind(v.span, file)).collect::<Vec<_>>();
-                            let func_ty = ctx.func_ty(item.span, file);
-
-                            for param in params.into_iter().rev() {
-                                kind = ty::Ty::app(item.span, file, ty::Ty::app(item.span, file, func_ty.clone(), param), kind);
-                            }
-                        }
-
-                        Ok(kind)
-                    } else {
-                        let kind = ctx.hir_ty(&head.kind);
-
-                        Ok(kind)
-                    }
-                },
-                | ir::ItemKind::DataCtor { data, tys } => {
-                    try {
-                        let data = hir.items[data].data();
-                        let mut ty = ty::Ty::ctor(item.span, file, data.id.owner);
-
-                        if !data.vars.is_empty() {
-                            for var in &data.vars {
-                                ty = ty::Ty::app(item.span, file, ty, ty::Ty::var(var.span, file, ty::TypeVar(var.id)));
-                            }
-                        }
-
-                        if !tys.is_empty() {
-                            let args = tys.iter().map(|t| ctx.hir_ty(t)).collect::<Vec<_>>();
-                            let func_ty = ctx.func_ty(item.span, file);
-
-                            for arg in args.into_iter().rev() {
-                                ty = ty::Ty::app(item.span, file, ty::Ty::app(item.span, file, func_ty.clone(), arg), ty);
-                            }
-                        }
-
-                        if !data.vars.is_empty() {
-                            let vars = data
-                                .vars
-                                .iter()
-                                .map(|v| (ty::TypeVar(v.id), Some(ctx.ty_kind(v.span, file))))
-                                .collect::<Vec<_>>();
-
-                            for (v, k) in vars.into_iter().rev() {
-                                ty = ty::Ty::forall(item.span, file, v, k, ty, None);
-                            }
-                        }
-
-                        let ty_kind = ctx.ty_kind(item.span, file);
-                        let ty = ctx.check_kind(ty, ty_kind)?;
-
-                        ty
-                    }
-                },
-                | ir::ItemKind::Foreign { ty, .. } => {
-                    try {
-                        let ty = ctx.hir_ty(ty);
-                        let ty_kind = ctx.ty_kind(ty.span(), file);
-                        let elab_ty = ctx.check_kind(ty, ty_kind)?;
-
-                        ctx.subst_type(elab_ty)
-                    }
-                },
-                | _ => unimplemented!(),
-            },
-            | ir::Def::TraitItem(item) => match &item.kind {
-                | ir::ClassItemKind::Func { ty } => {
-                    try {
-                        let ty = ctx.hir_ty(ty);
-                        let trait_ = hir.items[&item.owner].class();
-                        let vars = trait_.vars.iter().map(|v| (ty::TypeVar(v.id), Some(ctx.hir_ty(&v.kind)))).collect::<Vec<_>>();
-
-                        let mut ty = ty::Ty::ctnt(
-                            ty.span(),
-                            file,
-                            ty::Ctnt {
-                                span: ty.span(),
-                                file: ty.file(),
-                                class: item.owner.owner,
-                                tys: vars.iter().map(|(v, _)| ty::Ty::var(ty.span(), ty.file(), *v)).collect(),
-                            },
-                            ty,
-                        );
-
-                        for (v, k) in vars.into_iter().rev() {
-                            ty = ty::Ty::forall(item.span, file, v, k, ty, None);
-                        }
-
-                        let ty_kind = ctx.ty_kind(ty.span(), file);
-                        let elab_ty = ctx.check_kind(ty, ty_kind)?;
-
-                        ctx.subst_type(elab_ty)
-                    }
-                },
-            },
-            | ir::Def::ImplItem(item) => match &item.kind {
-                | ir::InstanceItemKind::Func { ty, body } => {
-                    try {
-                        let ty = ctx.hir_ty(ty);
-                        let imp = hir.items[&item.owner].impl_();
-                        println!("trait_info before");
-                        let trait_file = db.module_tree(imp.trait_.lib).file(imp.trait_.module);
-                        println!("trait_info after");
-                        let trait_hir = db.module_hir(trait_file);
-                        let trait_ = trait_hir.items[&imp.trait_.into()].trait_body();
-                        let trait_item = trait_.items.iter().find(|it| it.name.symbol == item.name.symbol).unwrap();
-
-                        ctx.tys.insert(item.id, ty.clone());
-
-                        let (ty, should_generalize) = if let ty::Type::Unknown(_) = *ty {
-                            let infer = ctx.infer_body(item.span, &hir.bodies[body])?;
-                            let _ = ctx.unify_types(ty.clone(), infer.clone())?;
-
-                            (infer, true)
-                        } else {
-                            ctx.check_body(item.span, &hir.bodies[body], ty.clone())?;
-                            (ty, false)
-                        };
-
-                        let _unsolved = ctx.solve_ctnts(should_generalize)?;
-                        let expected = db.typecheck(trait_item.id.0.owner).ty.clone();
-                        let expected = ctx.instantiate(item.id, expected);
-
-                        ctx.unify_types(expected, ty.clone())?;
-                        ctx.subst_type(ty)
-                    }
-                },
-            },
-        };
-
-        let ty = match ty {
-            | Ok(ty) => ty,
-            | Err(e) => {
-                e.report(db);
-                ty::Ty::error(def.span(), file)
-            },
-        };
-
-        let mut tys = std::mem::replace(&mut ctx.tys, Default::default());
-
-        tys.values_mut().for_each(|t| {
-            let ty = t.clone();
-            let ty = ctx.subst_type(ty);
-            let ty = skolem::unskolemize(ty);
-
-            *t = ty;
-        });
-
-        ctx.tys = tys;
-
-        for mut e in std::mem::replace(&mut ctx.errors, Vec::new()) {
-            if let error::TypeError::HoleType(name, ty) = e {
-                let loc = ty.loc();
-                e = error::TypeError::HoleType(name, ctx.subst_type(ty) ^ loc);
-            }
-
-            e.report(db)
-        }
-
-        if db.has_errors() {
-            db.print_and_exit();
-        } else {
-            db.print();
-        };
-
-        Arc::new(TypecheckResult {
-            ty,
-            tys: ctx.tys,
-            bounds: ctx.bounds,
-        })
+        Arc::new(ty)
     }
 }
 
 fn variants(db: &dyn TypeDatabase, id: ir::DefId) -> ty::Variants {
-    let file = db.module_tree(id.lib).file(id.module);
-    let hir = db.module_hir(file);
-    let def = hir.def(id);
-    let mut ctx = ctx::Ctx::new(db, file);
+    if id.lib == db.lib() {
+        let types = db.typeck_module(id.lib, id.module);
 
-    if let ir::Def::Item(ir::Item {
-        kind: ir::ItemKind::Data { head, body },
-        ..
-    }) = def
-    {
-        let vars = head.vars.iter().map(|v| ty::TypeVar(v.id)).collect();
-
-        ty::Variants {
-            vars,
-            variants: body
-                .iter()
-                .filter_map(|ctor_id| {
-                    if let ir::Def::Item(item) = hir.def(ctor_id.owner) {
-                        if let ir::ItemKind::DataCtor { data: _, tys } = &item.kind {
-                            let tys = tys.iter().map(|t| ctx.hir_ty(t)).collect();
-
-                            Some(ty::Variant { id: ctor_id.owner, tys })
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        }
+        types.variants[&id].clone()
     } else {
-        unreachable!()
+        let external = db.external_types(id.lib, id.module);
+
+        external.variants[&id].clone()
     }
 }
 
-fn instance(db: &dyn TypeDatabase, id: ir::DefId) -> ty::Instance {
-    assert_eq!(id.lib, db.lib());
-    let file = db.module_tree(id.lib).file(id.module);
-    let hir = db.module_hir(file);
-    let mut ctx = ctx::Ctx::new(db, file);
-
-    if let ir::ItemKind::Instance { chain, index, head, .. } = &hir.items[&id.into()].kind {
-        ty::Instance {
-            id,
-            class: head.trait_,
-            chain: chain.clone().into(),
-            chain_index: *index,
-            tys: head.tys.iter().map(|t| ctx.hir_ty(t)).collect(),
-        }
-    } else {
-        unreachable!();
-    }
-}
-
-fn instances(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Instance> {
-    use salsa::debug::{DebugQueryTable, TableEntry};
-    use salsa::plumbing::get_query_table;
-    println!("instances before");
-    let file = db.module_tree(id.lib).file(id.module);
-    println!("instances after");
-    let hir = db.module_hir(file);
-    let trait_ = hir.items[&id.into()].class();
-    let mut ctx = ctx::Ctx::new(db, file);
-    let impls: Vec<TableEntry<source::FileId, Arc<ir::Module>>> = get_query_table::<hir::ModuleHirQuery>(db.to_hir_db()).entries();
-
-    let impls = impls
-        .into_iter()
-        .map(|entry| entry.key)
-        .flat_map(|file| {
-            let module = db.module_hir(file);
-
-            module
-                .items
-                .values()
-                .filter_map(|item| match &item.kind {
-                    | ir::ItemKind::Instance { chain, index, head, body: _ } if head.trait_ == id => Some((item.id, chain.clone(), *index, head.clone())),
-                    | _ => None,
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-
-    impls
-        .into_iter()
-        .map(|(id, chain, index, head)| {
-            let tys = head.tys.iter().map(|t| ctx.hir_ty(t)).collect();
-
-            // @TODO: check constraints
-
-            ty::Instance {
-                class: trait_.id.owner,
-                id: id.owner,
-                chain: chain.into(),
-                chain_index: index,
-                tys,
-            }
-        })
-        .collect()
-}
+// fn variants(db: &dyn TypeDatabase, id: ir::DefId) -> ty::Variants {
+//     let file = db.module_tree(id.lib).file(id.module);
+//     let hir = db.module_hir(file);
+//     let def = hir.def(id);
+//     let mut ctx = ctx::Ctx::new(db, file, id.module);
+//
+//     if let ir::Def::Item(ir::Item {
+//         kind: ir::ItemKind::Data { head, body },
+//         ..
+//     }) = def
+//     {
+//         let vars = head.vars.iter().map(|v| ty::TypeVar(v.id)).collect();
+//
+//         ty::Variants {
+//             vars,
+//             variants: body
+//                 .iter()
+//                 .filter_map(|ctor_id| {
+//                     if let ir::Def::Item(item) = hir.def(ctor_id.owner) {
+//                         if let ir::ItemKind::DataCtor { data: _, tys } = &item.kind {
+//                             let tys = tys.iter().map(|t| ctx.hir_ty(t)).collect();
+//
+//                             Some(ty::Variant { id: ctor_id.owner, tys })
+//                         } else {
+//                             None
+//                         }
+//                     } else {
+//                         None
+//                     }
+//                 })
+//                 .collect(),
+//         }
+//     } else {
+//         unreachable!()
+//     }
+// }
+//
+// fn instance(db: &dyn TypeDatabase, id: ir::DefId) -> ty::Instance {
+//     assert_eq!(id.lib, db.lib());
+//     let file = db.module_tree(id.lib).file(id.module);
+//     let hir = db.module_hir(file);
+//     let mut ctx = ctx::Ctx::new(db, file, id.module);
+//
+//     if let ir::ItemKind::Instance { chain, index, head, .. } = &hir.items[&id.into()].kind {
+//         ty::Instance {
+//             id,
+//             class: head.class,
+//             chain: chain.clone().into(),
+//             chain_index: *index,
+//             tys: head.tys.iter().map(|t| ctx.hir_ty(t)).collect(),
+//         }
+//     } else {
+//         unreachable!();
+//     }
+// }
+//
+// fn instances(db: &dyn TypeDatabase, id: ir::DefId) -> ty::List<ty::Instance> {
+//     let mut instances = db
+//         .external_modules(db.lib())
+//         .iter()
+//         .flat_map(|module| {
+//             if let Some(instances) = db.external_types(module.lib, module.id).instances.get(&id) {
+//                 instances.clone()
+//             } else {
+//                 Vec::new()
+//             }
+//         })
+//         .collect::<Vec<_>>();
+//
+//     for module in &db.module_tree(db.lib()).data {
+//         for item in db.module_hir(module.file).items.values() {
+//             if let ir::ItemKind::Instance { head, .. } = &item.kind {
+//                 if head.class == id {
+//                     instances.push(db.instance(id));
+//                 }
+//             }
+//         }
+//     }
+//
+//     instances.into()
+// }

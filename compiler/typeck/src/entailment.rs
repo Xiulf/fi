@@ -34,6 +34,42 @@ impl<'db> Ctx<'db> {
 
         Ok(self.ctnts.drain(..).map(|(_, c, _)| c).collect())
     }
+
+    fn all_instances(&mut self, class: ir::DefId) -> std::sync::Arc<Vec<Instance>> {
+        if let Some(instances) = self.all_instances.get(&class) {
+            instances.clone()
+        } else {
+            let mut instances = self
+                .db
+                .external_modules(self.db.lib())
+                .iter()
+                .flat_map(|module| {
+                    if let Some(instances) = self.db.external_types(module.lib, module.id).instances.get(&class) {
+                        instances.clone()
+                    } else {
+                        Vec::new()
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            for module in self.db.module_tree(self.db.lib()).toposort(self.db.to_diag_db()) {
+                if module.id != self.module {
+                    if let Some(i) = self.db.typeck_module(self.db.lib(), module.id).instances.get(&class) {
+                        instances.extend(i.clone());
+                    }
+                } else {
+                    if let Some(i) = self.module_types.instances.get(&class) {
+                        instances.extend(i.clone());
+                    }
+
+                    break;
+                }
+            }
+
+            self.all_instances.insert(class, std::sync::Arc::new(instances));
+            self.all_instances[&class].clone()
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -133,11 +169,11 @@ impl<'db> Ctx<'db> {
             Err(TypeError::NoImpl(ctnt))
         } else {
             let ctnt = self.subst_ctnt(ctnt);
-            let instances = self.db.instances(ctnt.class);
+            let instances = self.all_instances(ctnt.class);
             let matches = {
                 use itertools::Itertools;
                 let mut chain = List::empty();
-                let mut instances = (&instances.into_iter().group_by(|i| {
+                let mut instances = (&instances.iter().group_by(|i| {
                     let eq = i.chain == chain;
 
                     chain = i.chain.clone();
@@ -154,7 +190,7 @@ impl<'db> Ctx<'db> {
                     .filter_map(|instance| match self.matches(&deps, instance.clone(), tys.clone()) {
                         | Matched::Apart => None,
                         | Matched::Unknown => None,
-                        | Matched::Match(t) => Some((t, instance)),
+                        | Matched::Match(t) => Some((t, instance.clone())),
                     })
                     .collect()
             };
