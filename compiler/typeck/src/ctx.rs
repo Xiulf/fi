@@ -284,7 +284,7 @@ impl<'db> Ctx<'db> {
                 let ctnt = Ctnt {
                     span: cs.span,
                     file: self.file,
-                    class: cs.trait_,
+                    class: cs.class,
                     tys: cs.tys.iter().map(|t| self.hir_ty(t)).collect(),
                 };
 

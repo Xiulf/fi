@@ -15,8 +15,7 @@ parser::keywords! {
     TInfixl, "infixl"
     TInfixr, "infixr"
     TInfix, "infix"
-    TAlias, "alias"
-    TData, "data"
+    TType, "type"
     TClass, "class"
     TInstance, "instance"
     TForall, "forall"
@@ -493,12 +492,12 @@ impl Parse for Decl {
             };
 
             (op, DeclKind::Fixity { assoc, prec, func })
-        } else if let Ok(_) = input.parse::<TAlias>() {
+        } else if let Ok(_) = input.parse::<TType>() {
             let name = input.parse()?;
             let kind = if let Ok(_) = input.parse::<TDblColon>() {
                 let kind = input.parse()?;
 
-                DeclKind::AliasKind { kind }
+                DeclKind::TypeKind { kind }
             } else {
                 let mut vars = Vec::new();
 
@@ -506,45 +505,33 @@ impl Parse for Decl {
                     vars.push(input.parse()?);
                 }
 
-                let _ = input.parse::<TEquals>()?;
-                let ty = input.parse()?;
-
-                DeclKind::Alias { vars, ty }
-            };
-
-            (name, kind)
-        } else if let Ok(_) = input.parse::<TData>() {
-            let name = input.parse()?;
-            let kind = if let Ok(_) = input.parse::<TDblColon>() {
-                let kind = input.parse()?;
-
-                DeclKind::DataKind { kind }
-            } else {
-                let mut vars = Vec::new();
-
-                while !input.is_empty() && TypeVar::peek(input) {
-                    vars.push(input.parse()?);
-                }
-
-                let head = DataHead {
+                let head = TypeHead {
                     span: start.merge(input.prev_span()),
                     vars,
                 };
 
-                let body = if let Ok(_) = input.parse::<TEquals>() {
-                    let mut ctors = vec![input.parse()?];
+                if let Ok(_) = input.parse::<TEquals>() {
+                    let mut ctors = Vec::new();
+                    let backup = input.cursor();
+                    let ty = input.parse::<Type>();
 
-                    while !input.is_empty() && input.peek::<TPipe>() {
-                        input.parse::<TPipe>()?;
+                    if input.peek::<TPipe>() && input.cursor().span() != backup.span() {
+                        input.restore(backup);
                         ctors.push(input.parse()?);
                     }
 
-                    Some(ctors)
-                } else {
-                    None
-                };
+                    while let Ok(_) = input.parse::<TPipe>() {
+                        ctors.push(input.parse()?);
+                    }
 
-                DeclKind::Data { head, body }
+                    if ctors.is_empty() {
+                        DeclKind::Alias { head, ty: ty? }
+                    } else {
+                        DeclKind::Data { head, body: Some(ctors) }
+                    }
+                } else {
+                    DeclKind::Data { head, body: None }
+                }
             };
 
             (name, kind)
@@ -635,8 +622,7 @@ impl Decl {
             || input.peek::<TInfixl>()
             || input.peek::<TInfixr>()
             || input.peek::<TInfix>()
-            || input.peek::<TAlias>()
-            || input.peek::<TData>()
+            || input.peek::<TType>()
             || input.peek::<TClass>()
             || input.peek::<TInstance>()
     }
@@ -1310,9 +1296,12 @@ impl Expr {
 
             ExprKind::Case { pred, arms }
         } else if let Ok(_) = input.parse::<TDo>() {
-            let block = input.parse()?;
+            let block = input.parse::<Block>()?;
 
-            ExprKind::Do { block }
+            return Ok(Expr {
+                span: start.merge(block.stmts[block.stmts.len() - 1].span),
+                kind: ExprKind::Do { block },
+            });
         } else if let Ok(TSymbol { span }) = input.parse() {
             let text = input.cursor().text(span);
             let name = Ident {
@@ -1379,6 +1368,21 @@ impl Parse for Stmt {
             let val = input.parse()?;
 
             StmtKind::Bind { pat, val }
+        } else if let Ok(_) = input.parse::<TLet>() {
+            let _ = input.parse::<TLytStart>()?;
+            let mut bindings = Vec::new();
+
+            while !input.is_empty() && !input.peek::<TLytEnd>() {
+                bindings.push(input.parse()?);
+
+                if !input.peek::<TLytEnd>() {
+                    input.parse::<TLytSep>()?;
+                }
+            }
+
+            let _ = input.parse::<TLytEnd>()?;
+
+            StmtKind::Let { bindings }
         } else {
             let expr = input.parse()?;
 

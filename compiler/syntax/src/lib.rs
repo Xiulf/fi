@@ -33,10 +33,7 @@ fn parse(db: &dyn SyntaxDatabase, id: source::FileId) -> Arc<ast::Module> {
     let buffer = parser::parse::ParseBuffer::new(tokens.begin(&source), codespan::Span::default());
 
     match buffer.parse::<ast::Module>() {
-        | Ok(module) => {
-            // println!("{}", module);
-            Arc::new(module)
-        },
+        | Ok(module) => Arc::new(module),
         | Err(e) => {
             report_parse_error(db, id, e);
             db.print_and_exit();
@@ -49,21 +46,25 @@ fn report_lex_error(db: &dyn SyntaxDatabase, file: source::FileId, error: parser
         | parser::lexer::LexicalError::UnknownChar(idx, ch) => db
             .to_diag_db()
             .error(format!("unknown character {:?}", ch))
+            .with_code("E0001")
             .with_label(diagnostics::Label::primary(file, ast::Span::new(idx, idx)))
             .finish(),
         | parser::lexer::LexicalError::InvalidCharLiteral(span) => db
             .to_diag_db()
             .error("invalid character literal")
+            .with_code("E0002")
             .with_label(diagnostics::Label::primary(file, span))
             .finish(),
         | parser::lexer::LexicalError::UnterminatedString(span) => db
             .to_diag_db()
             .error("unterminated string literal")
+            .with_code("E0003")
             .with_label(diagnostics::Label::primary(file, span))
             .finish(),
         | parser::lexer::LexicalError::InvalidEscape(span) => db
             .to_diag_db()
             .error("invalid character escape sequence")
+            .with_code("E0004")
             .with_label(diagnostics::Label::primary(file, span))
             .finish(),
     }
@@ -72,6 +73,7 @@ fn report_lex_error(db: &dyn SyntaxDatabase, file: source::FileId, error: parser
 fn report_parse_error(db: &dyn SyntaxDatabase, file: source::FileId, error: parser::parse::ParseError) {
     db.to_diag_db()
         .error(error.expected)
+        .with_code("E0005")
         .with_label(diagnostics::Label::primary(file, error.span))
         .finish();
 }

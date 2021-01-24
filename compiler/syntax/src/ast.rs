@@ -113,10 +113,9 @@ pub enum DeclKind {
     StaticTy { ty: Type },
     Static { val: Expr },
     Fixity { assoc: Assoc, prec: Prec, func: Ident },
-    AliasKind { kind: Type },
-    Alias { vars: Vec<TypeVar>, ty: Type },
-    DataKind { kind: Type },
-    Data { head: DataHead, body: Option<Vec<DataCtor>> },
+    TypeKind { kind: Type },
+    Alias { head: TypeHead, ty: Type },
+    Data { head: TypeHead, body: Option<Vec<DataCtor>> },
     Class { head: ClassHead, body: Option<ClassBody> },
     InstanceChain { instances: Vec<Instance> },
 }
@@ -149,7 +148,7 @@ pub enum Prec {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct DataHead {
+pub struct TypeHead {
     pub span: Span,
     pub vars: Vec<TypeVar>,
 }
@@ -315,6 +314,7 @@ pub struct Stmt {
 #[derive(PartialEq, Eq)]
 pub enum StmtKind {
     Discard { expr: Expr },
+    Let { bindings: Vec<LetBinding> },
     Bind { pat: Pat, val: Expr },
 }
 

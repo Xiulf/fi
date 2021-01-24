@@ -73,6 +73,20 @@ fn typeck_module(db: &dyn TypeDatabase, lib: source::LibId, module: ir::ModuleId
     let hir = db.module_hir(file);
     let mut ctx = ctx::Ctx::new(db, file, module);
 
+    for item in hir.items.values() {
+        if let ir::ItemKind::Instance { chain, index, head, .. } = &item.kind {
+            let tys = head.tys.iter().map(|t| ctx.hir_ty(t)).collect();
+
+            ctx.module_types.instances.entry(head.class).or_default().push(ty::Instance {
+                tys,
+                id: item.id.owner,
+                class: head.class,
+                chain: chain.clone().into(),
+                chain_index: *index,
+            });
+        }
+    }
+
     for id in hir.items.keys() {
         ctx.typeck_def(id.owner);
     }

@@ -18,8 +18,7 @@ pub enum DeclGroupKind {
     Const(bool),
     Static(bool),
     Fixity,
-    Alias(bool),
-    Data(bool),
+    Type(bool),
     Class,
     Instance,
 }
@@ -62,10 +61,9 @@ impl Decl {
             | DeclKind::StaticTy { .. } => DeclGroupKind::Static(true),
             | DeclKind::Static { .. } => DeclGroupKind::Static(false),
             | DeclKind::Fixity { .. } => DeclGroupKind::Fixity,
-            | DeclKind::AliasKind { .. } => DeclGroupKind::Alias(true),
-            | DeclKind::Alias { .. } => DeclGroupKind::Alias(false),
-            | DeclKind::DataKind { .. } => DeclGroupKind::Data(true),
-            | DeclKind::Data { .. } => DeclGroupKind::Data(false),
+            | DeclKind::TypeKind { .. } => DeclGroupKind::Type(true),
+            | DeclKind::Alias { .. } => DeclGroupKind::Type(false),
+            | DeclKind::Data { .. } => DeclGroupKind::Type(false),
             | DeclKind::Class { .. } => DeclGroupKind::Class,
             | DeclKind::InstanceChain { .. } => DeclGroupKind::Instance,
         }
@@ -80,8 +78,7 @@ impl DeclGroupKind {
             | DeclGroupKind::Const(_) => 2,
             | DeclGroupKind::Static(_) => 2,
             | DeclGroupKind::Fixity => 1,
-            | DeclGroupKind::Alias(_) => 2,
-            | DeclGroupKind::Data(_) => 2,
+            | DeclGroupKind::Type(_) => 2,
             | DeclGroupKind::Class => 1,
             | DeclGroupKind::Instance => 1,
         }
@@ -98,8 +95,7 @@ impl PartialEq for DeclGroupKind {
             | (Func(false), Func(false)) => true,
             | (Const(true), Const(false)) => true,
             | (Static(true), Static(false)) => true,
-            | (Alias(true), Alias(false)) => true,
-            | (Data(true), Data(false)) => true,
+            | (Type(true), Type(false)) => true,
             | (Class, Class) => true,
             | (Instance, Instance) => true,
             | _ => false,
@@ -209,10 +205,11 @@ impl<'ast> Iterator for LetBindingGroups<'ast> {
         let end;
 
         match self.bindings[self.start].kind {
-            | LetBindingKind::Type { .. } => match self.bindings[self.start + 1].kind {
+            | LetBindingKind::Type { .. } if self.start + 1 < self.bindings.len() => match self.bindings[self.start + 1].kind {
                 | LetBindingKind::Type { .. } => end = start + 1,
                 | LetBindingKind::Value { .. } => end = start + 2,
             },
+            | LetBindingKind::Type { .. } => end = start + 1,
             | LetBindingKind::Value { .. } => end = start + 1,
         }
 

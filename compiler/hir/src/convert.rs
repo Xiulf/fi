@@ -6,10 +6,7 @@ use std::sync::Arc;
 use syntax::{ast, group};
 
 pub fn convert(db: &dyn HirDatabase, file: source::FileId) -> Arc<ir::Module> {
-    // let start = std::time::Instant::now();
     let ast = db.parse(file);
-    // println!("parsed in {:?}", start.elapsed());
-    // let start = std::time::Instant::now();
     let lib = db.file_lib(file);
     let mut converter = Converter::new(db, lib, file, ast.name);
 
@@ -20,8 +17,6 @@ pub fn convert(db: &dyn HirDatabase, file: source::FileId) -> Arc<ir::Module> {
     } else {
         db.print();
     }
-
-    // println!("hir::convert in {:?}", start.elapsed());
 
     converter.finish(&ast)
 }
@@ -148,8 +143,21 @@ impl<'db> Converter<'db> {
             | ast::DeclKind::ConstTy { .. } | ast::DeclKind::Const { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Const, Ns::Values),
             | ast::DeclKind::StaticTy { .. } | ast::DeclKind::Static { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Static, Ns::Values),
             | ast::DeclKind::Fixity { .. } => (ir::DefPath::Value(group[0].name.symbol), ir::DefKind::Fixity, Ns::Values),
-            | ast::DeclKind::AliasKind { .. } | ast::DeclKind::Alias { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Alias, Ns::Types),
-            | ast::DeclKind::DataKind { .. } | ast::DeclKind::Data { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Data, Ns::Types),
+            | ast::DeclKind::TypeKind { .. } => {
+                if group.len() >= 2 {
+                    let kind = match &group[1].kind {
+                        | ast::DeclKind::Alias { .. } => ir::DefKind::Alias,
+                        | ast::DeclKind::Data { .. } => ir::DefKind::Data,
+                        | _ => unreachable!(),
+                    };
+
+                    (ir::DefPath::Type(group[0].name.symbol), kind, Ns::Types)
+                } else {
+                    (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Data, Ns::Types)
+                }
+            },
+            | ast::DeclKind::Alias { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Alias, Ns::Types),
+            | ast::DeclKind::Data { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Data, Ns::Types),
             | ast::DeclKind::Class { .. } => (ir::DefPath::Type(group[0].name.symbol), ir::DefKind::Class, Ns::Types),
             | ast::DeclKind::InstanceChain { .. } => return,
         };
@@ -625,8 +633,8 @@ impl<'db> Converter<'db> {
             | group::DeclGroupKind::Const(_)
             | group::DeclGroupKind::Static(_)
             | group::DeclGroupKind::Fixity => ir::DefPath::Value(first.name.symbol),
-            | group::DeclGroupKind::Alias(_) | group::DeclGroupKind::Data(_) | group::DeclGroupKind::Class => ir::DefPath::Type(first.name.symbol),
-            | group::DeclGroupKind::Instance => return self.convert_impl_chain(first),
+            | group::DeclGroupKind::Type(_) | group::DeclGroupKind::Class => ir::DefPath::Type(first.name.symbol),
+            | group::DeclGroupKind::Instance => return self.convert_instance_chain(first),
         };
 
         let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[defpath]);
@@ -639,7 +647,7 @@ impl<'db> Converter<'db> {
         let kind = match kind {
             | group::DeclGroupKind::Foreign => {
                 if let ast::DeclKind::Foreign { ref ty, kind } = first.kind {
-                    let ty = self.convert_type(ty);
+                    let ty = self.convert_type(ty, false);
 
                     ir::ItemKind::Foreign { ty, kind }
                 } else {
@@ -655,7 +663,7 @@ impl<'db> Converter<'db> {
                 for decl in decls {
                     match &decl.kind {
                         | ast::DeclKind::FuncTy { ty: fty } => {
-                            ty = Some(self.convert_type(fty));
+                            ty = Some(self.convert_type(fty, false));
                         },
                         | ast::DeclKind::Func { pats, val } => {
                             if let None = params {
@@ -736,7 +744,7 @@ impl<'db> Converter<'db> {
                 for decl in decls {
                     match &decl.kind {
                         | ast::DeclKind::ConstTy { ty: ty2 } => {
-                            ty = Some(self.convert_type(ty2));
+                            ty = Some(self.convert_type(ty2, false));
                         },
                         | ast::DeclKind::Const { val: val2 } => {
                             val = Some(self.convert_expr(val2));
@@ -774,7 +782,7 @@ impl<'db> Converter<'db> {
                 for decl in decls {
                     match &decl.kind {
                         | ast::DeclKind::StaticTy { ty: ty2 } => {
-                            ty = Some(self.convert_type(ty2));
+                            ty = Some(self.convert_type(ty2, false));
                         },
                         | ast::DeclKind::Static { val: val2 } => {
                             val = Some(self.convert_expr(val2));
@@ -839,21 +847,34 @@ impl<'db> Converter<'db> {
                     unreachable!();
                 }
             },
-            | group::DeclGroupKind::Alias(_) => {
+            | group::DeclGroupKind::Type(_) => {
                 let mut kind = None;
-                let mut value = None;
                 let mut vars = Vec::new();
+                let mut value = None;
+                let mut body = None;
+                let head_id = self.next_id();
 
                 for decl in decls {
                     match &decl.kind {
-                        | ast::DeclKind::AliasKind { kind: kind2 } => {
-                            kind = Some(self.convert_type(kind2));
+                        | ast::DeclKind::TypeKind { kind: kind2 } => {
+                            kind = Some(self.convert_type(kind2, false));
                         },
-                        | ast::DeclKind::Alias { vars: vars2, ty } => {
+                        | ast::DeclKind::Alias { head, ty } => {
                             self.resolver.push_rib(Ns::Types);
 
-                            vars.extend(vars2.iter().map(|v| self.convert_type_var(v)));
-                            value = Some(self.convert_type(ty));
+                            vars.extend(head.vars.iter().map(|v| self.convert_type_var(v)));
+                            value = Some(self.convert_type(ty, false));
+
+                            self.resolver.pop_rib(Ns::Types);
+                        },
+                        | ast::DeclKind::Data { head, body: body2 } => {
+                            self.resolver.push_rib(Ns::Types);
+
+                            vars.extend(head.vars.iter().map(|v| self.convert_type_var(v)));
+
+                            if let Some(body2) = body2 {
+                                body = Some(body2.iter().map(|c| self.convert_data_ctor(defpath, id, c)).collect());
+                            }
 
                             self.resolver.pop_rib(Ns::Types);
                         },
@@ -867,59 +888,21 @@ impl<'db> Converter<'db> {
                     kind: ir::TypeKind::Infer,
                 });
 
-                let value = match value {
-                    | Some(v) => v,
-                    | None => {
-                        return;
-                    },
-                };
-
-                ir::ItemKind::Alias { kind, vars, value }
-            },
-            | group::DeclGroupKind::Data(_) => {
-                let mut kind = None;
-                let mut has_def = false;
-                let mut vars = Vec::new();
-                let mut body = Vec::new();
-                let head_id = self.next_id();
-
-                for decl in decls {
-                    match &decl.kind {
-                        | ast::DeclKind::DataKind { kind: kind2 } => {
-                            kind = Some(self.convert_type(kind2));
-                        },
-                        | ast::DeclKind::Data { head, body: body2 } => {
-                            if !has_def {
-                                self.resolver.push_rib(Ns::Types);
-
-                                has_def = true;
-                                vars = head.vars.iter().map(|v| self.convert_type_var(v)).collect();
-
-                                if let Some(body2) = body2 {
-                                    body.extend(body2.iter().map(|c| self.convert_data_ctor(defpath, id, c)));
-                                }
-
-                                self.resolver.pop_rib(Ns::Types);
-                            }
-                        },
-                        | _ => unreachable!(),
-                    }
-                }
-
-                let kind = kind.unwrap_or_else(|| ir::Type {
-                    id: self.next_id(),
-                    span: first.name.span,
-                    kind: ir::TypeKind::Infer,
-                });
-
-                let head = ir::DataHead {
+                let head = ir::TypeHead {
                     id: head_id,
                     span: first.span,
                     vars,
                     kind,
                 };
 
-                ir::ItemKind::Data { head, body }
+                if let Some(value) = value {
+                    ir::ItemKind::Alias { head, value }
+                } else {
+                    ir::ItemKind::Data {
+                        head,
+                        body: body.unwrap_or_default(),
+                    }
+                }
             },
             | group::DeclGroupKind::Class => {
                 if let ast::DeclKind::Class { head, body } = &first.kind {
@@ -928,7 +911,7 @@ impl<'db> Converter<'db> {
                     let head_id = self.next_id();
                     let vars = head.vars.iter().map(|v| self.convert_type_var(v)).collect::<Vec<_>>();
                     let parent = if let Some(parent) = &head.parent {
-                        parent.iter().filter_map(|c| self.convert_constraint(c)).collect()
+                        parent.iter().filter_map(|c| self.convert_constraint(c, false)).collect()
                     } else {
                         Vec::new()
                     };
@@ -992,13 +975,12 @@ impl<'db> Converter<'db> {
         self.items.insert(id, item);
     }
 
-    fn convert_impl_chain(&mut self, decl: &ast::Decl) {
-        if let ast::DeclKind::InstanceChain { instances: impls } = &decl.kind {
+    fn convert_instance_chain(&mut self, decl: &ast::Decl) {
+        if let ast::DeclKind::InstanceChain { instances } = &decl.kind {
             let mut chain = Vec::new();
 
-            for imp in impls {
-                let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[ir::DefPath::Type(imp.head.name.symbol)]);
-
+            for instance in instances {
+                let defindex = ir::DefIndex::from_path(self.module_name.symbol, &[ir::DefPath::Type(instance.head.name.symbol)]);
                 let defid = ir::DefId::new(self.lib, self.module_id, defindex);
 
                 chain.push(ir::HirId {
@@ -1007,27 +989,28 @@ impl<'db> Converter<'db> {
                 });
             }
 
-            for (i, imp) in impls.iter().enumerate() {
+            for (i, instance) in instances.iter().enumerate() {
                 let id = chain[i];
 
                 self.current_item = id.owner;
                 self.id_counter = 1;
+                self.resolver.push_rib(Ns::Types);
 
                 let head_id = self.next_id();
-                let cs = if let Some(cs) = &imp.head.cs {
-                    cs.iter().filter_map(|c| self.convert_constraint(c)).collect()
+                let cs = if let Some(cs) = &instance.head.cs {
+                    cs.iter().filter_map(|c| self.convert_constraint(c, true)).collect()
                 } else {
                     Vec::new()
                 };
 
-                let tys = imp.head.tys.iter().map(|t| self.convert_type(t)).collect();
-                let trait_ = match self.resolver.get(Ns::Types, imp.head.iface.symbol) {
+                let tys = instance.head.tys.iter().map(|t| self.convert_type(t, true)).collect();
+                let class = match self.resolver.get(Ns::Types, instance.head.iface.symbol) {
                     | Some(ir::Res::Def(ir::DefKind::Class, iface)) => iface,
                     | Some(_) => {
                         self.db
                             .to_diag_db()
-                            .error(format!("'{}' is not a trait", imp.head.iface))
-                            .with_label(diagnostics::Label::primary(self.file, imp.head.iface.span))
+                            .error(format!("'{}' is not a trait", instance.head.iface))
+                            .with_label(diagnostics::Label::primary(self.file, instance.head.iface.span))
                             .finish();
 
                         continue;
@@ -1035,8 +1018,8 @@ impl<'db> Converter<'db> {
                     | None => {
                         self.db
                             .to_diag_db()
-                            .error(format!("unknown trait '{}'", imp.head.iface))
-                            .with_label(diagnostics::Label::primary(self.file, imp.head.iface.span))
+                            .error(format!("unknown trait '{}'", instance.head.iface))
+                            .with_label(diagnostics::Label::primary(self.file, instance.head.iface.span))
                             .finish();
 
                         continue;
@@ -1045,34 +1028,36 @@ impl<'db> Converter<'db> {
 
                 let head = ir::InstanceHead {
                     id: head_id,
-                    span: imp.head.span,
+                    span: instance.head.span,
                     cs,
-                    class: trait_,
+                    class,
                     tys,
                 };
 
                 let body_id = self.next_id();
-                let body = if let Some(body) = &imp.body {
+                let body = if let Some(body) = &instance.body {
                     ir::InstanceBody {
                         id: body_id,
                         span: body.span,
                         items: group::InstanceDeclGroup::new(&body.decls)
-                            .map(|(g, d)| self.convert_impl_decl(imp.head.name.symbol, id, g, d))
+                            .map(|(g, d)| self.convert_impl_decl(instance.head.name.symbol, id, g, d))
                             .collect(),
                     }
                 } else {
                     ir::InstanceBody {
                         id: body_id,
-                        span: imp.span,
+                        span: instance.span,
                         items: Vec::new(),
                     }
                 };
 
+                self.resolver.pop_rib(Ns::Types);
+
                 self.items.insert(id, ir::Item {
                     id,
-                    span: imp.span,
+                    span: instance.span,
                     attrs: decl.attrs.clone(),
-                    name: imp.head.name,
+                    name: instance.head.name,
                     kind: ir::ItemKind::Instance {
                         chain: chain.clone(),
                         index: i,
@@ -1092,7 +1077,7 @@ impl<'db> Converter<'db> {
         self.id_counter = 0;
 
         let id = self.next_id();
-        let tys = ctor.tys.iter().map(|t| self.convert_type(t)).collect();
+        let tys = ctor.tys.iter().map(|t| self.convert_type(t, false)).collect();
 
         self.current_item = old_id.0;
         self.id_counter = old_id.1;
@@ -1117,7 +1102,9 @@ impl<'db> Converter<'db> {
 
         let id = self.next_id();
         let kind = match &decl.kind {
-            | ast::ClassDeclKind::FuncTy { ty } => ir::ClassItemKind::Func { ty: self.convert_type(ty) },
+            | ast::ClassDeclKind::FuncTy { ty } => ir::ClassItemKind::Func {
+                ty: self.convert_type(ty, false),
+            },
         };
 
         self.class_items.insert(ir::ClassItemId(id), ir::ClassItem {
@@ -1161,7 +1148,7 @@ impl<'db> Converter<'db> {
                 for decl in decls {
                     match &decl.kind {
                         | ast::InstanceDeclKind::FuncTy { ty: fty } => {
-                            ty = Some(self.convert_type(fty));
+                            ty = Some(self.convert_type(fty, false));
                         },
                         | ast::InstanceDeclKind::Func { pats, val } => {
                             if let None = params {
@@ -1322,7 +1309,7 @@ impl<'db> Converter<'db> {
             },
             | ast::PatKind::Typed { ref pat, ref ty } => ir::PatKind::Typed {
                 pat: Box::new(self.convert_pat(pat)),
-                ty: self.convert_type(ty),
+                ty: self.convert_type(ty, false),
             },
         };
 
@@ -1478,7 +1465,7 @@ impl<'db> Converter<'db> {
             },
             | ast::ExprKind::Typed { ref expr, ref ty } => ir::ExprKind::Typed {
                 expr: Box::new(self.convert_expr(expr)),
-                ty: self.convert_type(ty),
+                ty: self.convert_type(ty, false),
             },
         };
 
@@ -1694,33 +1681,50 @@ impl<'db> Converter<'db> {
 
         self.resolver.push_rib(Ns::Values);
 
-        let stmts = block.stmts.iter().map(|s| self.convert_stmt(s)).collect();
+        let stmts = block.stmts.iter().flat_map(|s| self.convert_stmt(s)).collect();
 
         self.resolver.pop_rib(Ns::Values);
 
         ir::Block { id, span: block.span, stmts }
     }
 
-    fn convert_stmt(&mut self, stmt: &ast::Stmt) -> ir::Stmt {
-        let id = self.next_id();
-        let kind = match stmt.kind {
-            | ast::StmtKind::Discard { ref expr } => ir::StmtKind::Discard { expr: self.convert_expr(expr) },
-            | ast::StmtKind::Bind { ref pat, ref val } => ir::StmtKind::Bind {
-                binding: ir::Binding {
-                    id: self.next_id(),
-                    span: stmt.span,
-                    pat: self.convert_pat(pat),
-                    val: self.convert_expr(val),
-                    ty: ir::Type {
+    fn convert_stmt(&mut self, stmt: &ast::Stmt) -> Vec<ir::Stmt> {
+        match stmt.kind {
+            | ast::StmtKind::Discard { ref expr } => vec![ir::Stmt {
+                id: self.next_id(),
+                span: stmt.span,
+                kind: ir::StmtKind::Discard { expr: self.convert_expr(expr) },
+            }],
+            | ast::StmtKind::Let { ref bindings } => group::LetBindingGroups::new(bindings)
+                .filter_map(|grp| {
+                    let binding = self.convert_let_binding(grp)?;
+
+                    Some(ir::Stmt {
+                        id: self.next_id(),
+                        span: binding.span,
+                        kind: ir::StmtKind::Bind { binding },
+                    })
+                })
+                .collect(),
+            | ast::StmtKind::Bind { ref pat, ref val } => vec![ir::Stmt {
+                id: self.next_id(),
+                span: stmt.span,
+                kind: ir::StmtKind::Bind {
+                    binding: ir::Binding {
                         id: self.next_id(),
                         span: stmt.span,
-                        kind: ir::TypeKind::Infer,
+                        pat: self.convert_pat(pat),
+                        val: self.convert_expr(val),
+                        ty: ir::Type {
+                            id: self.next_id(),
+                            span: stmt.span,
+                            kind: ir::TypeKind::Infer,
+                        },
+                        source: ir::BindingSource::Bind,
                     },
                 },
-            },
-        };
-
-        ir::Stmt { id, span: stmt.span, kind }
+            }],
+        }
     }
 
     fn convert_let_binding(&mut self, bindings: &[ast::LetBinding]) -> Option<ir::Binding> {
@@ -1732,7 +1736,7 @@ impl<'db> Converter<'db> {
         for binding in bindings {
             match &binding.kind {
                 | ast::LetBindingKind::Type { ty: ty2, .. } => {
-                    ty = Some(self.convert_type(ty2));
+                    ty = Some(self.convert_type(ty2, false));
                 },
                 | ast::LetBindingKind::Value { pat, val } => {
                     body = Some((self.convert_pat(pat), self.convert_expr(val)));
@@ -1753,8 +1757,9 @@ impl<'db> Converter<'db> {
         });
 
         Some(ir::Binding {
-            id,
             span: first.span.merge(bindings.last().unwrap().span),
+            source: ir::BindingSource::Let,
+            id,
             pat,
             val,
             ty,
@@ -1770,9 +1775,9 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn convert_type(&mut self, ty: &ast::Type) -> ir::Type {
+    fn convert_type(&mut self, ty: &ast::Type, define_vars: bool) -> ir::Type {
         if let ast::TypeKind::Parens { inner } = &ty.kind {
-            return self.convert_type(inner);
+            return self.convert_type(inner, define_vars);
         }
 
         let id = self.next_id();
@@ -1789,6 +1794,13 @@ impl<'db> Converter<'db> {
                         .finish();
 
                     ir::TypeKind::Error
+                },
+                | None if define_vars => {
+                    let res = ir::Res::Local(self.next_id());
+
+                    self.resolver.define(Ns::Types, name, res);
+
+                    ir::TypeKind::Ident { res }
                 },
                 | None => {
                     self.db
@@ -1837,58 +1849,60 @@ impl<'db> Converter<'db> {
             | ast::TypeKind::Int { val } => ir::TypeKind::Int { val },
             | ast::TypeKind::Str { ref val } => ir::TypeKind::Str { val: val.clone() },
             | ast::TypeKind::App { ref base, ref arg } => ir::TypeKind::App {
-                base: Box::new(self.convert_type(base)),
-                arg: Box::new(self.convert_type(arg)),
+                base: Box::new(self.convert_type(base, define_vars)),
+                arg: Box::new(self.convert_type(arg, define_vars)),
             },
             | ast::TypeKind::Tuple { ref tys } => ir::TypeKind::Tuple {
-                tys: tys.iter().map(|t| self.convert_type(t)).collect(),
+                tys: tys.iter().map(|t| self.convert_type(t, define_vars)).collect(),
             },
-            | ast::TypeKind::Record { ref row } => ir::TypeKind::Record { row: self.convert_row(row) },
+            | ast::TypeKind::Record { ref row } => ir::TypeKind::Record {
+                row: self.convert_row(row, define_vars),
+            },
             | ast::TypeKind::Func { ref param, ref ret } => ir::TypeKind::Func {
-                param: Box::new(self.convert_type(param)),
-                ret: Box::new(self.convert_type(ret)),
+                param: Box::new(self.convert_type(param, define_vars)),
+                ret: Box::new(self.convert_type(ret, define_vars)),
             },
             | ast::TypeKind::Forall { ref vars, ref ret } => {
                 self.resolver.push_rib(Ns::Types);
 
                 let vars = vars.iter().map(|v| self.convert_type_var(v)).collect();
-                let ty = self.convert_type(ret);
+                let ty = self.convert_type(ret, define_vars);
 
                 self.resolver.pop_rib(Ns::Types);
 
                 ir::TypeKind::Forall { vars, ty: Box::new(ty) }
             },
-            | ast::TypeKind::Cons { ref cs, ref ty } => match self.convert_constraint(cs) {
+            | ast::TypeKind::Cons { ref cs, ref ty } => match self.convert_constraint(cs, define_vars) {
                 | Some(cs) => ir::TypeKind::Cons {
                     cs,
-                    ty: Box::new(self.convert_type(ty)),
+                    ty: Box::new(self.convert_type(ty, define_vars)),
                 },
                 | None => ir::TypeKind::Error,
             },
             | ast::TypeKind::Kinded { ref ty, ref kind } => ir::TypeKind::Kinded {
-                ty: Box::new(self.convert_type(ty)),
-                kind: Box::new(self.convert_type(kind)),
+                ty: Box::new(self.convert_type(ty, define_vars)),
+                kind: Box::new(self.convert_type(kind, define_vars)),
             },
         };
 
         ir::Type { id, span: ty.span, kind }
     }
 
-    fn convert_row(&mut self, row: &ast::Row) -> ir::Row {
+    fn convert_row(&mut self, row: &ast::Row, define_vars: bool) -> ir::Row {
         ir::Row {
             id: self.next_id(),
             span: row.span,
-            fields: row.fields.iter().map(|f| self.convert_row_field(f)).collect(),
-            tail: row.tail.as_deref().map(|t| Box::new(self.convert_type(t))),
+            fields: row.fields.iter().map(|f| self.convert_row_field(f, define_vars)).collect(),
+            tail: row.tail.as_deref().map(|t| Box::new(self.convert_type(t, define_vars))),
         }
     }
 
-    fn convert_row_field(&mut self, field: &ast::RowField) -> ir::RowField {
+    fn convert_row_field(&mut self, field: &ast::RowField, define_vars: bool) -> ir::RowField {
         ir::RowField {
             id: self.next_id(),
             span: field.span,
             name: field.name,
-            ty: self.convert_type(&field.ty),
+            ty: self.convert_type(&field.ty, define_vars),
         }
     }
 
@@ -1903,7 +1917,7 @@ impl<'db> Converter<'db> {
                     id,
                     span: name.span.merge(kind.span),
                     name,
-                    kind: self.convert_type(kind),
+                    kind: self.convert_type(kind, false),
                 }
             },
             | ast::TypeVar::Name { name } => {
@@ -1925,18 +1939,18 @@ impl<'db> Converter<'db> {
         }
     }
 
-    fn convert_constraint(&mut self, cs: &ast::Constraint) -> Option<ir::Constraint> {
+    fn convert_constraint(&mut self, cs: &ast::Constraint, define_vars: bool) -> Option<ir::Constraint> {
         match cs {
-            | ast::Constraint::CS { class: iface, tys } => Some(ir::Constraint {
+            | ast::Constraint::CS { class, tys } => Some(ir::Constraint {
                 id: self.next_id(),
-                span: iface.span.merge(if tys.is_empty() { iface.span } else { tys.last().unwrap().span }),
-                trait_: match self.resolver.get(Ns::Types, iface.symbol) {
-                    | Some(ir::Res::Def(ir::DefKind::Class, iface)) => iface,
+                span: class.span.merge(if tys.is_empty() { class.span } else { tys.last().unwrap().span }),
+                class: match self.resolver.get(Ns::Types, class.symbol) {
+                    | Some(ir::Res::Def(ir::DefKind::Class, class)) => class,
                     | Some(_) => {
                         self.db
                             .to_diag_db()
-                            .error(format!("'{}' is not a trait", iface))
-                            .with_label(diagnostics::Label::primary(self.file, iface.span))
+                            .error(format!("'{}' is not a type class", class))
+                            .with_label(diagnostics::Label::primary(self.file, class.span))
                             .finish();
 
                         return None;
@@ -1944,16 +1958,16 @@ impl<'db> Converter<'db> {
                     | None => {
                         self.db
                             .to_diag_db()
-                            .error(format!("unknown trait '{}'", iface))
-                            .with_label(diagnostics::Label::primary(self.file, iface.span))
+                            .error(format!("unknown type class '{}'", class))
+                            .with_label(diagnostics::Label::primary(self.file, class.span))
                             .finish();
 
                         return None;
                     },
                 },
-                tys: tys.iter().map(|t| self.convert_type(t)).collect(),
+                tys: tys.iter().map(|t| self.convert_type(t, define_vars)).collect(),
             }),
-            | ast::Constraint::Parens { inner } => self.convert_constraint(inner),
+            | ast::Constraint::Parens { inner } => self.convert_constraint(inner, define_vars),
         }
     }
 }

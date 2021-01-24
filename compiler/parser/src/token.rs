@@ -42,7 +42,7 @@ macro_rules! tokens {
                         } else {
                             Err($crate::parse::ParseError {
                                 span: cursor.span(),
-                                expected: $str.into(),
+                                expected: concat!("expected ", $str).into(),
                             })
                         }
                     })
@@ -93,7 +93,7 @@ macro_rules! keywords {
                             _ => {
                                 Err($crate::parse::ParseError {
                                     span: cursor.span(),
-                                    expected: $str.into(),
+                                    expected: concat!("expected '", $str, "'").into(),
                                 })
                             }
                         }
@@ -122,16 +122,16 @@ tokens! {
     TEquals,      Equals,        "="
     TQmark,       Qmark,         "?"
     TAt,          At,            "@"
-    TUnderscore,  Underscore,    "underscore"
-    TOperator,    Operator,      "operator"
-    TSymbol,      Symbol,        "symbol"
-    TName,        Name,          "identifier"
-    TInt,         Int,           "integer literal"
-    TFloat,       Float,         "floating point literal"
-    TString,      String,        "string literal"
-    TRawString,   RawString,     "raw string literal"
-    TChar,        Char,          "character literal"
-    TLytStart,    LayoutStart,   "block start"
-    TLytSep,      LayoutSep,     "newline"
-    TLytEnd,      LayoutEnd,     "block end"
+    TUnderscore,  Underscore,    "an underscore"
+    TOperator,    Operator,      "an operator"
+    TSymbol,      Symbol,        "a symbol"
+    TName,        Name,          "an identifier"
+    TInt,         Int,           "an integer literal"
+    TFloat,       Float,         "a floating point literal"
+    TString,      String,        "a string literal"
+    TRawString,   RawString,     "a raw string literal"
+    TChar,        Char,          "a character literal"
+    TLytStart,    LayoutStart,   "a block start"
+    TLytSep,      LayoutSep,     "a newline"
+    TLytEnd,      LayoutEnd,     "a block end"
 }

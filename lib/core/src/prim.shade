@@ -1,63 +1,68 @@
 module Prim where
 
-alias Byte = Uint8
-alias Word = Int16
-alias Long = Int64
-alias Float = Float32
-alias Double = Float64
-alias Str = Slice Byte
+type Byte = Uint8
+type Word = Int16
+type Long = Int64
+type Float = Float32
+type Double = Float64
+type Str = Slice Byte
 
--- [if(pointer_size = 16)] alias Int = Int16
--- [if(pointer_size = 32)] alias Int = Int32
-[if(pointer_size = 64)] alias Int = Int64
+-- [if(pointer_size = 16)] type Int = Int16
+-- [if(pointer_size = 32)] type Int = Int32
+[if(pointer_size = 64)] type Int = Int64
 
--- [if(pointer_size = 16)] alias Uint = Uint16
--- [if(pointer_size = 32)] alias Uint = Uint32
+-- [if(pointer_size = 16)] type Uint = Uint16
+-- [if(pointer_size = 32)] type Uint = Uint32
 [lang("uint")]
 [if(pointer_size = 64)]
-alias Uint = Uint64
+type Uint = Uint64
 
-[lang("type_kind"  )] data Type
-[lang("figure_kind")] data Figure
-[lang("symbol_kind")] data Symbol
-[lang("row_kind"   )] data Row (t :: Type)
+[lang("type_kind"  )] type Type :: Type
+[lang("figure_kind")] type Figure :: Type
+[lang("symbol_kind")] type Symbol :: Type
+
+[lang("row_kind"   )]
+type Row :: Type -> Type
+type Row (t :: Type)
 
 [repr("u8")]
 [lang("bool")]
-data Bool = False | True
+type Bool =
+    | False
+    | True
 
 [repr("u32" )]
 [lang("char")]
-data Char :: Type
+type Char :: Type
 
-[repr("u8"  )] data Uint8   :: Type
-[repr("u16" )] data Uint16  :: Type
-[repr("u32" )] data Uint32  :: Type
-[repr("u64" )] data Uint64  :: Type
-[repr("u128")] data Uint128 :: Type
-[repr("i8"  )] data Int8    :: Type
-[repr("i16" )] data Int16   :: Type
-[repr("i32" )] data Int32   :: Type
-[repr("i64" )] data Int64   :: Type
-[repr("i128")] data Int128  :: Type
-[repr("f32" )] data Float32 :: Type
-[repr("f64" )] data Float64 :: Type
+[repr("u8"  )] type Uint8   :: Type
+[repr("u16" )] type Uint16  :: Type
+[repr("u32" )] type Uint32  :: Type
+[repr("u64" )] type Uint64  :: Type
+[repr("u128")] type Uint128 :: Type
+[repr("i8"  )] type Int8    :: Type
+[repr("i16" )] type Int16   :: Type
+[repr("i32" )] type Int32   :: Type
+[repr("i64" )] type Int64   :: Type
+[repr("i128")] type Int128  :: Type
+[repr("f32" )] type Float32 :: Type
+[repr("f64" )] type Float64 :: Type
 
 [lang("fn_ty")]
-data Fn :: Type -> Type -> Type
+type Fn :: Type -> Type -> Type
 
 [lang("record_ty")]
-data Record :: Row Type -> Type
+type Record :: Row Type -> Type
 
 [repr("ptr", valid_range = "1..")]
 [lang("ptr_ty")]
-data Ptr :: Type -> Type
+type Ptr :: Type -> Type
 
-[lang("array_ty")] data Array :: Type -> Figure -> Type
-[lang("slice_ty")] data Slice :: Type -> Type
+[lang("array_ty")] type Array :: Type -> Figure -> Type
+[lang("slice_ty")] type Slice :: Type -> Type
 
-[lang("integer_trait")] class Integer t
-[lang("decimal_trait")] class Decimal t
+[lang("integer_trait")] class Integer (t :: Type)
+[lang("decimal_trait")] class Decimal (t :: Type)
 
 instance integerU8   :: Integer Uint8
 instance integerU16  :: Integer Uint16

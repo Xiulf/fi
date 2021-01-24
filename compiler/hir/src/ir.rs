@@ -102,12 +102,11 @@ pub enum ItemKind {
         func: Res,
     },
     Alias {
-        kind: Type,
-        vars: Vec<TypeVar>,
+        head: TypeHead,
         value: Type,
     },
     Data {
-        head: DataHead,
+        head: TypeHead,
         body: Vec<HirId>,
     },
     DataCtor {
@@ -127,7 +126,7 @@ pub enum ItemKind {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct DataHead {
+pub struct TypeHead {
     pub id: HirId,
     pub span: Span,
     pub vars: Vec<TypeVar>,
@@ -356,6 +355,13 @@ pub struct Binding {
     pub pat: Pat,
     pub val: Expr,
     pub ty: Type,
+    pub source: BindingSource,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BindingSource {
+    Let,
+    Bind,
 }
 
 #[derive(PartialEq, Eq)]
@@ -418,7 +424,7 @@ pub struct TypeVar {
 pub struct Constraint {
     pub id: HirId,
     pub span: Span,
-    pub trait_: DefId,
+    pub class: DefId,
     pub tys: Vec<Type>,
 }
 
@@ -567,7 +573,7 @@ impl Item {
         }
     }
 
-    pub fn data(&self) -> &DataHead {
+    pub fn data(&self) -> &TypeHead {
         match &self.kind {
             | ItemKind::Data { head, .. } => head,
             | _ => unreachable!(),

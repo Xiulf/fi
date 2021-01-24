@@ -5,8 +5,8 @@ import Data.Bool
 import Data.Semigroup
 import Data.Monoid
 
-data List a
-    = Nil
+type List a =
+    | Nil
     | Cons a (List a)
 
 infixr 6 Cons as (:)
@@ -15,10 +15,10 @@ infixr 6 Cons as (:)
 --     fn eq (Cons x xs) (Cons y ys) = and (eq x y) (eq xs ys)
 --     fn eq Nil Nil = True
 --     fn eq _ _ = False
--- 
--- instance monoidList :: Eq (List a) where
---     fn mempty = Nil
--- 
+
+instance monoidList :: Monoid (List a) where
+    fn mempty = Nil
+
 -- instance semigroupList :: Semigroup (List a) where
 --     fn append (Cons x xs) ys = Cons x (append xs ys)
 --     fn append Nil ys = ys

@@ -1,14 +1,14 @@
 use crate::ctx::*;
 use crate::error::*;
 use crate::ty::*;
-use hir::ir::Expr;
+use hir::ir::{HirId, Span};
 
 impl<'db> Ctx<'db> {
-    crate fn subsumes<'s>(&mut self, t1: Ty, t2: Ty) -> Result<Box<dyn Fn(&mut Ctx<'s>, &Expr) -> () + 's>> {
+    crate fn subsumes<'s>(&mut self, t1: Ty, t2: Ty) -> Result<Box<dyn Fn(&mut Ctx<'s>, HirId, Span) -> () + 's>> {
         self.subsumes_elaborate(t1, t2)
     }
 
-    fn subsumes_elaborate<'s>(&mut self, t1: Ty, t2: Ty) -> Result<Box<dyn Fn(&mut Ctx<'s>, &Expr) -> () + 's>> {
+    fn subsumes_elaborate<'s>(&mut self, t1: Ty, t2: Ty) -> Result<Box<dyn Fn(&mut Ctx<'s>, HirId, Span) -> () + 's>> {
         match (&*t1, &*t2) {
             | (Type::ForAll(var, k1, r1, _), _) => {
                 let mut subst = std::collections::HashMap::new();
@@ -36,7 +36,7 @@ impl<'db> Ctx<'db> {
                     self.subsumes_no_elaborate(a1.clone(), a2.clone())?;
                     self.subsumes_no_elaborate(r1.clone(), r2.clone())?;
 
-                    Ok(Box::new(|_, _| ()))
+                    Ok(Box::new(|_, _, _| ()))
                 },
                 | _ if self.is_record(b1) && self.is_record(b2) => {
                     unimplemented!();
@@ -44,24 +44,24 @@ impl<'db> Ctx<'db> {
                 | _ => {
                     self.unify_types(t1, t2)?;
 
-                    Ok(Box::new(|_, _| ()))
+                    Ok(Box::new(|_, _, _| ()))
                 },
             },
             | (Type::Ctnt(ctnt, r1), _) => {
                 let elaborate = self.subsumes_elaborate(r1.clone(), t2)?;
                 let ctnt = ctnt.clone();
 
-                Ok(Box::new(move |ctx, e| {
-                    ctx.ctnts.push((e.id, ctnt.clone() ^ (e.span, ctx.file), ctx.ctnt_ctx.clone()));
+                Ok(Box::new(move |ctx, id, span| {
+                    ctx.ctnts.push((id, ctnt.clone() ^ (span, ctx.file), ctx.ctnt_ctx.clone()));
 
-                    elaborate(ctx, e);
+                    elaborate(ctx, id, span);
                 }))
             },
             | (_, Type::App(ref base, _)) if self.is_record(base) => self.subsumes_elaborate(t2, t1),
             | (_, _) => {
                 self.unify_types(t1, t2)?;
 
-                Ok(Box::new(|_, _| ()))
+                Ok(Box::new(|_, _, _| ()))
             },
         }
     }

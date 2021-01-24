@@ -8,7 +8,15 @@ impl<'db> Ctx<'db> {
     crate fn infer_kind(&mut self, ty: Ty) -> Result<(Ty, Ty)> {
         match &*ty {
             | Type::Error => Ok((ty.clone(), Ty::error(ty.span(), ty.file()))),
-            | Type::Ctor(id) => Ok((ty.clone(), self.typeck_def(*id) ^ ty.loc())),
+            | Type::Ctor(id) => {
+                if let Some(kind) = self.tys.get(&(*id).into()) {
+                    let kind = self.subst_type(kind.clone());
+
+                    Ok((ty.clone(), kind ^ ty.loc()))
+                } else {
+                    Ok((ty.clone(), self.typeck_def(*id) ^ ty.loc()))
+                }
+            },
             | Type::Int(_) => Ok((ty.clone(), self.figure_kind(ty.span(), ty.file()))),
             | Type::String(_) => Ok((ty.clone(), self.symbol_kind(ty.span(), ty.file()))),
             | Type::Tuple(tys) => {
@@ -21,7 +29,15 @@ impl<'db> Ctx<'db> {
                 Ok((ty.clone(), self.ty_kind(ty.span(), ty.file())))
             },
             | Type::Var(v) => {
-                let kind = self.tys[&v.0].clone();
+                let kind = if let Some(k) = self.tys.get(&v.0) {
+                    k.clone()
+                } else {
+                    let k = self.fresh_kind(ty.span(), ty.file());
+
+                    self.tys.insert(v.0, k.clone());
+                    k
+                };
+
                 let kind = self.subst_type(kind);
 
                 Ok((ty.clone(), kind ^ ty.loc()))
@@ -128,6 +144,7 @@ impl<'db> Ctx<'db> {
 
     crate fn infer_app_kind(&mut self, span: Span, file: source::FileId, fn_ty: Ty, fn_kind: Ty, arg: Ty) -> Result<(Ty, Ty)> {
         match &*fn_kind {
+            | Type::Error => Ok((Ty::error(span, file), Ty::error(span, file))),
             | Type::App(b, ret_kind) => match &**b {
                 | Type::App(f, arg_kind) if self.is_func(f) => {
                     let arg = self.check_kind(arg, arg_kind.clone())?;
@@ -270,6 +287,7 @@ impl<'db> Ctx<'db> {
 
     crate fn unify_kinds(&mut self, k1: Ty, k2: Ty) -> Result<()> {
         match (&*k1, &*k2) {
+            | (Type::Error, _) | (_, Type::Error) => Ok(()),
             | (Type::App(a1, b1), Type::App(a2, b2)) | (Type::KindApp(a1, b1), Type::KindApp(a2, b2)) => {
                 self.unify_kinds(a1.clone(), a2.clone())?;
                 self.unify_kinds(self.subst_type(b1.clone()), self.subst_type(b2.clone()))
@@ -312,12 +330,26 @@ impl<'db> Ctx<'db> {
                 Ok(self.subst_type(kind) ^ ty.loc())
             },
             | Type::Var(v) => {
-                let kind = self.tys[&v.0].clone();
+                let kind = if let Some(k) = self.tys.get(&v.0) {
+                    k.clone()
+                } else {
+                    let k = self.fresh_kind(ty.span(), ty.file());
+
+                    self.tys.insert(v.0, k.clone());
+                    k
+                };
+
                 let kind = self.subst_type(kind);
 
                 Ok(kind ^ ty.loc())
             },
-            | Type::Ctor(id) => Ok(self.typeck_def(*id)),
+            | Type::Ctor(id) => {
+                if let Some(kind) = self.tys.get(&(*id).into()) {
+                    Ok(self.subst_type(kind.clone()))
+                } else {
+                    Ok(self.typeck_def(*id))
+                }
+            },
             | Type::App(base, arg) => {
                 let k1 = self.elaborate_kind(base)?;
 

@@ -9,7 +9,10 @@ infix 4 eq as (==)
 class Eq l r | l -> r, r -> l where
     fn eq :: l -> r -> Bool
 
-data Ordering = Lt | Eq | Gt
+type Ordering =
+    | Lt
+    | Eq
+    | Gt
 
 class Eq l r => Ord l r | l -> r, r -> l where
     fn cmp :: l -> r -> Ordering

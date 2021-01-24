@@ -201,8 +201,8 @@ impl Debug for Decl {
                     &**self.name.symbol, assoc, prec, &**func.symbol
                 )
             },
-            | DeclKind::AliasKind { kind } => {
-                writeln!(f, "AliasKind name = {:?}", &**self.name.symbol)?;
+            | DeclKind::TypeKind { kind } => {
+                writeln!(f, "TypeKind name = {:?}", &**self.name.symbol)?;
 
                 for attr in &self.attrs {
                     writeln!(indent(f), "{:?}", attr)?;
@@ -210,27 +210,15 @@ impl Debug for Decl {
 
                 write!(indent(f), "{:?}", kind)
             },
-            | DeclKind::Alias { vars, ty } => {
+            | DeclKind::Alias { head, ty } => {
                 writeln!(f, "Alias name = {:?}", &**self.name.symbol)?;
 
                 for attr in &self.attrs {
                     writeln!(indent(f), "{:?}", attr)?;
                 }
 
-                for var in vars {
-                    writeln!(indent(f), "{:?}", var)?;
-                }
-
+                writeln!(indent(f), "{:?}", head)?;
                 write!(indent(f), "{:?}", ty)
-            },
-            | DeclKind::DataKind { kind } => {
-                writeln!(f, "DataKind name = {:?}", &**self.name.symbol)?;
-
-                for attr in &self.attrs {
-                    writeln!(indent(f), "{:?}", attr)?;
-                }
-
-                write!(indent(f), "{:?}", kind)
             },
             | DeclKind::Data { head, body } => {
                 writeln!(f, "Data name = {:?}", &**self.name.symbol)?;
@@ -285,7 +273,7 @@ impl Debug for Decl {
     }
 }
 
-impl Debug for DataHead {
+impl Debug for TypeHead {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "DataHead")?;
 
@@ -672,6 +660,16 @@ impl Debug for Stmt {
             | StmtKind::Discard { expr } => {
                 writeln!(f, "Discard")?;
                 write!(indent(f), "{:?}", expr)
+            },
+            | StmtKind::Let { bindings } => {
+                write!(f, "Let")?;
+
+                for binding in bindings {
+                    writeln!(f)?;
+                    write!(indent(f), "{:?}", binding)?;
+                }
+
+                Ok(())
             },
             | StmtKind::Bind { pat, val } => {
                 writeln!(f, "Bind")?;

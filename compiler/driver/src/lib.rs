@@ -21,7 +21,7 @@ pub fn run(opts: Opts) {
     let _ = _run(opts);
     let elapsed = start.elapsed();
 
-    println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {}", DisplayDuration(elapsed));
+    eprintln!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {}", DisplayDuration(elapsed));
 }
 
 fn _run(opts: Opts) -> RunResult {
@@ -91,7 +91,7 @@ fn _run(opts: Opts) -> RunResult {
 
     let manifest = db.manifest(lib);
 
-    println!(
+    eprintln!(
         "  \x1B[1;32m\x1B[1mCompiling\x1B[0m {} v{} ({})",
         manifest.package.name,
         manifest.package.version,

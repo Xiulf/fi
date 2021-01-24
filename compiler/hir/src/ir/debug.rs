@@ -129,19 +129,13 @@ impl Debug for Item {
 
                 write!(indent(f), "{:?}", func)
             },
-            | ItemKind::Alias { kind, vars, value } => {
+            | ItemKind::Alias { head, value } => {
                 writeln!(f, "Alias id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
-
-                for var in vars {
-                    writeln!(indent(f), "{:?}", var)?;
-                }
-
-                writeln!(indent(f), "{:?}", value)?;
-                write!(indent(f), "{:?}", kind)
+                writeln!(indent(f), "{:?}", head)?;
+                write!(indent(f), "{:?}", value)
             },
             | ItemKind::Data { head, body } => {
                 writeln!(f, "Data id = {:?}, name = {:?}", self.id, &**self.name.symbol)?;
-
                 writeln!(f, "           ctors = {:?}", body)?;
                 write!(indent(f), "{:?}", head)
             },
@@ -170,7 +164,7 @@ impl Debug for Item {
     }
 }
 
-impl Debug for DataHead {
+impl Debug for TypeHead {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(f, "DataHead id = {:?}", self.id)?;
 
@@ -539,7 +533,7 @@ impl Debug for Stmt {
 
 impl Debug for Binding {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        writeln!(f, "Binding id = {:?}", self.id)?;
+        writeln!(f, "Binding id = {:?}, source = {:?}", self.id, self.source)?;
         writeln!(indent(f), "{:?}", self.pat)?;
         writeln!(indent(f), "{:?}", self.val)?;
         write!(indent(f), "{:?}", self.ty)
@@ -657,7 +651,7 @@ impl Debug for TypeVar {
 
 impl Debug for Constraint {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "Constraint id = {:?}, trait = {:?}", self.id, self.trait_)?;
+        write!(f, "Constraint id = {:?}, trait = {:?}", self.id, self.class)?;
 
         for ty in &self.tys {
             writeln!(f)?;

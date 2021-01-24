@@ -241,17 +241,14 @@ impl Display for Decl {
             | DeclKind::Fixity { .. } => {
                 write!(f, "fixity {}", self.name)
             },
-            | DeclKind::AliasKind { .. } => {
-                write!(f, "alias {}", self.name)
+            | DeclKind::TypeKind { .. } => {
+                write!(f, "type {}", self.name)
             },
             | DeclKind::Alias { .. } => {
-                write!(f, "alias {}", self.name)
-            },
-            | DeclKind::DataKind { .. } => {
-                write!(f, "data {}", self.name)
+                write!(f, "type {}", self.name)
             },
             | DeclKind::Data { .. } => {
-                write!(f, "data {}", self.name)
+                write!(f, "type {}", self.name)
             },
             | DeclKind::Class { .. } => {
                 write!(f, "class {}", self.name)

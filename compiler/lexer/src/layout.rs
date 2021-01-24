@@ -85,7 +85,7 @@ impl<'src> Lexer<'src> {
                         self.insert_start(LayoutDelim::Where, next_pos);
                     }
                 },
-                | "data" => {
+                | "type" => {
                     self.insert_default(start);
                     self.queue.push_back(token);
 
@@ -417,8 +417,8 @@ impl<'src> Lexer<'src> {
                 self.queue.push_back(token);
             },
             | _ => {
+                self.insert_default(start);
                 self.queue.push_back(token);
-                self.insert_default(pos);
             },
         }
     }

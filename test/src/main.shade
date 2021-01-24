@@ -4,7 +4,11 @@ import Core
 
 [main]
 fn main :: Int32
-fn main = twice 4
+-- fn main = twice 4
+fn main = do
+    let x :: List Char
+        x = mempty
+    0
 
-fn twice :: forall a. Add a => a -> a
-fn twice a = add a a
+-- fn twice :: forall a. Add a => a -> a
+-- fn twice a = add a a

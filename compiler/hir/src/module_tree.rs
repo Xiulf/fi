@@ -54,6 +54,7 @@ impl ModuleTree {
                 } else {
                     db.to_diag_db()
                         .error(format!("unknown module '{}'", import.module))
+                        .with_code("E0006")
                         .with_label(diagnostics::Label::primary(file, import.module.span))
                         .finish();
                 }
@@ -124,7 +125,7 @@ impl ModuleTree {
         if graph.is_empty() {
             res
         } else {
-            let mut error = diags.error("cyclic modules");
+            let mut error = diags.error("cyclic modules").with_code("E0007");
 
             for (_, module) in graph {
                 error = error.with_label(diagnostics::Label::primary(module.file, module.name.span));

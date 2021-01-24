@@ -105,7 +105,7 @@ impl<'db> Ctx<'db> {
                     let lhs = self.introduce_skolem_scope(lhs);
                     let ty = self.introduce_skolem_scope(ty);
                     let elaborate = self.subsumes(lhs, ty.clone())?;
-                    let _ = elaborate(self, expr);
+                    let _ = elaborate(self, expr.id, expr.span);
 
                     ty
                 },
@@ -114,7 +114,7 @@ impl<'db> Ctx<'db> {
                     let lhs = self.introduce_skolem_scope(lhs);
                     let ty = self.introduce_skolem_scope(ty);
                     let elaborate = self.subsumes(lhs, ty.clone())?;
-                    let _ = elaborate(self, expr);
+                    let _ = elaborate(self, expr.id, expr.span);
 
                     ty
                 },
@@ -132,7 +132,7 @@ impl<'db> Ctx<'db> {
                 let base_ty = self.infer_expr(base)?;
                 let ret = self.check_func_app(base.id, base_ty, arg)?;
                 let elaborate = self.subsumes(ret, ty.clone())?;
-                let _ = elaborate(self, expr);
+                let _ = elaborate(self, expr.id, expr.span);
 
                 ty
             },
@@ -196,7 +196,7 @@ impl<'db> Ctx<'db> {
                 let ty2 = self.introduce_skolem_scope(elab_ty2);
                 let elaborate = self.subsumes(ty1.clone(), ty2.clone())?;
                 let _ = self.check_expr(expr2, ty1)?;
-                let _ = elaborate(self, expr);
+                let _ = elaborate(self, expr.id, expr.span);
 
                 ty2
             },
@@ -204,7 +204,7 @@ impl<'db> Ctx<'db> {
                 let infer = self.infer_expr(expr)?;
                 let elaborate = self.subsumes(infer, ty.clone())?;
 
-                elaborate(self, expr);
+                elaborate(self, expr.id, expr.span);
                 ty
             },
         };
