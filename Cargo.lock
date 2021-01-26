@@ -326,6 +326,7 @@ dependencies = [
  "bincode",
  "diagnostics",
  "hir",
+ "linker",
  "lower",
  "relative-path",
  "salsa",

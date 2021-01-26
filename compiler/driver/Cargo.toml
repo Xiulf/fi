@@ -11,6 +11,7 @@ syntax = { path = "../syntax" }
 hir = { path = "../hir" }
 typeck = { path = "../typeck" }
 lower = { path = "../lower" }
+linker = { path = "../linker" }
 backend = { path = "../backend" }
 salsa = "^0.16.0"
 serde = { version = "^1.0.117", features = ["derive"] }

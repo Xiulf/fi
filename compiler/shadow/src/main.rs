@@ -7,10 +7,19 @@ fn main() {
         .about(clap::crate_description!())
         .setting(AppSettings::SubcommandRequired)
         .subcommand(SubCommand::with_name("build").arg(Arg::with_name("input").takes_value(true).required(false).default_value(".")))
+        .subcommand(SubCommand::with_name("run").arg(Arg::with_name("input").takes_value(true).required(false).default_value(".")))
         .subcommand(SubCommand::with_name("new").arg(Arg::with_name("name").required(true).takes_value(true)))
         .get_matches();
 
     if let Some(matches) = matches.subcommand_matches("build") {
+        let project_dir = matches.value_of("input").unwrap().into();
+        let opts = driver::Opts {
+            compiler_version: clap::crate_version!().to_string(),
+            project_dir,
+        };
+
+        driver::build(opts);
+    } else if let Some(matches) = matches.subcommand_matches("run") {
         let project_dir = matches.value_of("input").unwrap().into();
         let opts = driver::Opts {
             compiler_version: clap::crate_version!().to_string(),

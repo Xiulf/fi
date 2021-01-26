@@ -21,7 +21,6 @@ pub trait LowerDatabase: typeck::TypeDatabase {
 pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> Arc<ir::Module> {
     let file = db.module_tree(lib).file(module);
     let hir = db.module_hir(file);
-    // let start = std::time::Instant::now();
     let mut converter = Converter::new(db);
 
     converter.convert(&hir);
@@ -30,7 +29,6 @@ pub fn lower(db: &dyn LowerDatabase, lib: hir::LibId, module: hir::ModuleId) -> 
 
     // println!("{}", low);
     lowlang::analysis::mandatory(&mut low, db.target(lib).triple());
-    // println!("lowered in {:?}", start.elapsed());
 
     Arc::new(low)
 }
@@ -92,12 +90,22 @@ impl<'db> Converter<'db> {
             };
 
             if let Some(link_name) = self.link_name(id) {
+                let mut ty = lower_type(self.db, &ty.ty);
+
+                // @TODO: first check that the import is a function
+                if !matches!(ty.kind, ir::Type::Func(_)) {
+                    ty = ir::Ty::new(ir::Type::Func(ir::Signature {
+                        params: Vec::new(),
+                        rets: vec![ty],
+                    }));
+                }
+
                 decls.insert(id, declid);
                 self.decls.insert(declid, ir::Decl {
                     id: declid,
                     name: link_name,
-                    ty: lower_type(self.db, &ty.ty),
                     linkage: ir::Linkage::Import,
+                    ty,
                     attrs,
                 });
             }
@@ -340,7 +348,40 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
             | hir::ExprKind::Ident { res, name } => match res {
                 | hir::Res::Error => unreachable!(),
                 | hir::Res::Def(d, id) => match d {
-                    | hir::DefKind::Func | hir::DefKind::Static => ir::Operand::Const(ir::Const::Addr(self.decls[id])),
+                    | hir::DefKind::Func if !is_func_ty2(self.db, &self.types.tys[&expr.id]) => self.convert_app(expr, Vec::new(), ty),
+                    | hir::DefKind::Func | hir::DefKind::Static => {
+                        if let Some(decl) = self.decls.get(id) {
+                            ir::Operand::Const(ir::Const::Addr(*decl))
+                        } else {
+                            let external = self.db.external_item_data(id.lib, id.module);
+
+                            if let ::hir::ExternalItemOrigin::ClassItem(_) = external.items[id].2 {
+                                let bound = self.types.bounds[&expr.id];
+
+                                match bound.source {
+                                    | typeck::BoundSource::Instance(id) => {
+                                        let method = if id.lib == self.db.lib() {
+                                            let file = self.db.module_tree(id.lib).file(id.module);
+                                            let hir = self.db.module_hir(file);
+                                            let imp = hir.items[&id.into()].instance_body();
+                                            let method = imp.items.iter().find(|it| it.name.symbol == name.symbol).unwrap();
+
+                                            self.decls[&method.id.0.owner]
+                                        } else {
+                                            let external = self.db.external_item_data(id.lib, id.module);
+                                            let item = external.instances[&id].iter().find(|(n, _)| n.symbol == name.symbol).unwrap();
+
+                                            self.decls[&item.1.owner]
+                                        };
+
+                                        ir::Operand::Const(ir::Const::Addr(method))
+                                    },
+                                }
+                            } else {
+                                unreachable!();
+                            }
+                        }
+                    },
                     | hir::DefKind::Ctor => {
                         let idx = if id.lib == self.db.lib() {
                             let file = self.db.module_tree(id.lib).file(id.module);
@@ -665,6 +706,18 @@ impl<'db, 'c> BodyConverter<'db, 'c> {
 fn is_func_ty(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> bool {
     if let typeck::ty::Type::Ctor(id) = &**ty {
         *id == db.lang_items().fn_ty().owner
+    } else {
+        false
+    }
+}
+
+fn is_func_ty2(db: &dyn LowerDatabase, ty: &typeck::ty::Ty) -> bool {
+    if let typeck::ty::Type::App(b, _) = &**ty {
+        if let typeck::ty::Type::App(f, _) = &**b {
+            is_func_ty(db, f)
+        } else {
+            false
+        }
     } else {
         false
     }

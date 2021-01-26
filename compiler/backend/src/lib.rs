@@ -46,7 +46,7 @@ fn lib_prefix(out_type: linker::LinkOutputType) -> &'static str {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Assembly {
     path: PathBuf,
-    kind: linker::LinkOutputType,
+    pub kind: linker::LinkOutputType,
 }
 
 impl Assembly {

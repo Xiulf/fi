@@ -393,7 +393,10 @@ impl<'db> Ctx<'db> {
                     panic!("infinite kind");
                 }
 
-                let (lvl1, k) = self.subst.unsolved[&u1].clone();
+                let (lvl1, k) = match self.subst.unsolved.get(&u1) {
+                    | Some(r) => r.clone(),
+                    | None => return Err(TypeError::Internal(format!("unsolved unification variable ?{} is not bound", u1.0))),
+                };
 
                 if lvl1 < lvl2 {
                     Ok(t)

@@ -17,11 +17,11 @@ type Str = Slice Byte
 [if(pointer_size = 64)]
 type Uint = Uint64
 
-[lang("type_kind"  )] type Type :: Type
+[lang("type_kind"  )] type Type   :: Type
 [lang("figure_kind")] type Figure :: Type
 [lang("symbol_kind")] type Symbol :: Type
 
-[lang("row_kind"   )]
+[lang("row_kind")]
 type Row :: Type -> Type
 type Row (t :: Type)
 
@@ -50,16 +50,24 @@ type Char :: Type
 
 [lang("fn_ty")]
 type Fn :: Type -> Type -> Type
+type Fn a b
 
 [lang("record_ty")]
 type Record :: Row Type -> Type
+type Record a
 
 [repr("ptr", valid_range = "1..")]
 [lang("ptr_ty")]
 type Ptr :: Type -> Type
+type Ptr a
 
-[lang("array_ty")] type Array :: Type -> Figure -> Type
-[lang("slice_ty")] type Slice :: Type -> Type
+[lang("array_ty")]
+type Array :: Type -> Figure -> Type
+type Array a b
+
+[lang("slice_ty")]
+type Slice :: Type -> Type
+type Slice a
 
 [lang("integer_trait")] class Integer (t :: Type)
 [lang("decimal_trait")] class Decimal (t :: Type)

@@ -40,7 +40,7 @@ impl<'db> Ctx<'db> {
 
                             let (ty, should_generalize) = if let Type::Unknown(_) = *ty {
                                 let infer = self.infer_body(item.span, &hir.bodies[body])?;
-                                let _ = self.unify_types(ty.clone(), infer.clone())?;
+                                let _ = self.unify_types(ty, infer.clone())?;
 
                                 (infer, true)
                             } else {
@@ -137,12 +137,33 @@ impl<'db> Ctx<'db> {
 
                         self.tys.insert(item.id, expected.clone());
 
-                        let variants = body
+                        let ctor_tys = body
                             .iter()
                             .map(|ctor_id| {
+                                let (_, tys) = hir.items[ctor_id].ctor();
+
+                                tys.iter()
+                                    .filter_map(|ty| {
+                                        let ty = self.hir_ty(ty);
+                                        let ty_kind = self.ty_kind(ty.span(), ty.file());
+
+                                        match self.check_kind(ty, ty_kind) {
+                                            | Ok(ty) => Some(ty),
+                                            | Err(e) => {
+                                                e.report(self.db);
+                                                None
+                                            },
+                                        }
+                                    })
+                                    .collect()
+                            })
+                            .collect::<Vec<List<_>>>();
+
+                        let variants = body
+                            .iter()
+                            .zip(ctor_tys)
+                            .map(|(ctor_id, tys)| {
                                 let ctor_item = &hir.items[ctor_id];
-                                let (_, tys) = ctor_item.ctor();
-                                let tys = tys.iter().map(|t| self.hir_ty(t)).collect::<List<_>>();
                                 let res: Result<Ty> = try {
                                     let mut ty = Ty::ctor(ctor_item.span, self.file, item.id.owner);
 
@@ -323,11 +344,12 @@ impl<'db> Ctx<'db> {
                                     })
                                     .collect::<Result<HashMap<TypeVar, Ty>>>()?;
 
+                                let tys = self.tys.clone();
+
                                 for item_ref in &body.items {
                                     let item = &hir.instance_items[&item_ref.id];
-                                    let prev_tys = std::mem::replace(&mut self.tys, HashMap::new());
+                                    let prev_tys = std::mem::replace(&mut self.tys, tys.clone());
                                     let prev_bounds = std::mem::replace(&mut self.bounds, HashMap::new());
-                                    let prev_subst = std::mem::replace(&mut self.subst, Substitution::empty());
                                     let res: Result<Ty> = match &item.kind {
                                         | ir::InstanceItemKind::Func { ty, body } => {
                                             try {
@@ -357,7 +379,7 @@ impl<'db> Ctx<'db> {
 
                                                 let (ty, should_generalize) = if let Type::Unknown(_) = *ty {
                                                     let infer = self.infer_body(item.span, &hir.bodies[body])?;
-                                                    let _ = self.unify_types(ty.clone(), infer.clone())?;
+                                                    let _ = self.unify_types(ty, infer.clone())?;
 
                                                     (infer, true)
                                                 } else {
@@ -367,6 +389,7 @@ impl<'db> Ctx<'db> {
 
                                                 let expected = self.typeck_def(class_item);
                                                 let expected = expected.replace_vars(subst.clone());
+                                                let ty = self.subst_type(ty);
                                                 let elaborate = self.subsumes(expected, ty.clone())?;
                                                 let _ = elaborate(self, item.id, item.span);
                                                 let unsolved = self.solve_ctnts(should_generalize)?;
@@ -379,7 +402,6 @@ impl<'db> Ctx<'db> {
                                     };
 
                                     self.finalize();
-                                    self.subst = prev_subst;
 
                                     let tys = std::mem::replace(&mut self.tys, prev_tys);
                                     let bounds = std::mem::replace(&mut self.bounds, prev_bounds);
@@ -418,6 +440,7 @@ impl<'db> Ctx<'db> {
                 },
             };
 
+            self.finalize();
             self.subst = prev_subst;
 
             let tys = std::mem::replace(&mut self.tys, prev_tys);

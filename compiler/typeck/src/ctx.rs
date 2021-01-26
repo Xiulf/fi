@@ -21,9 +21,10 @@ pub struct Ctx<'db> {
     crate all_instances: HashMap<ir::DefId, std::sync::Arc<Vec<Instance>>>,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UnkLevel(crate Vec<Unknown>);
 
+#[derive(Clone)]
 pub struct Substitution {
     pub tys: HashMap<Unknown, Ty>,
     pub unsolved: HashMap<Unknown, (UnkLevel, Ty)>,

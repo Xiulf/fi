@@ -17,11 +17,31 @@ pub struct RunResult {
 }
 
 pub fn run(opts: Opts) {
+    let result = build(opts);
+    let meta = result.db.load_metadata(result.lib).unwrap();
+
+    match meta.bins.len() {
+        | 0 => panic!("no binaries to run"),
+        | 1 => {
+            let (name, path) = meta.bins.iter().next().unwrap();
+
+            eprintln!("    \x1B[1;32m\x1B[1mRunning\x1B[0m {} ({})", name, path.display());
+
+            let status = std::process::Command::new(path).status().map(|s| s.code().unwrap_or(1)).unwrap_or(1);
+
+            std::process::exit(status)
+        },
+        | _ => unimplemented!(),
+    }
+}
+
+pub fn build(opts: Opts) -> RunResult {
     let start = std::time::Instant::now();
-    let _ = _run(opts);
+    let result = _run(opts);
     let elapsed = start.elapsed();
 
     eprintln!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {}", DisplayDuration(elapsed));
+    result
 }
 
 fn _run(opts: Opts) -> RunResult {

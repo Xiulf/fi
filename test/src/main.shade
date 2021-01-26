@@ -3,12 +3,17 @@ module Main where
 import Core
 
 [main]
-fn main :: Int32
--- fn main = twice 4
-fn main = do
-    let x :: List Char
-        x = mempty
+fn main :: Int32 -> Ptr (Ptr Byte) -> Int32
+fn main argc argv = do
+    print_args argc argv
     0
 
--- fn twice :: forall a. Add a => a -> a
--- fn twice a = add a a
+fn print_args :: Int32 -> Ptr (Ptr Byte) -> ()
+fn print_args 0 _ = ()
+fn print_args n arg = do
+    puts (unsafe_read arg)
+    print_args (sub n 1) (ptr_offset arg 1)
+
+[intrinsic] foreign fn ptr_offset :: forall t. Ptr t -> Uint -> Ptr t
+[intrinsic] foreign fn unsafe_read :: forall t. Ptr t -> t
+foreign fn puts :: Ptr Byte -> Int32
