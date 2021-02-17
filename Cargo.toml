@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "fcc",
+    "driver",
+    "hir",
+    "base_db",
+    "syntax",
+    "parser",
+]

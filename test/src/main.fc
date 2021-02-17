@@ -1,0 +1,21 @@
+import core/ops/offset/*
+import core/ops/sub/*
+import core/cmp/(==)
+import prim/Byte,Int
+
+foreign def puts :: [*][*:0]Byte -> Int
+
+def main argc argv =
+    print_args argc argv
+    0
+
+def pring_args argc argv =
+    unless argc == 0 do
+        puts argv.*
+        print_args (argc - 1) (argv *+ 1)
+
+class Monoid m =
+    def empty :: () -> m
+
+instance Monoid () =
+    def empty = ()

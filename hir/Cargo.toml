@@ -1,0 +1,11 @@
+[package]
+name = "hir"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+syntax = { path = "../syntax" }
+base_db = { path = "../base_db" }
+rustc-hash = "1.1.0"
+salsa = "0.16.0"

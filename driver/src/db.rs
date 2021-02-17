@@ -1,0 +1,43 @@
+use base_db::input::FileId;
+use base_db::{Canceled, CheckCanceled, FileLoader, FileLoaderDelegate};
+use std::sync::Arc;
+
+#[salsa::database(
+    base_db::SourceDatabaseStorage,
+    base_db::SourceDatabaseExtStorage,
+    hir::db::InternDatabaseStorage,
+    hir::db::DefDatabaseStorage
+)]
+#[derive(Default)]
+pub struct RootDatabase {
+    storage: salsa::Storage<Self>,
+}
+
+impl salsa::Database for RootDatabase {
+    fn on_propagated_panic(&self) -> ! {
+        Canceled::throw()
+    }
+
+    fn salsa_event(&self, event: salsa::Event) {
+        match event.kind {
+            | salsa::EventKind::DidValidateMemoizedValue { .. } | salsa::EventKind::WillExecute { .. } => {
+                self.check_canceled();
+            },
+            | _ => {},
+        }
+    }
+}
+
+impl salsa::ParallelDatabase for RootDatabase {
+    fn snapshot(&self) -> salsa::Snapshot<Self> {
+        salsa::Snapshot::new(RootDatabase {
+            storage: self.storage.snapshot(),
+        })
+    }
+}
+
+impl FileLoader for RootDatabase {
+    fn file_text(&self, file_id: FileId) -> Arc<String> {
+        FileLoaderDelegate(self).file_text(file_id)
+    }
+}
