@@ -18,6 +18,11 @@ pub struct Arena<T> {
 pub struct RawId(u32);
 
 impl<T> Idx<T> {
+    pub const DUMMY: Self = Idx {
+        raw: RawId(0),
+        _marker: PhantomData,
+    };
+
     #[inline]
     pub fn from_raw(raw: RawId) -> Self {
         Idx { raw, _marker: PhantomData }

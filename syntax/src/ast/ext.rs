@@ -59,7 +59,13 @@ impl Iterator for CommentIter {
     }
 }
 
-impl SourceFile {
+impl AttrsOwner for Module {
+}
+
+impl NameOwner for Module {
+}
+
+impl Module {
     pub fn imports(&self) -> AstChildren<Import> {
         support::children(&self.0)
     }
@@ -176,7 +182,7 @@ impl NameOwner for ItemForeign {
 
 impl ItemForeign {
     pub fn kind(&self) -> Option<ForeignKind> {
-        support::token(&self.0, DEF_KW).map_or_else(|| support::token(&self.0, STATIC_KW).map(|_| ForeignKind::Static), |_| Some(ForeignKind::Def))
+        support::token(&self.0, FUN_KW).map_or_else(|| support::token(&self.0, STATIC_KW).map(|_| ForeignKind::Static), |_| Some(ForeignKind::Def))
     }
 
     pub fn ty(&self) -> Option<Type> {
@@ -190,13 +196,13 @@ pub enum ForeignKind {
     Static,
 }
 
-impl AttrsOwner for ItemDef {
+impl AttrsOwner for ItemFun {
 }
 
-impl NameOwner for ItemDef {
+impl NameOwner for ItemFun {
 }
 
-impl ItemDef {
+impl ItemFun {
     pub fn args(&self) -> AstChildren<Pat> {
         support::children(&self.0)
     }
@@ -278,10 +284,22 @@ impl Name {
     pub fn ident_token(&self) -> Option<SyntaxToken> {
         support::token(&self.0, IDENT)
     }
+
+    pub fn text(&self) -> &str {
+        self.0.green().children().next().and_then(|it| it.into_token()).unwrap().text()
+    }
 }
 
 impl NameRef {
     pub fn ident_token(&self) -> Option<SyntaxToken> {
         support::token(&self.0, IDENT)
+    }
+
+    pub fn text(&self) -> &str {
+        self.0.green().children().next().and_then(|it| it.into_token()).unwrap().text()
+    }
+
+    pub fn as_tuple_field(&self) -> Option<usize> {
+        self.text().parse().ok()
     }
 }

@@ -133,7 +133,7 @@ impl<'t> TextTreeSink<'t> {
 
 fn n_attached_trivias<'t>(kind: SyntaxKind, trivias: impl Iterator<Item = (SyntaxKind, &'t str)>) -> usize {
     match kind {
-        | SyntaxKind::IMPORT | SyntaxKind::ITEM_FOREIGN | SyntaxKind::ITEM_DEF | SyntaxKind::ITEM_FIXITY => {
+        | SyntaxKind::IMPORT | SyntaxKind::ITEM_FOREIGN | SyntaxKind::ITEM_FUN | SyntaxKind::ITEM_FIXITY => {
             let mut res = 0;
             let mut trivias = trivias.enumerate().peekable();
 

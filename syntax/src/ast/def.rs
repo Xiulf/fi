@@ -2,7 +2,7 @@ use super::*;
 use crate::ast_node;
 use parser::syntax_kind::*;
 
-ast_node!(SourceFile, SOURCE_FILE);
+ast_node!(Module, MODULE);
 
 ast_node!(Attr, ATTR);
 ast_node!(AttrArgs, ATTR_ARGS);
@@ -18,9 +18,10 @@ ast_node!(Import, IMPORT);
 ast_node!(ImportItems, IMPORT_ITEMS);
 
 ast_node!(Item {
+    Module(ItemModule, MODULE),
     Fixity(ItemFixity, ITEM_FIXITY),
     Foreign(ItemForeign, ITEM_FOREIGN),
-    Def(ItemDef, ITEM_DEF),
+    Fun(ItemFun, ITEM_FUN),
     Static(ItemStatic, ITEM_STATIC),
     Const(ItemConst, ITEM_CONST),
     Type(ItemType, ITEM_TYPE),
@@ -30,14 +31,9 @@ ast_node!(Item {
 
 ast_node!(Ctor, ITEM_CTOR);
 
-ast_node!(ClassItem {
-    Def(ClassItemDef, CLASS_DEF),
-    Static(ClassItemStatic, CLASS_STATIC),
-});
-
-ast_node!(InstanceItem {
-    Def(InstanceItemDef, ITEM_DEF),
-    Static(InstanceItemStatic, ITEM_STATIC),
+ast_node!(AssocItem {
+    Fun(AssocItemFun, ITEM_FUN),
+    Static(AssocItemStatic, ITEM_STATIC),
 });
 
 ast_node!(Pat {

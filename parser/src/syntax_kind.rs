@@ -44,10 +44,11 @@ pub enum SyntaxKind {
     LYT_END,
 
     // Keywords
+    MODULE_KW,
     IMPORT_KW,
     TYPE_KW,
     FOREIGN_KW,
-    DEF_KW,
+    FUN_KW,
     STATIC_KW,
     CONST_KW,
     CLASS_KW,
@@ -73,7 +74,8 @@ pub enum SyntaxKind {
     FOR_KW,
 
     // Syntax tree
-    SOURCE_FILE,
+    MODULE,
+    EXPORTS,
 
     ATTR,
     ATTR_ARG_CALL,
@@ -86,16 +88,13 @@ pub enum SyntaxKind {
 
     ITEM_FIXITY,
     ITEM_FOREIGN,
-    ITEM_DEF,
+    ITEM_FUN,
     ITEM_STATIC,
     ITEM_CONST,
     ITEM_CLASS,
     ITEM_INSTANCE,
     ITEM_TYPE,
     ITEM_CTOR,
-
-    CLASS_DEF,
-    CLASS_STATIC,
 
     PAT_TYPED,
     PAT_APP,

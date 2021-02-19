@@ -75,7 +75,7 @@ impl<T: AstNode> Parsed<T> {
     }
 }
 
-impl Parsed<ast::SourceFile> {
+impl Parsed<ast::Module> {
     pub fn cast<N: AstNode>(self) -> Option<Parsed<N>> {
         if N::cast(self.syntax_node()).is_some() {
             Some(Parsed {
@@ -89,7 +89,7 @@ impl Parsed<ast::SourceFile> {
     }
 }
 
-impl ast::SourceFile {
+impl ast::Module {
     pub fn parse(text: &str) -> Parsed<Self> {
         let (green, errors) = parsing::parse_text(text);
 

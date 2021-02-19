@@ -9,6 +9,9 @@ pub struct Whitespace(crate SyntaxToken);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Comment(crate SyntaxToken);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Operator(crate SyntaxToken);
+
 pub enum CommentKind {
     Doc,
     Normal,
@@ -42,6 +45,12 @@ impl CommentKind {
         } else {
             CommentKind::Normal
         }
+    }
+}
+
+impl Operator {
+    pub fn text(&self) -> &str {
+        self.0.text()
     }
 }
 
@@ -81,6 +90,31 @@ impl AstToken for Comment {
     {
         if Self::can_cast(token.kind()) {
             Some(Comment(token))
+        } else {
+            None
+        }
+    }
+
+    fn syntax(&self) -> &SyntaxToken {
+        &self.0
+    }
+
+    fn text(&self) -> &str {
+        self.0.text()
+    }
+}
+
+impl AstToken for Operator {
+    fn can_cast(token: SyntaxKind) -> bool {
+        token == SyntaxKind::OPERATOR
+    }
+
+    fn cast(token: SyntaxToken) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(token.kind()) {
+            Some(Operator(token))
         } else {
             None
         }

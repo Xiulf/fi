@@ -474,6 +474,18 @@ impl<'src> Lexer<'src> {
         }
 
         match self.text() {
+            | "module" => {
+                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                } else {
+                    self.insert_default(start, MODULE_KW);
+
+                    if self.is_def_start(start) {
+                        self.stack.push((start, LayoutDelim::TopDeclHead));
+                    }
+                }
+            },
             | "import" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                     self.emit(IDENT);
@@ -501,12 +513,12 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, FOREIGN_KW);
                 }
             },
-            | "def" => {
+            | "fun" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                     self.emit(IDENT);
                     self.stack.pop().unwrap();
                 } else {
-                    self.insert_default(start, DEF_KW);
+                    self.insert_default(start, FUN_KW);
 
                     if self.is_def_start(start) {
                         self.stack.push((start, LayoutDelim::TopDeclHead));

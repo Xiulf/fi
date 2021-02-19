@@ -1,5 +1,6 @@
 use crate::arena::Idx;
 use crate::db::DefDatabase;
+use crate::def_map::ModuleData;
 use crate::item_tree::*;
 use base_db::libs::LibId;
 use std::hash::{Hash, Hasher};
@@ -46,14 +47,17 @@ pub trait Lookup {
     fn lookup(&self, db: &dyn DefDatabase) -> Self::Data;
 }
 
+pub trait HasModule {
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModuleId {
-    lib: LibId,
+    pub lib: LibId,
     pub local_id: LocalModuleId,
 }
 
 pub type LocalModuleId = Idx<ModuleData>;
-type ModuleData = ();
 
 #[derive(Debug)]
 pub struct ItemLoc<N: ItemTreeNode> {
@@ -105,6 +109,14 @@ pub type TypeLoc = AssocItemLoc<Type>;
 impl_intern!(TypeId, TypeLoc, intern_type, lookup_intern_type);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CtorId {
+    pub parent: TypeId,
+    pub local_id: LocalCtorId,
+}
+
+pub type LocalCtorId = Idx<()>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClassId(salsa::InternId);
 pub type ClassLoc = AssocItemLoc<Class>;
 impl_intern!(ClassId, ClassLoc, intern_class, lookup_intern_class);
@@ -113,6 +125,47 @@ impl_intern!(ClassId, ClassLoc, intern_class, lookup_intern_class);
 pub struct InstanceId(salsa::InternId);
 pub type InstanceLoc = AssocItemLoc<Instance>;
 impl_intern!(InstanceId, InstanceLoc, intern_instance, lookup_intern_instance);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModuleDefId {
+    ModuleId(ModuleId),
+    FixityId(FixityId),
+    FuncId(FuncId),
+    StaticId(StaticId),
+    ConstId(ConstId),
+    TypeId(TypeId),
+    CtorId(CtorId),
+    ClassId(ClassId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DefWithBodyId {
+    FuncId(FuncId),
+    StaticId(StaticId),
+    ConstId(ConstId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AssocItemId {
+    FuncId(FuncId),
+    StaticId(StaticId),
+}
+
+impl HasModule for ContainerId {
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId {
+        match *self {
+            | ContainerId::Module(id) => id,
+            | ContainerId::Class(id) => id.lookup(db).container.module(db),
+            | ContainerId::Instance(id) => id.lookup(db).container.module(db),
+        }
+    }
+}
+
+impl<N: ItemTreeNode> HasModule for AssocItemLoc<N> {
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId {
+        self.container.module(db)
+    }
+}
 
 impl<N: ItemTreeNode> Clone for ItemLoc<N> {
     fn clone(&self) -> Self {

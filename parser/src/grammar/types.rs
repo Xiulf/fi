@@ -33,13 +33,12 @@ crate fn app(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = atom(p)?;
 
     if peek(p) {
-        let ty = m.precede(p);
-
         while peek(p) {
-            atom(p);
-        }
+            let ty = m.precede(p);
+            let _ = atom(p);
 
-        m = ty.complete(p, TYPE_APP);
+            m = ty.complete(p, TYPE_APP);
+        }
     }
 
     Some(m)

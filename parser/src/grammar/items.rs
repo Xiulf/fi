@@ -2,6 +2,30 @@ use super::*;
 use crate::parser::{Marker, Parser};
 use crate::syntax_kind::*;
 
+crate fn module(p: &mut Parser, m: Marker, root: bool) {
+    p.expect(MODULE_KW);
+    paths::name(p);
+
+    p.expect(EQUALS);
+    p.expect(LYT_START);
+
+    while !p.at(EOF) && !p.at(LYT_END) {
+        any_item(p);
+
+        if !p.at(LYT_END) {
+            p.expect(LYT_SEP);
+        }
+    }
+
+    p.expect(LYT_END);
+
+    if root {
+        p.expect(EOF);
+    }
+
+    m.complete(p, MODULE);
+}
+
 crate fn any_item(p: &mut Parser) {
     let m = p.start();
 
@@ -11,6 +35,9 @@ crate fn any_item(p: &mut Parser) {
     }
 
     match p.current() {
+        | MODULE_KW => {
+            module(p, m, false);
+        },
         | IMPORT_KW => {
             import(p, m);
         },
@@ -20,8 +47,8 @@ crate fn any_item(p: &mut Parser) {
         | FOREIGN_KW => {
             foreign(p, m);
         },
-        | DEF_KW => {
-            def(p, m);
+        | FUN_KW => {
+            fun(p, m);
         },
         | STATIC_KW => {
             static_(p, m);
@@ -94,9 +121,9 @@ crate fn fixity(p: &mut Parser, m: Marker) {
 crate fn foreign(p: &mut Parser, m: Marker) {
     if p.eat(FOREIGN_KW) {
         match p.current() {
-            | DEF_KW | STATIC_KW => p.bump_any(),
+            | FUN_KW | STATIC_KW => p.bump_any(),
             | _ => {
-                p.error("expected 'def' or 'static'");
+                p.error("expected 'fun' or 'static'");
                 m.abandon(p);
                 return;
             },
@@ -112,19 +139,24 @@ crate fn foreign(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn def(p: &mut Parser, m: Marker) {
-    if p.eat(DEF_KW) {
+crate fn fun(p: &mut Parser, m: Marker) {
+    if p.eat(FUN_KW) {
         paths::name(p);
 
-        while !p.at(EOF) && !p.at(EQUALS) {
-            patterns::atom(p);
-        }
+        if p.eat(DBL_COLON) {
+            types::func(p);
+            m.complete(p, ITEM_FUN);
+        } else {
+            while !p.at(EOF) && !p.at(EQUALS) {
+                patterns::atom(p);
+            }
 
-        p.expect(EQUALS);
-        exprs::block(p);
-        m.complete(p, ITEM_DEF);
+            p.expect(EQUALS);
+            exprs::block(p);
+            m.complete(p, ITEM_FUN);
+        }
     } else {
-        p.error("expected 'def'");
+        p.error("expected 'fun'");
         m.abandon(p);
     }
 }
@@ -132,9 +164,15 @@ crate fn def(p: &mut Parser, m: Marker) {
 crate fn static_(p: &mut Parser, m: Marker) {
     if p.eat(STATIC_KW) {
         paths::name(p);
-        p.expect(EQUALS);
-        exprs::expr(p);
-        m.complete(p, ITEM_STATIC);
+
+        if p.eat(DBL_COLON) {
+            types::func(p);
+            m.complete(p, ITEM_STATIC);
+        } else {
+            p.expect(EQUALS);
+            exprs::expr(p);
+            m.complete(p, ITEM_STATIC);
+        }
     } else {
         p.error("expected 'static'");
         m.abandon(p);
@@ -144,9 +182,15 @@ crate fn static_(p: &mut Parser, m: Marker) {
 crate fn const_(p: &mut Parser, m: Marker) {
     if p.eat(CONST_KW) {
         paths::name(p);
-        p.expect(EQUALS);
-        exprs::expr(p);
-        m.complete(p, ITEM_CONST);
+
+        if p.eat(DBL_COLON) {
+            types::func(p);
+            m.complete(p, ITEM_CONST);
+        } else {
+            p.expect(EQUALS);
+            exprs::expr(p);
+            m.complete(p, ITEM_CONST);
+        }
     } else {
         p.error("expected 'const'");
         m.abandon(p);
@@ -210,7 +254,7 @@ crate fn class(p: &mut Parser, m: Marker) {
             p.expect(LYT_START);
 
             while !p.at(EOF) && !p.at(LYT_END) {
-                class_item(p);
+                assoc_item(p);
 
                 if !p.at(LYT_END) {
                     p.expect(LYT_SEP);
@@ -239,7 +283,7 @@ crate fn instance(p: &mut Parser, m: Marker) {
             p.expect(LYT_START);
 
             while !p.at(EOF) && !p.at(LYT_END) {
-                instance_item(p);
+                assoc_item(p);
 
                 if !p.at(LYT_END) {
                     p.expect(LYT_SEP);
@@ -256,7 +300,7 @@ crate fn instance(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn class_item(p: &mut Parser) {
+crate fn assoc_item(p: &mut Parser) {
     let m = p.start();
 
     while p.at(AT) {
@@ -264,48 +308,7 @@ crate fn class_item(p: &mut Parser) {
     }
 
     match p.current() {
-        | DEF_KW => class_def(p, m),
-        | STATIC_KW => class_static(p, m),
-        | _ => {
-            p.error("expected a class item");
-            m.abandon(p);
-        },
-    }
-}
-
-crate fn class_def(p: &mut Parser, m: Marker) {
-    if p.eat(DEF_KW) {
-        paths::name(p);
-        p.expect(DBL_COLON);
-        types::func(p);
-        m.complete(p, CLASS_DEF);
-    } else {
-        p.error("expected 'def'");
-        m.abandon(p);
-    }
-}
-
-crate fn class_static(p: &mut Parser, m: Marker) {
-    if p.eat(STATIC_KW) {
-        paths::name(p);
-        p.expect(DBL_COLON);
-        types::func(p);
-        m.complete(p, CLASS_STATIC);
-    } else {
-        p.error("expected 'static'");
-        m.abandon(p);
-    }
-}
-
-crate fn instance_item(p: &mut Parser) {
-    let m = p.start();
-
-    while p.at(AT) {
-        attributes::attr(p);
-    }
-
-    match p.current() {
-        | DEF_KW => def(p, m),
+        | FUN_KW => fun(p, m),
         | STATIC_KW => static_(p, m),
         | _ => {
             p.error("expected an instance item");

@@ -13,18 +13,13 @@ crate fn root(p: &mut Parser) {
 
     p.eat(LYT_SEP);
 
-    while !p.at(EOF) {
-        items::any_item(p);
-
-        if !p.at(EOF) {
-            if !p.eat(LYT_SEP) {
-                p.error("expected a newline");
-            }
-        }
+    while !p.at(EOF) && p.at(AT) {
+        attributes::attr(p);
+        p.eat(LYT_SEP);
     }
 
-    p.expect(EOF);
-    m.complete(p, SOURCE_FILE);
+    p.eat(LYT_SEP);
+    items::module(p, m, true);
 }
 
 crate mod fragments {

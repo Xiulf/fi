@@ -2,7 +2,7 @@ use base_db::input::FileId;
 use base_db::SourceDatabase;
 use syntax::syntax_node::SyntaxNode;
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InFile<T> {
     pub file_id: FileId,
     pub value: T,

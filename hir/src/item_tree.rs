@@ -100,7 +100,7 @@ macro_rules! items {
 items! {
     Fixity in fixities -> ast::ItemFixity,
     Foreign in foreigns -> ast::ItemForeign,
-    Func in funcs -> ast::ItemDef,
+    Func in funcs -> ast::ItemFun,
     Static in statics -> ast::ItemStatic,
     Const in consts -> ast::ItemConst,
     Type in types -> ast::ItemType,
@@ -120,7 +120,7 @@ pub struct Foreign {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Func {
-    pub ast_id: FileAstId<ast::ItemDef>,
+    pub ast_id: FileAstId<ast::ItemFun>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

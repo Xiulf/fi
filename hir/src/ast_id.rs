@@ -33,6 +33,11 @@ impl<N: AstNode> AstId<N> {
 }
 
 impl<N: AstNode> FileAstId<N> {
+    pub const DUMMY: Self = FileAstId {
+        raw: Idx::DUMMY,
+        _marker: PhantomData,
+    };
+
     pub fn with_file_id(self, file_id: FileId) -> AstId<N> {
         AstId::new(file_id, self)
     }
@@ -59,9 +64,7 @@ impl AstIdMap {
         let mut res = AstIdMap::default();
 
         bfs(node, |it| {
-            if let Some(item) = ast::Item::cast(it.clone()) {
-                res.alloc(item.syntax());
-            } else if let Some(item) = ast::ClassItem::cast(it) {
+            if let Some(item) = ast::Item::cast(it) {
                 res.alloc(item.syntax());
             }
         });

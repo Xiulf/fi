@@ -1,21 +1,27 @@
-import core/ops/offset/*
-import core/ops/sub/*
-import core/cmp/(==)
-import prim/Byte,Int
+module main =
 
-foreign def puts :: [*][*:0]Byte -> Int
-
-def main argc argv =
+fun main argc argv =
     print_args argc argv
     0
 
-def pring_args argc argv =
-    unless argc == 0 do
-        puts argv.*
-        print_args (argc - 1) (argv *+ 1)
+fun pring_args argc argv =
+    unless eq_i32 argc 0 do
+        libc/puts argv.*
+        print_args (prim/sub_i32 argc 1) (prim/ptr_offset argv 1)
 
-class Monoid m =
-    def empty :: () -> m
+module libc =
+    type C_Char = Int8
+    type C_Short = Int16
+    type C_Int = Int32
+    type C_Long = Int64
+    type C_Float = F32
+    type C_Double = F64
+    type C_Str = [*:0]C_Char
+    type C_Array t = [*]t
 
-instance Monoid () =
-    def empty = ()
+    foreign fun puts :: C_Array C_Str -> C_Int
+
+module prim =
+    @intrinsic foreign fun sub_i32 :: Int32 -> Int32 -> Int32
+    @intrinsic foreign fun eq_i32 :: Int32 -> Int32 -> Int32
+    @intrinsic foreign fun ptr_offset :: for<t> *t -> Int -> *t
