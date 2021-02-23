@@ -1,0 +1,6 @@
+[project]
+name = "libc"
+version = "0.1.0"
+
+[dependencies]
+prim = { path = "../prim" }

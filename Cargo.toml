@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "fcc",
-    "driver",
-    "hir",
-    "base_db",
-    "syntax",
-    "parser",
+    "compiler/fcc",
+    "compiler/driver",
+    "compiler/hir",
+    "compiler/base_db",
+    "compiler/syntax",
+    "compiler/parser",
 ]

@@ -1,0 +1,12 @@
+[package]
+name = "driver"
+version = "0.1.0"
+authors = ["Cyberduc-k <tttymo@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+hir = { path = "../hir" }
+base_db = { path = "../base_db" }
+syntax = { path = "../syntax" }
+salsa = "0.16.0"
+annotate-snippets = { version = "0.9.0", features = ["color"] }

@@ -1,0 +1,34 @@
+module prim =
+
+@lang = "type-kind"   type Type   :: Type
+@lang = "figure-kind" type Figure :: Type
+@lang = "symbol-kind" type Symbol :: Type
+@lang = "row-kind"    type Row    :: Type -> Type
+
+@lang = "fn-type"     type Fn             :: Type -> Type -> Type
+@lang = "ptr-type"    type Ptr            :: Type -> Type
+@lang = "ptrb-type"   type BufPtr         :: Type -> Type
+@lang = "ptrbs-type"  type BufPtrSentinel :: Type -> Figure -> Type
+@lang = "array-type"  type Array          :: Type -> Figure -> Type
+@lang = "slice-type"  type Slice          :: Type -> Type
+@lang = "record-type" type Record         :: Row -> Type
+
+type Int8    :: Type
+type Int16   :: Type
+type Int32   :: Type
+type Int64   :: Type
+type Int128  :: Type
+type Uint8   :: Type
+type Uint16  :: Type
+type Uint32  :: Type
+type Uint64  :: Type
+type Uint128 :: Type
+type Float32 :: Type
+type Float64 :: Type
+
+infixr 0 apply as ($)
+
+@intrinsic foreign fun sub_i32    :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun eq_i32     :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun ptr_offset :: for<t> *t -> Int -> *t
+@intrinsic foreign fun apply      :: for<r a> (a -> r) -> a -> r
