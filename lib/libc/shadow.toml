@@ -1,6 +1,7 @@
 [project]
 name = "libc"
 version = "0.1.0"
+entry = "src/libc.fc"
 
 [dependencies]
 prim = { path = "../prim" }

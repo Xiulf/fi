@@ -2,36 +2,6 @@ use super::*;
 use crate::parser::{Marker, Parser};
 use crate::syntax_kind::*;
 
-crate fn module(p: &mut Parser) {
-    let m = p.start();
-
-    p.eat(LYT_SEP);
-
-    while !p.at(EOF) && p.at(AT) {
-        attributes::attr(p);
-        p.eat(LYT_SEP);
-    }
-
-    p.expect(MODULE_KW);
-
-    paths::name(p);
-
-    p.expect(EQUALS);
-    p.expect(LYT_START);
-
-    while !p.at(EOF) && !p.at(LYT_END) {
-        any_item(p);
-
-        if !p.at(LYT_END) {
-            p.expect(LYT_SEP);
-        }
-    }
-
-    p.expect(LYT_END);
-    p.expect(EOF);
-    m.complete(p, MODULE);
-}
-
 crate fn any_item(p: &mut Parser) {
     let m = p.start();
 

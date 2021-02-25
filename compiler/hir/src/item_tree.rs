@@ -60,6 +60,10 @@ impl ItemTree {
 
         Arc::new(item_tree)
     }
+
+    pub fn top_level(&self) -> &[Item] {
+        &self.top_level
+    }
 }
 
 impl<N: ItemTreeNode> Index<LocalItemTreeId<N>> for ItemTree {
@@ -145,6 +149,7 @@ pub struct Import {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fixity {
     pub ast_id: FileAstId<ast::ItemFixity>,
+    pub name: Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,26 +160,31 @@ pub struct Foreign {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Func {
     pub ast_id: FileAstId<ast::ItemFun>,
+    pub name: Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Static {
     pub ast_id: FileAstId<ast::ItemStatic>,
+    pub name: Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Const {
     pub ast_id: FileAstId<ast::ItemConst>,
+    pub name: Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type {
     pub ast_id: FileAstId<ast::ItemType>,
+    pub name: Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Class {
     pub ast_id: FileAstId<ast::ItemClass>,
+    pub name: Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

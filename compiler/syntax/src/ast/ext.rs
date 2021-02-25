@@ -41,7 +41,10 @@ impl CommentIter {
     }
 
     pub fn doc_comment_text(self) -> Option<String> {
-        let docs = self.filter_map(|cmt| cmt.doc_comment().map(ToOwned::to_owned)).collect::<Vec<_>>().join("\n");
+        let docs = self
+            .filter_map(|cmt| cmt.doc_comment().map(ToOwned::to_owned))
+            .collect::<Vec<_>>()
+            .join("\n");
 
         if docs.is_empty() {
             None
@@ -55,7 +58,9 @@ impl Iterator for CommentIter {
     type Item = Comment;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.by_ref().find_map(|el| el.into_token().and_then(Comment::cast))
+        self.iter
+            .by_ref()
+            .find_map(|el| el.into_token().and_then(Comment::cast))
     }
 }
 
@@ -66,12 +71,46 @@ impl NameOwner for Module {
 }
 
 impl Module {
+    pub fn exports(&self) -> Option<Exports> {
+        support::child(&self.0)
+    }
+
     pub fn imports(&self) -> AstChildren<ItemImport> {
         support::children(&self.0)
     }
 
     pub fn items(&self) -> AstChildren<Item> {
         support::children(&self.0)
+    }
+}
+
+impl IntoIterator for Exports {
+    type IntoIter = AstChildren<Export>;
+    type Item = Export;
+
+    fn into_iter(self) -> Self::IntoIter {
+        support::children(&self.0)
+    }
+}
+
+impl Export {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        match self {
+            | Export::Name(e) => e.name_ref(),
+            | Export::Module(e) => e.name_ref(),
+        }
+    }
+}
+
+impl ExportName {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        support::child(&self.0)
+    }
+}
+
+impl ExportModule {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        support::child(&self.0)
     }
 }
 
@@ -127,7 +166,12 @@ impl ItemFixity {
 
     pub fn assoc(&self) -> Option<Assoc> {
         support::token(&self.0, INFIX_KW).map_or_else(
-            || support::token(&self.0, INFIXL_KW).map_or_else(|| support::token(&self.0, INFIXR_KW).map(|_| Assoc::Right), |_| Some(Assoc::Left)),
+            || {
+                support::token(&self.0, INFIXL_KW).map_or_else(
+                    || support::token(&self.0, INFIXR_KW).map(|_| Assoc::Right),
+                    |_| Some(Assoc::Left),
+                )
+            },
             |_| Some(Assoc::None),
         )
     }
@@ -180,7 +224,10 @@ impl NameOwner for ItemForeign {
 
 impl ItemForeign {
     pub fn kind(&self) -> Option<ForeignKind> {
-        support::token(&self.0, FUN_KW).map_or_else(|| support::token(&self.0, STATIC_KW).map(|_| ForeignKind::Static), |_| Some(ForeignKind::Def))
+        support::token(&self.0, FUN_KW).map_or_else(
+            || support::token(&self.0, STATIC_KW).map(|_| ForeignKind::Static),
+            |_| Some(ForeignKind::Def),
+        )
     }
 
     pub fn ty(&self) -> Option<Type> {
@@ -284,7 +331,13 @@ impl Name {
     }
 
     pub fn text(&self) -> &str {
-        self.0.green().children().next().and_then(|it| it.into_token()).unwrap().text()
+        self.0
+            .green()
+            .children()
+            .next()
+            .and_then(|it| it.into_token())
+            .unwrap()
+            .text()
     }
 }
 
@@ -294,7 +347,13 @@ impl NameRef {
     }
 
     pub fn text(&self) -> &str {
-        self.0.green().children().next().and_then(|it| it.into_token()).unwrap().text()
+        self.0
+            .green()
+            .children()
+            .next()
+            .and_then(|it| it.into_token())
+            .unwrap()
+            .text()
     }
 
     pub fn as_tuple_field(&self) -> Option<usize> {

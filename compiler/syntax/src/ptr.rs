@@ -23,10 +23,16 @@ impl SyntaxNodePtr {
         }
     }
 
+    pub fn range(&self) -> TextRange {
+        self.range
+    }
+
     pub fn to_node(&self, root: &SyntaxNode) -> SyntaxNode {
-        successors(Some(root.clone()), |node| node.children().find(|it| it.text_range().contains_range(self.range)))
-            .find(|it| it.text_range() == self.range && it.kind() == self.kind)
-            .unwrap_or_else(|| panic!("can't resolve local ptr to SyntaxNode: {:?}", self))
+        successors(Some(root.clone()), |node| {
+            node.children().find(|it| it.text_range().contains_range(self.range))
+        })
+        .find(|it| it.text_range() == self.range && it.kind() == self.kind)
+        .unwrap_or_else(|| panic!("can't resolve local ptr to SyntaxNode: {:?}", self))
     }
 
     pub fn cast<N: AstNode>(self) -> Option<AstPtr<N>> {

@@ -80,7 +80,7 @@ impl ItemScope {
         None
     }
 
-    pub fn classea<'a>(&'a self) -> impl Iterator<Item = ClassId> + 'a {
+    pub fn classes<'a>(&'a self) -> impl Iterator<Item = ClassId> + 'a {
         self.types.values().filter_map(|def| match def {
             | ModuleDefId::ClassId(t) => Some(*t),
             | _ => None,
@@ -128,11 +128,22 @@ impl ItemScope {
         changed
     }
 
-    pub fn push_res_with_import(&mut self, all_imports: &mut PersNsAllImports, lookup: (LocalModuleId, Name), def: PerNs, def_import_type: ImportType) -> bool {
+    pub fn push_res_with_import(
+        &mut self,
+        all_imports: &mut PersNsAllImports,
+        lookup: (LocalModuleId, Name),
+        def: PerNs,
+        def_import_type: ImportType,
+    ) -> bool {
         let mut changed = false;
 
         macro_rules! check_changed {
-            ($changed:ident,($this:ident / $def:ident). $field:ident, $all_imports:ident[$lookup:ident], $def_import_type:ident) => {{
+            (
+                $changed:ident,($this:ident / $def:ident).
+                $field:ident,
+                $all_imports:ident[$lookup:ident],
+                $def_import_type:ident
+            ) => {{
                 let existing = $this.$field.entry($lookup.1.clone());
 
                 match (existing, $def.$field) {
@@ -152,7 +163,9 @@ impl ItemScope {
 
                         $changed = true;
                     },
-                    | (Entry::Occupied(mut entry), Some(_)) if $all_imports.$field.contains(&$lookup) && matches!($def_import_type, ImportType::Named) => {
+                    | (Entry::Occupied(mut entry), Some(_))
+                        if $all_imports.$field.contains(&$lookup) && matches!($def_import_type, ImportType::Named) =>
+                    {
                         $all_imports.$field.remove(&$lookup);
 
                         if let Some(f_id) = $def.$field {
@@ -160,7 +173,7 @@ impl ItemScope {
                         }
 
                         $changed = true;
-                    },
+                    }
                     | _ => {},
                 }
             }};

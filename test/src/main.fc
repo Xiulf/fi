@@ -4,6 +4,7 @@ import core as c
 import core/libc (puts)
 import core/intrinsics (sub_i32, ptr_offset, eq_i32)
 
+@main
 fun main argc argv =
     print_args argc argv
     0

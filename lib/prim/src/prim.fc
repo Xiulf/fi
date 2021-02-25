@@ -26,9 +26,7 @@ type Uint128 :: Type
 type Float32 :: Type
 type Float64 :: Type
 
-infixr 0 apply as ($)
+@lang = "integer-class" class Integer t
+@lang = "decimal-class" class Decimal t
 
-@intrinsic foreign fun sub_i32    :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun eq_i32     :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun ptr_offset :: for<t> *t -> Int -> *t
-@intrinsic foreign fun apply      :: for<r a> (a -> r) -> a -> r
+class Unsafe

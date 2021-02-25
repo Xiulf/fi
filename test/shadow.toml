@@ -1,6 +1,7 @@
 [project]
 name = "test"
 version = "0.1.0"
+entry = "src/main.fc"
 
 [dependencies]
 core = { path = "../lib/core" }

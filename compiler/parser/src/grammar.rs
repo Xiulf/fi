@@ -9,7 +9,74 @@ use crate::parser::Parser;
 use crate::syntax_kind::*;
 
 crate fn root(p: &mut Parser) {
-    items::module(p);
+    let m = p.start();
+
+    p.eat(LYT_SEP);
+
+    while !p.at(EOF) && p.at(AT) {
+        attributes::attr(p);
+        p.eat(LYT_SEP);
+    }
+
+    p.expect(MODULE_KW);
+
+    paths::name(p);
+
+    if p.at(L_PAREN) {
+        exports(p);
+    }
+
+    p.expect(EQUALS);
+    p.expect(LYT_START);
+
+    while !p.at(EOF) && !p.at(LYT_END) {
+        items::any_item(p);
+
+        if !p.at(LYT_END) {
+            p.expect(LYT_SEP);
+        }
+    }
+
+    p.expect(LYT_END);
+    p.expect(EOF);
+    m.complete(p, MODULE);
+}
+
+fn exports(p: &mut Parser) {
+    let m = p.start();
+
+    p.expect(L_PAREN);
+
+    while !p.at(EOF) && !p.at(R_PAREN) {
+        export(p);
+
+        if !p.at(R_PAREN) {
+            p.expect(COMMA);
+        }
+    }
+
+    p.expect(R_PAREN);
+    m.complete(p, EXPORTS);
+}
+
+fn export(p: &mut Parser) {
+    let m = p.start();
+
+    match p.current() {
+        | IDENT | SYMBOL => {
+            paths::name_or_symbol_ref(p);
+            m.complete(p, EXPORT_NAME);
+        },
+        | MODULE_KW => {
+            p.bump(MODULE_KW);
+            paths::name_ref(p);
+            m.complete(p, EXPORT_MODULE);
+        },
+        | _ => {
+            p.error("exported an export");
+            m.abandon(p);
+        },
+    }
 }
 
 crate mod fragments {

@@ -4,6 +4,7 @@ mod path_resolution;
 use crate::arena::Arena;
 use crate::ast_id::{AstId, FileAstId};
 use crate::db::DefDatabase;
+use crate::diagnostics::DefDiagnostic;
 use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
 use crate::item_scope::ItemScope;
 use crate::name::Name;
@@ -19,12 +20,14 @@ pub struct DefMap {
     lib: LibId,
     modules: Arena<ModuleData>,
     extern_prelude: FxHashMap<Name, ModuleDefId>,
+    diagnostics: Vec<DefDiagnostic>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct ModuleData {
     pub scope: ItemScope,
     pub origin: ModuleOrigin,
+    pub children: FxHashMap<Name, LocalModuleId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -46,6 +49,7 @@ impl DefMap {
             lib,
             modules: Arena::default(),
             extern_prelude: FxHashMap::default(),
+            diagnostics: Vec::new(),
         }
     }
 
@@ -54,11 +58,18 @@ impl DefMap {
     }
 
     pub fn modules_for_file(&self, file_id: FileId) -> impl Iterator<Item = LocalModuleId> + '_ {
-        self.modules.iter().filter(move |(_, data)| data.origin.file_id == file_id).map(|(id, _)| id)
+        self.modules
+            .iter()
+            .filter(move |(_, data)| data.origin.file_id == file_id)
+            .map(|(id, _)| id)
     }
 
     pub fn modules(&self) -> impl Iterator<Item = (LocalModuleId, &ModuleData)> + '_ {
         self.modules.iter()
+    }
+
+    pub fn diagnostics(&self) -> impl Iterator<Item = &DefDiagnostic> + '_ {
+        self.diagnostics.iter()
     }
 
     pub fn lib(&self) -> LibId {
@@ -66,7 +77,10 @@ impl DefMap {
     }
 
     pub fn module_id(&self, local_id: LocalModuleId) -> ModuleId {
-        ModuleId { lib: self.lib, local_id }
+        ModuleId {
+            lib: self.lib,
+            local_id,
+        }
     }
 }
 

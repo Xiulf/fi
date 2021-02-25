@@ -1,0 +1,151 @@
+use crate::db::RootDatabase;
+use anyhow::{Context, Result};
+use base_db::input::{FileId, SourceRoot, SourceRootId};
+use base_db::libs::{LibId, LibSet};
+use base_db::SourceDatabaseExt;
+use relative_path::RelativePath;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Manifest {
+    pub project: Project,
+
+    #[serde(default)]
+    pub dependencies: HashMap<String, Dependency>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Project {
+    pub name: String,
+    pub version: String,
+    pub entry: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Dependency {
+    Path { path: PathBuf },
+}
+
+impl Manifest {
+    pub fn load(path: &Path) -> Result<Self> {
+        let manifest_path = format!("{}/shadow.toml", path.display());
+        let manifest_src = std::fs::read_to_string(&manifest_path)
+            .with_context(|| format!("Failed to read manifest from {}", manifest_path))?;
+
+        toml::from_str(&manifest_src).map_err(Into::into)
+    }
+
+    pub fn dep_dirs<'a>(&'a self, proj_dir: &'a Path) -> impl Iterator<Item = PathBuf> + 'a {
+        self.dependencies.values().map(move |d| d.get_dir(proj_dir))
+    }
+}
+
+impl Dependency {
+    pub fn get_dir(&self, proj_dir: &Path) -> PathBuf {
+        match self {
+            | Dependency::Path { path } => proj_dir.join(path),
+        }
+    }
+}
+
+pub fn load_project(
+    rdb: &mut RootDatabase,
+    libs: &mut LibSet,
+    roots: &mut u32,
+    files: &mut u32,
+    path: &Path,
+) -> Result<LibId> {
+    let mut root = if *roots == 0 {
+        SourceRoot::new_local()
+    } else {
+        SourceRoot::new_library()
+    };
+
+    let manifest = Manifest::load(path)?;
+    let root_id = SourceRootId(*roots);
+    let root_file = FileId(*files);
+    let (lib, exists) = libs.add_lib(manifest.project.name.clone(), root_id, root_file);
+
+    if exists {
+        return Ok(lib);
+    }
+
+    *roots += 1;
+
+    load_file(
+        rdb,
+        &mut root,
+        root_id,
+        root_file,
+        files,
+        path.join(&manifest.project.entry).parent().unwrap(),
+        &path.join(&manifest.project.entry),
+        true,
+    )?;
+
+    for dep in manifest.dep_dirs(path) {
+        let dep = load_project(rdb, libs, roots, files, &dep)?;
+
+        libs.add_dep(lib, dep)?;
+    }
+
+    rdb.set_source_root(root_id, root.into());
+
+    Ok(lib)
+}
+
+fn load_file(
+    rdb: &mut RootDatabase,
+    root: &mut SourceRoot,
+    root_id: SourceRootId,
+    file_id: FileId,
+    files: &mut u32,
+    project: &Path,
+    path: &Path,
+    _root: bool,
+) -> Result<()> {
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("Failed to load source file from {}", path.display()))?;
+    let file_path = RelativePath::from_path(path.strip_prefix(project).unwrap()).unwrap();
+
+    rdb.set_file_text(file_id, text.into());
+    rdb.set_file_source_root(file_id, root_id);
+    root.insert_file(file_id, file_path);
+    *files += 1;
+
+    let dir = if _root {
+        project.to_path_buf()
+    } else {
+        file_as_dir(path)
+    };
+
+    if let Ok(read_dir) = dir.read_dir() {
+        let ext = std::ffi::OsStr::new("fc");
+
+        for entry in read_dir {
+            let child_path = entry?.path();
+
+            if _root && child_path == path {
+                continue;
+            }
+
+            if child_path.is_file() && child_path.extension() == Some(ext) {
+                let file_id = FileId(*files);
+
+                load_file(rdb, root, root_id, file_id, files, project, &child_path, false)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn file_as_dir(path: &Path) -> PathBuf {
+    let file_stem = path.file_stem().unwrap();
+    let dir = path.parent().unwrap();
+
+    dir.join(file_stem)
+}

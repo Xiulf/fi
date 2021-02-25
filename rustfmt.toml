@@ -1,7 +1,7 @@
 binop_separator = "Front"
 empty_item_single_line = false
 blank_lines_upper_bound = 1
-max_width = 160
+max_width = 120
 overflow_delimited_expr = true
 format_macro_matchers = true
 match_block_trailing_comma = true

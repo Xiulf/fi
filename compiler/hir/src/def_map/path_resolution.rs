@@ -107,6 +107,6 @@ impl DefMap {
     }
 
     fn resolve_name_in_module(&self, db: &dyn DefDatabase, module: LocalModuleId, name: &Name) -> PerNs {
-        unimplemented!();
+        self[module].scope.get(name)
     }
 }

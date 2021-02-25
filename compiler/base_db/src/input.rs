@@ -1,5 +1,5 @@
 use relative_path::{RelativePath, RelativePathBuf};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use syntax::TextSize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -12,6 +12,12 @@ pub struct SourceRootId(pub u32);
 pub struct SourceRoot {
     pub is_lib: bool,
     files: FxHashMap<FileId, RelativePathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileTree {
+    root: FileId,
+    children: FxHashMap<FileId, Vec<FileId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +60,57 @@ impl SourceRoot {
 
     pub fn files(&self) -> impl Iterator<Item = FileId> + '_ {
         self.files.keys().copied()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (FileId, &RelativePath)> + '_ {
+        self.files.iter().map(|(k, v)| (*k, v.as_relative_path()))
+    }
+}
+
+impl FileTree {
+    pub fn file_tree_query(db: &dyn crate::SourceDatabaseExt, lib: crate::libs::LibId) -> std::sync::Arc<Self> {
+        let data = &db.libs()[lib];
+        let source_root = db.source_root(data.source_root);
+        let root = data.root_file;
+        let mut tree = FileTree {
+            root,
+            children: FxHashMap::default(),
+        };
+
+        go(&mut tree, root, true, &source_root, &mut FxHashSet::default());
+
+        return tree.into();
+
+        fn go(tree: &mut FileTree, file: FileId, is_root: bool, root: &SourceRoot, visited: &mut FxHashSet<FileId>) {
+            let path = root.relative_path(file);
+            let mut children = Vec::new();
+
+            visited.insert(file);
+
+            for (file_id, file_path) in root.iter() {
+                if visited.contains(&file_id) {
+                    continue;
+                }
+
+                if file_path.parent() == Some(RelativePath::new("")) && is_root {
+                    children.push(file_id);
+                    go(tree, file_id, false, root, visited);
+                } else if file_path.parent() == Some(&*path.with_file_name(path.file_stem().unwrap())) {
+                    children.push(file_id);
+                    go(tree, file_id, false, root, visited);
+                }
+            }
+
+            tree.children.insert(file, children);
+        }
+    }
+
+    pub fn root(&self) -> FileId {
+        self.root
+    }
+
+    pub fn children(&self, file: FileId) -> impl Iterator<Item = FileId> + '_ {
+        self.children[&file].iter().copied()
     }
 }
 

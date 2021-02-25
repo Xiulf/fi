@@ -77,6 +77,8 @@ pub enum SyntaxKind {
     // Syntax tree
     MODULE,
     EXPORTS,
+    EXPORT_NAME,
+    EXPORT_MODULE,
 
     ATTR,
     ATTR_ARG_CALL,

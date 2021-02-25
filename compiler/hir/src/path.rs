@@ -43,17 +43,20 @@ impl ModPath {
         }
     }
 
-    pub(crate) fn expand_import(import: InFile<ast::ItemImport>, mut cb: impl FnMut(ModPath, bool, Option<Name>)) {
+    pub(crate) fn expand_import(
+        import: InFile<ast::ItemImport>,
+        mut cb: impl FnMut(ModPath, Option<ast::NameRef>, bool, Option<Name>),
+    ) {
         if let Some(path) = convert_path(import.value.path()) {
             if let Some(items) = import.value.items() {
                 for item in items {
                     let mut path = path.clone();
 
                     path.push_segment(item.as_name());
-                    cb(path, false, None);
+                    cb(path, Some(item), false, None);
                 }
             } else {
-                cb(path, true, import.value.qualify().map(|n| n.as_name()));
+                cb(path, None, true, import.value.qualify().map(|n| n.as_name()));
             }
         }
     }

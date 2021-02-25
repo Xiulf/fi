@@ -10,7 +10,10 @@ use std::sync::Arc;
 use syntax::ast;
 
 fn id<N: ItemTreeNode>(index: Idx<N>) -> LocalItemTreeId<N> {
-    LocalItemTreeId { index, _marker: PhantomData }
+    LocalItemTreeId {
+        index,
+        _marker: PhantomData,
+    }
 }
 
 pub(super) struct Ctx {
@@ -31,7 +34,11 @@ impl Ctx {
     }
 
     pub fn lower_items(mut self, module: &ast::Module) -> ItemTree {
-        self.tree.top_level = module.items().flat_map(|item| self.lower_item(&item)).flat_map(|item| item.0).collect();
+        self.tree.top_level = module
+            .items()
+            .flat_map(|item| self.lower_item(&item))
+            .flat_map(|item| item.0)
+            .collect();
         self.tree
     }
 
@@ -48,15 +55,18 @@ impl Ctx {
         let ast_id = self.ast_id_map.ast_id(import_item);
         let mut imports = Vec::new();
 
-        ModPath::expand_import(InFile::new(self.file_id, import_item.clone()), |path, is_glob, alias| {
-            imports.push(id(self.tree.data.imports.alloc(Import {
-                index: imports.len(),
-                ast_id,
-                is_glob,
-                path,
-                alias,
-            })));
-        });
+        ModPath::expand_import(
+            InFile::new(self.file_id, import_item.clone()),
+            |path, _, is_glob, alias| {
+                imports.push(id(self.tree.data.imports.alloc(Import {
+                    index: imports.len(),
+                    ast_id,
+                    is_glob,
+                    path,
+                    alias,
+                })));
+            },
+        );
 
         imports
     }

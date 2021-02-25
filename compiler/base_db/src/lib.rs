@@ -3,7 +3,7 @@
 pub mod input;
 pub mod libs;
 
-use input::{FileId, LineIndex, SourceRoot, SourceRootId};
+use input::{FileId, FileTree, LineIndex, SourceRoot, SourceRootId};
 use std::fmt;
 use std::panic;
 use std::sync::Arc;
@@ -36,10 +36,10 @@ pub trait SourceDatabaseExt: SourceDatabase {
     fn file_source_root(&self, file_id: FileId) -> SourceRootId;
 
     #[salsa::input]
-    fn lib_source_root(&self, lib: libs::LibId) -> SourceRootId;
-
-    #[salsa::input]
     fn source_root(&self, id: SourceRootId) -> Arc<SourceRoot>;
+
+    #[salsa::invoke(FileTree::file_tree_query)]
+    fn file_tree(&self, lib: libs::LibId) -> Arc<FileTree>;
 
     fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
 }

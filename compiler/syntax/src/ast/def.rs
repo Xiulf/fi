@@ -3,6 +3,12 @@ use crate::ast_node;
 use parser::syntax_kind::*;
 
 ast_node!(Module, MODULE);
+ast_node!(Exports, EXPORTS);
+
+ast_node!(Export {
+    Name(ExportName, EXPORT_NAME),
+    Module(ExportModule, EXPORT_MODULE),
+});
 
 ast_node!(Attr, ATTR);
 ast_node!(AttrArgs, ATTR_ARGS);
