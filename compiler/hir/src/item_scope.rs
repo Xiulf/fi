@@ -14,7 +14,7 @@ pub enum ImportType {
 }
 
 #[derive(Default, Debug)]
-pub struct PersNsAllImports {
+pub struct PerNsAllImports {
     types: FxHashSet<(LocalModuleId, Name)>,
     values: FxHashSet<(LocalModuleId, Name)>,
     modules: FxHashSet<(LocalModuleId, Name)>,
@@ -130,7 +130,7 @@ impl ItemScope {
 
     pub fn push_res_with_import(
         &mut self,
-        all_imports: &mut PersNsAllImports,
+        all_imports: &mut PerNsAllImports,
         lookup: (LocalModuleId, Name),
         def: PerNs,
         def_import_type: ImportType,
@@ -192,8 +192,8 @@ impl ItemScope {
         changed
     }
 
-    pub fn resolutions<'a>(&'a self) -> impl Iterator<Item = (Option<Name>, PerNs)> + 'a {
-        self.entries().map(|(name, res)| (Some(name.clone()), res))
+    pub fn resolutions<'a>(&'a self) -> impl Iterator<Item = (Name, PerNs)> + 'a {
+        self.entries().map(|(name, res)| (name.clone(), res))
     }
 
     pub fn dump(&self, buf: &mut String) {
@@ -202,7 +202,7 @@ impl ItemScope {
         entries.sort_by_key(|(name, _)| name.clone());
 
         for (name, def) in entries {
-            write!(buf, "{}:", name.map_or("_".to_string(), |name| name.to_string())).unwrap();
+            write!(buf, "{}:", name).unwrap();
 
             if def.types.is_some() {
                 buf.push_str(" t");

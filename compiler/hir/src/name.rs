@@ -40,6 +40,12 @@ pub trait AsName {
     fn as_name(&self) -> Name;
 }
 
+impl AsName for str {
+    fn as_name(&self) -> Name {
+        Name::new_text(self.into())
+    }
+}
+
 impl AsName for ast::Name {
     fn as_name(&self) -> Name {
         Name::new_text(self.text().into())

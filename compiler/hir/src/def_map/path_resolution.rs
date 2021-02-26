@@ -42,13 +42,24 @@ impl ResolveResult {
 }
 
 impl DefMap {
-    pub(crate) fn resolve_path(&self, db: &dyn DefDatabase, original: LocalModuleId, path: &ModPath) -> (PerNs, Option<usize>) {
+    pub(crate) fn resolve_path(
+        &self,
+        db: &dyn DefDatabase,
+        original: LocalModuleId,
+        path: &ModPath,
+    ) -> (PerNs, Option<usize>) {
         let res = self.resolve_mod_path(db, ResolveMode::Other, original, path);
 
         (res.resolved_def, res.segment_index)
     }
 
-    pub(super) fn resolve_mod_path(&self, db: &dyn DefDatabase, mode: ResolveMode, original: LocalModuleId, path: &ModPath) -> ResolveResult {
+    pub(super) fn resolve_mod_path(
+        &self,
+        db: &dyn DefDatabase,
+        mode: ResolveMode,
+        original: LocalModuleId,
+        path: &ModPath,
+    ) -> ResolveResult {
         let mut result = ResolveResult::empty(FixPoint::No);
         let new = self.resolve_mod_path_single(db, mode, original, path);
 
@@ -68,7 +79,13 @@ impl DefMap {
         result
     }
 
-    pub(super) fn resolve_mod_path_single(&self, db: &dyn DefDatabase, mode: ResolveMode, original: LocalModuleId, path: &ModPath) -> ResolveResult {
+    pub(super) fn resolve_mod_path_single(
+        &self,
+        db: &dyn DefDatabase,
+        mode: ResolveMode,
+        original: LocalModuleId,
+        path: &ModPath,
+    ) -> ResolveResult {
         let mut segments = path.segments().iter().enumerate();
         let mut curr_per_ns = {
             let (_, segment) = match segments.next() {
@@ -80,7 +97,7 @@ impl DefMap {
         };
 
         for (i, segment) in segments {
-            let curr = match curr_per_ns.types.take() {
+            let curr = match curr_per_ns.modules {
                 | Some(r) => r,
                 | None => return ResolveResult::empty(FixPoint::No),
             };
@@ -99,7 +116,7 @@ impl DefMap {
 
                     module_data.scope.get(&segment)
                 },
-                | s => return ResolveResult::with(PerNs::types(s), FixPoint::Yes, Some(i), Some(self.lib)),
+                | s => return ResolveResult::with(PerNs::modules(s), FixPoint::Yes, Some(i), Some(self.lib)),
             };
         }
 
@@ -107,6 +124,12 @@ impl DefMap {
     }
 
     fn resolve_name_in_module(&self, db: &dyn DefDatabase, module: LocalModuleId, name: &Name) -> PerNs {
-        self[module].scope.get(name)
+        let from_scope = self[module].scope.get(name);
+        let from_extern = self
+            .extern_prelude
+            .get(name)
+            .map_or(PerNs::none(), |&it| PerNs::modules(it));
+
+        from_scope.or(from_extern)
     }
 }

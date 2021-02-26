@@ -18,6 +18,7 @@ use syntax::ast;
 #[derive(Debug, PartialEq, Eq)]
 pub struct DefMap {
     lib: LibId,
+    root: LocalModuleId,
     modules: Arena<ModuleData>,
     extern_prelude: FxHashMap<Name, ModuleDefId>,
     diagnostics: Vec<DefDiagnostic>,
@@ -47,6 +48,7 @@ impl DefMap {
     fn empty(lib: LibId) -> Self {
         DefMap {
             lib,
+            root: LocalModuleId::DUMMY,
             modules: Arena::default(),
             extern_prelude: FxHashMap::default(),
             diagnostics: Vec::new(),

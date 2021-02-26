@@ -2,12 +2,13 @@ use crate::arena::Idx;
 use crate::ast_id::AstIdMap;
 use crate::db::DefDatabase;
 use crate::in_file::InFile;
-use crate::item_tree::{Import, Item, ItemTree, ItemTreeNode, LocalItemTreeId};
+use crate::item_tree::{Import, Item, ItemTree, ItemTreeNode, LocalItemTreeId, Type};
+use crate::name::AsName;
 use crate::path::ModPath;
 use base_db::input::FileId;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use syntax::ast;
+use syntax::ast::{self, NameOwner};
 
 fn id<N: ItemTreeNode>(index: Idx<N>) -> LocalItemTreeId<N> {
     LocalItemTreeId {
@@ -23,6 +24,12 @@ pub(super) struct Ctx {
 }
 
 struct Items(Vec<Item>);
+
+impl<T: Into<Item>> From<T> for Items {
+    fn from(id: T) -> Self {
+        Items(vec![id.into()])
+    }
+}
 
 impl Ctx {
     pub fn new(db: &dyn DefDatabase, file_id: FileId) -> Self {
@@ -45,6 +52,7 @@ impl Ctx {
     fn lower_item(&mut self, item: &ast::Item) -> Option<Items> {
         let items = match item {
             | ast::Item::Import(ast) => Some(Items(self.lower_import(ast).into_iter().map(Into::into).collect())),
+            | ast::Item::Type(ast) => self.lower_type(ast).map(Into::into),
             | _ => return None,
         };
 
@@ -69,5 +77,12 @@ impl Ctx {
         );
 
         imports
+    }
+
+    fn lower_type(&mut self, type_item: &ast::ItemType) -> Option<LocalItemTreeId<Type>> {
+        let name = type_item.name()?.as_name();
+        let ast_id = self.ast_id_map.ast_id(type_item);
+
+        Some(id(self.tree.data.types.alloc(Type { ast_id, name })))
     }
 }

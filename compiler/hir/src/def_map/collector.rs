@@ -2,16 +2,18 @@ use crate::db::DefDatabase;
 use crate::def_map::path_resolution::{FixPoint, ResolveMode, ResolveResult};
 use crate::def_map::DefMap;
 use crate::diagnostics::DefDiagnostic;
-use crate::id::{ContainerId, FuncLoc, Intern, LocalModuleId, ModuleDefId};
+use crate::id::{ContainerId, FuncLoc, Intern, LocalModuleId, ModuleDefId, TypeLoc};
 use crate::in_file::InFile;
+use crate::item_scope::{ImportType, PerNsAllImports};
 use crate::item_tree::{self, Item, ItemTree, ItemTreeId};
-use crate::name::Name;
+use crate::name::{AsName, Name};
 use crate::path::ModPath;
 use crate::per_ns::PerNs;
 use base_db::input::{FileId, FileTree};
 use rustc_hash::FxHashMap;
 
 const FIXED_POINT_LIMIT: usize = 8192;
+const GLOBAL_RECURSION_LIMIT: usize = 100;
 
 pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
     let mut collector = DefCollector {
@@ -20,7 +22,17 @@ pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
         glob_imports: FxHashMap::default(),
         unresolved_imports: Vec::new(),
         resolved_imports: Vec::new(),
+        from_all_import: PerNsAllImports::default(),
     };
+
+    for &dep in &db.libs()[collector.def_map.lib].deps {
+        let dep_def_map = db.def_map(dep);
+        let name = db.libs()[dep].name.as_str().as_name();
+        let root = dep_def_map.module_id(dep_def_map.root);
+        let root = ModuleDefId::ModuleId(root);
+
+        collector.def_map.extern_prelude.insert(name, root);
+    }
 
     collector.seed_with_items();
     collector.collect();
@@ -33,6 +45,7 @@ struct DefCollector<'a> {
     glob_imports: FxHashMap<LocalModuleId, Vec<LocalModuleId>>,
     unresolved_imports: Vec<ImportDirective>,
     resolved_imports: Vec<ImportDirective>,
+    from_all_import: PerNsAllImports,
 }
 
 struct ModCollector<'a, 'b> {
@@ -67,18 +80,25 @@ struct ImportDirective {
 struct DefData<'a> {
     id: ModuleDefId,
     name: &'a Name,
-    has_ctor: bool,
+}
+
+impl PartialResolvedImport {
+    fn namespaces(&self) -> PerNs {
+        match *self {
+            | PartialResolvedImport::Unresolved => unreachable!(),
+            | PartialResolvedImport::Resolved(ns) => ns,
+            | PartialResolvedImport::Indeterminate(ns) => ns,
+        }
+    }
 }
 
 impl<'a> DefCollector<'a> {
     fn seed_with_items(&mut self) {
-        let root_file = self.db.libs()[self.def_map.lib].root_file;
         let file_tree = self.db.file_tree(self.def_map.lib);
 
-        go(self, &file_tree, root_file);
+        go(self, &file_tree, file_tree.root());
 
         fn go(this: &mut DefCollector, file_tree: &FileTree, file_id: FileId) -> (Name, LocalModuleId) {
-            use crate::name::AsName;
             use syntax::ast::NameOwner;
             let module = this.db.parse(file_id).tree();
             let name = module.name().unwrap().as_name();
@@ -86,6 +106,14 @@ impl<'a> DefCollector<'a> {
             let ast_id_map = this.db.ast_id_map(file_id);
             let module_id = this.def_map.add_module();
             let declaration = ast_id_map.ast_id(&module).with_file_id(file_id);
+
+            if file_id == file_tree.root() {
+                let id = this.def_map.module_id(module_id);
+                let id = ModuleDefId::ModuleId(id);
+
+                this.def_map.root = module_id;
+                this.def_map.extern_prelude.insert(name.clone(), id);
+            }
 
             this.def_map.modules[module_id].origin = super::ModuleOrigin { declaration, file_id };
 
@@ -102,8 +130,9 @@ impl<'a> DefCollector<'a> {
                 let module = this.def_map.module_id(child);
                 let def = ModuleDefId::ModuleId(module);
 
-                this.def_map.modules[module_id].children.insert(name, child);
+                this.def_map.modules[module_id].children.insert(name.clone(), child);
                 this.def_map.modules[module_id].scope.define_def(def);
+                this.update(module_id, &[(name, PerNs::modules(def))], ImportType::Named);
             }
 
             (name, module_id)
@@ -183,6 +212,96 @@ impl<'a> DefCollector<'a> {
     }
 
     fn record_resolved_import(&mut self, directive: &ImportDirective) {
+        let module_id = directive.module_id;
+        let import = &directive.import;
+        let def = directive.status.namespaces();
+
+        if import.is_glob {
+            if let Some(alias) = &import.alias {
+                self.update(module_id, &[(alias.clone(), def)], ImportType::Named);
+            } else {
+                match def.modules {
+                    | Some(ModuleDefId::ModuleId(m)) => {
+                        if m.lib != self.def_map.lib {
+                            let item_map = self.db.def_map(m.lib);
+                            let scope = &item_map[m.local_id].scope;
+                            let items = scope
+                                .resolutions()
+                                .filter(|(_, res)| !res.is_none())
+                                .collect::<Vec<_>>();
+
+                            self.update(module_id, &items, ImportType::All);
+                        } else {
+                            let scope = &self.def_map[m.local_id].scope;
+                            let items = scope
+                                .resolutions()
+                                .filter(|(_, res)| !res.is_none())
+                                .collect::<Vec<_>>();
+
+                            self.update(module_id, &items, ImportType::All);
+
+                            let glob = self.glob_imports.entry(m.local_id).or_default();
+
+                            if !glob.iter().any(|mid| *mid == module_id) {
+                                glob.push(module_id);
+                            }
+                        }
+                    },
+                    | Some(_) => unreachable!("invalid type stored in module namespace"),
+                    | None => unreachable!("glob import didn't resolve to a module"),
+                }
+            }
+        } else {
+            let last_segment = import.path.segments().last().unwrap();
+            let name = match &import.alias {
+                | Some(alias) => alias.clone(),
+                | None => last_segment.clone(),
+            };
+
+            self.update(module_id, &[(name, def)], ImportType::Named);
+        }
+    }
+
+    fn update(&mut self, module_id: LocalModuleId, resolutions: &[(Name, PerNs)], import_type: ImportType) {
+        self.db.check_canceled();
+        self.update_recursive(module_id, resolutions, import_type, 0);
+    }
+
+    fn update_recursive(
+        &mut self,
+        module_id: LocalModuleId,
+        resolutions: &[(Name, PerNs)],
+        import_type: ImportType,
+        depth: usize,
+    ) {
+        if depth > GLOBAL_RECURSION_LIMIT {
+            panic!("infinite recursion in global imports");
+        }
+
+        let mut changed = false;
+
+        for (name, res) in resolutions {
+            let scope = &mut self.def_map.modules[module_id].scope;
+
+            changed |=
+                scope.push_res_with_import(&mut self.from_all_import, (module_id, name.clone()), *res, import_type);
+        }
+
+        if !changed {
+            return;
+        }
+
+        let glob_imports = self
+            .glob_imports
+            .get(&module_id)
+            .into_iter()
+            .flat_map(|v| v.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+
+        for glob_importing_module in glob_imports {
+            self.update_recursive(glob_importing_module, resolutions, ImportType::All, depth + 1);
+        }
     }
 }
 
@@ -222,14 +341,29 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                             .intern(self.def_collector.db),
                         ),
                         name: &func.name,
-                        has_ctor: false,
+                    });
+                },
+                | Item::Type(id) => {
+                    let ty = &self.item_tree[id];
+
+                    def = Some(DefData {
+                        id: ModuleDefId::TypeId(
+                            TypeLoc {
+                                id: ItemTreeId::new(self.file_id, id),
+                                container,
+                            }
+                            .intern(self.def_collector.db),
+                        ),
+                        name: &ty.name,
                     });
                 },
                 | _ => unimplemented!(),
             }
 
-            if let Some(DefData { id, name, has_ctor }) = def {
+            if let Some(DefData { id, name }) = def {
                 self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
+                self.def_collector
+                    .update(self.module_id, &[(name.clone(), PerNs::from(id))], ImportType::Named);
             }
         }
     }

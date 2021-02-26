@@ -3,3 +3,7 @@ module core (
     module prim,
     libc,
 ) =
+
+import core
+import prim
+import libc as libc
