@@ -28,6 +28,7 @@ crate fn root(p: &mut Parser) {
 
     p.expect(EQUALS);
     p.expect(LYT_START);
+    p.eat(LYT_SEP);
 
     while !p.at(EOF) && !p.at(LYT_END) {
         items::any_item(p);

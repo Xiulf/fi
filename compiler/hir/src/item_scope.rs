@@ -1,11 +1,12 @@
 use crate::db::DefDatabase;
+use crate::def_map::ItemExports;
 use crate::id::{ClassId, HasModule, InstanceId, LocalModuleId, Lookup, ModuleDefId, ModuleId};
 use crate::name::Name;
 use crate::per_ns::PerNs;
 use base_db::libs::LibId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
-use std::fmt::Write as _;
+use std::io;
 
 #[derive(Clone, Copy)]
 pub enum ImportType {
@@ -26,7 +27,7 @@ pub struct ItemScope {
     values: FxHashMap<Name, ModuleDefId>,
     modules: FxHashMap<Name, ModuleDefId>,
     unresolved: FxHashSet<Name>,
-    defs: Vec<ModuleDefId>,
+    pub(crate) defs: Vec<ModuleDefId>,
     instances: Vec<InstanceId>,
 }
 
@@ -196,32 +197,34 @@ impl ItemScope {
         self.entries().map(|(name, res)| (name.clone(), res))
     }
 
-    pub fn dump(&self, buf: &mut String) {
+    pub fn dump(&self, writer: &mut dyn io::Write) -> io::Result<()> {
         let mut entries: Vec<_> = self.resolutions().collect();
 
         entries.sort_by_key(|(name, _)| name.clone());
 
         for (name, def) in entries {
-            write!(buf, "{}:", name).unwrap();
+            write!(writer, "{}:", name)?;
 
             if def.types.is_some() {
-                buf.push_str(" t");
+                write!(writer, " t")?;
             }
 
             if def.values.is_some() {
-                buf.push_str(" v");
+                write!(writer, " v")?;
             }
 
             if def.modules.is_some() {
-                buf.push_str(" m");
+                write!(writer, " m")?;
             }
 
             if def.is_none() {
-                buf.push_str(" _");
+                write!(writer, " _")?;
             }
 
-            buf.push('\n');
+            write!(writer, "\n")?;
         }
+
+        Ok(())
     }
 }
 
@@ -245,6 +248,7 @@ impl ItemInNs {
     pub fn lib(&self, db: &dyn DefDatabase) -> LibId {
         match self.as_module_def_id() {
             | ModuleDefId::ModuleId(id) => id.lib,
+            | ModuleDefId::ForeignId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::FixityId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::FuncId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::StaticId(id) => id.lookup(db).module(db).lib,

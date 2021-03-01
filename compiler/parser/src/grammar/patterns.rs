@@ -36,7 +36,7 @@ crate fn atom(p: &mut Parser) {
     let m = p.start();
 
     if p.at(IDENT) {
-        if p.nth_at(1, SLASH) {
+        if p.nth_at(1, DOT) {
             paths::path(p);
             m.complete(p, PAT_CTOR);
         } else {

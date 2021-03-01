@@ -6,7 +6,8 @@ crate fn path(p: &mut Parser) {
 
     path_segment(p);
 
-    while p.eat(SLASH) {
+    while p.at(DOT) && (p.nth_at(1, IDENT) || p.nth_at(1, SYMBOL)) {
+        p.bump(DOT);
         path_segment(p);
     }
 
@@ -17,11 +18,11 @@ fn path_segment(p: &mut Parser) {
     let m = p.start();
 
     match p.current() {
-        | IDENT => {
-            name_ref(p);
+        | IDENT | SYMBOL => {
+            name_or_symbol_ref(p);
         },
         | _ => {
-            p.error("expected an identifier");
+            p.error("expected an identifier or a symbol");
         },
     }
 

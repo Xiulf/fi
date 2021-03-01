@@ -1,5 +1,6 @@
 use crate::in_file::InFile;
 use crate::name::{AsName, Name};
+use std::fmt;
 use std::iter::FromIterator;
 use syntax::ast;
 
@@ -67,4 +68,18 @@ fn convert_path(path: Option<ast::Path>) -> Option<ModPath> {
     let segments = path.segments().filter_map(|s| Some(s.name_ref()?.as_name())).collect();
 
     Some(ModPath { segments })
+}
+
+impl fmt::Display for ModPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, segment) in self.segments.iter().enumerate() {
+            if i != 0 {
+                write!(f, ".")?;
+            }
+
+            segment.fmt(f)?;
+        }
+
+        Ok(())
+    }
 }

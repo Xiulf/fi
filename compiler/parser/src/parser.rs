@@ -191,7 +191,10 @@ impl CompletedMarker {
         let end = self.end as usize;
 
         match &mut p.events[start] {
-            | Event::Start { kind, forward_parent: None } => *kind = SyntaxKind::TOMBSTONE,
+            | Event::Start {
+                kind,
+                forward_parent: None,
+            } => *kind = SyntaxKind::TOMBSTONE,
             | _ => unreachable!(),
         }
 

@@ -18,13 +18,23 @@ pub fn build() {
         | Ok(_lib) => {
             rdb.set_libs(libs.into());
 
+            let start = std::time::Instant::now();
+
             for lib in rdb.libs().toposort() {
                 let lib_data = &rdb.libs()[lib];
 
                 println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib_data.name);
 
                 diagnostics::emit_diagnostics(&rdb, lib, &mut std::io::stderr());
+
+                // let def_map = rdb.def_map(lib);
+                //
+                // def_map.dump(&mut std::io::stdout()).unwrap();
             }
+
+            let elapsed = start.elapsed();
+
+            println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
         },
         | Err(e) => {
             eprintln!("{}", e);

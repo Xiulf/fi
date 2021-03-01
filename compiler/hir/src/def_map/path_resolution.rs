@@ -114,17 +114,17 @@ impl DefMap {
 
                     let module_data = &self[module.local_id];
 
-                    module_data.scope.get(&segment)
+                    module_data.exports.get(&segment).copied().unwrap_or(PerNs::none())
                 },
-                | s => return ResolveResult::with(PerNs::modules(s), FixPoint::Yes, Some(i), Some(self.lib)),
+                | s => return ResolveResult::with(PerNs::from(s), FixPoint::Yes, Some(i), Some(self.lib)),
             };
         }
 
         ResolveResult::with(curr_per_ns, FixPoint::Yes, None, Some(self.lib))
     }
 
-    fn resolve_name_in_module(&self, db: &dyn DefDatabase, module: LocalModuleId, name: &Name) -> PerNs {
-        let from_scope = self[module].scope.get(name);
+    pub(crate) fn resolve_name_in_module(&self, db: &dyn DefDatabase, module: LocalModuleId, name: &Name) -> PerNs {
+        let from_scope = self[module].exports.get(name).copied().unwrap_or(PerNs::none());
         let from_extern = self
             .extern_prelude
             .get(name)

@@ -58,6 +58,14 @@ impl PerNs {
         }
     }
 
+    pub fn filter_vis(self, f: impl Fn(&ModuleDefId) -> bool + Clone) -> Self {
+        PerNs {
+            types: self.types.filter(f.clone()),
+            values: self.values.filter(f.clone()),
+            modules: self.modules.filter(f),
+        }
+    }
+
     pub fn iter_items(self) -> impl Iterator<Item = ItemInNs> {
         self.types
             .map(ItemInNs::Types)
@@ -71,6 +79,7 @@ impl From<ModuleDefId> for PerNs {
     fn from(def: ModuleDefId) -> Self {
         match def {
             | ModuleDefId::ModuleId(_) => PerNs::modules(def),
+            | ModuleDefId::ForeignId(id) => PerNs::values(def),
             | ModuleDefId::FixityId(_) => PerNs::values(def),
             | ModuleDefId::FuncId(_) => PerNs::values(def),
             | ModuleDefId::StaticId(_) => PerNs::values(def),
@@ -78,6 +87,20 @@ impl From<ModuleDefId> for PerNs {
             | ModuleDefId::TypeId(_) => PerNs::types(def),
             | ModuleDefId::CtorId(_) => PerNs::values(def),
             | ModuleDefId::ClassId(_) => PerNs::types(def),
+        }
+    }
+}
+
+impl Iterator for PerNs {
+    type Item = ModuleDefId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(id) = self.types.take() {
+            Some(id)
+        } else if let Some(id) = self.values.take() {
+            Some(id)
+        } else {
+            self.modules.take()
         }
     }
 }

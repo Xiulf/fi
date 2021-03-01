@@ -28,7 +28,6 @@ pub enum SyntaxKind {
     EQUALS,
     QMARK,
     AT,
-    SLASH,
     STAR,
     UNDERSCORE,
     OPERATOR,

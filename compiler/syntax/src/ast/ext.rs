@@ -226,7 +226,7 @@ impl ItemForeign {
     pub fn kind(&self) -> Option<ForeignKind> {
         support::token(&self.0, FUN_KW).map_or_else(
             || support::token(&self.0, STATIC_KW).map(|_| ForeignKind::Static),
-            |_| Some(ForeignKind::Def),
+            |_| Some(ForeignKind::Fun),
         )
     }
 
@@ -237,7 +237,7 @@ impl ItemForeign {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ForeignKind {
-    Def,
+    Fun,
     Static,
 }
 

@@ -63,7 +63,9 @@ enum LayoutDelim {
 impl LayoutDelim {
     fn is_indented(self) -> bool {
         match self {
-            | LayoutDelim::Where | LayoutDelim::ClassBody | LayoutDelim::Of | LayoutDelim::Do | LayoutDelim::Loop => true,
+            | LayoutDelim::Where | LayoutDelim::ClassBody | LayoutDelim::Of | LayoutDelim::Do | LayoutDelim::Loop => {
+                true
+            },
             | _ => false,
         }
     }
@@ -269,9 +271,6 @@ impl<'src> Lexer<'src> {
             | '@' if !is_op_char(self.peek()) => {
                 self.insert_default(start, AT);
             },
-            | '/' if !is_op_char(self.peek()) => {
-                self.insert_default(start, SLASH);
-            },
             | '*' if !is_op_char(self.peek()) => {
                 self.insert_default(start, STAR);
 
@@ -323,7 +322,8 @@ impl<'src> Lexer<'src> {
                 }
             },
             | _ => {
-                self.errors.push(SyntaxError::new(format!("unknown character {:?}", ch), self.span()));
+                self.errors
+                    .push(SyntaxError::new(format!("unknown character {:?}", ch), self.span()));
                 self.emit(ERROR);
             },
         }
@@ -399,7 +399,8 @@ impl<'src> Lexer<'src> {
             self.advance();
             self.insert_default(start, STRING);
         } else {
-            self.errors.push(SyntaxError::new("unterminated string literal", self.span()));
+            self.errors
+                .push(SyntaxError::new("unterminated string literal", self.span()));
             self.emit(ERROR);
         }
     }
@@ -408,7 +409,8 @@ impl<'src> Lexer<'src> {
         match self.peek() {
             | '\'' => {
                 self.advance();
-                self.errors.push(SyntaxError::new("empty character literal", self.span()));
+                self.errors
+                    .push(SyntaxError::new("empty character literal", self.span()));
             },
             | '\\' => {
                 self.advance();
@@ -421,7 +423,8 @@ impl<'src> Lexer<'src> {
             self.advance();
             self.insert_default(start, CHAR);
         } else {
-            self.errors.push(SyntaxError::new("unterminated character literal", self.span()));
+            self.errors
+                .push(SyntaxError::new("unterminated character literal", self.span()));
             self.advance();
         }
     }
@@ -433,13 +436,15 @@ impl<'src> Lexer<'src> {
                 self.advance();
 
                 if !self.peek().is_digit(16) {
-                    self.errors.push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
+                    self.errors
+                        .push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
                 }
 
                 self.advance();
 
                 if !self.peek().is_digit(16) {
-                    self.errors.push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
+                    self.errors
+                        .push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
                 }
 
                 self.advance();
@@ -448,13 +453,15 @@ impl<'src> Lexer<'src> {
                 self.advance();
 
                 if self.peek() != '{' {
-                    self.errors.push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
+                    self.errors
+                        .push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
                 }
 
                 self.advance();
 
                 if !self.peek().is_digit(16) {
-                    self.errors.push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
+                    self.errors
+                        .push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
                 }
 
                 self.advance();
@@ -465,20 +472,23 @@ impl<'src> Lexer<'src> {
                     }
 
                     if !self.peek().is_digit(16) {
-                        self.errors.push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
+                        self.errors
+                            .push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
                     }
 
                     self.advance();
                 }
 
                 if self.peek() != '}' {
-                    self.errors.push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
+                    self.errors
+                        .push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
                 }
 
                 self.advance();
             },
             | _ => {
-                self.errors.push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
+                self.errors
+                    .push(SyntaxError::new_at_offset("invalid escape sequence", self.pos));
                 self.advance();
             },
         }
@@ -876,7 +886,9 @@ impl<'src> Lexer<'src> {
 
     fn insert_sep(&mut self, start: (usize, usize)) {
         match self.stack[..] {
-            | [.., (pos, LayoutDelim::TopDecl | LayoutDelim::TopDeclHead | LayoutDelim::ClassHead)] if sep_p(start, pos) => {
+            | [.., (pos, LayoutDelim::TopDecl | LayoutDelim::TopDeclHead | LayoutDelim::ClassHead)]
+                if sep_p(start, pos) =>
+            {
                 self.stack.pop().unwrap();
 
                 if let Some(idx) = self.last_ws() {
@@ -887,7 +899,7 @@ impl<'src> Lexer<'src> {
                         len: TextSize::from(0),
                     });
                 }
-            },
+            }
             | [(pos, LayoutDelim::Root)] if sep_p(start, pos) => {
                 if let Some(idx) = self.last_ws() {
                     self.tokens[idx].kind = LYT_SEP;
@@ -989,7 +1001,8 @@ impl<'src> Lexer<'src> {
 
 fn is_op_char(ch: char) -> bool {
     match ch {
-        | '!' | '@' | '#' | '$' | '%' | '^' | '&' | '*' | '-' | '+' | '=' | '~' | '\\' | '/' | '?' | '<' | '>' | '|' => true,
+        | '!' | '@' | '#' | '$' | '%' | '^' | '&' | '*' | '-' | '+' | '=' | '~' | '\\' | '/' | '?' | '<' | '>'
+        | '|' => true,
         | _ => false,
     }
 }

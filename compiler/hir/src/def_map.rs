@@ -8,9 +8,11 @@ use crate::diagnostics::DefDiagnostic;
 use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
 use crate::item_scope::ItemScope;
 use crate::name::Name;
+use crate::per_ns::PerNs;
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use rustc_hash::FxHashMap;
+use std::io;
 use std::ops::Index;
 use std::sync::Arc;
 use syntax::ast;
@@ -27,9 +29,12 @@ pub struct DefMap {
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct ModuleData {
     pub scope: ItemScope,
+    pub exports: ItemExports,
     pub origin: ModuleOrigin,
     pub children: FxHashMap<Name, LocalModuleId>,
 }
+
+pub type ItemExports = FxHashMap<Name, PerNs>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModuleOrigin {
@@ -82,6 +87,25 @@ impl DefMap {
         ModuleId {
             lib: self.lib,
             local_id,
+        }
+    }
+
+    pub fn dump(&self, writer: &mut dyn io::Write) -> io::Result<()> {
+        return go(self, self.root, "root", writer);
+
+        fn go(map: &DefMap, module: LocalModuleId, path: &str, writer: &mut dyn io::Write) -> io::Result<()> {
+            write!(writer, "{}\n", path);
+
+            map.modules[module].scope.dump(writer)?;
+
+            for (name, child) in &map.modules[module].children {
+                let path = format!("{}.{}", path, name);
+
+                write!(writer, "\n")?;
+                go(map, *child, &path, writer)?;
+            }
+
+            Ok(())
         }
     }
 }

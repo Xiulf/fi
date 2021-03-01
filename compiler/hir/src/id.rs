@@ -129,6 +129,7 @@ impl_intern!(InstanceId, InstanceLoc, intern_instance, lookup_intern_instance);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModuleDefId {
     ModuleId(ModuleId),
+    ForeignId(ForeignId),
     FixityId(FixityId),
     FuncId(FuncId),
     StaticId(StaticId),
