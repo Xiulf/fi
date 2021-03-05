@@ -15,7 +15,7 @@ pub fn emit_diagnostics(db: &RootDatabase, lib: LibId, writer: &mut dyn io::Writ
     let def_map = db.def_map(lib);
 
     for (module_id, module) in def_map.modules() {
-        let file_id = module.origin.file_id;
+        let file_id = module.origin.file_id(&def_map);
         let parse = db.parse(file_id);
         let source_root = db.file_source_root(file_id);
         let source_root = db.source_root(source_root);

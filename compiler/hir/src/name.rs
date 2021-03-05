@@ -11,6 +11,12 @@ enum Repr {
     TupleField(usize),
 }
 
+impl Default for Name {
+    fn default() -> Self {
+        Name(Repr::Text(SmolStr::default()))
+    }
+}
+
 impl Name {
     const fn new_text(text: SmolStr) -> Self {
         Name(Repr::Text(text))

@@ -6,7 +6,7 @@ use crate::ast_id::{AstId, FileAstId};
 use crate::db::DefDatabase;
 use crate::diagnostics::DefDiagnostic;
 use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
-use crate::item_scope::ItemScope;
+use crate::item_scope::{ItemExports, ItemScope};
 use crate::name::Name;
 use crate::per_ns::PerNs;
 use base_db::input::FileId;
@@ -28,18 +28,22 @@ pub struct DefMap {
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct ModuleData {
+    pub name: Name,
     pub scope: ItemScope,
     pub exports: ItemExports,
     pub origin: ModuleOrigin,
     pub children: FxHashMap<Name, LocalModuleId>,
 }
 
-pub type ItemExports = FxHashMap<Name, PerNs>;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ModuleOrigin {
-    pub declaration: AstId<ast::Module>,
-    pub file_id: FileId,
+pub enum ModuleOrigin {
+    Normal {
+        declaration: AstId<ast::Module>,
+        file_id: FileId,
+    },
+    Virtual {
+        parent: LocalModuleId,
+    },
 }
 
 impl DefMap {
@@ -60,14 +64,17 @@ impl DefMap {
         }
     }
 
-    pub(crate) fn add_module(&mut self) -> LocalModuleId {
-        self.modules.alloc(ModuleData::default())
+    pub(crate) fn add_module(&mut self, name: Name) -> LocalModuleId {
+        self.modules.alloc(ModuleData {
+            name,
+            ..ModuleData::default()
+        })
     }
 
     pub fn modules_for_file(&self, file_id: FileId) -> impl Iterator<Item = LocalModuleId> + '_ {
         self.modules
             .iter()
-            .filter(move |(_, data)| data.origin.file_id == file_id)
+            .filter(move |(_, data)| data.origin.file_id(self) == file_id)
             .map(|(id, _)| id)
     }
 
@@ -120,9 +127,18 @@ impl Index<LocalModuleId> for DefMap {
 
 impl Default for ModuleOrigin {
     fn default() -> Self {
-        ModuleOrigin {
+        ModuleOrigin::Normal {
             declaration: AstId::new(FileId(0), FileAstId::DUMMY),
             file_id: FileId(0),
+        }
+    }
+}
+
+impl ModuleOrigin {
+    pub fn file_id(&self, def_map: &DefMap) -> FileId {
+        match *self {
+            | ModuleOrigin::Normal { file_id, .. } => file_id,
+            | ModuleOrigin::Virtual { parent } => def_map[parent].origin.file_id(def_map),
         }
     }
 }

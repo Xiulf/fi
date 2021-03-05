@@ -46,7 +46,7 @@ impl ModPath {
 
     pub(crate) fn expand_import(
         import: InFile<ast::ItemImport>,
-        mut cb: impl FnMut(ModPath, Option<ast::NameRef>, bool, Option<Name>),
+        mut cb: impl FnMut(ModPath, Option<ast::NameRef>, bool, Option<Name>, Option<Name>),
     ) {
         if let Some(path) = convert_path(import.value.path()) {
             if let Some(items) = import.value.items() {
@@ -54,10 +54,17 @@ impl ModPath {
                     let mut path = path.clone();
 
                     path.push_segment(item.as_name());
-                    cb(path, Some(item), false, None);
+
+                    cb(
+                        path,
+                        Some(item),
+                        false,
+                        None,
+                        import.value.qualify().map(|n| n.as_name()),
+                    );
                 }
             } else {
-                cb(path, None, true, import.value.qualify().map(|n| n.as_name()));
+                cb(path, None, true, None, import.value.qualify().map(|n| n.as_name()));
             }
         }
     }

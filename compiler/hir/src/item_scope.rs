@@ -1,5 +1,5 @@
 use crate::db::DefDatabase;
-use crate::def_map::ItemExports;
+use crate::def_map::DefMap;
 use crate::id::{ClassId, HasModule, InstanceId, LocalModuleId, Lookup, ModuleDefId, ModuleId};
 use crate::name::Name;
 use crate::per_ns::PerNs;
@@ -10,7 +10,7 @@ use std::io;
 
 #[derive(Clone, Copy)]
 pub enum ImportType {
-    All,
+    Glob,
     Named,
 }
 
@@ -27,8 +27,15 @@ pub struct ItemScope {
     values: FxHashMap<Name, ModuleDefId>,
     modules: FxHashMap<Name, ModuleDefId>,
     unresolved: FxHashSet<Name>,
-    pub(crate) defs: Vec<ModuleDefId>,
+    defs: Vec<ModuleDefId>,
     instances: Vec<InstanceId>,
+}
+
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct ItemExports {
+    pub(crate) export_all: bool,
+    names: FxHashSet<Name>,
+    modules: FxHashSet<ModuleId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -150,7 +157,7 @@ impl ItemScope {
                 match (existing, $def.$field) {
                     | (Entry::Vacant(entry), Some(_)) => {
                         match $def_import_type {
-                            | ImportType::All => {
+                            | ImportType::Glob => {
                                 $all_imports.$field.insert($lookup.clone());
                             },
                             | ImportType::Named => {
@@ -225,6 +232,42 @@ impl ItemScope {
         }
 
         Ok(())
+    }
+}
+
+impl ItemExports {
+    pub fn add_name(&mut self, name: Name) {
+        self.names.insert(name);
+    }
+
+    pub fn add_module(&mut self, module: ModuleId) {
+        self.modules.insert(module);
+    }
+
+    pub fn get(&self, db: &dyn DefDatabase, def_map: &DefMap, module: LocalModuleId, name: &Name) -> PerNs {
+        if self.export_all {
+            def_map[module].scope.get(name)
+        } else if self.names.contains(name) {
+            def_map[module].scope.get(name)
+        } else {
+            for module in &self.modules {
+                let res = if module.lib == def_map.lib() {
+                    def_map[module.local_id].exports.get(db, def_map, module.local_id, name)
+                } else {
+                    let def_map = db.def_map(module.lib);
+
+                    def_map[module.local_id]
+                        .exports
+                        .get(db, &def_map, module.local_id, name)
+                };
+
+                if !res.is_none() {
+                    return res;
+                }
+            }
+
+            PerNs::none()
+        }
     }
 }
 

@@ -11,3 +11,4 @@ pub mod item_tree;
 pub mod name;
 pub mod path;
 pub mod per_ns;
+pub mod type_ref;

@@ -1,5 +1,7 @@
 module core (
     module core,
-    module prim,
+    module c,
     libc,
 ) =
+
+import prim as c

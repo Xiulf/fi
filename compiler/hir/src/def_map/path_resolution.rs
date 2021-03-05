@@ -114,7 +114,7 @@ impl DefMap {
 
                     let module_data = &self[module.local_id];
 
-                    module_data.exports.get(&segment).copied().unwrap_or(PerNs::none())
+                    module_data.scope.get(&segment)
                 },
                 | s => return ResolveResult::with(PerNs::from(s), FixPoint::Yes, Some(i), Some(self.lib)),
             };
@@ -124,7 +124,7 @@ impl DefMap {
     }
 
     pub(crate) fn resolve_name_in_module(&self, db: &dyn DefDatabase, module: LocalModuleId, name: &Name) -> PerNs {
-        let from_scope = self[module].exports.get(name).copied().unwrap_or(PerNs::none());
+        let from_scope = self[module].exports.get(db, self, module, name);
         let from_extern = self
             .extern_prelude
             .get(name)

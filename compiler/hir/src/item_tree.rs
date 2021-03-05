@@ -6,11 +6,13 @@ use crate::db::DefDatabase;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::ModPath;
+use crate::type_ref::TypeRef;
 use base_db::input::FileId;
+use rustc_hash::FxHashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
-use std::ops::Index;
+use std::ops::{Index, Range};
 use std::sync::Arc;
 use syntax::ast::{self, AstNode};
 
@@ -29,8 +31,16 @@ pub struct ItemTreeData {
     statics: Arena<Static>,
     consts: Arena<Const>,
     types: Arena<Type>,
+    ctors: Arena<Ctor>,
     classes: Arena<Class>,
     instances: Arena<Instance>,
+    type_refs: TypeRefStorage,
+}
+
+#[derive(Default, Debug, PartialEq, Eq)]
+struct TypeRefStorage {
+    arena: Arena<Arc<TypeRef>>,
+    map: FxHashMap<Arc<TypeRef>, Idx<Arc<TypeRef>>>,
 }
 
 pub trait ItemTreeNode: Clone {
@@ -66,11 +76,46 @@ impl ItemTree {
     }
 }
 
+impl TypeRefStorage {
+    fn intern(&mut self, ty: TypeRef) -> Idx<TypeRef> {
+        if let Some(id) = self.map.get(&ty) {
+            return Idx::from_raw(id.into_raw());
+        }
+
+        let ty = Arc::new(ty);
+        let idx = self.arena.alloc(ty.clone());
+
+        self.map.insert(ty, idx);
+
+        Idx::from_raw(idx.into_raw())
+    }
+
+    fn lookup(&self, id: Idx<TypeRef>) -> &TypeRef {
+        &self.arena[Idx::from_raw(id.into_raw())]
+    }
+}
+
 impl<N: ItemTreeNode> Index<LocalItemTreeId<N>> for ItemTree {
     type Output = N;
 
     fn index(&self, id: LocalItemTreeId<N>) -> &N {
         N::lookup(self, id.index)
+    }
+}
+
+impl Index<Idx<Ctor>> for ItemTree {
+    type Output = Ctor;
+
+    fn index(&self, index: Idx<Ctor>) -> &Self::Output {
+        &self.data.ctors[index]
+    }
+}
+
+impl Index<Idx<TypeRef>> for ItemTree {
+    type Output = TypeRef;
+
+    fn index(&self, id: Idx<TypeRef>) -> &Self::Output {
+        self.data.type_refs.lookup(id)
     }
 }
 
@@ -141,6 +186,7 @@ items! {
 pub struct Import {
     pub ast_id: FileAstId<ast::ItemImport>,
     pub path: ModPath,
+    pub qualify: Option<Name>,
     pub alias: Option<Name>,
     pub is_glob: bool,
     pub index: usize,
@@ -189,6 +235,15 @@ pub struct Const {
 pub struct Type {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
+    pub kind: Option<Idx<TypeRef>>,
+    pub alias: Option<Idx<TypeRef>>,
+    pub ctors: IdRange<Ctor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ctor {
+    pub name: Name,
+    pub types: Vec<Idx<TypeRef>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -200,6 +255,28 @@ pub struct Class {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instance {
     pub ast_id: FileAstId<ast::ItemInstance>,
+}
+
+pub struct IdRange<T> {
+    range: Range<u32>,
+    _marker: PhantomData<T>,
+}
+
+impl<T> IdRange<T> {
+    fn new(range: Range<Idx<T>>) -> Self {
+        IdRange {
+            range: range.start.into_raw().into()..range.end.into_raw().into(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> Iterator for IdRange<T> {
+    type Item = Idx<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.range.next().map(|raw| Idx::from_raw(raw.into()))
+    }
 }
 
 impl<N: ItemTreeNode> Clone for LocalItemTreeId<N> {
@@ -232,5 +309,31 @@ impl<N: ItemTreeNode> Hash for LocalItemTreeId<N> {
 impl<N: ItemTreeNode> fmt::Debug for LocalItemTreeId<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.index.fmt(f)
+    }
+}
+
+impl<T> Clone for IdRange<T> {
+    fn clone(&self) -> Self {
+        IdRange {
+            range: self.range.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> PartialEq for IdRange<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.range == other.range
+    }
+}
+
+impl<T> Eq for IdRange<T> {
+}
+
+impl<T> fmt::Debug for IdRange<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple(&format!("IdRange::<{}>", std::any::type_name::<T>()))
+            .field(&self.range)
+            .finish()
     }
 }

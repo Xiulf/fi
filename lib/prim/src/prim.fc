@@ -26,6 +26,10 @@ type Uint128 :: Type
 type Float32 :: Type
 type Float64 :: Type
 
+type Bool =
+    | False
+    | True
+
 @lang = "integer-class" class Integer t
 @lang = "decimal-class" class Decimal t
 

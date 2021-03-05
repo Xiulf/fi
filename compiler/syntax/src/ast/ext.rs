@@ -292,7 +292,13 @@ impl ItemType {
         support::children(&self.0)
     }
 
+    pub fn kind(&self) -> Option<Type> {
+        support::token(&self.0, DBL_COLON)?;
+        support::child(&self.0)
+    }
+
     pub fn alias(&self) -> Option<Type> {
+        support::token(&self.0, EQUALS)?;
         support::child(&self.0)
     }
 
@@ -311,6 +317,15 @@ impl Ctor {
     pub fn types(&self) -> AstChildren<Type> {
         support::children(&self.0)
     }
+}
+
+impl AttrsOwner for ItemClass {
+}
+
+impl NameOwner for ItemClass {
+}
+
+impl AttrsOwner for ItemInstance {
 }
 
 impl Path {

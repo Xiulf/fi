@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
 pub struct Idx<T> {
-    raw: RawId,
+    raw: RawIdx,
     _marker: PhantomData<fn() -> T>,
 }
 
@@ -15,21 +15,24 @@ pub struct Arena<T> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RawId(u32);
+pub struct RawIdx(u32);
 
 impl<T> Idx<T> {
     pub const DUMMY: Self = Idx {
-        raw: RawId(0),
+        raw: RawIdx(0),
         _marker: PhantomData,
     };
 
     #[inline]
-    pub fn from_raw(raw: RawId) -> Self {
-        Idx { raw, _marker: PhantomData }
+    pub fn from_raw(raw: RawIdx) -> Self {
+        Idx {
+            raw,
+            _marker: PhantomData,
+        }
     }
 
     #[inline]
-    pub fn into_raw(self) -> RawId {
+    pub fn into_raw(self) -> RawIdx {
         self.raw
     }
 }
@@ -51,7 +54,7 @@ impl<T> Arena<T> {
     }
 
     pub fn alloc(&mut self, value: T) -> Idx<T> {
-        let id = RawId(self.data.len() as u32);
+        let id = RawIdx(self.data.len() as u32);
 
         self.data.push(value);
 
@@ -59,7 +62,10 @@ impl<T> Arena<T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (Idx<T>, &T)> + ExactSizeIterator + DoubleEndedIterator {
-        self.data.iter().enumerate().map(|(idx, value)| (Idx::from_raw(RawId(idx as u32)), value))
+        self.data
+            .iter()
+            .enumerate()
+            .map(|(idx, value)| (Idx::from_raw(RawIdx(idx as u32)), value))
     }
 }
 
@@ -89,13 +95,18 @@ impl<T> IndexMut<Idx<T>> for Arena<T> {
 
 impl<T> FromIterator<T> for Arena<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        Arena { data: Vec::from_iter(iter) }
+        Arena {
+            data: Vec::from_iter(iter),
+        }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Arena<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Arena").field("len", &self.len()).field("data", &self.data).finish()
+        f.debug_struct("Arena")
+            .field("len", &self.len())
+            .field("data", &self.data)
+            .finish()
     }
 }
 
@@ -135,25 +146,25 @@ impl<T> fmt::Debug for Idx<T> {
     }
 }
 
-impl From<RawId> for u32 {
-    fn from(raw: RawId) -> Self {
+impl From<RawIdx> for u32 {
+    fn from(raw: RawIdx) -> Self {
         raw.0
     }
 }
 
-impl From<u32> for RawId {
+impl From<u32> for RawIdx {
     fn from(id: u32) -> Self {
-        RawId(id)
+        RawIdx(id)
     }
 }
 
-impl fmt::Debug for RawId {
+impl fmt::Debug for RawIdx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl fmt::Display for RawId {
+impl fmt::Display for RawIdx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
