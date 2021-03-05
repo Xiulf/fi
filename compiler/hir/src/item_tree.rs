@@ -203,7 +203,7 @@ pub struct Foreign {
     pub ast_id: FileAstId<ast::ItemForeign>,
     pub name: Name,
     pub kind: ForeignKind,
-    // pub ty: Idx<TypeRef>,
+    pub ty: Idx<TypeRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,7 +222,6 @@ pub struct Func {
 pub struct Static {
     pub ast_id: FileAstId<ast::ItemStatic>,
     pub name: Name,
-    pub is_foreign: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

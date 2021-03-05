@@ -5,3 +5,6 @@ module core (
 ) =
 
 import prim as c
+
+fun id x = x
+const TEST = 0

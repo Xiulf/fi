@@ -211,6 +211,10 @@ impl<'src> Lexer<'src> {
                 self.emit(L_ANGLE);
                 self.stack.push((start, LayoutDelim::Angle));
             },
+            | '<' if self.at_top_decl() => {
+                self.emit(L_ANGLE);
+                self.stack.push((start, LayoutDelim::Angle));
+            },
             | '>' if self.at_angle() => {
                 self.stack.pop().unwrap();
                 self.emit(R_ANGLE);
@@ -842,7 +846,7 @@ impl<'src> Lexer<'src> {
     }
 
     fn is_top_decl(&self, pos: (usize, usize)) -> bool {
-        if let [(start, LayoutDelim::Root)] = self.stack[..] {
+        if let [(_, LayoutDelim::Root), (start, LayoutDelim::Where)] = self.stack[..] {
             start.1 == pos.1
         } else {
             false
@@ -855,6 +859,14 @@ impl<'src> Lexer<'src> {
             | [.., (start, LayoutDelim::Where)] => start.1 == pos.1,
             | _ => false,
         }
+    }
+
+    fn at_top_decl(&self) -> bool {
+        matches!(self.stack[..], [
+            (_, LayoutDelim::Root),
+            (_, LayoutDelim::Where),
+            (_, LayoutDelim::TopDeclHead)
+        ])
     }
 
     fn at_for(&self) -> bool {

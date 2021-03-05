@@ -442,6 +442,34 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         name: &it.name,
                     });
                 },
+                | Item::Static(id) => {
+                    let it = &self.item_tree[id];
+
+                    def = Some(DefData {
+                        id: ModuleDefId::StaticId(
+                            StaticLoc {
+                                id: ItemTreeId::new(self.file_id, id),
+                                container,
+                            }
+                            .intern(self.def_collector.db),
+                        ),
+                        name: &it.name,
+                    });
+                },
+                | Item::Const(id) => {
+                    let it = &self.item_tree[id];
+
+                    def = Some(DefData {
+                        id: ModuleDefId::ConstId(
+                            ConstLoc {
+                                id: ItemTreeId::new(self.file_id, id),
+                                container,
+                            }
+                            .intern(self.def_collector.db),
+                        ),
+                        name: &it.name,
+                    });
+                },
                 | Item::Type(id) => {
                     let it = &self.item_tree[id];
 

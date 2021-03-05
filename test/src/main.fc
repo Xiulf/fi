@@ -1,8 +1,8 @@
 module main =
 
+import core (TEST, id)
 import core.libc (puts)
 import core.intrinsics (sub_i32, ptr_offset, eq_i32)
-import core (Unsafe)
 
 fun main argc argv =
     print_args argc argv

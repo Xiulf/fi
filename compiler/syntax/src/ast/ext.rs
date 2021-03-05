@@ -328,6 +328,139 @@ impl NameOwner for ItemClass {
 impl AttrsOwner for ItemInstance {
 }
 
+impl TypeKinded {
+    pub fn ty(&self) -> Option<Type> {
+        support::children(&self.0).nth(0)
+    }
+
+    pub fn kind(&self) -> Option<Type> {
+        support::children(&self.0).nth(1)
+    }
+}
+
+impl TypeApp {
+    pub fn base(&self) -> Option<Type> {
+        support::children(&self.0).nth(0)
+    }
+
+    pub fn arg(&self) -> Option<Type> {
+        support::children(&self.0).nth(1)
+    }
+}
+
+impl TypePath {
+    pub fn path(&self) -> Option<Path> {
+        support::child(&self.0)
+    }
+}
+
+impl TypeArray {
+    pub fn elem(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+
+    pub fn len(&self) -> Option<usize> {
+        let int = support::token(&self.0, INT)?;
+        let text = int.text();
+
+        text.parse().ok()
+    }
+}
+
+impl TypeSlice {
+    pub fn elem(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+}
+
+impl TypePtr {
+    pub fn is_buf_ptr(&self) -> bool {
+        support::token(&self.0, L_BRACKET).is_some()
+    }
+
+    pub fn elem(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+
+    pub fn sentinel(&self) -> Option<Sentinel> {
+        support::child(&self.0)
+    }
+}
+
+impl TypeFn {
+    pub fn param(&self) -> Option<Type> {
+        support::children(&self.0).nth(0)
+    }
+
+    pub fn ret(&self) -> Option<Type> {
+        support::children(&self.0).nth(1)
+    }
+}
+
+impl TypeRec {
+    // pub fn fields(&self) -> AstChildren<
+}
+
+impl TypeTuple {
+    pub fn types(&self) -> AstChildren<Type> {
+        support::children(&self.0)
+    }
+}
+
+impl TypeParens {
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+}
+
+impl TypeFor {
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+
+    pub fn generics(&self) -> Option<Generics> {
+        support::child(&self.0)
+    }
+}
+
+impl Sentinel {
+    pub fn value(&self) -> usize {
+        let int = support::token(&self.0, INT).unwrap();
+        let text = int.text();
+
+        text.parse().unwrap()
+    }
+}
+
+impl Generics {
+    pub fn vars(&self) -> AstChildren<TypeVar> {
+        support::children(&self.0)
+    }
+
+    pub fn constraints(&self) -> AstChildren<Constraint> {
+        support::children(&self.0)
+    }
+}
+
+impl NameOwner for TypeVar {
+}
+
+impl TypeVar {
+    pub fn kind(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+}
+
+impl Constraint {
+    pub fn class(&self) -> Option<NameRef> {
+        support::child(&self.0)
+    }
+
+    pub fn types(&self) -> AstChildren<Type> {
+        support::children(&self.0)
+    }
+}
+
 impl Path {
     pub fn segments(&self) -> AstChildren<PathSegment> {
         support::children(&self.0)
