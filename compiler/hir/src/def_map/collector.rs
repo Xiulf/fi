@@ -323,13 +323,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         let name = name.name_ref().unwrap().as_name();
 
                         if name == def_map[self.module_id].name {
-                            for (name, res) in def_map[self.module_id].scope.resolutions().collect::<Vec<_>>() {
-                                if res.types.is_none() && res.values.is_none() && res.modules.is_some() {
-                                    continue;
-                                }
-
-                                def_map.modules[self.module_id].exports.add_name(name);
-                            }
+                            Self::collect_module_exports(def_map, self.module_id);
                         } else if let Some(ModuleDefId::ModuleId(m)) = def_map[self.module_id].scope.get(&name).modules
                         {
                             def_map.modules[self.module_id].exports.add_module(m);
@@ -345,13 +339,21 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                 }
             }
         } else {
-            for (name, res) in def_map[self.module_id].scope.resolutions().collect::<Vec<_>>() {
-                if res.types.is_none() && res.values.is_none() && res.modules.is_some() {
+            Self::collect_module_exports(def_map, self.module_id);
+        }
+    }
+
+    fn collect_module_exports(def_map: &mut DefMap, module_id: LocalModuleId) {
+        for (name, res) in def_map[module_id].scope.resolutions().collect::<Vec<_>>() {
+            if let Some(ModuleDefId::ModuleId(m)) = res.modules {
+                // at this point imports are not yet resolved and thus the module must be from
+                // this lib.
+                if def_map[m.local_id].origin.is_virtual() {
                     continue;
                 }
-
-                def_map.modules[self.module_id].exports.add_name(name);
             }
+
+            def_map.modules[module_id].exports.add_name(name);
         }
     }
 

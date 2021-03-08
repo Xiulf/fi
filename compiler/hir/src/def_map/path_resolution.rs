@@ -60,32 +60,6 @@ impl DefMap {
         original: LocalModuleId,
         path: &ModPath,
     ) -> ResolveResult {
-        let mut result = ResolveResult::empty(FixPoint::No);
-        let new = self.resolve_mod_path_single(db, mode, original, path);
-
-        result.resolved_def = result.resolved_def.or(new.resolved_def);
-
-        if result.fixpoint == FixPoint::No {
-            result.fixpoint = new.fixpoint;
-        }
-
-        result.lib = result.lib.or(new.lib);
-        result.segment_index = match (result.segment_index, new.segment_index) {
-            | (Some(idx), None) => Some(idx),
-            | (Some(old), Some(new)) => Some(old.max(new)),
-            | (None, new) => new,
-        };
-
-        result
-    }
-
-    pub(super) fn resolve_mod_path_single(
-        &self,
-        db: &dyn DefDatabase,
-        mode: ResolveMode,
-        original: LocalModuleId,
-        path: &ModPath,
-    ) -> ResolveResult {
         let mut segments = path.segments().iter().enumerate();
         let mut curr_per_ns = {
             let (_, segment) = match segments.next() {

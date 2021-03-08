@@ -141,4 +141,8 @@ impl ModuleOrigin {
             | ModuleOrigin::Virtual { parent } => def_map[parent].origin.file_id(def_map),
         }
     }
+
+    pub fn is_virtual(&self) -> bool {
+        matches!(self, ModuleOrigin::Virtual { .. })
+    }
 }

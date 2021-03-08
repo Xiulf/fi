@@ -1,4 +1,4 @@
-module main =
+module main (main) =
 
 import core.libc (puts)
 import core.intrinsics (sub_i32, ptr_offset, eq_i32)

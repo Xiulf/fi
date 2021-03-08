@@ -51,6 +51,8 @@ impl Dependency {
     }
 }
 
+const EXTENSION: &'static str = "shade";
+
 pub fn load_project(
     rdb: &mut RootDatabase,
     libs: &mut LibSet,
@@ -123,7 +125,7 @@ fn load_file(
     };
 
     if let Ok(read_dir) = dir.read_dir() {
-        let ext = std::ffi::OsStr::new("fc");
+        let ext = std::ffi::OsStr::new(EXTENSION);
 
         for entry in read_dir {
             let child_path = entry?.path();
