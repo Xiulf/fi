@@ -54,6 +54,7 @@ enum LayoutDelim {
     Angle,
     If,
     Then,
+    Else,
     Of,
     Do,
     Loop,
@@ -71,7 +72,7 @@ impl LayoutDelim {
     }
 }
 
-struct Collapse(Vec<((usize, usize), LayoutDelim)>, usize);
+struct Collapse(Vec<((usize, usize), LayoutDelim)>, Vec<usize>, usize);
 
 impl<'src> Lexer<'src> {
     fn new(source: &'src str) -> Self {
@@ -583,17 +584,23 @@ impl<'src> Lexer<'src> {
                     }
                 }
             },
-            | "instance" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+            | "instance" => match self.stack[..] {
+                | [.., (_, LayoutDelim::Prop)] => {
                     self.emit(IDENT);
                     self.stack.pop().unwrap();
-                } else {
+                },
+                | [.., (_, LayoutDelim::Else)] => {
+                    self.emit(INSTANCE_KW);
+                    self.stack.pop().unwrap();
+                    self.stack.push((start, LayoutDelim::TopDeclHead));
+                },
+                | _ => {
                     self.insert_default(start, INSTANCE_KW);
 
                     if self.is_top_decl(start) {
                         self.stack.push((start, LayoutDelim::TopDeclHead));
                     }
-                }
+                },
             },
             | "infix" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
@@ -692,10 +699,19 @@ impl<'src> Lexer<'src> {
                     },
                     | _ => {
                         c.restore(&mut self.stack, &mut self.tokens);
-                        Collapse::new(self.tokens.len()).collapse(start, offside_p, &mut self.stack, &mut self.tokens);
+                        Collapse::new(self.tokens.len()).collapse(
+                            start,
+                            |tok, pos, lyt| match lyt {
+                                | LayoutDelim::TopDeclHead => true,
+                                | _ => offside_p(tok, pos, lyt),
+                            },
+                            &mut self.stack,
+                            &mut self.tokens,
+                        );
 
                         if self.is_top_decl(start) {
                             self.emit(ELSE_KW);
+                            self.stack.push((start, LayoutDelim::Else));
                         } else {
                             self.insert_sep(start);
 
@@ -1041,7 +1057,7 @@ fn sep_p(tok: (usize, usize), pos: (usize, usize)) -> bool {
 
 impl Collapse {
     fn new(tokens: usize) -> Self {
-        Collapse(Vec::new(), tokens)
+        Collapse(Vec::new(), Vec::with_capacity(2), tokens)
     }
 
     fn collapse(
@@ -1069,6 +1085,7 @@ impl Collapse {
 
                 if lyt.is_indented() {
                     if let Some(idx) = last_ws(tokens) {
+                        self.1.push(idx);
                         tokens[idx].kind = LYT_END;
                     } else {
                         tokens.push(Token {
@@ -1087,6 +1104,10 @@ impl Collapse {
     fn restore(mut self, stack: &mut Vec<((usize, usize), LayoutDelim)>, tokens: &mut Vec<Token>) {
         self.0.reverse();
         stack.append(&mut self.0);
-        tokens.truncate(self.1);
+        tokens.truncate(self.2);
+
+        for idx in self.1.drain(..) {
+            tokens[idx].kind = WHITESPACE;
+        }
     }
 }

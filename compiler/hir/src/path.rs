@@ -68,13 +68,16 @@ impl ModPath {
             }
         }
     }
+
+    pub(crate) fn lower(path: ast::Path) -> Self {
+        let segments = path.segments().filter_map(|s| Some(s.name_ref()?.as_name())).collect();
+
+        ModPath { segments }
+    }
 }
 
 pub(crate) fn convert_path(path: Option<ast::Path>) -> Option<ModPath> {
-    let path = path?;
-    let segments = path.segments().filter_map(|s| Some(s.name_ref()?.as_name())).collect();
-
-    Some(ModPath { segments })
+    path.map(ModPath::lower)
 }
 
 impl fmt::Display for ModPath {

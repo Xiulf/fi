@@ -36,7 +36,7 @@ crate fn any_item(p: &mut Parser) {
             class(p, m);
         },
         | INSTANCE_KW => {
-            instance(p, m);
+            instance_chain(p, m);
         },
         | _ => {
             m.abandon(p);
@@ -47,7 +47,7 @@ crate fn any_item(p: &mut Parser) {
 }
 
 crate fn import(p: &mut Parser, m: Marker) {
-    p.bump(IMPORT_KW);
+    p.expect(IMPORT_KW);
     paths::path(p);
 
     if p.eat(AS_KW) {
@@ -74,7 +74,7 @@ crate fn fixity(p: &mut Parser, m: Marker) {
     if p.at(INFIX_KW) || p.at(INFIXL_KW) || p.at(INFIXR_KW) {
         p.bump_any();
         p.expect(INT);
-        paths::name_ref(p);
+        paths::path(p);
         p.expect(AS_KW);
         paths::symbol(p);
         m.complete(p, ITEM_FIXITY);
@@ -85,121 +85,101 @@ crate fn fixity(p: &mut Parser, m: Marker) {
 }
 
 crate fn foreign(p: &mut Parser, m: Marker) {
-    if p.eat(FOREIGN_KW) {
-        match p.current() {
-            | FUN_KW | STATIC_KW => p.bump_any(),
-            | _ => {
-                p.error("expected 'fun' or 'static'");
-                m.abandon(p);
-                return;
-            },
-        }
-
-        paths::name(p);
-        p.expect(DBL_COLON);
-        types::func(p);
-        m.complete(p, ITEM_FOREIGN);
-    } else {
-        p.error("expected 'foreign'");
-        m.abandon(p);
+    p.expect(FOREIGN_KW);
+    match p.current() {
+        | FUN_KW | STATIC_KW => p.bump_any(),
+        | _ => {
+            p.error("expected 'fun' or 'static'");
+            m.abandon(p);
+            return;
+        },
     }
+
+    paths::name(p);
+    p.expect(DBL_COLON);
+    types::func(p);
+    m.complete(p, ITEM_FOREIGN);
 }
 
 crate fn fun(p: &mut Parser, m: Marker) {
-    if p.eat(FUN_KW) {
-        paths::name(p);
+    p.expect(FUN_KW);
+    paths::name(p);
 
-        if p.eat(DBL_COLON) {
-            types::func(p);
-            m.complete(p, ITEM_FUN);
-        } else {
-            if p.at(L_ANGLE) {
-                types::generics(p);
-            }
-
-            while !p.at(EOF) && !p.at(EQUALS) {
-                patterns::atom(p);
-            }
-
-            p.expect(EQUALS);
-            exprs::block(p);
-            m.complete(p, ITEM_FUN);
-        }
+    if p.eat(DBL_COLON) {
+        types::func(p);
+        m.complete(p, ITEM_FUN);
     } else {
-        p.error("expected 'fun'");
-        m.abandon(p);
+        if p.at(L_ANGLE) {
+            types::generics(p);
+        }
+
+        while !p.at(EOF) && !p.at(EQUALS) {
+            patterns::atom(p);
+        }
+
+        p.expect(EQUALS);
+        exprs::block(p);
+        m.complete(p, ITEM_FUN);
     }
 }
 
 crate fn static_(p: &mut Parser, m: Marker) {
-    if p.eat(STATIC_KW) {
-        paths::name(p);
+    p.expect(STATIC_KW);
+    paths::name(p);
 
-        if p.eat(DBL_COLON) {
-            types::func(p);
-            m.complete(p, ITEM_STATIC);
-        } else {
-            p.expect(EQUALS);
-            exprs::expr(p);
-            m.complete(p, ITEM_STATIC);
-        }
+    if p.eat(DBL_COLON) {
+        types::func(p);
+        m.complete(p, ITEM_STATIC);
     } else {
-        p.error("expected 'static'");
-        m.abandon(p);
+        p.expect(EQUALS);
+        exprs::expr(p);
+        m.complete(p, ITEM_STATIC);
     }
 }
 
 crate fn const_(p: &mut Parser, m: Marker) {
-    if p.eat(CONST_KW) {
-        paths::name(p);
+    p.expect(CONST_KW);
+    paths::name(p);
 
-        if p.eat(DBL_COLON) {
-            types::func(p);
-            m.complete(p, ITEM_CONST);
-        } else {
-            p.expect(EQUALS);
-            exprs::expr(p);
-            m.complete(p, ITEM_CONST);
-        }
+    if p.eat(DBL_COLON) {
+        types::func(p);
+        m.complete(p, ITEM_CONST);
     } else {
-        p.error("expected 'const'");
-        m.abandon(p);
+        p.expect(EQUALS);
+        exprs::expr(p);
+        m.complete(p, ITEM_CONST);
     }
 }
 
 crate fn type_(p: &mut Parser, m: Marker) {
-    if p.eat(TYPE_KW) {
-        paths::name(p);
+    p.expect(TYPE_KW);
+    paths::name(p);
 
-        if p.eat(DBL_COLON) {
-            types::func(p);
-        } else {
-            while p.at(L_PAREN) || p.at(IDENT) {
-                types::type_var(p);
-            }
-
-            if p.eat(EQUALS) {
-                if p.at(PIPE) {
-                    while p.eat(PIPE) {
-                        let m = p.start();
-
-                        while p.at(AT) {
-                            attributes::attr(p);
-                        }
-
-                        ctor(p, m);
-                    }
-                } else {
-                    types::ty(p);
-                }
-            }
+    if p.eat(DBL_COLON) {
+        types::func(p);
+    } else {
+        while p.at(L_PAREN) || p.at(IDENT) {
+            types::type_var(p);
         }
 
-        m.complete(p, ITEM_TYPE);
-    } else {
-        p.error("expected 'type'");
-        m.abandon(p);
+        if p.eat(EQUALS) {
+            if p.at(PIPE) {
+                while p.eat(PIPE) {
+                    let m = p.start();
+
+                    while p.at(AT) {
+                        attributes::attr(p);
+                    }
+
+                    ctor(p, m);
+                }
+            } else {
+                types::ty(p);
+            }
+        }
     }
+
+    m.complete(p, ITEM_TYPE);
 }
 
 crate fn ctor(p: &mut Parser, m: Marker) {
@@ -213,61 +193,66 @@ crate fn ctor(p: &mut Parser, m: Marker) {
 }
 
 crate fn class(p: &mut Parser, m: Marker) {
-    if p.eat(CLASS_KW) {
-        paths::name(p);
+    p.expect(CLASS_KW);
+    paths::name(p);
 
-        while p.at(L_PAREN) || p.at(IDENT) {
-            types::type_var(p);
-        }
-
-        if p.eat(EQUALS) {
-            p.expect(LYT_START);
-
-            while !p.at(EOF) && !p.at(LYT_END) {
-                assoc_item(p);
-
-                if !p.at(LYT_END) {
-                    p.expect(LYT_SEP);
-                }
-            }
-
-            p.expect(LYT_END);
-        }
-
-        m.complete(p, ITEM_CLASS);
-    } else {
-        p.error("expected 'class'");
-        m.abandon(p);
+    while p.at(L_PAREN) || p.at(IDENT) {
+        types::type_var(p);
     }
+
+    if p.eat(EQUALS) {
+        p.expect(LYT_START);
+
+        while !p.at(EOF) && !p.at(LYT_END) {
+            assoc_item(p);
+
+            if !p.at(LYT_END) {
+                p.expect(LYT_SEP);
+            }
+        }
+
+        p.expect(LYT_END);
+    }
+
+    m.complete(p, ITEM_CLASS);
 }
 
-crate fn instance(p: &mut Parser, m: Marker) {
-    if p.eat(INSTANCE_KW) {
-        paths::name_ref(p);
+crate fn instance_chain(p: &mut Parser, m: Marker) {
+    instance(p);
 
-        while types::peek(p) {
-            types::atom(p);
-        }
+    // while p.eat(ELSE_KW) {
+    //     instance(p);
+    // }
+    //
+    // m.complete(p, ITEM_INSTANCE_CHAIN);
+    m.abandon(p);
+}
 
-        if p.eat(EQUALS) {
-            p.expect(LYT_START);
+crate fn instance(p: &mut Parser) {
+    let m = p.start();
 
-            while !p.at(EOF) && !p.at(LYT_END) {
-                assoc_item(p);
+    p.expect(INSTANCE_KW);
+    paths::path(p);
 
-                if !p.at(LYT_END) {
-                    p.expect(LYT_SEP);
-                }
-            }
-
-            p.expect(LYT_END);
-        }
-
-        m.complete(p, ITEM_INSTANCE);
-    } else {
-        p.error("expected 'instance'");
-        m.abandon(p);
+    while types::peek(p) {
+        types::atom(p);
     }
+
+    if p.eat(EQUALS) {
+        p.expect(LYT_START);
+
+        while !p.at(EOF) && !p.at(LYT_END) {
+            assoc_item(p);
+
+            if !p.at(LYT_END) {
+                p.expect(LYT_SEP);
+            }
+        }
+
+        p.expect(LYT_END);
+    }
+
+    m.complete(p, ITEM_INSTANCE);
 }
 
 crate fn assoc_item(p: &mut Parser) {

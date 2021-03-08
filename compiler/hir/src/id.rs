@@ -80,12 +80,12 @@ pub enum ContainerId {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FixityId(salsa::InternId);
-pub type FixityLoc = AssocItemLoc<Fixity>;
+pub type FixityLoc = ItemLoc<Fixity>;
 impl_intern!(FixityId, FixityLoc, intern_fixity, lookup_intern_fixity);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ForeignId(salsa::InternId);
-pub type ForeignLoc = AssocItemLoc<Foreign>;
+pub type ForeignLoc = ItemLoc<Foreign>;
 impl_intern!(ForeignId, ForeignLoc, intern_foreign, lookup_intern_foreign);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -105,7 +105,7 @@ impl_intern!(ConstId, ConstLoc, intern_const, lookup_intern_const);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeId(salsa::InternId);
-pub type TypeLoc = AssocItemLoc<Type>;
+pub type TypeLoc = ItemLoc<Type>;
 impl_intern!(TypeId, TypeLoc, intern_type, lookup_intern_type);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -118,12 +118,12 @@ pub type LocalCtorId = Idx<()>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClassId(salsa::InternId);
-pub type ClassLoc = AssocItemLoc<Class>;
+pub type ClassLoc = ItemLoc<Class>;
 impl_intern!(ClassId, ClassLoc, intern_class, lookup_intern_class);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InstanceId(salsa::InternId);
-pub type InstanceLoc = AssocItemLoc<Instance>;
+pub type InstanceLoc = ItemLoc<Instance>;
 impl_intern!(InstanceId, InstanceLoc, intern_instance, lookup_intern_instance);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -156,9 +156,15 @@ impl HasModule for ContainerId {
     fn module(&self, db: &dyn DefDatabase) -> ModuleId {
         match *self {
             | ContainerId::Module(id) => id,
-            | ContainerId::Class(id) => id.lookup(db).container.module(db),
-            | ContainerId::Instance(id) => id.lookup(db).container.module(db),
+            | ContainerId::Class(id) => id.lookup(db).module,
+            | ContainerId::Instance(id) => id.lookup(db).module,
         }
+    }
+}
+
+impl<N: ItemTreeNode> HasModule for ItemLoc<N> {
+    fn module(&self, _: &dyn DefDatabase) -> ModuleId {
+        self.module
     }
 }
 

@@ -53,12 +53,15 @@ impl Ctx {
     fn lower_item(&mut self, item: &ast::Item) -> Option<Items> {
         let items = match item {
             | ast::Item::Import(ast) => Some(Items(self.lower_import(ast).into_iter().map(Into::into).collect())),
+            | ast::Item::Fixity(ast) => self.lower_fixity(ast).map(Into::into),
             | ast::Item::Foreign(ast) => self.lower_foreign(ast).map(Into::into),
             | ast::Item::Fun(ast) => self.lower_fun(ast).map(Into::into),
             | ast::Item::Static(ast) => self.lower_static(ast).map(Into::into),
             | ast::Item::Const(ast) => self.lower_const(ast).map(Into::into),
             | ast::Item::Type(ast) => self.lower_type(ast).map(Into::into),
             | ast::Item::Class(ast) => self.lower_class(ast).map(Into::into),
+            // | ast::Item::Instance(ast) => self.lower_instance_chain(ast).map(Into::into),
+            | ast::Item::Instance(ast) => self.lower_instance(ast).map(Into::into),
             | _ => return None,
         };
 
@@ -86,6 +89,22 @@ impl Ctx {
         imports
     }
 
+    fn lower_fixity(&mut self, item: &ast::ItemFixity) -> Option<LocalItemTreeId<Fixity>> {
+        let ast_id = self.ast_id_map.ast_id(item);
+        let name = item.name()?.as_name();
+        let func = ModPath::lower(item.func()?);
+        let prec = item.prec()?;
+        let assoc = item.assoc()?;
+
+        Some(id(self.tree.data.fixities.alloc(Fixity {
+            ast_id,
+            name,
+            func,
+            prec,
+            assoc,
+        })))
+    }
+
     fn lower_foreign(&mut self, item: &ast::ItemForeign) -> Option<LocalItemTreeId<Foreign>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
@@ -100,29 +119,29 @@ impl Ctx {
     }
 
     fn lower_fun(&mut self, item: &ast::ItemFun) -> Option<LocalItemTreeId<Func>> {
-        let name = item.name()?.as_name();
         let ast_id = self.ast_id_map.ast_id(item);
+        let name = item.name()?.as_name();
 
         Some(id(self.tree.data.funcs.alloc(Func { name, ast_id })))
     }
 
     fn lower_static(&mut self, item: &ast::ItemStatic) -> Option<LocalItemTreeId<Static>> {
-        let name = item.name()?.as_name();
         let ast_id = self.ast_id_map.ast_id(item);
+        let name = item.name()?.as_name();
 
         Some(id(self.tree.data.statics.alloc(Static { name, ast_id })))
     }
 
     fn lower_const(&mut self, item: &ast::ItemConst) -> Option<LocalItemTreeId<Const>> {
-        let name = item.name()?.as_name();
         let ast_id = self.ast_id_map.ast_id(item);
+        let name = item.name()?.as_name();
 
         Some(id(self.tree.data.consts.alloc(Const { name, ast_id })))
     }
 
     fn lower_type(&mut self, item: &ast::ItemType) -> Option<LocalItemTreeId<Type>> {
-        let name = item.name()?.as_name();
         let ast_id = self.ast_id_map.ast_id(item);
+        let name = item.name()?.as_name();
         let kind = item.kind().map(|ty| self.lower_ty(ty));
         let (alias, ctors) = if let Some(alias) = item.alias() {
             (
@@ -159,10 +178,44 @@ impl Ctx {
     }
 
     fn lower_class(&mut self, item: &ast::ItemClass) -> Option<LocalItemTreeId<Class>> {
-        let name = item.name()?.as_name();
         let ast_id = self.ast_id_map.ast_id(item);
+        let name = item.name()?.as_name();
 
         Some(id(self.tree.data.classes.alloc(Class { name, ast_id })))
+    }
+
+    // fn lower_instance_chain(&mut self, item: &ast::ItemInstanceChain) -> Option<LocalItemTreeId<InstanceChain>> {
+    //     let ast_id = self.ast_id_map.ast_id(item);
+    //     let chain = item
+    //         .instances()
+    //         .enumerate()
+    //         .filter_map(|(i, inst)| self.lower_instance(i, inst))
+    //         .collect();
+    //
+    //     let id = id(self.tree.data.instance_chains.alloc(InstanceChain {
+    //         ast_id,
+    //         chain: chain.clone(),
+    //     }));
+    //
+    //     for id in chain {
+    //         self.tree.data.instances[id].chain = id;
+    //     }
+    //
+    //     Some(id)
+    // }
+
+    fn lower_instance(&mut self, /*index: usize,*/ item: &ast::ItemInstance) -> Option<LocalItemTreeId<Instance>> {
+        let ast_id = self.ast_id_map.ast_id(item);
+        let class = ModPath::lower(item.class()?);
+        let types = item.types().map(|t| self.lower_ty(t)).collect();
+
+        Some(id(self.tree.data.instances.alloc(Instance {
+            ast_id,
+            class,
+            types,
+            // index,
+            // chain: Box::new([]),
+        })))
     }
 
     fn lower_ty(&mut self, ty: ast::Type) -> Idx<TypeRef> {

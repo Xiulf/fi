@@ -34,6 +34,7 @@ ast_node!(Item {
 
 ast_node!(ImportItems, IMPORT_ITEMS);
 ast_node!(Ctor, ITEM_CTOR);
+ast_node!(Instance, ITEM_INSTANCE);
 
 ast_node!(AssocItem {
     Fun(AssocItemFun, ITEM_FUN),

@@ -196,7 +196,12 @@ pub struct Import {
 pub struct Fixity {
     pub ast_id: FileAstId<ast::ItemFixity>,
     pub name: Name,
+    pub func: ModPath,
+    pub assoc: Assoc,
+    pub prec: Prec,
 }
+
+pub use ast::{Assoc, Prec};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Foreign {
@@ -254,6 +259,8 @@ pub struct Class {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instance {
     pub ast_id: FileAstId<ast::ItemInstance>,
+    pub class: ModPath,
+    pub types: Box<[Idx<TypeRef>]>,
 }
 
 pub struct IdRange<T> {

@@ -33,4 +33,18 @@ type Bool =
 @lang = "integer-class" class Integer t
 @lang = "decimal-class" class Decimal t
 
+instance Integer Int8
+instance Integer Int16
+instance Integer Int32
+instance Integer Int64
+instance Integer Int128
+instance Integer Uint8
+instance Integer Uint16
+instance Integer Uint32
+instance Integer Uint64
+instance Integer Uint128
+
+instance Decimal Float32
+instance Decimal Float64
+
 class Unsafe

@@ -94,6 +94,7 @@ pub enum SyntaxKind {
     ITEM_STATIC,
     ITEM_CONST,
     ITEM_CLASS,
+    ITEM_INSTANCE_CHAIN,
     ITEM_INSTANCE,
     ITEM_TYPE,
     ITEM_CTOR,

@@ -160,7 +160,7 @@ impl NameOwner for ItemFixity {
 }
 
 impl ItemFixity {
-    pub fn func(&self) -> Option<NameRef> {
+    pub fn func(&self) -> Option<Path> {
         support::child(&self.0)
     }
 
@@ -325,7 +325,23 @@ impl AttrsOwner for ItemClass {
 impl NameOwner for ItemClass {
 }
 
-impl AttrsOwner for ItemInstance {
+// impl AttrsOwner for ItemInstanceChain {
+// }
+//
+// impl ItemInstanceChain {
+//     pub fn instances(&self) -> AstChildren<Instance> {
+//         support::children(&self.0)
+//     }
+// }
+
+impl ItemInstance {
+    pub fn class(&self) -> Option<Path> {
+        support::child(&self.0)
+    }
+
+    pub fn types(&self) -> AstChildren<Type> {
+        support::children(&self.0)
+    }
 }
 
 impl TypeKinded {
@@ -452,7 +468,7 @@ impl TypeVar {
 }
 
 impl Constraint {
-    pub fn class(&self) -> Option<NameRef> {
+    pub fn class(&self) -> Option<Path> {
         support::child(&self.0)
     }
 

@@ -414,6 +414,20 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         });
                     }
                 },
+                | Item::Fixity(id) => {
+                    let it = &self.item_tree[id];
+
+                    def = Some(DefData {
+                        id: ModuleDefId::FixityId(
+                            FixityLoc {
+                                id: ItemTreeId::new(self.file_id, id),
+                                module,
+                            }
+                            .intern(self.def_collector.db),
+                        ),
+                        name: &it.name,
+                    });
+                },
                 | Item::Foreign(id) => {
                     let it = &self.item_tree[id];
 
@@ -421,7 +435,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         id: ModuleDefId::ForeignId(
                             ForeignLoc {
                                 id: ItemTreeId::new(self.file_id, id),
-                                container,
+                                module,
                             }
                             .intern(self.def_collector.db),
                         ),
@@ -477,7 +491,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         id: ModuleDefId::TypeId(
                             TypeLoc {
                                 id: ItemTreeId::new(self.file_id, id),
-                                container,
+                                module,
                             }
                             .intern(self.def_collector.db),
                         ),
@@ -491,14 +505,25 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         id: ModuleDefId::ClassId(
                             ClassLoc {
                                 id: ItemTreeId::new(self.file_id, id),
-                                container,
+                                module,
                             }
                             .intern(self.def_collector.db),
                         ),
                         name: &it.name,
                     });
                 },
-                | _ => unimplemented!(),
+                | Item::Instance(id) => {
+                    let it = &self.item_tree[id];
+                    let inst_id = InstanceLoc {
+                        id: ItemTreeId::new(self.file_id, id),
+                        module,
+                    }
+                    .intern(self.def_collector.db);
+
+                    self.def_collector.def_map.modules[self.module_id]
+                        .scope
+                        .define_instance(inst_id);
+                },
             }
 
             if let Some(DefData { id, name }) = def {

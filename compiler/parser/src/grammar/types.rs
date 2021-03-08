@@ -144,7 +144,7 @@ crate fn generics(p: &mut Parser) {
 crate fn constraint(p: &mut Parser) {
     let m = p.start();
 
-    paths::name_ref(p);
+    paths::path(p);
 
     while peek(p) {
         atom(p);
