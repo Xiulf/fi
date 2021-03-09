@@ -1,7 +1,7 @@
 [project]
 name = "core"
 version = "0.1.0"
-entry = "src/core.fc"
+entry = "src/core.shade"
 
 [dependencies]
 libc = { path = "../libc" }

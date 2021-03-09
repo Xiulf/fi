@@ -67,6 +67,10 @@ impl LibSet {
         self.libs.keys().copied()
     }
 
+    pub fn find(&self, name: &str) -> Option<&LibData> {
+        self.libs.values().find(|l| l.name == name)
+    }
+
     pub fn toposort(&self) -> impl Iterator<Item = LibId> + '_ {
         let mut res = Vec::new();
         let mut visited = FxHashSet::default();

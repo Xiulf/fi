@@ -31,9 +31,9 @@ pub enum Dependency {
 
 impl Manifest {
     pub fn load(path: &Path) -> Result<Self> {
-        let manifest_path = format!("{}/shadow.toml", path.display());
+        let manifest_path = path.join("shadow.toml");
         let manifest_src = std::fs::read_to_string(&manifest_path)
-            .with_context(|| format!("Failed to read manifest from {}", manifest_path))?;
+            .with_context(|| format!("Failed to read manifest from {}", manifest_path.display()))?;
 
         toml::from_str(&manifest_src).map_err(Into::into)
     }
