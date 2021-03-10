@@ -18,29 +18,32 @@ crate fn root(p: &mut Parser) {
         p.eat(LYT_SEP);
     }
 
-    p.expect(MODULE_KW);
+    if p.eat(MODULE_KW) {
+        paths::name(p);
 
-    paths::name(p);
-
-    if p.at(L_PAREN) {
-        exports(p);
-    }
-
-    p.expect(EQUALS);
-    p.expect(LYT_START);
-    p.eat(LYT_SEP);
-
-    while !p.at(EOF) && !p.at(LYT_END) {
-        items::any_item(p);
-
-        if !p.at(LYT_END) {
-            p.expect(LYT_SEP);
+        if p.at(L_PAREN) {
+            exports(p);
         }
-    }
 
-    p.expect(LYT_END);
-    p.expect(EOF);
-    m.complete(p, MODULE);
+        p.expect(EQUALS);
+        p.expect(LYT_START);
+        p.eat(LYT_SEP);
+
+        while !p.at(EOF) && !p.at(LYT_END) {
+            items::any_item(p);
+
+            if !p.at(LYT_END) {
+                p.expect(LYT_SEP);
+            }
+        }
+
+        p.expect(LYT_END);
+        p.expect(EOF);
+        m.complete(p, MODULE);
+    } else {
+        p.error("expected 'module'");
+        m.complete(p, MODULE);
+    }
 }
 
 fn exports(p: &mut Parser) {
@@ -83,7 +86,11 @@ fn export(p: &mut Parser) {
 crate mod fragments {
     use super::*;
 
-    crate fn attr(p: &mut Parser) {
-        attributes::attr(p);
+    crate fn path(p: &mut Parser) {
+        paths::path(p);
+    }
+
+    crate fn type_(p: &mut Parser) {
+        types::ty(p);
     }
 }

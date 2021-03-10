@@ -90,6 +90,10 @@ impl DefMap {
         self.lib
     }
 
+    pub fn root(&self) -> LocalModuleId {
+        self.root
+    }
+
     pub fn module_id(&self, local_id: LocalModuleId) -> ModuleId {
         ModuleId {
             lib: self.lib,

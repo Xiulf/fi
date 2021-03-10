@@ -36,7 +36,11 @@ pub trait TreeSink {
     fn error(&mut self, error: ParseError);
 }
 
-fn parse_from_tokens(token_source: &mut dyn TokenSource, tree_sink: &mut dyn TreeSink, f: impl FnOnce(&mut parser::Parser)) {
+fn parse_from_tokens(
+    token_source: &mut dyn TokenSource,
+    tree_sink: &mut dyn TreeSink,
+    f: impl FnOnce(&mut parser::Parser),
+) {
     let mut p = parser::Parser::new(token_source);
 
     f(&mut p);
@@ -52,12 +56,14 @@ pub fn parse(token_source: &mut dyn TokenSource, tree_sink: &mut dyn TreeSink) {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FragmentKind {
-    Attr,
+    Path,
+    Type,
 }
 
 pub fn parse_fragment(token_source: &mut dyn TokenSource, tree_sink: &mut dyn TreeSink, fragment_kind: FragmentKind) {
     let parser: fn(&mut parser::Parser) = match fragment_kind {
-        | FragmentKind::Attr => grammar::fragments::attr,
+        | FragmentKind::Path => grammar::fragments::path,
+        | FragmentKind::Type => grammar::fragments::type_,
     };
 
     parse_from_tokens(token_source, tree_sink, parser);

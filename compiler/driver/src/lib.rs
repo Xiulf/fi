@@ -2,8 +2,8 @@ pub mod db;
 pub mod diagnostics;
 pub mod manifest;
 
-use base_db::input::SourceRoot;
-use base_db::libs::LibSet;
+use base_db::input::{FileId, SourceRoot, SourceRootId};
+use base_db::libs::{LibId, LibSet};
 use base_db::SourceDatabase;
 use base_db::SourceDatabaseExt;
 use hir::db::DefDatabase;
@@ -15,7 +15,7 @@ pub struct Opts<'a> {
 
 #[derive(Default)]
 pub struct Driver {
-    rdb: db::RootDatabase,
+    pub db: db::RootDatabase,
     libs: LibSet,
     lib_count: u32,
     file_count: u32,
@@ -30,40 +30,41 @@ impl Driver {
         Some(driver)
     }
 
-    pub fn interactive() -> Self {
+    pub fn interactive() -> (Self, LibId, FileId, FileId, FileId) {
         let mut driver = Driver::default();
         let mut root = SourceRoot::new_local();
-        let root_id = base_db::input::SourceRootId(0);
-        let root_file = base_db::input::FileId(0);
+        let root_id = SourceRootId(0);
+        let root_file = FileId(0);
+        let type_file = FileId(1);
+        let resolve_file = FileId(2);
         let (lib, _) = driver.libs.add_lib("<interactive>", root_id, root_file);
 
         root.insert_file(root_file, "<interactive>");
+        root.insert_file(type_file, "<type>");
+        root.insert_file(resolve_file, "<resolve>");
 
-        driver.rdb.set_libs(driver.libs.clone().into());
-        driver.rdb.set_source_root(root_id, root.into());
-        driver.rdb.set_file_source_root(root_file, root_id);
-        driver.lib_count += 1;
-        driver.file_count += 1;
+        driver.db.set_libs(driver.libs.clone().into());
+        driver.db.set_source_root(root_id, root.into());
+        driver.db.set_file_source_root(root_file, root_id);
+        driver.db.set_file_text(root_file, Default::default());
+        driver.lib_count = 1;
+        driver.file_count = 3;
 
-        driver
-    }
-
-    pub fn db(&self) -> &db::RootDatabase {
-        &self.rdb
+        (driver, lib, root_file, type_file, resolve_file)
     }
 
     pub fn load(&mut self, input: &str) -> Option<()> {
         let path = std::path::PathBuf::from(input);
 
         match manifest::load_project(
-            &mut self.rdb,
+            &mut self.db,
             &mut self.libs,
             &mut self.lib_count,
             &mut self.file_count,
             &path,
         ) {
             | Ok(lib) => {
-                self.rdb.set_libs(self.libs.clone().into());
+                self.db.set_libs(self.libs.clone().into());
                 println!("loaded {}", self.libs[lib].name);
 
                 Some(())
@@ -78,12 +79,12 @@ impl Driver {
     pub fn build(&self) {
         let start = std::time::Instant::now();
 
-        for lib in self.rdb.libs().toposort() {
-            let lib_data = &self.rdb.libs()[lib];
+        for lib in self.db.libs().toposort() {
+            let lib_data = &self.db.libs()[lib];
 
             println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib_data.name);
 
-            diagnostics::emit_diagnostics(&self.rdb, lib, &mut std::io::stderr());
+            diagnostics::emit_diagnostics(&self.db, lib, &mut std::io::stderr());
 
             // let def_map = rdb.def_map(lib);
             //

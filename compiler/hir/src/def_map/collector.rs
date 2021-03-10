@@ -97,12 +97,16 @@ impl<'a> DefCollector<'a> {
     fn seed_with_items(&mut self) {
         let file_tree = self.db.file_tree(self.def_map.lib);
 
-        go(self, &file_tree, file_tree.root());
+        if let None = go(self, &file_tree, file_tree.root()) {
+            let module_id = self.def_map.add_module(Name::default());
 
-        fn go(this: &mut DefCollector, file_tree: &FileTree, file_id: FileId) -> (Name, LocalModuleId) {
+            self.def_map.root = module_id;
+        }
+
+        fn go(this: &mut DefCollector, file_tree: &FileTree, file_id: FileId) -> Option<(Name, LocalModuleId)> {
             use syntax::ast::NameOwner;
             let module = this.db.parse(file_id).tree();
-            let name = module.name().unwrap().as_name();
+            let name = module.name()?.as_name();
             let item_tree = this.db.item_tree(file_id);
             let ast_id_map = this.db.ast_id_map(file_id);
             let module_id = this.def_map.add_module(name.clone());
@@ -117,13 +121,14 @@ impl<'a> DefCollector<'a> {
             }
 
             for child in file_tree.children(file_id) {
-                let (name, child) = go(this, file_tree, child);
-                let module = this.def_map.module_id(child);
-                let def = ModuleDefId::ModuleId(module);
+                if let Some((name, child)) = go(this, file_tree, child) {
+                    let module = this.def_map.module_id(child);
+                    let def = ModuleDefId::ModuleId(module);
 
-                this.def_map.modules[module_id].children.insert(name.clone(), child);
-                this.def_map.modules[module_id].scope.define_def(def);
-                this.update(module_id, &[(name, PerNs::modules(def))], ImportType::Named);
+                    this.def_map.modules[module_id].children.insert(name.clone(), child);
+                    this.def_map.modules[module_id].scope.define_def(def);
+                    this.update(module_id, &[(name, PerNs::modules(def))], ImportType::Named);
+                }
             }
 
             this.def_map.modules[module_id].origin = super::ModuleOrigin::Normal { declaration, file_id };
@@ -138,7 +143,7 @@ impl<'a> DefCollector<'a> {
             mcoll.collect(item_tree.top_level());
             mcoll.collect_exports(module.exports());
 
-            (name, module_id)
+            Some((name, module_id))
         }
     }
 

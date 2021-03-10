@@ -17,14 +17,11 @@ pub trait Upcast<T: ?Sized> {
 pub trait SourceDatabase: CheckCanceled + FileLoader {
     fn parse(&self, file_id: FileId) -> Parsed<ast::Module>;
 
+    fn parse_path(&self, file_id: FileId) -> Parsed<ast::Path>;
+    fn parse_type(&self, file_id: FileId) -> Parsed<ast::Type>;
+
     #[salsa::input]
     fn libs(&self) -> Arc<libs::LibSet>;
-}
-
-fn parse(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Module> {
-    let text = db.file_text(file_id);
-
-    ast::Module::parse(&*text)
 }
 
 #[salsa::query_group(SourceDatabaseExtStorage)]
@@ -42,6 +39,24 @@ pub trait SourceDatabaseExt: SourceDatabase {
     fn file_tree(&self, lib: libs::LibId) -> Arc<FileTree>;
 
     fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
+}
+
+fn parse(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Module> {
+    let text = db.file_text(file_id);
+
+    ast::Module::parse(&*text)
+}
+
+fn parse_path(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Path> {
+    let text = db.file_text(file_id);
+
+    Parsed::<ast::Path>::parse(&*text)
+}
+
+fn parse_type(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Type> {
+    let text = db.file_text(file_id);
+
+    Parsed::<ast::Type>::parse(&*text)
 }
 
 fn line_index(db: &dyn SourceDatabaseExt, file_id: FileId) -> Arc<LineIndex> {

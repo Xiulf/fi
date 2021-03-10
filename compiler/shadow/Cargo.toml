@@ -7,5 +7,6 @@ edition = "2018"
 [dependencies]
 driver = { path = "../driver" }
 base_db = { path = "../base_db" }
+hir = { path = "../hir" }
 repl = { path = "repl" }
 clap = "2.33.3"

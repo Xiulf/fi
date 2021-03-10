@@ -45,7 +45,10 @@ impl<'t> TreeSink for TextTreeSink<'t> {
             | State::Normal => {},
         }
 
-        let n_trivias = self.tokens[self.token_pos..].iter().take_while(|it| it.kind.is_trivia()).count();
+        let n_trivias = self.tokens[self.token_pos..]
+            .iter()
+            .take_while(|it| it.kind.is_trivia())
+            .count();
         let leading_trivias = &self.tokens[self.token_pos..self.token_pos + n_trivias];
         let mut trivia_end = self.text_pos + leading_trivias.iter().map(|it| it.len).sum::<TextSize>();
 

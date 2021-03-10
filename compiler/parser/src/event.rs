@@ -4,10 +4,17 @@ use crate::TreeSink;
 use std::mem;
 
 pub enum Event {
-    Start { kind: SyntaxKind, forward_parent: Option<u32> },
+    Start {
+        kind: SyntaxKind,
+        forward_parent: Option<u32>,
+    },
     Finish,
-    Token { kind: SyntaxKind },
-    Error { msg: ParseError },
+    Token {
+        kind: SyntaxKind,
+    },
+    Error {
+        msg: ParseError,
+    },
 }
 
 impl Event {
@@ -25,7 +32,8 @@ crate fn process(sink: &mut dyn TreeSink, mut events: Vec<Event>) {
     for i in 0..events.len() {
         match mem::replace(&mut events[i], Event::tombstone()) {
             | Event::Start {
-                kind: SyntaxKind::TOMBSTONE, ..
+                kind: SyntaxKind::TOMBSTONE,
+                ..
             } => {},
             | Event::Start { kind, forward_parent } => {
                 forward_parents.push(kind);

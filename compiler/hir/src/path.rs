@@ -69,7 +69,7 @@ impl ModPath {
         }
     }
 
-    pub(crate) fn lower(path: ast::Path) -> Self {
+    pub fn lower(path: ast::Path) -> Self {
         let segments = path.segments().filter_map(|s| Some(s.name_ref()?.as_name())).collect();
 
         ModPath { segments }

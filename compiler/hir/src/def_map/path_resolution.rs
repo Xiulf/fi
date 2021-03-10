@@ -42,7 +42,7 @@ impl ResolveResult {
 }
 
 impl DefMap {
-    pub(crate) fn resolve_path(
+    pub fn resolve_path(
         &self,
         db: &dyn DefDatabase,
         original: LocalModuleId,

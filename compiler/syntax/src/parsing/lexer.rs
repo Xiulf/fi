@@ -13,7 +13,13 @@ pub struct Token {
 
 pub fn tokenize(text: &str) -> (Vec<Token>, Vec<SyntaxError>) {
     if text.is_empty() {
-        return Default::default();
+        return (
+            vec![Token {
+                kind: EOF,
+                len: TextSize::default(),
+            }],
+            Vec::new(),
+        );
     }
 
     let lexer = Lexer::new(text);

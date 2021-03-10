@@ -98,3 +98,27 @@ impl ast::Module {
         }
     }
 }
+
+impl Parsed<ast::Path> {
+    pub fn parse(text: &str) -> Self {
+        let (green, errors) = parsing::parse_fragment(text, parser::FragmentKind::Path);
+
+        Parsed {
+            green,
+            errors: errors.into(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl Parsed<ast::Type> {
+    pub fn parse(text: &str) -> Self {
+        let (green, errors) = parsing::parse_fragment(text, parser::FragmentKind::Type);
+
+        Parsed {
+            green,
+            errors: errors.into(),
+            _marker: PhantomData,
+        }
+    }
+}
