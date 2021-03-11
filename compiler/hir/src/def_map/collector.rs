@@ -127,6 +127,7 @@ impl<'a> DefCollector<'a> {
 
                     this.def_map.modules[module_id].children.insert(name.clone(), child);
                     this.def_map.modules[module_id].scope.define_def(def);
+                    this.def_map.modules[child].parent = Some(module_id);
                     this.update(module_id, &[(name, PerNs::modules(def))], ImportType::Named);
                 }
             }

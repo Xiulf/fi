@@ -4,7 +4,7 @@ use std::fmt;
 use std::iter::FromIterator;
 use syntax::ast;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModPath {
     segments: Vec<Name>,
 }

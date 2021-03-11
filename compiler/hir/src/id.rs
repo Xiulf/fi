@@ -162,6 +162,22 @@ impl HasModule for ContainerId {
     }
 }
 
+impl HasModule for ModuleDefId {
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId {
+        match *self {
+            | ModuleDefId::ModuleId(m) => m,
+            | ModuleDefId::FixityId(id) => id.lookup(db).module,
+            | ModuleDefId::ForeignId(id) => id.lookup(db).module,
+            | ModuleDefId::FuncId(id) => id.lookup(db).module(db),
+            | ModuleDefId::StaticId(id) => id.lookup(db).module(db),
+            | ModuleDefId::ConstId(id) => id.lookup(db).module(db),
+            | ModuleDefId::TypeId(id) => id.lookup(db).module,
+            | ModuleDefId::CtorId(id) => id.parent.lookup(db).module(db),
+            | ModuleDefId::ClassId(id) => id.lookup(db).module,
+        }
+    }
+}
+
 impl<N: ItemTreeNode> HasModule for ItemLoc<N> {
     fn module(&self, _: &dyn DefDatabase) -> ModuleId {
         self.module

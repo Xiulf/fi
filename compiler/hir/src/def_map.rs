@@ -32,6 +32,7 @@ pub struct ModuleData {
     pub scope: ItemScope,
     pub exports: ItemExports,
     pub origin: ModuleOrigin,
+    pub parent: Option<LocalModuleId>,
     pub children: FxHashMap<Name, LocalModuleId>,
 }
 

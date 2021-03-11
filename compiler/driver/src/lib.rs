@@ -53,7 +53,7 @@ impl Driver {
         (driver, lib, root_file, type_file, resolve_file)
     }
 
-    pub fn load(&mut self, input: &str) -> Option<()> {
+    pub fn load(&mut self, input: &str) -> Option<LibId> {
         let path = std::path::PathBuf::from(input);
 
         match manifest::load_project(
@@ -67,13 +67,18 @@ impl Driver {
                 self.db.set_libs(self.libs.clone().into());
                 println!("loaded {}", self.libs[lib].name);
 
-                Some(())
+                Some(lib)
             },
             | Err(e) => {
                 eprintln!("{}", e);
                 None
             },
         }
+    }
+
+    pub fn add_dep(&mut self, lib: LibId, dep: LibId) {
+        self.libs.add_dep(lib, dep).unwrap();
+        self.db.set_libs(self.libs.clone().into());
     }
 
     pub fn build(&self) {
