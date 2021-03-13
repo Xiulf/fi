@@ -11,7 +11,7 @@ module prim =
 @lang = "ptrbs-type"  type BufPtrSentinel :: Type -> Figure -> Type
 @lang = "array-type"  type Array          :: Type -> Figure -> Type
 @lang = "slice-type"  type Slice          :: Type -> Type
-@lang = "record-type" type Record         :: Row -> Type
+@lang = "record-type" type Record         :: Row Type -> Type
 
 type Int8    :: Type
 type Int16   :: Type

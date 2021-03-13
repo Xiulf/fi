@@ -1,12 +1,13 @@
 use base_db::input::FileId;
-use base_db::{Canceled, CheckCanceled, FileLoader, FileLoaderDelegate};
+use base_db::{Canceled, CheckCanceled, FileLoader, FileLoaderDelegate, Upcast};
 use std::sync::Arc;
 
 #[salsa::database(
     base_db::SourceDatabaseStorage,
     base_db::SourceDatabaseExtStorage,
     hir::db::InternDatabaseStorage,
-    hir::db::DefDatabaseStorage
+    hir::db::DefDatabaseStorage,
+    hir::db::HirDatabaseStorage
 )]
 #[derive(Default)]
 pub struct RootDatabase {
@@ -39,5 +40,11 @@ impl salsa::ParallelDatabase for RootDatabase {
 impl FileLoader for RootDatabase {
     fn file_text(&self, file_id: FileId) -> Arc<String> {
         FileLoaderDelegate(self).file_text(file_id)
+    }
+}
+
+impl Upcast<dyn hir::db::DefDatabase + 'static> for RootDatabase {
+    fn upcast(&self) -> &(dyn hir::db::DefDatabase + 'static) {
+        self
     }
 }
