@@ -76,72 +76,13 @@ impl Interactive {
             .set_file_text(self.resolve_file, self.resolve_str.clone().into());
 
         let parsed = self.driver.db.parse_path(self.resolve_file);
-        let path = hir::path::ModPath::lower(parsed.tree());
-        let def_map = self.driver.db.def_map(self.lib);
-        let (res, _) = def_map.resolve_path(&self.driver.db, def_map.root(), &path);
 
-        if res.is_none() {
-            println!("\x1B[0;31mNot found\x1B[0m");
-            return;
-        }
-
-        if let Some(id) = res.values {
-            let name = self.resolve_name(id);
-
-            println!("\x1B[0;32mvalue\x1B[0m {}", name);
-        }
-
-        if let Some(id) = res.types {
-            let name = self.resolve_name(id);
-
-            println!("\x1B[0;32mtype\x1B[0m {}", name);
-        }
-
-        if let Some(id) = res.modules {
-            let name = self.resolve_name(id);
-
-            println!("\x1B[0;32mmodule\x1B[0m {}", name);
-        }
+        println!("{}", parsed.syntax_node());
     }
 
     fn type_(&mut self, text: &str) {
     }
 
     fn eval(&mut self, text: &str) {
-    }
-
-    fn resolve_name(&self, id: hir::id::ModuleDefId) -> hir::path::ModPath {
-        use hir::id::{HasModule, Lookup, ModuleDefId};
-        let db = &self.driver.db;
-        let module = id.module(db);
-        let def_map = self.driver.db.def_map(module.lib);
-        let file = def_map[module.local_id].origin.file_id(&def_map);
-        let item_tree = db.item_tree(file);
-        let name = match id {
-            | ModuleDefId::ModuleId(_) => None,
-            | ModuleDefId::FixityId(id) => Some(item_tree[id.lookup(db).id.value].name.clone()),
-            | ModuleDefId::ForeignId(id) => Some(item_tree[id.lookup(db).id.value].name.clone()),
-            | ModuleDefId::FuncId(id) => Some(item_tree[id.lookup(db).id.value].name.clone()),
-            | ModuleDefId::ConstId(id) => Some(item_tree[id.lookup(db).id.value].name.clone()),
-            | ModuleDefId::StaticId(id) => Some(item_tree[id.lookup(db).id.value].name.clone()),
-            | ModuleDefId::TypeId(id) => Some(item_tree[id.lookup(db).id.value].name.clone()),
-            | ModuleDefId::CtorId(_id) => unimplemented!(),
-            | ModuleDefId::ClassId(id) => Some(item_tree[id.lookup(db).id.value].name.clone()),
-        };
-
-        let mut module = module.local_id;
-        let mut segs = Vec::new();
-
-        segs.push(def_map[module].name.clone());
-
-        while let Some(parent) = def_map[module].parent {
-            module = parent;
-            segs.push(def_map[module].name.clone());
-        }
-
-        segs.reverse();
-        segs.extend(name);
-
-        hir::path::ModPath::from_segments(segs)
     }
 }

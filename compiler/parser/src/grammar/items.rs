@@ -118,7 +118,7 @@ crate fn fun(p: &mut Parser, m: Marker) {
         }
 
         p.expect(EQUALS);
-        exprs::block(p);
+        exprs::expr(p);
         m.complete(p, ITEM_FUN);
     }
 }
@@ -266,7 +266,7 @@ crate fn assoc_item(p: &mut Parser) {
         | FUN_KW => fun(p, m),
         | STATIC_KW => static_(p, m),
         | _ => {
-            p.error("expected an instance item");
+            p.error("expected an associated item");
             m.abandon(p);
         },
     }

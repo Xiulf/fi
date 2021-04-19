@@ -252,7 +252,7 @@ impl ItemFun {
         support::children(&self.0)
     }
 
-    pub fn body(&self) -> Option<Block> {
+    pub fn body(&self) -> Option<Expr> {
         support::child(&self.0)
     }
 }

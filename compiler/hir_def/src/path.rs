@@ -5,13 +5,13 @@ use std::iter::FromIterator;
 use syntax::ast;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModPath {
+pub struct Path {
     segments: Vec<Name>,
 }
 
-impl ModPath {
+impl Path {
     pub fn from_segments(segments: impl IntoIterator<Item = Name>) -> Self {
-        ModPath {
+        Path {
             segments: Vec::from_iter(segments),
         }
     }
@@ -46,7 +46,7 @@ impl ModPath {
 
     pub(crate) fn expand_import(
         import: InFile<ast::ItemImport>,
-        mut cb: impl FnMut(ModPath, Option<ast::NameRef>, bool, Option<Name>, Option<Name>),
+        mut cb: impl FnMut(Path, Option<ast::NameRef>, bool, Option<Name>, Option<Name>),
     ) {
         if let Some(path) = convert_path(import.value.path()) {
             if let Some(items) = import.value.items() {
@@ -72,15 +72,15 @@ impl ModPath {
     pub fn lower(path: ast::Path) -> Self {
         let segments = path.segments().filter_map(|s| Some(s.name_ref()?.as_name())).collect();
 
-        ModPath { segments }
+        Path { segments }
     }
 }
 
-pub(crate) fn convert_path(path: Option<ast::Path>) -> Option<ModPath> {
-    path.map(ModPath::lower)
+pub(crate) fn convert_path(path: Option<ast::Path>) -> Option<Path> {
+    path.map(Path::lower)
 }
 
-impl fmt::Display for ModPath {
+impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, segment) in self.segments.iter().enumerate() {
             if i != 0 {

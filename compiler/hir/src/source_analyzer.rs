@@ -1,11 +1,10 @@
 use crate::db::HirDatabase;
 use crate::PathResolution;
 use base_db::input::FileId;
-use hir_def::path::ModPath;
+use hir_def::path::Path;
+use hir_def::resolver::Resolver;
 use syntax::ast;
 use syntax::AstNode;
-
-type Resolver = ();
 
 #[derive(Debug)]
 pub(crate) struct SourceAnalyzer {
@@ -16,11 +15,48 @@ pub(crate) struct SourceAnalyzer {
 impl SourceAnalyzer {
     pub fn resolve_path(&self, db: &dyn HirDatabase, path: &ast::Path) -> Option<PathResolution> {
         let parent = || path.syntax().parent();
-        let hir_path = ModPath::lower(path.clone());
+        let mut prefer_value_ns = false;
 
-        resolve_hir_path(db, &self.resolver, &hir_path)
+        if let Some(_) = parent().and_then(ast::ExprPath::cast) {
+            prefer_value_ns = true;
+        }
+
+        let hir_path = Path::lower(path.clone());
+
+        resolve_hir_path_(db, &self.resolver, &hir_path, true)
     }
 }
 
-fn resolve_hir_path(db: &dyn HirDatabase, resolver: &Resolver, path: &ModPath) -> Option<PathResolution> {
+#[inline]
+pub(crate) fn resolve_hir_path(db: &dyn HirDatabase, resolver: &Resolver, path: &Path) -> Option<PathResolution> {
+    resolve_hir_path_(db, resolver, path, false)
+}
+
+fn resolve_hir_path_(
+    db: &dyn HirDatabase,
+    resolver: &Resolver,
+    path: &Path,
+    prefer_value_ns: bool,
+) -> Option<PathResolution> {
+    let types = || -> Option<PathResolution> {
+        unimplemented!();
+    };
+
+    let values = || -> Option<PathResolution> {
+        unimplemented!();
+    };
+
+    let items = || -> Option<PathResolution> {
+        resolver
+            .resolve_path(db.upcast(), path)
+            .types
+            .map(|it| PathResolution::Def(it.into()))
+    };
+
+    if prefer_value_ns {
+        values().or_else(types)
+    } else {
+        types().or_else(values)
+    }
+    .or_else(items)
 }

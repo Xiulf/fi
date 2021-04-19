@@ -91,7 +91,7 @@ impl Driver {
 
             diagnostics::emit_diagnostics(&self.db, lib, &mut std::io::stderr());
 
-            // let def_map = rdb.def_map(lib);
+            // let def_map = self.db.def_map(lib);
             //
             // def_map.dump(&mut std::io::stdout()).unwrap();
         }

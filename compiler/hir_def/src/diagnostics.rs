@@ -38,7 +38,7 @@ impl DefDiagnostic {
                 let mut curr = 0;
                 let mut name = None;
 
-                crate::path::ModPath::expand_import(InFile::new(ast.file_id, item.clone()), |_, import, _, _, _| {
+                crate::path::Path::expand_import(InFile::new(ast.file_id, item.clone()), |_, import, _, _, _| {
                     if curr == *index {
                         name = import;
                     }

@@ -2,13 +2,13 @@ use crate::id::ModuleDefId;
 use crate::item_scope::ItemInNs;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PerNs {
-    pub types: Option<ModuleDefId>,
-    pub values: Option<ModuleDefId>,
-    pub modules: Option<ModuleDefId>,
+pub struct PerNs<T = ModuleDefId> {
+    pub types: Option<T>,
+    pub values: Option<T>,
+    pub modules: Option<T>,
 }
 
-impl PerNs {
+impl<T> PerNs<T> {
     pub const fn none() -> Self {
         PerNs {
             types: None,
@@ -17,30 +17,33 @@ impl PerNs {
         }
     }
 
-    pub fn values(id: ModuleDefId) -> Self {
+    pub fn values(id: T) -> Self {
         PerNs {
             values: Some(id),
             ..Self::none()
         }
     }
 
-    pub fn types(id: ModuleDefId) -> Self {
+    pub fn types(id: T) -> Self {
         PerNs {
             types: Some(id),
             ..Self::none()
         }
     }
 
-    pub fn modules(id: ModuleDefId) -> Self {
+    pub fn modules(id: T) -> Self {
         PerNs {
             modules: Some(id),
             ..Self::none()
         }
     }
 
-    pub fn both(id: ModuleDefId) -> Self {
+    pub fn both(id: T) -> Self
+    where
+        T: Clone,
+    {
         PerNs {
-            values: Some(id),
+            values: Some(id.clone()),
             types: Some(id),
             modules: None,
         }
@@ -58,14 +61,16 @@ impl PerNs {
         }
     }
 
-    pub fn filter_vis(self, f: impl Fn(&ModuleDefId) -> bool + Clone) -> Self {
+    pub fn filter_vis(self, f: impl Fn(&T) -> bool + Clone) -> Self {
         PerNs {
             types: self.types.filter(f.clone()),
             values: self.values.filter(f.clone()),
             modules: self.modules.filter(f),
         }
     }
+}
 
+impl PerNs<ModuleDefId> {
     pub fn iter_items(self) -> impl Iterator<Item = ItemInNs> {
         self.types
             .map(ItemInNs::Types)
@@ -75,7 +80,7 @@ impl PerNs {
     }
 }
 
-impl From<ModuleDefId> for PerNs {
+impl From<ModuleDefId> for PerNs<ModuleDefId> {
     fn from(def: ModuleDefId) -> Self {
         match def {
             | ModuleDefId::ModuleId(_) => PerNs::modules(def),
@@ -91,8 +96,8 @@ impl From<ModuleDefId> for PerNs {
     }
 }
 
-impl Iterator for PerNs {
-    type Item = ModuleDefId;
+impl<T> Iterator for PerNs<T> {
+    type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(id) = self.types.take() {

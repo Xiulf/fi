@@ -5,7 +5,7 @@ use crate::ast_id::FileAstId;
 use crate::db::DefDatabase;
 use crate::in_file::InFile;
 use crate::name::Name;
-use crate::path::ModPath;
+use crate::path::Path;
 use crate::type_ref::TypeRef;
 use base_db::input::FileId;
 use rustc_hash::FxHashMap;
@@ -185,7 +185,7 @@ items! {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Import {
     pub ast_id: FileAstId<ast::ItemImport>,
-    pub path: ModPath,
+    pub path: Path,
     pub qualify: Option<Name>,
     pub alias: Option<Name>,
     pub is_glob: bool,
@@ -196,7 +196,7 @@ pub struct Import {
 pub struct Fixity {
     pub ast_id: FileAstId<ast::ItemFixity>,
     pub name: Name,
-    pub func: ModPath,
+    pub func: Path,
     pub assoc: Assoc,
     pub prec: Prec,
 }
@@ -259,7 +259,7 @@ pub struct Class {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instance {
     pub ast_id: FileAstId<ast::ItemInstance>,
-    pub class: ModPath,
+    pub class: Path,
     pub types: Box<[Idx<TypeRef>]>,
 }
 

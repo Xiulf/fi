@@ -4,7 +4,7 @@ use crate::db::DefDatabase;
 use crate::in_file::InFile;
 use crate::item_tree::*;
 use crate::name::AsName;
-use crate::path::ModPath;
+use crate::path::Path;
 use crate::type_ref::TypeRef;
 use base_db::input::FileId;
 use std::marker::PhantomData;
@@ -72,7 +72,7 @@ impl Ctx {
         let ast_id = self.ast_id_map.ast_id(import_item);
         let mut imports = Vec::new();
 
-        ModPath::expand_import(
+        Path::expand_import(
             InFile::new(self.file_id, import_item.clone()),
             |path, _, is_glob, alias, qualify| {
                 imports.push(id(self.tree.data.imports.alloc(Import {
@@ -92,7 +92,7 @@ impl Ctx {
     fn lower_fixity(&mut self, item: &ast::ItemFixity) -> Option<LocalItemTreeId<Fixity>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
-        let func = ModPath::lower(item.func()?);
+        let func = Path::lower(item.func()?);
         let prec = item.prec()?;
         let assoc = item.assoc()?;
 
@@ -206,7 +206,7 @@ impl Ctx {
 
     fn lower_instance(&mut self, /*index: usize,*/ item: &ast::ItemInstance) -> Option<LocalItemTreeId<Instance>> {
         let ast_id = self.ast_id_map.ast_id(item);
-        let class = ModPath::lower(item.class()?);
+        let class = Path::lower(item.class()?);
         let types = item.types().map(|t| self.lower_ty(t)).collect();
 
         Some(id(self.tree.data.instances.alloc(Instance {

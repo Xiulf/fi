@@ -1,5 +1,6 @@
 pub mod db;
 pub mod diagnostic;
+mod from_id;
 pub mod semantics;
 pub mod source_analyzer;
 
@@ -8,6 +9,7 @@ use base_db::libs::LibId;
 use hir_def::id::*;
 use hir_def::name::AsName;
 pub use hir_def::name::Name;
+use hir_def::pat::PatId;
 use hir_ty::db::HirDatabase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -112,11 +114,11 @@ impl Module {
 pub enum PathResolution {
     Def(ModuleDef),
     Local(Local),
-    TypeVar(TypeVar),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModuleDef {
+    Module(Module),
     Fixity(Fixity),
     Foreign(Foreign),
     Func(Func),
@@ -173,7 +175,16 @@ pub struct Local {
     pub(crate) pat_id: PatId,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeVar {
-    pub(crate) id: TypeVarId,
+macro_rules! impl_from {
+    ($($variant:ident),* for $ty:ident) => {
+        $(
+            impl From<$variant> for $ty {
+                fn from(src: $variant) -> Self {
+                    Self::$variant(src)
+                }
+            }
+        )*
+    };
 }
+
+impl_from!(Fixity, Foreign, Func, Static, Const, Type, Ctor, Class for ModuleDef);

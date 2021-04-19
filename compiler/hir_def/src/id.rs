@@ -1,6 +1,7 @@
 use crate::arena::Idx;
 use crate::db::DefDatabase;
 use crate::def_map::ModuleData;
+use crate::in_file::InFile;
 use crate::item_tree::*;
 use base_db::libs::LibId;
 use std::hash::{Hash, Hasher};
@@ -49,6 +50,12 @@ pub trait Lookup {
 
 pub trait HasModule {
     fn module(&self, db: &dyn DefDatabase) -> ModuleId;
+}
+
+pub trait HasSource {
+    type Value;
+
+    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -187,6 +194,32 @@ impl<N: ItemTreeNode> HasModule for ItemLoc<N> {
 impl<N: ItemTreeNode> HasModule for AssocItemLoc<N> {
     fn module(&self, db: &dyn DefDatabase) -> ModuleId {
         self.container.module(db)
+    }
+}
+
+impl<N: ItemTreeNode> HasSource for AssocItemLoc<N> {
+    type Value = N::Source;
+
+    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
+        let tree = db.item_tree(self.id.file_id);
+        let ast_id_map = db.ast_id_map(self.id.file_id);
+        let root = db.parse(self.id.file_id).syntax_node();
+        let node = &tree[self.id.value];
+
+        InFile::new(self.id.file_id, ast_id_map.get(node.ast_id()).to_node(&root))
+    }
+}
+
+impl<N: ItemTreeNode> HasSource for ItemLoc<N> {
+    type Value = N::Source;
+
+    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
+        let tree = db.item_tree(self.id.file_id);
+        let ast_id_map = db.ast_id_map(self.id.file_id);
+        let root = db.parse(self.id.file_id).syntax_node();
+        let node = &tree[self.id.value];
+
+        InFile::new(self.id.file_id, ast_id_map.get(node.ast_id()).to_node(&root))
     }
 }
 

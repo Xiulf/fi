@@ -2,7 +2,7 @@ use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::id::{LocalModuleId, ModuleDefId};
 use crate::name::Name;
-use crate::path::ModPath;
+use crate::path::Path;
 use crate::per_ns::PerNs;
 use base_db::libs::LibId;
 
@@ -42,12 +42,7 @@ impl ResolveResult {
 }
 
 impl DefMap {
-    pub fn resolve_path(
-        &self,
-        db: &dyn DefDatabase,
-        original: LocalModuleId,
-        path: &ModPath,
-    ) -> (PerNs, Option<usize>) {
+    pub fn resolve_path(&self, db: &dyn DefDatabase, original: LocalModuleId, path: &Path) -> (PerNs, Option<usize>) {
         let res = self.resolve_mod_path(db, ResolveMode::Other, original, path);
 
         (res.resolved_def, res.segment_index)
@@ -58,7 +53,7 @@ impl DefMap {
         db: &dyn DefDatabase,
         mode: ResolveMode,
         original: LocalModuleId,
-        path: &ModPath,
+        path: &Path,
     ) -> ResolveResult {
         let mut segments = path.segments().iter().enumerate();
         let mut curr_per_ns = {
@@ -79,7 +74,7 @@ impl DefMap {
             curr_per_ns = match curr {
                 | ModuleDefId::ModuleId(module) => {
                     if module.lib != self.lib {
-                        let path = ModPath::from_segments(path.segments()[i..].iter().cloned());
+                        let path = Path::from_segments(path.segments()[i..].iter().cloned());
                         let def_map = db.def_map(module.lib);
                         let (def, s) = def_map.resolve_path(db, module.local_id, &path);
 

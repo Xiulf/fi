@@ -7,7 +7,7 @@ use crate::in_file::InFile;
 use crate::item_scope::{ImportType, PerNsAllImports};
 use crate::item_tree::{self, Item, ItemTree, ItemTreeId};
 use crate::name::{AsName, Name};
-use crate::path::ModPath;
+use crate::path::Path;
 use crate::per_ns::PerNs;
 use base_db::input::{FileId, FileTree};
 use rustc_hash::FxHashMap;
@@ -60,7 +60,7 @@ struct ModCollector<'a, 'b> {
 struct Import {
     source: ItemTreeId<item_tree::Import>,
     alias: Option<Name>,
-    path: ModPath,
+    path: Path,
     is_glob: bool,
 }
 

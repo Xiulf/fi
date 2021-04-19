@@ -557,9 +557,9 @@ impl<'src> Lexer<'src> {
                 } else {
                     self.insert_default(start, FUN_KW);
 
-                    if self.is_def_start(start) {
-                        self.stack.push((start, LayoutDelim::TopDeclHead));
-                    }
+                    // if self.is_def_start(start) {
+                    //     self.stack.push((start, LayoutDelim::TopDeclHead));
+                    // }
                 }
             },
             | "static" => {

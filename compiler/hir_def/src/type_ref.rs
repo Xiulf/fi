@@ -1,5 +1,5 @@
 use crate::name::{AsName, Name};
-use crate::path::{convert_path, ModPath};
+use crate::path::{convert_path, Path};
 use syntax::ast::{self, NameOwner};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -8,7 +8,7 @@ pub enum TypeRef {
     Kinded(Box<[TypeRef; 2]>),
     App(Box<[TypeRef; 2]>),
     Tuple(Vec<TypeRef>),
-    Path(ModPath),
+    Path(Path),
     Ptr(Box<TypeRef>, PtrLen),
     Slice(Box<TypeRef>),
     Array(Box<TypeRef>, usize),

@@ -1,5 +1,6 @@
 use crate::db::HirDatabase;
 use crate::source_analyzer::SourceAnalyzer;
+use crate::PathResolution;
 use base_db::input::FileId;
 use hir_def::in_file::InFile;
 use rustc_hash::FxHashMap;
@@ -8,8 +9,6 @@ use std::fmt;
 use syntax::ast;
 use syntax::AstNode as _;
 use syntax::SyntaxNode;
-
-type PathResolution = ();
 
 pub struct Semantics<'db, DB> {
     pub db: &'db DB,
@@ -52,9 +51,7 @@ impl<'db> SemanticsImpl<'db> {
     }
 
     fn parse(&self, file_id: FileId) -> ast::Module {
-        let tree = self.db.parse(file_id).tree();
-
-        tree
+        self.db.parse(file_id).tree()
     }
 
     fn resolve_path(&self, path: &ast::Path) -> Option<PathResolution> {

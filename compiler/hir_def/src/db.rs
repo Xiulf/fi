@@ -1,7 +1,9 @@
 use crate::ast_id::AstIdMap;
+use crate::body::{Body, BodySourceMap};
 use crate::def_map::DefMap;
 use crate::id::*;
 use crate::item_tree::ItemTree;
+use crate::scope::ExprScopes;
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use base_db::{SourceDatabaseExt, Upcast};
@@ -44,4 +46,13 @@ pub trait DefDatabase: InternDatabase {
 
     #[salsa::invoke(DefMap::def_map_query)]
     fn def_map(&self, lib: LibId) -> Arc<DefMap>;
+
+    #[salsa::invoke(Body::body_source_map_query)]
+    fn body_source_map(&self, def: DefWithBodyId) -> (Arc<Body>, Arc<BodySourceMap>);
+
+    #[salsa::invoke(Body::body_query)]
+    fn body(&self, def: DefWithBodyId) -> Arc<Body>;
+
+    #[salsa::invoke(ExprScopes::expr_scopes_query)]
+    fn expr_scopes(&self, def: DefWithBodyId) -> Arc<ExprScopes>;
 }
