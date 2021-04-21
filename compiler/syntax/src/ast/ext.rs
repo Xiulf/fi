@@ -477,6 +477,12 @@ impl Constraint {
     }
 }
 
+impl ExprPath {
+    pub fn path(&self) -> Option<Path> {
+        support::child(&self.0)
+    }
+}
+
 impl Path {
     pub fn segments(&self) -> AstChildren<PathSegment> {
         support::children(&self.0)

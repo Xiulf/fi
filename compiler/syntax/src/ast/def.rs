@@ -1,4 +1,3 @@
-use super::*;
 use crate::ast_node;
 use parser::syntax_kind::*;
 

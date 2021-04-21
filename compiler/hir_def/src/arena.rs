@@ -1,3 +1,6 @@
+mod map;
+
+pub use map::ArenaMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;

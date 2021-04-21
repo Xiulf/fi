@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibSet};
 use base_db::SourceDatabaseExt;
+use path_slash::PathExt as _;
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -111,7 +112,8 @@ fn load_file(
 ) -> Result<()> {
     let text =
         std::fs::read_to_string(path).with_context(|| format!("Failed to load source file from {}", path.display()))?;
-    let file_path = RelativePath::from_path(path.strip_prefix(project).unwrap()).unwrap();
+    let file_path = path.strip_prefix(project).ok().and_then(|p| p.to_slash()).unwrap();
+    let file_path = RelativePath::from_path(&file_path).unwrap();
 
     rdb.set_file_text(file_id, text.into());
     rdb.set_file_source_root(file_id, root_id);
