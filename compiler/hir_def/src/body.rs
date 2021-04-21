@@ -1,3 +1,5 @@
+mod lower;
+
 use crate::arena::{Arena, Idx};
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId};
