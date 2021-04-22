@@ -36,7 +36,6 @@ pub enum SyntaxKind {
     INT,
     FLOAT,
     STRING,
-    RSTRING,
     CHAR,
     LYT_START,
     LYT_SEP,
@@ -105,6 +104,12 @@ pub enum SyntaxKind {
     PAT_BIND,
     PAT_LITERAL,
     PAT_WILDCARD,
+    PAT_TUPLE,
+    PAT_PARENS,
+    PAT_RECORD,
+
+    FIELD_NORMAL,
+    FIELD_PUN,
 
     TYPE_KINDED,
     TYPE_APP,

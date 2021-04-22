@@ -46,6 +46,9 @@ ast_node!(Pat {
     Ctor(PatCtor, PAT_CTOR),
     Bind(PatBind, PAT_BIND),
     Lit(PatLit, PAT_LITERAL),
+    Tuple(PatTuple, PAT_TUPLE),
+    Parens(PatParens, PAT_PARENS),
+    Record(PatRecord, PAT_RECORD),
 });
 
 ast_node!(Type {

@@ -398,7 +398,7 @@ impl<'src> Lexer<'src> {
         while self.pos < TextSize::of(self.source) {
             match self.peek() {
                 | '"' => break,
-                | '\\' => {
+                | '\\' if !raw => {
                     self.advance();
                     self.escape();
                 },

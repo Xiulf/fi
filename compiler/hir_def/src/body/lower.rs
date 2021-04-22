@@ -64,11 +64,15 @@ struct ExprCollector<'a> {
 }
 
 impl<'a> ExprCollector<'a> {
-    fn collect(
-        mut self,
-        param_list: Option<ast::AstChildren<ast::Pat>>,
-        body: Option<ast::Expr>,
-    ) -> (Body, BodySourceMap) {
+    fn collect(mut self, params: Option<ast::AstChildren<ast::Pat>>, body: Option<ast::Expr>) -> (Body, BodySourceMap) {
+        if let Some(params) = params {
+            for param in params {
+                let pat = self.collect_pat(param);
+
+                self.body.params.push(pat);
+            }
+        }
+
         self.body.body_expr = self.collect_expr_opt(body);
 
         (self.body, self.source_map)

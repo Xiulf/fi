@@ -35,24 +35,92 @@ crate fn app(p: &mut Parser) {
 crate fn atom(p: &mut Parser) {
     let m = p.start();
 
-    if p.at(IDENT) {
-        if p.nth_at(1, DOT) {
-            paths::path(p);
-            m.complete(p, PAT_CTOR);
+    match p.current() {
+        | IDENT => {
+            if p.nth_at(1, DOT) {
+                paths::path(p);
+                m.complete(p, PAT_CTOR);
+            } else {
+                paths::name(p);
+
+                if p.eat(AT) {
+                    pattern(p);
+                }
+
+                m.complete(p, PAT_BIND);
+            }
+        },
+        | UNDERSCORE => {
+            p.bump(UNDERSCORE);
+            m.complete(p, PAT_WILDCARD);
+        },
+        | INT | FLOAT | CHAR | STRING => {
+            exprs::literal(p);
+            m.complete(p, PAT_LITERAL);
+        },
+        | L_PAREN => {
+            p.bump(L_PAREN);
+
+            if p.eat(R_PAREN) {
+                m.complete(p, PAT_TUPLE);
+            } else {
+                let mut is_tuple = false;
+                let _ = pattern(p);
+
+                while p.eat(COMMA) {
+                    is_tuple = true;
+
+                    if p.at(R_PAREN) {
+                        break;
+                    } else {
+                        pattern(p);
+                    }
+                }
+
+                p.expect(R_PAREN);
+
+                if is_tuple {
+                    m.complete(p, PAT_TUPLE);
+                } else {
+                    m.complete(p, PAT_PARENS);
+                }
+            }
+        },
+        | L_BRACE => {
+            p.bump(L_BRACE);
+            record_fields(p, pattern);
+            p.expect(R_BRACE);
+            m.complete(p, PAT_RECORD);
+        },
+        | _ => {
+            p.error("expected a pattern");
+            m.abandon(p);
+        },
+    }
+}
+
+crate fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser)) {
+    while !p.at(R_BRACE) {
+        let field = p.start();
+
+        if p.at(IDENT) && p.nth_at(1, COLON) {
+            p.bump(IDENT);
+            p.bump(COLON);
+            f(p);
+            field.complete(p, FIELD_NORMAL);
         } else {
-            paths::name(p);
-            m.complete(p, PAT_BIND);
+            p.expect(IDENT);
+            field.complete(p, FIELD_PUN);
         }
-    } else if p.eat(UNDERSCORE) {
-        m.complete(p, PAT_WILDCARD);
-    } else {
-        p.error("expected a pattern");
-        m.abandon(p);
+
+        if !p.at(R_BRACE) {
+            p.expect(COMMA);
+        }
     }
 }
 
 fn peek(p: &mut Parser) -> bool {
     p.at_ts(TokenSet::new(&[
-        IDENT, UNDERSCORE, L_PAREN, L_BRACE, L_BRACKET, INT, FLOAT, CHAR, STRING, RSTRING,
+        IDENT, UNDERSCORE, L_PAREN, L_BRACE, INT, FLOAT, CHAR, STRING,
     ]))
 }
