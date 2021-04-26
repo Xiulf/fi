@@ -48,7 +48,7 @@ crate fn attr_arg(p: &mut Parser) {
         } else {
             m.abandon(p);
         }
-    } else if p.at_ts(TokenSet::new(&[INT, FLOAT, CHAR, STRING, RSTRING])) {
+    } else if p.at_ts(TokenSet::new(&[INT, FLOAT, CHAR, STRING])) {
         exprs::literal(p);
         m.complete(p, ATTR_ARG_LIT);
     } else {

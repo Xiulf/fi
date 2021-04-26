@@ -12,3 +12,11 @@ pub enum Expr {
     Missing,
     Path(Path),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Literal {
+    String(String),
+    Char(char),
+    Int(i128),
+    Float(u64),
+}

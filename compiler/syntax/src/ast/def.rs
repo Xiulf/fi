@@ -41,6 +41,7 @@ ast_node!(AssocItem {
 });
 
 ast_node!(Pat {
+    Wildcard(PatWildcard, PAT_WILDCARD),
     Typed(PatTyped, PAT_TYPED),
     App(PatApp, PAT_APP),
     Ctor(PatCtor, PAT_CTOR),
