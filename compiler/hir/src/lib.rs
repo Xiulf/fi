@@ -7,8 +7,7 @@ pub mod source_analyzer;
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use hir_def::id::*;
-use hir_def::name::AsName;
-pub use hir_def::name::Name;
+pub use hir_def::name::{AsName, Name};
 use hir_def::pat::PatId;
 use hir_ty::db::HirDatabase;
 
@@ -56,7 +55,7 @@ impl Lib {
     }
 
     pub fn all(db: &dyn HirDatabase) -> Vec<Lib> {
-        db.libs().toposort().map(|id| Lib { id }).collect()
+        db.libs().toposort().into_iter().map(|id| Lib { id }).collect()
     }
 }
 

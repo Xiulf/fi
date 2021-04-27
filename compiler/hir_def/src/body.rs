@@ -3,7 +3,7 @@ mod lower;
 use crate::arena::{Arena, ArenaMap};
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId};
-use crate::id::{DefWithBodyId, HasSource, Lookup};
+use crate::id::{DefWithBodyId, HasModule, HasSource, Lookup, ModuleId};
 use crate::in_file::InFile;
 use crate::pat::{Pat, PatId};
 use base_db::input::FileId;
@@ -41,29 +41,29 @@ impl Body {
     pub fn body_source_map_query(db: &dyn DefDatabase, def: DefWithBodyId) -> (Arc<Body>, Arc<BodySourceMap>) {
         let mut params = None;
 
-        let (file_id, body) = match def {
+        let (file_id, module, body) = match def {
             | DefWithBodyId::FuncId(f) => {
                 let f = f.lookup(db);
                 let src = f.source(db);
 
                 params = Some(src.value.args());
-                (src.file_id, src.value.body())
+                (src.file_id, f.module(db), src.value.body())
             },
             | DefWithBodyId::ConstId(c) => {
                 let c = c.lookup(db);
                 let src = c.source(db);
 
-                (src.file_id, src.value.value())
+                (src.file_id, c.module(db), src.value.value())
             },
             | DefWithBodyId::StaticId(s) => {
                 let s = s.lookup(db);
                 let src = s.source(db);
 
-                (src.file_id, src.value.value())
+                (src.file_id, s.module(db), src.value.value())
             },
         };
 
-        let (body, source_map) = Body::new(db, params, body, file_id);
+        let (body, source_map) = Body::new(db, params, body, file_id, module);
 
         (Arc::new(body), Arc::new(source_map))
     }
@@ -77,7 +77,8 @@ impl Body {
         params: Option<ast::AstChildren<ast::Pat>>,
         body: Option<ast::Expr>,
         file_id: FileId,
+        module: ModuleId,
     ) -> (Body, BodySourceMap) {
-        lower::lower(db, params, body, file_id)
+        lower::lower(db, params, body, file_id, module)
     }
 }

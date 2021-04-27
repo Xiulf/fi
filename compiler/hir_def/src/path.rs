@@ -80,6 +80,12 @@ pub(crate) fn convert_path(path: Option<ast::Path>) -> Option<Path> {
     path.map(Path::lower)
 }
 
+impl From<Name> for Path {
+    fn from(name: Name) -> Self {
+        Path { segments: vec![name] }
+    }
+}
+
 impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, segment) in self.segments.iter().enumerate() {

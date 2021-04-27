@@ -2,6 +2,9 @@ use crate::name::{AsName, Name};
 use crate::path::{convert_path, Path};
 use syntax::ast::{self, NameOwner};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeRefId(salsa::InternId);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeRef {
     Placeholder,
@@ -87,5 +90,15 @@ impl TypeRef {
 
     pub(crate) fn from_ast_opt(node: Option<ast::Type>) -> Self {
         node.map(Self::from_ast).unwrap_or(TypeRef::Error)
+    }
+}
+
+impl salsa::InternKey for TypeRefId {
+    fn from_intern_id(v: salsa::InternId) -> Self {
+        Self(v)
+    }
+
+    fn as_intern_id(&self) -> salsa::InternId {
+        self.0
     }
 }

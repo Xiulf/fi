@@ -92,6 +92,13 @@ ast_node!(Expr {
     Array(ExprArray, EXPR_ARRAY),
     Do(ExprDo, EXPR_DO),
     If(ExprIf, EXPR_IF),
+    Case(ExprCase, EXPR_CASE),
+    While(ExprWhile, EXPR_WHILE),
+    Loop(ExprLoop, EXPR_LOOP),
+    Next(ExprNext, EXPR_NEXT),
+    Break(ExprBreak, EXPR_BREAK),
+    Yield(ExprYield, EXPR_YIELD),
+    Return(ExprReturn, EXPR_RETURN),
 });
 
 ast_node!(Block, BLOCK);

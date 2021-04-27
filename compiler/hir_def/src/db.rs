@@ -4,6 +4,7 @@ use crate::def_map::DefMap;
 use crate::id::*;
 use crate::item_tree::ItemTree;
 use crate::scope::ExprScopes;
+use crate::type_ref::{TypeRef, TypeRefId};
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use base_db::{SourceDatabaseExt, Upcast};
@@ -34,6 +35,9 @@ pub trait InternDatabase: SourceDatabaseExt {
 
     #[salsa::interned]
     fn intern_instance(&self, loc: InstanceLoc) -> InstanceId;
+
+    #[salsa::interned]
+    fn intern_type_ref(&self, type_ref: TypeRef) -> TypeRefId;
 }
 
 #[salsa::query_group(DefDatabaseStorage)]

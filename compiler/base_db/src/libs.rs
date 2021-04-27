@@ -71,7 +71,7 @@ impl LibSet {
         self.libs.values().find(|l| l.name == name)
     }
 
-    pub fn toposort(&self) -> impl Iterator<Item = LibId> + '_ {
+    pub fn toposort(&self) -> Vec<LibId> {
         let mut res = Vec::new();
         let mut visited = FxHashSet::default();
 
@@ -79,7 +79,7 @@ impl LibSet {
             go(self, &mut visited, &mut res, lib);
         }
 
-        return res.into_iter();
+        return res;
 
         fn go(libs: &LibSet, visited: &mut FxHashSet<LibId>, res: &mut Vec<LibId>, source: LibId) {
             if !visited.insert(source) {

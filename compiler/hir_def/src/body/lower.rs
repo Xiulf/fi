@@ -2,8 +2,11 @@ use crate::arena::Arena;
 use crate::ast_id::{AstIdMap, FileAstId};
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
 use crate::db::DefDatabase;
+use crate::def_map::DefMap;
 use crate::expr::{dummy_expr_id, Expr, ExprId};
+use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
+use crate::name::{AsName, Name};
 use crate::pat::{Pat, PatId};
 use crate::path::Path;
 use base_db::input::FileId;
@@ -41,10 +44,13 @@ pub(super) fn lower(
     params: Option<ast::AstChildren<ast::Pat>>,
     body: Option<ast::Expr>,
     file_id: FileId,
+    module: ModuleId,
 ) -> (Body, BodySourceMap) {
     ExprCollector {
         db,
         file_id,
+        module: module.local_id,
+        def_map: db.def_map(module.lib),
         source_map: BodySourceMap::default(),
         body: Body {
             exprs: Arena::default(),
@@ -60,6 +66,8 @@ struct ExprCollector<'a> {
     db: &'a dyn DefDatabase,
     body: Body,
     source_map: BodySourceMap,
+    def_map: Arc<DefMap>,
+    module: LocalModuleId,
     file_id: FileId,
 }
 
@@ -137,11 +145,16 @@ impl<'a> ExprCollector<'a> {
 
         Some(match expr {
             | ast::Expr::Path(e) => {
-                let path = e.path().map(Path::lower).map(Expr::Path).unwrap_or(Expr::Missing);
+                let path = e
+                    .path()
+                    .map(Path::lower)
+                    .map(|path| Expr::Path { path })
+                    .unwrap_or(Expr::Missing);
 
                 self.alloc_expr(path, syntax_ptr)
             },
-            | _ => unimplemented!(),
+            | ast::Expr::Do(e) => self.collect_block(e),
+            | _ => unimplemented!("{:?}", expr),
         })
     }
 
@@ -153,12 +166,32 @@ impl<'a> ExprCollector<'a> {
         }
     }
 
-    fn collect_pat(&mut self, pat: ast::Pat) -> PatId {
-        let pattern = match pat {
-            | _ => unimplemented!(),
-        };
+    fn collect_block(&mut self, block: ast::ExprDo) -> ExprId {
+        unimplemented!();
+    }
 
+    fn collect_pat(&mut self, pat: ast::Pat) -> PatId {
         let ptr = AstPtr::new(&pat);
+        let pattern = match pat {
+            | ast::Pat::Bind(pat) => {
+                let name = pat.name().map(|n| n.as_name()).unwrap_or_else(Name::missing);
+                let subpat = pat.subpat().map(|sp| self.collect_pat(sp));
+
+                if let None = subpat {
+                    let (resolved, _) = self.def_map.resolve_path(self.db, self.module, &name.clone().into());
+
+                    match resolved.values {
+                        | Some(ModuleDefId::ConstId(_)) | Some(ModuleDefId::CtorId(_)) => {
+                            Pat::Path { path: name.into() }
+                        },
+                        | _ => Pat::Bind { name, subpat },
+                    }
+                } else {
+                    Pat::Bind { name, subpat }
+                }
+            },
+            | _ => unimplemented!("{:?}", pat),
+        };
 
         self.alloc_pat(pattern, ptr)
     }

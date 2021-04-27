@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 hir = { path = "../hir" }
+hir_def = { path = "../hir_def" }
 base_db = { path = "../base_db" }
 syntax = { path = "../syntax" }
 salsa = "0.16.0"

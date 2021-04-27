@@ -477,6 +477,16 @@ impl Constraint {
     }
 }
 
+impl PatBind {
+    pub fn name(&self) -> Option<Name> {
+        support::child(&self.0)
+    }
+
+    pub fn subpat(&self) -> Option<Pat> {
+        support::child(&self.0)
+    }
+}
+
 impl ExprPath {
     pub fn path(&self) -> Option<Path> {
         support::child(&self.0)

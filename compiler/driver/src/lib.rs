@@ -83,17 +83,31 @@ impl Driver {
 
     pub fn build(&self) {
         let start = std::time::Instant::now();
+        let libs = self.db.libs().toposort();
+        let lib = *libs.last().unwrap();
 
-        for lib in self.db.libs().toposort() {
+        for lib in libs {
             let lib_data = &self.db.libs()[lib];
 
             println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib_data.name);
 
             diagnostics::emit_diagnostics(&self.db, lib, &mut std::io::stderr());
+        }
 
-            // let def_map = self.db.def_map(lib);
-            //
-            // def_map.dump(&mut std::io::stdout()).unwrap();
+        use hir::AsName;
+        let def_map = self.db.def_map(lib);
+        let root = def_map.root();
+        let root = &def_map[root].scope;
+
+        for decl in root.declarations() {
+            let id = match decl {
+                | hir_def::id::ModuleDefId::FuncId(id) => hir_def::id::DefWithBodyId::FuncId(id),
+                | _ => unimplemented!(),
+            };
+
+            let body = self.db.body(id);
+
+            println!("{:#?}", body);
         }
 
         let elapsed = start.elapsed();
