@@ -33,6 +33,9 @@ pub trait SourceDatabaseExt: SourceDatabase {
     fn file_source_root(&self, file_id: FileId) -> SourceRootId;
 
     #[salsa::input]
+    fn file_lib(&self, file_id: FileId) -> libs::LibId;
+
+    #[salsa::input]
     fn source_root(&self, id: SourceRootId) -> Arc<SourceRoot>;
 
     #[salsa::invoke(FileTree::file_tree_query)]

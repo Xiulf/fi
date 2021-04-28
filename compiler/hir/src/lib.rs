@@ -3,6 +3,7 @@ pub mod diagnostic;
 mod from_id;
 pub mod semantics;
 pub mod source_analyzer;
+mod source_to_def;
 
 use base_db::input::FileId;
 use base_db::libs::LibId;

@@ -487,8 +487,92 @@ impl PatBind {
     }
 }
 
+impl ExprApp {
+    pub fn base(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn arg(&self) -> Option<Expr> {
+        support::children(&self.0).nth(1)
+    }
+}
+
+impl ExprDeref {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
 impl ExprPath {
     pub fn path(&self) -> Option<Path> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprLit {
+    pub fn literal(&self) -> Option<Literal> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprParens {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprDo {
+    pub fn block(&self) -> Option<Block> {
+        support::child(&self.0)
+    }
+}
+
+impl Block {
+    pub fn statements(&self) -> AstChildren<Stmt> {
+        support::children(&self.0)
+    }
+}
+
+impl ExprIf {
+    pub fn cond(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn then(&self) -> Option<Expr> {
+        support::children(&self.0).nth(1)
+    }
+
+    pub fn else_(&self) -> Option<Expr> {
+        support::children(&self.0).nth(2)
+    }
+
+    pub fn is_unless(&self) -> bool {
+        support::token(&self.0, UNLESS_KW).is_some()
+    }
+}
+
+impl StmtLet {
+    pub fn pat(&self) -> Option<Pat> {
+        support::child(&self.0)
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl StmtBind {
+    pub fn pat(&self) -> Option<Pat> {
+        support::child(&self.0)
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl StmtExpr {
+    pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
     }
 }

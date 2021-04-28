@@ -46,7 +46,16 @@ impl Driver {
         driver.db.set_libs(driver.libs.clone().into());
         driver.db.set_source_root(root_id, root.into());
         driver.db.set_file_source_root(root_file, root_id);
-        driver.db.set_file_text(root_file, Default::default());
+        driver.db.set_file_source_root(type_file, root_id);
+        driver.db.set_file_source_root(resolve_file, root_id);
+        driver
+            .db
+            .set_file_text(root_file, String::from("module INTERACTIVE").into());
+        driver.db.set_file_text(type_file, Default::default());
+        driver.db.set_file_text(resolve_file, Default::default());
+        driver.db.set_file_lib(root_file, lib);
+        driver.db.set_file_lib(type_file, lib);
+        driver.db.set_file_lib(resolve_file, lib);
         driver.lib_count = 1;
         driver.file_count = 3;
 

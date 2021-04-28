@@ -83,6 +83,7 @@ pub fn load_project(
         &mut root,
         root_id,
         root_file,
+        lib,
         files,
         path.join(&manifest.project.entry).parent().unwrap(),
         &path.join(&manifest.project.entry),
@@ -105,6 +106,7 @@ fn load_file(
     root: &mut SourceRoot,
     root_id: SourceRootId,
     file_id: FileId,
+    lib: LibId,
     files: &mut u32,
     project: &Path,
     path: &Path,
@@ -117,6 +119,7 @@ fn load_file(
 
     rdb.set_file_text(file_id, text.into());
     rdb.set_file_source_root(file_id, root_id);
+    rdb.set_file_lib(file_id, lib);
     root.insert_file(file_id, file_path);
     *files += 1;
 
@@ -139,7 +142,7 @@ fn load_file(
             if child_path.is_file() && child_path.extension() == Some(ext) {
                 let file_id = FileId(*files);
 
-                load_file(rdb, root, root_id, file_id, files, project, &child_path, false)?;
+                load_file(rdb, root, root_id, file_id, lib, files, project, &child_path, false)?;
             }
         }
     }

@@ -3,7 +3,7 @@ use crate::ast_id::{AstIdMap, FileAstId};
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
-use crate::expr::{dummy_expr_id, Expr, ExprId};
+use crate::expr::{dummy_expr_id, Expr, ExprId, Literal, RecordField, Stmt};
 use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
 use crate::name::{AsName, Name};
@@ -144,6 +144,17 @@ impl<'a> ExprCollector<'a> {
         let syntax_ptr = AstPtr::new(&expr);
 
         Some(match expr {
+            | ast::Expr::App(e) => {
+                let base = self.collect_expr_opt(e.base());
+                let arg = self.collect_expr_opt(e.arg());
+
+                self.alloc_expr(Expr::App { base, arg }, syntax_ptr)
+            },
+            | ast::Expr::Deref(e) => {
+                let expr = self.collect_expr_opt(e.expr());
+
+                self.alloc_expr(Expr::Deref { expr }, syntax_ptr)
+            },
             | ast::Expr::Path(e) => {
                 let path = e
                     .path()
@@ -153,7 +164,43 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(path, syntax_ptr)
             },
-            | ast::Expr::Do(e) => self.collect_block(e),
+            | ast::Expr::Lit(e) => {
+                let lit = match e.literal()? {
+                    | ast::Literal::Int(l) => Literal::Int(Default::default()),
+                    | ast::Literal::Float(l) => Literal::Float(Default::default()),
+                    | ast::Literal::Char(l) => Literal::Char(Default::default()),
+                    | ast::Literal::String(l) => Literal::String(Default::default()),
+                };
+
+                self.alloc_expr(Expr::Lit { lit }, syntax_ptr)
+            },
+            | ast::Expr::Parens(e) => {
+                let inner = self.collect_expr_opt(e.expr());
+                let src = self.to_source(syntax_ptr);
+
+                self.source_map.expr_map.insert(src, inner);
+                inner
+            },
+            | ast::Expr::Do(e) => {
+                let stmts = e.block()?.statements().map(|s| self.collect_stmt(s)).collect();
+
+                self.alloc_expr(Expr::Do { stmts }, syntax_ptr)
+            },
+            | ast::Expr::If(e) => {
+                let cond = self.collect_expr_opt(e.cond());
+                let then = self.collect_expr_opt(e.then());
+                let else_ = e.else_().map(|e| self.collect_expr(e));
+
+                self.alloc_expr(
+                    Expr::If {
+                        cond,
+                        then,
+                        else_,
+                        inverse: e.is_unless(),
+                    },
+                    syntax_ptr,
+                )
+            },
             | _ => unimplemented!("{:?}", expr),
         })
     }
@@ -166,8 +213,26 @@ impl<'a> ExprCollector<'a> {
         }
     }
 
-    fn collect_block(&mut self, block: ast::ExprDo) -> ExprId {
-        unimplemented!();
+    fn collect_stmt(&mut self, stmt: ast::Stmt) -> Stmt {
+        match stmt {
+            | ast::Stmt::Let(stmt) => {
+                let pat = self.collect_pat_opt(stmt.pat());
+                let val = self.collect_expr_opt(stmt.expr());
+
+                Stmt::Let { pat, val }
+            },
+            | ast::Stmt::Bind(stmt) => {
+                let pat = self.collect_pat_opt(stmt.pat());
+                let val = self.collect_expr_opt(stmt.expr());
+
+                Stmt::Bind { pat, val }
+            },
+            | ast::Stmt::Expr(stmt) => {
+                let expr = self.collect_expr_opt(stmt.expr());
+
+                Stmt::Expr { expr }
+            },
+        }
     }
 
     fn collect_pat(&mut self, pat: ast::Pat) -> PatId {

@@ -19,6 +19,7 @@ pub enum SyntaxKind {
     L_ANGLE,
     R_ANGLE,
     ARROW,
+    LEFT_ARROW,
     DBL_COLON,
     DBL_DOT,
     DOT,
@@ -129,6 +130,7 @@ pub enum SyntaxKind {
     CONSTRAINT,
 
     STMT_LET,
+    STMT_BIND,
     STMT_EXPR,
 
     EXPR_TYPED,

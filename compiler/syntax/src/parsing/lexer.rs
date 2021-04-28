@@ -213,6 +213,10 @@ impl<'src> Lexer<'src> {
 
                 self.emit(R_BRACKET);
             },
+            | '<' if self.peek() == '-' => {
+                self.advance();
+                self.emit(LEFT_ARROW);
+            },
             | '<' if self.at_for() => {
                 self.stack.pop().unwrap();
                 self.emit(L_ANGLE);

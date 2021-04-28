@@ -75,14 +75,24 @@ impl Interactive {
             .db
             .set_file_text(self.resolve_file, self.resolve_str.clone().into());
 
-        let parsed = self.driver.db.parse_path(self.resolve_file);
+        let sema = hir::semantics::Semantics::new(&self.db);
+        let parsed = sema.parse_path(self.resolve_file);
+        let resolution = sema.resolve_path(&parsed);
 
-        println!("{}", parsed.syntax_node());
+        println!("{:?}", resolution);
     }
 
     fn type_(&mut self, text: &str) {
     }
 
     fn eval(&mut self, text: &str) {
+    }
+}
+
+impl std::ops::Deref for Interactive {
+    type Target = Driver;
+
+    fn deref(&self) -> &Self::Target {
+        &self.driver
     }
 }

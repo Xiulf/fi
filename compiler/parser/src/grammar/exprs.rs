@@ -139,8 +139,11 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                     expr(p);
                 },
                 | DO_KW => {
+                    let do_expr = p.start();
+
                     p.bump(DO_KW);
                     block(p);
+                    do_expr.complete(p, EXPR_DO);
                 },
                 | _ => {
                     p.error("expected 'then' or 'do'");
@@ -158,13 +161,21 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         | WHILE_KW | UNLESS_KW => {
             p.bump_any();
             expr_(p, false);
+
+            let body = p.start();
+
             p.expect(DO_KW);
             block(p);
+            body.complete(p, EXPR_DO);
             Some(m.complete(p, EXPR_WHILE))
         },
         | LOOP_KW => {
             p.bump(LOOP_KW);
+
+            let body = p.start();
+
             block(p);
+            body.complete(p, EXPR_DO);
             Some(m.complete(p, EXPR_LOOP))
         },
         | NEXT_KW => {
@@ -288,6 +299,16 @@ crate fn stmt(p: &mut Parser) {
         expr(p);
         m.complete(p, STMT_LET);
     } else {
+        for i in 1..100 {
+            if p.nth_at(i, LEFT_ARROW) {
+                patterns::app(p);
+                p.expect(LEFT_ARROW);
+                expr(p);
+                m.complete(p, STMT_BIND);
+                return;
+            }
+        }
+
         expr(p);
         m.complete(p, STMT_EXPR);
     }

@@ -1,8 +1,10 @@
 use crate::db::HirDatabase;
 use crate::source_analyzer::SourceAnalyzer;
+use crate::source_to_def::{ChildContainer, SourceToDefCache, SourceToDefCtx};
 use crate::PathResolution;
 use base_db::input::FileId;
 use hir_def::in_file::InFile;
+use hir_def::resolver::Resolver;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 use std::fmt;
@@ -17,6 +19,7 @@ pub struct Semantics<'db, DB> {
 
 pub struct SemanticsImpl<'db> {
     pub db: &'db dyn HirDatabase,
+    s2d_cache: RefCell<SourceToDefCache>,
     cache: RefCell<FxHashMap<SyntaxNode, FileId>>,
 }
 
@@ -37,6 +40,10 @@ impl<'db, DB: HirDatabase> Semantics<'db, DB> {
         self.imp.parse(file_id)
     }
 
+    pub fn parse_path(&self, file_id: FileId) -> ast::Path {
+        self.imp.parse_path(file_id)
+    }
+
     pub fn resolve_path(&self, path: &ast::Path) -> Option<PathResolution> {
         self.imp.resolve_path(path)
     }
@@ -46,16 +53,37 @@ impl<'db> SemanticsImpl<'db> {
     fn new(db: &'db dyn HirDatabase) -> Self {
         SemanticsImpl {
             db,
+            s2d_cache: Default::default(),
             cache: RefCell::default(),
         }
     }
 
     fn parse(&self, file_id: FileId) -> ast::Module {
-        self.db.parse(file_id).tree()
+        let tree = self.db.parse(file_id).tree();
+
+        self.cache(tree.syntax().clone(), file_id);
+        tree
+    }
+
+    fn parse_path(&self, file_id: FileId) -> ast::Path {
+        let tree = self.db.parse_path(file_id).tree();
+
+        self.cache(tree.syntax().clone(), file_id);
+        tree
     }
 
     fn resolve_path(&self, path: &ast::Path) -> Option<PathResolution> {
         self.analyze(path.syntax()).resolve_path(self.db, path)
+    }
+
+    fn with_ctx<T>(&self, f: impl FnOnce(&mut SourceToDefCtx) -> T) -> T {
+        let mut cache = self.s2d_cache.borrow_mut();
+        let mut ctx = SourceToDefCtx {
+            db: self.db,
+            cache: &mut *cache,
+        };
+
+        f(&mut ctx)
     }
 
     fn analyze(&self, node: &SyntaxNode) -> SourceAnalyzer {
@@ -63,9 +91,18 @@ impl<'db> SemanticsImpl<'db> {
     }
 
     fn analyze_impl(&self, node: &SyntaxNode, offset: Option<syntax::TextSize>) -> SourceAnalyzer {
-        let node = self.find_file(node.clone()).as_ref();
+        let node = self.find_file(node.clone());
+        let node = node.as_ref();
+        let container = match self.with_ctx(|ctx| ctx.find_container(node)) {
+            | Some(it) => it,
+            | None => return SourceAnalyzer::new_for_resolver(Resolver::default(), node),
+        };
 
-        unimplemented!();
+        let resolver = match container {
+            | _ => unimplemented!(),
+        };
+
+        SourceAnalyzer::new_for_resolver(resolver, node)
     }
 
     fn cache(&self, root_node: SyntaxNode, file_id: FileId) {

@@ -73,6 +73,7 @@ ast_node!(Constraint, CONSTRAINT);
 
 ast_node!(Stmt {
     Let(StmtLet, STMT_LET),
+    Bind(StmtBind, STMT_BIND),
     Expr(StmtExpr, STMT_EXPR),
 });
 
@@ -109,15 +110,9 @@ ast_node!(PathSegment, PATH_SEGMENT);
 ast_node!(Name, NAME);
 ast_node!(NameRef, NAME_REF);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Literal {
-    Int(LitInt),
-    Float(LitFloat),
-    Char(LitChar),
-    String(LitString),
-}
-
-ast_node!(LitInt, LIT_INT);
-ast_node!(LitFloat, LIT_FLOAT);
-ast_node!(LitChar, LIT_CHAR);
-ast_node!(LitString, LIT_STRING);
+ast_node!(Literal {
+    Int(LitInt, LIT_INT),
+    Float(LitFloat, LIT_FLOAT),
+    Char(LitChar, LIT_CHAR),
+    String(LitString, LIT_STRING),
+});

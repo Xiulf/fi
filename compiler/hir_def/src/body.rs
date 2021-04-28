@@ -82,3 +82,19 @@ impl Body {
         lower::lower(db, params, body, file_id, module)
     }
 }
+
+impl std::ops::Index<ExprId> for Body {
+    type Output = Expr;
+
+    fn index(&self, expr: ExprId) -> &Self::Output {
+        &self.exprs[expr]
+    }
+}
+
+impl std::ops::Index<PatId> for Body {
+    type Output = Pat;
+
+    fn index(&self, pat: PatId) -> &Self::Output {
+        &self.pats[pat]
+    }
+}

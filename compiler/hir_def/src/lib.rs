@@ -1,5 +1,6 @@
 pub mod arena;
 pub mod ast_id;
+pub mod dyn_map;
 pub mod body;
 pub mod db;
 pub mod def_map;
