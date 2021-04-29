@@ -4,7 +4,7 @@ use crate::source_to_def::{ChildContainer, SourceToDefCache, SourceToDefCtx};
 use crate::PathResolution;
 use base_db::input::FileId;
 use hir_def::in_file::InFile;
-use hir_def::resolver::Resolver;
+use hir_def::resolver::{HasResolver, Resolver};
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 use std::fmt;
@@ -47,6 +47,10 @@ impl<'db, DB: HirDatabase> Semantics<'db, DB> {
     pub fn resolve_path(&self, path: &ast::Path) -> Option<PathResolution> {
         self.imp.resolve_path(path)
     }
+
+    pub fn resolve_path_in(&self, path: &ast::Path, file: FileId) -> Option<PathResolution> {
+        self.imp.resolve_path_in(path, file)
+    }
 }
 
 impl<'db> SemanticsImpl<'db> {
@@ -76,6 +80,10 @@ impl<'db> SemanticsImpl<'db> {
         self.analyze(path.syntax()).resolve_path(self.db, path)
     }
 
+    fn resolve_path_in(&self, path: &ast::Path, file: FileId) -> Option<PathResolution> {
+        self.analyze_file(file).resolve_path(self.db, path)
+    }
+
     fn with_ctx<T>(&self, f: impl FnOnce(&mut SourceToDefCtx) -> T) -> T {
         let mut cache = self.s2d_cache.borrow_mut();
         let mut ctx = SourceToDefCtx {
@@ -90,19 +98,33 @@ impl<'db> SemanticsImpl<'db> {
         self.analyze_impl(node, None)
     }
 
+    fn analyze_file(&self, file: FileId) -> SourceAnalyzer {
+        let lib = self.db.file_lib(file);
+        let def_map = self.db.def_map(lib);
+        let module = match def_map.modules_for_file(file).next() {
+            | Some(it) => def_map.module_id(it),
+            | None => return SourceAnalyzer::new_for_resolver(Resolver::default(), file),
+        };
+
+        let resolver = module.resolver(self.db.upcast());
+
+        SourceAnalyzer::new_for_resolver(resolver, file)
+    }
+
     fn analyze_impl(&self, node: &SyntaxNode, offset: Option<syntax::TextSize>) -> SourceAnalyzer {
         let node = self.find_file(node.clone());
         let node = node.as_ref();
         let container = match self.with_ctx(|ctx| ctx.find_container(node)) {
             | Some(it) => it,
-            | None => return SourceAnalyzer::new_for_resolver(Resolver::default(), node),
+            | None => return SourceAnalyzer::new_for_resolver(Resolver::default(), node.file_id),
         };
 
         let resolver = match container {
-            | _ => unimplemented!(),
+            | ChildContainer::ModuleId(m) => m.resolver(self.db.upcast()),
+            | ChildContainer::DefwithBodyId(def) => def.resolver(self.db.upcast()),
         };
 
-        SourceAnalyzer::new_for_resolver(resolver, node)
+        SourceAnalyzer::new_for_resolver(resolver, node.file_id)
     }
 
     fn cache(&self, root_node: SyntaxNode, file_id: FileId) {

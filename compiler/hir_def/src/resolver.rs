@@ -56,6 +56,7 @@ pub enum ResolveValueResult {
 pub enum ValueNs {
     Local(PatId),
     Fixity(FixityId),
+    Foreign(ForeignId),
     Func(FuncId),
     Const(ConstId),
     Static(StaticId),
@@ -80,6 +81,28 @@ impl Resolver {
         }
 
         module_res
+    }
+
+    pub fn resolve_type(&self, db: &dyn DefDatabase, path: &Path) -> Option<(TypeNs, Option<usize>)> {
+        let n_segments = path.segments().len();
+        let first_name = path.segments().first()?;
+
+        for scope in self.scopes.iter().rev() {
+            match scope {
+                | Scope::TypeScope(scope) if n_segments <= 1 => {
+                    unimplemented!();
+                },
+                | Scope::TypeScope(_) => continue,
+                | Scope::ExprScope(_) => continue,
+                | Scope::ModuleScope(m) => {
+                    if let Some(res) = m.resolve_type(db, path) {
+                        return Some(res);
+                    }
+                },
+            }
+        }
+
+        None
     }
 
     pub fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<ResolveValueResult> {
@@ -172,6 +195,13 @@ impl Resolver {
 }
 
 impl ModuleItemMap {
+    fn resolve_type(&self, db: &dyn DefDatabase, path: &Path) -> Option<(TypeNs, Option<usize>)> {
+        let (module_def, idx) = self.def_map.resolve_path(db, self.module_id, path);
+        let res = to_type_ns(module_def)?;
+
+        Some((res, idx))
+    }
+
     fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<ResolveValueResult> {
         let (module_def, idx) = self.def_map.resolve_path(db, self.module_id, path);
 
@@ -194,10 +224,20 @@ impl ModuleItemMap {
     }
 }
 
+fn to_type_ns(per_ns: PerNs) -> Option<TypeNs> {
+    let res = match per_ns.types? {
+        | ModuleDefId::TypeId(id) => TypeNs::Type(id),
+        | ModuleDefId::ClassId(id) => TypeNs::Class(id),
+        | _ => return None,
+    };
+
+    Some(res)
+}
+
 fn to_value_ns(per_ns: PerNs) -> Option<ValueNs> {
     let res = match per_ns.values? {
         | ModuleDefId::FixityId(id) => ValueNs::Fixity(id),
-        | ModuleDefId::ForeignId(_) => unimplemented!(),
+        | ModuleDefId::ForeignId(id) => ValueNs::Foreign(id),
         | ModuleDefId::FuncId(id) => ValueNs::Func(id),
         | ModuleDefId::ConstId(id) => ValueNs::Const(id),
         | ModuleDefId::StaticId(id) => ValueNs::Static(id),

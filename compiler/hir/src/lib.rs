@@ -134,6 +134,22 @@ pub struct Fixity {
     pub(crate) id: FixityId,
 }
 
+impl Fixity {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.lookup(db.upcast()).module,
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        db.fixity_data(self.id).name.clone()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Foreign {
     pub(crate) id: ForeignId,
@@ -173,6 +189,31 @@ pub struct Class {
 pub struct Local {
     pub(crate) parent: DefWithBodyId,
     pub(crate) pat_id: PatId,
+}
+
+impl PathResolution {
+    pub fn display(&self, db: &dyn HirDatabase) -> String {
+        match self {
+            | PathResolution::Def(def) => def.display(db),
+            | PathResolution::Local(var) => format!("let {}", var.name(db)),
+        }
+    }
+}
+
+impl ModuleDef {
+    pub fn display(&self, db: &dyn HirDatabase) -> String {
+        match self {
+            | ModuleDef::Module(v) => format!("module {}", m.name(db)),
+            | ModuleDef::Fixity(v) => format!("fixity {}", m.name(db)),
+            | ModuleDef::Foreign(v) => format!("foreign {}", m.name(db)),
+            | ModuleDef::Func(v) => format!("fun {}", m.name(db)),
+            | ModuleDef::Static(v) => format!("static {}", m.name(db)),
+            | ModuleDef::Const(v) => format!("const {}", m.name(db)),
+            | ModuleDef::Type(v) => format!("type {}", m.name(db)),
+            | ModuleDef::Ctor(v) => format!("ctor {}", m.name(db)),
+            | ModuleDef::Class(v) => format!("class {}", m.name(db)),
+        }
+    }
 }
 
 macro_rules! impl_from {

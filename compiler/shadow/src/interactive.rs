@@ -77,9 +77,13 @@ impl Interactive {
 
         let sema = hir::semantics::Semantics::new(&self.db);
         let parsed = sema.parse_path(self.resolve_file);
-        let resolution = sema.resolve_path(&parsed);
+        let resolution = sema.resolve_path_in(&parsed, self.main_file);
 
-        println!("{:?}", resolution);
+        if let Some(resolution) = resolution {
+            println!("{}", resolution.display(&self.db));
+        } else {
+            println!("not found");
+        }
     }
 
     fn type_(&mut self, text: &str) {

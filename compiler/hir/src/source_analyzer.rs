@@ -1,10 +1,10 @@
 use crate::db::HirDatabase;
-use crate::{Const, Ctor, Fixity, Func, Local, PathResolution, Static};
+use crate::{Class, Const, Ctor, Fixity, Foreign, Func, Local, PathResolution, Static, Type};
 use base_db::input::FileId;
 use hir_def::body::{Body, BodySourceMap};
 use hir_def::in_file::InFile;
 use hir_def::path::Path;
-use hir_def::resolver::{Resolver, ValueNs};
+use hir_def::resolver::{Resolver, TypeNs, ValueNs};
 use hir_def::scope::ExprScopes;
 use std::sync::Arc;
 use syntax::ast;
@@ -20,13 +20,13 @@ pub(crate) struct SourceAnalyzer {
 }
 
 impl SourceAnalyzer {
-    pub(crate) fn new_for_resolver(resolver: Resolver, node: InFile<&SyntaxNode>) -> Self {
+    pub(crate) fn new_for_resolver(resolver: Resolver, file_id: FileId) -> Self {
         SourceAnalyzer {
             resolver,
+            file_id,
             body: None,
             body_source_map: None,
             scopes: None,
-            file_id: node.file_id,
         }
     }
 
@@ -55,7 +55,23 @@ fn resolve_hir_path_(
     path: &Path,
     prefer_value_ns: bool,
 ) -> Option<PathResolution> {
-    let types = || -> Option<PathResolution> { None };
+    let types = || -> Option<PathResolution> {
+        let (ty, remaining) = resolver.resolve_type(db.upcast(), path)?;
+        let (ty, unresolved) = match remaining {
+            | Some(remaining) if remaining > 1 => return None,
+            | _ => (ty, path.segments().get(1)),
+        };
+
+        let res = match ty {
+            | TypeNs::Type(id) => PathResolution::Def(Type::from(id).into()),
+            | TypeNs::Class(id) => PathResolution::Def(Class::from(id).into()),
+        };
+
+        match unresolved {
+            | Some(_) => None,
+            | None => Some(res),
+        }
+    };
 
     let body_owner = resolver.body_owner();
     let values = || -> Option<PathResolution> {
@@ -70,6 +86,7 @@ fn resolve_hir_path_(
                     PathResolution::Local(var)
                 },
                 | ValueNs::Fixity(id) => PathResolution::Def(Fixity::from(id).into()),
+                | ValueNs::Foreign(id) => PathResolution::Def(Foreign::from(id).into()),
                 | ValueNs::Func(id) => PathResolution::Def(Func::from(id).into()),
                 | ValueNs::Const(id) => PathResolution::Def(Const::from(id).into()),
                 | ValueNs::Static(id) => PathResolution::Def(Static::from(id).into()),
@@ -81,7 +98,7 @@ fn resolve_hir_path_(
     let items = || {
         resolver
             .resolve_module_path(db.upcast(), path)
-            .types
+            .modules
             .map(|it| PathResolution::Def(it.into()))
     };
 
