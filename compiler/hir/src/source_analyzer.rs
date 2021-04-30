@@ -55,7 +55,7 @@ fn resolve_hir_path_(
     path: &Path,
     prefer_value_ns: bool,
 ) -> Option<PathResolution> {
-    let types = || -> Option<PathResolution> {
+    let types = || {
         let (ty, remaining) = resolver.resolve_type(db.upcast(), path)?;
         let (ty, unresolved) = match remaining {
             | Some(remaining) if remaining > 1 => return None,
@@ -74,7 +74,7 @@ fn resolve_hir_path_(
     };
 
     let body_owner = resolver.body_owner();
-    let values = || -> Option<PathResolution> {
+    let values = || {
         resolver.resolve_value_fully(db.upcast(), path).and_then(|val| {
             Some(match val {
                 | ValueNs::Local(pat_id) => {
@@ -96,10 +96,9 @@ fn resolve_hir_path_(
     };
 
     let items = || {
-        resolver
-            .resolve_module_path(db.upcast(), path)
-            .modules
-            .map(|it| PathResolution::Def(it.into()))
+        let per_ns = resolver.resolve_module_path(db.upcast(), path);
+
+        per_ns.types.or(per_ns.modules).map(|it| PathResolution::Def(it.into()))
     };
 
     if prefer_value_ns {

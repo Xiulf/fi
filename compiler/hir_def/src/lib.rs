@@ -1,11 +1,12 @@
 pub mod arena;
 pub mod ast_id;
-pub mod dyn_map;
 pub mod body;
+pub mod data;
 pub mod db;
 pub mod def_map;
 pub mod diagnostic;
 pub mod diagnostics;
+pub mod dyn_map;
 pub mod expr;
 pub mod id;
 pub mod in_file;

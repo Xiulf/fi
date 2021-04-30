@@ -100,24 +100,28 @@ impl Driver {
 
             println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib_data.name);
 
+            let def_map = self.db.def_map(lib);
+
+            def_map.dump(&mut std::io::stdout());
+
             diagnostics::emit_diagnostics(&self.db, lib, &mut std::io::stderr());
         }
 
-        use hir::AsName;
-        let def_map = self.db.def_map(lib);
-        let root = def_map.root();
-        let root = &def_map[root].scope;
-
-        for decl in root.declarations() {
-            let id = match decl {
-                | hir_def::id::ModuleDefId::FuncId(id) => hir_def::id::DefWithBodyId::FuncId(id),
-                | _ => unimplemented!(),
-            };
-
-            let body = self.db.body(id);
-
-            println!("{:#?}", body);
-        }
+        // use hir::AsName;
+        // let def_map = self.db.def_map(lib);
+        // let root = def_map.root();
+        // let root = &def_map[root].scope;
+        //
+        // for decl in root.declarations() {
+        //     let id = match decl {
+        //         | hir_def::id::ModuleDefId::FuncId(id) => hir_def::id::DefWithBodyId::FuncId(id),
+        //         | _ => unimplemented!(),
+        //     };
+        //
+        //     let body = self.db.body(id);
+        //
+        //     println!("{:#?}", body);
+        // }
 
         let elapsed = start.elapsed();
 

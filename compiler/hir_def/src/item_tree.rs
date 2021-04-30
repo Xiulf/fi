@@ -285,6 +285,12 @@ impl<T> Iterator for IdRange<T> {
     }
 }
 
+impl<T> DoubleEndedIterator for IdRange<T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.range.next_back().map(|raw| Idx::from_raw(raw.into()))
+    }
+}
+
 impl<N: ItemTreeNode> Clone for LocalItemTreeId<N> {
     fn clone(&self) -> Self {
         LocalItemTreeId {

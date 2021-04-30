@@ -1,5 +1,6 @@
 use crate::ast_id::AstIdMap;
 use crate::body::{Body, BodySourceMap};
+use crate::data;
 use crate::def_map::DefMap;
 use crate::id::*;
 use crate::item_tree::ItemTree;
@@ -59,4 +60,7 @@ pub trait DefDatabase: InternDatabase {
 
     #[salsa::invoke(ExprScopes::expr_scopes_query)]
     fn expr_scopes(&self, def: DefWithBodyId) -> Arc<ExprScopes>;
+
+    #[salsa::invoke(data::FixityData::query)]
+    fn fixity_data(&self, id: FixityId) -> Arc<data::FixityData>;
 }

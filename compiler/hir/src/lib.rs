@@ -7,8 +7,10 @@ mod source_to_def;
 
 use base_db::input::FileId;
 use base_db::libs::LibId;
+pub use hir_def::expr::{Expr, Literal, Stmt};
 use hir_def::id::*;
 pub use hir_def::name::{AsName, Name};
+pub use hir_def::pat::Pat;
 use hir_def::pat::PatId;
 use hir_ty::db::HirDatabase;
 
@@ -155,9 +157,33 @@ pub struct Foreign {
     pub(crate) id: ForeignId,
 }
 
+impl Foreign {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.lookup(db.upcast()).module,
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Func {
     pub(crate) id: FuncId,
+}
+
+impl Func {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.lookup(db.upcast()).module(db.upcast()),
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -165,9 +191,33 @@ pub struct Static {
     pub(crate) id: StaticId,
 }
 
+impl Static {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.lookup(db.upcast()).module(db.upcast()),
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Const {
     pub(crate) id: ConstId,
+}
+
+impl Const {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.lookup(db.upcast()).module(db.upcast()),
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -175,14 +225,50 @@ pub struct Type {
     pub(crate) id: TypeId,
 }
 
+impl Type {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.lookup(db.upcast()).module,
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ctor {
     pub(crate) id: CtorId,
 }
 
+impl Ctor {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.parent.lookup(db.upcast()).module,
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Class {
     pub(crate) id: ClassId,
+}
+
+impl Class {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.lookup(db.upcast()).module,
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -191,27 +277,37 @@ pub struct Local {
     pub(crate) pat_id: PatId,
 }
 
-impl PathResolution {
-    pub fn display(&self, db: &dyn HirDatabase) -> String {
-        match self {
-            | PathResolution::Def(def) => def.display(db),
-            | PathResolution::Local(var) => format!("let {}", var.name(db)),
+impl Local {
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        let body = db.body(self.parent);
+
+        match &body[self.pat_id] {
+            | Pat::Bind { name, .. } => name.clone(),
+            | _ => unreachable!(),
         }
     }
 }
 
 impl ModuleDef {
-    pub fn display(&self, db: &dyn HirDatabase) -> String {
+    pub fn module(self, db: &dyn HirDatabase) -> Option<Module> {
         match self {
-            | ModuleDef::Module(v) => format!("module {}", m.name(db)),
-            | ModuleDef::Fixity(v) => format!("fixity {}", m.name(db)),
-            | ModuleDef::Foreign(v) => format!("foreign {}", m.name(db)),
-            | ModuleDef::Func(v) => format!("fun {}", m.name(db)),
-            | ModuleDef::Static(v) => format!("static {}", m.name(db)),
-            | ModuleDef::Const(v) => format!("const {}", m.name(db)),
-            | ModuleDef::Type(v) => format!("type {}", m.name(db)),
-            | ModuleDef::Ctor(v) => format!("ctor {}", m.name(db)),
-            | ModuleDef::Class(v) => format!("class {}", m.name(db)),
+            | ModuleDef::Module(it) => it.parent(db),
+            | ModuleDef::Fixity(it) => Some(it.module(db)),
+            | ModuleDef::Foreign(it) => Some(it.module(db)),
+            | ModuleDef::Func(it) => Some(it.module(db)),
+            | ModuleDef::Static(it) => Some(it.module(db)),
+            | ModuleDef::Const(it) => Some(it.module(db)),
+            | ModuleDef::Ctor(it) => Some(it.module(db)),
+            | ModuleDef::Type(it) => Some(it.module(db)),
+            | ModuleDef::Class(it) => Some(it.module(db)),
+        }
+    }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        match self {
+            | ModuleDef::Module(it) => it.name(db),
+            | ModuleDef::Fixity(it) => it.name(db),
+            | _ => unimplemented!(),
         }
     }
 }

@@ -495,6 +495,20 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                 | Item::Type(id) => {
                     let it = &self.item_tree[id];
 
+                    if it.alias.is_none() && it.kind.is_none() {
+                        for id in it.ctors.clone() {
+                            let ctor = &self.item_tree[id];
+                            let id = ModuleDefId::CtorId();
+
+                            self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
+                            self.def_collector.update(
+                                self.module_id,
+                                &[(ctor.name.clone(), PerNs::from(id))],
+                                ImportType::Named,
+                            );
+                        }
+                    }
+
                     def = Some(DefData {
                         id: ModuleDefId::TypeId(
                             TypeLoc {

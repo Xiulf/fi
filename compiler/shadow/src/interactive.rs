@@ -4,6 +4,7 @@ use base_db::SourceDatabase as _;
 use base_db::SourceDatabaseExt as _;
 use driver::Driver;
 use hir::db::DefDatabase as _;
+use markup::{Markup, MarkupRenderer, Styles};
 use repl::{ReadLine, Repl};
 
 pub fn run() {
@@ -80,7 +81,10 @@ impl Interactive {
         let resolution = sema.resolve_path_in(&parsed, self.main_file);
 
         if let Some(resolution) = resolution {
-            println!("{}", resolution.display(&self.db));
+            let markup = format_resolution(&self.db, resolution);
+
+            TermRenderer.render_markup(&markup);
+            println!();
         } else {
             println!("not found");
         }
@@ -98,5 +102,54 @@ impl std::ops::Deref for Interactive {
 
     fn deref(&self) -> &Self::Target {
         &self.driver
+    }
+}
+
+fn format_resolution(db: &dyn hir::db::HirDatabase, resolution: hir::PathResolution) -> Markup {
+    match resolution {
+        | hir::PathResolution::Local(local) => {
+            let name = local.name(db);
+
+            Markup::new()
+                .text("let ", Styles::BOLD)
+                .text(name.to_string(), Styles::NONE)
+        },
+        | hir::PathResolution::Def(def) => {
+            let name = def.name(db);
+
+            Markup::new().text(name.to_string(), Styles::UNDERLINE)
+        },
+    }
+}
+
+struct TermRenderer;
+
+impl MarkupRenderer for TermRenderer {
+    fn render_newline(&mut self) {
+        println!();
+    }
+
+    fn render_text(&mut self, text: &String, styles: Styles) {
+        if styles.bold() {
+            print!("\x1B[1m");
+        }
+
+        if styles.italic() {
+            print!("\x1B[3m");
+        }
+
+        if styles.underline() {
+            print!("\x1B[4m");
+        }
+
+        print!("{}\x1B[0m", text);
+    }
+
+    fn render_header(&mut self, text: &String, _level: u8) {
+        print!("\x1B[1m{}\x1B[0m", text);
+    }
+
+    fn render_line(&mut self) {
+        print!("----------");
     }
 }
