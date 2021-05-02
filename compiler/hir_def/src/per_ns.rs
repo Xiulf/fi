@@ -88,7 +88,8 @@ impl From<ModuleDefId> for PerNs<ModuleDefId> {
             | ModuleDefId::FuncId(_) => PerNs::values(def),
             | ModuleDefId::StaticId(_) => PerNs::values(def),
             | ModuleDefId::ConstId(_) => PerNs::values(def),
-            | ModuleDefId::TypeId(_) => PerNs::types(def),
+            | ModuleDefId::TypeAliasId(_) => PerNs::types(def),
+            | ModuleDefId::TypeCtorId(_) => PerNs::types(def),
             | ModuleDefId::CtorId(_) => PerNs::values(def),
             | ModuleDefId::ClassId(_) => PerNs::types(def),
         }

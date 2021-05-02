@@ -145,6 +145,7 @@ impl<'src> Lexer<'src> {
 
                 self.emit(COMMENT);
             },
+            | '-' if self.peek().is_digit(10) => self.number(ch, start),
             | '0'..='9' => self.number(ch, start),
             | '"' => self.string(start, false),
             | 'r' if self.peek() == '"' => self.string(start, true),

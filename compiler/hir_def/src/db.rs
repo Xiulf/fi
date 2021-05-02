@@ -26,7 +26,10 @@ pub trait InternDatabase: SourceDatabaseExt {
     fn intern_const(&self, loc: ConstLoc) -> ConstId;
 
     #[salsa::interned]
-    fn intern_type(&self, loc: TypeLoc) -> TypeId;
+    fn intern_type_alias(&self, loc: TypeAliasLoc) -> TypeAliasId;
+
+    #[salsa::interned]
+    fn intern_type_ctor(&self, loc: TypeCtorLoc) -> TypeCtorId;
 
     #[salsa::interned]
     fn intern_class(&self, loc: ClassLoc) -> ClassId;
@@ -60,4 +63,25 @@ pub trait DefDatabase: InternDatabase {
 
     #[salsa::invoke(data::FixityData::query)]
     fn fixity_data(&self, id: FixityId) -> Arc<data::FixityData>;
+
+    #[salsa::invoke(data::FuncData::query)]
+    fn func_data(&self, id: FuncId) -> Arc<data::FuncData>;
+
+    #[salsa::invoke(data::StaticData::query)]
+    fn static_data(&self, id: StaticId) -> Arc<data::StaticData>;
+
+    #[salsa::invoke(data::ConstData::query)]
+    fn const_data(&self, id: ConstId) -> Arc<data::ConstData>;
+
+    #[salsa::invoke(data::TypeAliasData::query)]
+    fn type_alias_data(&self, id: TypeAliasId) -> Arc<data::TypeAliasData>;
+
+    #[salsa::invoke(data::TypeCtorData::query)]
+    fn type_ctor_data(&self, id: TypeCtorId) -> Arc<data::TypeCtorData>;
+
+    #[salsa::invoke(data::ClassData::query)]
+    fn class_data(&self, id: ClassId) -> Arc<data::ClassData>;
+
+    #[salsa::invoke(data::InstanceData::query)]
+    fn instance_data(&self, id: InstanceId) -> Arc<data::InstanceData>;
 }

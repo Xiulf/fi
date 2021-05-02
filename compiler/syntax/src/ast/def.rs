@@ -33,10 +33,11 @@ ast_node!(Item {
 ast_node!(ImportItems, IMPORT_ITEMS);
 ast_node!(Ctor, ITEM_CTOR);
 ast_node!(Instance, ITEM_INSTANCE);
+ast_node!(FunDep, FUN_DEP);
 
-ast_node!(AssocItem {
-    Fun(AssocItemFun, ITEM_FUN),
-    Static(AssocItemStatic, ITEM_STATIC),
+ast_node!(@ AssocItem {
+    Fun(ItemFun, ITEM_FUN),
+    Static(ItemStatic, ITEM_STATIC),
 });
 
 ast_node!(Pat {

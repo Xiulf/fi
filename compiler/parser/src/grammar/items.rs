@@ -197,6 +197,22 @@ crate fn class(p: &mut Parser, m: Marker) {
         types::type_var(p);
     }
 
+    if p.eat(PIPE) {
+        fun_dep(p);
+
+        while p.eat(COMMA) {
+            fun_dep(p);
+        }
+    }
+
+    if p.eat(COLON) {
+        types::constraint(p);
+
+        while p.eat(COMMA) {
+            types::constraint(p);
+        }
+    }
+
     if p.eat(EQUALS) {
         p.expect(LYT_START);
 
@@ -212,6 +228,22 @@ crate fn class(p: &mut Parser, m: Marker) {
     }
 
     m.complete(p, ITEM_CLASS);
+}
+
+crate fn fun_dep(p: &mut Parser) {
+    let m = p.start();
+
+    while p.at(IDENT) {
+        paths::name_ref(p);
+    }
+
+    p.expect(ARROW);
+
+    while p.at(IDENT) {
+        paths::name_ref(p);
+    }
+
+    m.complete(p, FUN_DEP);
 }
 
 crate fn instance_chain(p: &mut Parser, m: Marker) {

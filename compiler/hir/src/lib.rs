@@ -125,7 +125,8 @@ pub enum ModuleDef {
     Func(Func),
     Static(Static),
     Const(Const),
-    Type(Type),
+    TypeAlias(TypeAlias),
+    TypeCtor(TypeCtor),
     Ctor(Ctor),
     Class(Class),
 }
@@ -166,6 +167,10 @@ impl Func {
     pub fn lib(self, db: &dyn HirDatabase) -> Lib {
         self.module(db).lib()
     }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        db.func_data(self.id).name.clone()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -182,6 +187,10 @@ impl Static {
 
     pub fn lib(self, db: &dyn HirDatabase) -> Lib {
         self.module(db).lib()
+    }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        db.static_data(self.id).name.clone()
     }
 }
 
@@ -200,14 +209,18 @@ impl Const {
     pub fn lib(self, db: &dyn HirDatabase) -> Lib {
         self.module(db).lib()
     }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        db.const_data(self.id).name.clone()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Type {
-    pub(crate) id: TypeId,
+pub struct TypeAlias {
+    pub(crate) id: TypeAliasId,
 }
 
-impl Type {
+impl TypeAlias {
     pub fn module(self, db: &dyn HirDatabase) -> Module {
         Module {
             id: self.id.lookup(db.upcast()).module,
@@ -217,22 +230,54 @@ impl Type {
     pub fn lib(self, db: &dyn HirDatabase) -> Lib {
         self.module(db).lib()
     }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        db.type_alias_data(self.id).name.clone()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Ctor {
-    pub(crate) id: CtorId,
+pub struct TypeCtor {
+    pub(crate) id: TypeCtorId,
 }
 
-impl Ctor {
+impl TypeCtor {
     pub fn module(self, db: &dyn HirDatabase) -> Module {
         Module {
-            id: self.id.parent.lookup(db.upcast()).module,
+            id: self.id.lookup(db.upcast()).module,
         }
     }
 
     pub fn lib(self, db: &dyn HirDatabase) -> Lib {
         self.module(db).lib()
+    }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        db.type_ctor_data(self.id).name.clone()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ctor {
+    pub(crate) parent: TypeCtor,
+    pub(crate) id: LocalCtorId,
+}
+
+impl Ctor {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        self.parent.module(db)
+    }
+
+    pub fn type_ctor(self) -> TypeCtor {
+        self.parent
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        db.type_ctor_data(self.parent.id).ctors[self.id].name.clone()
     }
 }
 
@@ -250,6 +295,10 @@ impl Class {
 
     pub fn lib(self, db: &dyn HirDatabase) -> Lib {
         self.module(db).lib()
+    }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        db.class_data(self.id).name.clone()
     }
 }
 
@@ -279,7 +328,8 @@ impl ModuleDef {
             | ModuleDef::Static(it) => Some(it.module(db)),
             | ModuleDef::Const(it) => Some(it.module(db)),
             | ModuleDef::Ctor(it) => Some(it.module(db)),
-            | ModuleDef::Type(it) => Some(it.module(db)),
+            | ModuleDef::TypeAlias(it) => Some(it.module(db)),
+            | ModuleDef::TypeCtor(it) => Some(it.module(db)),
             | ModuleDef::Class(it) => Some(it.module(db)),
         }
     }
@@ -288,7 +338,13 @@ impl ModuleDef {
         match self {
             | ModuleDef::Module(it) => it.name(db),
             | ModuleDef::Fixity(it) => it.name(db),
-            | _ => unimplemented!(),
+            | ModuleDef::Func(it) => it.name(db),
+            | ModuleDef::Static(it) => it.name(db),
+            | ModuleDef::Const(it) => it.name(db),
+            | ModuleDef::TypeAlias(it) => it.name(db),
+            | ModuleDef::TypeCtor(it) => it.name(db),
+            | ModuleDef::Ctor(it) => it.name(db),
+            | ModuleDef::Class(it) => it.name(db),
         }
     }
 }
@@ -305,4 +361,4 @@ macro_rules! impl_from {
     };
 }
 
-impl_from!(Fixity, Func, Static, Const, Type, Ctor, Class for ModuleDef);
+impl_from!(Fixity, Func, Static, Const, TypeAlias, TypeCtor, Ctor, Class for ModuleDef);

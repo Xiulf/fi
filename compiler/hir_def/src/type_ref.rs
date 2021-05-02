@@ -30,10 +30,13 @@ pub enum PtrLen {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Sentinel(pub usize);
+pub struct Sentinel(pub i128);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Constraint {}
+pub struct Constraint {
+    pub class: Path,
+    pub types: Box<[TypeRef]>,
+}
 
 impl Intern for TypeRef {
     type ID = TypeRefId;

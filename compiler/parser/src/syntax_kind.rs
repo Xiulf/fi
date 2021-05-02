@@ -98,6 +98,8 @@ pub enum SyntaxKind {
     ITEM_TYPE,
     ITEM_CTOR,
 
+    FUN_DEP,
+
     PAT_TYPED,
     PAT_APP,
     PAT_CTOR,

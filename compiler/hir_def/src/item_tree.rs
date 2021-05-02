@@ -6,7 +6,7 @@ use crate::db::DefDatabase;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::Path;
-use crate::type_ref::{TypeRef, TypeRefId};
+use crate::type_ref::{Constraint, TypeRef, TypeRefId};
 use base_db::input::FileId;
 use rustc_hash::FxHashMap;
 use std::fmt;
@@ -29,7 +29,8 @@ pub struct ItemTreeData {
     funcs: Arena<Func>,
     statics: Arena<Static>,
     consts: Arena<Const>,
-    types: Arena<Type>,
+    type_aliases: Arena<TypeAlias>,
+    type_ctors: Arena<TypeCtor>,
     ctors: Arena<Ctor>,
     classes: Arena<Class>,
     instances: Arena<Instance>,
@@ -141,7 +142,8 @@ items! {
     Func in funcs -> ast::ItemFun,
     Static in statics -> ast::ItemStatic,
     Const in consts -> ast::ItemConst,
-    Type in types -> ast::ItemType,
+    TypeAlias in type_aliases -> ast::ItemType,
+    TypeCtor in type_ctors -> ast::ItemType,
     Class in classes -> ast::ItemClass,
     Instance in instances -> ast::ItemInstance,
 }
@@ -191,24 +193,39 @@ pub struct Const {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type {
+pub struct TypeAlias {
+    pub ast_id: FileAstId<ast::ItemType>,
+    pub name: Name,
+    pub alias: TypeRefId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeCtor {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
     pub kind: Option<TypeRefId>,
-    pub alias: Option<TypeRefId>,
     pub ctors: IdRange<Ctor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ctor {
     pub name: Name,
-    pub types: Vec<TypeRefId>,
+    pub types: Box<[TypeRefId]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Class {
     pub ast_id: FileAstId<ast::ItemClass>,
     pub name: Name,
+    pub fundeps: Box<[FunDep]>,
+    pub constraints: Box<[Constraint]>,
+    pub items: Box<[AssocItem]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunDep {
+    pub determiners: Box<[Name]>,
+    pub determined: Box<[Name]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,6 +233,14 @@ pub struct Instance {
     pub ast_id: FileAstId<ast::ItemInstance>,
     pub class: Path,
     pub types: Box<[TypeRefId]>,
+    pub constraints: Box<[Constraint]>,
+    pub items: Box<[AssocItem]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssocItem {
+    Func(LocalItemTreeId<Func>),
+    Static(LocalItemTreeId<Static>),
 }
 
 pub struct IdRange<T> {

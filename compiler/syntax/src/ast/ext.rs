@@ -316,6 +316,54 @@ impl AttrsOwner for ItemClass {
 impl NameOwner for ItemClass {
 }
 
+impl ItemClass {
+    pub fn fundeps(&self) -> AstChildren<FunDep> {
+        support::children(&self.0)
+    }
+
+    pub fn constraints(&self) -> AstChildren<Constraint> {
+        support::children(&self.0)
+    }
+
+    pub fn items(&self) -> AstChildren<AssocItem> {
+        support::children(&self.0)
+    }
+}
+
+impl FunDep {
+    pub fn determiners(&self) -> impl Iterator<Item = NameRef> {
+        let mut end = false;
+
+        self.0.children_with_tokens().filter_map(move |el| {
+            if el.kind() == ARROW {
+                end = true;
+            }
+
+            if end {
+                return None;
+            }
+
+            NameRef::cast(el.into_node()?)
+        })
+    }
+
+    pub fn determined(&self) -> impl Iterator<Item = NameRef> {
+        let mut start = false;
+
+        self.0.children_with_tokens().filter_map(move |el| {
+            if el.kind() == ARROW {
+                start = true;
+            }
+
+            if !start {
+                return None;
+            }
+
+            NameRef::cast(el.into_node()?)
+        })
+    }
+}
+
 // impl AttrsOwner for ItemInstanceChain {
 // }
 //
@@ -325,12 +373,23 @@ impl NameOwner for ItemClass {
 //     }
 // }
 
+impl AttrsOwner for ItemInstance {
+}
+
 impl ItemInstance {
     pub fn class(&self) -> Option<Path> {
         support::child(&self.0)
     }
 
     pub fn types(&self) -> AstChildren<Type> {
+        support::children(&self.0)
+    }
+
+    pub fn constraints(&self) -> AstChildren<Constraint> {
+        support::children(&self.0)
+    }
+
+    pub fn items(&self) -> AstChildren<AssocItem> {
         support::children(&self.0)
     }
 }
@@ -431,7 +490,7 @@ impl TypeFor {
 }
 
 impl Sentinel {
-    pub fn value(&self) -> usize {
+    pub fn value(&self) -> i128 {
         let int = support::token(&self.0, INT).unwrap();
         let text = int.text();
 

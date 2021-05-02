@@ -478,26 +478,12 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         name: &it.name,
                     });
                 },
-                | Item::Type(id) => {
+                | Item::TypeAlias(id) => {
                     let it = &self.item_tree[id];
 
-                    if it.alias.is_none() && it.kind.is_none() {
-                        // for id in it.ctors.clone() {
-                        //     let ctor = &self.item_tree[id];
-                        //     let id = ModuleDefId::CtorId();
-                        //
-                        //     self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
-                        //     self.def_collector.update(
-                        //         self.module_id,
-                        //         &[(ctor.name.clone(), PerNs::from(id))],
-                        //         ImportType::Named,
-                        //     );
-                        // }
-                    }
-
                     def = Some(DefData {
-                        id: ModuleDefId::TypeId(
-                            TypeLoc {
+                        id: ModuleDefId::TypeAliasId(
+                            TypeAliasLoc {
                                 id: ItemTreeId::new(self.file_id, id),
                                 module,
                             }
@@ -506,17 +492,65 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         name: &it.name,
                     });
                 },
-                | Item::Class(id) => {
+                | Item::TypeCtor(id) => {
                     let it = &self.item_tree[id];
+                    let new_id = TypeCtorLoc {
+                        id: ItemTreeId::new(self.file_id, id),
+                        module,
+                    }
+                    .intern(self.def_collector.db);
+
+                    if let None = it.kind {
+                        let data = self.def_collector.db.type_ctor_data(new_id);
+
+                        for (local_id, data) in data.ctors.iter() {
+                            let id = CtorId {
+                                parent: new_id,
+                                local_id,
+                            };
+
+                            let id = ModuleDefId::CtorId(id);
+
+                            self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
+                            self.def_collector.update(
+                                self.module_id,
+                                &[(data.name.clone(), PerNs::from(id))],
+                                ImportType::Named,
+                            );
+                        }
+                    }
 
                     def = Some(DefData {
-                        id: ModuleDefId::ClassId(
-                            ClassLoc {
-                                id: ItemTreeId::new(self.file_id, id),
-                                module,
-                            }
-                            .intern(self.def_collector.db),
-                        ),
+                        id: ModuleDefId::TypeCtorId(new_id),
+                        name: &it.name,
+                    });
+                },
+                | Item::Class(id) => {
+                    let it = &self.item_tree[id];
+                    let new_id = ClassLoc {
+                        id: ItemTreeId::new(self.file_id, id),
+                        module,
+                    }
+                    .intern(self.def_collector.db);
+
+                    let data = self.def_collector.db.class_data(new_id);
+
+                    for (name, id) in data.items.iter() {
+                        let id = match *id {
+                            | AssocItemId::FuncId(id) => ModuleDefId::FuncId(id),
+                            | AssocItemId::StaticId(id) => ModuleDefId::StaticId(id),
+                        };
+
+                        self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
+                        self.def_collector.update(
+                            self.module_id,
+                            &[(name.clone(), PerNs::from(id))],
+                            ImportType::Named,
+                        );
+                    }
+
+                    def = Some(DefData {
+                        id: ModuleDefId::ClassId(new_id),
                         name: &it.name,
                     });
                 },

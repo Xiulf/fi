@@ -42,7 +42,8 @@ struct TypeScope {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeNs {
-    Type(TypeId),
+    TypeAlias(TypeAliasId),
+    TypeCtor(TypeCtorId),
     Class(ClassId),
 }
 
@@ -212,7 +213,8 @@ impl ModuleItemMap {
             },
             | Some(idx) => {
                 let ty = match module_def.types? {
-                    | ModuleDefId::TypeId(id) => TypeNs::Type(id),
+                    | ModuleDefId::TypeAliasId(id) => TypeNs::TypeAlias(id),
+                    | ModuleDefId::TypeCtorId(id) => TypeNs::TypeCtor(id),
                     | ModuleDefId::ClassId(id) => TypeNs::Class(id),
                     | _ => return None,
                 };
@@ -225,7 +227,8 @@ impl ModuleItemMap {
 
 fn to_type_ns(per_ns: PerNs) -> Option<TypeNs> {
     let res = match per_ns.types? {
-        | ModuleDefId::TypeId(id) => TypeNs::Type(id),
+        | ModuleDefId::TypeAliasId(id) => TypeNs::TypeAlias(id),
+        | ModuleDefId::TypeCtorId(id) => TypeNs::TypeCtor(id),
         | ModuleDefId::ClassId(id) => TypeNs::Class(id),
         | _ => return None,
     };
@@ -288,7 +291,7 @@ impl HasResolver for CtorId {
     }
 }
 
-impl HasResolver for TypeId {
+impl HasResolver for TypeCtorId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
         self.lookup(db).module.resolver(db)
     }

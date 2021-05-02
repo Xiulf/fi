@@ -25,8 +25,8 @@ from_id! {
     FuncId: crate::Func,
     StaticId: crate::Static,
     ConstId: crate::Const,
-    TypeId: crate::Type,
-    CtorId: crate::Ctor,
+    TypeAliasId: crate::TypeAlias,
+    TypeCtorId: crate::TypeCtor,
     ClassId: crate::Class,
 }
 
@@ -38,9 +38,19 @@ impl From<ModuleDefId> for crate::ModuleDef {
             | ModuleDefId::FuncId(it) => crate::ModuleDef::Func(it.into()),
             | ModuleDefId::StaticId(it) => crate::ModuleDef::Static(it.into()),
             | ModuleDefId::ConstId(it) => crate::ModuleDef::Const(it.into()),
-            | ModuleDefId::TypeId(it) => crate::ModuleDef::Type(it.into()),
+            | ModuleDefId::TypeAliasId(it) => crate::ModuleDef::TypeAlias(it.into()),
+            | ModuleDefId::TypeCtorId(it) => crate::ModuleDef::TypeCtor(it.into()),
             | ModuleDefId::CtorId(it) => crate::ModuleDef::Ctor(it.into()),
             | ModuleDefId::ClassId(it) => crate::ModuleDef::Class(it.into()),
+        }
+    }
+}
+
+impl From<CtorId> for crate::Ctor {
+    fn from(id: CtorId) -> Self {
+        crate::Ctor {
+            parent: id.parent.into(),
+            id: id.local_id,
         }
     }
 }

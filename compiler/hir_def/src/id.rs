@@ -106,17 +106,22 @@ pub type ConstLoc = AssocItemLoc<Const>;
 impl_intern!(ConstId, ConstLoc, intern_const, lookup_intern_const);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeId(salsa::InternId);
-pub type TypeLoc = ItemLoc<Type>;
-impl_intern!(TypeId, TypeLoc, intern_type, lookup_intern_type);
+pub struct TypeAliasId(salsa::InternId);
+pub type TypeAliasLoc = ItemLoc<TypeAlias>;
+impl_intern!(TypeAliasId, TypeAliasLoc, intern_type_alias, lookup_intern_type_alias);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeCtorId(salsa::InternId);
+pub type TypeCtorLoc = ItemLoc<TypeCtor>;
+impl_intern!(TypeCtorId, TypeCtorLoc, intern_type_ctor, lookup_intern_type_ctor);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CtorId {
-    pub parent: TypeId,
+    pub parent: TypeCtorId,
     pub local_id: LocalCtorId,
 }
 
-pub type LocalCtorId = Idx<()>;
+pub type LocalCtorId = Idx<crate::data::CtorData>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClassId(salsa::InternId);
@@ -135,7 +140,8 @@ pub enum ModuleDefId {
     FuncId(FuncId),
     StaticId(StaticId),
     ConstId(ConstId),
-    TypeId(TypeId),
+    TypeAliasId(TypeAliasId),
+    TypeCtorId(TypeCtorId),
     CtorId(CtorId),
     ClassId(ClassId),
 }
@@ -171,7 +177,8 @@ impl HasModule for ModuleDefId {
             | ModuleDefId::FuncId(id) => id.lookup(db).module(db),
             | ModuleDefId::StaticId(id) => id.lookup(db).module(db),
             | ModuleDefId::ConstId(id) => id.lookup(db).module(db),
-            | ModuleDefId::TypeId(id) => id.lookup(db).module,
+            | ModuleDefId::TypeAliasId(id) => id.lookup(db).module,
+            | ModuleDefId::TypeCtorId(id) => id.lookup(db).module,
             | ModuleDefId::CtorId(id) => id.parent.lookup(db).module(db),
             | ModuleDefId::ClassId(id) => id.lookup(db).module,
         }

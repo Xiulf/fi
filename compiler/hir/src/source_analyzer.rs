@@ -1,5 +1,5 @@
 use crate::db::HirDatabase;
-use crate::{Class, Const, Ctor, Fixity, Func, Local, PathResolution, Static, Type};
+use crate::{Class, Const, Ctor, Fixity, Func, Local, PathResolution, Static, TypeAlias, TypeCtor};
 use base_db::input::FileId;
 use hir_def::body::{Body, BodySourceMap};
 use hir_def::in_file::InFile;
@@ -63,7 +63,8 @@ fn resolve_hir_path_(
         };
 
         let res = match ty {
-            | TypeNs::Type(id) => PathResolution::Def(Type::from(id).into()),
+            | TypeNs::TypeAlias(id) => PathResolution::Def(TypeAlias::from(id).into()),
+            | TypeNs::TypeCtor(id) => PathResolution::Def(TypeCtor::from(id).into()),
             | TypeNs::Class(id) => PathResolution::Def(Class::from(id).into()),
         };
 

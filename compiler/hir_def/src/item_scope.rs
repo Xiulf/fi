@@ -295,7 +295,8 @@ impl ItemInNs {
             | ModuleDefId::FuncId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::StaticId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::ConstId(id) => id.lookup(db).module(db).lib,
-            | ModuleDefId::TypeId(id) => id.lookup(db).module(db).lib,
+            | ModuleDefId::TypeAliasId(id) => id.lookup(db).module(db).lib,
+            | ModuleDefId::TypeCtorId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::CtorId(id) => id.parent.lookup(db).module(db).lib,
             | ModuleDefId::ClassId(id) => id.lookup(db).module(db).lib,
         }

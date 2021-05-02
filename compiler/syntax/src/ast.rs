@@ -67,7 +67,10 @@ mod support {
     }
 
     pub(super) fn token(parent: &SyntaxNode, kind: SyntaxKind) -> Option<SyntaxToken> {
-        parent.children_with_tokens().filter_map(|it| it.into_token()).find(|it| it.kind() == kind)
+        parent
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .find(|it| it.kind() == kind)
     }
 }
 
@@ -97,6 +100,11 @@ macro_rules! ast_node {
     };
 
     ($name:ident { $($var:ident($varname:ident, $varkind:ident)),* $(,)? }) => {
+        $crate::ast_node!(@ $name { $($var($varname, $varkind)),* });
+        $($crate::ast_node!($varname, $varkind);)*
+    };
+
+    (@ $name:ident { $($var:ident($varname:ident, $varkind:ident)),* $(,)? }) => {
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub enum $name {
             $($var($varname)),*
@@ -124,8 +132,6 @@ macro_rules! ast_node {
                 }
             }
         }
-
-        $($crate::ast_node!($varname, $varkind);)*
 
         $(
             impl From<$varname> for $name {

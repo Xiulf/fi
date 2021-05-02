@@ -60,7 +60,7 @@ impl<'db> Ctx<'db> {
             | ast::Item::Fun(ast) => self.lower_fun(ast).map(Into::into),
             | ast::Item::Static(ast) => self.lower_static(ast).map(Into::into),
             | ast::Item::Const(ast) => self.lower_const(ast).map(Into::into),
-            | ast::Item::Type(ast) => self.lower_type(ast).map(Into::into),
+            | ast::Item::Type(ast) => self.lower_type(ast),
             | ast::Item::Class(ast) => self.lower_class(ast).map(Into::into),
             // | ast::Item::Instance(ast) => self.lower_instance_chain(ast).map(Into::into),
             | ast::Item::Instance(ast) => self.lower_instance(ast).map(Into::into),
@@ -144,15 +144,16 @@ impl<'db> Ctx<'db> {
         Some(id(self.tree.data.consts.alloc(Const { name, ast_id })))
     }
 
-    fn lower_type(&mut self, item: &ast::ItemType) -> Option<LocalItemTreeId<Type>> {
+    fn lower_type(&mut self, item: &ast::ItemType) -> Option<Items> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
         let kind = item.kind().map(|ty| self.lower_ty(ty));
-        let (alias, ctors) = if let Some(alias) = item.alias() {
-            (
-                Some(self.lower_ty(alias)),
-                IdRange::new(self.next_ctor_idx()..self.next_ctor_idx()),
-            )
+
+        if let Some(alias) = item.alias() {
+            let alias = self.lower_ty(alias);
+            let talias = TypeAlias { ast_id, name, alias };
+
+            Some(id(self.tree.data.type_aliases.alloc(talias)).into())
         } else {
             let start = self.next_ctor_idx();
 
@@ -161,22 +162,21 @@ impl<'db> Ctx<'db> {
             }
 
             let end = self.next_ctor_idx();
+            let ctors = IdRange::new(start..end);
+            let tctor = TypeCtor {
+                ast_id,
+                name,
+                ctors,
+                kind,
+            };
 
-            (None, IdRange::new(start..end))
-        };
-
-        Some(id(self.tree.data.types.alloc(Type {
-            ast_id,
-            name,
-            ctors,
-            alias,
-            kind,
-        })))
+            Some(id(self.tree.data.type_ctors.alloc(tctor)).into())
+        }
     }
 
     fn lower_ctor(&mut self, ctor: &ast::Ctor) -> Option<Idx<Ctor>> {
         let name = ctor.name()?.as_name();
-        let types = Vec::new();
+        let types = ctor.types().map(|t| self.lower_ty(t)).collect();
         let res = Ctor { name, types };
 
         Some(self.tree.data.ctors.alloc(res))
@@ -185,8 +185,31 @@ impl<'db> Ctx<'db> {
     fn lower_class(&mut self, item: &ast::ItemClass) -> Option<LocalItemTreeId<Class>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
+        let fundeps = item.fundeps().filter_map(|f| self.lower_fun_dep(f)).collect();
+        let constraints = item.constraints().filter_map(|c| self.lower_constraint(c)).collect();
+        let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
 
-        Some(id(self.tree.data.classes.alloc(Class { name, ast_id })))
+        Some(id(self.tree.data.classes.alloc(Class {
+            name,
+            ast_id,
+            fundeps,
+            constraints,
+            items,
+        })))
+    }
+
+    fn lower_fun_dep(&mut self, fundep: ast::FunDep) -> Option<FunDep> {
+        let determiners = fundep.determiners().map(|n| n.as_name()).collect::<Box<[_]>>();
+        let determined = fundep.determined().map(|n| n.as_name()).collect::<Box<[_]>>();
+
+        if determiners.is_empty() && determined.is_empty() {
+            return None;
+        }
+
+        Some(FunDep {
+            determiners,
+            determined,
+        })
     }
 
     // fn lower_instance_chain(&mut self, item: &ast::ItemInstanceChain) -> Option<LocalItemTreeId<InstanceChain>> {
@@ -213,20 +236,38 @@ impl<'db> Ctx<'db> {
         let ast_id = self.ast_id_map.ast_id(item);
         let class = Path::lower(item.class()?);
         let types = item.types().map(|t| self.lower_ty(t)).collect();
+        let constraints = item.constraints().filter_map(|c| self.lower_constraint(c)).collect();
+        let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
 
         Some(id(self.tree.data.instances.alloc(Instance {
             ast_id,
             class,
             types,
+            constraints,
+            items,
             // index,
             // chain: Box::new([]),
         })))
+    }
+
+    fn lower_assoc_item(&mut self, item: ast::AssocItem) -> Option<AssocItem> {
+        match item {
+            | ast::AssocItem::Fun(it) => self.lower_fun(&it).map(AssocItem::Func),
+            | ast::AssocItem::Static(it) => self.lower_static(&it).map(AssocItem::Static),
+        }
     }
 
     fn lower_ty(&mut self, ty: ast::Type) -> TypeRefId {
         let ty = TypeRef::from_ast(ty);
 
         ty.intern(self.db)
+    }
+
+    fn lower_constraint(&mut self, ctnt: ast::Constraint) -> Option<Constraint> {
+        let class = Path::lower(ctnt.class()?);
+        let types = ctnt.types().map(TypeRef::from_ast).collect();
+
+        Some(Constraint { class, types })
     }
 
     fn next_ctor_idx(&self) -> Idx<Ctor> {
