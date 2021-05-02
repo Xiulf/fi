@@ -6,7 +6,7 @@ use crate::db::DefDatabase;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::Path;
-use crate::type_ref::TypeRef;
+use crate::type_ref::{TypeRef, TypeRefId};
 use base_db::input::FileId;
 use rustc_hash::FxHashMap;
 use std::fmt;
@@ -26,7 +26,6 @@ pub struct ItemTree {
 pub struct ItemTreeData {
     imports: Arena<Import>,
     fixities: Arena<Fixity>,
-    foreigns: Arena<Foreign>,
     funcs: Arena<Func>,
     statics: Arena<Static>,
     consts: Arena<Const>,
@@ -34,13 +33,6 @@ pub struct ItemTreeData {
     ctors: Arena<Ctor>,
     classes: Arena<Class>,
     instances: Arena<Instance>,
-    type_refs: TypeRefStorage,
-}
-
-#[derive(Default, Debug, PartialEq, Eq)]
-struct TypeRefStorage {
-    arena: Arena<Arc<TypeRef>>,
-    map: FxHashMap<Arc<TypeRef>, Idx<Arc<TypeRef>>>,
 }
 
 pub trait ItemTreeNode: Clone {
@@ -76,25 +68,6 @@ impl ItemTree {
     }
 }
 
-impl TypeRefStorage {
-    fn intern(&mut self, ty: TypeRef) -> Idx<TypeRef> {
-        if let Some(id) = self.map.get(&ty) {
-            return Idx::from_raw(id.into_raw());
-        }
-
-        let ty = Arc::new(ty);
-        let idx = self.arena.alloc(ty.clone());
-
-        self.map.insert(ty, idx);
-
-        Idx::from_raw(idx.into_raw())
-    }
-
-    fn lookup(&self, id: Idx<TypeRef>) -> &TypeRef {
-        &self.arena[Idx::from_raw(id.into_raw())]
-    }
-}
-
 impl<N: ItemTreeNode> Index<LocalItemTreeId<N>> for ItemTree {
     type Output = N;
 
@@ -108,14 +81,6 @@ impl Index<Idx<Ctor>> for ItemTree {
 
     fn index(&self, index: Idx<Ctor>) -> &Self::Output {
         &self.data.ctors[index]
-    }
-}
-
-impl Index<Idx<TypeRef>> for ItemTree {
-    type Output = TypeRef;
-
-    fn index(&self, id: Idx<TypeRef>) -> &Self::Output {
-        self.data.type_refs.lookup(id)
     }
 }
 
@@ -173,7 +138,6 @@ macro_rules! items {
 items! {
     Import in imports -> ast::ItemImport,
     Fixity in fixities -> ast::ItemFixity,
-    Foreign in foreigns -> ast::ItemForeign,
     Func in funcs -> ast::ItemFun,
     Static in statics -> ast::ItemStatic,
     Const in consts -> ast::ItemConst,
@@ -204,29 +168,20 @@ pub struct Fixity {
 pub use ast::{Assoc, Prec};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Foreign {
-    pub ast_id: FileAstId<ast::ItemForeign>,
-    pub name: Name,
-    pub kind: ForeignKind,
-    pub ty: Idx<TypeRef>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ForeignKind {
-    Fun,
-    Static,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Func {
     pub ast_id: FileAstId<ast::ItemFun>,
     pub name: Name,
+    pub ty: Option<TypeRefId>,
+    pub has_body: bool,
+    pub is_foreign: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Static {
     pub ast_id: FileAstId<ast::ItemStatic>,
     pub name: Name,
+    pub ty: Option<TypeRefId>,
+    pub is_foreign: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,15 +194,15 @@ pub struct Const {
 pub struct Type {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
-    pub kind: Option<Idx<TypeRef>>,
-    pub alias: Option<Idx<TypeRef>>,
+    pub kind: Option<TypeRefId>,
+    pub alias: Option<TypeRefId>,
     pub ctors: IdRange<Ctor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ctor {
     pub name: Name,
-    pub types: Vec<Idx<TypeRef>>,
+    pub types: Vec<TypeRefId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -260,7 +215,7 @@ pub struct Class {
 pub struct Instance {
     pub ast_id: FileAstId<ast::ItemInstance>,
     pub class: Path,
-    pub types: Box<[Idx<TypeRef>]>,
+    pub types: Box<[TypeRefId]>,
 }
 
 pub struct IdRange<T> {

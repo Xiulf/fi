@@ -216,31 +216,6 @@ pub enum Prec {
     Nine,
 }
 
-impl AttrsOwner for ItemForeign {
-}
-
-impl NameOwner for ItemForeign {
-}
-
-impl ItemForeign {
-    pub fn kind(&self) -> Option<ForeignKind> {
-        support::token(&self.0, FUN_KW).map_or_else(
-            || support::token(&self.0, STATIC_KW).map(|_| ForeignKind::Static),
-            |_| Some(ForeignKind::Fun),
-        )
-    }
-
-    pub fn ty(&self) -> Option<Type> {
-        support::child(&self.0)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ForeignKind {
-    Fun,
-    Static,
-}
-
 impl AttrsOwner for ItemFun {
 }
 
@@ -255,6 +230,14 @@ impl ItemFun {
     pub fn body(&self) -> Option<Expr> {
         support::child(&self.0)
     }
+
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+
+    pub fn is_foreign(&self) -> bool {
+        support::token(&self.0, FOREIGN_KW).is_some()
+    }
 }
 
 impl AttrsOwner for ItemStatic {
@@ -266,6 +249,14 @@ impl NameOwner for ItemStatic {
 impl ItemStatic {
     pub fn value(&self) -> Option<Expr> {
         support::child(&self.0)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+
+    pub fn is_foreign(&self) -> bool {
+        support::token(&self.0, FOREIGN_KW).is_some()
     }
 }
 

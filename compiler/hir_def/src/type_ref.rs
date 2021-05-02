@@ -1,3 +1,5 @@
+use crate::db::DefDatabase;
+use crate::id::{Intern, Lookup};
 use crate::name::{AsName, Name};
 use crate::path::{convert_path, Path};
 use syntax::ast::{self, NameOwner};
@@ -32,6 +34,22 @@ pub struct Sentinel(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraint {}
+
+impl Intern for TypeRef {
+    type ID = TypeRefId;
+
+    fn intern(self, db: &dyn DefDatabase) -> Self::ID {
+        db.intern_type_ref(self)
+    }
+}
+
+impl Lookup for TypeRefId {
+    type Data = TypeRef;
+
+    fn lookup(&self, db: &dyn DefDatabase) -> Self::Data {
+        db.lookup_intern_type_ref(*self)
+    }
+}
 
 impl TypeRef {
     pub(crate) fn from_ast(node: ast::Type) -> Self {

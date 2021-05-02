@@ -91,11 +91,6 @@ pub type FixityLoc = ItemLoc<Fixity>;
 impl_intern!(FixityId, FixityLoc, intern_fixity, lookup_intern_fixity);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ForeignId(salsa::InternId);
-pub type ForeignLoc = ItemLoc<Foreign>;
-impl_intern!(ForeignId, ForeignLoc, intern_foreign, lookup_intern_foreign);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FuncId(salsa::InternId);
 pub type FuncLoc = AssocItemLoc<Func>;
 impl_intern!(FuncId, FuncLoc, intern_func, lookup_intern_func);
@@ -136,7 +131,6 @@ impl_intern!(InstanceId, InstanceLoc, intern_instance, lookup_intern_instance);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModuleDefId {
     ModuleId(ModuleId),
-    ForeignId(ForeignId),
     FixityId(FixityId),
     FuncId(FuncId),
     StaticId(StaticId),
@@ -174,7 +168,6 @@ impl HasModule for ModuleDefId {
         match *self {
             | ModuleDefId::ModuleId(m) => m,
             | ModuleDefId::FixityId(id) => id.lookup(db).module,
-            | ModuleDefId::ForeignId(id) => id.lookup(db).module,
             | ModuleDefId::FuncId(id) => id.lookup(db).module(db),
             | ModuleDefId::StaticId(id) => id.lookup(db).module(db),
             | ModuleDefId::ConstId(id) => id.lookup(db).module(db),

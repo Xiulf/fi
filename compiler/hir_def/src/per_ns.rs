@@ -84,7 +84,6 @@ impl From<ModuleDefId> for PerNs<ModuleDefId> {
     fn from(def: ModuleDefId) -> Self {
         match def {
             | ModuleDefId::ModuleId(_) => PerNs::modules(def),
-            | ModuleDefId::ForeignId(id) => PerNs::values(def),
             | ModuleDefId::FixityId(_) => PerNs::values(def),
             | ModuleDefId::FuncId(_) => PerNs::values(def),
             | ModuleDefId::StaticId(_) => PerNs::values(def),

@@ -291,7 +291,6 @@ impl ItemInNs {
     pub fn lib(&self, db: &dyn DefDatabase) -> LibId {
         match self.as_module_def_id() {
             | ModuleDefId::ModuleId(id) => id.lib,
-            | ModuleDefId::ForeignId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::FixityId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::FuncId(id) => id.lookup(db).module(db).lib,
             | ModuleDefId::StaticId(id) => id.lookup(db).module(db).lib,

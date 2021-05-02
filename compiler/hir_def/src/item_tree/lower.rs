@@ -1,6 +1,7 @@
 use crate::arena::{Idx, RawIdx};
 use crate::ast_id::AstIdMap;
 use crate::db::DefDatabase;
+use crate::id::Intern;
 use crate::in_file::InFile;
 use crate::item_tree::*;
 use crate::name::AsName;
@@ -18,7 +19,8 @@ fn id<N: ItemTreeNode>(index: Idx<N>) -> LocalItemTreeId<N> {
     }
 }
 
-pub(super) struct Ctx {
+pub(super) struct Ctx<'db> {
+    db: &'db dyn DefDatabase,
     tree: ItemTree,
     file_id: FileId,
     ast_id_map: Arc<AstIdMap>,
@@ -32,12 +34,13 @@ impl<T: Into<Item>> From<T> for Items {
     }
 }
 
-impl Ctx {
-    pub fn new(db: &dyn DefDatabase, file_id: FileId) -> Self {
+impl<'db> Ctx<'db> {
+    pub fn new(db: &'db dyn DefDatabase, file_id: FileId) -> Self {
         Ctx {
             tree: ItemTree::default(),
             ast_id_map: db.ast_id_map(file_id),
             file_id,
+            db,
         }
     }
 
@@ -54,7 +57,6 @@ impl Ctx {
         let items = match item {
             | ast::Item::Import(ast) => Some(Items(self.lower_import(ast).into_iter().map(Into::into).collect())),
             | ast::Item::Fixity(ast) => self.lower_fixity(ast).map(Into::into),
-            | ast::Item::Foreign(ast) => self.lower_foreign(ast).map(Into::into),
             | ast::Item::Fun(ast) => self.lower_fun(ast).map(Into::into),
             | ast::Item::Static(ast) => self.lower_static(ast).map(Into::into),
             | ast::Item::Const(ast) => self.lower_const(ast).map(Into::into),
@@ -105,31 +107,34 @@ impl Ctx {
         })))
     }
 
-    fn lower_foreign(&mut self, item: &ast::ItemForeign) -> Option<LocalItemTreeId<Foreign>> {
-        let ast_id = self.ast_id_map.ast_id(item);
-        let name = item.name()?.as_name();
-        let ty = TypeRef::from_ast(item.ty()?);
-        let ty = self.tree.data.type_refs.intern(ty);
-        let kind = match item.kind()? {
-            | ast::ForeignKind::Fun => ForeignKind::Fun,
-            | ast::ForeignKind::Static => ForeignKind::Static,
-        };
-
-        Some(id(self.tree.data.foreigns.alloc(Foreign { ast_id, name, kind, ty })))
-    }
-
     fn lower_fun(&mut self, item: &ast::ItemFun) -> Option<LocalItemTreeId<Func>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
+        let ty = item.ty().map(|t| self.lower_ty(t));
+        let has_body = item.body().is_some();
+        let is_foreign = item.is_foreign();
 
-        Some(id(self.tree.data.funcs.alloc(Func { name, ast_id })))
+        Some(id(self.tree.data.funcs.alloc(Func {
+            name,
+            ast_id,
+            ty,
+            has_body,
+            is_foreign,
+        })))
     }
 
     fn lower_static(&mut self, item: &ast::ItemStatic) -> Option<LocalItemTreeId<Static>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
+        let ty = item.ty().map(|t| self.lower_ty(t));
+        let is_foreign = item.is_foreign();
 
-        Some(id(self.tree.data.statics.alloc(Static { name, ast_id })))
+        Some(id(self.tree.data.statics.alloc(Static {
+            name,
+            ast_id,
+            ty,
+            is_foreign,
+        })))
     }
 
     fn lower_const(&mut self, item: &ast::ItemConst) -> Option<LocalItemTreeId<Const>> {
@@ -218,10 +223,10 @@ impl Ctx {
         })))
     }
 
-    fn lower_ty(&mut self, ty: ast::Type) -> Idx<TypeRef> {
+    fn lower_ty(&mut self, ty: ast::Type) -> TypeRefId {
         let ty = TypeRef::from_ast(ty);
 
-        self.tree.data.type_refs.intern(ty)
+        ty.intern(self.db)
     }
 
     fn next_ctor_idx(&self) -> Idx<Ctor> {

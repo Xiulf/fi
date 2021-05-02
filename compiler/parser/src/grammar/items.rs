@@ -86,19 +86,16 @@ crate fn fixity(p: &mut Parser, m: Marker) {
 
 crate fn foreign(p: &mut Parser, m: Marker) {
     p.expect(FOREIGN_KW);
+
     match p.current() {
-        | FUN_KW | STATIC_KW => p.bump_any(),
+        | FUN_KW => fun(p, m),
+        | STATIC_KW => static_(p, m),
         | _ => {
             p.error("expected 'fun' or 'static'");
             m.abandon(p);
             return;
         },
     }
-
-    paths::name(p);
-    p.expect(DBL_COLON);
-    types::func(p);
-    m.complete(p, ITEM_FOREIGN);
 }
 
 crate fn fun(p: &mut Parser, m: Marker) {

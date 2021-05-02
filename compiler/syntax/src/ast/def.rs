@@ -22,7 +22,6 @@ ast_node!(AttrArg {
 ast_node!(Item {
     Import(ItemImport, IMPORT),
     Fixity(ItemFixity, ITEM_FIXITY),
-    Foreign(ItemForeign, ITEM_FOREIGN),
     Fun(ItemFun, ITEM_FUN),
     Static(ItemStatic, ITEM_STATIC),
     Const(ItemConst, ITEM_CONST),

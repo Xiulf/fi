@@ -22,7 +22,6 @@ from_id! {
     base_db::libs::LibId: crate::Lib,
     ModuleId: crate::Module,
     FixityId: crate::Fixity,
-    ForeignId: crate::Foreign,
     FuncId: crate::Func,
     StaticId: crate::Static,
     ConstId: crate::Const,
@@ -36,7 +35,6 @@ impl From<ModuleDefId> for crate::ModuleDef {
         match id {
             | ModuleDefId::ModuleId(it) => crate::ModuleDef::Module(it.into()),
             | ModuleDefId::FixityId(it) => crate::ModuleDef::Fixity(it.into()),
-            | ModuleDefId::ForeignId(it) => crate::ModuleDef::Foreign(it.into()),
             | ModuleDefId::FuncId(it) => crate::ModuleDef::Func(it.into()),
             | ModuleDefId::StaticId(it) => crate::ModuleDef::Static(it.into()),
             | ModuleDefId::ConstId(it) => crate::ModuleDef::Const(it.into()),

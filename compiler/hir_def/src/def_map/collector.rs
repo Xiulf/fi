@@ -436,20 +436,6 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         name: &it.name,
                     });
                 },
-                | Item::Foreign(id) => {
-                    let it = &self.item_tree[id];
-
-                    def = Some(DefData {
-                        id: ModuleDefId::ForeignId(
-                            ForeignLoc {
-                                id: ItemTreeId::new(self.file_id, id),
-                                module,
-                            }
-                            .intern(self.def_collector.db),
-                        ),
-                        name: &it.name,
-                    });
-                },
                 | Item::Func(id) => {
                     let it = &self.item_tree[id];
 
@@ -496,17 +482,17 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                     let it = &self.item_tree[id];
 
                     if it.alias.is_none() && it.kind.is_none() {
-                        for id in it.ctors.clone() {
-                            let ctor = &self.item_tree[id];
-                            let id = ModuleDefId::CtorId();
-
-                            self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
-                            self.def_collector.update(
-                                self.module_id,
-                                &[(ctor.name.clone(), PerNs::from(id))],
-                                ImportType::Named,
-                            );
-                        }
+                        // for id in it.ctors.clone() {
+                        //     let ctor = &self.item_tree[id];
+                        //     let id = ModuleDefId::CtorId();
+                        //
+                        //     self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
+                        //     self.def_collector.update(
+                        //         self.module_id,
+                        //         &[(ctor.name.clone(), PerNs::from(id))],
+                        //         ImportType::Named,
+                        //     );
+                        // }
                     }
 
                     def = Some(DefData {

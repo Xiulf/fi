@@ -1,5 +1,5 @@
 use crate::db::HirDatabase;
-use crate::{Class, Const, Ctor, Fixity, Foreign, Func, Local, PathResolution, Static, Type};
+use crate::{Class, Const, Ctor, Fixity, Func, Local, PathResolution, Static, Type};
 use base_db::input::FileId;
 use hir_def::body::{Body, BodySourceMap};
 use hir_def::in_file::InFile;
@@ -86,7 +86,6 @@ fn resolve_hir_path_(
                     PathResolution::Local(var)
                 },
                 | ValueNs::Fixity(id) => PathResolution::Def(Fixity::from(id).into()),
-                | ValueNs::Foreign(id) => PathResolution::Def(Foreign::from(id).into()),
                 | ValueNs::Func(id) => PathResolution::Def(Func::from(id).into()),
                 | ValueNs::Const(id) => PathResolution::Def(Const::from(id).into()),
                 | ValueNs::Static(id) => PathResolution::Def(Static::from(id).into()),

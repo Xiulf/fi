@@ -89,7 +89,6 @@ pub enum SyntaxKind {
     IMPORT_ITEMS,
 
     ITEM_FIXITY,
-    ITEM_FOREIGN,
     ITEM_FUN,
     ITEM_STATIC,
     ITEM_CONST,

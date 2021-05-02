@@ -56,7 +56,6 @@ pub enum ResolveValueResult {
 pub enum ValueNs {
     Local(PatId),
     Fixity(FixityId),
-    Foreign(ForeignId),
     Func(FuncId),
     Const(ConstId),
     Static(StaticId),
@@ -237,7 +236,6 @@ fn to_type_ns(per_ns: PerNs) -> Option<TypeNs> {
 fn to_value_ns(per_ns: PerNs) -> Option<ValueNs> {
     let res = match per_ns.values? {
         | ModuleDefId::FixityId(id) => ValueNs::Fixity(id),
-        | ModuleDefId::ForeignId(id) => ValueNs::Foreign(id),
         | ModuleDefId::FuncId(id) => ValueNs::Func(id),
         | ModuleDefId::ConstId(id) => ValueNs::Const(id),
         | ModuleDefId::StaticId(id) => ValueNs::Static(id),

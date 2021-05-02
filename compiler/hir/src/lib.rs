@@ -122,7 +122,6 @@ pub enum PathResolution {
 pub enum ModuleDef {
     Module(Module),
     Fixity(Fixity),
-    Foreign(Foreign),
     Func(Func),
     Static(Static),
     Const(Const),
@@ -149,23 +148,6 @@ impl Fixity {
 
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.fixity_data(self.id).name.clone()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Foreign {
-    pub(crate) id: ForeignId,
-}
-
-impl Foreign {
-    pub fn module(self, db: &dyn HirDatabase) -> Module {
-        Module {
-            id: self.id.lookup(db.upcast()).module,
-        }
-    }
-
-    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
-        self.module(db).lib()
     }
 }
 
@@ -293,7 +275,6 @@ impl ModuleDef {
         match self {
             | ModuleDef::Module(it) => it.parent(db),
             | ModuleDef::Fixity(it) => Some(it.module(db)),
-            | ModuleDef::Foreign(it) => Some(it.module(db)),
             | ModuleDef::Func(it) => Some(it.module(db)),
             | ModuleDef::Static(it) => Some(it.module(db)),
             | ModuleDef::Const(it) => Some(it.module(db)),
@@ -324,4 +305,4 @@ macro_rules! impl_from {
     };
 }
 
-impl_from!(Fixity, Foreign, Func, Static, Const, Type, Ctor, Class for ModuleDef);
+impl_from!(Fixity, Func, Static, Const, Type, Ctor, Class for ModuleDef);

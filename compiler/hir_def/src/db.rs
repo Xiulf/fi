@@ -17,9 +17,6 @@ pub trait InternDatabase: SourceDatabaseExt {
     fn intern_fixity(&self, loc: FixityLoc) -> FixityId;
 
     #[salsa::interned]
-    fn intern_foreign(&self, loc: ForeignLoc) -> ForeignId;
-
-    #[salsa::interned]
     fn intern_func(&self, loc: FuncLoc) -> FuncId;
 
     #[salsa::interned]
