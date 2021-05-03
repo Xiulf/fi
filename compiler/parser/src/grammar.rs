@@ -32,12 +32,12 @@ crate fn root(p: &mut Parser) {
         while !p.at(EOF) && !p.at(LYT_END) {
             items::any_item(p);
 
-            if !p.at(LYT_END) {
+            if !p.at(LYT_END) && !p.at(EOF) {
                 p.expect(LYT_SEP);
             }
         }
 
-        p.expect(LYT_END);
+        p.eat(LYT_END);
         p.expect(EOF);
         m.complete(p, MODULE);
     } else {

@@ -64,7 +64,7 @@ impl Interactive {
     }
 
     fn load(&mut self, text: &str) {
-        if let Some(lib) = self.driver.load(text) {
+        if let Some(lib) = self.driver.load(text, true) {
             self.driver.add_dep(self.lib, lib);
         }
     }

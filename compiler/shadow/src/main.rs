@@ -10,7 +10,9 @@ fn main() {
     let matches = clap_app!(shadow =>
         (@setting ArgRequiredElseHelp)
         (@setting VersionlessSubcommands)
-        (@arg interactive: -i --interactive "starts the compiler in interactive mode")
+        (@subcommand check =>
+            (@arg input: +takes_value default_value("."))
+        )
         (@subcommand build =>
             (@arg input: +takes_value default_value("."))
         )
@@ -18,6 +20,9 @@ fn main() {
             (@setting TrailingVarArg)
             (@arg input: +takes_value default_value("."))
             (@arg args: ...)
+        )
+        (@subcommand docs =>
+            (@arg input: +takes_value default_value("."))
         )
     )
     .get_matches();
@@ -35,7 +40,13 @@ fn main() {
         eprintln!("\x1B[31mInternal Compiler Error\x1B[0m: '{}' at {}", msg, loc);
     }));
 
-    if let Some(matches) = matches.subcommand_matches("build") {
+    if let Some(matches) = matches.subcommand_matches("check") {
+        let input = matches.value_of("input").unwrap();
+
+        if let Some(driver) = Driver::init(Opts { input }) {
+            driver.check();
+        }
+    } else if let Some(matches) = matches.subcommand_matches("build") {
         let input = matches.value_of("input").unwrap();
 
         if let Some(driver) = Driver::init(Opts { input }) {
@@ -46,6 +57,12 @@ fn main() {
 
         if let Some(driver) = Driver::init(Opts { input }) {
             driver.build();
+        }
+    } else if let Some(matches) = matches.subcommand_matches("docs") {
+        let input = matches.value_of("input").unwrap();
+
+        if let Some(driver) = Driver::init(Opts { input }) {
+            driver.docs();
         }
     } else {
         interactive::run();

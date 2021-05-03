@@ -8,14 +8,13 @@ use hir::db::DefDatabase;
 use hir::diagnostic::{Diagnostic, DiagnosticSink};
 use relative_path::RelativePath;
 use std::io;
-use syntax::SyntaxError;
+use syntax::{SyntaxError, TextRange, TextSize};
 
-pub fn emit_diagnostics(db: &RootDatabase, lib: LibId, writer: &mut dyn io::Write) -> io::Result<bool> {
+pub fn emit_diagnostics(db: &RootDatabase, lib: hir::Lib, writer: &mut dyn io::Write) -> io::Result<bool> {
     let mut has_error = false;
-    let def_map = db.def_map(lib);
 
-    for (module_id, module) in def_map.modules() {
-        let file_id = module.origin.file_id(&def_map);
+    for module in lib.modules(db) {
+        let file_id = module.file_id(db);
         let parse = db.parse(file_id);
         let source_root = db.file_source_root(file_id);
         let source_root = db.source_root(source_root);
@@ -33,9 +32,7 @@ pub fn emit_diagnostics(db: &RootDatabase, lib: LibId, writer: &mut dyn io::Writ
             emit_hir_diagnostic(d, source_path, &source_code, &line_index, writer);
         });
 
-        for diag in def_map.diagnostics() {
-            diag.add_to(db, module_id, &mut diagnostic_sink);
-        }
+        module.diagnostics(db, &mut diagnostic_sink);
     }
 
     Ok(has_error)
@@ -55,7 +52,12 @@ fn emit_syntax_error(
     writer: &mut dyn io::Write,
 ) -> io::Result<()> {
     let message = err.to_string();
-    let range = err.range();
+    let mut range = err.range();
+
+    if range.start() == range.end() && range.start() != TextSize::default() {
+        range = TextRange::new(range.start() - TextSize::of(" "), range.end());
+    }
+
     let line = line_index.line_col(range.start()).line;
     let line_offset = line_index.line_offset(line);
 
@@ -72,7 +74,7 @@ fn emit_syntax_error(
             annotations: vec![SourceAnnotation {
                 range: (
                     Into::<usize>::into(range.start()) - line_offset,
-                    Into::<usize>::into(range.end()) - line_offset + 1,
+                    Into::<usize>::into(range.end()) - line_offset,
                 ),
                 label: &message,
                 annotation_type: AnnotationType::Error,

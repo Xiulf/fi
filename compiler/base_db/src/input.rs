@@ -131,7 +131,12 @@ impl LineIndex {
     }
 
     pub fn line_col(&self, offset: TextSize) -> LineCol {
-        let line = self.newlines.iter().position(|l| l > &offset).unwrap() - 1;
+        let line = self
+            .newlines
+            .iter()
+            .position(|l| l > &offset)
+            .unwrap_or(self.newlines.len())
+            - 1;
         let line_start_offset = self.newlines[line];
         let col = offset - line_start_offset;
 

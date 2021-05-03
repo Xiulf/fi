@@ -270,3 +270,17 @@ impl<N: ItemTreeNode> Hash for AssocItemLoc<N> {
         self.id.hash(state);
     }
 }
+
+macro_rules! impl_from {
+    ($($variant:ident),* for $ty:ident) => {
+        $(
+            impl From<$variant> for $ty {
+                fn from(src: $variant) -> Self {
+                    Self::$variant(src)
+                }
+            }
+        )*
+    };
+}
+
+impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId for ModuleDefId);

@@ -25,7 +25,7 @@ impl Driver {
     pub fn init(opts: Opts) -> Option<Self> {
         let mut driver = Driver::default();
 
-        driver.load(opts.input)?;
+        driver.load(opts.input, false)?;
 
         Some(driver)
     }
@@ -62,7 +62,7 @@ impl Driver {
         (driver, lib, root_file, type_file, resolve_file)
     }
 
-    pub fn load(&mut self, input: &str) -> Option<LibId> {
+    pub fn load(&mut self, input: &str, interactive: bool) -> Option<LibId> {
         let path = std::path::PathBuf::from(input);
 
         match manifest::load_project(
@@ -74,7 +74,10 @@ impl Driver {
         ) {
             | Ok(lib) => {
                 self.db.set_libs(self.libs.clone().into());
-                println!("loaded {}", self.libs[lib].name);
+
+                if interactive {
+                    println!("loaded {}", self.libs[lib].name);
+                }
 
                 Some(lib)
             },
@@ -90,41 +93,36 @@ impl Driver {
         self.db.set_libs(self.libs.clone().into());
     }
 
-    pub fn build(&self) {
+    pub fn check(&self) {
         let start = std::time::Instant::now();
-        let libs = self.db.libs().toposort();
-        let lib = *libs.last().unwrap();
+        let db = &self.db;
 
-        for lib in libs {
-            let lib_data = &self.db.libs()[lib];
+        for lib in hir::Lib::all(db) {
+            println!("  \x1B[1;32m\x1B[1mChecking\x1B[0m {}", lib.name(db));
 
-            println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib_data.name);
-
-            let def_map = self.db.def_map(lib);
-
-            def_map.dump(&mut std::io::stdout());
-
-            diagnostics::emit_diagnostics(&self.db, lib, &mut std::io::stderr());
+            diagnostics::emit_diagnostics(db, lib, &mut std::io::stderr()).unwrap();
         }
-
-        // use hir::AsName;
-        // let def_map = self.db.def_map(lib);
-        // let root = def_map.root();
-        // let root = &def_map[root].scope;
-        //
-        // for decl in root.declarations() {
-        //     let id = match decl {
-        //         | hir_def::id::ModuleDefId::FuncId(id) => hir_def::id::DefWithBodyId::FuncId(id),
-        //         | _ => unimplemented!(),
-        //     };
-        //
-        //     let body = self.db.body(id);
-        //
-        //     println!("{:#?}", body);
-        // }
 
         let elapsed = start.elapsed();
 
         println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
+    }
+
+    pub fn build(&self) {
+        let start = std::time::Instant::now();
+        let db = &self.db;
+
+        for lib in hir::Lib::all(db) {
+            println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
+
+            diagnostics::emit_diagnostics(db, lib, &mut std::io::stderr()).unwrap();
+        }
+
+        let elapsed = start.elapsed();
+
+        println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
+    }
+
+    pub fn docs(&self) {
     }
 }
