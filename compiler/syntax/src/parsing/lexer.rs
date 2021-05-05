@@ -64,7 +64,6 @@ enum LayoutDelim {
     Of,
     Do,
     Loop,
-    For,
 }
 
 impl LayoutDelim {
@@ -218,19 +217,6 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 self.emit(LEFT_ARROW);
             },
-            | '<' if self.at_for() => {
-                self.stack.pop().unwrap();
-                self.emit(L_ANGLE);
-                self.stack.push((start, LayoutDelim::Angle));
-            },
-            | '<' if self.at_top_decl() => {
-                self.emit(L_ANGLE);
-                self.stack.push((start, LayoutDelim::Angle));
-            },
-            | '>' if self.at_angle() => {
-                self.stack.pop().unwrap();
-                self.emit(R_ANGLE);
-            },
             | '-' if self.peek() == '>' => {
                 self.advance();
 
@@ -265,6 +251,10 @@ impl<'src> Lexer<'src> {
             },
             | ':' => {
                 self.insert_default(start, COLON);
+            },
+            | '=' if self.peek() == '>' => {
+                self.advance();
+                self.insert_default(start, FAT_ARROW);
             },
             | '=' if !is_op_char(self.peek()) => match self.stack[..] {
                 | [.., (_, LayoutDelim::TopDeclHead)] => {
@@ -835,7 +825,6 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                 } else {
                     self.insert_default(start, FOR_KW);
-                    self.stack.push((start, LayoutDelim::For));
                 }
             },
             | _ => {
@@ -886,22 +875,6 @@ impl<'src> Lexer<'src> {
             | [.., (start, LayoutDelim::Where)] => start.1 == pos.1,
             | _ => false,
         }
-    }
-
-    fn at_top_decl(&self) -> bool {
-        matches!(self.stack[..], [
-            (_, LayoutDelim::Root),
-            (_, LayoutDelim::Where),
-            (_, LayoutDelim::TopDeclHead)
-        ])
-    }
-
-    fn at_for(&self) -> bool {
-        matches!(self.stack[..], [.., (_, LayoutDelim::For)])
-    }
-
-    fn at_angle(&self) -> bool {
-        matches!(self.stack[..], [.., (_, LayoutDelim::Angle)])
     }
 
     fn is_closure(&self) -> bool {

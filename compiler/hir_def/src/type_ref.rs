@@ -9,18 +9,18 @@ pub struct TypeRefId(salsa::InternId);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeRef {
-    Placeholder,
-    Kinded(Box<[TypeRef; 2]>),
-    App(Box<[TypeRef; 2]>),
-    Tuple(Vec<TypeRef>),
-    Path(Path),
-    Ptr(Box<TypeRef>, PtrLen),
-    Slice(Box<TypeRef>),
-    Array(Box<TypeRef>, usize),
-    Func(Box<[TypeRef; 2]>),
-    Forall(Name, Box<TypeRef>),
-    Constraint(Constraint, Box<TypeRef>),
     Error,
+    Placeholder,
+    Kinded(TypeRefId, TypeRefId),
+    App(TypeRefId, TypeRefId),
+    Tuple(Box<[TypeRefId]>),
+    Path(Path),
+    Ptr(TypeRefId, PtrLen),
+    Slice(TypeRefId),
+    Array(TypeRefId, usize),
+    Func(TypeRefId, TypeRefId),
+    Forall(TypeVar, TypeRefId),
+    Constraint(Constraint, TypeRefId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,9 +33,15 @@ pub enum PtrLen {
 pub struct Sentinel(pub i128);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeVar {
+    pub name: Name,
+    pub kind: Option<TypeRefId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraint {
     pub class: Path,
-    pub types: Box<[TypeRef]>,
+    pub types: Box<[TypeRefId]>,
 }
 
 impl Intern for TypeRef {
@@ -55,62 +61,79 @@ impl Lookup for TypeRefId {
 }
 
 impl TypeRef {
-    pub(crate) fn from_ast(node: ast::Type) -> Self {
+    pub(crate) fn from_ast(node: ast::Type, db: &dyn DefDatabase) -> TypeRefId {
         match node {
-            | ast::Type::Kinded(inner) => TypeRef::Kinded(Box::new([
-                TypeRef::from_ast_opt(inner.ty()),
-                TypeRef::from_ast_opt(inner.kind()),
-            ])),
-            | ast::Type::App(inner) => TypeRef::App(Box::new([
-                TypeRef::from_ast_opt(inner.base()),
-                TypeRef::from_ast_opt(inner.arg()),
-            ])),
-            | ast::Type::Path(inner) => convert_path(inner.path()).map(TypeRef::Path).unwrap_or(TypeRef::Error),
+            | ast::Type::Kinded(inner) => TypeRef::Kinded(
+                TypeRef::from_ast_opt(inner.ty(), db),
+                TypeRef::from_ast_opt(inner.kind(), db),
+            )
+            .intern(db),
+            | ast::Type::App(inner) => TypeRef::App(
+                TypeRef::from_ast_opt(inner.base(), db),
+                TypeRef::from_ast_opt(inner.arg(), db),
+            )
+            .intern(db),
+            | ast::Type::Path(inner) => convert_path(inner.path())
+                .map(TypeRef::Path)
+                .unwrap_or(TypeRef::Error)
+                .intern(db),
             | ast::Type::Array(inner) => inner
                 .len()
-                .map(|l| TypeRef::Array(Box::new(TypeRef::from_ast_opt(inner.elem())), l))
-                .unwrap_or(TypeRef::Error),
-            | ast::Type::Slice(inner) => TypeRef::Slice(Box::new(TypeRef::from_ast_opt(inner.elem()))),
+                .map(|l| TypeRef::Array(TypeRef::from_ast_opt(inner.elem(), db), l))
+                .unwrap_or(TypeRef::Error)
+                .intern(db),
+            | ast::Type::Slice(inner) => TypeRef::Slice(TypeRef::from_ast_opt(inner.elem(), db)).intern(db),
             | ast::Type::Ptr(inner) => TypeRef::Ptr(
-                Box::new(TypeRef::from_ast_opt(inner.elem())),
+                TypeRef::from_ast_opt(inner.elem(), db),
                 if inner.is_buf_ptr() {
                     PtrLen::Multiple(inner.sentinel().map(|s| Sentinel(s.value())))
                 } else {
                     PtrLen::Single
                 },
-            ),
-            | ast::Type::Fn(inner) => TypeRef::Func(Box::new([
-                TypeRef::from_ast_opt(inner.param()),
-                TypeRef::from_ast_opt(inner.ret()),
-            ])),
+            )
+            .intern(db),
+            | ast::Type::Fn(inner) => TypeRef::Func(
+                TypeRef::from_ast_opt(inner.param(), db),
+                TypeRef::from_ast_opt(inner.ret(), db),
+            )
+            .intern(db),
             | ast::Type::Rec(_inner) => unimplemented!(),
-            | ast::Type::Tuple(inner) => TypeRef::Tuple(inner.types().map(|t| TypeRef::from_ast(t)).collect()),
-            | ast::Type::Parens(inner) => TypeRef::from_ast_opt(inner.ty()),
-            | ast::Type::For(inner) => {
-                if let Some(generics) = inner.generics() {
-                    generics.vars().fold(
-                        generics
-                            .constraints()
-                            .fold(TypeRef::from_ast_opt(inner.ty()), |ty, ctnt| {
-                                unimplemented!();
-                            }),
-                        |ty, var| {
-                            if let Some(name) = var.name() {
-                                TypeRef::Forall(name.as_name(), Box::new(ty))
-                            } else {
-                                TypeRef::Error
-                            }
-                        },
-                    )
+            | ast::Type::Tuple(inner) => {
+                TypeRef::Tuple(inner.types().map(|t| TypeRef::from_ast(t, db)).collect()).intern(db)
+            },
+            | ast::Type::Parens(inner) => TypeRef::from_ast_opt(inner.ty(), db),
+            | ast::Type::For(inner) => inner.vars().fold(TypeRef::from_ast_opt(inner.ty(), db), |ty, var| {
+                if let Some(name) = var.name() {
+                    let kind = var.kind().map(|n| Self::from_ast(n, db));
+                    let var = TypeVar {
+                        name: name.as_name(),
+                        kind,
+                    };
+
+                    TypeRef::Forall(var, ty).intern(db)
                 } else {
-                    TypeRef::from_ast_opt(inner.ty())
+                    ty
+                }
+            }),
+            | ast::Type::Ctnt(inner) => {
+                let ty = Self::from_ast_opt(inner.ty(), db);
+
+                if let Some(ctnt) = inner.ctnt() {
+                    let ctnt = Constraint {
+                        class: Path::lower(ctnt.class().unwrap()),
+                        types: ctnt.types().map(|n| Self::from_ast(n, db)).collect(),
+                    };
+
+                    TypeRef::Constraint(ctnt, ty).intern(db)
+                } else {
+                    ty
                 }
             },
         }
     }
 
-    pub(crate) fn from_ast_opt(node: Option<ast::Type>) -> Self {
-        node.map(Self::from_ast).unwrap_or(TypeRef::Error)
+    pub(crate) fn from_ast_opt(node: Option<ast::Type>, db: &dyn DefDatabase) -> TypeRefId {
+        node.map(|n| Self::from_ast(n, db)).unwrap_or(TypeRef::Error.intern(db))
     }
 }
 

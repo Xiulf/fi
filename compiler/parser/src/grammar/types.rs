@@ -9,11 +9,30 @@ crate fn ty(p: &mut Parser) {
     if let Some(m) = func(p) {
         if p.eat(DBL_COLON) {
             let m = m.precede(p);
-            let _ = func(p);
+            let _ = ctnt(p);
 
             m.complete(p, TYPE_KINDED);
         }
     }
+}
+
+crate fn ctnt(p: &mut Parser) -> Option<CompletedMarker> {
+    if p.at(IDENT) {
+        for i in 1..100 {
+            if p.nth_at(i, FAT_ARROW) {
+                let m = p.start();
+
+                constraint(p);
+                p.expect(FAT_ARROW);
+
+                let _ = ctnt(p);
+
+                return Some(m.complete(p, TYPE_CTNT));
+            }
+        }
+    }
+
+    func(p)
 }
 
 crate fn func(p: &mut Parser) -> Option<CompletedMarker> {
@@ -106,8 +125,13 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
         },
         | FOR_KW => {
             p.bump(FOR_KW);
-            generics(p);
-            func(p);
+
+            while p.at_ts(TokenSet::new(&[L_PAREN, IDENT])) {
+                type_var(p);
+            }
+
+            p.expect(DOT);
+            ctnt(p);
             Some(m.complete(p, TYPE_FOR))
         },
         | _ => {
@@ -118,17 +142,15 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     }
 }
 
-crate fn generics(p: &mut Parser) {
+crate fn generics(p: &mut Parser, end: SyntaxKind) {
     let m = p.start();
 
-    p.expect(L_ANGLE);
-
-    while !p.at_ts(TokenSet::new(&[EOF, COLON, R_ANGLE])) {
+    while !p.at_ts(TokenSet::new(&[EOF, COLON, end])) {
         type_var(p);
     }
 
     if p.eat(COLON) {
-        while !p.at(EOF) && !p.at(R_ANGLE) {
+        while !p.at(EOF) && !p.at(end) {
             constraint(p);
 
             if !p.at(R_ANGLE) {
@@ -137,7 +159,6 @@ crate fn generics(p: &mut Parser) {
         }
     }
 
-    p.expect(R_ANGLE);
     m.complete(p, GENERICS);
 }
 

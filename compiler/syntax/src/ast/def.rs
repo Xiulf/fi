@@ -64,6 +64,7 @@ ast_node!(Type {
     Tuple(TypeTuple, TYPE_TUPLE),
     Parens(TypeParens, TYPE_PARENS),
     For(TypeFor, TYPE_FOR),
+    Ctnt(TypeCtnt, TYPE_CTNT),
 });
 
 ast_node!(Sentinel, SENTINEL);

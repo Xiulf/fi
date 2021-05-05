@@ -1,5 +1,5 @@
 use crate::db::HirDatabase;
-use hir_def::id::TypeCtorId;
+use hir_def::id::{ClassId, TypeCtorId};
 use hir_def::name::Name;
 use std::sync::Arc;
 
@@ -24,13 +24,21 @@ pub enum TyKind {
     Tuple(List<Ty>),
 
     App(Ty, Ty),
-    ForAll(),
+    KindApp(Ty, Ty),
+    Ctnt(Ctnt, Ty),
+    ForAll(Ty),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Field {
     pub name: Name,
     pub ty: Ty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Ctnt {
+    pub class: ClassId,
+    pub tys: List<Ty>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

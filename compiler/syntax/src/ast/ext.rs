@@ -238,6 +238,10 @@ impl ItemFun {
     pub fn is_foreign(&self) -> bool {
         support::token(&self.0, FOREIGN_KW).is_some()
     }
+
+    pub fn generics(&self) -> Option<Generics> {
+        support::child(&self.0)
+    }
 }
 
 impl AttrsOwner for ItemStatic {
@@ -484,7 +488,17 @@ impl TypeFor {
         support::child(&self.0)
     }
 
-    pub fn generics(&self) -> Option<Generics> {
+    pub fn vars(&self) -> AstChildren<TypeVar> {
+        support::children(&self.0)
+    }
+}
+
+impl TypeCtnt {
+    pub fn ctnt(&self) -> Option<Constraint> {
+        support::child(&self.0)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
         support::child(&self.0)
     }
 }

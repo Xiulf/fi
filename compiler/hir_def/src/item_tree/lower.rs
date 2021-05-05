@@ -113,6 +113,16 @@ impl<'db> Ctx<'db> {
         let ty = item.ty().map(|t| self.lower_ty(t));
         let has_body = item.body().is_some();
         let is_foreign = item.is_foreign();
+        let (vars, constraints) = if let Some(gen) = item.generics() {
+            (
+                gen.vars().filter_map(|v| self.lower_ty_var(v)).collect::<Box<[_]>>(),
+                gen.constraints()
+                    .filter_map(|c| self.lower_constraint(c))
+                    .collect::<Box<[_]>>(),
+            )
+        } else {
+            (Box::new([]) as Box<[_]>, Box::new([]) as Box<[_]>)
+        };
 
         Some(id(self.tree.data.funcs.alloc(Func {
             name,
@@ -120,6 +130,8 @@ impl<'db> Ctx<'db> {
             ty,
             has_body,
             is_foreign,
+            vars,
+            constraints,
         })))
     }
 
@@ -148,10 +160,16 @@ impl<'db> Ctx<'db> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
         let kind = item.kind().map(|ty| self.lower_ty(ty));
+        let vars = item.vars().filter_map(|t| self.lower_ty_var(t)).collect();
 
         if let Some(alias) = item.alias() {
             let alias = self.lower_ty(alias);
-            let talias = TypeAlias { ast_id, name, alias };
+            let talias = TypeAlias {
+                ast_id,
+                name,
+                alias,
+                vars,
+            };
 
             Some(id(self.tree.data.type_aliases.alloc(talias)).into())
         } else {
@@ -168,6 +186,7 @@ impl<'db> Ctx<'db> {
                 name,
                 ctors,
                 kind,
+                vars,
             };
 
             Some(id(self.tree.data.type_ctors.alloc(tctor)).into())
@@ -258,14 +277,19 @@ impl<'db> Ctx<'db> {
     }
 
     fn lower_ty(&mut self, ty: ast::Type) -> TypeRefId {
-        let ty = TypeRef::from_ast(ty);
+        TypeRef::from_ast(ty, self.db)
+    }
 
-        ty.intern(self.db)
+    fn lower_ty_var(&mut self, tv: ast::TypeVar) -> Option<TypeVar> {
+        let name = tv.name()?.as_name();
+        let kind = tv.kind().map(|k| TypeRef::from_ast(k, self.db));
+
+        Some(TypeVar { name, kind })
     }
 
     fn lower_constraint(&mut self, ctnt: ast::Constraint) -> Option<Constraint> {
         let class = Path::lower(ctnt.class()?);
-        let types = ctnt.types().map(TypeRef::from_ast).collect();
+        let types = ctnt.types().map(|t| TypeRef::from_ast(t, self.db)).collect();
 
         Some(Constraint { class, types })
     }

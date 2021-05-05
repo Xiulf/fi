@@ -19,6 +19,7 @@ pub enum SyntaxKind {
     L_ANGLE,
     R_ANGLE,
     ARROW,
+    FAT_ARROW,
     LEFT_ARROW,
     DBL_COLON,
     DBL_DOT,
@@ -124,6 +125,7 @@ pub enum SyntaxKind {
     TYPE_TUPLE,
     TYPE_PARENS,
     TYPE_FOR,
+    TYPE_CTNT,
 
     SENTINEL,
     GENERICS,

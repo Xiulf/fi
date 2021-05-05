@@ -2,9 +2,10 @@ use crate::arena::{Arena, Idx};
 use crate::body::Body;
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId, Stmt};
-use crate::id::DefWithBodyId;
+use crate::id::{DefWithBodyId, Lookup};
 use crate::name::Name;
 use crate::pat::{Pat, PatId};
+use crate::type_ref::{TypeRef, TypeRefId};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -32,6 +33,7 @@ pub struct ExprScopeEntry {
 #[derive(Debug, PartialEq, Eq)]
 pub struct TypeScopes {
     scopes: Arena<TypeScopeData>,
+    scopes_by_type: FxHashMap<TypeRefId, TypeScopeId>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,6 +45,7 @@ pub struct TypeScopeData {
 #[derive(Debug, PartialEq, Eq)]
 pub struct TypeScopeEntry {
     name: Name,
+    type_ref: TypeRefId,
 }
 
 impl ExprScopeEntry {
@@ -52,6 +55,16 @@ impl ExprScopeEntry {
 
     pub fn pat(&self) -> PatId {
         self.pat
+    }
+}
+
+impl TypeScopeEntry {
+    pub fn name(&self) -> &Name {
+        &self.name
+    }
+
+    pub fn type_ref(&self) -> TypeRefId {
+        self.type_ref
     }
 }
 
@@ -125,14 +138,56 @@ impl ExprScopes {
     }
 }
 
+impl TypeScopes {
+    pub fn type_scopes_query(db: &dyn DefDatabase, id: TypeRefId) -> Arc<TypeScopes> {
+        Arc::new(TypeScopes::new(db, id))
+    }
+
+    fn new(db: &dyn DefDatabase, id: TypeRefId) -> TypeScopes {
+        let mut scopes = TypeScopes {
+            scopes: Arena::default(),
+            scopes_by_type: FxHashMap::default(),
+        };
+
+        let root = scopes.root_scope();
+
+        compute_type_scopes(id, db, &mut scopes, root);
+        scopes
+    }
+
+    fn root_scope(&mut self) -> TypeScopeId {
+        self.scopes.alloc(TypeScopeData {
+            parent: None,
+            entries: Vec::new(),
+        })
+    }
+
+    fn new_scope(&mut self, parent: TypeScopeId) -> TypeScopeId {
+        self.scopes.alloc(TypeScopeData {
+            parent: Some(parent),
+            entries: Vec::new(),
+        })
+    }
+
+    fn add_binding(&mut self, name: &Name, type_ref: TypeRefId, scope: TypeScopeId) {
+        let entry = TypeScopeEntry {
+            name: name.clone(),
+            type_ref,
+        };
+
+        self.scopes[scope].entries.push(entry);
+    }
+
+    fn set_scope(&mut self, ty: TypeRefId, scope: TypeScopeId) {
+        self.scopes_by_type.insert(ty, scope);
+    }
+}
+
 fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope: ExprScopeId) {
     scopes.set_scope(expr, scope);
 
     match &body[expr] {
         | Expr::Do { stmts } => {
-            let scope = scopes.new_scope(scope);
-
-            scopes.set_scope(expr, scope);
             compute_block_scopes(stmts, body, scopes, scope);
         },
         | Expr::Case { pred, arms } => {
@@ -166,5 +221,50 @@ fn compute_block_scopes(stmts: &[Stmt], body: &Body, scopes: &mut ExprScopes, mu
                 compute_expr_scopes(*expr, body, scopes, scope);
             },
         }
+    }
+}
+
+fn compute_type_scopes(ty: TypeRefId, db: &dyn DefDatabase, scopes: &mut TypeScopes, mut scope: TypeScopeId) {
+    scopes.set_scope(ty, scope);
+
+    match ty.lookup(db) {
+        | TypeRef::Forall(var, inner) => {
+            scopes.add_binding(&var.name, ty, scope);
+            scope = scopes.new_scope(scope);
+
+            if let Some(kind) = var.kind {
+                compute_type_scopes(kind, db, scopes, scope);
+            }
+
+            compute_type_scopes(inner, db, scopes, scope);
+        },
+        | TypeRef::Kinded(ty, kind) => {
+            compute_type_scopes(ty, db, scopes, scope);
+            compute_type_scopes(kind, db, scopes, scope);
+        },
+        | TypeRef::App(base, arg) => {
+            compute_type_scopes(base, db, scopes, scope);
+            compute_type_scopes(arg, db, scopes, scope);
+        },
+        | TypeRef::Tuple(tys) => {
+            for &ty in tys.iter() {
+                compute_type_scopes(ty, db, scopes, scope);
+            }
+        },
+        | TypeRef::Ptr(ty, _) | TypeRef::Slice(ty) | TypeRef::Array(ty, _) => {
+            compute_type_scopes(ty, db, scopes, scope)
+        },
+        | TypeRef::Func(arg, ret) => {
+            compute_type_scopes(arg, db, scopes, scope);
+            compute_type_scopes(ret, db, scopes, scope);
+        },
+        | TypeRef::Constraint(ctnt, ty) => {
+            for &ty in ctnt.types.iter() {
+                compute_type_scopes(ty, db, scopes, scope);
+            }
+
+            compute_type_scopes(ty, db, scopes, scope);
+        },
+        | _ => {},
     }
 }

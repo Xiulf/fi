@@ -106,12 +106,12 @@ crate fn fun(p: &mut Parser, m: Marker) {
         types::func(p);
         m.complete(p, ITEM_FUN);
     } else {
-        if p.at(L_ANGLE) {
-            types::generics(p);
-        }
-
         while !p.at(EOF) && !p.at(EQUALS) {
             patterns::atom(p);
+        }
+
+        if p.eat(PIPE) {
+            types::generics(p, EQUALS);
         }
 
         p.expect(EQUALS);

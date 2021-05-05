@@ -6,6 +6,7 @@ use crate::pat::PatId;
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::scope::{ExprScopeId, ExprScopes, TypeScopeId, TypeScopes};
+use crate::type_ref::TypeRefId;
 use std::sync::Arc;
 
 #[derive(Default, Debug, Clone)]
@@ -35,7 +36,6 @@ struct ExprScope {
 
 #[derive(Debug, Clone)]
 struct TypeScope {
-    owner: DefWithBodyId,
     type_scopes: Arc<TypeScopes>,
     scope_id: TypeScopeId,
 }
@@ -288,6 +288,12 @@ impl HasResolver for DefWithBodyId {
 impl HasResolver for CtorId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
         self.parent.resolver(db)
+    }
+}
+
+impl HasResolver for TypeAliasId {
+    fn resolver(self, db: &dyn DefDatabase) -> Resolver {
+        self.lookup(db).module.resolver(db)
     }
 }
 

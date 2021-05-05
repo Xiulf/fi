@@ -6,7 +6,7 @@ use crate::db::DefDatabase;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::Path;
-use crate::type_ref::{Constraint, TypeRef, TypeRefId};
+use crate::type_ref::{Constraint, TypeRef, TypeRefId, TypeVar};
 use base_db::input::FileId;
 use rustc_hash::FxHashMap;
 use std::fmt;
@@ -176,6 +176,8 @@ pub struct Func {
     pub ty: Option<TypeRefId>,
     pub has_body: bool,
     pub is_foreign: bool,
+    pub vars: Box<[TypeVar]>,
+    pub constraints: Box<[Constraint]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,6 +199,7 @@ pub struct TypeAlias {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
     pub alias: TypeRefId,
+    pub vars: Box<[TypeVar]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,6 +207,7 @@ pub struct TypeCtor {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
     pub kind: Option<TypeRefId>,
+    pub vars: Box<[TypeVar]>,
     pub ctors: IdRange<Ctor>,
 }
 

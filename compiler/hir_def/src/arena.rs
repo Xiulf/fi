@@ -12,7 +12,7 @@ pub struct Idx<T> {
     _marker: PhantomData<fn() -> T>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Arena<T> {
     data: Vec<T>,
 }
