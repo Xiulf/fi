@@ -2,11 +2,13 @@ mod lower;
 
 use crate::arena::{Arena, Idx};
 use crate::ast_id::FileAstId;
+use crate::attrs::{Attrs, RawAttrs};
 use crate::db::DefDatabase;
+use crate::id::TypeVarId;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::Path;
-use crate::type_ref::{Constraint, TypeRef, TypeRefId, TypeVar};
+use crate::type_ref::{Constraint, TypeRef, TypeRefId};
 use base_db::input::FileId;
 use rustc_hash::FxHashMap;
 use std::fmt;
@@ -20,6 +22,7 @@ use syntax::ast::{self, AstNode};
 pub struct ItemTree {
     top_level: Vec<Item>,
     data: ItemTreeData,
+    attrs: FxHashMap<AttrOwner, RawAttrs>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -66,6 +69,14 @@ impl ItemTree {
 
     pub fn top_level(&self) -> &[Item] {
         &self.top_level
+    }
+
+    pub(crate) fn raw_attrs(&self, of: AttrOwner) -> &RawAttrs {
+        self.attrs.get(&of).unwrap_or(&RawAttrs::EMPTY)
+    }
+
+    pub fn attrs(&self, of: AttrOwner) -> Attrs {
+        Attrs(self.raw_attrs(of).clone())
     }
 }
 
@@ -176,7 +187,7 @@ pub struct Func {
     pub ty: Option<TypeRefId>,
     pub has_body: bool,
     pub is_foreign: bool,
-    pub vars: Box<[TypeVar]>,
+    pub vars: Box<[TypeVarId]>,
     pub constraints: Box<[Constraint]>,
 }
 
@@ -199,7 +210,7 @@ pub struct TypeAlias {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
     pub alias: TypeRefId,
-    pub vars: Box<[TypeVar]>,
+    pub vars: Box<[TypeVarId]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,7 +218,7 @@ pub struct TypeCtor {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
     pub kind: Option<TypeRefId>,
-    pub vars: Box<[TypeVar]>,
+    pub vars: Box<[TypeVarId]>,
     pub ctors: IdRange<Ctor>,
 }
 
@@ -221,6 +232,7 @@ pub struct Ctor {
 pub struct Class {
     pub ast_id: FileAstId<ast::ItemClass>,
     pub name: Name,
+    pub vars: Box<[TypeVarId]>,
     pub fundeps: Box<[FunDep]>,
     pub constraints: Box<[Constraint]>,
     pub items: Box<[AssocItem]>,
@@ -236,6 +248,7 @@ pub struct FunDep {
 pub struct Instance {
     pub ast_id: FileAstId<ast::ItemInstance>,
     pub class: Path,
+    pub vars: Box<[TypeVarId]>,
     pub types: Box<[TypeRefId]>,
     pub constraints: Box<[Constraint]>,
     pub items: Box<[AssocItem]>,
@@ -250,6 +263,24 @@ pub enum AssocItem {
 pub struct IdRange<T> {
     range: Range<u32>,
     _marker: PhantomData<T>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum AttrOwner {
+    Item(Item),
+    Ctor(Idx<Ctor>),
+}
+
+impl From<Item> for AttrOwner {
+    fn from(it: Item) -> Self {
+        Self::Item(it)
+    }
+}
+
+impl From<Idx<Ctor>> for AttrOwner {
+    fn from(it: Idx<Ctor>) -> Self {
+        Self::Ctor(it)
+    }
 }
 
 impl<T> IdRange<T> {

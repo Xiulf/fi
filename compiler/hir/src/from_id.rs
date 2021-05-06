@@ -28,6 +28,7 @@ from_id! {
     TypeAliasId: crate::TypeAlias,
     TypeCtorId: crate::TypeCtor,
     ClassId: crate::Class,
+    TypeVarId: crate::TypeVar,
 }
 
 impl From<ModuleDefId> for crate::ModuleDef {

@@ -1,5 +1,6 @@
 use crate::arena::{Idx, RawIdx};
 use crate::ast_id::AstIdMap;
+use crate::data::TypeVarData;
 use crate::db::DefDatabase;
 use crate::id::Intern;
 use crate::in_file::InFile;
@@ -11,6 +12,7 @@ use base_db::input::FileId;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use syntax::ast::{self, NameOwner};
+use syntax::AstPtr;
 
 fn id<N: ItemTreeNode>(index: Idx<N>) -> LocalItemTreeId<N> {
     LocalItemTreeId {
@@ -54,6 +56,7 @@ impl<'db> Ctx<'db> {
     }
 
     fn lower_item(&mut self, item: &ast::Item) -> Option<Items> {
+        let attrs = RawAttrs::new(item);
         let items = match item {
             | ast::Item::Import(ast) => Some(Items(self.lower_import(ast).into_iter().map(Into::into).collect())),
             | ast::Item::Fixity(ast) => self.lower_fixity(ast).map(Into::into),
@@ -66,6 +69,12 @@ impl<'db> Ctx<'db> {
             | ast::Item::Instance(ast) => self.lower_instance(ast).map(Into::into),
             | _ => return None,
         };
+
+        if !attrs.is_empty() {
+            for item in items.iter().flat_map(|items| &items.0) {
+                self.tree.attrs.insert((*item).into(), attrs.clone());
+            }
+        }
 
         items
     }
@@ -204,6 +213,7 @@ impl<'db> Ctx<'db> {
     fn lower_class(&mut self, item: &ast::ItemClass) -> Option<LocalItemTreeId<Class>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
+        let vars = item.vars().filter_map(|t| self.lower_ty_var(t)).collect();
         let fundeps = item.fundeps().filter_map(|f| self.lower_fun_dep(f)).collect();
         let constraints = item.constraints().filter_map(|c| self.lower_constraint(c)).collect();
         let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
@@ -211,6 +221,7 @@ impl<'db> Ctx<'db> {
         Some(id(self.tree.data.classes.alloc(Class {
             name,
             ast_id,
+            vars,
             fundeps,
             constraints,
             items,
@@ -264,6 +275,7 @@ impl<'db> Ctx<'db> {
             types,
             constraints,
             items,
+            vars: Box::new([]),
             // index,
             // chain: Box::new([]),
         })))
@@ -280,11 +292,16 @@ impl<'db> Ctx<'db> {
         TypeRef::from_ast(ty, self.db)
     }
 
-    fn lower_ty_var(&mut self, tv: ast::TypeVar) -> Option<TypeVar> {
+    fn lower_ty_var(&mut self, tv: ast::TypeVar) -> Option<TypeVarId> {
         let name = tv.name()?.as_name();
         let kind = tv.kind().map(|k| TypeRef::from_ast(k, self.db));
+        let data = TypeVarData {
+            ast_ptr: AstPtr::new(&tv),
+            name,
+            kind,
+        };
 
-        Some(TypeVar { name, kind })
+        Some(data.intern(self.db))
     }
 
     fn lower_constraint(&mut self, ctnt: ast::Constraint) -> Option<Constraint> {

@@ -45,13 +45,13 @@ pub struct Ctnt {
 pub struct Unknown(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeVar(DebruijnIndex, usize);
+pub struct TypeVar(DebruijnIndex, u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DebruijnIndex(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Placeholder(UniverseIndex, usize);
+pub struct Placeholder(UniverseIndex, u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UniverseIndex(u32);
@@ -75,7 +75,7 @@ impl Unknown {
 }
 
 impl TypeVar {
-    pub const fn new(debruijn: DebruijnIndex, index: usize) -> Self {
+    pub const fn new(debruijn: DebruijnIndex, index: u32) -> Self {
         Self(debruijn, index)
     }
 
@@ -85,6 +85,14 @@ impl TypeVar {
 
     pub fn bound_within(self, debruijn: DebruijnIndex) -> bool {
         self.0.within(debruijn)
+    }
+
+    pub fn debruijn(self) -> DebruijnIndex {
+        self.0
+    }
+
+    pub fn index(self) -> u32 {
+        self.1
     }
 
     #[must_use]
@@ -107,11 +115,11 @@ impl TypeVar {
         self.0.shifted_out_to(debruijn).map(|d| Self(d, self.1))
     }
 
-    pub fn index_if_inner(self) -> Option<usize> {
+    pub fn index_if_inner(self) -> Option<u32> {
         self.index_if_bound_at(DebruijnIndex::INNER)
     }
 
-    pub fn index_if_bound_at(self, debruijn: DebruijnIndex) -> Option<usize> {
+    pub fn index_if_bound_at(self, debruijn: DebruijnIndex) -> Option<u32> {
         if self.0 == debruijn {
             Some(self.1)
         } else {
@@ -170,12 +178,20 @@ impl DebruijnIndex {
 }
 
 impl Placeholder {
-    pub const fn new(universe: UniverseIndex, index: usize) -> Self {
+    pub const fn new(universe: UniverseIndex, index: u32) -> Self {
         Self(universe, index)
     }
 
     pub fn to_ty(self, db: &dyn HirDatabase) -> Ty {
         TyKind::Placeholder(self).intern(db)
+    }
+
+    pub fn universe(self) -> UniverseIndex {
+        self.0
+    }
+
+    pub fn index(self) -> u32 {
+        self.1
     }
 }
 
@@ -188,6 +204,10 @@ impl UniverseIndex {
 
     pub fn next(self) -> Self {
         Self(self.0 + 1)
+    }
+
+    pub fn index(self) -> u32 {
+        self.0
     }
 }
 

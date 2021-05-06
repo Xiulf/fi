@@ -9,14 +9,23 @@ use parser::syntax_kind::SyntaxKind;
 use std::marker::PhantomData;
 pub use tokens::*;
 
-pub trait AstNode: Clone {
-    fn can_cast(kind: SyntaxKind) -> bool;
+pub trait AstNode {
+    fn can_cast(kind: SyntaxKind) -> bool
+    where
+        Self: Sized;
 
     fn cast(syntax: SyntaxNode) -> Option<Self>
     where
         Self: Sized;
 
     fn syntax(&self) -> &SyntaxNode;
+
+    fn clone_for_update(&self) -> Self
+    where
+        Self: Sized,
+    {
+        Self::cast(self.syntax().clone()).unwrap()
+    }
 }
 
 pub trait AstToken {

@@ -1,5 +1,6 @@
 pub mod arena;
 pub mod ast_id;
+pub mod attrs;
 pub mod body;
 pub mod data;
 pub mod db;
@@ -12,6 +13,7 @@ pub mod id;
 pub mod in_file;
 pub mod item_scope;
 pub mod item_tree;
+pub mod lang_item;
 pub mod name;
 pub mod pat;
 pub mod path;

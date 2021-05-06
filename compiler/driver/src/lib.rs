@@ -101,6 +101,12 @@ impl Driver {
             println!("  \x1B[1;32m\x1B[1mChecking\x1B[0m {}", lib.name(db));
 
             diagnostics::emit_diagnostics(db, lib, &mut std::io::stderr()).unwrap();
+
+            for module in lib.modules(db) {
+                for decl in module.declarations(db) {
+                    decl.typeck_test(db);
+                }
+            }
         }
 
         let elapsed = start.elapsed();

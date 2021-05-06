@@ -160,6 +160,7 @@ impl Module {
 pub enum PathResolution {
     Def(ModuleDef),
     Local(Local),
+    TypeVar(TypeVar),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -201,6 +202,24 @@ impl ModuleDef {
             | ModuleDef::TypeCtor(it) => it.name(db),
             | ModuleDef::Ctor(it) => it.name(db),
             | ModuleDef::Class(it) => it.name(db),
+        }
+    }
+
+    pub fn typeck_test(self, db: &dyn HirDatabase) {
+        use hir_ty::display::HirDisplay;
+
+        match self {
+            | ModuleDef::TypeAlias(it) => {
+                let ty = db.type_for_alias(it.id);
+
+                println!("{}: {}", it.name(db), ty.display(db));
+            },
+            | ModuleDef::TypeCtor(it) => {
+                let ty = db.type_for_ctor(it.id);
+
+                println!("{}: {}", it.name(db), ty.display(db));
+            },
+            | _ => {},
         }
     }
 
@@ -415,6 +434,17 @@ impl Local {
             | Pat::Bind { name, .. } => name.clone(),
             | _ => unreachable!(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeVar {
+    pub(crate) id: TypeVarId,
+}
+
+impl TypeVar {
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        self.id.lookup(db.upcast()).name.clone()
     }
 }
 

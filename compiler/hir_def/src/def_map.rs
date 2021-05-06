@@ -6,6 +6,7 @@ use crate::ast_id::{AstId, FileAstId};
 use crate::db::DefDatabase;
 use crate::diagnostics::DefDiagnostic;
 use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
+use crate::in_file::InFile;
 use crate::item_scope::{ItemExports, ItemScope};
 use crate::name::Name;
 use crate::per_ns::PerNs;
@@ -38,13 +39,8 @@ pub struct ModuleData {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModuleOrigin {
-    Normal {
-        declaration: AstId<ast::Module>,
-        file_id: FileId,
-    },
-    Virtual {
-        parent: LocalModuleId,
-    },
+    Normal { declaration: AstId<ast::Module> },
+    Virtual { parent: LocalModuleId },
 }
 
 impl DefMap {
@@ -134,7 +130,6 @@ impl Default for ModuleOrigin {
     fn default() -> Self {
         ModuleOrigin::Normal {
             declaration: AstId::new(FileId(0), FileAstId::DUMMY),
-            file_id: FileId(0),
         }
     }
 }
@@ -142,12 +137,26 @@ impl Default for ModuleOrigin {
 impl ModuleOrigin {
     pub fn file_id(&self, def_map: &DefMap) -> FileId {
         match *self {
-            | ModuleOrigin::Normal { file_id, .. } => file_id,
+            | ModuleOrigin::Normal { declaration } => declaration.file_id,
             | ModuleOrigin::Virtual { parent } => def_map[parent].origin.file_id(def_map),
         }
     }
 
     pub fn is_virtual(&self) -> bool {
         matches!(self, ModuleOrigin::Virtual { .. })
+    }
+
+    pub fn declaration(&self, db: &dyn DefDatabase, def_map: &DefMap) -> InFile<ast::Module> {
+        match self {
+            | ModuleOrigin::Normal { declaration } => {
+                let value = declaration.to_node(db);
+
+                InFile {
+                    file_id: declaration.file_id,
+                    value,
+                }
+            },
+            | ModuleOrigin::Virtual { parent } => def_map[*parent].origin.declaration(db, def_map),
+        }
     }
 }

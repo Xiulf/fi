@@ -1,0 +1,198 @@
+use crate::db::HirDatabase;
+use crate::ty::*;
+use std::fmt;
+
+pub trait HirDisplay {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result;
+
+    fn into_displayable<'a>(
+        &'a self,
+        db: &'a dyn HirDatabase,
+        max_size: Option<usize>,
+        display_target: DisplayTarget,
+    ) -> HirDisplayWrapper<'a, Self>
+    where
+        Self: Sized,
+    {
+        HirDisplayWrapper {
+            db,
+            t: self,
+            max_size,
+            display_target,
+        }
+    }
+
+    fn display<'a>(&'a self, db: &'a dyn HirDatabase) -> HirDisplayWrapper<'a, Self>
+    where
+        Self: Sized,
+    {
+        self.into_displayable(db, None, DisplayTarget::Diagnostics)
+    }
+
+    fn display_test<'a>(&'a self, db: &'a dyn HirDatabase) -> HirDisplayWrapper<'a, Self>
+    where
+        Self: Sized,
+    {
+        self.into_displayable(db, None, DisplayTarget::Test)
+    }
+}
+
+pub struct HirFormatter<'a> {
+    pub db: &'a dyn HirDatabase,
+    fmt: &'a mut dyn fmt::Write,
+    buf: String,
+    curr_size: usize,
+    max_size: Option<usize>,
+    display_target: DisplayTarget,
+}
+
+#[derive(Clone, Copy)]
+pub enum DisplayTarget {
+    Diagnostics,
+    Test,
+}
+
+pub struct HirDisplayWrapper<'a, T> {
+    db: &'a dyn HirDatabase,
+    t: &'a T,
+    max_size: Option<usize>,
+    display_target: DisplayTarget,
+}
+
+impl<'a> HirFormatter<'a> {
+    pub fn write_joined<T: HirDisplay>(&mut self, iter: impl IntoIterator<Item = T>, sep: &str) -> fmt::Result {
+        let mut first = true;
+
+        for e in iter {
+            if !first {
+                write!(self, "{}", sep)?;
+            }
+
+            first = false;
+            e.hir_fmt(self)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn write_fmt(&mut self, args: fmt::Arguments) -> fmt::Result {
+        self.buf.clear();
+        fmt::write(&mut self.buf, args)?;
+        self.curr_size += self.buf.len();
+        self.fmt.write_str(&self.buf)
+    }
+
+    pub fn should_truncate(&self) -> bool {
+        if let Some(max_size) = self.max_size {
+            self.curr_size >= max_size
+        } else {
+            false
+        }
+    }
+}
+
+impl<'a, T: HirDisplay> HirDisplay for &'a T {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        (**self).hir_fmt(f)
+    }
+}
+
+impl<'a, T> fmt::Display for HirDisplayWrapper<'a, T>
+where
+    T: HirDisplay,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.t.hir_fmt(&mut HirFormatter {
+            db: self.db,
+            fmt: f,
+            buf: String::with_capacity(20),
+            curr_size: 0,
+            max_size: self.max_size,
+            display_target: self.display_target,
+        })
+    }
+}
+
+impl HirDisplay for TypeVar {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        let depth = self.debruijn().depth();
+        let index = self.index() as usize;
+        let depth = unsafe { std::char::from_u32_unchecked('a' as u32 + depth) };
+
+        write!(f, "{}{}", depth, "'".repeat(index))
+    }
+}
+
+impl HirDisplay for Placeholder {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        let universe = self.universe();
+        let index = self.index();
+
+        write!(f, "?{}.{}", universe.index(), index)
+    }
+}
+
+impl HirDisplay for DebruijnIndex {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        let depth = self.depth();
+        let depth = unsafe { std::char::from_u32_unchecked('A' as u32 + depth) };
+
+        write!(f, "{}", depth)
+    }
+}
+
+impl HirDisplay for Ty {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        if f.should_truncate() {
+            return write!(f, "...");
+        }
+
+        match self.lookup(f.db) {
+            | TyKind::Error => write!(f, "{{error}}"),
+            | TyKind::Unknown(_) => write!(f, "_"),
+            | TyKind::Placeholder(p) => p.hir_fmt(f),
+            | TyKind::TypeVar(t) => t.hir_fmt(f),
+            | TyKind::Figure(i) => write!(f, "{}", i),
+            | TyKind::Symbol(s) => write!(f, "{}", s),
+            | TyKind::Ctor(id) => write!(f, "{}", f.db.type_ctor_data(id).name),
+            | TyKind::Tuple(tys) => {
+                write!(f, "(")?;
+                f.write_joined(tys.iter(), ", ")?;
+                write!(f, ")")
+            },
+            | TyKind::App(base, arg) => {
+                write!(f, "(")?;
+                base.hir_fmt(f)?;
+                write!(f, " ")?;
+                arg.hir_fmt(f)?;
+                write!(f, ")")
+            },
+            | TyKind::KindApp(base, arg) => {
+                write!(f, "(")?;
+                base.hir_fmt(f)?;
+                write!(f, " ")?;
+                arg.hir_fmt(f)?;
+                write!(f, ")")
+            },
+            | TyKind::Ctnt(ctnt, ty) => {
+                ctnt.hir_fmt(f)?;
+                write!(f, " => ")?;
+                ty.hir_fmt(f)
+            },
+            | TyKind::ForAll(ty) => {
+                write!(f, "for. ")?;
+                ty.hir_fmt(f)
+            },
+            | _ => unimplemented!(),
+        }
+    }
+}
+
+impl HirDisplay for Ctnt {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        let class_name = &f.db.class_data(self.class).name;
+
+        write!(f, "{} ", class_name)?;
+        f.write_joined(self.tys.iter(), " ")
+    }
+}

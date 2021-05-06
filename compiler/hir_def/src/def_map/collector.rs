@@ -132,7 +132,7 @@ impl<'a> DefCollector<'a> {
                 }
             }
 
-            this.def_map.modules[module_id].origin = super::ModuleOrigin::Normal { declaration, file_id };
+            this.def_map.modules[module_id].origin = super::ModuleOrigin::Normal { declaration };
 
             let mut mcoll = ModCollector {
                 def_collector: this,

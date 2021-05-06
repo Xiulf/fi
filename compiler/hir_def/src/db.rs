@@ -1,14 +1,17 @@
 use crate::ast_id::AstIdMap;
+use crate::attrs::AttrsWithOwner;
 use crate::body::{Body, BodySourceMap};
 use crate::data;
 use crate::def_map::DefMap;
 use crate::id::*;
 use crate::item_tree::ItemTree;
-use crate::scope::ExprScopes;
+use crate::lang_item::{LangItem, LangItems};
+use crate::scope::{ExprScopes, TypeScopes};
 use crate::type_ref::{TypeRef, TypeRefId};
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use base_db::{SourceDatabaseExt, Upcast};
+use smol_str::SmolStr;
 use std::sync::Arc;
 
 #[salsa::query_group(InternDatabaseStorage)]
@@ -38,6 +41,9 @@ pub trait InternDatabase: SourceDatabaseExt {
     fn intern_instance(&self, loc: InstanceLoc) -> InstanceId;
 
     #[salsa::interned]
+    fn intern_type_var(&self, data: data::TypeVarData) -> TypeVarId;
+
+    #[salsa::interned]
     fn intern_type_ref(&self, type_ref: TypeRef) -> TypeRefId;
 }
 
@@ -60,6 +66,9 @@ pub trait DefDatabase: InternDatabase {
 
     #[salsa::invoke(ExprScopes::expr_scopes_query)]
     fn expr_scopes(&self, def: DefWithBodyId) -> Arc<ExprScopes>;
+
+    #[salsa::invoke(TypeScopes::type_scopes_query)]
+    fn type_scopes(&self, ty: TypeRefId) -> Arc<TypeScopes>;
 
     #[salsa::invoke(data::FixityData::query)]
     fn fixity_data(&self, id: FixityId) -> Arc<data::FixityData>;
@@ -84,4 +93,13 @@ pub trait DefDatabase: InternDatabase {
 
     #[salsa::invoke(data::InstanceData::query)]
     fn instance_data(&self, id: InstanceId) -> Arc<data::InstanceData>;
+
+    #[salsa::invoke(AttrsWithOwner::attrs_query)]
+    fn attrs(&self, def: AttrDefId) -> AttrsWithOwner;
+
+    #[salsa::invoke(LangItems::lib_lang_items_query)]
+    fn lib_lang_items(&self, lib: LibId) -> Arc<LangItems>;
+
+    #[salsa::invoke(LangItems::lang_item_query)]
+    fn lang_item(&self, lib: LibId, item: SmolStr) -> Option<LangItem>;
 }

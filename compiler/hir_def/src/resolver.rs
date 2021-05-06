@@ -2,11 +2,13 @@ use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::expr::ExprId;
 use crate::id::*;
+use crate::name::Name;
 use crate::pat::PatId;
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::scope::{ExprScopeId, ExprScopes, TypeScopeId, TypeScopes};
 use crate::type_ref::TypeRefId;
+use base_db::libs::LibId;
 use std::sync::Arc;
 
 #[derive(Default, Debug, Clone)]
@@ -45,12 +47,7 @@ pub enum TypeNs {
     TypeAlias(TypeAliasId),
     TypeCtor(TypeCtorId),
     Class(ClassId),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ResolveValueResult {
-    ValueNs(ValueNs),
-    Partial(TypeNs, usize),
+    TypeVar(TypeVarId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -90,7 +87,15 @@ impl Resolver {
         for scope in self.scopes.iter().rev() {
             match scope {
                 | Scope::TypeScope(scope) if n_segments <= 1 => {
-                    unimplemented!();
+                    let entry = scope
+                        .type_scopes
+                        .entries(scope.scope_id)
+                        .iter()
+                        .find(|entry| entry.name() == first_name);
+
+                    if let Some(e) = entry {
+                        return Some((TypeNs::TypeVar(e.type_var()), None));
+                    }
                 },
                 | Scope::TypeScope(_) => continue,
                 | Scope::ExprScope(_) => continue,
@@ -105,7 +110,7 @@ impl Resolver {
         None
     }
 
-    pub fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<ResolveValueResult> {
+    pub fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<(ValueNs, Option<usize>)> {
         let n_segments = path.segments().len();
         let first_name = path.segments().first()?;
 
@@ -119,7 +124,7 @@ impl Resolver {
                         .find(|entry| entry.name() == first_name);
 
                     if let Some(e) = entry {
-                        return Some(ResolveValueResult::ValueNs(ValueNs::Local(e.pat())));
+                        return Some((ValueNs::Local(e.pat()), None));
                     }
                 },
                 | Scope::ExprScope(_) => continue,
@@ -136,9 +141,11 @@ impl Resolver {
     }
 
     pub fn resolve_value_fully(&self, db: &dyn DefDatabase, path: &Path) -> Option<ValueNs> {
-        match self.resolve_value(db, path)? {
-            | ResolveValueResult::ValueNs(it) => Some(it),
-            | ResolveValueResult::Partial(..) => None,
+        let (value, idx) = self.resolve_value(db, path)?;
+
+        match idx {
+            | None => Some(value),
+            | Some(_) => None,
         }
     }
 
@@ -149,11 +156,61 @@ impl Resolver {
         })
     }
 
+    pub fn lib(&self) -> Option<LibId> {
+        match self.scopes.first()? {
+            | Scope::ModuleScope(m) => Some(m.def_map.lib()),
+            | _ => None,
+        }
+    }
+
     pub fn body_owner(&self) -> Option<DefWithBodyId> {
         self.scopes.iter().rev().find_map(|scope| match scope {
             | Scope::ExprScope(it) => Some(it.owner),
             | _ => None,
         })
+    }
+
+    pub fn type_var_index(&self, tv: TypeVarId) -> Option<usize> {
+        let scopes = self.scopes.iter().rev().filter_map(|scope| match scope {
+            | Scope::TypeScope(it) => Some(it),
+            | _ => None,
+        });
+
+        let mut depth = 0;
+
+        for scope in scopes {
+            if let Some(idx) = scope
+                .type_scopes
+                .entries(scope.scope_id)
+                .iter()
+                .position(|e| e.type_var() == tv)
+            {
+                return Some(depth + idx);
+            }
+
+            depth += scope.type_scopes.entries(scope.scope_id).len();
+        }
+
+        None
+    }
+
+    pub fn with_type_scopes(mut self, db: &dyn DefDatabase, id: TypeRefId) -> Self {
+        let scopes = db.type_scopes(id);
+        let scope_id = scopes.scope_for(id);
+        let scope_chain = scopes.scope_chain(scope_id).collect::<Vec<_>>();
+
+        for scope in scope_chain.into_iter().rev() {
+            self = self.push_type_scope(Arc::clone(&scopes), scope);
+        }
+
+        self
+    }
+
+    pub fn with_type_vars(mut self, db: &dyn DefDatabase, vars: impl Iterator<Item = TypeVarId>) -> Self {
+        let (scopes, root) = TypeScopes::from_type_vars(db, vars);
+        let scopes = Arc::new(scopes);
+
+        self.push_type_scope(scopes, root)
     }
 }
 
@@ -192,6 +249,10 @@ impl Resolver {
             scope_id,
         }))
     }
+
+    fn push_type_scope(self, type_scopes: Arc<TypeScopes>, scope_id: TypeScopeId) -> Self {
+        self.push_scope(Scope::TypeScope(TypeScope { type_scopes, scope_id }))
+    }
 }
 
 impl ModuleItemMap {
@@ -202,26 +263,11 @@ impl ModuleItemMap {
         Some((res, idx))
     }
 
-    fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<ResolveValueResult> {
+    fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<(ValueNs, Option<usize>)> {
         let (module_def, idx) = self.def_map.resolve_path(db, self.module_id, path);
+        let res = to_value_ns(module_def)?;
 
-        match idx {
-            | None => {
-                let value = to_value_ns(module_def)?;
-
-                Some(ResolveValueResult::ValueNs(value))
-            },
-            | Some(idx) => {
-                let ty = match module_def.types? {
-                    | ModuleDefId::TypeAliasId(id) => TypeNs::TypeAlias(id),
-                    | ModuleDefId::TypeCtorId(id) => TypeNs::TypeCtor(id),
-                    | ModuleDefId::ClassId(id) => TypeNs::Class(id),
-                    | _ => return None,
-                };
-
-                Some(ResolveValueResult::Partial(ty, idx))
-            },
-        }
+        Some((res, idx))
     }
 }
 
@@ -259,7 +305,14 @@ impl HasResolver for ModuleId {
 
 impl HasResolver for FuncId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        self.lookup(db).container.resolver(db)
+        let loc = self.lookup(db);
+        let item_tree = db.item_tree(loc.id.file_id);
+        let data = &item_tree[loc.id.value];
+
+        self.lookup(db)
+            .container
+            .resolver(db)
+            .with_type_vars(db, data.vars.iter().copied())
     }
 }
 
@@ -293,25 +346,54 @@ impl HasResolver for CtorId {
 
 impl HasResolver for TypeAliasId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        self.lookup(db).module.resolver(db)
+        let loc = self.lookup(db);
+        let item_tree = db.item_tree(loc.id.file_id);
+        let data = &item_tree[loc.id.value];
+
+        self.lookup(db)
+            .module
+            .resolver(db)
+            .with_type_vars(db, data.vars.iter().copied())
+            .with_type_scopes(db, data.alias)
     }
 }
 
 impl HasResolver for TypeCtorId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        self.lookup(db).module.resolver(db)
+        let loc = self.lookup(db);
+        let item_tree = db.item_tree(loc.id.file_id);
+        let data = &item_tree[loc.id.value];
+
+        self.lookup(db)
+            .module
+            .resolver(db)
+            .with_type_vars(db, data.vars.iter().copied())
     }
 }
 
 impl HasResolver for ClassId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        self.lookup(db).module.resolver(db)
+        let loc = self.lookup(db);
+        let item_tree = db.item_tree(loc.id.file_id);
+        let data = &item_tree[loc.id.value];
+
+        self.lookup(db)
+            .module
+            .resolver(db)
+            .with_type_vars(db, data.vars.iter().copied())
     }
 }
 
 impl HasResolver for InstanceId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        self.lookup(db).module.resolver(db)
+        let loc = self.lookup(db);
+        let item_tree = db.item_tree(loc.id.file_id);
+        let data = &item_tree[loc.id.value];
+
+        self.lookup(db)
+            .module
+            .resolver(db)
+            .with_type_vars(db, data.vars.iter().copied())
     }
 }
 

@@ -22,6 +22,10 @@ impl Comment {
         CommentKind::from_text(self.text())
     }
 
+    pub fn is_doc(&self) -> bool {
+        matches!(self.kind(), CommentKind::Doc)
+    }
+
     pub fn doc_comment(&self) -> Option<&str> {
         let kind = self.kind();
 

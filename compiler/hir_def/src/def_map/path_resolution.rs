@@ -7,7 +7,7 @@ use crate::per_ns::PerNs;
 use base_db::libs::LibId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ResolveMode {
+pub(crate) enum ResolveMode {
     Import,
     Other,
 }
@@ -48,6 +48,12 @@ impl DefMap {
         (res.resolved_def, res.segment_index)
     }
 
+    fn resolve_import(&self, db: &dyn DefDatabase, original: LocalModuleId, path: &Path) -> (PerNs, Option<usize>) {
+        let res = self.resolve_mod_path(db, ResolveMode::Import, original, path);
+
+        (res.resolved_def, res.segment_index)
+    }
+
     pub(super) fn resolve_mod_path(
         &self,
         db: &dyn DefDatabase,
@@ -62,7 +68,7 @@ impl DefMap {
                 | None => return ResolveResult::empty(FixPoint::Yes),
             };
 
-            self.resolve_name_in_module(db, original, &segment)
+            self.resolve_name_in_module(db, original, &segment, mode)
         };
 
         for (i, segment) in segments {
@@ -76,7 +82,7 @@ impl DefMap {
                     if module.lib != self.lib {
                         let path = Path::from_segments(path.segments()[i..].iter().cloned());
                         let def_map = db.def_map(module.lib);
-                        let (def, s) = def_map.resolve_path(db, module.local_id, &path);
+                        let (def, s) = def_map.resolve_import(db, module.local_id, &path);
 
                         return ResolveResult::with(def, FixPoint::Yes, s.map(|s| s + i), Some(module.lib));
                     }
@@ -92,8 +98,18 @@ impl DefMap {
         ResolveResult::with(curr_per_ns, FixPoint::Yes, None, Some(self.lib))
     }
 
-    pub(crate) fn resolve_name_in_module(&self, db: &dyn DefDatabase, module: LocalModuleId, name: &Name) -> PerNs {
-        let from_scope = self[module].exports.get(db, self, module, name);
+    pub(crate) fn resolve_name_in_module(
+        &self,
+        db: &dyn DefDatabase,
+        module: LocalModuleId,
+        name: &Name,
+        mode: ResolveMode,
+    ) -> PerNs {
+        let from_scope = match mode {
+            | ResolveMode::Import => self[module].exports.get(db, self, module, name),
+            | ResolveMode::Other => self[module].scope.get(name),
+        };
+
         let from_extern = self
             .extern_prelude
             .get(name)

@@ -66,6 +66,7 @@ fn resolve_hir_path_(
             | TypeNs::TypeAlias(id) => PathResolution::Def(TypeAlias::from(id).into()),
             | TypeNs::TypeCtor(id) => PathResolution::Def(TypeCtor::from(id).into()),
             | TypeNs::Class(id) => PathResolution::Def(Class::from(id).into()),
+            | TypeNs::TypeVar(id) => PathResolution::TypeVar(id.into()),
         };
 
         match unresolved {

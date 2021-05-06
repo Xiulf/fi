@@ -7,7 +7,7 @@ pub trait AttrsOwner: AstNode {
     }
 
     fn has_atom_attr(&self, atom: &str) -> bool {
-        self.attrs().filter_map(|a| a.as_simple_atom()).any(|x| x == atom)
+        self.attrs().filter_map(|a| a.name()).any(|x| x == atom)
     }
 }
 
@@ -115,12 +115,28 @@ impl ExportModule {
 }
 
 impl Attr {
-    pub fn as_simple_atom(&self) -> Option<smol_str::SmolStr> {
-        self.name()
-    }
-
     pub fn name(&self) -> Option<smol_str::SmolStr> {
         support::token(&self.0, IDENT).map(|t| t.text().into())
+    }
+
+    pub fn value(&self) -> Option<Literal> {
+        support::child(&self.0)
+    }
+
+    pub fn args(&self) -> Option<AstChildren<AttrArg>> {
+        support::child(&self.0).map(|c: AttrArgs| support::children(&c.0))
+    }
+}
+
+impl AttrArgIdent {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        support::child(&self.0)
+    }
+}
+
+impl AttrArgLit {
+    pub fn literal(&self) -> Option<Literal> {
+        support::child(&self.0)
     }
 }
 
@@ -321,6 +337,10 @@ impl NameOwner for ItemClass {
 }
 
 impl ItemClass {
+    pub fn vars(&self) -> AstChildren<TypeVar> {
+        support::children(&self.0)
+    }
+
     pub fn fundeps(&self) -> AstChildren<FunDep> {
         support::children(&self.0)
     }
@@ -638,6 +658,48 @@ impl StmtBind {
 impl StmtExpr {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
+    }
+}
+
+impl LitInt {
+    pub fn value(&self) -> Option<i128> {
+        let int = support::token(&self.0, INT)?;
+        let text = int.text();
+
+        text.parse().ok()
+    }
+}
+
+impl LitFloat {
+    pub fn value(&self) -> Option<f64> {
+        let float = support::token(&self.0, FLOAT)?;
+        let text = float.text();
+
+        text.parse().ok()
+    }
+}
+
+impl LitChar {
+    pub fn value(&self) -> Option<char> {
+        let ch = support::token(&self.0, CHAR)?;
+        let text = ch.text();
+        let mut chars = text[1..text.len() - 1].chars();
+
+        match chars.next()? {
+            | '\\' => {
+                unimplemented!();
+            },
+            | ch => Some(ch),
+        }
+    }
+}
+
+impl LitString {
+    pub fn value(&self) -> Option<String> {
+        let string = support::token(&self.0, STRING)?;
+        let text = string.text();
+
+        Some(text[1..text.len() - 1].into())
     }
 }
 

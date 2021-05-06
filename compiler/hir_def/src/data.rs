@@ -8,6 +8,7 @@ use crate::path::Path;
 use crate::type_ref::{Constraint, TypeRefId};
 use base_db::input::FileId;
 use std::sync::Arc;
+use syntax::{ast, AstPtr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixityData {
@@ -69,6 +70,13 @@ pub struct InstanceData {
     pub types: Box<[TypeRefId]>,
     pub constraints: Box<[Constraint]>,
     pub items: Box<[AssocItemId]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeVarData {
+    pub ast_ptr: AstPtr<ast::TypeVar>,
+    pub name: Name,
+    pub kind: Option<TypeRefId>,
 }
 
 impl FixityData {

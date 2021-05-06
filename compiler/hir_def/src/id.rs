@@ -7,7 +7,7 @@ use base_db::libs::LibId;
 use std::hash::{Hash, Hasher};
 
 macro_rules! impl_intern {
-    ($id:ident, $loc:ident, $intern:ident, $lookup:ident) => {
+    ($id:ident, $loc:path, $intern:ident, $lookup:ident) => {
         impl salsa::InternKey for $id {
             fn from_intern_id(v: salsa::InternId) -> Self {
                 $id(v)
@@ -132,6 +132,28 @@ impl_intern!(ClassId, ClassLoc, intern_class, lookup_intern_class);
 pub struct InstanceId(salsa::InternId);
 pub type InstanceLoc = ItemLoc<Instance>;
 impl_intern!(InstanceId, InstanceLoc, intern_instance, lookup_intern_instance);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeVarId(salsa::InternId);
+impl_intern!(
+    TypeVarId,
+    crate::data::TypeVarData,
+    intern_type_var,
+    lookup_intern_type_var
+);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AttrDefId {
+    ModuleId(ModuleId),
+    FixityId(FixityId),
+    FuncId(FuncId),
+    StaticId(StaticId),
+    ConstId(ConstId),
+    TypeAliasId(TypeAliasId),
+    TypeCtorId(TypeCtorId),
+    ClassId(ClassId),
+    InstanceId(InstanceId),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModuleDefId {
@@ -283,4 +305,6 @@ macro_rules! impl_from {
     };
 }
 
+impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, ClassId, InstanceId for AttrDefId);
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId for ModuleDefId);
+impl_from!(FuncId, StaticId, ConstId for DefWithBodyId);

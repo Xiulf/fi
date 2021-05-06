@@ -2,7 +2,7 @@ use crate::arena::{Arena, Idx};
 use crate::body::Body;
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId, Stmt};
-use crate::id::{DefWithBodyId, Lookup};
+use crate::id::{DefWithBodyId, Lookup, TypeVarId};
 use crate::name::Name;
 use crate::pat::{Pat, PatId};
 use crate::type_ref::{TypeRef, TypeRefId};
@@ -45,7 +45,7 @@ pub struct TypeScopeData {
 #[derive(Debug, PartialEq, Eq)]
 pub struct TypeScopeEntry {
     name: Name,
-    type_ref: TypeRefId,
+    type_var: TypeVarId,
 }
 
 impl ExprScopeEntry {
@@ -63,8 +63,8 @@ impl TypeScopeEntry {
         &self.name
     }
 
-    pub fn type_ref(&self) -> TypeRefId {
-        self.type_ref
+    pub fn type_var(&self) -> TypeVarId {
+        self.type_var
     }
 }
 
@@ -143,7 +143,7 @@ impl TypeScopes {
         Arc::new(TypeScopes::new(db, id))
     }
 
-    fn new(db: &dyn DefDatabase, id: TypeRefId) -> TypeScopes {
+    fn new(db: &dyn DefDatabase, id: TypeRefId) -> Self {
         let mut scopes = TypeScopes {
             scopes: Arena::default(),
             scopes_by_type: FxHashMap::default(),
@@ -153,6 +153,39 @@ impl TypeScopes {
 
         compute_type_scopes(id, db, &mut scopes, root);
         scopes
+    }
+
+    pub fn from_type_vars(db: &dyn DefDatabase, vars: impl Iterator<Item = TypeVarId>) -> (Self, TypeScopeId) {
+        let mut scopes = TypeScopes {
+            scopes: Arena::default(),
+            scopes_by_type: FxHashMap::default(),
+        };
+
+        let root = scopes.root_scope();
+
+        for var in vars {
+            let data = var.lookup(db);
+
+            if let Some(kind) = data.kind {
+                compute_type_scopes(kind, db, &mut scopes, root);
+            }
+
+            scopes.add_binding(&data.name, var, root);
+        }
+
+        (scopes, root)
+    }
+
+    pub fn entries(&self, id: TypeScopeId) -> &[TypeScopeEntry] {
+        &self.scopes[id].entries
+    }
+
+    pub fn scope_chain(&self, scope: Option<TypeScopeId>) -> impl Iterator<Item = TypeScopeId> + '_ {
+        std::iter::successors(scope, move |&scope| self.scopes[scope].parent)
+    }
+
+    pub fn scope_for(&self, id: TypeRefId) -> Option<TypeScopeId> {
+        self.scopes_by_type.get(&id).copied()
     }
 
     fn root_scope(&mut self) -> TypeScopeId {
@@ -169,10 +202,10 @@ impl TypeScopes {
         })
     }
 
-    fn add_binding(&mut self, name: &Name, type_ref: TypeRefId, scope: TypeScopeId) {
+    fn add_binding(&mut self, name: &Name, type_var: TypeVarId, scope: TypeScopeId) {
         let entry = TypeScopeEntry {
             name: name.clone(),
-            type_ref,
+            type_var,
         };
 
         self.scopes[scope].entries.push(entry);
@@ -228,14 +261,18 @@ fn compute_type_scopes(ty: TypeRefId, db: &dyn DefDatabase, scopes: &mut TypeSco
     scopes.set_scope(ty, scope);
 
     match ty.lookup(db) {
-        | TypeRef::Forall(var, inner) => {
-            scopes.add_binding(&var.name, ty, scope);
-            scope = scopes.new_scope(scope);
+        | TypeRef::Forall(vars, inner) => {
+            for &var in vars.iter() {
+                let data = var.lookup(db);
 
-            if let Some(kind) = var.kind {
-                compute_type_scopes(kind, db, scopes, scope);
+                if let Some(kind) = data.kind {
+                    compute_type_scopes(kind, db, scopes, scope);
+                }
+
+                scopes.add_binding(&data.name, var, scope);
             }
 
+            scope = scopes.new_scope(scope);
             compute_type_scopes(inner, db, scopes, scope);
         },
         | TypeRef::Kinded(ty, kind) => {

@@ -114,6 +114,13 @@ fn format_resolution(db: &dyn hir::db::HirDatabase, resolution: hir::PathResolut
                 .text("let ", Styles::BOLD)
                 .text(name.to_string(), Styles::NONE)
         },
+        | hir::PathResolution::TypeVar(type_var) => {
+            let name = type_var.name(db);
+
+            Markup::new()
+                .text("for ", Styles::BOLD)
+                .text(name.to_string(), Styles::NONE)
+        },
         | hir::PathResolution::Def(def) => {
             let name = def.name(db);
 

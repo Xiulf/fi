@@ -1,8 +1,10 @@
+use crate::data::TypeVarData;
 use crate::db::DefDatabase;
-use crate::id::{Intern, Lookup};
+use crate::id::{Intern, Lookup, TypeVarId};
 use crate::name::{AsName, Name};
 use crate::path::{convert_path, Path};
 use syntax::ast::{self, NameOwner};
+use syntax::AstPtr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeRefId(salsa::InternId);
@@ -19,7 +21,7 @@ pub enum TypeRef {
     Slice(TypeRefId),
     Array(TypeRefId, usize),
     Func(TypeRefId, TypeRefId),
-    Forall(TypeVar, TypeRefId),
+    Forall(Box<[TypeVarId]>, TypeRefId),
     Constraint(Constraint, TypeRefId),
 }
 
@@ -31,12 +33,6 @@ pub enum PtrLen {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Sentinel(pub i128);
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeVar {
-    pub name: Name,
-    pub kind: Option<TypeRefId>,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraint {
@@ -102,19 +98,26 @@ impl TypeRef {
                 TypeRef::Tuple(inner.types().map(|t| TypeRef::from_ast(t, db)).collect()).intern(db)
             },
             | ast::Type::Parens(inner) => TypeRef::from_ast_opt(inner.ty(), db),
-            | ast::Type::For(inner) => inner.vars().fold(TypeRef::from_ast_opt(inner.ty(), db), |ty, var| {
-                if let Some(name) = var.name() {
-                    let kind = var.kind().map(|n| Self::from_ast(n, db));
-                    let var = TypeVar {
-                        name: name.as_name(),
-                        kind,
-                    };
+            | ast::Type::For(inner) => {
+                let vars = inner
+                    .vars()
+                    .filter_map(|var| {
+                        let name = var.name()?.as_name();
+                        let kind = var.kind().map(|k| Self::from_ast(k, db));
+                        let data = TypeVarData {
+                            ast_ptr: AstPtr::new(&var),
+                            name,
+                            kind,
+                        };
 
-                    TypeRef::Forall(var, ty).intern(db)
-                } else {
-                    ty
-                }
-            }),
+                        Some(data.intern(db))
+                    })
+                    .collect();
+
+                let ty = TypeRef::from_ast_opt(inner.ty(), db);
+
+                TypeRef::Forall(vars, ty).intern(db)
+            },
             | ast::Type::Ctnt(inner) => {
                 let ty = Self::from_ast_opt(inner.ty(), db);
 

@@ -5,7 +5,7 @@ use hir_def::name::Name;
 use hir_def::path::Path;
 use hir_def::resolver::HasResolver;
 use hir_def::resolver::{Resolver, TypeNs};
-use hir_def::type_ref::{TypeRef, TypeRefId};
+use hir_def::type_ref::{PtrLen, TypeRef, TypeRefId};
 
 pub struct Ctx<'a> {
     pub db: &'a dyn HirDatabase,
@@ -59,31 +59,85 @@ impl<'a> Ctx<'a> {
         let ty = match ty.lookup(self.db.upcast()) {
             | TypeRef::Error => TyKind::Error.intern(self.db),
             | TypeRef::Placeholder => TyKind::Error.intern(self.db),
+            | TypeRef::Path(path) => return self.lower_path(&path, ty),
             | TypeRef::Tuple(tys) => {
                 let tys = tys.iter().map(|&t| self.lower_ty(t));
 
                 TyKind::Tuple(tys.collect()).intern(self.db)
             },
-            | _ => unimplemented!(),
+            | TypeRef::Ptr(to, len) => {
+                let to = self.lower_ty(to);
+                let lib = self.resolver.lib().unwrap();
+
+                match len {
+                    | PtrLen::Single => {
+                        let ptr_ty = self.db.lang_item(lib, "ptr-type".into()).unwrap();
+                        let ptr_ty = ptr_ty.as_type_ctor().unwrap();
+                        let ptr_ty = self.db.type_for_ctor(ptr_ty);
+
+                        TyKind::App(ptr_ty, to).intern(self.db)
+                    },
+                    | PtrLen::Multiple(None) => {
+                        let ptr_ty = self.db.lang_item(lib, "ptrb-type".into()).unwrap();
+                        let ptr_ty = ptr_ty.as_type_ctor().unwrap();
+                        let ptr_ty = self.db.type_for_ctor(ptr_ty);
+
+                        TyKind::App(ptr_ty, to).intern(self.db)
+                    },
+                    | PtrLen::Multiple(Some(sentinel)) => {
+                        let ptr_ty = self.db.lang_item(lib, "ptrbs-type".into()).unwrap();
+                        let ptr_ty = ptr_ty.as_type_ctor().unwrap();
+                        let ptr_ty = self.db.type_for_ctor(ptr_ty);
+                        let base = TyKind::App(ptr_ty, to).intern(self.db);
+                        let sentinel = TyKind::Figure(sentinel.0).intern(self.db);
+
+                        TyKind::App(base, sentinel).intern(self.db)
+                    },
+                }
+            },
+            | TypeRef::App(base, arg) => {
+                let base = self.lower_ty(base);
+                let arg = self.lower_ty(arg);
+
+                TyKind::App(base, arg).intern(self.db)
+            },
+            | TypeRef::Forall(vars, inner) => {
+                let inner = self.with_shifted_in(DebruijnIndex::ONE, |ctx| ctx.lower_ty(inner));
+
+                vars.iter()
+                    .fold(inner, |inner, _| TyKind::ForAll(inner).intern(self.db))
+            },
+            | ty => unimplemented!("{:?}", ty),
         };
 
         (ty, res)
     }
 
-    pub(crate) fn lower_path(&self, path: &Path) -> (Ty, Option<TypeNs>) {
+    pub(crate) fn lower_path(&self, path: &Path, type_ref: TypeRefId) -> (Ty, Option<TypeNs>) {
         let (resolution, remaining) = match self.resolver.resolve_type(self.db.upcast(), path) {
             | Some(it) => it,
             | None => return (TyKind::Error.intern(self.db), None),
         };
 
-        self.lower_partly_resolved_path(resolution, remaining.unwrap_or(0))
+        self.lower_partly_resolved_path(resolution, remaining.unwrap_or(0), type_ref)
     }
 
-    pub(crate) fn lower_partly_resolved_path(&self, resolution: TypeNs, remaining: usize) -> (Ty, Option<TypeNs>) {
+    pub(crate) fn lower_partly_resolved_path(
+        &self,
+        resolution: TypeNs,
+        remaining: usize,
+        type_ref: TypeRefId,
+    ) -> (Ty, Option<TypeNs>) {
         let ty = match resolution {
             | TypeNs::Class(_) => {
                 // @TODO: resport error
                 TyKind::Error.intern(self.db)
+            },
+            | TypeNs::TypeVar(id) => {
+                let depth = self.resolver.type_var_index(id).unwrap();
+                let debruijn = DebruijnIndex::new(depth as u32);
+
+                TypeVar::new(debruijn, 0).to_ty(self.db)
             },
             | TypeNs::TypeAlias(id) => self.db.type_for_alias(id),
             | TypeNs::TypeCtor(id) => self.db.type_for_ctor(id),
@@ -103,7 +157,9 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Ty {
     let resolver = id.resolver(db.upcast());
     let data = &item_tree[loc.id.value];
     let ctx = Ctx::new(db, &resolver);
-    let mut ty = ctx.with_shifted_in(DebruijnIndex::ONE, |ctx| ctx.lower_ty(data.alias));
+    let mut ty = ctx.with_shifted_in(DebruijnIndex::new(data.vars.len() as u32), |ctx| {
+        ctx.lower_ty(data.alias)
+    });
 
     for _ in data.vars.iter().rev() {
         ty = TyKind::ForAll(ty).intern(db);
@@ -120,11 +176,11 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Ty {
     let loc = id.lookup(db.upcast());
     let item_tree = db.item_tree(loc.id.file_id);
     let data = &item_tree[loc.id.value];
-    let index = DebruijnIndex::INNER;
     let mut ty = TyKind::Ctor(id).intern(db);
 
-    for (i, _) in data.vars.iter().enumerate() {
-        let arg = TypeVar::new(index, i).to_ty(db);
+    for (i, _) in data.vars.iter().enumerate().rev() {
+        let index = DebruijnIndex::new(i as u32);
+        let arg = TypeVar::new(index, 0).to_ty(db);
 
         ty = TyKind::App(ty, arg).intern(db);
     }
