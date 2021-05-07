@@ -169,6 +169,18 @@ pub enum ModuleDefId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypedDefId {
+    FuncId(FuncId),
+    StaticId(StaticId),
+    ConstId(ConstId),
+    TypeAliasId(TypeAliasId),
+    TypeCtorId(TypeCtorId),
+    CtorId(CtorId),
+    ClassId(ClassId),
+    InstanceId(InstanceId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DefWithBodyId {
     FuncId(FuncId),
     StaticId(StaticId),
@@ -203,6 +215,40 @@ impl HasModule for ModuleDefId {
             | ModuleDefId::TypeCtorId(id) => id.lookup(db).module,
             | ModuleDefId::CtorId(id) => id.parent.lookup(db).module(db),
             | ModuleDefId::ClassId(id) => id.lookup(db).module,
+        }
+    }
+}
+
+impl HasModule for TypedDefId {
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId {
+        match *self {
+            | TypedDefId::FuncId(id) => id.lookup(db).module(db),
+            | TypedDefId::StaticId(id) => id.lookup(db).module(db),
+            | TypedDefId::ConstId(id) => id.lookup(db).module(db),
+            | TypedDefId::TypeAliasId(id) => id.lookup(db).module,
+            | TypedDefId::TypeCtorId(id) => id.lookup(db).module,
+            | TypedDefId::CtorId(id) => id.parent.lookup(db).module(db),
+            | TypedDefId::ClassId(id) => id.lookup(db).module,
+            | TypedDefId::InstanceId(id) => id.lookup(db).module,
+        }
+    }
+}
+
+impl HasModule for DefWithBodyId {
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId {
+        match *self {
+            | DefWithBodyId::FuncId(id) => id.lookup(db).module(db),
+            | DefWithBodyId::StaticId(id) => id.lookup(db).module(db),
+            | DefWithBodyId::ConstId(id) => id.lookup(db).module(db),
+        }
+    }
+}
+
+impl HasModule for AssocItemId {
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId {
+        match *self {
+            | AssocItemId::FuncId(id) => id.lookup(db).module(db),
+            | AssocItemId::StaticId(id) => id.lookup(db).module(db),
         }
     }
 }
@@ -307,4 +353,5 @@ macro_rules! impl_from {
 
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, ClassId, InstanceId for AttrDefId);
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId for ModuleDefId);
+impl_from!(FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId, InstanceId for TypedDefId);
 impl_from!(FuncId, StaticId, ConstId for DefWithBodyId);

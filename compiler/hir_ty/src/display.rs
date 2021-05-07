@@ -116,19 +116,17 @@ where
 impl HirDisplay for TypeVar {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         let depth = self.debruijn().depth();
-        let index = self.index() as usize;
         let depth = unsafe { std::char::from_u32_unchecked('a' as u32 + depth) };
 
-        write!(f, "{}{}", depth, "'".repeat(index))
+        write!(f, "{}", depth)
     }
 }
 
 impl HirDisplay for Placeholder {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         let universe = self.universe();
-        let index = self.index();
 
-        write!(f, "?{}.{}", universe.index(), index)
+        write!(f, "?{}", universe.index())
     }
 }
 
@@ -167,20 +165,15 @@ impl HirDisplay for Ty {
                 arg.hir_fmt(f)?;
                 write!(f, ")")
             },
-            | TyKind::KindApp(base, arg) => {
-                write!(f, "(")?;
-                base.hir_fmt(f)?;
-                write!(f, " ")?;
-                arg.hir_fmt(f)?;
-                write!(f, ")")
-            },
             | TyKind::Ctnt(ctnt, ty) => {
                 ctnt.hir_fmt(f)?;
                 write!(f, " => ")?;
                 ty.hir_fmt(f)
             },
-            | TyKind::ForAll(ty) => {
-                write!(f, "for. ")?;
+            | TyKind::ForAll(kind, ty) => {
+                write!(f, "for ")?;
+                kind.hir_fmt(f)?;
+                write!(f, ". ")?;
                 ty.hir_fmt(f)
             },
             | _ => unimplemented!(),

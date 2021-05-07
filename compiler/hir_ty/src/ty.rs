@@ -24,9 +24,8 @@ pub enum TyKind {
     Tuple(List<Ty>),
 
     App(Ty, Ty),
-    KindApp(Ty, Ty),
     Ctnt(Ctnt, Ty),
-    ForAll(Ty),
+    ForAll(Ty, Ty),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -41,17 +40,17 @@ pub struct Ctnt {
     pub tys: List<Ty>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Unknown(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeVar(DebruijnIndex, u32);
+pub struct TypeVar(DebruijnIndex);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DebruijnIndex(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Placeholder(UniverseIndex, u32);
+pub struct Placeholder(UniverseIndex);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UniverseIndex(u32);
@@ -72,11 +71,15 @@ impl Unknown {
     pub const fn from_raw(id: u32) -> Self {
         Unknown(id)
     }
+
+    pub fn to_ty(self, db: &dyn HirDatabase) -> Ty {
+        TyKind::Unknown(self).intern(db)
+    }
 }
 
 impl TypeVar {
-    pub const fn new(debruijn: DebruijnIndex, index: u32) -> Self {
-        Self(debruijn, index)
+    pub const fn new(debruijn: DebruijnIndex) -> Self {
+        Self(debruijn)
     }
 
     pub fn to_ty(self, db: &dyn HirDatabase) -> Ty {
@@ -91,40 +94,24 @@ impl TypeVar {
         self.0
     }
 
-    pub fn index(self) -> u32 {
-        self.1
-    }
-
     #[must_use]
     pub fn shifted_in(self) -> Self {
-        Self(self.0.shifted_in(), self.1)
+        Self(self.0.shifted_in())
     }
 
     #[must_use]
     pub fn shifted_in_from(self, debruijn: DebruijnIndex) -> Self {
-        Self(self.0.shifted_in_from(debruijn), self.1)
+        Self(self.0.shifted_in_from(debruijn))
     }
 
     #[must_use]
     pub fn shifted_out(self) -> Option<Self> {
-        self.0.shifted_out().map(|d| Self(d, self.1))
+        self.0.shifted_out().map(Self)
     }
 
     #[must_use]
     pub fn shifted_out_to(self, debruijn: DebruijnIndex) -> Option<Self> {
-        self.0.shifted_out_to(debruijn).map(|d| Self(d, self.1))
-    }
-
-    pub fn index_if_inner(self) -> Option<u32> {
-        self.index_if_bound_at(DebruijnIndex::INNER)
-    }
-
-    pub fn index_if_bound_at(self, debruijn: DebruijnIndex) -> Option<u32> {
-        if self.0 == debruijn {
-            Some(self.1)
-        } else {
-            None
-        }
+        self.0.shifted_out_to(debruijn).map(Self)
     }
 }
 
@@ -178,8 +165,8 @@ impl DebruijnIndex {
 }
 
 impl Placeholder {
-    pub const fn new(universe: UniverseIndex, index: u32) -> Self {
-        Self(universe, index)
+    pub const fn new(universe: UniverseIndex) -> Self {
+        Self(universe)
     }
 
     pub fn to_ty(self, db: &dyn HirDatabase) -> Ty {
@@ -188,10 +175,6 @@ impl Placeholder {
 
     pub fn universe(self) -> UniverseIndex {
         self.0
-    }
-
-    pub fn index(self) -> u32 {
-        self.1
     }
 }
 

@@ -20,4 +20,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     #[salsa::invoke(crate::lower::type_for_ctor)]
     #[salsa::cycle(crate::lower::type_for_ctor_recover)]
     fn type_for_ctor(&self, id: TypeCtorId) -> Ty;
+
+    #[salsa::invoke(crate::lower::kind_for_ctor)]
+    fn kind_for_ctor(&self, id: TypeCtorId) -> Ty;
 }

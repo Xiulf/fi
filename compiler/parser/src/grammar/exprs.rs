@@ -158,6 +158,24 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 
             Some(m.complete(p, EXPR_IF))
         },
+        | CASE_KW => {
+            p.bump(CASE_KW);
+            expr(p);
+            p.expect(OF_KW);
+            p.expect(LYT_START);
+
+            while !p.at(EOF) && !p.at(LYT_END) {
+                case_arm(p);
+
+                if !p.at(LYT_END) {
+                    p.expect(LYT_SEP);
+                }
+            }
+
+            p.expect(LYT_END);
+
+            Some(m.complete(p, EXPR_CASE))
+        },
         | WHILE_KW | UNLESS_KW => {
             p.bump_any();
             expr_(p, false);
@@ -250,7 +268,7 @@ fn peek(p: &Parser, allow_do: bool) -> bool {
     match p.current() {
         | DO_KW => allow_do,
         | IDENT | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | THEN_KW | UNLESS_KW
-        | ELSE_KW | WHILE_KW | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW | OF_KW
+        | ELSE_KW | WHILE_KW | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW
         | UNDERSCORE => true,
         | _ => false,
     }
@@ -312,4 +330,21 @@ crate fn stmt(p: &mut Parser) {
         expr(p);
         m.complete(p, STMT_EXPR);
     }
+}
+
+crate fn case_arm(p: &mut Parser) {
+    let m = p.start();
+
+    patterns::pattern(p);
+
+    if p.eat(PIPE) {
+        let guard = p.start();
+
+        expr(p);
+        guard.complete(p, CASE_GUARD);
+    }
+
+    p.expect(ARROW);
+    expr(p);
+    m.complete(p, CASE_ARM);
 }

@@ -11,3 +11,14 @@ fun pring_args argc argv =
     unless eq_i32 argc 0 do
         puts argv.*
         print_args (sub_i32 argc 1) (ptr_offset argv 1)
+
+type Option t =
+    | Some t
+    | None
+
+type Result t e =
+    | Ok t
+    | Err e
+
+type Test f =
+    | Test (f Int8)

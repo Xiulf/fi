@@ -289,6 +289,7 @@ crate fn assoc_item(p: &mut Parser) {
 
     while p.at(AT) {
         attributes::attr(p);
+        p.eat(LYT_SEP);
     }
 
     match p.current() {
