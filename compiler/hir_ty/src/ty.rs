@@ -13,7 +13,7 @@ pub enum TyKind {
     Error,
 
     Unknown(Unknown),
-    Placeholder(Placeholder),
+    Skolem(Skolem, Ty),
     TypeVar(TypeVar),
 
     Figure(i128),
@@ -24,7 +24,7 @@ pub enum TyKind {
     Tuple(List<Ty>),
 
     App(Ty, Ty),
-    Ctnt(Ctnt, Ty),
+    Ctnt(Constraint, Ty),
     ForAll(Ty, Ty),
 }
 
@@ -35,7 +35,7 @@ pub struct Field {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ctnt {
+pub struct Constraint {
     pub class: ClassId,
     pub tys: List<Ty>,
 }
@@ -50,7 +50,7 @@ pub struct TypeVar(DebruijnIndex);
 pub struct DebruijnIndex(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Placeholder(UniverseIndex);
+pub struct Skolem(UniverseIndex);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UniverseIndex(u32);
@@ -58,6 +58,60 @@ pub struct UniverseIndex(u32);
 impl Ty {
     pub fn lookup(self, db: &dyn HirDatabase) -> TyKind {
         db.lookup_intern_ty(self)
+    }
+
+    pub fn everywhere<F>(self, db: &dyn HirDatabase, f: &mut F) -> Ty
+    where
+        F: FnMut(Ty) -> Ty,
+    {
+        match self.lookup(db) {
+            | TyKind::Skolem(sk, k) => {
+                let k = k.everywhere(db, f);
+
+                f(sk.to_ty(db, k))
+            },
+            | TyKind::Row(fields, tail) => {
+                let fields = fields
+                    .iter()
+                    .map(|field| Field {
+                        name: field.name.clone(),
+                        ty: f(field.ty),
+                    })
+                    .collect();
+
+                let tail = tail.map(|t| f(t));
+
+                f(TyKind::Row(fields, tail).intern(db))
+            },
+            | TyKind::Tuple(tys) => {
+                let tys = tys.iter().map(|&t| f(t)).collect();
+
+                f(TyKind::Tuple(tys).intern(db))
+            },
+            | TyKind::App(a, b) => {
+                let a = f(a);
+                let b = f(b);
+
+                f(TyKind::App(a, b).intern(db))
+            },
+            | TyKind::Ctnt(ctnt, ty) => {
+                let ctnt = Constraint {
+                    class: ctnt.class,
+                    tys: ctnt.tys.iter().map(|&t| f(t)).collect(),
+                };
+
+                let ty = f(ty);
+
+                f(TyKind::Ctnt(ctnt, ty).intern(db))
+            },
+            | TyKind::ForAll(k, t) => {
+                let k = f(k);
+                let t = f(t);
+
+                f(TyKind::ForAll(k, t).intern(db))
+            },
+            | _ => f(self),
+        }
     }
 }
 
@@ -70,6 +124,10 @@ impl TyKind {
 impl Unknown {
     pub const fn from_raw(id: u32) -> Self {
         Unknown(id)
+    }
+
+    pub const fn raw(self) -> u32 {
+        self.0
     }
 
     pub fn to_ty(self, db: &dyn HirDatabase) -> Ty {
@@ -164,13 +222,13 @@ impl DebruijnIndex {
     }
 }
 
-impl Placeholder {
+impl Skolem {
     pub const fn new(universe: UniverseIndex) -> Self {
         Self(universe)
     }
 
-    pub fn to_ty(self, db: &dyn HirDatabase) -> Ty {
-        TyKind::Placeholder(self).intern(db)
+    pub fn to_ty(self, db: &dyn HirDatabase, kind: Ty) -> Ty {
+        TyKind::Skolem(self, kind).intern(db)
     }
 
     pub fn universe(self) -> UniverseIndex {
@@ -187,6 +245,10 @@ impl UniverseIndex {
 
     pub fn next(self) -> Self {
         Self(self.0 + 1)
+    }
+
+    pub fn prev(self) -> Self {
+        Self(self.0 - 1)
     }
 
     pub fn index(self) -> u32 {

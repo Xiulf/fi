@@ -7,7 +7,6 @@ use crate::id::*;
 use crate::item_tree::ItemTree;
 use crate::lang_item::{LangItem, LangItems};
 use crate::scope::{ExprScopes, TypeScopes};
-use crate::type_ref::{TypeRef, TypeRefId};
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use base_db::{SourceDatabaseExt, Upcast};
@@ -39,12 +38,6 @@ pub trait InternDatabase: SourceDatabaseExt {
 
     #[salsa::interned]
     fn intern_instance(&self, loc: InstanceLoc) -> InstanceId;
-
-    #[salsa::interned]
-    fn intern_type_var(&self, data: data::TypeVarData) -> TypeVarId;
-
-    #[salsa::interned]
-    fn intern_type_ref(&self, type_ref: TypeRef) -> TypeRefId;
 }
 
 #[salsa::query_group(DefDatabaseStorage)]
@@ -66,9 +59,6 @@ pub trait DefDatabase: InternDatabase {
 
     #[salsa::invoke(ExprScopes::expr_scopes_query)]
     fn expr_scopes(&self, def: DefWithBodyId) -> Arc<ExprScopes>;
-
-    #[salsa::invoke(TypeScopes::type_scopes_query)]
-    fn type_scopes(&self, ty: TypeRefId) -> Arc<TypeScopes>;
 
     #[salsa::invoke(data::FixityData::query)]
     fn fixity_data(&self, id: FixityId) -> Arc<data::FixityData>;

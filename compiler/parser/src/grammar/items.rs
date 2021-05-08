@@ -267,6 +267,14 @@ crate fn instance(p: &mut Parser) {
         types::atom(p);
     }
 
+    if p.eat(COLON) {
+        types::constraint(p);
+
+        while p.eat(COMMA) {
+            types::constraint(p);
+        }
+    }
+
     if p.eat(EQUALS) {
         p.expect(LYT_START);
 

@@ -7,7 +7,7 @@ use crate::pat::PatId;
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::scope::{ExprScopeId, ExprScopes, TypeScopeId, TypeScopes};
-use crate::type_ref::TypeRefId;
+use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap};
 use base_db::libs::LibId;
 use std::sync::Arc;
 
@@ -194,8 +194,8 @@ impl Resolver {
         None
     }
 
-    pub fn with_type_scopes(mut self, db: &dyn DefDatabase, id: TypeRefId) -> Self {
-        let scopes = db.type_scopes(id);
+    pub fn with_type_scopes(mut self, map: &TypeMap, owner: TypeVarOwner, id: LocalTypeRefId) -> Self {
+        let scopes = Arc::new(TypeScopes::new(map, owner, id));
         let scope_id = scopes.scope_for(id);
         let scope_chain = scopes.scope_chain(scope_id).collect::<Vec<_>>();
 
@@ -206,8 +206,13 @@ impl Resolver {
         self
     }
 
-    pub fn with_type_vars(mut self, db: &dyn DefDatabase, vars: impl Iterator<Item = TypeVarId>) -> Self {
-        let (scopes, root) = TypeScopes::from_type_vars(db, vars);
+    pub fn with_type_vars(
+        mut self,
+        map: &TypeMap,
+        owner: TypeVarOwner,
+        vars: impl Iterator<Item = LocalTypeVarId>,
+    ) -> Self {
+        let (scopes, root) = TypeScopes::from_type_vars(map, owner, vars);
         let scopes = Arc::new(scopes);
 
         self.push_type_scope(scopes, root)
@@ -305,14 +310,13 @@ impl HasResolver for ModuleId {
 
 impl HasResolver for FuncId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let loc = self.lookup(db);
-        let item_tree = db.item_tree(loc.id.file_id);
-        let data = &item_tree[loc.id.value];
+        let data = db.func_data(self);
 
-        self.lookup(db)
-            .container
-            .resolver(db)
-            .with_type_vars(db, data.vars.iter().copied())
+        self.lookup(db).container.resolver(db).with_type_vars(
+            data.type_map(),
+            TypedDefId::FuncId(self).into(),
+            data.vars.iter().copied(),
+        )
     }
 }
 
@@ -346,54 +350,49 @@ impl HasResolver for CtorId {
 
 impl HasResolver for TypeAliasId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let loc = self.lookup(db);
-        let item_tree = db.item_tree(loc.id.file_id);
-        let data = &item_tree[loc.id.value];
+        let data = db.type_alias_data(self);
 
-        self.lookup(db)
-            .module
-            .resolver(db)
-            .with_type_vars(db, data.vars.iter().copied())
-            .with_type_scopes(db, data.alias)
+        self.lookup(db).module.resolver(db).with_type_vars(
+            data.type_map(),
+            TypedDefId::TypeAliasId(self).into(),
+            data.vars.iter().copied(),
+        )
     }
 }
 
 impl HasResolver for TypeCtorId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let loc = self.lookup(db);
-        let item_tree = db.item_tree(loc.id.file_id);
-        let data = &item_tree[loc.id.value];
+        let data = db.type_ctor_data(self);
 
-        self.lookup(db)
-            .module
-            .resolver(db)
-            .with_type_vars(db, data.vars.iter().copied())
+        self.lookup(db).module.resolver(db).with_type_vars(
+            data.type_map(),
+            TypedDefId::TypeCtorId(self).into(),
+            data.vars.iter().copied(),
+        )
     }
 }
 
 impl HasResolver for ClassId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let loc = self.lookup(db);
-        let item_tree = db.item_tree(loc.id.file_id);
-        let data = &item_tree[loc.id.value];
+        let data = db.class_data(self);
 
-        self.lookup(db)
-            .module
-            .resolver(db)
-            .with_type_vars(db, data.vars.iter().copied())
+        self.lookup(db).module.resolver(db).with_type_vars(
+            data.type_map(),
+            TypedDefId::ClassId(self).into(),
+            data.vars.iter().copied(),
+        )
     }
 }
 
 impl HasResolver for InstanceId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let loc = self.lookup(db);
-        let item_tree = db.item_tree(loc.id.file_id);
-        let data = &item_tree[loc.id.value];
+        let data = db.instance_data(self);
 
-        self.lookup(db)
-            .module
-            .resolver(db)
-            .with_type_vars(db, data.vars.iter().copied())
+        self.lookup(db).module.resolver(db).with_type_vars(
+            data.type_map(),
+            TypedDefId::InstanceId(self).into(),
+            data.vars.iter().copied(),
+        )
     }
 }
 

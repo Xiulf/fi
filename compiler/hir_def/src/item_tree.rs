@@ -8,7 +8,6 @@ use crate::id::TypeVarId;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::Path;
-use crate::type_ref::{Constraint, TypeRef, TypeRefId};
 use base_db::input::FileId;
 use rustc_hash::FxHashMap;
 use std::fmt;
@@ -18,8 +17,9 @@ use std::ops::{Index, Range};
 use std::sync::Arc;
 use syntax::ast::{self, AstNode};
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ItemTree {
+    file: FileId,
     top_level: Vec<Item>,
     data: ItemTreeData,
     attrs: FxHashMap<AttrOwner, RawAttrs>,
@@ -59,6 +59,15 @@ pub struct LocalItemTreeId<N: ItemTreeNode> {
 pub type ItemTreeId<N> = InFile<LocalItemTreeId<N>>;
 
 impl ItemTree {
+    fn new(file: FileId) -> Self {
+        Self {
+            file,
+            top_level: Vec::new(),
+            data: ItemTreeData::default(),
+            attrs: FxHashMap::default(),
+        }
+    }
+
     pub fn item_tree_query(db: &dyn DefDatabase, file_id: FileId) -> Arc<ItemTree> {
         let syntax = db.parse(file_id);
         let ctx = lower::Ctx::new(db, file_id);
@@ -77,6 +86,15 @@ impl ItemTree {
 
     pub fn attrs(&self, of: AttrOwner) -> Attrs {
         Attrs(self.raw_attrs(of).clone())
+    }
+
+    pub fn source<N: ItemTreeNode>(&self, db: &dyn DefDatabase, item: LocalItemTreeId<N>) -> N::Source {
+        let root = db.parse(self.file);
+        let id = self[item].ast_id();
+        let map = db.ast_id_map(self.file);
+        let ptr = map.get(id);
+
+        ptr.to_node(&root.syntax_node())
     }
 }
 
@@ -184,18 +202,14 @@ pub use ast::{Assoc, Prec};
 pub struct Func {
     pub ast_id: FileAstId<ast::ItemFun>,
     pub name: Name,
-    pub ty: Option<TypeRefId>,
     pub has_body: bool,
     pub is_foreign: bool,
-    pub vars: Box<[TypeVarId]>,
-    pub constraints: Box<[Constraint]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Static {
     pub ast_id: FileAstId<ast::ItemStatic>,
     pub name: Name,
-    pub ty: Option<TypeRefId>,
     pub is_foreign: bool,
 }
 
@@ -209,32 +223,26 @@ pub struct Const {
 pub struct TypeAlias {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
-    pub alias: TypeRefId,
-    pub vars: Box<[TypeVarId]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeCtor {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
-    pub kind: Option<TypeRefId>,
-    pub vars: Box<[TypeVarId]>,
     pub ctors: IdRange<Ctor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ctor {
+    pub ast_id: FileAstId<ast::Ctor>,
     pub name: Name,
-    pub types: Box<[TypeRefId]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Class {
     pub ast_id: FileAstId<ast::ItemClass>,
     pub name: Name,
-    pub vars: Box<[TypeVarId]>,
     pub fundeps: Box<[FunDep]>,
-    pub constraints: Box<[Constraint]>,
     pub items: Box<[AssocItem]>,
 }
 
@@ -248,9 +256,6 @@ pub struct FunDep {
 pub struct Instance {
     pub ast_id: FileAstId<ast::ItemInstance>,
     pub class: Path,
-    pub vars: Box<[TypeVarId]>,
-    pub types: Box<[TypeRefId]>,
-    pub constraints: Box<[Constraint]>,
     pub items: Box<[AssocItem]>,
 }
 

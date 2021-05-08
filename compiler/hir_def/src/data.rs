@@ -5,12 +5,12 @@ pub use crate::item_tree::{Assoc, FunDep, Prec};
 use crate::item_tree::{AssocItem, ItemTreeId};
 use crate::name::Name;
 use crate::path::Path;
-use crate::type_ref::{Constraint, TypeRefId};
+use crate::type_ref::{Constraint, LocalTypeRefId, LocalTypeVarId, TypeMap, TypeSourceMap};
 use base_db::input::FileId;
 use std::sync::Arc;
 use syntax::{ast, AstPtr};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FixityData {
     pub name: Name,
     pub func: Path,
@@ -18,65 +18,77 @@ pub struct FixityData {
     pub assoc: Assoc,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FuncData {
     pub name: Name,
-    pub ty: Option<TypeRefId>,
+    pub ty: Option<LocalTypeRefId>,
+    pub vars: Box<[LocalTypeVarId]>,
+    pub constraints: Box<[Constraint]>,
     pub has_body: bool,
     pub is_foreign: bool,
+    type_map: TypeMap,
+    type_source_map: TypeSourceMap,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct StaticData {
     pub name: Name,
-    pub ty: Option<TypeRefId>,
+    pub ty: Option<LocalTypeRefId>,
     pub is_foreign: bool,
+    type_map: TypeMap,
+    type_source_map: TypeSourceMap,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ConstData {
     pub name: Name,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TypeAliasData {
     pub name: Name,
-    pub alias: TypeRefId,
+    pub vars: Box<[LocalTypeVarId]>,
+    pub alias: LocalTypeRefId,
+    type_map: TypeMap,
+    type_source_map: TypeSourceMap,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TypeCtorData {
     pub name: Name,
+    pub kind: Option<LocalTypeRefId>,
+    pub vars: Box<[LocalTypeVarId]>,
     pub ctors: Arena<CtorData>,
+    type_map: TypeMap,
+    type_source_map: TypeSourceMap,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CtorData {
     pub name: Name,
-    pub types: Box<[TypeRefId]>,
+    pub types: Box<[LocalTypeRefId]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ClassData {
     pub name: Name,
+    pub vars: Box<[LocalTypeVarId]>,
     pub fundeps: Box<[FunDep]>,
     pub constraints: Box<[Constraint]>,
     pub items: Box<[(Name, AssocItemId)]>,
+    type_map: TypeMap,
+    type_source_map: TypeSourceMap,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct InstanceData {
     pub class: Path,
-    pub types: Box<[TypeRefId]>,
+    pub vars: Box<[LocalTypeVarId]>,
+    pub types: Box<[LocalTypeRefId]>,
     pub constraints: Box<[Constraint]>,
     pub items: Box<[AssocItemId]>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeVarData {
-    pub ast_ptr: AstPtr<ast::TypeVar>,
-    pub name: Name,
-    pub kind: Option<TypeRefId>,
+    type_map: TypeMap,
+    type_source_map: TypeSourceMap,
 }
 
 impl FixityData {
@@ -99,13 +111,41 @@ impl FuncData {
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
+        let src = loc.source(db);
+        let mut type_builder = TypeMap::builder();
+        let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
+        let (vars, constraints) = if let Some(gen) = src.value.generics() {
+            let vars = gen.vars().filter_map(|t| type_builder.alloc_type_var(t)).collect();
+            let constraints = gen
+                .constraints()
+                .filter_map(|c| type_builder.lower_constraint(c))
+                .collect();
+
+            (vars, constraints)
+        } else {
+            (Box::new([]) as Box<[_]>, Box::new([]) as Box<[_]>)
+        };
+
+        let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(FuncData {
             name: it.name.clone(),
-            ty: it.ty,
             has_body: it.has_body,
             is_foreign: it.is_foreign,
+            ty,
+            vars,
+            constraints,
+            type_map,
+            type_source_map,
         })
+    }
+
+    pub fn type_map(&self) -> &TypeMap {
+        &self.type_map
+    }
+
+    pub fn type_source_map(&self) -> &TypeSourceMap {
+        &self.type_source_map
     }
 }
 
@@ -114,12 +154,26 @@ impl StaticData {
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
+        let src = loc.source(db);
+        let mut type_builder = TypeMap::builder();
+        let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
+        let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(StaticData {
             name: it.name.clone(),
-            ty: it.ty,
             is_foreign: it.is_foreign,
+            ty,
+            type_map,
+            type_source_map,
         })
+    }
+
+    pub fn type_map(&self) -> &TypeMap {
+        &self.type_map
+    }
+
+    pub fn type_source_map(&self) -> &TypeSourceMap {
+        &self.type_source_map
     }
 }
 
@@ -138,39 +192,82 @@ impl TypeAliasData {
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
+        let src = loc.source(db);
+        let mut type_builder = TypeMap::builder();
+        let vars = src
+            .value
+            .vars()
+            .filter_map(|t| type_builder.alloc_type_var(t))
+            .collect();
+
+        let alias = type_builder.alloc_type_ref_opt(src.value.alias());
+        let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(TypeAliasData {
             name: it.name.clone(),
-            alias: it.alias,
+            vars,
+            alias,
+            type_map,
+            type_source_map,
         })
+    }
+
+    pub fn type_map(&self) -> &TypeMap {
+        &self.type_map
+    }
+
+    pub fn type_source_map(&self) -> &TypeSourceMap {
+        &self.type_source_map
     }
 }
 
 impl TypeCtorData {
     pub fn query(db: &dyn DefDatabase, id: TypeCtorId) -> Arc<Self> {
+        use crate::name::AsName;
+        use ast::NameOwner;
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
+        let src = loc.source(db);
+        let mut type_builder = TypeMap::builder();
         let mut ctors = Arena::new();
+        let kind = src.value.kind().map(|t| type_builder.alloc_type_ref(t));
+        let vars = src
+            .value
+            .vars()
+            .filter_map(|t| type_builder.alloc_type_var(t))
+            .collect();
 
-        for id in it.ctors.clone() {
-            let ctor = &item_tree[id];
-
+        for ctor in src.value.ctors() {
             ctors.alloc(CtorData {
-                name: ctor.name.clone(),
-                types: ctor.types.clone(),
+                name: ctor.name().unwrap().as_name(),
+                types: ctor.types().map(|t| type_builder.alloc_type_ref(t)).collect(),
             });
         }
 
+        let (type_map, type_source_map) = type_builder.finish();
+
         Arc::new(TypeCtorData {
             name: it.name.clone(),
+            kind,
+            vars,
             ctors,
+            type_map,
+            type_source_map,
         })
     }
 
     pub fn ctor(&self, name: &Name) -> Option<LocalCtorId> {
         let (id, _) = self.ctors.iter().find(|(_, data)| &data.name == name)?;
         Some(id)
+    }
+
+    pub fn type_map(&self) -> &TypeMap {
+        &self.type_map
+    }
+
+    pub fn type_source_map(&self) -> &TypeSourceMap {
+        &self.type_source_map
     }
 }
 
@@ -179,15 +276,41 @@ impl ClassData {
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
+        let src = loc.source(db);
+        let mut type_builder = TypeMap::builder();
+        let vars = src
+            .value
+            .vars()
+            .filter_map(|t| type_builder.alloc_type_var(t))
+            .collect();
+
+        let constraints = src
+            .value
+            .constraints()
+            .filter_map(|c| type_builder.lower_constraint(c))
+            .collect();
+
         let container = ContainerId::Class(id);
         let items = collect_assoc_items(db, loc.id.file_id, it.items.iter().copied(), container);
+        let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(ClassData {
             name: it.name.clone(),
             fundeps: it.fundeps.clone(),
-            constraints: it.constraints.clone(),
             items: items.into(),
+            vars,
+            constraints,
+            type_map,
+            type_source_map,
         })
+    }
+
+    pub fn type_map(&self) -> &TypeMap {
+        &self.type_map
+    }
+
+    pub fn type_source_map(&self) -> &TypeSourceMap {
+        &self.type_source_map
     }
 }
 
@@ -196,15 +319,36 @@ impl InstanceData {
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
+        let src = loc.source(db);
+        let mut type_builder = TypeMap::builder();
+        let types = src.value.types().map(|t| type_builder.alloc_type_ref(t)).collect();
+        let constraints = src
+            .value
+            .constraints()
+            .filter_map(|c| type_builder.lower_constraint(c))
+            .collect();
+
         let container = ContainerId::Instance(id);
         let items = collect_assoc_items(db, loc.id.file_id, it.items.iter().copied(), container);
+        let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(InstanceData {
             class: it.class.clone(),
-            types: it.types.clone(),
-            constraints: it.constraints.clone(),
+            vars: Box::new([]),
             items: items.into_iter().map(|(_, it)| it).collect(),
+            types,
+            constraints,
+            type_map,
+            type_source_map,
         })
+    }
+
+    pub fn type_map(&self) -> &TypeMap {
+        &self.type_map
+    }
+
+    pub fn type_source_map(&self) -> &TypeSourceMap {
+        &self.type_source_map
     }
 }
 

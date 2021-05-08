@@ -9,6 +9,7 @@ use crate::in_file::InFile;
 use crate::name::{AsName, Name};
 use crate::pat::{Pat, PatId};
 use crate::path::Path;
+use crate::type_ref::{TypeMap, TypeMapBuilder};
 use base_db::input::FileId;
 use std::sync::Arc;
 use syntax::{ast, AstPtr};
@@ -57,7 +58,9 @@ pub(super) fn lower(
             pats: Arena::default(),
             params: Vec::new(),
             body_expr: dummy_expr_id(),
+            type_map: TypeMap::default(),
         },
+        type_builder: TypeMapBuilder::default(),
     }
     .collect(params, body)
 }
@@ -69,6 +72,7 @@ struct ExprCollector<'a> {
     def_map: Arc<DefMap>,
     module: LocalModuleId,
     file_id: FileId,
+    type_builder: TypeMapBuilder,
 }
 
 impl<'a> ExprCollector<'a> {
@@ -82,6 +86,11 @@ impl<'a> ExprCollector<'a> {
         }
 
         self.body.body_expr = self.collect_expr_opt(body);
+
+        let (type_map, type_source_map) = self.type_builder.finish();
+
+        self.body.type_map = type_map;
+        self.source_map.type_source_map = type_source_map;
 
         (self.body, self.source_map)
     }

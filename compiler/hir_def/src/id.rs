@@ -3,6 +3,7 @@ use crate::db::DefDatabase;
 use crate::def_map::ModuleData;
 use crate::in_file::InFile;
 use crate::item_tree::*;
+use crate::type_ref::{LocalTypeVarId, TypeMap, TypeSourceMap};
 use base_db::libs::LibId;
 use std::hash::{Hash, Hasher};
 
@@ -134,13 +135,16 @@ pub type InstanceLoc = ItemLoc<Instance>;
 impl_intern!(InstanceId, InstanceLoc, intern_instance, lookup_intern_instance);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeVarId(salsa::InternId);
-impl_intern!(
-    TypeVarId,
-    crate::data::TypeVarData,
-    intern_type_var,
-    lookup_intern_type_var
-);
+pub struct TypeVarId {
+    pub owner: TypeVarOwner,
+    pub local_id: LocalTypeVarId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypeVarOwner {
+    DefWithBodyId(DefWithBodyId),
+    TypedDefId(TypedDefId),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AttrDefId {
@@ -172,7 +176,6 @@ pub enum ModuleDefId {
 pub enum TypedDefId {
     FuncId(FuncId),
     StaticId(StaticId),
-    ConstId(ConstId),
     TypeAliasId(TypeAliasId),
     TypeCtorId(TypeCtorId),
     CtorId(CtorId),
@@ -224,7 +227,6 @@ impl HasModule for TypedDefId {
         match *self {
             | TypedDefId::FuncId(id) => id.lookup(db).module(db),
             | TypedDefId::StaticId(id) => id.lookup(db).module(db),
-            | TypedDefId::ConstId(id) => id.lookup(db).module(db),
             | TypedDefId::TypeAliasId(id) => id.lookup(db).module,
             | TypedDefId::TypeCtorId(id) => id.lookup(db).module,
             | TypedDefId::CtorId(id) => id.parent.lookup(db).module(db),
@@ -249,6 +251,38 @@ impl HasModule for AssocItemId {
         match *self {
             | AssocItemId::FuncId(id) => id.lookup(db).module(db),
             | AssocItemId::StaticId(id) => id.lookup(db).module(db),
+        }
+    }
+}
+
+impl TypeVarOwner {
+    pub fn with_type_map<T>(self, db: &dyn DefDatabase, f: impl FnOnce(&TypeMap) -> T) -> T {
+        match self {
+            | TypeVarOwner::DefWithBodyId(def) => f(db.body(def).type_map()),
+            | TypeVarOwner::TypedDefId(id) => match id {
+                | TypedDefId::FuncId(id) => f(db.func_data(id).type_map()),
+                | TypedDefId::StaticId(id) => f(db.static_data(id).type_map()),
+                | TypedDefId::TypeAliasId(id) => f(db.type_alias_data(id).type_map()),
+                | TypedDefId::TypeCtorId(id) => f(db.type_ctor_data(id).type_map()),
+                | TypedDefId::CtorId(id) => f(db.type_ctor_data(id.parent).type_map()),
+                | TypedDefId::ClassId(id) => f(db.class_data(id).type_map()),
+                | TypedDefId::InstanceId(id) => f(db.instance_data(id).type_map()),
+            },
+        }
+    }
+
+    pub fn with_type_source_map<T>(self, db: &dyn DefDatabase, f: impl FnOnce(&TypeSourceMap) -> T) -> T {
+        match self {
+            | TypeVarOwner::DefWithBodyId(def) => f(&**db.body_source_map(def).1),
+            | TypeVarOwner::TypedDefId(id) => match id {
+                | TypedDefId::FuncId(id) => f(db.func_data(id).type_source_map()),
+                | TypedDefId::StaticId(id) => f(db.static_data(id).type_source_map()),
+                | TypedDefId::TypeAliasId(id) => f(db.type_alias_data(id).type_source_map()),
+                | TypedDefId::TypeCtorId(id) => f(db.type_ctor_data(id).type_source_map()),
+                | TypedDefId::CtorId(id) => f(db.type_ctor_data(id.parent).type_source_map()),
+                | TypedDefId::ClassId(id) => f(db.class_data(id).type_source_map()),
+                | TypedDefId::InstanceId(id) => f(db.instance_data(id).type_source_map()),
+            },
         }
     }
 }
@@ -288,6 +322,45 @@ impl<N: ItemTreeNode> HasSource for ItemLoc<N> {
         let node = &tree[self.id.value];
 
         InFile::new(self.id.file_id, ast_id_map.get(node.ast_id()).to_node(&root))
+    }
+}
+
+impl HasSource for TypedDefId {
+    type Value = syntax::ast::Item;
+
+    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
+        match self {
+            | TypedDefId::FuncId(id) => id.lookup(db).source(db).map(Into::into),
+            | TypedDefId::StaticId(id) => id.lookup(db).source(db).map(Into::into),
+            | TypedDefId::TypeAliasId(id) => id.lookup(db).source(db).map(Into::into),
+            | TypedDefId::TypeCtorId(id) => id.lookup(db).source(db).map(Into::into),
+            | TypedDefId::CtorId(id) => id.parent.lookup(db).source(db).map(Into::into),
+            | TypedDefId::ClassId(id) => id.lookup(db).source(db).map(Into::into),
+            | TypedDefId::InstanceId(id) => id.lookup(db).source(db).map(Into::into),
+        }
+    }
+}
+
+impl HasSource for DefWithBodyId {
+    type Value = syntax::ast::Item;
+
+    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
+        match self {
+            | DefWithBodyId::FuncId(id) => id.lookup(db).source(db).map(Into::into),
+            | DefWithBodyId::StaticId(id) => id.lookup(db).source(db).map(Into::into),
+            | DefWithBodyId::ConstId(id) => id.lookup(db).source(db).map(Into::into),
+        }
+    }
+}
+
+impl HasSource for TypeVarOwner {
+    type Value = syntax::ast::Item;
+
+    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
+        match self {
+            | TypeVarOwner::DefWithBodyId(def) => def.source(db),
+            | TypeVarOwner::TypedDefId(def) => def.source(db),
+        }
     }
 }
 
@@ -353,5 +426,6 @@ macro_rules! impl_from {
 
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, ClassId, InstanceId for AttrDefId);
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId for ModuleDefId);
-impl_from!(FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId, InstanceId for TypedDefId);
+impl_from!(FuncId, StaticId, TypeAliasId, TypeCtorId, CtorId, ClassId, InstanceId for TypedDefId);
 impl_from!(FuncId, StaticId, ConstId for DefWithBodyId);
+impl_from!(DefWithBodyId, TypedDefId for TypeVarOwner);

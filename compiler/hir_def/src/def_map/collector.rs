@@ -233,19 +233,13 @@ impl<'a> DefCollector<'a> {
                     | Some(ModuleDefId::ModuleId(m)) => {
                         if m.lib != self.def_map.lib {
                             let item_map = self.db.def_map(m.lib);
-                            let scope = &item_map[m.local_id].scope;
-                            let items = scope
-                                .resolutions()
-                                .filter(|(_, res)| !res.is_none())
-                                .collect::<Vec<_>>();
+                            let exports = &item_map[m.local_id].exports;
+                            let items = exports.resolutions(self.db, &item_map, m.local_id);
 
                             self.update(module_id, &items, ImportType::Glob);
                         } else {
-                            let scope = &self.def_map[m.local_id].scope;
-                            let items = scope
-                                .resolutions()
-                                .filter(|(_, res)| !res.is_none())
-                                .collect::<Vec<_>>();
+                            let exports = &self.def_map[m.local_id].exports;
+                            let items = exports.resolutions(self.db, &self.def_map, m.local_id);
 
                             self.update(module_id, &items, ImportType::Glob);
 
@@ -500,24 +494,22 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                     }
                     .intern(self.def_collector.db);
 
-                    if let None = it.kind {
-                        let data = self.def_collector.db.type_ctor_data(new_id);
+                    let data = self.def_collector.db.type_ctor_data(new_id);
 
-                        for (local_id, data) in data.ctors.iter() {
-                            let id = CtorId {
-                                parent: new_id,
-                                local_id,
-                            };
+                    for (local_id, data) in data.ctors.iter() {
+                        let id = CtorId {
+                            parent: new_id,
+                            local_id,
+                        };
 
-                            let id = ModuleDefId::CtorId(id);
+                        let id = ModuleDefId::CtorId(id);
 
-                            self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
-                            self.def_collector.update(
-                                self.module_id,
-                                &[(data.name.clone(), PerNs::from(id))],
-                                ImportType::Named,
-                            );
-                        }
+                        self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
+                        self.def_collector.update(
+                            self.module_id,
+                            &[(data.name.clone(), PerNs::from(id))],
+                            ImportType::Named,
+                        );
                     }
 
                     def = Some(DefData {

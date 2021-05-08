@@ -57,7 +57,7 @@ impl InferenceContext<'_> {
     }
 
     pub fn subst_type(&self, ty: Ty) -> Ty {
-        match ty.lookup(self.db) {
+        ty.everywhere(self.db, &mut |ty| match ty.lookup(self.db) {
             | TyKind::Unknown(u) => match self.subst.tys.get(&u) {
                 | None => ty,
                 | Some(&t2) => match t2.lookup(self.db) {
@@ -65,71 +65,41 @@ impl InferenceContext<'_> {
                     | _ => self.subst_type(t2),
                 },
             },
-            | TyKind::Row(fields, tail) => {
-                let fields = fields
-                    .iter()
-                    .map(|f| Field {
-                        name: f.name.clone(),
-                        ty: self.subst_type(f.ty),
-                    })
-                    .collect();
-
-                let tail = tail.map(|t| self.subst_type(t));
-
-                TyKind::Row(fields, tail).intern(self.db)
-            },
-            | TyKind::Tuple(tys) => {
-                let tys = tys.iter().map(|&t| self.subst_type(t)).collect();
-
-                TyKind::Tuple(tys).intern(self.db)
-            },
-            | TyKind::App(a, b) => {
-                let a = self.subst_type(a);
-                let b = self.subst_type(b);
-
-                TyKind::App(a, b).intern(self.db)
-            },
-            | TyKind::Ctnt(ctnt, ty) => {
-                let ctnt = Ctnt {
-                    class: ctnt.class,
-                    tys: ctnt.tys.iter().map(|&t| self.subst_type(t)).collect(),
-                };
-
-                let ty = self.subst_type(ty);
-
-                TyKind::Ctnt(ctnt, ty).intern(self.db)
-            },
-            | TyKind::ForAll(k, ty) => {
-                let k = self.subst_type(k);
-                let ty = self.subst_type(ty);
-
-                TyKind::ForAll(k, ty).intern(self.db)
-            },
             | _ => ty,
-        }
+        })
     }
 
-    pub fn unify_types(&mut self, t1: Ty, t2: Ty) {
+    pub fn unify_types(&mut self, t1: Ty, t2: Ty) -> bool {
         let t1 = self.subst_type(t1);
         let t2 = self.subst_type(t2);
 
         match (t1.lookup(self.db), t2.lookup(self.db)) {
-            | (TyKind::Error, _) | (_, TyKind::Error) => {},
-            | (TyKind::Unknown(u1), TyKind::Unknown(u2)) if u1 == u2 => {},
-            | (TyKind::Unknown(u), _) => self.solve_type(u, t2),
-            | (_, TyKind::Unknown(u)) => self.solve_type(u, t1),
-            | (TyKind::Placeholder(c1), TyKind::Placeholder(c2)) if c1 == c2 => {},
-            | (TyKind::TypeVar(c1), TyKind::TypeVar(c2)) if c1 == c2 => {},
-            | (TyKind::Figure(c1), TyKind::Figure(c2)) if c1 == c2 => {},
-            | (TyKind::Symbol(c1), TyKind::Symbol(c2)) if c1 == c2 => {},
-            | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => {},
-            | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => {
-                self.unify_types(a1, b1);
-                self.unify_types(a2, b2);
+            | (TyKind::Error, _) | (_, TyKind::Error) => true,
+            | (TyKind::Unknown(u1), TyKind::Unknown(u2)) => u1 == u2,
+            | (TyKind::Unknown(u), _) => {
+                self.solve_type(u, t2);
+                true
             },
-            | (_, _) => {
-                panic!("types do not unify, {} != {}", t1.display(self.db), t2.display(self.db));
+            | (_, TyKind::Unknown(u)) => {
+                self.solve_type(u, t1);
+                true
             },
+            | (TyKind::Skolem(c1, _), TyKind::Skolem(c2, _)) => c1 == c2,
+            | (TyKind::TypeVar(c1), TyKind::TypeVar(c2)) => c1 == c2,
+            | (TyKind::Figure(c1), TyKind::Figure(c2)) => c1 == c2,
+            | (TyKind::Symbol(c1), TyKind::Symbol(c2)) => c1 == c2,
+            | (TyKind::Ctor(c1), TyKind::Ctor(c2)) => c1 == c2,
+            | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => self.unify_types(a1, b1) && self.unify_types(a2, b2),
+            | (TyKind::ForAll(k1, t1), TyKind::ForAll(k2, t2)) => {
+                let skolem = self.enter_universe();
+                let sk1 = self.skolemize(skolem, k1, t1);
+                let sk2 = self.skolemize(skolem, k2, t2);
+                let res = self.unify_types(sk1, sk2);
+
+                self.exit_universe();
+                res
+            },
+            | (_, _) => false,
         }
     }
 }

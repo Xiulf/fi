@@ -115,25 +115,20 @@ where
 
 impl HirDisplay for TypeVar {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
-        let depth = self.debruijn().depth();
-        let depth = unsafe { std::char::from_u32_unchecked('a' as u32 + depth) };
-
-        write!(f, "{}", depth)
+        self.debruijn().hir_fmt(f)
     }
 }
 
-impl HirDisplay for Placeholder {
+impl HirDisplay for Unknown {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
-        let universe = self.universe();
-
-        write!(f, "?{}", universe.index())
+        write!(f, "?{}", self.raw())
     }
 }
 
 impl HirDisplay for DebruijnIndex {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         let depth = self.depth();
-        let depth = unsafe { std::char::from_u32_unchecked('A' as u32 + depth) };
+        let depth = unsafe { std::char::from_u32_unchecked('a' as u32 + depth) };
 
         write!(f, "{}", depth)
     }
@@ -147,8 +142,12 @@ impl HirDisplay for Ty {
 
         match self.lookup(f.db) {
             | TyKind::Error => write!(f, "{{error}}"),
-            | TyKind::Unknown(_) => write!(f, "_"),
-            | TyKind::Placeholder(p) => p.hir_fmt(f),
+            | TyKind::Unknown(u) => u.hir_fmt(f),
+            | TyKind::Skolem(p, kind) => {
+                write!(f, "(_ :: ")?;
+                kind.hir_fmt(f)?;
+                write!(f, ")")
+            },
             | TyKind::TypeVar(t) => t.hir_fmt(f),
             | TyKind::Figure(i) => write!(f, "{}", i),
             | TyKind::Symbol(s) => write!(f, "{}", s),
@@ -181,7 +180,7 @@ impl HirDisplay for Ty {
     }
 }
 
-impl HirDisplay for Ctnt {
+impl HirDisplay for Constraint {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         let class_name = &f.db.class_data(self.class).name;
 

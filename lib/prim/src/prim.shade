@@ -1,9 +1,10 @@
 module prim =
 
-@lang = "type-kind"   type Type   :: Type
-@lang = "figure-kind" type Figure :: Type
-@lang = "symbol-kind" type Symbol :: Type
-@lang = "row-kind"    type Row    :: Type -> Type
+@lang = "kind-kind"   type Kind   :: Kind
+@lang = "type-kind"   type Type   :: Kind
+@lang = "figure-kind" type Figure :: Kind
+@lang = "symbol-kind" type Symbol :: Kind
+@lang = "row-kind"    type Row    :: Kind -> Kind
 
 @lang = "fn-type"     type Fn             :: Type -> Type -> Type
 @lang = "ptr-type"    type Ptr            :: Type -> Type

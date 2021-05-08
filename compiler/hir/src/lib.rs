@@ -14,6 +14,8 @@ pub use hir_def::name::{AsName, Name};
 pub use hir_def::pat::Pat;
 use hir_def::pat::PatId;
 use hir_ty::db::HirDatabase;
+use hir_ty::lower::LowerResult;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Lib {
@@ -205,47 +207,18 @@ impl ModuleDef {
         }
     }
 
-    pub fn typeck_test(self, db: &dyn HirDatabase) {
-        use hir_ty::display::HirDisplay;
-
-        match self {
-            | ModuleDef::TypeAlias(it) => {
-                let ty = db.type_for_alias(it.id);
-
-                println!("{}: {}", it.name(db), ty.display(db));
-            },
-            | ModuleDef::TypeCtor(it) => {
-                let ty = db.type_for_ctor(it.id);
-
-                println!("{}: {}", it.name(db), ty.display(db));
-            },
-            | _ => {},
-        }
-    }
-
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
-        let id: ModuleDefId = match self {
-            | ModuleDef::Module(it) => it.id.into(),
-            | ModuleDef::Fixity(it) => it.id.into(),
-            | ModuleDef::Func(it) => it.id.into(),
-            | ModuleDef::Static(it) => it.id.into(),
-            | ModuleDef::Const(it) => it.id.into(),
-            | ModuleDef::TypeAlias(it) => it.id.into(),
-            | ModuleDef::TypeCtor(it) => it.id.into(),
-            | ModuleDef::Ctor(it) => CtorId {
-                local_id: it.id,
-                parent: it.parent.id,
-            }
-            .into(),
-            | ModuleDef::Class(it) => it.id.into(),
-        };
-
-        let module = match self.module(db) {
-            | Some(it) => it,
-            | None => return,
-        };
-
-        // TODO: typecheck definition
+        match self {
+            | ModuleDef::Module(it) => {},
+            | ModuleDef::Fixity(it) => {},
+            | ModuleDef::Func(it) => {},
+            | ModuleDef::Static(it) => {},
+            | ModuleDef::Const(it) => {},
+            | ModuleDef::TypeAlias(it) => it.diagnostics(db, sink),
+            | ModuleDef::TypeCtor(it) => it.diagnostics(db, sink),
+            | ModuleDef::Ctor(it) => {},
+            | ModuleDef::Class(it) => {},
+        }
     }
 }
 
@@ -349,8 +322,25 @@ impl TypeAlias {
         self.module(db).lib()
     }
 
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.id.lookup(db.upcast()).id.file_id
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.type_alias_data(self.id).name.clone()
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let data = db.type_alias_data(self.id);
+        let lower = db.type_for_alias(self.id);
+
+        lower.add_diagnostics(
+            db,
+            TypeVarOwner::TypedDefId(self.id.into()),
+            self.file_id(db),
+            data.type_source_map(),
+            sink,
+        );
     }
 }
 
@@ -370,8 +360,25 @@ impl TypeCtor {
         self.module(db).lib()
     }
 
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.id.lookup(db.upcast()).id.file_id
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.type_ctor_data(self.id).name.clone()
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let data = db.type_ctor_data(self.id);
+        let lower = db.type_for_ctor(self.id);
+
+        lower.add_diagnostics(
+            db,
+            TypeVarOwner::TypedDefId(self.id.into()),
+            self.file_id(db),
+            data.type_source_map(),
+            sink,
+        );
     }
 }
 
@@ -444,7 +451,18 @@ pub struct TypeVar {
 
 impl TypeVar {
     pub fn name(self, db: &dyn HirDatabase) -> Name {
-        self.id.lookup(db.upcast()).name.clone()
+        match self.id.owner {
+            | TypeVarOwner::DefWithBodyId(id) => db.body(id).type_map()[self.id.local_id].name.clone(),
+            | TypeVarOwner::TypedDefId(id) => match id {
+                | TypedDefId::FuncId(id) => db.func_data(id).type_map()[self.id.local_id].name.clone(),
+                | TypedDefId::StaticId(id) => db.static_data(id).type_map()[self.id.local_id].name.clone(),
+                | TypedDefId::TypeAliasId(id) => db.type_alias_data(id).type_map()[self.id.local_id].name.clone(),
+                | TypedDefId::TypeCtorId(id) => db.type_ctor_data(id).type_map()[self.id.local_id].name.clone(),
+                | TypedDefId::CtorId(id) => db.type_ctor_data(id.parent).type_map()[self.id.local_id].name.clone(),
+                | TypedDefId::ClassId(id) => db.class_data(id).type_map()[self.id.local_id].name.clone(),
+                | TypedDefId::InstanceId(id) => db.instance_data(id).type_map()[self.id.local_id].name.clone(),
+            },
+        }
     }
 }
 

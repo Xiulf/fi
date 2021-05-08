@@ -6,6 +6,7 @@ use crate::expr::{Expr, ExprId};
 use crate::id::{DefWithBodyId, HasModule, HasSource, Lookup, ModuleId};
 use crate::in_file::InFile;
 use crate::pat::{Pat, PatId};
+use crate::type_ref::{LocalTypeRefId, TypeMap, TypeRef, TypeSourceMap};
 use base_db::input::FileId;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -13,10 +14,11 @@ use syntax::{ast, AstPtr};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Body {
-    pub exprs: Arena<Expr>,
-    pub pats: Arena<Pat>,
-    pub params: Vec<PatId>,
-    pub body_expr: ExprId,
+    exprs: Arena<Expr>,
+    pats: Arena<Pat>,
+    params: Vec<PatId>,
+    body_expr: ExprId,
+    type_map: TypeMap,
 }
 
 pub type ExprPtr = AstPtr<ast::Expr>;
@@ -32,6 +34,8 @@ pub struct BodySourceMap {
 
     pat_map: FxHashMap<PatSource, PatId>,
     pat_map_back: ArenaMap<PatId, Result<PatSource, SyntheticSyntax>>,
+
+    type_source_map: TypeSourceMap,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +85,26 @@ impl Body {
     ) -> (Body, BodySourceMap) {
         lower::lower(db, params, body, file_id, module)
     }
+
+    pub fn params(&self) -> &[PatId] {
+        &self.params
+    }
+
+    pub fn body_expr(&self) -> ExprId {
+        self.body_expr
+    }
+
+    pub fn type_map(&self) -> &TypeMap {
+        &self.type_map
+    }
+}
+
+impl std::ops::Deref for BodySourceMap {
+    type Target = TypeSourceMap;
+
+    fn deref(&self) -> &Self::Target {
+        &self.type_source_map
+    }
 }
 
 impl std::ops::Index<ExprId> for Body {
@@ -96,5 +120,13 @@ impl std::ops::Index<PatId> for Body {
 
     fn index(&self, pat: PatId) -> &Self::Output {
         &self.pats[pat]
+    }
+}
+
+impl std::ops::Index<LocalTypeRefId> for Body {
+    type Output = TypeRef;
+
+    fn index(&self, id: LocalTypeRefId) -> &Self::Output {
+        &self.type_map[id]
     }
 }

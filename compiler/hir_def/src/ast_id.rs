@@ -57,7 +57,10 @@ impl AstIdMap {
             | None => unreachable!(),
         };
 
-        FileAstId { raw, _marker: PhantomData }
+        FileAstId {
+            raw,
+            _marker: PhantomData,
+        }
     }
 
     fn from_source(node: &SyntaxNode) -> Self {
@@ -66,7 +69,9 @@ impl AstIdMap {
         res.alloc(node);
 
         bfs(node, |it| {
-            if let Some(item) = ast::Item::cast(it) {
+            if let Some(item) = ast::Item::cast(it.clone()) {
+                res.alloc(item.syntax());
+            } else if let Some(item) = ast::Ctor::cast(it) {
                 res.alloc(item.syntax());
             }
         });

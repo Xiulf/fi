@@ -269,6 +269,46 @@ impl ItemExports {
             PerNs::none()
         }
     }
+
+    pub fn resolutions(&self, db: &dyn DefDatabase, def_map: &DefMap, module: LocalModuleId) -> Vec<(Name, PerNs)> {
+        let get_module_resolutions = |module: &ModuleId| {
+            if module.lib == def_map.lib() {
+                def_map[module.local_id]
+                    .exports
+                    .resolutions(db, def_map, module.local_id)
+            } else {
+                let def_map = db.def_map(module.lib);
+
+                def_map[module.local_id]
+                    .exports
+                    .resolutions(db, &def_map, module.local_id)
+            }
+        };
+
+        let mut res = if self.export_all {
+            self.modules
+                .iter()
+                .flat_map(get_module_resolutions)
+                .chain(def_map[module].scope.resolutions())
+                .filter(|(_, p)| !p.is_none())
+                .collect::<Vec<_>>()
+        } else {
+            self.modules
+                .iter()
+                .flat_map(get_module_resolutions)
+                .chain(
+                    self.names
+                        .iter()
+                        .map(|name| (name.clone(), def_map[module].scope.get(name))),
+                )
+                .filter(|(_, p)| !p.is_none())
+                .collect::<Vec<_>>()
+        };
+
+        res.sort_by_key(|(n, _)| n.clone());
+        res.dedup_by_key(|(n, _)| n.clone());
+        res
+    }
 }
 
 impl ItemInNs {

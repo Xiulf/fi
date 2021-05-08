@@ -2,7 +2,7 @@ use crate::arena::{Idx, RawIdx};
 use crate::name::Name;
 use crate::pat::PatId;
 use crate::path::Path;
-use crate::type_ref::TypeRefId;
+use crate::type_ref::LocalTypeRefId;
 
 pub type ExprId = Idx<Expr>;
 
@@ -21,7 +21,7 @@ pub enum Expr {
     },
     Typed {
         expr: ExprId,
-        ty: TypeRefId,
+        ty: LocalTypeRefId,
     },
     Infix {
         op: Path,
@@ -41,7 +41,7 @@ pub enum Expr {
     },
     Cast {
         expr: ExprId,
-        ty: TypeRefId,
+        ty: LocalTypeRefId,
     },
     Index {
         base: ExprId,

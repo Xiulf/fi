@@ -1,8 +1,10 @@
 mod kind;
+mod skolem;
 mod unify;
 
 use crate::db::HirDatabase;
-use crate::ty::{Ty, TyKind, TypeVar};
+use crate::ty::{Ty, TyKind, TypeVar, UniverseIndex};
+use diagnostics::InferenceDiagnostic;
 use hir_def::arena::ArenaMap;
 use hir_def::expr::ExprId;
 use hir_def::id::{DefWithBodyId, FuncId, HasModule, TypedDefId};
@@ -16,16 +18,18 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct InferenceResult {
-    pub type_of_expr: ArenaMap<ExprId, Ty>,
-    pub type_of_pat: ArenaMap<PatId, Ty>,
+    pub(crate) type_of_expr: ArenaMap<ExprId, Ty>,
+    pub(crate) type_of_pat: ArenaMap<PatId, Ty>,
+    pub(crate) diagnostics: Vec<InferenceDiagnostic>,
 }
 
 pub(crate) struct InferenceContext<'a> {
-    db: &'a dyn HirDatabase,
+    pub(crate) db: &'a dyn HirDatabase,
     owner: TypedDefId,
     result: InferenceResult,
     subst: unify::Substitution,
     var_kinds: FxHashMap<TypeVar, Ty>,
+    universes: UniverseIndex,
 }
 
 impl<'a> InferenceContext<'a> {
@@ -36,7 +40,12 @@ impl<'a> InferenceContext<'a> {
             result: InferenceResult::default(),
             subst: unify::Substitution::default(),
             var_kinds: FxHashMap::default(),
+            universes: UniverseIndex::ROOT,
         }
+    }
+
+    pub(crate) fn finish(self) -> InferenceResult {
+        self.result
     }
 
     pub(crate) fn lang_type(&self, name: &'static str) -> Ty {
@@ -44,7 +53,7 @@ impl<'a> InferenceContext<'a> {
         let ty = self.db.lang_item(module.lib, name.into()).unwrap();
         let ty = ty.as_type_ctor().unwrap();
 
-        self.db.type_for_ctor(ty)
+        self.db.type_for_ctor(ty).ty
     }
 
     pub(crate) fn fn_type(&self, arg: Ty, ret: Ty) -> Ty {
@@ -56,5 +65,43 @@ impl<'a> InferenceContext<'a> {
 
     pub(crate) fn set_var_kind(&mut self, var: TypeVar, kind: Ty) {
         self.var_kinds.insert(var, kind);
+    }
+}
+
+pub(crate) mod diagnostics {
+    use crate::db::HirDatabase;
+    use crate::diagnostics::*;
+    use crate::ty::Ty;
+    use hir_def::diagnostic::DiagnosticSink;
+    use hir_def::id::{HasSource, TypeVarOwner};
+    use hir_def::type_ref::LocalTypeRefId;
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum InferenceDiagnostic {
+        MismatchedKind {
+            id: LocalTypeRefId,
+            expected: Ty,
+            found: Ty,
+        },
+    }
+
+    impl InferenceDiagnostic {
+        pub fn add_to(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
+            let file = owner.source(db.upcast()).file_id;
+
+            match self {
+                | InferenceDiagnostic::MismatchedKind { id, expected, found } => {
+                    let src = owner.with_type_source_map(db.upcast(), |source_map| source_map.type_ref_syntax(*id));
+                    let src = src.unwrap().syntax_node_ptr();
+
+                    sink.push(MismatchedKind {
+                        file,
+                        src,
+                        found: *found,
+                        expected: *expected,
+                    });
+                },
+            }
+        }
     }
 }

@@ -1,6 +1,5 @@
 use crate::arena::{Idx, RawIdx};
 use crate::ast_id::AstIdMap;
-use crate::data::TypeVarData;
 use crate::db::DefDatabase;
 use crate::id::Intern;
 use crate::in_file::InFile;
@@ -39,7 +38,7 @@ impl<T: Into<Item>> From<T> for Items {
 impl<'db> Ctx<'db> {
     pub fn new(db: &'db dyn DefDatabase, file_id: FileId) -> Self {
         Ctx {
-            tree: ItemTree::default(),
+            tree: ItemTree::new(file_id),
             ast_id_map: db.ast_id_map(file_id),
             file_id,
             db,
@@ -119,41 +118,25 @@ impl<'db> Ctx<'db> {
     fn lower_fun(&mut self, item: &ast::ItemFun) -> Option<LocalItemTreeId<Func>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
-        let ty = item.ty().map(|t| self.lower_ty(t));
         let has_body = item.body().is_some();
         let is_foreign = item.is_foreign();
-        let (vars, constraints) = if let Some(gen) = item.generics() {
-            (
-                gen.vars().filter_map(|v| self.lower_ty_var(v)).collect::<Box<[_]>>(),
-                gen.constraints()
-                    .filter_map(|c| self.lower_constraint(c))
-                    .collect::<Box<[_]>>(),
-            )
-        } else {
-            (Box::new([]) as Box<[_]>, Box::new([]) as Box<[_]>)
-        };
 
         Some(id(self.tree.data.funcs.alloc(Func {
             name,
             ast_id,
-            ty,
             has_body,
             is_foreign,
-            vars,
-            constraints,
         })))
     }
 
     fn lower_static(&mut self, item: &ast::ItemStatic) -> Option<LocalItemTreeId<Static>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
-        let ty = item.ty().map(|t| self.lower_ty(t));
         let is_foreign = item.is_foreign();
 
         Some(id(self.tree.data.statics.alloc(Static {
             name,
             ast_id,
-            ty,
             is_foreign,
         })))
     }
@@ -168,17 +151,9 @@ impl<'db> Ctx<'db> {
     fn lower_type(&mut self, item: &ast::ItemType) -> Option<Items> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
-        let kind = item.kind().map(|ty| self.lower_ty(ty));
-        let vars = item.vars().filter_map(|t| self.lower_ty_var(t)).collect();
 
-        if let Some(alias) = item.alias() {
-            let alias = self.lower_ty(alias);
-            let talias = TypeAlias {
-                ast_id,
-                name,
-                alias,
-                vars,
-            };
+        if let Some(_) = item.alias() {
+            let talias = TypeAlias { ast_id, name };
 
             Some(id(self.tree.data.type_aliases.alloc(talias)).into())
         } else {
@@ -190,22 +165,16 @@ impl<'db> Ctx<'db> {
 
             let end = self.next_ctor_idx();
             let ctors = IdRange::new(start..end);
-            let tctor = TypeCtor {
-                ast_id,
-                name,
-                ctors,
-                kind,
-                vars,
-            };
+            let tctor = TypeCtor { ast_id, name, ctors };
 
             Some(id(self.tree.data.type_ctors.alloc(tctor)).into())
         }
     }
 
     fn lower_ctor(&mut self, ctor: &ast::Ctor) -> Option<Idx<Ctor>> {
+        let ast_id = self.ast_id_map.ast_id(ctor);
         let name = ctor.name()?.as_name();
-        let types = ctor.types().map(|t| self.lower_ty(t)).collect();
-        let res = Ctor { name, types };
+        let res = Ctor { ast_id, name };
 
         Some(self.tree.data.ctors.alloc(res))
     }
@@ -213,17 +182,13 @@ impl<'db> Ctx<'db> {
     fn lower_class(&mut self, item: &ast::ItemClass) -> Option<LocalItemTreeId<Class>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
-        let vars = item.vars().filter_map(|t| self.lower_ty_var(t)).collect();
         let fundeps = item.fundeps().filter_map(|f| self.lower_fun_dep(f)).collect();
-        let constraints = item.constraints().filter_map(|c| self.lower_constraint(c)).collect();
         let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
 
         Some(id(self.tree.data.classes.alloc(Class {
             name,
             ast_id,
-            vars,
             fundeps,
-            constraints,
             items,
         })))
     }
@@ -265,17 +230,12 @@ impl<'db> Ctx<'db> {
     fn lower_instance(&mut self, /*index: usize,*/ item: &ast::ItemInstance) -> Option<LocalItemTreeId<Instance>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let class = Path::lower(item.class()?);
-        let types = item.types().map(|t| self.lower_ty(t)).collect();
-        let constraints = item.constraints().filter_map(|c| self.lower_constraint(c)).collect();
         let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
 
         Some(id(self.tree.data.instances.alloc(Instance {
             ast_id,
             class,
-            types,
-            constraints,
             items,
-            vars: Box::new([]),
             // index,
             // chain: Box::new([]),
         })))
@@ -286,29 +246,6 @@ impl<'db> Ctx<'db> {
             | ast::AssocItem::Fun(it) => self.lower_fun(&it).map(AssocItem::Func),
             | ast::AssocItem::Static(it) => self.lower_static(&it).map(AssocItem::Static),
         }
-    }
-
-    fn lower_ty(&mut self, ty: ast::Type) -> TypeRefId {
-        TypeRef::from_ast(ty, self.db)
-    }
-
-    fn lower_ty_var(&mut self, tv: ast::TypeVar) -> Option<TypeVarId> {
-        let name = tv.name()?.as_name();
-        let kind = tv.kind().map(|k| TypeRef::from_ast(k, self.db));
-        let data = TypeVarData {
-            ast_ptr: AstPtr::new(&tv),
-            name,
-            kind,
-        };
-
-        Some(data.intern(self.db))
-    }
-
-    fn lower_constraint(&mut self, ctnt: ast::Constraint) -> Option<Constraint> {
-        let class = Path::lower(ctnt.class()?);
-        let types = ctnt.types().map(|t| TypeRef::from_ast(t, self.db)).collect();
-
-        Some(Constraint { class, types })
     }
 
     fn next_ctor_idx(&self) -> Idx<Ctor> {

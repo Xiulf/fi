@@ -2,10 +2,10 @@ use crate::arena::{Arena, Idx};
 use crate::body::Body;
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId, Stmt};
-use crate::id::{DefWithBodyId, Lookup, TypeVarId};
+use crate::id::{DefWithBodyId, TypeVarId, TypeVarOwner};
 use crate::name::Name;
 use crate::pat::{Pat, PatId};
-use crate::type_ref::{TypeRef, TypeRefId};
+use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap, TypeRef};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -32,8 +32,9 @@ pub struct ExprScopeEntry {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct TypeScopes {
+    owner: TypeVarOwner,
     scopes: Arena<TypeScopeData>,
-    scopes_by_type: FxHashMap<TypeRefId, TypeScopeId>,
+    scopes_by_type: FxHashMap<LocalTypeRefId, TypeScopeId>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -83,8 +84,8 @@ impl ExprScopes {
 
         let root = scopes.root_scope();
 
-        scopes.add_params_bindings(body, root, &body.params);
-        compute_expr_scopes(body.body_expr, body, &mut scopes, root);
+        scopes.add_params_bindings(body, root, body.params());
+        compute_expr_scopes(body.body_expr(), body, &mut scopes, root);
         scopes
     }
 
@@ -139,24 +140,26 @@ impl ExprScopes {
 }
 
 impl TypeScopes {
-    pub fn type_scopes_query(db: &dyn DefDatabase, id: TypeRefId) -> Arc<TypeScopes> {
-        Arc::new(TypeScopes::new(db, id))
-    }
-
-    fn new(db: &dyn DefDatabase, id: TypeRefId) -> Self {
+    pub fn new(map: &TypeMap, owner: TypeVarOwner, id: LocalTypeRefId) -> Self {
         let mut scopes = TypeScopes {
+            owner,
             scopes: Arena::default(),
             scopes_by_type: FxHashMap::default(),
         };
 
         let root = scopes.root_scope();
 
-        compute_type_scopes(id, db, &mut scopes, root);
+        compute_type_scopes(id, map, &mut scopes, root);
         scopes
     }
 
-    pub fn from_type_vars(db: &dyn DefDatabase, vars: impl Iterator<Item = TypeVarId>) -> (Self, TypeScopeId) {
+    pub fn from_type_vars(
+        map: &TypeMap,
+        owner: TypeVarOwner,
+        vars: impl Iterator<Item = LocalTypeVarId>,
+    ) -> (Self, TypeScopeId) {
         let mut scopes = TypeScopes {
+            owner,
             scopes: Arena::default(),
             scopes_by_type: FxHashMap::default(),
         };
@@ -164,10 +167,10 @@ impl TypeScopes {
         let root = scopes.root_scope();
 
         for var in vars {
-            let data = var.lookup(db);
+            let data = &map[var];
 
             if let Some(kind) = data.kind {
-                compute_type_scopes(kind, db, &mut scopes, root);
+                compute_type_scopes(kind, map, &mut scopes, root);
             }
 
             scopes.add_binding(&data.name, var, root);
@@ -184,7 +187,7 @@ impl TypeScopes {
         std::iter::successors(scope, move |&scope| self.scopes[scope].parent)
     }
 
-    pub fn scope_for(&self, id: TypeRefId) -> Option<TypeScopeId> {
+    pub fn scope_for(&self, id: LocalTypeRefId) -> Option<TypeScopeId> {
         self.scopes_by_type.get(&id).copied()
     }
 
@@ -202,16 +205,19 @@ impl TypeScopes {
         })
     }
 
-    fn add_binding(&mut self, name: &Name, type_var: TypeVarId, scope: TypeScopeId) {
+    fn add_binding(&mut self, name: &Name, type_var: LocalTypeVarId, scope: TypeScopeId) {
         let entry = TypeScopeEntry {
             name: name.clone(),
-            type_var,
+            type_var: TypeVarId {
+                owner: self.owner,
+                local_id: type_var,
+            },
         };
 
         self.scopes[scope].entries.push(entry);
     }
 
-    fn set_scope(&mut self, ty: TypeRefId, scope: TypeScopeId) {
+    fn set_scope(&mut self, ty: LocalTypeRefId, scope: TypeScopeId) {
         self.scopes_by_type.insert(ty, scope);
     }
 }
@@ -257,50 +263,50 @@ fn compute_block_scopes(stmts: &[Stmt], body: &Body, scopes: &mut ExprScopes, mu
     }
 }
 
-fn compute_type_scopes(ty: TypeRefId, db: &dyn DefDatabase, scopes: &mut TypeScopes, mut scope: TypeScopeId) {
+fn compute_type_scopes(ty: LocalTypeRefId, map: &TypeMap, scopes: &mut TypeScopes, mut scope: TypeScopeId) {
     scopes.set_scope(ty, scope);
 
-    match ty.lookup(db) {
+    match &map[ty] {
         | TypeRef::Forall(vars, inner) => {
             for &var in vars.iter() {
-                let data = var.lookup(db);
+                let data = &map[var];
 
                 if let Some(kind) = data.kind {
-                    compute_type_scopes(kind, db, scopes, scope);
+                    compute_type_scopes(kind, map, scopes, scope);
                 }
 
                 scopes.add_binding(&data.name, var, scope);
             }
 
             scope = scopes.new_scope(scope);
-            compute_type_scopes(inner, db, scopes, scope);
+            compute_type_scopes(*inner, map, scopes, scope);
         },
         | TypeRef::Kinded(ty, kind) => {
-            compute_type_scopes(ty, db, scopes, scope);
-            compute_type_scopes(kind, db, scopes, scope);
+            compute_type_scopes(*ty, map, scopes, scope);
+            compute_type_scopes(*kind, map, scopes, scope);
         },
         | TypeRef::App(base, arg) => {
-            compute_type_scopes(base, db, scopes, scope);
-            compute_type_scopes(arg, db, scopes, scope);
+            compute_type_scopes(*base, map, scopes, scope);
+            compute_type_scopes(*arg, map, scopes, scope);
         },
         | TypeRef::Tuple(tys) => {
-            for &ty in tys.iter() {
-                compute_type_scopes(ty, db, scopes, scope);
+            for ty in tys.iter() {
+                compute_type_scopes(*ty, map, scopes, scope);
             }
         },
         | TypeRef::Ptr(ty, _) | TypeRef::Slice(ty) | TypeRef::Array(ty, _) => {
-            compute_type_scopes(ty, db, scopes, scope)
+            compute_type_scopes(*ty, map, scopes, scope)
         },
         | TypeRef::Func(arg, ret) => {
-            compute_type_scopes(arg, db, scopes, scope);
-            compute_type_scopes(ret, db, scopes, scope);
+            compute_type_scopes(*arg, map, scopes, scope);
+            compute_type_scopes(*ret, map, scopes, scope);
         },
         | TypeRef::Constraint(ctnt, ty) => {
-            for &ty in ctnt.types.iter() {
-                compute_type_scopes(ty, db, scopes, scope);
+            for ty in ctnt.types.iter() {
+                compute_type_scopes(*ty, map, scopes, scope);
             }
 
-            compute_type_scopes(ty, db, scopes, scope);
+            compute_type_scopes(*ty, map, scopes, scope);
         },
         | _ => {},
     }
