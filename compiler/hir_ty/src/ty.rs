@@ -75,38 +75,38 @@ impl Ty {
                     .iter()
                     .map(|field| Field {
                         name: field.name.clone(),
-                        ty: f(field.ty),
+                        ty: field.ty.everywhere(db, f),
                     })
                     .collect();
 
-                let tail = tail.map(|t| f(t));
+                let tail = tail.map(|t| t.everywhere(db, f));
 
                 f(TyKind::Row(fields, tail).intern(db))
             },
             | TyKind::Tuple(tys) => {
-                let tys = tys.iter().map(|&t| f(t)).collect();
+                let tys = tys.iter().map(|t| t.everywhere(db, f)).collect();
 
                 f(TyKind::Tuple(tys).intern(db))
             },
             | TyKind::App(a, b) => {
-                let a = f(a);
-                let b = f(b);
+                let a = a.everywhere(db, f);
+                let b = b.everywhere(db, f);
 
                 f(TyKind::App(a, b).intern(db))
             },
             | TyKind::Ctnt(ctnt, ty) => {
                 let ctnt = Constraint {
                     class: ctnt.class,
-                    tys: ctnt.tys.iter().map(|&t| f(t)).collect(),
+                    tys: ctnt.tys.iter().map(|t| t.everywhere(db, f)).collect(),
                 };
 
-                let ty = f(ty);
+                let ty = ty.everywhere(db, f);
 
                 f(TyKind::Ctnt(ctnt, ty).intern(db))
             },
             | TyKind::ForAll(k, t) => {
-                let k = f(k);
-                let t = f(t);
+                let k = k.everywhere(db, f);
+                let t = t.everywhere(db, f);
 
                 f(TyKind::ForAll(k, t).intern(db))
             },

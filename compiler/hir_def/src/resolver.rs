@@ -194,16 +194,30 @@ impl Resolver {
         None
     }
 
-    pub fn with_type_scopes(mut self, map: &TypeMap, owner: TypeVarOwner, id: LocalTypeRefId) -> Self {
-        let scopes = Arc::new(TypeScopes::new(map, owner, id));
+    pub fn for_expr(db: &dyn DefDatabase, owner: DefWithBodyId, expr_id: ExprId) -> Self {
+        let mut r = owner.resolver(db);
+        let scopes = db.expr_scopes(owner);
+        let scope_id = scopes.scope_for(expr_id);
+        let scope_chain = scopes.scope_chain(scope_id).collect::<Vec<_>>();
+
+        for scope in scope_chain.into_iter().rev() {
+            r = r.push_expr_scope(owner, Arc::clone(&scopes), scope);
+        }
+
+        r
+    }
+
+    pub fn for_type(db: &dyn DefDatabase, owner: TypeVarOwner, id: LocalTypeRefId) -> Self {
+        let mut r = owner.resolver(db);
+        let scopes = db.type_scopes(owner);
         let scope_id = scopes.scope_for(id);
         let scope_chain = scopes.scope_chain(scope_id).collect::<Vec<_>>();
 
         for scope in scope_chain.into_iter().rev() {
-            self = self.push_type_scope(Arc::clone(&scopes), scope);
+            r = r.push_type_scope(Arc::clone(&scopes), scope);
         }
 
-        self
+        r
     }
 
     pub fn with_type_vars(
@@ -217,24 +231,6 @@ impl Resolver {
 
         self.push_type_scope(scopes, root)
     }
-}
-
-pub fn resolver_for_expr(db: &dyn DefDatabase, owner: DefWithBodyId, expr_id: ExprId) -> Resolver {
-    let scopes = db.expr_scopes(owner);
-
-    resolver_for_scope(db, owner, scopes.scope_for(expr_id))
-}
-
-pub fn resolver_for_scope(db: &dyn DefDatabase, owner: DefWithBodyId, scope_id: Option<ExprScopeId>) -> Resolver {
-    let mut r = owner.resolver(db);
-    let scopes = db.expr_scopes(owner);
-    let scope_chain = scopes.scope_chain(scope_id).collect::<Vec<_>>();
-
-    for scope in scope_chain.into_iter().rev() {
-        r = r.push_expr_scope(owner, Arc::clone(&scopes), scope);
-    }
-
-    r
 }
 
 impl Resolver {
@@ -402,6 +398,29 @@ impl HasResolver for ContainerId {
             | ContainerId::Module(id) => id.resolver(db),
             | ContainerId::Class(id) => id.resolver(db),
             | ContainerId::Instance(id) => id.resolver(db),
+        }
+    }
+}
+
+impl HasResolver for TypeVarOwner {
+    fn resolver(self, db: &dyn DefDatabase) -> Resolver {
+        match self {
+            | TypeVarOwner::DefWithBodyId(id) => id.resolver(db),
+            | TypeVarOwner::TypedDefId(id) => id.resolver(db),
+        }
+    }
+}
+
+impl HasResolver for TypedDefId {
+    fn resolver(self, db: &dyn DefDatabase) -> Resolver {
+        match self {
+            | TypedDefId::FuncId(id) => id.resolver(db),
+            | TypedDefId::StaticId(id) => id.resolver(db),
+            | TypedDefId::TypeAliasId(id) => id.resolver(db),
+            | TypedDefId::TypeCtorId(id) => id.resolver(db),
+            | TypedDefId::CtorId(id) => id.resolver(db),
+            | TypedDefId::ClassId(id) => id.resolver(db),
+            | TypedDefId::InstanceId(id) => id.resolver(db),
         }
     }
 }

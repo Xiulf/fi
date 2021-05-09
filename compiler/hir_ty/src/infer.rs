@@ -3,12 +3,13 @@ mod skolem;
 mod unify;
 
 use crate::db::HirDatabase;
-use crate::ty::{Ty, TyKind, TypeVar, UniverseIndex};
+use crate::ty::{DebruijnIndex, Ty, TyKind, TypeVar, UniverseIndex};
 use diagnostics::InferenceDiagnostic;
 use hir_def::arena::ArenaMap;
 use hir_def::expr::ExprId;
 use hir_def::id::{DefWithBodyId, FuncId, HasModule, TypedDefId};
 use hir_def::pat::PatId;
+use hir_def::resolver::Resolver;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -25,18 +26,20 @@ pub struct InferenceResult {
 
 pub(crate) struct InferenceContext<'a> {
     pub(crate) db: &'a dyn HirDatabase,
-    owner: TypedDefId,
-    result: InferenceResult,
+    pub(crate) resolver: Resolver,
+    pub(crate) owner: TypedDefId,
+    pub(crate) result: InferenceResult,
     subst: unify::Substitution,
-    var_kinds: FxHashMap<TypeVar, Ty>,
+    pub(crate) var_kinds: FxHashMap<TypeVar, Ty>,
     universes: UniverseIndex,
 }
 
 impl<'a> InferenceContext<'a> {
-    pub(crate) fn new(db: &'a dyn HirDatabase, owner: TypedDefId) -> Self {
+    pub(crate) fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: TypedDefId) -> Self {
         InferenceContext {
             db,
             owner,
+            resolver,
             result: InferenceResult::default(),
             subst: unify::Substitution::default(),
             var_kinds: FxHashMap::default(),
@@ -64,7 +67,15 @@ impl<'a> InferenceContext<'a> {
     }
 
     pub(crate) fn set_var_kind(&mut self, var: TypeVar, kind: Ty) {
-        self.var_kinds.insert(var, kind);
+        if let Some(old) = self.var_kinds.insert(var, kind) {
+            let new = TypeVar::new(var.debruijn().shifted_in());
+
+            self.set_var_kind(new, old);
+        }
+    }
+
+    pub(crate) fn report(&mut self, diag: InferenceDiagnostic) {
+        self.result.diagnostics.push(diag);
     }
 }
 

@@ -140,7 +140,11 @@ impl ExprScopes {
 }
 
 impl TypeScopes {
-    pub fn new(map: &TypeMap, owner: TypeVarOwner, id: LocalTypeRefId) -> Self {
+    pub(crate) fn type_scopes_query(db: &dyn DefDatabase, owner: TypeVarOwner) -> Arc<Self> {
+        owner.with_type_map(db, |map| Arc::new(Self::new(map, owner)))
+    }
+
+    fn new(map: &TypeMap, owner: TypeVarOwner) -> Self {
         let mut scopes = TypeScopes {
             owner,
             scopes: Arena::default(),
@@ -149,7 +153,12 @@ impl TypeScopes {
 
         let root = scopes.root_scope();
 
-        compute_type_scopes(id, map, &mut scopes, root);
+        for (ty, _) in map.iter() {
+            if !scopes.scopes_by_type.contains_key(&ty) {
+                compute_type_scopes(ty, map, &mut scopes, root);
+            }
+        }
+
         scopes
     }
 

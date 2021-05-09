@@ -1,3 +1,4 @@
+use crate::class::{Class, FunDep};
 use crate::db::HirDatabase;
 use crate::ty::*;
 use std::fmt;
@@ -186,5 +187,43 @@ impl HirDisplay for Constraint {
 
         write!(f, "{} ", class_name)?;
         f.write_joined(self.tys.iter(), " ")
+    }
+}
+
+impl HirDisplay for Class {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        let data = f.db.class_data(self.id);
+
+        write!(f, "class {}", data.name)?;
+
+        for kind in self.vars.iter() {
+            write!(f, " ")?;
+            kind.hir_fmt(f)?;
+        }
+
+        if !self.fundeps.is_empty() {
+            write!(f, " | ")?;
+            f.write_joined(self.fundeps.iter(), ", ")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl HirDisplay for FunDep {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        for var in self.determiners.iter() {
+            var.hir_fmt(f)?;
+            write!(f, " ")?;
+        }
+
+        write!(f, "->")?;
+
+        for var in self.determined.iter() {
+            write!(f, " ")?;
+            var.hir_fmt(f)?;
+        }
+
+        Ok(())
     }
 }

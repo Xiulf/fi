@@ -32,7 +32,7 @@ impl InferenceContext<'_> {
         let ty_kind = self.infer_kind(ty, origin);
 
         if !self.unify_types(ty_kind, kind) {
-            self.result.diagnostics.push(InferenceDiagnostic::MismatchedKind {
+            self.report(InferenceDiagnostic::MismatchedKind {
                 id: origin,
                 expected: kind,
                 found: ty_kind,
@@ -55,7 +55,7 @@ impl InferenceContext<'_> {
         let fun_kind = self.fn_type(arg_kind, ret_kind);
 
         if !self.unify_types(base_kind, fun_kind) {
-            self.result.diagnostics.push(InferenceDiagnostic::MismatchedKind {
+            self.report(InferenceDiagnostic::MismatchedKind {
                 id: origin,
                 expected: fun_kind,
                 found: base_kind,

@@ -1,3 +1,4 @@
+use crate::class::{Class, ClassLowerResult, FunDep};
 use crate::db::HirDatabase;
 use crate::display::HirDisplay;
 use crate::infer::InferenceContext;
@@ -6,19 +7,18 @@ use base_db::input::FileId;
 use diagnostics::LowerDiagnostic;
 use hir_def::arena::ArenaMap;
 use hir_def::diagnostic::DiagnosticSink;
-use hir_def::id::{Lookup, TypeAliasId, TypeCtorId, TypeVarOwner};
+use hir_def::id::{AssocItemId, ClassId, Lookup, TypeAliasId, TypeCtorId, TypeVarId, TypeVarOwner, TypedDefId};
 use hir_def::name::Name;
 use hir_def::path::Path;
 use hir_def::resolver::HasResolver;
 use hir_def::resolver::{Resolver, TypeNs};
 use hir_def::type_ref::{LocalTypeRefId, PtrLen, TypeMap, TypeRef, TypeSourceMap};
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 pub(crate) struct Ctx<'a> {
-    resolver: &'a Resolver,
     type_map: &'a TypeMap,
     icx: InferenceContext<'a>,
-    in_binders: DebruijnIndex,
     types: ArenaMap<LocalTypeRefId, Ty>,
     diagnostics: Vec<LowerDiagnostic>,
 }
@@ -31,17 +31,10 @@ pub struct LowerResult {
 }
 
 impl<'a> Ctx<'a> {
-    pub(crate) fn new(
-        db: &'a dyn HirDatabase,
-        resolver: &'a Resolver,
-        type_map: &'a TypeMap,
-        icx: InferenceContext<'a>,
-    ) -> Self {
+    pub(crate) fn new(db: &'a dyn HirDatabase, type_map: &'a TypeMap, icx: InferenceContext<'a>) -> Self {
         Self {
-            resolver,
             type_map,
             icx,
-            in_binders: DebruijnIndex::INNER,
             types: ArenaMap::default(),
             diagnostics: Vec::default(),
         }
@@ -60,16 +53,30 @@ impl<'a> Ctx<'a> {
         })
     }
 
-    pub fn with_debruijn<T>(&mut self, debruijn: DebruijnIndex, f: impl FnOnce(&mut Ctx) -> T) -> T {
-        let in_binders = std::mem::replace(&mut self.in_binders, debruijn);
-        let res = f(self);
+    fn finish_class(mut self, class: Class) -> Arc<ClassLowerResult> {
+        let icx_res = self.icx.finish();
 
-        self.in_binders = in_binders;
-        res
+        self.diagnostics
+            .extend(icx_res.diagnostics.into_iter().map(LowerDiagnostic::Inference));
+
+        Arc::new(ClassLowerResult {
+            class,
+            diagnostics: self.diagnostics,
+        })
     }
 
-    pub fn with_shifted_in<T>(&mut self, debruijn: DebruijnIndex, f: impl FnOnce(&mut Ctx) -> T) -> T {
-        self.with_debruijn(self.in_binders.shifted_in_from(debruijn), f)
+    pub fn for_assoc_item<T>(&mut self, owner: TypedDefId, type_map: &TypeMap, f: impl FnOnce(&mut Ctx) -> T) -> T {
+        let resolver = owner.resolver(self.db.upcast());
+        let resolver = std::mem::replace(&mut self.resolver, resolver);
+        let type_map = unsafe { &*(type_map as *const TypeMap) };
+        let type_map = std::mem::replace(&mut self.type_map, type_map);
+        let owner = std::mem::replace(&mut self.owner, owner);
+        let res = f(self);
+
+        self.resolver = resolver;
+        self.type_map = type_map;
+        self.owner = owner;
+        res
     }
 
     pub fn lower_ty(&mut self, ty: LocalTypeRefId) -> Ty {
@@ -134,17 +141,35 @@ impl<'a> Ctx<'a> {
                 self.fn_type(arg, ret)
             },
             | TypeRef::Forall(vars, inner) => {
-                let inner = self.with_shifted_in(DebruijnIndex::ONE, |ctx| ctx.lower_ty(*inner));
+                let new_resolver = Resolver::for_type(self.db.upcast(), self.owner.into(), *inner);
+                let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
 
-                vars.iter().fold(inner, |inner, var| {
-                    let var = &self.type_map[*var];
-                    let kind = var
-                        .kind
-                        .map(|k| self.lower_ty(k))
-                        .unwrap_or_else(|| TyKind::Error.intern(self.db));
+                let vars = vars
+                    .iter()
+                    .map(|&var| {
+                        let data = &self.type_map[var];
+                        let type_var = self
+                            .resolver
+                            .type_var_index(TypeVarId {
+                                owner: self.owner.into(),
+                                local_id: var,
+                            })
+                            .unwrap();
 
-                    TyKind::ForAll(kind, inner).intern(self.db)
-                })
+                        let type_var = TypeVar::new(DebruijnIndex::new(type_var as u32));
+                        let kind = data.kind.map(|k| self.lower_ty(k)).unwrap_or_else(|| self.fresh_kind());
+
+                        self.set_var_kind(type_var, kind);
+                        kind
+                    })
+                    .collect::<Vec<_>>();
+
+                let inner = self.lower_ty(*inner);
+
+                self.resolver = old_resolver;
+
+                vars.into_iter()
+                    .fold(inner, |inner, kind| TyKind::ForAll(kind, inner).intern(self.db))
             },
             | ty => unimplemented!("{:?}", ty),
         };
@@ -180,8 +205,9 @@ impl<'a> Ctx<'a> {
             | TypeNs::TypeVar(id) => {
                 let depth = self.resolver.type_var_index(id).unwrap();
                 let debruijn = DebruijnIndex::new(depth as u32);
+                let type_var = TypeVar::new(debruijn);
 
-                TypeVar::new(debruijn).to_ty(self.db)
+                type_var.to_ty(self.db)
             },
             | TypeNs::TypeAlias(id) => self.db.type_for_alias(id).ty,
             | TypeNs::TypeCtor(id) => self.db.type_for_ctor(id).ty,
@@ -212,8 +238,8 @@ impl<'a> std::ops::DerefMut for Ctx<'a> {
 pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<LowerResult> {
     let data = db.type_alias_data(id);
     let resolver = id.resolver(db.upcast());
-    let icx = InferenceContext::new(db, id.into());
-    let mut ctx = Ctx::new(db, &resolver, data.type_map(), icx);
+    let icx = InferenceContext::new(db, resolver, id.into());
+    let mut ctx = Ctx::new(db, data.type_map(), icx);
     let var_kinds = data
         .vars
         .iter()
@@ -229,19 +255,17 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
         })
         .collect::<Vec<_>>();
 
-    let mut ty = ctx.with_shifted_in(DebruijnIndex::new(data.vars.len() as u32), |ctx| {
-        ctx.lower_ty(data.alias)
-    });
-
+    let mut ty = ctx.lower_ty(data.alias);
     let type_kind = std::lazy::OnceCell::new();
 
     for kind in var_kinds {
         let kind = ctx.subst_type(kind);
 
-        if let TyKind::Unknown(_) = kind.lookup(db) {
-            let kind = type_kind.get_or_init(|| ctx.lang_type("type-kind"));
+        if let TyKind::Unknown(u) = kind.lookup(db) {
+            let kind = *type_kind.get_or_init(|| ctx.lang_type("type-kind"));
 
-            ty = TyKind::ForAll(*kind, ty).intern(db);
+            ctx.solve_type(u, kind);
+            ty = TyKind::ForAll(kind, ty).intern(db);
         } else {
             ty = TyKind::ForAll(kind, ty).intern(db);
         }
@@ -259,8 +283,8 @@ pub(crate) fn type_for_alias_recover(db: &dyn HirDatabase, _cycle: &[String], id
 pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerResult> {
     let data = db.type_ctor_data(id);
     let resolver = id.resolver(db.upcast());
-    let icx = InferenceContext::new(db, id.into());
-    let mut ctx = Ctx::new(db, &resolver, data.type_map(), icx);
+    let icx = InferenceContext::new(db, resolver, id.into());
+    let mut ctx = Ctx::new(db, data.type_map(), icx);
     let mut ty = TyKind::Ctor(id).intern(db);
     let var_kinds = data
         .vars
@@ -292,10 +316,11 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
     for kind in var_kinds {
         let kind = ctx.subst_type(kind);
 
-        if let TyKind::Unknown(_) = kind.lookup(db) {
-            let kind = type_kind.get_or_init(|| ctx.lang_type("type-kind"));
+        if let TyKind::Unknown(u) = kind.lookup(db) {
+            let kind = *type_kind.get_or_init(|| ctx.lang_type("type-kind"));
 
-            ty = TyKind::ForAll(*kind, ty).intern(db);
+            ctx.solve_type(u, kind);
+            ty = TyKind::ForAll(kind, ty).intern(db);
         } else {
             ty = TyKind::ForAll(kind, ty).intern(db);
         }
@@ -312,18 +337,115 @@ pub(crate) fn type_for_ctor_recover(db: &dyn HirDatabase, _cycle: &[String], id:
 
 pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Ty {
     let data = db.type_ctor_data(id);
-    let mut icx = InferenceContext::new(db, id.into());
+    let resolver = id.resolver(db.upcast());
+    let icx = InferenceContext::new(db, resolver, id.into());
+    let mut ctx = Ctx::new(db, data.type_map(), icx);
 
     if let Some(kind) = data.kind {
-        let resolver = id.resolver(db.upcast());
-        let mut ctx = Ctx::new(db, &resolver, data.type_map(), icx);
-
         ctx.lower_ty(kind)
     } else {
-        let ty = db.type_for_ctor(id).ty;
+        let mut ty = db.type_for_ctor(id).ty;
+        let mut vars = Vec::with_capacity(data.vars.len());
 
-        icx.infer_kind(ty, LocalTypeRefId::DUMMY)
+        while let TyKind::ForAll(var, inner) = ty.lookup(db) {
+            vars.push(var);
+            ty = inner;
+        }
+
+        let ty_kind = ctx.lang_type("type-kind");
+
+        vars.into_iter().rev().fold(ty_kind, |ty, var| ctx.fn_type(var, ty))
     }
+}
+
+pub(crate) fn kind_for_ctor_recover(db: &dyn HirDatabase, _cycle: &[String], id: &TypeCtorId) -> Ty {
+    let data = db.type_ctor_data(*id);
+    unimplemented!("{}", data.name);
+}
+
+pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassLowerResult> {
+    let data = db.class_data(id);
+    let type_map = data.type_map();
+    let resolver = id.resolver(db.upcast());
+    let icx = InferenceContext::new(db, resolver, id.into());
+    let mut ctx = Ctx::new(db, data.type_map(), icx);
+    let mut var_kinds = Vec::with_capacity(data.vars.len());
+    let vars = data
+        .vars
+        .iter()
+        .enumerate()
+        .map(|(i, &var)| {
+            let debruijn = DebruijnIndex::new(i as u32);
+            let type_var = TypeVar::new(debruijn);
+            let kind = type_map[var]
+                .kind
+                .map(|k| ctx.lower_ty(k))
+                .unwrap_or_else(|| ctx.fresh_kind());
+
+            var_kinds.push(kind);
+            ctx.set_var_kind(type_var, kind);
+
+            (&type_map[var].name, type_var)
+        })
+        .collect::<FxHashMap<_, _>>();
+
+    let fundeps = data
+        .fundeps
+        .iter()
+        .map(|dep| FunDep {
+            determiners: dep.determiners.iter().map(|n| vars[n]).collect(),
+            determined: dep.determined.iter().map(|n| vars[n]).collect(),
+        })
+        .collect();
+
+    let diag_count1 = ctx.diagnostics.len();
+    let diag_count2 = ctx.icx.result.diagnostics.len();
+
+    for &(_, id) in data.items.iter() {
+        let (ty, origin) = match id {
+            | AssocItemId::FuncId(id) => {
+                let data = db.func_data(id);
+
+                if let Some(ty) = data.ty {
+                    ctx.for_assoc_item(id.into(), data.type_map(), |ctx| (ctx.lower_ty(ty), ty))
+                } else {
+                    continue;
+                }
+            },
+            | AssocItemId::StaticId(id) => {
+                let data = db.static_data(id);
+
+                if let Some(ty) = data.ty {
+                    ctx.for_assoc_item(id.into(), data.type_map(), |ctx| (ctx.lower_ty(ty), ty))
+                } else {
+                    continue;
+                }
+            },
+        };
+
+        ctx.check_kind_type(ty, origin);
+    }
+
+    let type_kind = std::lazy::OnceCell::new();
+    let vars = var_kinds
+        .into_iter()
+        .map(|kind| {
+            let kind = ctx.subst_type(kind);
+            let type_kind = *type_kind.get_or_init(|| ctx.lang_type("type-kind"));
+
+            if let TyKind::Unknown(u) = kind.lookup(db) {
+                ctx.solve_type(u, type_kind);
+                type_kind
+            } else {
+                ctx.replace_unknowns(kind, type_kind)
+            }
+        })
+        .collect();
+
+    ctx.diagnostics.truncate(diag_count1);
+    ctx.icx.result.diagnostics.truncate(diag_count2);
+
+    ctx.finish_class(Class { id, vars, fundeps })
 }
 
 impl LowerResult {
@@ -341,7 +463,22 @@ impl LowerResult {
     }
 }
 
-mod diagnostics {
+impl ClassLowerResult {
+    pub fn add_diagnostics(
+        &self,
+        db: &dyn HirDatabase,
+        owner: TypeVarOwner,
+        file_id: FileId,
+        source_map: &TypeSourceMap,
+        sink: &mut DiagnosticSink,
+    ) {
+        self.diagnostics
+            .iter()
+            .for_each(|it| it.add_to(db, owner, file_id, source_map, sink));
+    }
+}
+
+pub(crate) mod diagnostics {
     use crate::db::HirDatabase;
     use crate::diagnostics::*;
     use crate::infer::diagnostics::InferenceDiagnostic;

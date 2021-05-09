@@ -1,4 +1,4 @@
-use crate::class::Class;
+use crate::class::ClassLowerResult;
 use crate::infer::InferenceResult;
 use crate::lower::LowerResult;
 use crate::ty::{Ty, TyKind};
@@ -24,8 +24,9 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     fn type_for_ctor(&self, id: TypeCtorId) -> Arc<LowerResult>;
 
     #[salsa::invoke(crate::lower::kind_for_ctor)]
+    #[salsa::cycle(crate::lower::kind_for_ctor_recover)]
     fn kind_for_ctor(&self, id: TypeCtorId) -> Ty;
 
-    #[salsa::invoke(crate::class::lower_class_query)]
-    fn lower_class(&self, id: ClassId) -> Arc<Class>;
+    #[salsa::invoke(crate::lower::lower_class_query)]
+    fn lower_class(&self, id: ClassId) -> Arc<ClassLowerResult>;
 }

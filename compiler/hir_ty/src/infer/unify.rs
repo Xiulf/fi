@@ -69,6 +69,16 @@ impl InferenceContext<'_> {
         })
     }
 
+    pub fn replace_unknowns(&mut self, ty: Ty, with: Ty) -> Ty {
+        ty.everywhere(self.db, &mut |ty| match ty.lookup(self.db) {
+            | TyKind::Unknown(u) => {
+                self.solve_type(u, with);
+                with
+            },
+            | _ => ty,
+        })
+    }
+
     pub fn unify_types(&mut self, t1: Ty, t2: Ty) -> bool {
         let t1 = self.subst_type(t1);
         let t2 = self.subst_type(t2);

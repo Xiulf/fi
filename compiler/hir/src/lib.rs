@@ -5,6 +5,9 @@ pub mod semantics;
 pub mod source_analyzer;
 mod source_to_def;
 
+#[cfg(debug_assertions)]
+use hir_ty::display::HirDisplay;
+
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use hir_def::diagnostic::DiagnosticSink;
@@ -209,15 +212,15 @@ impl ModuleDef {
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         match self {
-            | ModuleDef::Module(it) => {},
-            | ModuleDef::Fixity(it) => {},
-            | ModuleDef::Func(it) => {},
-            | ModuleDef::Static(it) => {},
-            | ModuleDef::Const(it) => {},
+            | ModuleDef::Module(_) => return,
+            | ModuleDef::Fixity(it) => it.diagnostics(db, sink),
+            | ModuleDef::Func(it) => it.diagnostics(db, sink),
+            | ModuleDef::Static(it) => it.diagnostics(db, sink),
+            | ModuleDef::Const(it) => it.diagnostics(db, sink),
             | ModuleDef::TypeAlias(it) => it.diagnostics(db, sink),
             | ModuleDef::TypeCtor(it) => it.diagnostics(db, sink),
-            | ModuleDef::Ctor(it) => {},
-            | ModuleDef::Class(it) => {},
+            | ModuleDef::Ctor(it) => it.diagnostics(db, sink),
+            | ModuleDef::Class(it) => it.diagnostics(db, sink),
         }
     }
 }
@@ -238,8 +241,15 @@ impl Fixity {
         self.module(db).lib()
     }
 
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.id.lookup(db.upcast()).id.file_id
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.fixity_data(self.id).name.clone()
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
     }
 }
 
@@ -259,8 +269,15 @@ impl Func {
         self.module(db).lib()
     }
 
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.id.lookup(db.upcast()).id.file_id
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.func_data(self.id).name.clone()
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
     }
 }
 
@@ -280,8 +297,15 @@ impl Static {
         self.module(db).lib()
     }
 
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.id.lookup(db.upcast()).id.file_id
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.static_data(self.id).name.clone()
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
     }
 }
 
@@ -301,8 +325,15 @@ impl Const {
         self.module(db).lib()
     }
 
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.id.lookup(db.upcast()).id.file_id
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.const_data(self.id).name.clone()
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
     }
 }
 
@@ -393,16 +424,23 @@ impl Ctor {
         self.parent.module(db)
     }
 
-    pub fn type_ctor(self) -> TypeCtor {
-        self.parent
-    }
-
     pub fn lib(self, db: &dyn HirDatabase) -> Lib {
         self.module(db).lib()
     }
 
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.parent.file_id(db)
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.type_ctor_data(self.parent.id).ctors[self.id].name.clone()
+    }
+
+    pub fn type_ctor(self) -> TypeCtor {
+        self.parent
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
     }
 }
 
@@ -422,8 +460,135 @@ impl Class {
         self.module(db).lib()
     }
 
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.id.lookup(db.upcast()).id.file_id
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.class_data(self.id).name.clone()
+    }
+
+    pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {
+        db.class_data(self.id)
+            .items
+            .iter()
+            .map(|(_, id)| (*id).into())
+            .collect()
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let data = db.class_data(self.id);
+        let lower = db.lower_class(self.id);
+
+        eprintln!("{}", lower.class.display(db));
+
+        lower.add_diagnostics(
+            db,
+            TypeVarOwner::TypedDefId(self.id.into()),
+            self.file_id(db),
+            data.type_source_map(),
+            sink,
+        );
+
+        for item in self.items(db) {
+            item.diagnostics(db, sink);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Instance {
+    pub(crate) id: InstanceId,
+}
+
+impl Instance {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        Module {
+            id: self.id.lookup(db.upcast()).module,
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
+
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        self.id.lookup(db.upcast()).id.file_id
+    }
+
+    pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {
+        db.instance_data(self.id).items.iter().map(|id| (*id).into()).collect()
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AssocItem {
+    Func(Func),
+    Static(Static),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AssocItemContainer {
+    Class(Class),
+    Instance(Instance),
+}
+
+impl AssocItem {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        match self {
+            | AssocItem::Func(it) => it.module(db),
+            | AssocItem::Static(it) => it.module(db),
+        }
+    }
+
+    pub fn lib(self, db: &dyn HirDatabase) -> Lib {
+        self.module(db).lib()
+    }
+
+    pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
+        match self {
+            | AssocItem::Func(it) => it.file_id(db),
+            | AssocItem::Static(it) => it.file_id(db),
+        }
+    }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        match self {
+            | AssocItem::Func(it) => it.name(db),
+            | AssocItem::Static(it) => it.name(db),
+        }
+    }
+
+    pub fn container(self, db: &dyn HirDatabase) -> AssocItemContainer {
+        let id = match self {
+            | AssocItem::Func(it) => it.id.lookup(db.upcast()).container,
+            | AssocItem::Static(it) => it.id.lookup(db.upcast()).container,
+        };
+
+        match id {
+            | ContainerId::Class(id) => AssocItemContainer::Class(id.into()),
+            | ContainerId::Instance(id) => AssocItemContainer::Instance(id.into()),
+            | ContainerId::Module(_) => unreachable!(),
+        }
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        match self {
+            | AssocItem::Func(it) => it.diagnostics(db, sink),
+            | AssocItem::Static(it) => it.diagnostics(db, sink),
+        }
+    }
+}
+
+impl From<AssocItemId> for AssocItem {
+    fn from(id: AssocItemId) -> Self {
+        match id {
+            | AssocItemId::FuncId(id) => AssocItem::Func(id.into()),
+            | AssocItemId::StaticId(id) => AssocItem::Static(id.into()),
+        }
     }
 }
 
@@ -479,3 +644,4 @@ macro_rules! impl_from {
 }
 
 impl_from!(Fixity, Func, Static, Const, TypeAlias, TypeCtor, Ctor, Class for ModuleDef);
+impl_from!(Func, Static for AssocItem);
