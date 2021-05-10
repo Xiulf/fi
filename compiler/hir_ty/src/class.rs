@@ -16,6 +16,14 @@ pub struct FunDep {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct Instance {
+    pub id: InstanceId,
+    pub vars: Box<[Ty]>,
+    pub types: Box<[Ty]>,
+    pub constraints: Box<[Constraint]>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Instances {
     matchers: Box<[InstanceMatcher]>,
 }
@@ -32,10 +40,4 @@ struct InstanceConstraint {
     constraint: Constraint,
     constraints: Box<[InstanceConstraint]>,
     instance: Option<InstanceId>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ClassLowerResult {
-    pub class: Class,
-    pub diagnostics: Vec<LowerDiagnostic>,
 }

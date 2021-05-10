@@ -37,7 +37,7 @@ pub struct Field {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraint {
     pub class: ClassId,
-    pub tys: List<Ty>,
+    pub types: List<Ty>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -97,7 +97,7 @@ impl Ty {
             | TyKind::Ctnt(ctnt, ty) => {
                 let ctnt = Constraint {
                     class: ctnt.class,
-                    tys: ctnt.tys.iter().map(|t| t.everywhere(db, f)).collect(),
+                    types: ctnt.types.iter().map(|t| t.everywhere(db, f)).collect(),
                 };
 
                 let ty = ty.everywhere(db, f);

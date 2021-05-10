@@ -186,7 +186,7 @@ impl HirDisplay for Constraint {
         let class_name = &f.db.class_data(self.class).name;
 
         write!(f, "{} ", class_name)?;
-        f.write_joined(self.tys.iter(), " ")
+        f.write_joined(self.types.iter(), " ")
     }
 }
 

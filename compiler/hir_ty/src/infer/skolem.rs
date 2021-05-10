@@ -54,8 +54,8 @@ impl InferenceContext<'_> {
             | TyKind::Ctnt(ctnt, ty) => {
                 let ctnt = Constraint {
                     class: ctnt.class,
-                    tys: ctnt
-                        .tys
+                    types: ctnt
+                        .types
                         .iter()
                         .map(|&t| self.skolemize_impl(skolem, kind, t, debruijn))
                         .collect(),

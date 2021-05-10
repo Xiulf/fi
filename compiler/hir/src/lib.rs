@@ -144,6 +144,16 @@ impl Module {
             .collect()
     }
 
+    pub fn instances(self, db: &dyn HirDatabase) -> Vec<Instance> {
+        let def_map = db.def_map(self.id.lib);
+
+        def_map[self.id.local_id]
+            .scope
+            .instances()
+            .map(Instance::from)
+            .collect()
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let def_map = db.def_map(self.id.lib);
 
@@ -157,6 +167,10 @@ impl Module {
             }
 
             decl.diagnostics(db, sink);
+        }
+
+        for inst in self.instances(db) {
+            inst.diagnostics(db, sink);
         }
     }
 }
@@ -480,8 +494,6 @@ impl Class {
         let data = db.class_data(self.id);
         let lower = db.lower_class(self.id);
 
-        eprintln!("{}", lower.class.display(db));
-
         lower.add_diagnostics(
             db,
             TypeVarOwner::TypedDefId(self.id.into()),
@@ -521,6 +533,20 @@ impl Instance {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let data = db.instance_data(self.id);
+        let lower = db.lower_instance(self.id);
+
+        lower.add_diagnostics(
+            db,
+            TypeVarOwner::TypedDefId(self.id.into()),
+            self.file_id(db),
+            data.type_source_map(),
+            sink,
+        );
+
+        for item in self.items(db) {
+            item.diagnostics(db, sink);
+        }
     }
 }
 

@@ -30,7 +30,7 @@ crate fn any_item(p: &mut Parser) {
             const_(p, m);
         },
         | TYPE_KW => {
-            type_(p, m);
+            type_(p, m, false);
         },
         | CLASS_KW => {
             class(p, m);
@@ -90,8 +90,9 @@ crate fn foreign(p: &mut Parser, m: Marker) {
     match p.current() {
         | FUN_KW => fun(p, m),
         | STATIC_KW => static_(p, m),
+        | TYPE_KW => type_(p, m, true),
         | _ => {
-            p.error("expected 'fun' or 'static'");
+            p.error("expected 'fun', 'static' or 'type'");
             m.abandon(p);
             return;
         },
@@ -148,31 +149,31 @@ crate fn const_(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn type_(p: &mut Parser, m: Marker) {
+crate fn type_(p: &mut Parser, m: Marker, foreign: bool) {
     p.expect(TYPE_KW);
     paths::name(p);
 
-    if p.eat(DBL_COLON) {
+    if foreign && p.eat(DBL_COLON) {
         types::func(p);
     } else {
         while p.at(L_PAREN) || p.at(IDENT) {
             types::type_var(p);
         }
 
-        if p.eat(EQUALS) {
-            if p.at(PIPE) {
-                while p.eat(PIPE) {
-                    let m = p.start();
+        p.expect(EQUALS);
 
-                    while p.at(AT) {
-                        attributes::attr(p);
-                    }
+        if p.at(PIPE) {
+            while p.eat(PIPE) {
+                let m = p.start();
 
-                    ctor(p, m);
+                while p.at(AT) {
+                    attributes::attr(p);
                 }
-            } else {
-                types::ty(p);
+
+                ctor(p, m);
             }
+        } else {
+            types::ty(p);
         }
     }
 

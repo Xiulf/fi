@@ -30,7 +30,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(crate) owner: TypedDefId,
     pub(crate) result: InferenceResult,
     subst: unify::Substitution,
-    pub(crate) var_kinds: FxHashMap<TypeVar, Ty>,
+    pub(crate) var_kinds: Vec<Ty>,
     universes: UniverseIndex,
 }
 
@@ -42,7 +42,7 @@ impl<'a> InferenceContext<'a> {
             resolver,
             result: InferenceResult::default(),
             subst: unify::Substitution::default(),
-            var_kinds: FxHashMap::default(),
+            var_kinds: Vec::default(),
             universes: UniverseIndex::ROOT,
         }
     }
@@ -66,12 +66,12 @@ impl<'a> InferenceContext<'a> {
         TyKind::App(base, ret).intern(self.db)
     }
 
-    pub(crate) fn set_var_kind(&mut self, var: TypeVar, kind: Ty) {
-        if let Some(old) = self.var_kinds.insert(var, kind) {
-            let new = TypeVar::new(var.debruijn().shifted_in());
+    pub(crate) fn push_var_kind(&mut self, kind: Ty) {
+        self.var_kinds.push(kind);
+    }
 
-            self.set_var_kind(new, old);
-        }
+    pub(crate) fn pop_var_kind(&mut self) {
+        self.var_kinds.pop().unwrap();
     }
 
     pub(crate) fn report(&mut self, diag: InferenceDiagnostic) {

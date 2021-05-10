@@ -4,6 +4,7 @@ use crate::id::{AttrDefId, Lookup};
 use crate::in_file::InFile;
 use crate::item_tree::{ItemTreeId, ItemTreeNode};
 use crate::name::{AsName, Name};
+use either::Either;
 use std::ops::Deref;
 use std::sync::Arc;
 use syntax::ast;
@@ -142,11 +143,6 @@ impl Literal {
             | ast::Literal::String(i) => Some(Literal::String(i.value()?)),
         }
     }
-}
-
-enum Either<L, R> {
-    Left(L),
-    Right(R),
 }
 
 fn attrs_from_item_tree<N: ItemTreeNode>(id: ItemTreeId<N>, db: &dyn DefDatabase) -> RawAttrs {

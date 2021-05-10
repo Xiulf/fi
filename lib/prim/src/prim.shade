@@ -1,31 +1,31 @@
 module prim =
 
-@lang = "kind-kind"   type Kind   :: Kind
-@lang = "type-kind"   type Type   :: Kind
-@lang = "figure-kind" type Figure :: Kind
-@lang = "symbol-kind" type Symbol :: Kind
-@lang = "row-kind"    type Row    :: Kind -> Kind
+@lang = "kind-kind"   foreign type Kind   :: Kind
+@lang = "type-kind"   foreign type Type   :: Kind
+@lang = "figure-kind" foreign type Figure :: Kind
+@lang = "symbol-kind" foreign type Symbol :: Kind
+@lang = "row-kind"    foreign type Row    :: Kind -> Kind
 
-@lang = "fn-type"     type Fn             :: Type -> Type -> Type
-@lang = "ptr-type"    type Ptr            :: Type -> Type
-@lang = "ptrb-type"   type BufPtr         :: Type -> Type
-@lang = "ptrbs-type"  type BufPtrSentinel :: Type -> Figure -> Type
-@lang = "array-type"  type Array          :: Type -> Figure -> Type
-@lang = "slice-type"  type Slice          :: Type -> Type
-@lang = "record-type" type Record         :: Row Type -> Type
+@lang = "fn-type"     foreign type Fn             :: Type -> Type -> Type
+@lang = "ptr-type"    foreign type Ptr            :: Type -> Type
+@lang = "ptrb-type"   foreign type BufPtr         :: Type -> Type
+@lang = "ptrbs-type"  foreign type BufPtrSentinel :: Type -> Figure -> Type
+@lang = "array-type"  foreign type Array          :: Type -> Figure -> Type
+@lang = "slice-type"  foreign type Slice          :: Type -> Type
+@lang = "record-type" foreign type Record         :: Row Type -> Type
 
-type Int8    :: Type
-type Int16   :: Type
-type Int32   :: Type
-type Int64   :: Type
-type Int128  :: Type
-type Uint8   :: Type
-type Uint16  :: Type
-type Uint32  :: Type
-type Uint64  :: Type
-type Uint128 :: Type
-type Float32 :: Type
-type Float64 :: Type
+foreign type Int8    :: Type
+foreign type Int16   :: Type
+foreign type Int32   :: Type
+foreign type Int64   :: Type
+foreign type Int128  :: Type
+foreign type Uint8   :: Type
+foreign type Uint16  :: Type
+foreign type Uint32  :: Type
+foreign type Uint64  :: Type
+foreign type Uint128 :: Type
+foreign type Float32 :: Type
+foreign type Float64 :: Type
 
 type Bool =
     | False

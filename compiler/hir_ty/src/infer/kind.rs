@@ -14,13 +14,29 @@ impl InferenceContext<'_> {
                 self.subst_type(kind)
             },
             | TyKind::Skolem(_, kind) => kind,
-            | TyKind::TypeVar(var) => self.var_kinds[&var],
+            | TyKind::TypeVar(var) => {
+                let idx = self.var_kinds.len() - var.debruijn().depth() as usize - 1;
+
+                self.var_kinds[idx]
+            },
             | TyKind::Ctor(id) => self.db.kind_for_ctor(id),
+            | TyKind::Tuple(tys) => {
+                let type_kind = self.lang_type("type-kind");
+
+                for &ty in tys.iter() {
+                    self.check_kind(ty, type_kind, origin);
+                }
+
+                type_kind
+            },
             | TyKind::App(base, arg) => self.check_kind_for_app(base, arg, origin),
             | TyKind::Ctnt(_, ty) => self.infer_kind(ty, origin),
             | TyKind::ForAll(kind, inner) => {
+                self.push_var_kind(kind);
+
                 let inner_kind = self.infer_kind(inner, origin);
 
+                self.pop_var_kind();
                 self.fn_type(kind, inner_kind)
             },
             | _ => unimplemented!("{}", ty.display(self.db)),

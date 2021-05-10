@@ -178,10 +178,6 @@ impl TypeScopes {
         for var in vars {
             let data = &map[var];
 
-            if let Some(kind) = data.kind {
-                compute_type_scopes(kind, map, &mut scopes, root);
-            }
-
             scopes.add_binding(&data.name, var, root);
         }
 

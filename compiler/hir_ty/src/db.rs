@@ -1,10 +1,9 @@
-use crate::class::ClassLowerResult;
 use crate::infer::InferenceResult;
-use crate::lower::LowerResult;
+use crate::lower::{ClassLowerResult, InstanceLowerResult, LowerResult};
 use crate::ty::{Ty, TyKind};
 use base_db::Upcast;
 use hir_def::db::DefDatabase;
-use hir_def::id::{ClassId, DefWithBodyId, TypeAliasId, TypeCtorId};
+use hir_def::id::{ClassId, DefWithBodyId, InstanceId, TypeAliasId, TypeCtorId};
 use std::sync::Arc;
 
 #[salsa::query_group(HirDatabaseStorage)]
@@ -29,4 +28,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
 
     #[salsa::invoke(crate::lower::lower_class_query)]
     fn lower_class(&self, id: ClassId) -> Arc<ClassLowerResult>;
+
+    #[salsa::invoke(crate::lower::lower_instance_query)]
+    fn lower_instance(&self, id: InstanceId) -> Arc<InstanceLowerResult>;
 }

@@ -88,3 +88,23 @@ impl Diagnostic for MismatchedType {
         self
     }
 }
+
+#[derive(Debug)]
+pub struct UnresolvedClass {
+    pub file: FileId,
+    pub src: SyntaxNodePtr,
+}
+
+impl Diagnostic for UnresolvedClass {
+    fn message(&self) -> String {
+        "unknown class".into()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src)
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
