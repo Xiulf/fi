@@ -1,4 +1,4 @@
-use crate::class::{Class, FunDep};
+use crate::class::{Class, FunDep, Instance, Instances};
 use crate::db::HirDatabase;
 use crate::ty::*;
 use std::fmt;
@@ -225,5 +225,29 @@ impl HirDisplay for FunDep {
         }
 
         Ok(())
+    }
+}
+
+impl HirDisplay for Instance {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        write!(f, "instance {}", f.db.class_data(self.class).name)?;
+
+        for ty in self.types.iter() {
+            write!(f, " ")?;
+            ty.hir_fmt(f)?;
+        }
+
+        if !self.constraints.is_empty() {
+            write!(f, " : ")?;
+            f.write_joined(self.constraints.iter(), ", ")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl HirDisplay for Instances {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        f.write_joined(self.matchers.iter().map(|m| &m.instance), "\n")
     }
 }

@@ -505,21 +505,27 @@ pub(crate) fn lower_instance_query(db: &dyn HirDatabase, id: InstanceId) -> Arc<
         .rev()
         .collect::<Vec<_>>();
 
-    let types = if let Some(class) = ctx.lower_class_path(&data.class) {
+    let (class, types) = if let Some(class) = ctx.lower_class_path(&data.class) {
         let lower = db.lower_class(class);
 
-        data.types
-            .iter()
-            .zip(lower.class.vars.iter())
-            .map(|(&ty, &kind)| {
-                let ty_ = ctx.lower_ty(ty);
+        (
+            lower.class.id,
+            data.types
+                .iter()
+                .zip(lower.class.vars.iter())
+                .map(|(&ty, &kind)| {
+                    let ty_ = ctx.lower_ty(ty);
 
-                ctx.check_kind(ty_, kind, ty);
-                ty_
-            })
-            .collect()
+                    ctx.check_kind(ty_, kind, ty);
+                    ty_
+                })
+                .collect(),
+        )
     } else {
-        data.types.iter().map(|&ty| ctx.lower_ty(ty)).collect()
+        (
+            ClassId::dummy(),
+            data.types.iter().map(|&ty| ctx.lower_ty(ty)).collect(),
+        )
     };
 
     let constraints = data
@@ -532,6 +538,7 @@ pub(crate) fn lower_instance_query(db: &dyn HirDatabase, id: InstanceId) -> Arc<
 
     ctx.finish_instance(Instance {
         id,
+        class,
         vars,
         types,
         constraints,

@@ -323,12 +323,6 @@ impl InstanceData {
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let types = src.value.types().map(|t| type_builder.alloc_type_ref(t)).collect();
-        let constraints = src
-            .value
-            .constraints()
-            .filter_map(|c| type_builder.lower_constraint(c))
-            .collect();
-
         let resolver = loc.module.resolver(db);
         let vars = type_builder
             .iter()
@@ -346,6 +340,12 @@ impl InstanceData {
                     None
                 }
             })
+            .collect();
+
+        let constraints = src
+            .value
+            .constraints()
+            .filter_map(|c| type_builder.lower_constraint(c))
             .collect();
 
         let container = ContainerId::Instance(id);

@@ -22,13 +22,3 @@ instance AB a Bool
 instance AB a b : Integer a, Integer b
 instance AB a b : Integer a
 instance AB a b
-
---  instances(AB):
---      Ctor(Bool), Ctor(Bool) -> instance0
---      Ctor(Bool), Ctor(Int32) -> instance1
---      Ctor(Bool), Var(!0)
---          Integer !0 -> instance2
---      Var(!0), Ctor(Bool) -> instance3
---      Var(!0), Var(!1) -> instance6
---          Integer !0 -> instance5
---              Integer !1 -> instance4

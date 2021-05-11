@@ -8,6 +8,7 @@ pub struct LibData {
     pub id: LibId,
     pub name: String,
     pub deps: Vec<LibId>,
+    pub dependent: Vec<LibId>,
     pub source_root: SourceRootId,
     pub root_file: FileId,
 }
@@ -38,6 +39,7 @@ impl LibSet {
                 root_file,
                 source_root,
                 deps: Vec::new(),
+                dependent: Vec::new(),
             };
 
             self.libs.insert(id, data);
@@ -55,6 +57,7 @@ impl LibSet {
         }
 
         self.libs.get_mut(&from).unwrap().deps.push(to);
+        self.libs.get_mut(&to).unwrap().dependent.push(from);
 
         Ok(())
     }
@@ -87,6 +90,29 @@ impl LibSet {
             }
 
             for &dep in libs[source].deps.iter() {
+                go(libs, visited, res, dep);
+            }
+
+            res.push(source);
+        }
+    }
+
+    pub fn dependant(&self, lib: LibId) -> Vec<LibId> {
+        let mut res = Vec::new();
+        let mut visited = FxHashSet::default();
+
+        for &lib in self.libs.keys() {
+            go(self, &mut visited, &mut res, lib);
+        }
+
+        return res;
+
+        fn go(libs: &LibSet, visited: &mut FxHashSet<LibId>, res: &mut Vec<LibId>, source: LibId) {
+            if !visited.insert(source) {
+                return;
+            }
+
+            for &dep in libs[source].dependent.iter() {
                 go(libs, visited, res, dep);
             }
 

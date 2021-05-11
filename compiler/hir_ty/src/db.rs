@@ -1,6 +1,7 @@
+use crate::class::{InstanceMatchResult, Instances};
 use crate::infer::InferenceResult;
 use crate::lower::{ClassLowerResult, InstanceLowerResult, LowerResult};
-use crate::ty::{Ty, TyKind};
+use crate::ty::{Constraint, Ty, TyKind};
 use base_db::Upcast;
 use hir_def::db::DefDatabase;
 use hir_def::id::{ClassId, DefWithBodyId, InstanceId, TypeAliasId, TypeCtorId};
@@ -31,4 +32,10 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
 
     #[salsa::invoke(crate::lower::lower_instance_query)]
     fn lower_instance(&self, id: InstanceId) -> Arc<InstanceLowerResult>;
+
+    #[salsa::invoke(Instances::instances_query)]
+    fn instances(&self, id: ClassId) -> Arc<Instances>;
+
+    #[salsa::invoke(Instances::solve_constraint_query)]
+    fn solve_constraint(&self, ctnt: Constraint) -> Option<Arc<InstanceMatchResult>>;
 }

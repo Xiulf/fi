@@ -129,6 +129,14 @@ pub struct ClassId(salsa::InternId);
 pub type ClassLoc = ItemLoc<Class>;
 impl_intern!(ClassId, ClassLoc, intern_class, lookup_intern_class);
 
+impl ClassId {
+    pub fn dummy() -> Self {
+        let id = salsa::InternId::from(salsa::InternId::MAX);
+
+        Self(id)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InstanceId(salsa::InternId);
 pub type InstanceLoc = ItemLoc<Instance>;
