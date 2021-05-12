@@ -6,8 +6,8 @@ crate fn path(p: &mut Parser) {
 
     path_segment(p);
 
-    while p.at(DOT) && (p.nth_at(1, IDENT) || p.nth_at(1, SYMBOL)) {
-        p.bump(DOT);
+    while p.at(PATH_SEP) && (p.nth_at(1, IDENT) || p.nth_at(1, SYMBOL)) {
+        p.bump(PATH_SEP);
         path_segment(p);
     }
 

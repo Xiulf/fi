@@ -310,6 +310,9 @@ impl<'src> Lexer<'src> {
                     },
                 }
             },
+            | '/' if self.is_path_sep() => {
+                self.insert_default(start, PATH_SEP);
+            },
             | ch if is_op_char(ch) => {
                 while is_op_char(self.peek()) {
                     self.advance();
@@ -502,6 +505,10 @@ impl<'src> Lexer<'src> {
 
     fn name(&mut self, start: (usize, usize)) {
         while self.peek().is_xid_continue() {
+            self.advance();
+        }
+
+        while self.peek() == '\'' {
             self.advance();
         }
 
@@ -879,6 +886,16 @@ impl<'src> Lexer<'src> {
 
     fn is_closure(&self) -> bool {
         matches!(self.stack[..], [.., (_, LayoutDelim::ClosureHead)])
+    }
+
+    fn is_path_sep(&mut self) -> bool {
+        let next = self.peek();
+
+        if let Some(tok) = self.tokens.last() {
+            tok.kind == IDENT && (next.is_xid_start() || (next == '(' && is_op_char(self.peek_n(1))))
+        } else {
+            false
+        }
     }
 
     fn insert_default(&mut self, start: (usize, usize), kind: SyntaxKind) {

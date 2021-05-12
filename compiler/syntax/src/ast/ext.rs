@@ -605,6 +605,12 @@ impl ExprParens {
     }
 }
 
+impl ExprTuple {
+    pub fn exprs(&self) -> AstChildren<Expr> {
+        support::children(&self.0)
+    }
+}
+
 impl ExprDo {
     pub fn block(&self) -> Option<Block> {
         support::child(&self.0)

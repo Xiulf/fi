@@ -19,6 +19,8 @@ impl InferenceContext<'_> {
 
                 self.var_kinds[idx]
             },
+            | TyKind::Figure(_) => self.lang_type("figure-kind"),
+            | TyKind::Symbol(_) => self.lang_type("symbol-kind"),
             | TyKind::Ctor(id) => self.db.kind_for_ctor(id),
             | TyKind::Tuple(tys) => {
                 let type_kind = self.lang_type("type-kind");

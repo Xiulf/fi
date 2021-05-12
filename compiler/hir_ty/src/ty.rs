@@ -60,6 +60,26 @@ impl Ty {
         db.lookup_intern_ty(self)
     }
 
+    pub fn match_ctor<const A: usize>(mut self, db: &dyn HirDatabase, id: TypeCtorId) -> Option<[Ty; A]> {
+        use std::mem::MaybeUninit;
+        let mut res = [MaybeUninit::<Ty>::uninit(); A];
+
+        for i in (0..A).rev() {
+            if let TyKind::App(a, b) = self.lookup(db) {
+                res[i] = MaybeUninit::new(b);
+                self = a;
+            } else {
+                return None;
+            };
+        }
+
+        if self.lookup(db) == TyKind::Ctor(id) {
+            Some(unsafe { std::mem::transmute_copy(&res) })
+        } else {
+            None
+        }
+    }
+
     pub fn everywhere<F>(self, db: &dyn HirDatabase, f: &mut F) -> Ty
     where
         F: FnMut(Ty) -> Ty,

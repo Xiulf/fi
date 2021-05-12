@@ -99,6 +99,26 @@ impl Body {
     }
 }
 
+impl BodySourceMap {
+    pub fn expr_syntax(&self, expr: ExprId) -> Result<ExprSource, SyntheticSyntax> {
+        self.expr_map_back[expr].clone()
+    }
+
+    pub fn node_expr(&self, node: InFile<&ast::Expr>) -> Option<ExprId> {
+        let src = node.map(AstPtr::new);
+        self.expr_map.get(&src).cloned()
+    }
+
+    pub fn pat_syntax(&self, pat: PatId) -> Result<PatSource, SyntheticSyntax> {
+        self.pat_map_back[pat].clone()
+    }
+
+    pub fn node_pat(&self, node: InFile<&ast::Pat>) -> Option<PatId> {
+        let src = node.map(AstPtr::new);
+        self.pat_map.get(&src).cloned()
+    }
+}
+
 impl std::ops::Deref for BodySourceMap {
     type Target = TypeSourceMap;
 

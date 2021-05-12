@@ -1,8 +1,8 @@
 module main (main) =
 
 import core
-import core.libc (puts)
-import core.intrinsics (sub_i32, ptr_offset, eq_i32)
+import core/libc (puts)
+import core/intrinsics (sub_i32, ptr_offset, eq_i32)
 
 fun main argc argv = do
     print_args argc argv

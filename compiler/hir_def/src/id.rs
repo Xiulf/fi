@@ -192,6 +192,14 @@ pub enum TypedDefId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ValueTyDefId {
+    FuncId(FuncId),
+    StaticId(StaticId),
+    ConstId(ConstId),
+    CtorId(CtorId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DefWithBodyId {
     FuncId(FuncId),
     StaticId(StaticId),
@@ -259,6 +267,15 @@ impl HasModule for AssocItemId {
         match *self {
             | AssocItemId::FuncId(id) => id.lookup(db).module(db),
             | AssocItemId::StaticId(id) => id.lookup(db).module(db),
+        }
+    }
+}
+
+impl HasModule for TypeVarOwner {
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId {
+        match self {
+            | TypeVarOwner::DefWithBodyId(id) => id.module(db),
+            | TypeVarOwner::TypedDefId(id) => id.module(db),
         }
     }
 }
@@ -435,5 +452,6 @@ macro_rules! impl_from {
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, ClassId, InstanceId for AttrDefId);
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId for ModuleDefId);
 impl_from!(FuncId, StaticId, TypeAliasId, TypeCtorId, CtorId, ClassId, InstanceId for TypedDefId);
+impl_from!(FuncId, StaticId, ConstId, CtorId for ValueTyDefId);
 impl_from!(FuncId, StaticId, ConstId for DefWithBodyId);
 impl_from!(DefWithBodyId, TypedDefId for TypeVarOwner);

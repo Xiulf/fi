@@ -13,10 +13,12 @@ use base_db::libs::LibId;
 use hir_def::diagnostic::DiagnosticSink;
 pub use hir_def::expr::{Expr, Literal, Stmt};
 use hir_def::id::*;
+pub use hir_def::in_file::InFile;
 pub use hir_def::name::{AsName, Name};
 pub use hir_def::pat::Pat;
 use hir_def::pat::PatId;
 use hir_ty::db::HirDatabase;
+pub use hir_ty::display;
 use hir_ty::lower::LowerResult;
 use std::sync::Arc;
 
@@ -292,6 +294,9 @@ impl Func {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let infer = db.infer(self.id.into());
+
+        infer.add_diagnostics(db, self.id.into(), sink);
     }
 }
 
@@ -320,6 +325,9 @@ impl Static {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let infer = db.infer(self.id.into());
+
+        infer.add_diagnostics(db, self.id.into(), sink);
     }
 }
 
@@ -348,6 +356,9 @@ impl Const {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let infer = db.infer(self.id.into());
+
+        infer.add_diagnostics(db, self.id.into(), sink);
     }
 }
 

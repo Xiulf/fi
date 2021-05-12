@@ -190,6 +190,11 @@ impl<'a> ExprCollector<'a> {
                 self.source_map.expr_map.insert(src, inner);
                 inner
             },
+            | ast::Expr::Tuple(e) => {
+                let exprs = e.exprs().map(|e| self.collect_expr(e)).collect();
+
+                self.alloc_expr(Expr::Tuple { exprs }, syntax_ptr)
+            },
             | ast::Expr::Do(e) => {
                 let stmts = e.block()?.statements().map(|s| self.collect_stmt(s)).collect();
 
@@ -247,6 +252,7 @@ impl<'a> ExprCollector<'a> {
     fn collect_pat(&mut self, pat: ast::Pat) -> PatId {
         let ptr = AstPtr::new(&pat);
         let pattern = match pat {
+            | ast::Pat::Wildcard(_) => Pat::Wildcard,
             | ast::Pat::Bind(pat) => {
                 let name = pat.name().map(|n| n.as_name()).unwrap_or_else(Name::missing);
                 let subpat = pat.subpat().map(|sp| self.collect_pat(sp));

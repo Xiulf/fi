@@ -153,7 +153,7 @@ crate fn generics(p: &mut Parser, end: SyntaxKind) {
         while !p.at(EOF) && !p.at(end) {
             constraint(p);
 
-            if !p.at(R_ANGLE) {
+            if !p.at(end) {
                 p.expect(COMMA);
             }
         }

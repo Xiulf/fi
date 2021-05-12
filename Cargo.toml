@@ -3,6 +3,7 @@ members = [
     "compiler/shadow",
     "compiler/driver",
     "compiler/markup",
+    "compiler/diagnostics",
     "compiler/hir",
     "compiler/hir_ty",
     "compiler/hir_def",

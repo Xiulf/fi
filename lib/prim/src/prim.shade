@@ -6,6 +6,9 @@ module prim =
 @lang = "symbol-kind" foreign type Symbol :: Kind
 @lang = "row-kind"    foreign type Row    :: Kind -> Kind
 
+@lang = "never-type"  foreign type Never          :: Type
+@lang = "char-type"   foreign type Char           :: Type
+@lang = "str-type"    foreign type Str            :: Type
 @lang = "fn-type"     foreign type Fn             :: Type -> Type -> Type
 @lang = "ptr-type"    foreign type Ptr            :: Type -> Type
 @lang = "ptrb-type"   foreign type BufPtr         :: Type -> Type
@@ -14,25 +17,27 @@ module prim =
 @lang = "slice-type"  foreign type Slice          :: Type -> Type
 @lang = "record-type" foreign type Record         :: Row Type -> Type
 
-foreign type Int8    :: Type
-foreign type Int16   :: Type
-foreign type Int32   :: Type
-foreign type Int64   :: Type
-foreign type Int128  :: Type
-foreign type Uint8   :: Type
-foreign type Uint16  :: Type
-foreign type Uint32  :: Type
-foreign type Uint64  :: Type
-foreign type Uint128 :: Type
-foreign type Float32 :: Type
-foreign type Float64 :: Type
+@repr(scalar = "i8"  ) foreign type Int8    :: Type
+@repr(scalar = "i16" ) foreign type Int16   :: Type
+@repr(scalar = "i32" ) foreign type Int32   :: Type
+@repr(scalar = "i64" ) foreign type Int64   :: Type
+@repr(scalar = "i128") foreign type Int128  :: Type
+@repr(scalar = "u8"  ) foreign type Uint8   :: Type
+@repr(scalar = "u16" ) foreign type Uint16  :: Type
+@repr(scalar = "u32" ) foreign type Uint32  :: Type
+@repr(scalar = "u64" ) foreign type Uint64  :: Type
+@repr(scalar = "u128") foreign type Uint128 :: Type
+@repr(scalar = "f32" ) foreign type Float32 :: Type
+@repr(scalar = "f64" ) foreign type Float64 :: Type
 
+@lang = "bool-type"
 type Bool =
     | False
     | True
 
 @lang = "integer-class" class Integer t
 @lang = "decimal-class" class Decimal t
+@lang = "pointer-class" class Pointer t to | t -> to
 
 instance Integer Int8
 instance Integer Int16
@@ -47,5 +52,9 @@ instance Integer Uint128
 
 instance Decimal Float32
 instance Decimal Float64
+
+instance Pointer (Ptr t) t
+instance Pointer (BufPtr t) t
+instance Pointer (BufPtrSentinel t s) t
 
 class Unsafe

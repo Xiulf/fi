@@ -27,10 +27,10 @@ impl InferenceContext<'_> {
         u
     }
 
-    pub fn fresh_type(&mut self) -> Ty {
+    pub fn fresh_type_without_kind(&mut self) -> Ty {
         let t1 = Unknown::from_raw(self.subst.next_unknown + 0);
         let t2 = Unknown::from_raw(self.subst.next_unknown + 1);
-        let kind_type = self.lang_type("type-kind");
+        let kind_type = self.lang_type("kind-kind");
 
         self.subst.next_unknown += 2;
         self.subst.unsolved.insert(t1, (UnkLevel::from(t1), kind_type));
@@ -48,8 +48,12 @@ impl InferenceContext<'_> {
         t.to_ty(self.db)
     }
 
-    pub fn fresh_kind(&mut self) -> Ty {
+    pub fn fresh_type(&mut self) -> Ty {
         self.fresh_type_with_kind(self.lang_type("type-kind"))
+    }
+
+    pub fn fresh_kind(&mut self) -> Ty {
+        self.fresh_type_with_kind(self.lang_type("kind-kind"))
     }
 
     pub fn solve_type(&mut self, u: Unknown, ty: Ty) {
