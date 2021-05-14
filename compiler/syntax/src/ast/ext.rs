@@ -571,6 +571,16 @@ impl PatBind {
     }
 }
 
+impl ExprTyped {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+}
+
 impl ExprApp {
     pub fn base(&self) -> Option<Expr> {
         support::child(&self.0)

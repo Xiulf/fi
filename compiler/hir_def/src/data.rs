@@ -312,6 +312,12 @@ impl ClassData {
     pub fn type_source_map(&self) -> &TypeSourceMap {
         &self.type_source_map
     }
+
+    pub fn item(&self, name: &Name) -> Option<AssocItemId> {
+        self.items
+            .iter()
+            .find_map(|(n, id)| if n == name { Some(*id) } else { None })
+    }
 }
 
 impl InstanceData {

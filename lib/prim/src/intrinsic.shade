@@ -4,7 +4,8 @@ import prim
 
 infixr 0 apply as ($)
 
-@intrinsic foreign fun sub_i32    :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun eq_i32     :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun ptr_offset :: for t. *t -> Int -> *t
-@intrinsic foreign fun apply      :: for r a. (a -> r) -> a -> r
+@intrinsic foreign fun sub_i32        :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun eq_i32         :: Int32 -> Int32 -> Bool
+@intrinsic foreign fun ptr_offset     :: for t. *t -> Int64 -> *t
+@intrinsic foreign fun buf_ptr_offset :: for t. [*]t -> Int64 -> [*]t
+@intrinsic foreign fun apply          :: for r a. (a -> r) -> a -> r

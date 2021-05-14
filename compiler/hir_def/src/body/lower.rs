@@ -153,6 +153,12 @@ impl<'a> ExprCollector<'a> {
         let syntax_ptr = AstPtr::new(&expr);
 
         Some(match expr {
+            | ast::Expr::Typed(e) => {
+                let expr = self.collect_expr_opt(e.expr());
+                let ty = self.type_builder.alloc_type_ref_opt(e.ty());
+
+                self.alloc_expr(Expr::Typed { expr, ty }, syntax_ptr)
+            },
             | ast::Expr::App(e) => {
                 let base = self.collect_expr_opt(e.base());
                 let arg = self.collect_expr_opt(e.arg());

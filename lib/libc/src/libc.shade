@@ -11,4 +11,4 @@ type C_Double  = Float64
 type C_Str     = [*:0]C_Char
 type C_Array t = [*]t
 
-foreign fun puts :: C_Array C_Str -> C_Int
+foreign fun puts :: C_Str -> C_Int

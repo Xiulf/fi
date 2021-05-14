@@ -13,15 +13,15 @@ pub(crate) fn dummy_expr_id() -> ExprId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Missing,
+    Typed {
+        expr: ExprId,
+        ty: LocalTypeRefId,
+    },
     Path {
         path: Path,
     },
     Lit {
         lit: Literal,
-    },
-    Typed {
-        expr: ExprId,
-        ty: LocalTypeRefId,
     },
     Infix {
         op: Path,

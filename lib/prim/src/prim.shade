@@ -30,6 +30,8 @@ module prim =
 @repr(scalar = "f32" ) foreign type Float32 :: Type
 @repr(scalar = "f64" ) foreign type Float64 :: Type
 
+type Unit = ()
+
 @lang = "bool-type"
 type Bool =
     | False

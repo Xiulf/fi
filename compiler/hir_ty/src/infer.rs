@@ -1,3 +1,4 @@
+mod ctnt;
 mod expr;
 mod kind;
 mod pat;
@@ -18,7 +19,8 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<InferenceResult> {
-    let resolver = def.resolver(db.upcast());
+    let body = db.body(def);
+    let resolver = Resolver::for_expr(db.upcast(), def, body.body_expr());
     let mut icx = BodyInferenceContext::new(db, resolver, def);
 
     icx.infer_body();
@@ -28,8 +30,8 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct InferenceResult {
-    pub(crate) type_of_expr: ArenaMap<ExprId, Ty>,
-    pub(crate) type_of_pat: ArenaMap<PatId, Ty>,
+    pub type_of_expr: ArenaMap<ExprId, Ty>,
+    pub type_of_pat: ArenaMap<PatId, Ty>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic>,
 }
 
@@ -41,12 +43,13 @@ pub(crate) struct InferenceContext<'a> {
     subst: unify::Substitution,
     pub(crate) var_kinds: Vec<Ty>,
     universes: UniverseIndex,
-    constraints: Vec<Constraint>,
+    constraints: Vec<(Constraint, ExprOrPatId)>,
 }
 
 struct BodyInferenceContext<'a> {
     icx: InferenceContext<'a>,
     body: Arc<Body>,
+    self_type: Ty,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -81,8 +84,20 @@ impl<'a> InferenceContext<'a> {
         }
     }
 
-    pub(crate) fn finish(self) -> InferenceResult {
-        self.result
+    pub(crate) fn finish(mut self) -> InferenceResult {
+        self.finish_mut()
+    }
+
+    pub(crate) fn finish_mut(&mut self) -> InferenceResult {
+        self.solve_constraints();
+
+        let mut res = std::mem::replace(&mut self.result, InferenceResult::default());
+
+        res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(&self)).collect();
+        res.type_of_expr.values_mut().for_each(|v| *v = self.subst_type(*v));
+        res.type_of_pat.values_mut().for_each(|v| *v = self.subst_type(*v));
+
+        res
     }
 
     pub(crate) fn lang_type(&self, name: &'static str) -> Ty {
@@ -133,6 +148,10 @@ impl<'a> InferenceContext<'a> {
         self.result.diagnostics.push(diag);
     }
 
+    pub(crate) fn constrain(&mut self, id: ExprOrPatId, ctnt: Constraint) {
+        self.constraints.push((ctnt, id));
+    }
+
     pub(crate) fn error(&self) -> Ty {
         TyKind::Error.intern(self.db)
     }
@@ -147,6 +166,7 @@ impl<'a> BodyInferenceContext<'a> {
         BodyInferenceContext {
             icx: InferenceContext::new(db, resolver, owner.into()),
             body: db.body(owner),
+            self_type: TyKind::Error.intern(db),
         }
     }
 
@@ -155,7 +175,17 @@ impl<'a> BodyInferenceContext<'a> {
     }
 
     fn infer_body(&mut self) {
-        self.infer_expr(self.body.body_expr());
+        let ret = self.fresh_type();
+        let mut ty = ret;
+
+        for pat in self.body.params().to_vec().into_iter().rev() {
+            let arg = self.infer_pat(pat);
+
+            ty = self.fn_type(arg, ty);
+        }
+
+        self.self_type = ty;
+        self.check_expr(self.body.body_expr(), ret);
     }
 }
 
@@ -180,16 +210,19 @@ impl InferenceResult {
 }
 
 pub(crate) mod diagnostics {
-    use super::ExprOrPatId;
+    use super::{ExprOrPatId, InferenceContext};
     use crate::db::HirDatabase;
     use crate::diagnostics::*;
-    use crate::ty::Ty;
+    use crate::ty::{Constraint, Ty};
     use hir_def::diagnostic::DiagnosticSink;
     use hir_def::id::{HasSource, TypeVarOwner};
     use hir_def::type_ref::LocalTypeRefId;
 
     #[derive(Debug, PartialEq, Eq)]
     pub enum InferenceDiagnostic {
+        UnresolvedValue {
+            id: ExprOrPatId,
+        },
         MismatchedKind {
             id: LocalTypeRefId,
             expected: Ty,
@@ -200,13 +233,50 @@ pub(crate) mod diagnostics {
             expected: Ty,
             found: Ty,
         },
+        UnsolvedConstraint {
+            id: ExprOrPatId,
+            ctnt: Constraint,
+        },
     }
 
     impl InferenceDiagnostic {
+        pub(super) fn subst_types(self, icx: &InferenceContext) -> Self {
+            match self {
+                | InferenceDiagnostic::MismatchedKind { id, expected, found } => InferenceDiagnostic::MismatchedKind {
+                    id,
+                    expected: icx.subst_type(expected),
+                    found: icx.subst_type(found),
+                },
+                | InferenceDiagnostic::MismatchedType { id, expected, found } => InferenceDiagnostic::MismatchedType {
+                    id,
+                    expected: icx.subst_type(expected),
+                    found: icx.subst_type(found),
+                },
+                | InferenceDiagnostic::UnsolvedConstraint { id, ctnt } => InferenceDiagnostic::UnsolvedConstraint {
+                    id,
+                    ctnt: icx.subst_ctnt(&ctnt),
+                },
+                | _ => self,
+            }
+        }
+
         pub fn add_to(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
             let file = owner.source(db.upcast()).file_id;
 
             match self {
+                | InferenceDiagnostic::UnresolvedValue { id } => {
+                    let soure_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = match *id {
+                        | ExprOrPatId::ExprId(e) => soure_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
+                        | ExprOrPatId::PatId(e) => soure_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
+                    };
+
+                    sink.push(UnresolvedValue { file, src });
+                },
                 | InferenceDiagnostic::MismatchedKind { id, expected, found } => {
                     let src = owner.with_type_source_map(db.upcast(), |source_map| source_map.type_ref_syntax(*id));
                     let src = src.unwrap().syntax_node_ptr();
@@ -234,6 +304,23 @@ pub(crate) mod diagnostics {
                         src,
                         expected: *expected,
                         found: *found,
+                    });
+                },
+                | InferenceDiagnostic::UnsolvedConstraint { id, ctnt } => {
+                    let soure_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = match *id {
+                        | ExprOrPatId::ExprId(e) => soure_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
+                        | ExprOrPatId::PatId(e) => soure_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
+                    };
+
+                    sink.push(UnsolvedConstraint {
+                        file,
+                        src,
+                        ctnt: ctnt.clone(),
                     });
                 },
             }

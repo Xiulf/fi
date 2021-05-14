@@ -1,6 +1,8 @@
 use crate::class::{Class, FunDep, Instance, Instances};
 use crate::db::HirDatabase;
 use crate::ty::*;
+use hir_def::id::Lookup;
+use hir_def::lang_item::LangItem;
 use std::fmt;
 
 pub trait HirDisplay {
@@ -135,10 +137,90 @@ impl HirDisplay for DebruijnIndex {
     }
 }
 
+impl Ty {
+    fn needs_paren(self, db: &dyn HirDatabase) -> bool {
+        match self.lookup(db) {
+            | TyKind::App(..) | TyKind::ForAll(..) | TyKind::Ctnt(..) => true,
+            | _ => false,
+        }
+    }
+}
+
+struct TyParens(Ty);
+
+impl HirDisplay for TyParens {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        let needs_paren = self.0.needs_paren(f.db);
+
+        if needs_paren {
+            write!(f, "(")?;
+        }
+
+        self.0.hir_fmt(f)?;
+
+        if needs_paren {
+            write!(f, ")")?;
+        }
+
+        Ok(())
+    }
+}
+
 impl HirDisplay for Ty {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         if f.should_truncate() {
             return write!(f, "...");
+        }
+
+        let mut args = Vec::new();
+        let mut ty = *self;
+
+        while let TyKind::App(a, b) = ty.lookup(f.db) {
+            args.push(b);
+            ty = a;
+        }
+
+        macro_rules! match_lang {
+            (match $id:ident, $args:ident, $lib:ident, $f:ident { $($name:literal($arity:literal) => $code:block),* $(,)? }) => {
+                $(
+                    if Some($id) == $f.db.lang_item($lib, $name.into()).and_then(LangItem::as_type_ctor) &&
+                        $args.len() == $arity
+                    {
+                        return $code;
+                    }
+                )else*
+            };
+        }
+
+        if let TyKind::Ctor(id) = ty.lookup(f.db) {
+            let loc = id.lookup(f.db.upcast());
+            let lib = loc.module.lib;
+
+            args.reverse();
+
+            match_lang! {
+                match id, args, lib, f {
+                    "fn-type"(2) => {
+                        TyParens(args[0]).hir_fmt(f)?;
+                        write!(f, " -> ")?;
+                        args[1].hir_fmt(f)
+                    },
+                    "ptr-type"(1) => {
+                        write!(f, "*")?;
+                        TyParens(args[0]).hir_fmt(f)
+                    },
+                    "ptrb-type"(1) => {
+                        write!(f, "[*]")?;
+                        TyParens(args[0]).hir_fmt(f)
+                    },
+                    "ptrbs-type"(2) => {
+                        write!(f, "[*:")?;
+                        args[1].hir_fmt(f)?;
+                        write!(f, "]")?;
+                        TyParens(args[0]).hir_fmt(f)
+                    },
+                }
+            }
         }
 
         match self.lookup(f.db) {
@@ -159,11 +241,9 @@ impl HirDisplay for Ty {
                 write!(f, ")")
             },
             | TyKind::App(base, arg) => {
-                write!(f, "(")?;
-                base.hir_fmt(f)?;
+                TyParens(base).hir_fmt(f)?;
                 write!(f, " ")?;
-                arg.hir_fmt(f)?;
-                write!(f, ")")
+                TyParens(arg).hir_fmt(f)
             },
             | TyKind::Ctnt(ctnt, ty) => {
                 ctnt.hir_fmt(f)?;

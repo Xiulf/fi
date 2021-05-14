@@ -1,4 +1,4 @@
-use crate::ty::Ty;
+use crate::ty::{Constraint, Ty};
 use base_db::input::FileId;
 use hir_def::diagnostic::Diagnostic;
 use hir_def::in_file::InFile;
@@ -8,7 +8,7 @@ use syntax::{ast, AstPtr, SyntaxNodePtr};
 #[derive(Debug)]
 pub struct UnresolvedValue {
     pub file: FileId,
-    pub expr: SyntaxNodePtr,
+    pub src: SyntaxNodePtr,
 }
 
 impl Diagnostic for UnresolvedValue {
@@ -17,7 +17,7 @@ impl Diagnostic for UnresolvedValue {
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {
-        InFile::new(self.file, self.expr)
+        InFile::new(self.file, self.src)
     }
 
     fn as_any(&self) -> &(dyn Any + Send + 'static) {
@@ -98,6 +98,27 @@ pub struct UnresolvedClass {
 impl Diagnostic for UnresolvedClass {
     fn message(&self) -> String {
         "unknown class".into()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src)
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct UnsolvedConstraint {
+    pub file: FileId,
+    pub src: SyntaxNodePtr,
+    pub ctnt: Constraint,
+}
+
+impl Diagnostic for UnsolvedConstraint {
+    fn message(&self) -> String {
+        "unresolved constraint".into()
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {

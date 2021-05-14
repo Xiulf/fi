@@ -100,6 +100,17 @@ impl Instance {
             }
         }
 
+        // @TODO: check if this is always the right thing to do
+        for ty in subst.values_mut() {
+            *ty = ty.everywhere(db, &mut |t| match t.lookup(db) {
+                | TyKind::TypeVar(v) => match vars.get(&v) {
+                    | Some(ty) => *ty,
+                    | None => t,
+                },
+                | _ => t,
+            });
+        }
+
         Some(InstanceMatchResult {
             instance: self.id,
             subst,
@@ -137,6 +148,16 @@ fn match_type(
         | (_, TyKind::TypeVar(tv)) => {
             vars.insert(tv, ty);
             true
+        },
+        | (TyKind::Figure(c1), TyKind::Figure(c2)) => c1 == c2,
+        | (TyKind::Symbol(c1), TyKind::Symbol(c2)) => c1 == c2,
+        | (TyKind::Ctor(c1), TyKind::Ctor(c2)) => c1 == c2,
+        | (TyKind::Tuple(t1), TyKind::Tuple(t2)) if t1.len() == t2.len() => t1
+            .iter()
+            .zip(t2.iter())
+            .all(|(t1, t2)| match_type(db, *t1, *t2, subst, vars)),
+        | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => {
+            match_type(db, a1, b1, subst, vars) && match_type(db, a2, b2, subst, vars)
         },
         | (_, _) => false,
     }

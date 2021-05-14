@@ -164,10 +164,6 @@ impl Module {
         });
 
         for decl in self.declarations(db) {
-            if let ModuleDef::Module(_) = decl {
-                continue;
-            }
-
             decl.diagnostics(db, sink);
         }
 
@@ -294,9 +290,27 @@ impl Func {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let data = db.func_data(self.id);
         let infer = db.infer(self.id.into());
+        let lower = hir_ty::lower::func_ty(db, self.id);
+        let body = db.body(self.id.into());
+
+        eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
+
+        // for (expr, ty) in infer.type_of_expr.iter() {
+        //     eprintln!("{:?} :: {}", body[expr], ty.display(db));
+        // }
+        //
+        // eprintln!();
 
         infer.add_diagnostics(db, self.id.into(), sink);
+        lower.add_diagnostics(
+            db,
+            TypeVarOwner::TypedDefId(self.id.into()),
+            self.file_id(db),
+            data.type_source_map(),
+            sink,
+        );
     }
 }
 
@@ -466,6 +480,19 @@ impl Ctor {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let data = db.type_ctor_data(self.parent.id);
+        let lower = hir_ty::lower::ctor_ty(db, CtorId {
+            parent: self.parent.id,
+            local_id: self.id,
+        });
+
+        lower.add_diagnostics(
+            db,
+            TypeVarOwner::TypedDefId(self.parent.id.into()),
+            self.file_id(db),
+            data.type_source_map(),
+            sink,
+        );
     }
 }
 
@@ -512,10 +539,6 @@ impl Class {
             data.type_source_map(),
             sink,
         );
-
-        for item in self.items(db) {
-            item.diagnostics(db, sink);
-        }
     }
 }
 
