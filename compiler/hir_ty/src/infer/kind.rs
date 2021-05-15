@@ -21,6 +21,21 @@ impl InferenceContext<'_> {
             },
             | TyKind::Figure(_) => self.lang_type("figure-kind"),
             | TyKind::Symbol(_) => self.lang_type("symbol-kind"),
+            | TyKind::Row(fields, tail) => {
+                let elem_kind = self.fresh_kind();
+                let row_kind = self.lang_type("row-kind");
+                let kind = TyKind::App(row_kind, elem_kind).intern(self.db);
+
+                for field in fields.iter() {
+                    self.check_kind(field.ty, elem_kind, origin);
+                }
+
+                if let Some(tail) = tail {
+                    self.check_kind(tail, kind, origin);
+                }
+
+                kind
+            },
             | TyKind::Ctor(id) => self.db.kind_for_ctor(id),
             | TyKind::Tuple(tys) => {
                 let type_kind = self.lang_type("type-kind");

@@ -13,4 +13,4 @@ fun print_args argc (argv :: [*]_) =
         puts argv.*
         print_args (sub_i32 argc 1) (ptr_offset argv 1)
 
-foreign fun test :: for r. Record ( a :: Str | r ) -> Str
+foreign fun test :: for r. { a :: Str | r } -> Str

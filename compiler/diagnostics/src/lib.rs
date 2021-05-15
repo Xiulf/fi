@@ -1,3 +1,4 @@
+mod mismatched_kind;
 mod mismatched_type;
 mod unsolved_constraint;
 
@@ -55,6 +56,8 @@ impl<DB: hir::db::HirDatabase> DiagnosticForWith<DB> for dyn hir::diagnostic::Di
     fn with_diagnostic<R, F: FnOnce(&dyn Diagnostic) -> R>(&self, with: &DB, f: F) -> R {
         if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::MismatchedType>() {
             f(&mismatched_type::MismatchedType::new(with, v))
+        } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::MismatchedKind>() {
+            f(&mismatched_kind::MismatchedKind::new(with, v))
         } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::UnsolvedConstraint>() {
             f(&unsolved_constraint::UnsolvedConstraint::new(with, v))
         } else {

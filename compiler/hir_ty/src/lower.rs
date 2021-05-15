@@ -176,6 +176,11 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             | TypeRef::Record(fields, tail) => {
                 let row = self.lower_row(fields, *tail);
                 let record_ty = self.lang_type("record-type");
+                let type_kind = self.lang_type("type-kind");
+                let row_kind = self.lang_type("row-kind");
+                let row_kind = TyKind::App(row_kind, type_kind).intern(self.db);
+
+                self.check_kind(row, row_kind, ty);
 
                 TyKind::App(record_ty, row).intern(self.db)
             },
@@ -240,15 +245,29 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
     }
 
     pub(crate) fn lower_row(&mut self, fields: &[hir_def::type_ref::Field], tail: Option<LocalTypeRefId>) -> Ty {
+        let elem_kind = self.fresh_kind();
         let fields = fields
             .iter()
-            .map(|f| Field {
-                name: f.name.clone(),
-                ty: self.lower_ty(f.ty),
+            .map(|f| {
+                let ty = self.lower_ty(f.ty);
+
+                self.check_kind(ty, elem_kind, f.ty);
+
+                Field {
+                    name: f.name.clone(),
+                    ty,
+                }
             })
             .collect();
 
-        let tail = tail.map(|t| self.lower_ty(t));
+        let row_kind = self.lang_type("row-kind");
+        let row_kind = TyKind::App(row_kind, elem_kind).intern(self.db);
+        let tail = tail.map(|t| {
+            let ty = self.lower_ty(t);
+
+            self.check_kind(ty, row_kind, t);
+            ty
+        });
 
         TyKind::Row(fields, tail).intern(self.db)
     }
