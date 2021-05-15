@@ -388,15 +388,6 @@ impl FunDep {
     }
 }
 
-// impl AttrsOwner for ItemInstanceChain {
-// }
-//
-// impl ItemInstanceChain {
-//     pub fn instances(&self) -> AstChildren<Instance> {
-//         support::children(&self.0)
-//     }
-// }
-
 impl AttrsOwner for ItemInstance {
 }
 
@@ -488,7 +479,23 @@ impl TypeFn {
 }
 
 impl TypeRec {
-    // pub fn fields(&self) -> AstChildren<
+    pub fn fields(&self) -> AstChildren<RowField> {
+        support::children(&self.0)
+    }
+
+    pub fn tail(&self) -> Option<Type> {
+        support::child::<RowTail>(&self.0).and_then(|t| support::child(&t.0))
+    }
+}
+
+impl TypeRow {
+    pub fn fields(&self) -> AstChildren<RowField> {
+        support::children(&self.0)
+    }
+
+    pub fn tail(&self) -> Option<Type> {
+        support::child::<RowTail>(&self.0).and_then(|t| support::child(&t.0))
+    }
 }
 
 impl TypeTuple {
@@ -515,6 +522,16 @@ impl TypeFor {
 
 impl TypeCtnt {
     pub fn ctnt(&self) -> Option<Constraint> {
+        support::child(&self.0)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+}
+
+impl RowField {
+    pub fn name(&self) -> Option<Name> {
         support::child(&self.0)
     }
 
@@ -561,6 +578,16 @@ impl Constraint {
     }
 }
 
+impl PatTyped {
+    pub fn pat(&self) -> Option<Pat> {
+        support::child(&self.0)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+}
+
 impl PatBind {
     pub fn name(&self) -> Option<Name> {
         support::child(&self.0)
@@ -571,28 +598,24 @@ impl PatBind {
     }
 }
 
+impl PatParens {
+    pub fn pat(&self) -> Option<Pat> {
+        support::child(&self.0)
+    }
+}
+
+impl PatRecord {
+    pub fn fields(&self) -> AstChildren<Field> {
+        support::children(&self.0)
+    }
+}
+
 impl ExprTyped {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
     }
 
     pub fn ty(&self) -> Option<Type> {
-        support::child(&self.0)
-    }
-}
-
-impl ExprApp {
-    pub fn base(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-
-    pub fn arg(&self) -> Option<Expr> {
-        support::children(&self.0).nth(1)
-    }
-}
-
-impl ExprDeref {
-    pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
     }
 }
@@ -609,6 +632,66 @@ impl ExprLit {
     }
 }
 
+impl ExprInfix {
+    pub fn op(&self) -> Option<Path> {
+        support::child(&self.0)
+    }
+
+    pub fn lhs(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn rhs(&self) -> Option<Expr> {
+        support::children(&self.0).nth(1)
+    }
+}
+
+impl ExprApp {
+    pub fn base(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn arg(&self) -> Option<Expr> {
+        support::children(&self.0).nth(1)
+    }
+}
+
+impl ExprField {
+    pub fn base(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn field(&self) -> Option<NameRef> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprDeref {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprCast {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprIndex {
+    pub fn base(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn index(&self) -> Option<Expr> {
+        support::children(&self.0).nth(1)
+    }
+}
+
 impl ExprParens {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
@@ -621,15 +704,21 @@ impl ExprTuple {
     }
 }
 
-impl ExprDo {
-    pub fn block(&self) -> Option<Block> {
-        support::child(&self.0)
+impl ExprRecord {
+    pub fn fields(&self) -> AstChildren<Field> {
+        support::children(&self.0)
     }
 }
 
-impl Block {
-    pub fn statements(&self) -> AstChildren<Stmt> {
+impl ExprArray {
+    pub fn exprs(&self) -> AstChildren<Expr> {
         support::children(&self.0)
+    }
+}
+
+impl ExprDo {
+    pub fn block(&self) -> Option<Block> {
+        support::child(&self.0)
     }
 }
 
@@ -648,6 +737,50 @@ impl ExprIf {
 
     pub fn is_unless(&self) -> bool {
         support::token(&self.0, UNLESS_KW).is_some()
+    }
+}
+
+impl ExprWhile {
+    pub fn cond(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn body(&self) -> Option<Expr> {
+        support::children(&self.0).nth(1)
+    }
+
+    pub fn is_until(&self) -> bool {
+        support::token(&self.0, UNTIL_KW).is_some()
+    }
+}
+
+impl ExprLoop {
+    pub fn body(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprBreak {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprYield {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprReturn {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl Block {
+    pub fn statements(&self) -> AstChildren<Stmt> {
+        support::children(&self.0)
     }
 }
 
@@ -673,6 +806,26 @@ impl StmtBind {
 
 impl StmtExpr {
     pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl FieldNormal {
+    pub fn name(&self) -> Option<Name> {
+        support::child(&self.0)
+    }
+
+    pub fn pat(&self) -> Option<Pat> {
+        support::child(&self.0)
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl FieldPun {
+    pub fn name(&self) -> Option<Name> {
         support::child(&self.0)
     }
 }

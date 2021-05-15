@@ -104,12 +104,12 @@ crate fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser)) {
         let field = p.start();
 
         if p.at(IDENT) && p.nth_at(1, COLON) {
-            p.bump(IDENT);
+            paths::name(p);
             p.bump(COLON);
             f(p);
             field.complete(p, FIELD_NORMAL);
         } else {
-            p.expect(IDENT);
+            paths::name(p);
             field.complete(p, FIELD_PUN);
         }
 

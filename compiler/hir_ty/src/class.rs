@@ -47,7 +47,7 @@ impl Instances {
     pub(crate) fn instances_query(db: &dyn HirDatabase, class: ClassId) -> Arc<Instances> {
         let loc = class.lookup(db.upcast());
         let mut instances = Vec::new();
-        let mut generality = FxHashMap::default();
+        let mut priority = FxHashMap::default();
 
         for lib in db.libs().dependant(loc.module.lib) {
             for (_, module) in db.def_map(lib).modules() {
@@ -55,14 +55,14 @@ impl Instances {
                     let lower = db.lower_instance(inst);
 
                     if lower.instance.class == class {
-                        generality.insert(lower.instance.id, lower.instance.generality(db));
+                        priority.insert(lower.instance.id, lower.instance.priority(db));
                         instances.push(lower);
                     }
                 }
             }
         }
 
-        instances.sort_by_key(|i| generality[&i.instance.id]);
+        instances.sort_by_key(|i| priority[&i.instance.id]);
 
         Arc::new(Instances {
             matchers: instances.into(),
@@ -117,15 +117,21 @@ impl Instance {
         })
     }
 
-    fn generality(&self, db: &dyn HirDatabase) -> isize {
-        let mut score = self.vars.len() as isize * 10;
+    fn priority(&self, db: &dyn HirDatabase) -> isize {
+        let attrs = db.attrs(self.id.into());
 
-        for &ty in self.types.iter() {
-            score += type_score(db, ty);
+        if attrs.by_key("default").exists() {
+            isize::min_value()
+        } else {
+            let mut score = self.vars.len() as isize * 10;
+
+            for &ty in self.types.iter() {
+                score += type_score(db, ty);
+            }
+
+            score -= self.constraints.len() as isize;
+            score
         }
-
-        score -= self.constraints.len() as isize;
-        score
     }
 }
 

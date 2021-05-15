@@ -133,6 +133,57 @@ impl Ty {
             | _ => f(self),
         }
     }
+
+    pub fn to_row_list(self, db: &dyn HirDatabase) -> (List<Field>, Option<Ty>) {
+        match self.lookup(db) {
+            | TyKind::Row(fields, tail) => (fields.clone(), tail),
+            | _ => (vec![].into(), None),
+        }
+    }
+
+    pub fn align_rows_with<R>(
+        db: &dyn HirDatabase,
+        mut f: impl FnMut(Ty, Ty) -> R,
+        t1: Ty,
+        t2: Ty,
+    ) -> (Vec<R>, ((List<Field>, Option<Ty>), (List<Field>, Option<Ty>))) {
+        let (s1, tail1) = t1.to_row_list(db);
+        let (s2, tail2) = t2.to_row_list(db);
+
+        return go((db, &mut f, tail1, tail2), s1.iter().cloned(), s2.iter().cloned());
+
+        fn go<R>(
+            (db, f, t1, t2): (&dyn HirDatabase, &mut impl FnMut(Ty, Ty) -> R, Option<Ty>, Option<Ty>),
+            mut s1: impl Iterator<Item = Field> + Clone,
+            mut s2: impl Iterator<Item = Field> + Clone,
+        ) -> (Vec<R>, ((List<Field>, Option<Ty>), (List<Field>, Option<Ty>))) {
+            let lhs = s1.clone();
+            let rhs = s2.clone();
+
+            match (s1.next(), s2.next()) {
+                | (None, _) => (Vec::new(), ((vec![].into(), t1), (rhs.collect(), t2))),
+                | (_, None) => (Vec::new(), ((lhs.collect(), t1), (vec![].into(), t2))),
+                | (Some(f1), Some(f2)) => {
+                    if f1.name < f2.name {
+                        let (vals, (mut lhs, rhs)) = go((db, f, t1, t2), s1, rhs);
+
+                        lhs.0 = std::iter::once(f1).chain(lhs.0.iter().cloned()).collect();
+                        (vals, (lhs, rhs))
+                    } else if f2.name < f1.name {
+                        let (vals, (lhs, mut rhs)) = go((db, f, t1, t2), lhs, s2);
+
+                        rhs.0 = std::iter::once(f2).chain(rhs.0.iter().cloned()).collect();
+                        (vals, (lhs, rhs))
+                    } else {
+                        let (mut vals, rest) = go((db, f, t1, t2), s1, s2);
+
+                        vals.insert(0, f(f1.ty, f2.ty));
+                        (vals, rest)
+                    }
+                },
+            }
+        }
+    }
 }
 
 impl TyKind {

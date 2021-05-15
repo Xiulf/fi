@@ -134,6 +134,10 @@ impl<'a> ExprCollector<'a> {
         id
     }
 
+    fn alloc_pat_desugared(&mut self, pat: Pat) -> PatId {
+        self.make_pat(pat, Err(SyntheticSyntax))
+    }
+
     fn missing_pat(&mut self) -> PatId {
         self.make_pat(Pat::Missing, Err(SyntheticSyntax))
     }
@@ -164,6 +168,12 @@ impl<'a> ExprCollector<'a> {
                 let arg = self.collect_expr_opt(e.arg());
 
                 self.alloc_expr(Expr::App { base, arg }, syntax_ptr)
+            },
+            | ast::Expr::Field(e) => {
+                let base = self.collect_expr_opt(e.base());
+                let field = e.field()?.as_name();
+
+                self.alloc_expr(Expr::Field { base, field }, syntax_ptr)
             },
             | ast::Expr::Deref(e) => {
                 let expr = self.collect_expr_opt(e.expr());
@@ -201,6 +211,33 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::Tuple { exprs }, syntax_ptr)
             },
+            | ast::Expr::Record(e) => {
+                let fields = e
+                    .fields()
+                    .filter_map(|f| {
+                        Some(match f {
+                            | ast::Field::Normal(f) => RecordField {
+                                name: f.name()?.as_name(),
+                                val: self.collect_expr_opt(f.expr()),
+                            },
+                            | ast::Field::Pun(f) => {
+                                let name = f.name()?.as_name();
+                                let path = Path::from(name.clone());
+                                let val = self.alloc_expr(Expr::Path { path }, syntax_ptr.clone());
+
+                                RecordField { name, val }
+                            },
+                        })
+                    })
+                    .collect();
+
+                self.alloc_expr(Expr::Record { fields }, syntax_ptr)
+            },
+            | ast::Expr::Array(e) => {
+                let exprs = e.exprs().map(|e| self.collect_expr(e)).collect();
+
+                self.alloc_expr(Expr::Array { exprs }, syntax_ptr)
+            },
             | ast::Expr::Do(e) => {
                 let stmts = e.block()?.statements().map(|s| self.collect_stmt(s)).collect();
 
@@ -220,6 +257,40 @@ impl<'a> ExprCollector<'a> {
                     },
                     syntax_ptr,
                 )
+            },
+            | ast::Expr::While(e) => {
+                let cond = self.collect_expr_opt(e.cond());
+                let body = self.collect_expr_opt(e.body());
+
+                self.alloc_expr(
+                    Expr::While {
+                        cond,
+                        body,
+                        inverse: e.is_until(),
+                    },
+                    syntax_ptr,
+                )
+            },
+            | ast::Expr::Loop(e) => {
+                let body = self.collect_expr_opt(e.body());
+
+                self.alloc_expr(Expr::Loop { body }, syntax_ptr)
+            },
+            | ast::Expr::Next(_) => self.alloc_expr(Expr::Next, syntax_ptr),
+            | ast::Expr::Break(e) => {
+                let expr = e.expr().map(|e| self.collect_expr(e));
+
+                self.alloc_expr(Expr::Break { expr }, syntax_ptr)
+            },
+            | ast::Expr::Yield(e) => {
+                let expr = e.expr().map(|e| self.collect_expr(e));
+
+                self.alloc_expr(Expr::Yield { expr }, syntax_ptr)
+            },
+            | ast::Expr::Return(e) => {
+                let expr = e.expr().map(|e| self.collect_expr(e));
+
+                self.alloc_expr(Expr::Return { expr }, syntax_ptr)
             },
             | _ => unimplemented!("{:?}", expr),
         })
@@ -258,6 +329,12 @@ impl<'a> ExprCollector<'a> {
     fn collect_pat(&mut self, pat: ast::Pat) -> PatId {
         let ptr = AstPtr::new(&pat);
         let pattern = match pat {
+            | ast::Pat::Typed(p) => {
+                let pat = self.collect_pat_opt(p.pat());
+                let ty = self.type_builder.alloc_type_ref_opt(p.ty());
+
+                Pat::Typed { pat, ty }
+            },
             | ast::Pat::Wildcard(_) => Pat::Wildcard,
             | ast::Pat::Bind(pat) => {
                 let name = pat.name().map(|n| n.as_name()).unwrap_or_else(Name::missing);
@@ -275,6 +352,41 @@ impl<'a> ExprCollector<'a> {
                 } else {
                     Pat::Bind { name, subpat }
                 }
+            },
+            | ast::Pat::Parens(p) => {
+                let inner = self.collect_pat_opt(p.pat());
+                let src = self.to_source(ptr);
+
+                self.source_map.pat_map.insert(src, inner);
+
+                return inner;
+            },
+            | ast::Pat::Record(p) => {
+                let fields = p
+                    .fields()
+                    .filter_map(|f| {
+                        Some(match f {
+                            | ast::Field::Normal(f) => RecordField {
+                                name: f.name()?.as_name(),
+                                val: self.collect_pat_opt(f.pat()),
+                            },
+                            | ast::Field::Pun(f) => {
+                                let name = f.name()?.as_name();
+                                let val = self.alloc_pat(
+                                    Pat::Bind {
+                                        name: name.clone(),
+                                        subpat: None,
+                                    },
+                                    ptr.clone(),
+                                );
+
+                                RecordField { name, val }
+                            },
+                        })
+                    })
+                    .collect();
+
+                Pat::Record { fields }
             },
             | _ => unimplemented!("{:?}", pat),
         };

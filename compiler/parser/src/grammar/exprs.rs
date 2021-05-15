@@ -77,6 +77,16 @@ crate fn postfix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                         p.bump(STAR);
                         m = expr.complete(p, EXPR_DEREF);
                     },
+                    | IDENT => {
+                        paths::name_ref(p);
+                        m = expr.complete(p, EXPR_FIELD);
+                    },
+                    | L_PAREN => {
+                        p.bump(L_PAREN);
+                        types::ty(p);
+                        p.expect(R_PAREN);
+                        m = expr.complete(p, EXPR_CAST);
+                    },
                     | _ => {
                         p.error("expected '*', '(' or an identifier");
                         expr.abandon(p);
@@ -254,6 +264,26 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                     Some(m.complete(p, EXPR_PARENS))
                 }
             }
+        },
+        | L_BRACKET => {
+            p.bump(L_BRACKET);
+
+            while !p.at(EOF) && !p.at(R_BRACKET) {
+                expr(p);
+
+                if !p.at(R_BRACKET) {
+                    p.expect(COMMA);
+                }
+            }
+
+            p.expect(R_BRACKET);
+            Some(m.complete(p, EXPR_ARRAY))
+        },
+        | L_BRACE => {
+            p.bump(L_BRACE);
+            patterns::record_fields(p, expr);
+            p.expect(R_BRACE);
+            Some(m.complete(p, EXPR_RECORD))
         },
         | _ => {
             p.error("expred an expression");

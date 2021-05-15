@@ -36,7 +36,7 @@ crate fn any_item(p: &mut Parser) {
             class(p, m);
         },
         | INSTANCE_KW => {
-            instance_chain(p, m);
+            instance(p, m);
         },
         | _ => {
             m.abandon(p);
@@ -247,20 +247,7 @@ crate fn fun_dep(p: &mut Parser) {
     m.complete(p, FUN_DEP);
 }
 
-crate fn instance_chain(p: &mut Parser, m: Marker) {
-    instance(p);
-
-    // while p.eat(ELSE_KW) {
-    //     instance(p);
-    // }
-    //
-    // m.complete(p, ITEM_INSTANCE_CHAIN);
-    m.abandon(p);
-}
-
-crate fn instance(p: &mut Parser) {
-    let m = p.start();
-
+crate fn instance(p: &mut Parser, m: Marker) {
     p.expect(INSTANCE_KW);
     paths::path(p);
 

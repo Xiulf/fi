@@ -297,11 +297,15 @@ impl Func {
 
         eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
 
-        // for (expr, ty) in infer.type_of_expr.iter() {
-        //     eprintln!("{:?} :: {}", body[expr], ty.display(db));
-        // }
-        //
-        // eprintln!();
+        for (expr, ty) in infer.type_of_expr.iter() {
+            eprintln!("{:?} :: {}", body[expr], ty.display(db));
+        }
+
+        for (pat, ty) in infer.type_of_pat.iter() {
+            eprintln!("{:?} :: {}", body[pat], ty.display(db));
+        }
+
+        eprintln!();
 
         infer.add_diagnostics(db, self.id.into(), sink);
         lower.add_diagnostics(

@@ -43,6 +43,7 @@ type Bool =
 
 instance Integer Int8
 instance Integer Int16
+@default
 instance Integer Int32
 instance Integer Int64
 instance Integer Int128
@@ -52,9 +53,11 @@ instance Integer Uint32
 instance Integer Uint64
 instance Integer Uint128
 
+@default
 instance Decimal Float32
 instance Decimal Float64
 
+@default
 instance Pointer (Ptr t) t
 instance Pointer (BufPtr t) t
 instance Pointer (BufPtrSentinel t s) t

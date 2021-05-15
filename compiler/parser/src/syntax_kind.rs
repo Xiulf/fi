@@ -93,7 +93,6 @@ pub enum SyntaxKind {
     ITEM_STATIC,
     ITEM_CONST,
     ITEM_CLASS,
-    ITEM_INSTANCE_CHAIN,
     ITEM_INSTANCE,
     ITEM_TYPE,
     ITEM_CTOR,
@@ -114,6 +113,7 @@ pub enum SyntaxKind {
     FIELD_PUN,
 
     TYPE_KINDED,
+    TYPE_PLACEHOLDER,
     TYPE_APP,
     TYPE_PATH,
     TYPE_ARRAY,
@@ -121,10 +121,14 @@ pub enum SyntaxKind {
     TYPE_PTR,
     TYPE_FN,
     TYPE_REC,
+    TYPE_ROW,
     TYPE_TUPLE,
     TYPE_PARENS,
     TYPE_FOR,
     TYPE_CTNT,
+
+    ROW_FIELD,
+    ROW_TAIL,
 
     SENTINEL,
     GENERICS,

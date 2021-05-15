@@ -190,6 +190,8 @@ impl InferenceContext<'_> {
             | (TyKind::TypeVar(c1), TyKind::TypeVar(c2)) => c1 == c2,
             | (TyKind::Figure(c1), TyKind::Figure(c2)) => c1 == c2,
             | (TyKind::Symbol(c1), TyKind::Symbol(c2)) => c1 == c2,
+            | (TyKind::Row(..), _) => self.unify_rows(t1, t2),
+            | (_, TyKind::Row(..)) => self.unify_rows(t1, t2),
             | (TyKind::Ctor(c1), TyKind::Ctor(c2)) => c1 == c2,
             | (TyKind::Tuple(t1), TyKind::Tuple(t2)) if t1.len() == t2.len() => {
                 t1.iter().zip(t2.iter()).all(|(t1, t2)| self.unify_types(*t1, *t2))
@@ -213,6 +215,32 @@ impl InferenceContext<'_> {
                 res
             },
             | (_, TyKind::ForAll(_, _)) => self.unify_types(t2, t1),
+            | (_, _) => false,
+        }
+    }
+
+    fn unify_rows(&mut self, t1: Ty, t2: Ty) -> bool {
+        let (matches, (lhs, rhs)) = Ty::align_rows_with(self.db, |t1, t2| self.unify_types(t1, t2), t1, t2);
+
+        matches.into_iter().all(std::convert::identity) && self.unify_tails(lhs, rhs)
+    }
+
+    fn unify_tails(&mut self, (f1, t1): (List<Field>, Option<Ty>), (f2, t2): (List<Field>, Option<Ty>)) -> bool {
+        match (t1.map(|t| t.lookup(self.db)), t2.map(|t| t.lookup(self.db))) {
+            | (Some(TyKind::Unknown(u)), _) if f1.is_empty() => {
+                self.solve_type(u, TyKind::Row(f2, t2).intern(self.db));
+                true
+            },
+            | (_, Some(TyKind::Unknown(u))) if f2.is_empty() => {
+                self.solve_type(u, TyKind::Row(f1, t1).intern(self.db));
+                true
+            },
+            | (None, None) => f1.is_empty() && f2.is_empty(),
+            | (Some(TyKind::TypeVar(v1)), Some(TyKind::TypeVar(v2))) => v1 == v2 && f1.is_empty() && f2.is_empty(),
+            | (Some(TyKind::Skolem(_, s1)), Some(TyKind::Skolem(_, s2))) => s1 == s2 && f1.is_empty() && f2.is_empty(),
+            | (Some(TyKind::Unknown(u1)), Some(TyKind::Unknown(u2))) if u1 != u2 => {
+                unimplemented!();
+            },
             | (_, _) => false,
         }
     }

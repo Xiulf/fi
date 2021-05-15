@@ -116,7 +116,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         let mut res = None;
         let lowered = match &self.type_map[ty] {
             | TypeRef::Error => TyKind::Error.intern(self.db),
-            | TypeRef::Placeholder => TyKind::Error.intern(self.db),
+            | TypeRef::Placeholder => self.fresh_type_without_kind(),
             | TypeRef::Path(path) => return self.lower_path(&path, ty),
             | TypeRef::Tuple(tys) => {
                 let tys = tys.iter().map(|&t| self.lower_ty(t));
@@ -173,6 +173,13 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
 
                 self.fn_type(arg, ret)
             },
+            | TypeRef::Record(fields, tail) => {
+                let row = self.lower_row(fields, *tail);
+                let record_ty = self.lang_type("record-type");
+
+                TyKind::App(record_ty, row).intern(self.db)
+            },
+            | TypeRef::Row(fields, tail) => self.lower_row(fields, *tail),
             | TypeRef::Forall(vars, inner) => {
                 let new_resolver = Resolver::for_type(self.db.upcast(), self.owner.into(), *inner);
                 let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
@@ -210,12 +217,40 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                     }
                 })
             },
+            | TypeRef::Constraint(ctnt, inner) => {
+                if let Some(class) = self.lower_class_path(&ctnt.class) {
+                    let ctnt = Constraint {
+                        class,
+                        types: ctnt.types.iter().map(|&t| self.lower_ty(t)).collect(),
+                    };
+
+                    let inner = self.lower_ty(*inner);
+
+                    TyKind::Ctnt(ctnt, inner).intern(self.db)
+                } else {
+                    self.error()
+                }
+            },
             | ty => unimplemented!("{:?}", ty),
         };
 
         self.types.insert(ty, lowered);
 
         (lowered, res)
+    }
+
+    pub(crate) fn lower_row(&mut self, fields: &[hir_def::type_ref::Field], tail: Option<LocalTypeRefId>) -> Ty {
+        let fields = fields
+            .iter()
+            .map(|f| Field {
+                name: f.name.clone(),
+                ty: self.lower_ty(f.ty),
+            })
+            .collect();
+
+        let tail = tail.map(|t| self.lower_ty(t));
+
+        TyKind::Row(fields, tail).intern(self.db)
     }
 
     pub(crate) fn lower_path(&mut self, path: &Path, type_ref: LocalTypeRefId) -> (Ty, Option<TypeNs>) {

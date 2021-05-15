@@ -219,6 +219,27 @@ impl HirDisplay for Ty {
                         write!(f, "]")?;
                         TyParens(args[0]).hir_fmt(f)
                     },
+                    "record-type"(1) => {
+                        write!(f, "{{")?;
+
+                        if let TyKind::Row(fields, tail) = args[0].lookup(f.db) {
+                            if !fields.is_empty() {
+                                write!(f, " ")?;
+                            }
+
+                            f.write_joined(fields.iter(), ", ")?;
+
+                            if let Some(tail) = tail {
+                                write!(f, " | ")?;
+                                tail.hir_fmt(f)?;
+                                write!(f, " ")?;
+                            } else if !fields.is_empty() {
+                                write!(f, " ")?;
+                            }
+                        }
+
+                        write!(f, "}}")
+                    },
                 }
             }
         }
@@ -234,6 +255,17 @@ impl HirDisplay for Ty {
             | TyKind::TypeVar(t) => t.hir_fmt(f),
             | TyKind::Figure(i) => write!(f, "{}", i),
             | TyKind::Symbol(s) => write!(f, "{}", s),
+            | TyKind::Row(fields, tail) => {
+                write!(f, "(")?;
+                f.write_joined(fields.iter(), ", ")?;
+
+                if let Some(tail) = tail {
+                    write!(f, " | ")?;
+                    tail.hir_fmt(f)?;
+                }
+
+                write!(f, ")")
+            },
             | TyKind::Ctor(id) => write!(f, "{}", f.db.type_ctor_data(id).name),
             | TyKind::Tuple(tys) => {
                 write!(f, "(")?;
@@ -258,6 +290,13 @@ impl HirDisplay for Ty {
             },
             | _ => unimplemented!(),
         }
+    }
+}
+
+impl HirDisplay for Field {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        write!(f, "{} :: ", self.name)?;
+        self.ty.hir_fmt(f)
     }
 }
 

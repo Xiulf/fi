@@ -2,13 +2,15 @@ module main (main) =
 
 import core
 import core/libc (puts)
-import core/intrinsics (sub_i32, buf_ptr_offset, eq_i32)
+import core/intrinsics (sub_i32, ptr_offset, eq_i32)
 
 fun main argc argv = do
     print_args argc argv
-    0 :: Int32
+    0
 
-fun print_args argc argv =
+fun print_args argc (argv :: [*]_) =
     unless eq_i32 argc 0 do
         puts argv.*
-        print_args (sub_i32 argc 1) (buf_ptr_offset argv 1)
+        print_args (sub_i32 argc 1) (ptr_offset argv 1)
+
+foreign fun test :: for r. Record ( a :: Str | r ) -> Str

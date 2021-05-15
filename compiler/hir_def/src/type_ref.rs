@@ -20,6 +20,8 @@ pub enum TypeRef {
     Ptr(LocalTypeRefId, PtrLen),
     Slice(LocalTypeRefId),
     Array(LocalTypeRefId, usize),
+    Record(Box<[Field]>, Option<LocalTypeRefId>),
+    Row(Box<[Field]>, Option<LocalTypeRefId>),
     Func(LocalTypeRefId, LocalTypeRefId),
     Forall(Box<[LocalTypeVarId]>, LocalTypeRefId),
     Constraint(Constraint, LocalTypeRefId),
@@ -44,6 +46,12 @@ pub struct Constraint {
 pub struct TypeVar {
     pub name: Name,
     pub kind: Option<LocalTypeRefId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Field {
+    pub name: Name,
+    pub ty: LocalTypeRefId,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -75,6 +83,7 @@ impl TypeRef {
             | ast::Type::Kinded(inner) => {
                 TypeRef::Kinded(map.alloc_type_ref_opt(inner.ty()), map.alloc_type_ref_opt(inner.kind()))
             },
+            | ast::Type::Placeholder(_) => TypeRef::Placeholder,
             | ast::Type::App(inner) => TypeRef::App(
                 map.alloc_type_ref_opt(inner.base()),
                 map.alloc_type_ref_opt(inner.arg()),
@@ -97,7 +106,36 @@ impl TypeRef {
                 map.alloc_type_ref_opt(inner.param()),
                 map.alloc_type_ref_opt(inner.ret()),
             ),
-            | ast::Type::Rec(_inner) => unimplemented!(),
+            | ast::Type::Rec(inner) => {
+                let fields = inner
+                    .fields()
+                    .filter_map(|f| {
+                        Some(Field {
+                            name: f.name()?.as_name(),
+                            ty: map.alloc_type_ref_opt(f.ty()),
+                        })
+                    })
+                    .collect();
+
+                let tail = inner.tail().map(|t| map.alloc_type_ref(t));
+
+                TypeRef::Record(fields, tail)
+            },
+            | ast::Type::Row(inner) => {
+                let fields = inner
+                    .fields()
+                    .filter_map(|f| {
+                        Some(Field {
+                            name: f.name()?.as_name(),
+                            ty: map.alloc_type_ref_opt(f.ty()),
+                        })
+                    })
+                    .collect();
+
+                let tail = inner.tail().map(|t| map.alloc_type_ref(t));
+
+                TypeRef::Row(fields, tail)
+            },
             | ast::Type::Tuple(inner) => TypeRef::Tuple(inner.types().map(|t| map.alloc_type_ref(t)).collect()),
             | ast::Type::Parens(inner) => Self::from_ast_opt(inner.ty(), map),
             | ast::Type::For(inner) => {

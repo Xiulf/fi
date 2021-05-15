@@ -54,6 +54,7 @@ ast_node!(Pat {
 
 ast_node!(Type {
     Kinded(TypeKinded, TYPE_KINDED),
+    Placeholder(TypePlaceholder, TYPE_PLACEHOLDER),
     App(TypeApp, TYPE_APP),
     Path(TypePath, TYPE_PATH),
     Array(TypeArray, TYPE_ARRAY),
@@ -61,11 +62,15 @@ ast_node!(Type {
     Ptr(TypePtr, TYPE_PTR),
     Fn(TypeFn, TYPE_FN),
     Rec(TypeRec, TYPE_REC),
+    Row(TypeRow, TYPE_ROW),
     Tuple(TypeTuple, TYPE_TUPLE),
     Parens(TypeParens, TYPE_PARENS),
     For(TypeFor, TYPE_FOR),
     Ctnt(TypeCtnt, TYPE_CTNT),
 });
+
+ast_node!(RowField, ROW_FIELD);
+ast_node!(RowTail, ROW_TAIL);
 
 ast_node!(Sentinel, SENTINEL);
 ast_node!(Generics, GENERICS);
@@ -104,6 +109,11 @@ ast_node!(Expr {
 });
 
 ast_node!(Block, BLOCK);
+
+ast_node!(Field {
+    Normal(FieldNormal, FIELD_NORMAL),
+    Pun(FieldPun, FIELD_PUN),
+});
 
 ast_node!(Path, PATH);
 ast_node!(PathSegment, PATH_SEGMENT);

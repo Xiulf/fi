@@ -71,6 +71,10 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
             paths::path(p);
             Some(m.complete(p, TYPE_PATH))
         },
+        | UNDERSCORE => {
+            p.bump(UNDERSCORE);
+            Some(m.complete(p, TYPE_PLACEHOLDER))
+        },
         | STAR => {
             p.bump(STAR);
             atom(p);
@@ -99,6 +103,29 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
             if p.eat(R_PAREN) {
                 Some(m.complete(p, TYPE_TUPLE))
+            } else if p.at(IDENT) && p.nth_at(1, DBL_COLON) {
+                while !p.at(EOF) && !p.at(R_PAREN) {
+                    let field = p.start();
+
+                    paths::name(p);
+                    p.expect(DBL_COLON);
+                    ty(p);
+                    field.complete(p, ROW_FIELD);
+
+                    if !p.at(R_PAREN) && !p.at(PIPE) {
+                        p.expect(COMMA);
+                    }
+
+                    if p.eat(PIPE) {
+                        let tail = p.start();
+
+                        ty(p);
+                        tail.complete(p, ROW_TAIL);
+                    }
+                }
+
+                p.expect(R_PAREN);
+                Some(m.complete(p, TYPE_ROW))
             } else {
                 let mut is_tuple = false;
 
@@ -122,6 +149,32 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
                     Some(m.complete(p, TYPE_PARENS))
                 }
             }
+        },
+        | L_BRACE => {
+            p.bump(L_BRACE);
+
+            while !p.at(EOF) && !p.at(R_BRACE) {
+                let field = p.start();
+
+                paths::name(p);
+                p.expect(DBL_COLON);
+                ty(p);
+                field.complete(p, ROW_FIELD);
+
+                if !p.at(R_BRACE) && !p.at(PIPE) {
+                    p.expect(COMMA);
+                }
+
+                if p.eat(PIPE) {
+                    let tail = p.start();
+
+                    ty(p);
+                    tail.complete(p, ROW_TAIL);
+                }
+            }
+
+            p.expect(R_BRACE);
+            Some(m.complete(p, TYPE_REC))
         },
         | FOR_KW => {
             p.bump(FOR_KW);

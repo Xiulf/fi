@@ -33,21 +33,23 @@ impl BodyInferenceContext<'_> {
                 self.check_pat(*base, ty);
                 ret
             },
-            | Pat::Path { path } => match self.infer_pat_path(pat, path) {
-                | Some(ty) => ty,
-                | None => {
+            | Pat::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
+                | Some(ValueNs::Ctor(id)) => {
+                    let ty = self.db.value_ty(id.into());
+
+                    self.instantiate(ty)
+                },
+                | Some(ValueNs::Const(id)) => {
+                    let ty = self.db.value_ty(id.into());
+
+                    self.instantiate(ty)
+                },
+                | _ => {
                     self.report(InferenceDiagnostic::UnresolvedValue { id: pat.into() });
                     self.error()
                 },
             },
-            | Pat::Bind { name, subpat: None } => {
-                let path = Path::from(name.clone());
-
-                match self.infer_pat_path(pat, &path) {
-                    | Some(ty) => ty,
-                    | None => self.fresh_type(),
-                }
-            },
+            | Pat::Bind { name, subpat: None } => self.fresh_type(),
             | Pat::Bind {
                 subpat: Some(subpat), ..
             } => self.infer_pat(*subpat),
@@ -104,17 +106,6 @@ impl BodyInferenceContext<'_> {
 
         self.result.type_of_pat.insert(pat, ty);
         ty
-    }
-
-    fn infer_pat_path(&mut self, pat: PatId, path: &Path) -> Option<Ty> {
-        match self.resolver.resolve_value_fully(self.db.upcast(), path) {
-            | Some(ValueNs::Ctor(id)) => {
-                let ty = self.db.value_ty(id.into());
-
-                Some(self.instantiate(ty))
-            },
-            | _ => None,
-        }
     }
 
     pub fn check_pat(&mut self, pat: PatId, expected: Ty) {

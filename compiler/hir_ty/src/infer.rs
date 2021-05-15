@@ -3,6 +3,7 @@ mod expr;
 mod kind;
 mod pat;
 mod skolem;
+mod subsume;
 mod unify;
 
 use crate::db::HirDatabase;
@@ -50,6 +51,8 @@ struct BodyInferenceContext<'a> {
     icx: InferenceContext<'a>,
     body: Arc<Body>,
     self_type: Ty,
+    ret_type: Ty,
+    yield_type: Ty,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -163,10 +166,13 @@ impl<'a> InferenceContext<'a> {
 
 impl<'a> BodyInferenceContext<'a> {
     fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: DefWithBodyId) -> Self {
+        let error = TyKind::Error.intern(db);
         BodyInferenceContext {
             icx: InferenceContext::new(db, resolver, owner.into()),
             body: db.body(owner),
-            self_type: TyKind::Error.intern(db),
+            self_type: error,
+            ret_type: error,
+            yield_type: error,
         }
     }
 
@@ -185,6 +191,8 @@ impl<'a> BodyInferenceContext<'a> {
         }
 
         self.self_type = ty;
+        self.ret_type = ret;
+        self.yield_type = self.fresh_type();
         self.check_expr(self.body.body_expr(), ret);
     }
 }
