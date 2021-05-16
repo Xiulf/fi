@@ -465,7 +465,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         id: ModuleDefId::ConstId(
                             ConstLoc {
                                 id: ItemTreeId::new(self.file_id, id),
-                                container,
+                                module,
                             }
                             .intern(self.def_collector.db),
                         ),

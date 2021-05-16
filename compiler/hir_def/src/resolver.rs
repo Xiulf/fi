@@ -316,15 +316,15 @@ impl HasResolver for FuncId {
     }
 }
 
-impl HasResolver for ConstId {
+impl HasResolver for StaticId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
         self.lookup(db).container.resolver(db)
     }
 }
 
-impl HasResolver for StaticId {
+impl HasResolver for ConstId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        self.lookup(db).container.resolver(db)
+        self.lookup(db).module.resolver(db)
     }
 }
 

@@ -134,6 +134,47 @@ impl Ty {
         }
     }
 
+    pub fn everything<F>(self, db: &dyn HirDatabase, f: &mut F)
+    where
+        F: FnMut(Ty),
+    {
+        match self.lookup(db) {
+            | TyKind::Skolem(_, k) => k.everything(db, f),
+            | TyKind::Row(fields, tail) => {
+                for field in fields.iter() {
+                    field.ty.everything(db, f);
+                }
+
+                if let Some(tail) = tail {
+                    tail.everything(db, f);
+                }
+            },
+            | TyKind::Tuple(tys) => {
+                for ty in tys.iter() {
+                    ty.everything(db, f);
+                }
+            },
+            | TyKind::App(a, b) => {
+                a.everything(db, f);
+                b.everything(db, f);
+            },
+            | TyKind::Ctnt(ctnt, ty) => {
+                for ty in ctnt.types.iter() {
+                    ty.everything(db, f);
+                }
+
+                ty.everything(db, f);
+            },
+            | TyKind::ForAll(k, t) => {
+                k.everything(db, f);
+                t.everything(db, f);
+            },
+            | _ => {},
+        }
+
+        f(self)
+    }
+
     pub fn to_row_list(self, db: &dyn HirDatabase) -> (List<Field>, Option<Ty>) {
         match self.lookup(db) {
             | TyKind::Row(fields, tail) => (fields.clone(), tail),

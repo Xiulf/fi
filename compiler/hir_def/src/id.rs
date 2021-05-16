@@ -103,7 +103,7 @@ impl_intern!(StaticId, StaticLoc, intern_static, lookup_intern_static);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConstId(salsa::InternId);
-pub type ConstLoc = AssocItemLoc<Const>;
+pub type ConstLoc = ItemLoc<Const>;
 impl_intern!(ConstId, ConstLoc, intern_const, lookup_intern_const);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -308,6 +308,37 @@ impl TypeVarOwner {
                 | TypedDefId::ClassId(id) => f(db.class_data(id).type_source_map()),
                 | TypedDefId::InstanceId(id) => f(db.instance_data(id).type_source_map()),
             },
+        }
+    }
+
+    pub fn container(self, db: &dyn DefDatabase) -> ContainerId {
+        match self {
+            | TypeVarOwner::DefWithBodyId(id) => id.container(db),
+            | TypeVarOwner::TypedDefId(id) => id.container(db),
+        }
+    }
+}
+
+impl DefWithBodyId {
+    pub fn container(self, db: &dyn DefDatabase) -> ContainerId {
+        match self {
+            | DefWithBodyId::FuncId(id) => id.lookup(db).container,
+            | DefWithBodyId::StaticId(id) => id.lookup(db).container,
+            | DefWithBodyId::ConstId(id) => ContainerId::Module(id.lookup(db).module),
+        }
+    }
+}
+
+impl TypedDefId {
+    pub fn container(self, db: &dyn DefDatabase) -> ContainerId {
+        match self {
+            | TypedDefId::FuncId(id) => id.lookup(db).container,
+            | TypedDefId::StaticId(id) => id.lookup(db).container,
+            | TypedDefId::TypeAliasId(id) => ContainerId::Module(id.lookup(db).module),
+            | TypedDefId::TypeCtorId(id) => ContainerId::Module(id.lookup(db).module),
+            | TypedDefId::CtorId(id) => ContainerId::Module(id.parent.lookup(db).module),
+            | TypedDefId::ClassId(id) => ContainerId::Module(id.lookup(db).module),
+            | TypedDefId::InstanceId(id) => ContainerId::Module(id.lookup(db).module),
         }
     }
 }

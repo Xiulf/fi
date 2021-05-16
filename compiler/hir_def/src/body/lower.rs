@@ -191,10 +191,10 @@ impl<'a> ExprCollector<'a> {
             },
             | ast::Expr::Lit(e) => {
                 let lit = match e.literal()? {
-                    | ast::Literal::Int(l) => Literal::Int(Default::default()),
-                    | ast::Literal::Float(l) => Literal::Float(Default::default()),
-                    | ast::Literal::Char(l) => Literal::Char(Default::default()),
-                    | ast::Literal::String(l) => Literal::String(Default::default()),
+                    | ast::Literal::Int(l) => Literal::Int(l.value()?),
+                    | ast::Literal::Float(l) => Literal::Float(l.value()?.to_bits()),
+                    | ast::Literal::Char(l) => Literal::Char(l.value()?),
+                    | ast::Literal::String(l) => Literal::String(l.value()?),
                 };
 
                 self.alloc_expr(Expr::Lit { lit }, syntax_ptr)
@@ -242,6 +242,12 @@ impl<'a> ExprCollector<'a> {
                 let stmts = e.block()?.statements().map(|s| self.collect_stmt(s)).collect();
 
                 self.alloc_expr(Expr::Do { stmts }, syntax_ptr)
+            },
+            | ast::Expr::Clos(e) => {
+                let pats = e.params().map(|p| self.collect_pat(p)).collect();
+                let stmts = e.block()?.statements().map(|s| self.collect_stmt(s)).collect();
+
+                self.alloc_expr(Expr::Clos { pats, stmts }, syntax_ptr)
             },
             | ast::Expr::If(e) => {
                 let cond = self.collect_expr_opt(e.cond());
@@ -360,6 +366,11 @@ impl<'a> ExprCollector<'a> {
                 self.source_map.pat_map.insert(src, inner);
 
                 return inner;
+            },
+            | ast::Pat::Tuple(p) => {
+                let pats = p.pats().map(|p| self.collect_pat(p)).collect();
+
+                Pat::Tuple { pats }
             },
             | ast::Pat::Record(p) => {
                 let fields = p

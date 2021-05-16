@@ -419,6 +419,18 @@ impl TypeKinded {
     }
 }
 
+impl TypeFigure {
+    pub fn int(&self) -> Option<LitInt> {
+        support::child(&self.0)
+    }
+}
+
+impl TypeSymbol {
+    pub fn string(&self) -> Option<LitString> {
+        support::child(&self.0)
+    }
+}
+
 impl TypeApp {
     pub fn base(&self) -> Option<Type> {
         support::children(&self.0).nth(0)
@@ -604,6 +616,12 @@ impl PatParens {
     }
 }
 
+impl PatTuple {
+    pub fn pats(&self) -> AstChildren<Pat> {
+        support::children(&self.0)
+    }
+}
+
 impl PatRecord {
     pub fn fields(&self) -> AstChildren<Field> {
         support::children(&self.0)
@@ -717,6 +735,16 @@ impl ExprArray {
 }
 
 impl ExprDo {
+    pub fn block(&self) -> Option<Block> {
+        support::child(&self.0)
+    }
+}
+
+impl ExprClos {
+    pub fn params(&self) -> AstChildren<Pat> {
+        support::children(&self.0)
+    }
+
     pub fn block(&self) -> Option<Block> {
         support::child(&self.0)
     }
@@ -852,11 +880,75 @@ impl LitChar {
     pub fn value(&self) -> Option<char> {
         let ch = support::token(&self.0, CHAR)?;
         let text = ch.text();
-        let mut chars = text[1..text.len() - 1].chars();
+        let chars = text[1..text.len() - 1].chars();
 
-        match chars.next()? {
-            | '\\' => {
-                unimplemented!();
+        Self::escape(chars)
+    }
+
+    fn escape(mut input: impl Iterator<Item = char>) -> Option<char> {
+        let mut input = input.peekable();
+
+        match input.next()? {
+            | '\\' => match *input.peek()? {
+                | '\'' => {
+                    input.next();
+                    Some('\'')
+                },
+                | '"' => {
+                    input.next();
+                    Some('"')
+                },
+                | '\\' => {
+                    input.next();
+                    Some('\\')
+                },
+                | 'r' => {
+                    input.next();
+                    Some('\r')
+                },
+                | 'n' => {
+                    input.next();
+                    Some('\n')
+                },
+                | 't' => {
+                    input.next();
+                    Some('\t')
+                },
+                | '0' => {
+                    input.next();
+                    Some('\0')
+                },
+                | 'x' => {
+                    input.next();
+
+                    let mut num = String::with_capacity(2);
+
+                    while input.peek().map(|c| c.is_digit(16)).unwrap_or(false) && num.len() < 2 {
+                        num.push(input.next()?);
+                    }
+
+                    let num = u32::from_str_radix(&num, 16).ok()?;
+
+                    char::from_u32(num)
+                },
+                | 'u' => {
+                    input.next();
+
+                    let _ = (*input.peek()? == '{').then(|| ())?;
+                    let _ = input.next();
+                    let mut num = String::with_capacity(4);
+
+                    while input.peek().map(|c| c.is_digit(16)).unwrap_or(false) && num.len() < 6 {
+                        num.push(input.next()?);
+                    }
+
+                    let _ = (*input.peek()? == '}').then(|| ())?;
+                    let _ = input.next();
+                    let num = u32::from_str_radix(&num, 16).ok()?;
+
+                    char::from_u32(num)
+                },
+                | _ => None,
             },
             | ch => Some(ch),
         }
@@ -868,7 +960,20 @@ impl LitString {
         let string = support::token(&self.0, STRING)?;
         let text = string.text();
 
-        Some(text[1..text.len() - 1].into())
+        if text.starts_with('r') {
+            Some(text[2..text.len() - 1].into())
+        } else {
+            let mut chars = text[1..text.len() - 1].chars();
+            let mut text = String::with_capacity(chars.as_str().len());
+
+            while let Some(ch) = LitChar::escape(&mut chars) {
+                text.push(ch);
+            }
+
+            text.shrink_to_fit();
+
+            Some(text)
+        }
     }
 }
 

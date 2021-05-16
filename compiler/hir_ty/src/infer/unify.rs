@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UnkLevel(Vec<Unknown>);
 
-#[derive(Default, Clone)]
+#[derive(Default, Debug, Clone)]
 pub(super) struct Substitution {
     next_unknown: u32,
     tys: FxHashMap<Unknown, Ty>,
@@ -20,13 +20,6 @@ impl Substitution {
 }
 
 impl InferenceContext<'_> {
-    pub fn fresh_unknown(&mut self) -> Unknown {
-        let u = Unknown::from_raw(self.subst.next_unknown);
-        let _ = self.subst.next_unknown += 1;
-
-        u
-    }
-
     pub fn fresh_type_without_kind(&mut self) -> Ty {
         let t1 = Unknown::from_raw(self.subst.next_unknown + 0);
         let t2 = Unknown::from_raw(self.subst.next_unknown + 1);
@@ -109,6 +102,25 @@ impl InferenceContext<'_> {
             },
             | _ => ty,
         })
+    }
+
+    pub fn generalize(&mut self, ty: Ty) -> Ty {
+        let mut ty = self.subst_type(ty);
+        let mut unknowns = FxHashMap::default();
+
+        ty.everything(self.db, &mut |ty| match ty.lookup(self.db) {
+            | TyKind::Unknown(u) => {
+                unknowns.insert(u, self.subst.unsolved(u).1);
+            },
+            | _ => {},
+        });
+
+        for (i, (u, kind)) in unknowns.into_iter().enumerate() {
+            self.solve_type(u, TypeVar::new(DebruijnIndex::new(i as u32)).to_ty(self.db));
+            ty = TyKind::ForAll(kind, ty).intern(self.db);
+        }
+
+        self.subst_type(ty)
     }
 
     pub fn replace_var(&mut self, ty: Ty, with: Ty) -> Ty {

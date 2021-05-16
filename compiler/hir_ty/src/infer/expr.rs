@@ -29,7 +29,7 @@ impl BodyInferenceContext<'_> {
                         | ValueNs::Fixity(id) => unimplemented!(),
                         | ValueNs::Func(id) => {
                             if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
-                                break 't self.subst_type(self.self_type);
+                                break 't self.subst_type(self.result.self_type);
                             } else {
                                 id.into()
                             }
@@ -157,6 +157,16 @@ impl BodyInferenceContext<'_> {
                 TyKind::App(base, len).intern(self.db)
             },
             | Expr::Do { stmts } => self.infer_block(stmts, expr),
+            | Expr::Clos { pats, stmts } => {
+                let params = pats.iter().map(|&p| self.infer_pat(p)).collect::<Vec<_>>();
+                let mut ty = self.infer_block(stmts, expr);
+
+                for param in params.into_iter().rev() {
+                    ty = self.fn_type(param, ty);
+                }
+
+                ty
+            },
             | Expr::If { cond, then, else_, .. } => {
                 self.check_expr(*cond, self.lang_type("bool-type"));
 
@@ -309,7 +319,7 @@ impl BodyInferenceContext<'_> {
                 self.check_expr(*inner, ty_);
             }),
             | (Expr::Lit { lit: Literal::Int(_) }, _) => {
-                let integer = self.lang_class("integer");
+                let integer = self.lang_class("integer-class");
 
                 self.constrain(expr.into(), Constraint {
                     class: integer,
@@ -317,7 +327,7 @@ impl BodyInferenceContext<'_> {
                 });
             },
             | (Expr::Lit { lit: Literal::Float(_) }, _) => {
-                let decimal = self.lang_class("decimal");
+                let decimal = self.lang_class("decimal-class");
 
                 self.constrain(expr.into(), Constraint {
                     class: decimal,

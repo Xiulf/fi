@@ -13,7 +13,7 @@ use hir_def::arena::ArenaMap;
 use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
-use hir_def::id::{ClassId, DefWithBodyId, FuncId, HasModule, TypeVarOwner};
+use hir_def::id::{AssocItemId, ClassId, ContainerId, DefWithBodyId, FuncId, HasModule, Lookup, TypeVarOwner};
 use hir_def::pat::PatId;
 use hir_def::resolver::{HasResolver, Resolver};
 use rustc_hash::FxHashMap;
@@ -29,8 +29,9 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
     Arc::new(icx.finish())
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct InferenceResult {
+    pub self_type: Ty,
     pub type_of_expr: ArenaMap<ExprId, Ty>,
     pub type_of_pat: ArenaMap<PatId, Ty>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic>,
@@ -50,7 +51,6 @@ pub(crate) struct InferenceContext<'a> {
 struct BodyInferenceContext<'a> {
     icx: InferenceContext<'a>,
     body: Arc<Body>,
-    self_type: Ty,
     ret_type: Ty,
     yield_type: Ty,
 }
@@ -79,7 +79,12 @@ impl<'a> InferenceContext<'a> {
             db,
             owner,
             resolver,
-            result: InferenceResult::default(),
+            result: InferenceResult {
+                self_type: TyKind::Error.intern(db),
+                type_of_expr: ArenaMap::default(),
+                type_of_pat: ArenaMap::default(),
+                diagnostics: Vec::new(),
+            },
             subst: unify::Substitution::default(),
             var_kinds: Vec::default(),
             universes: UniverseIndex::ROOT,
@@ -94,11 +99,17 @@ impl<'a> InferenceContext<'a> {
     pub(crate) fn finish_mut(&mut self) -> InferenceResult {
         self.solve_constraints();
 
-        let mut res = std::mem::replace(&mut self.result, InferenceResult::default());
+        let mut res = std::mem::replace(&mut self.result, InferenceResult {
+            self_type: TyKind::Error.intern(self.db),
+            type_of_expr: ArenaMap::default(),
+            type_of_pat: ArenaMap::default(),
+            diagnostics: Vec::new(),
+        });
 
         res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(&self)).collect();
         res.type_of_expr.values_mut().for_each(|v| *v = self.subst_type(*v));
         res.type_of_pat.values_mut().for_each(|v| *v = self.subst_type(*v));
+        res.self_type = self.generalize(res.self_type);
 
         res
     }
@@ -167,10 +178,10 @@ impl<'a> InferenceContext<'a> {
 impl<'a> BodyInferenceContext<'a> {
     fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: DefWithBodyId) -> Self {
         let error = TyKind::Error.intern(db);
+
         BodyInferenceContext {
             icx: InferenceContext::new(db, resolver, owner.into()),
             body: db.body(owner),
-            self_type: error,
             ret_type: error,
             yield_type: error,
         }
@@ -190,10 +201,37 @@ impl<'a> BodyInferenceContext<'a> {
             ty = self.fn_type(arg, ty);
         }
 
-        self.self_type = ty;
+        self.result.self_type = ty;
         self.ret_type = ret;
         self.yield_type = self.fresh_type();
         self.check_expr(self.body.body_expr(), ret);
+
+        if let TypeVarOwner::DefWithBodyId(DefWithBodyId::FuncId(id)) = self.owner {
+            let loc = id.lookup(self.db.upcast());
+
+            if let ContainerId::Instance(inst) = loc.container {
+                let data = self.db.func_data(id);
+                let lower = self.db.lower_instance(inst);
+                let class = self.db.class_data(lower.instance.class);
+                let item = class.item(&data.name).unwrap();
+                let item_ty = match item {
+                    | AssocItemId::FuncId(id) => self.db.value_ty(id.into()),
+                    | AssocItemId::StaticId(id) => self.db.value_ty(id.into()),
+                };
+
+                let item_ty = self.instantiate(item_ty);
+                let self_type = self.result.self_type;
+                let body_expr = self.body.body_expr();
+
+                if !self.subsume_types(item_ty, self_type, body_expr.into()) {
+                    self.report(InferenceDiagnostic::MismatchedType {
+                        id: body_expr.into(),
+                        expected: item_ty,
+                        found: self_type,
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -228,6 +266,9 @@ pub(crate) mod diagnostics {
 
     #[derive(Debug, PartialEq, Eq)]
     pub enum InferenceDiagnostic {
+        UnresolvedType {
+            id: LocalTypeRefId,
+        },
         UnresolvedValue {
             id: ExprOrPatId,
         },
@@ -272,6 +313,13 @@ pub(crate) mod diagnostics {
             let file = owner.source(db.upcast()).file_id;
 
             match self {
+                | InferenceDiagnostic::UnresolvedType { id } => {
+                    owner.with_type_source_map(db.upcast(), |source_map| {
+                        let src = source_map.type_ref_syntax(*id).unwrap();
+
+                        sink.push(UnresolvedType { file, ty: src });
+                    });
+                },
                 | InferenceDiagnostic::UnresolvedValue { id } => {
                     let soure_map = match owner {
                         | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,

@@ -75,6 +75,20 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
             p.bump(UNDERSCORE);
             Some(m.complete(p, TYPE_PLACEHOLDER))
         },
+        | INT => {
+            let lit = p.start();
+
+            p.bump(INT);
+            lit.complete(p, LIT_INT);
+            Some(m.complete(p, TYPE_FIGURE))
+        },
+        | STRING => {
+            let lit = p.start();
+
+            p.bump(STRING);
+            lit.complete(p, LIT_STRING);
+            Some(m.complete(p, TYPE_SYMBOL))
+        },
         | STAR => {
             p.bump(STAR);
             atom(p);
@@ -244,7 +258,7 @@ crate fn type_var(p: &mut Parser) {
 
 crate fn peek(p: &Parser) -> bool {
     match p.current() {
-        | IDENT | L_PAREN | L_BRACKET | L_BRACE | FOR_KW => true,
+        | IDENT | L_PAREN | L_BRACKET | L_BRACE | FOR_KW | INT | STRING => true,
         | _ => false,
     }
 }

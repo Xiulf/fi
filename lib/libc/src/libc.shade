@@ -1,6 +1,6 @@
 module libc =
 
-import prim (Int8, Int16, Int32, Int64, Float32, Float64)
+import prim (Int8, Int16, Int32, Int64, Uint64, Float32, Float64)
 
 type C_Char    = Int8
 type C_Short   = Int16
@@ -11,4 +11,12 @@ type C_Double  = Float64
 type C_Str     = [*:0]C_Char
 type C_Array t = [*]t
 
+type Size_T  = Uint64
+type Ssize_T = Int64
+
+const STDIN_FILENO  = 0 :: C_Int
+const STDOUT_FILENO = 1 :: C_Int
+const STDERR_FILENO = 2 :: C_Int
+
 foreign fun puts :: C_Str -> C_Int
+foreign fun write :: C_Int -> [*]C_Char -> Size_T -> Ssize_T

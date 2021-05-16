@@ -114,6 +114,8 @@ pub enum SyntaxKind {
 
     TYPE_KINDED,
     TYPE_PLACEHOLDER,
+    TYPE_FIGURE,
+    TYPE_SYMBOL,
     TYPE_APP,
     TYPE_PATH,
     TYPE_ARRAY,

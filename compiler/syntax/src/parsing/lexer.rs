@@ -147,11 +147,14 @@ impl<'src> Lexer<'src> {
             | '-' if self.peek().is_digit(10) => self.number(ch, start),
             | '0'..='9' => self.number(ch, start),
             | '"' => self.string(start, false),
-            | 'r' if self.peek() == '"' => self.string(start, true),
+            | 'r' if self.peek() == '"' => {
+                self.advance();
+                self.string(start, true)
+            },
             | '\'' => self.character(start),
             | ch if ch.is_xid_start() => self.name(start),
             | '_' if self.peek().is_xid_continue() => self.name(start),
-            | '_' => self.emit(UNDERSCORE),
+            | '_' => self.insert_default(start, UNDERSCORE),
             | '(' if is_op_char(self.peek()) => {
                 while is_op_char(self.peek()) {
                     self.advance();

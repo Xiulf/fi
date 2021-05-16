@@ -234,6 +234,15 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
         | Expr::Do { stmts } => {
             compute_block_scopes(stmts, body, scopes, scope);
         },
+        | Expr::Clos { pats, stmts } => {
+            let scope = scopes.new_scope(scope);
+
+            for &pat in pats {
+                scopes.add_bindings(body, scope, pat);
+            }
+
+            compute_block_scopes(stmts, body, scopes, scope);
+        },
         | Expr::Case { pred, arms } => {
             compute_expr_scopes(*pred, body, scopes, scope);
 

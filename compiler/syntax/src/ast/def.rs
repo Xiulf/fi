@@ -55,6 +55,8 @@ ast_node!(Pat {
 ast_node!(Type {
     Kinded(TypeKinded, TYPE_KINDED),
     Placeholder(TypePlaceholder, TYPE_PLACEHOLDER),
+    Figure(TypeFigure, TYPE_FIGURE),
+    Symbol(TypeSymbol, TYPE_SYMBOL),
     App(TypeApp, TYPE_APP),
     Path(TypePath, TYPE_PATH),
     Array(TypeArray, TYPE_ARRAY),
@@ -98,6 +100,7 @@ ast_node!(Expr {
     Record(ExprRecord, EXPR_RECORD),
     Array(ExprArray, EXPR_ARRAY),
     Do(ExprDo, EXPR_DO),
+    Clos(ExprClos, EXPR_CLOS),
     If(ExprIf, EXPR_IF),
     Case(ExprCase, EXPR_CASE),
     While(ExprWhile, EXPR_WHILE),

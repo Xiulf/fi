@@ -354,6 +354,8 @@ crate fn stmt(p: &mut Parser) {
                 expr(p);
                 m.complete(p, STMT_BIND);
                 return;
+            } else if p.nth_at(i, LYT_START) && p.nth_at(i, LYT_SEP) || p.nth_at(i, LYT_END) {
+                break;
             }
         }
 

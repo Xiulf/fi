@@ -13,6 +13,8 @@ pub type LocalTypeVarId = Idx<TypeVar>;
 pub enum TypeRef {
     Error,
     Placeholder,
+    Figure(i128),
+    Symbol(String),
     Kinded(LocalTypeRefId, LocalTypeRefId),
     App(LocalTypeRefId, LocalTypeRefId),
     Tuple(Box<[LocalTypeRefId]>),
@@ -84,6 +86,24 @@ impl TypeRef {
                 TypeRef::Kinded(map.alloc_type_ref_opt(inner.ty()), map.alloc_type_ref_opt(inner.kind()))
             },
             | ast::Type::Placeholder(_) => TypeRef::Placeholder,
+            | ast::Type::Figure(inner) => {
+                if let Some(int) = inner.int() {
+                    if let Some(val) = int.value() {
+                        return TypeRef::Figure(val);
+                    }
+                }
+
+                TypeRef::Error
+            },
+            | ast::Type::Symbol(inner) => {
+                if let Some(string) = inner.string() {
+                    if let Some(val) = string.value() {
+                        return TypeRef::Symbol(val);
+                    }
+                }
+
+                TypeRef::Error
+            },
             | ast::Type::App(inner) => TypeRef::App(
                 map.alloc_type_ref_opt(inner.base()),
                 map.alloc_type_ref_opt(inner.arg()),

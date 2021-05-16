@@ -1,10 +1,10 @@
 use crate::class::{Class, FunDep, Instance};
 use crate::db::HirDatabase;
 use crate::display::HirDisplay;
+use crate::infer::diagnostics::InferenceDiagnostic;
 use crate::infer::InferenceContext;
 use crate::ty::*;
 use base_db::input::FileId;
-use diagnostics::LowerDiagnostic;
 use hir_def::arena::ArenaMap;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::id::*;
@@ -20,26 +20,25 @@ pub(crate) struct LowerCtx<'a, 'b> {
     type_map: &'a TypeMap,
     icx: &'a mut InferenceContext<'b>,
     types: ArenaMap<LocalTypeRefId, Ty>,
-    diagnostics: Vec<LowerDiagnostic>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct LowerResult {
     pub ty: Ty,
     pub types: ArenaMap<LocalTypeRefId, Ty>,
-    pub diagnostics: Vec<LowerDiagnostic>,
+    pub diagnostics: Vec<InferenceDiagnostic>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClassLowerResult {
     pub class: Class,
-    pub diagnostics: Vec<LowerDiagnostic>,
+    pub diagnostics: Vec<InferenceDiagnostic>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct InstanceLowerResult {
     pub instance: Instance,
-    pub diagnostics: Vec<LowerDiagnostic>,
+    pub diagnostics: Vec<InferenceDiagnostic>,
 }
 
 impl<'a, 'b> LowerCtx<'a, 'b> {
@@ -48,44 +47,34 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             type_map,
             icx,
             types: ArenaMap::default(),
-            diagnostics: Vec::default(),
         }
     }
 
     pub fn finish(mut self, ty: Ty) -> Arc<LowerResult> {
         let icx_res = self.icx.finish_mut();
 
-        self.diagnostics
-            .extend(icx_res.diagnostics.into_iter().map(LowerDiagnostic::Inference));
-
         Arc::new(LowerResult {
             ty,
             types: self.types,
-            diagnostics: self.diagnostics,
+            diagnostics: icx_res.diagnostics,
         })
     }
 
     fn finish_class(mut self, class: Class) -> Arc<ClassLowerResult> {
         let icx_res = self.icx.finish_mut();
 
-        self.diagnostics
-            .extend(icx_res.diagnostics.into_iter().map(LowerDiagnostic::Inference));
-
         Arc::new(ClassLowerResult {
             class,
-            diagnostics: self.diagnostics,
+            diagnostics: icx_res.diagnostics,
         })
     }
 
     fn finish_instance(mut self, instance: Instance) -> Arc<InstanceLowerResult> {
         let icx_res = self.icx.finish_mut();
 
-        self.diagnostics
-            .extend(icx_res.diagnostics.into_iter().map(LowerDiagnostic::Inference));
-
         Arc::new(InstanceLowerResult {
             instance,
-            diagnostics: self.diagnostics,
+            diagnostics: icx_res.diagnostics,
         })
     }
 
@@ -117,6 +106,8 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         let lowered = match &self.type_map[ty] {
             | TypeRef::Error => TyKind::Error.intern(self.db),
             | TypeRef::Placeholder => self.fresh_type_without_kind(),
+            | TypeRef::Figure(i) => TyKind::Figure(*i).intern(self.db),
+            | TypeRef::Symbol(s) => TyKind::Symbol(s.clone()).intern(self.db),
             | TypeRef::Path(path) => return self.lower_path(&path, ty),
             | TypeRef::Tuple(tys) => {
                 let tys = tys.iter().map(|&t| self.lower_ty(t));
@@ -276,7 +267,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         let (resolution, remaining) = match self.resolver.resolve_type(self.db.upcast(), path) {
             | Some(it) => it,
             | None => {
-                self.diagnostics.push(LowerDiagnostic::UnresolvedType { id: type_ref });
+                self.report(InferenceDiagnostic::UnresolvedType { id: type_ref });
                 return (TyKind::Error.intern(self.db), None);
             },
         };
@@ -374,6 +365,15 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
 
         if let ContainerId::Class(class) = loc.container {
             let lower = db.lower_class(class);
+            let ctnt = Constraint {
+                class,
+                types: (0..lower.class.vars.len() as u32)
+                    .rev()
+                    .map(|i| TypeVar::new(DebruijnIndex::new(i)).to_ty(db))
+                    .collect(),
+            };
+
+            ty = TyKind::Ctnt(ctnt, ty).intern(db);
 
             for &var in lower.class.vars.iter().rev() {
                 ty = TyKind::ForAll(var, ty).intern(db);
@@ -386,31 +386,10 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
     } else {
         let def = id.into();
         let infer = db.infer(def);
-        let body = db.body(def);
-        let mut icx = InferenceContext::new(db, Resolver::default(), def.into());
-        let mut ret = infer.type_of_expr[body.body_expr()];
-
-        for &param in body.params().iter().rev() {
-            ret = icx.fn_type(infer.type_of_pat[param], ret);
-        }
-
-        // @TODO: this should be moved into infer_body
-        if let ContainerId::Instance(inst) = loc.container {
-            let lower = db.lower_instance(inst);
-            let class = db.class_data(lower.instance.class);
-            let item = class.item(&data.name).unwrap();
-            let item_ty = match item {
-                | AssocItemId::FuncId(id) => db.value_ty(id.into()),
-                | AssocItemId::StaticId(id) => db.value_ty(id.into()),
-            };
-
-            let item_ty = icx.instantiate(item_ty);
-
-            icx.unify_types(ret, item_ty);
-        }
+        let ty = infer.self_type;
 
         Arc::new(LowerResult {
-            ty: icx.subst_type(ret),
+            ty,
             types: ArenaMap::default(),
             diagnostics: Vec::new(),
         })
@@ -628,8 +607,7 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
         })
         .collect();
 
-    let diag_count1 = ctx.diagnostics.len();
-    let diag_count2 = ctx.icx.result.diagnostics.len();
+    let diag_count = ctx.result.diagnostics.len();
 
     for &(_, id) in data.items.iter() {
         let (ty, origin) = match id {
@@ -662,8 +640,7 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
 
     let vars = var_kinds(&mut ctx, var_kinds_);
 
-    ctx.diagnostics.truncate(diag_count1);
-    ctx.icx.result.diagnostics.truncate(diag_count2);
+    ctx.result.diagnostics.truncate(diag_count);
 
     ctx.finish_class(Class { id, vars, fundeps })
 }
@@ -749,81 +726,19 @@ fn var_kinds(ctx: &mut LowerCtx, vars: Vec<Ty>) -> Box<[Ty]> {
 }
 
 impl LowerResult {
-    pub fn add_diagnostics(
-        &self,
-        db: &dyn HirDatabase,
-        owner: TypeVarOwner,
-        file_id: FileId,
-        source_map: &TypeSourceMap,
-        sink: &mut DiagnosticSink,
-    ) {
-        self.diagnostics
-            .iter()
-            .for_each(|it| it.add_to(db, owner, file_id, source_map, sink));
+    pub fn add_diagnostics(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
+        self.diagnostics.iter().for_each(|it| it.add_to(db, owner, sink));
     }
 }
 
 impl ClassLowerResult {
-    pub fn add_diagnostics(
-        &self,
-        db: &dyn HirDatabase,
-        owner: TypeVarOwner,
-        file_id: FileId,
-        source_map: &TypeSourceMap,
-        sink: &mut DiagnosticSink,
-    ) {
-        self.diagnostics
-            .iter()
-            .for_each(|it| it.add_to(db, owner, file_id, source_map, sink));
+    pub fn add_diagnostics(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
+        self.diagnostics.iter().for_each(|it| it.add_to(db, owner, sink));
     }
 }
 
 impl InstanceLowerResult {
-    pub fn add_diagnostics(
-        &self,
-        db: &dyn HirDatabase,
-        owner: TypeVarOwner,
-        file_id: FileId,
-        source_map: &TypeSourceMap,
-        sink: &mut DiagnosticSink,
-    ) {
-        self.diagnostics
-            .iter()
-            .for_each(|it| it.add_to(db, owner, file_id, source_map, sink));
-    }
-}
-
-pub(crate) mod diagnostics {
-    use crate::db::HirDatabase;
-    use crate::diagnostics::*;
-    use crate::infer::diagnostics::InferenceDiagnostic;
-    use base_db::input::FileId;
-    use hir_def::diagnostic::DiagnosticSink;
-    use hir_def::id::TypeVarOwner;
-    use hir_def::type_ref::{LocalTypeRefId, TypeSourceMap};
-
-    #[derive(Debug, PartialEq, Eq)]
-    pub enum LowerDiagnostic {
-        Inference(InferenceDiagnostic),
-        UnresolvedType { id: LocalTypeRefId },
-    }
-
-    impl LowerDiagnostic {
-        pub(crate) fn add_to(
-            &self,
-            db: &dyn HirDatabase,
-            owner: TypeVarOwner,
-            file_id: FileId,
-            source_map: &TypeSourceMap,
-            sink: &mut DiagnosticSink,
-        ) {
-            match self {
-                | LowerDiagnostic::Inference(i) => i.add_to(db, owner, sink),
-                | LowerDiagnostic::UnresolvedType { id } => sink.push(UnresolvedType {
-                    file: file_id,
-                    ty: source_map.type_ref_syntax(*id).unwrap(),
-                }),
-            }
-        }
+    pub fn add_diagnostics(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
+        self.diagnostics.iter().for_each(|it| it.add_to(db, owner, sink));
     }
 }

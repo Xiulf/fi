@@ -1,7 +1,6 @@
 use crate::db::HirDatabase;
 use crate::display::HirDisplay;
 use crate::infer::InferenceContext;
-use crate::lower::diagnostics::LowerDiagnostic;
 use crate::lower::InstanceLowerResult;
 use crate::ty::{Constraint, Ty, TyKind, TypeVar, Unknown};
 use hir_def::id::{ClassId, InstanceId, Lookup, TypedDefId};

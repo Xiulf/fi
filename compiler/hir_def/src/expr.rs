@@ -59,6 +59,10 @@ pub enum Expr {
     Do {
         stmts: Vec<Stmt>,
     },
+    Clos {
+        pats: Vec<PatId>,
+        stmts: Vec<Stmt>,
+    },
     If {
         cond: ExprId,
         then: ExprId,
@@ -144,6 +148,13 @@ impl Expr {
                 fields.iter().for_each(|i| f(i.val));
             },
             | Expr::Do { stmts } => {
+                stmts.iter().for_each(|stmt| match stmt {
+                    | Stmt::Let { val, .. } => f(*val),
+                    | Stmt::Bind { val, .. } => f(*val),
+                    | Stmt::Expr { expr } => f(*expr),
+                });
+            },
+            | Expr::Clos { pats: _, stmts } => {
                 stmts.iter().for_each(|stmt| match stmt {
                     | Stmt::Let { val, .. } => f(*val),
                     | Stmt::Bind { val, .. } => f(*val),
