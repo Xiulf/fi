@@ -22,7 +22,9 @@ fun nats = do
 
 fun test =
     nats do |i|
-        add_i32 i 1
+        if eq_i32 i 2
+        then next 10
+        else add_i32 i 1
 
 fun print (s :: Str) = do
     (ptr, len) <- intrinsics/transmute s

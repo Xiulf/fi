@@ -282,16 +282,20 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::Loop { body }, syntax_ptr)
             },
-            | ast::Expr::Next(_) => self.alloc_expr(Expr::Next, syntax_ptr),
+            | ast::Expr::Next(e) => {
+                let expr = e.expr().map(|e| self.collect_expr(e));
+
+                self.alloc_expr(Expr::Next { expr }, syntax_ptr)
+            },
             | ast::Expr::Break(e) => {
                 let expr = e.expr().map(|e| self.collect_expr(e));
 
                 self.alloc_expr(Expr::Break { expr }, syntax_ptr)
             },
             | ast::Expr::Yield(e) => {
-                let expr = e.expr().map(|e| self.collect_expr(e));
+                let exprs = e.exprs().map(|e| self.collect_expr(e)).collect();
 
-                self.alloc_expr(Expr::Yield { expr }, syntax_ptr)
+                self.alloc_expr(Expr::Yield { exprs }, syntax_ptr)
             },
             | ast::Expr::Return(e) => {
                 let expr = e.expr().map(|e| self.collect_expr(e));

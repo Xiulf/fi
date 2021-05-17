@@ -208,6 +208,11 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         },
         | NEXT_KW => {
             p.bump(NEXT_KW);
+
+            if peek(p, true) {
+                expr(p);
+            }
+
             Some(m.complete(p, EXPR_NEXT))
         },
         | BREAK_KW => {
@@ -222,8 +227,8 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         | YIELD_KW => {
             p.bump(YIELD_KW);
 
-            if peek(p, true) {
-                expr(p);
+            while peek(p, true) {
+                atom(p, true);
             }
 
             Some(m.complete(p, EXPR_YIELD))
@@ -297,9 +302,8 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 fn peek(p: &Parser, allow_do: bool) -> bool {
     match p.current() {
         | DO_KW => allow_do,
-        | IDENT | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | THEN_KW | UNLESS_KW
-        | ELSE_KW | WHILE_KW | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW
-        | UNDERSCORE => true,
+        | IDENT | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | UNLESS_KW | WHILE_KW
+        | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW | UNDERSCORE => true,
         | _ => false,
     }
 }
@@ -347,14 +351,14 @@ crate fn stmt(p: &mut Parser) {
         expr(p);
         m.complete(p, STMT_LET);
     } else {
-        for i in 1..100 {
+        for i in 0..100 {
             if p.nth_at(i, LEFT_ARROW) {
                 patterns::app(p);
                 p.expect(LEFT_ARROW);
                 expr(p);
                 m.complete(p, STMT_BIND);
                 return;
-            } else if p.nth_at(i, LYT_START) && p.nth_at(i, LYT_SEP) || p.nth_at(i, LYT_END) {
+            } else if p.nth_at(i, LYT_START) || p.nth_at(i, LYT_SEP) || p.nth_at(i, LYT_END) {
                 break;
             }
         }

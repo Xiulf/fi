@@ -788,6 +788,12 @@ impl ExprLoop {
     }
 }
 
+impl ExprNext {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
 impl ExprBreak {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
@@ -795,8 +801,8 @@ impl ExprBreak {
 }
 
 impl ExprYield {
-    pub fn expr(&self) -> Option<Expr> {
-        support::child(&self.0)
+    pub fn exprs(&self) -> AstChildren<Expr> {
+        support::children(&self.0)
     }
 }
 

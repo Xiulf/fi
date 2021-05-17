@@ -114,6 +114,14 @@ impl BodyInferenceContext<'_> {
         self.result.type_of_pat.insert(pat, expected);
 
         match (&body[pat], expected.lookup(self.db)) {
+            | (Pat::Wildcard, _) => {},
+            | (Pat::Bind { subpat: None, .. }, _) => {},
+            | (
+                Pat::Bind {
+                    subpat: Some(subpat), ..
+                },
+                _,
+            ) => self.check_pat(*subpat, expected),
             | (_, _) => {
                 let infer = self.infer_pat(pat);
 

@@ -16,6 +16,7 @@ module prim =
 @lang = "array-type"  foreign type Array          :: Type -> Figure -> Type
 @lang = "slice-type"  foreign type Slice          :: Type -> Type
 @lang = "record-type" foreign type Record         :: Row Type -> Type
+@lang = "block-type"  foreign type Block          :: Type -> Type -> Type
 
 @repr(scalar = "i8"  ) foreign type Int8    :: Type
 @repr(scalar = "i16" ) foreign type Int16   :: Type

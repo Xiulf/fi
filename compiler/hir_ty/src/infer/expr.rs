@@ -1,4 +1,4 @@
-use super::{BodyInferenceContext, InferenceDiagnostic};
+use super::{BodyInferenceContext, Breakable, InferenceDiagnostic};
 use crate::display::HirDisplay;
 use crate::lower::LowerCtx;
 use crate::ty::*;
@@ -75,12 +75,9 @@ impl BodyInferenceContext<'_> {
                 | Literal::String(_) => self.lang_type("str-type"),
             },
             | Expr::App { base, arg } => {
-                let arg_ty = self.infer_expr(*arg);
-                let ret_ty = self.fresh_type();
-                let fn_ty = self.fn_type(arg_ty, ret_ty);
+                let base_ty = self.infer_expr(*base);
 
-                self.check_expr(*base, fn_ty);
-                ret_ty
+                self.check_app(base_ty, *arg, expr)
             },
             | Expr::Field { base, field } => {
                 let row_kind = self.lang_type("row-kind");
@@ -158,63 +155,147 @@ impl BodyInferenceContext<'_> {
             },
             | Expr::Do { stmts } => self.infer_block(stmts, expr),
             | Expr::Clos { pats, stmts } => {
+                let ret = self.fresh_type();
+                let mut ty = ret;
                 let params = pats.iter().map(|&p| self.infer_pat(p)).collect::<Vec<_>>();
-                let mut ty = self.infer_block(stmts, expr);
+
+                self.clos_ret_type = Some(ret);
+                self.check_block(stmts, ret, expr.into());
+                self.clos_ret_type = None;
 
                 for param in params.into_iter().rev() {
                     ty = self.fn_type(param, ty);
                 }
 
-                ty
+                ret
             },
             | Expr::If { cond, then, else_, .. } => {
                 self.check_expr(*cond, self.lang_type("bool-type"));
 
                 if let Some(else_) = else_ {
                     let then_ty = self.infer_expr(*then);
+                    let then_ty = self.subst_type(then_ty);
+                    let else_ty = self.infer_expr(*else_);
+                    let else_ty = self.subst_type(else_ty);
 
-                    self.check_expr(*else_, then_ty);
-                    then_ty
+                    if then_ty == self.lang_type("never-type") {
+                        else_ty
+                    } else if else_ty == self.lang_type("never-type") {
+                        then_ty
+                    } else {
+                        if !self.unify_types(then_ty, else_ty) {
+                            self.report_mismatch(then_ty, else_ty, (*else_).into());
+                        }
+
+                        then_ty
+                    }
                 } else {
                     self.infer_expr(*then);
                     self.unit()
                 }
             },
             | Expr::While { cond, body, .. } => {
+                self.breakable.push(Breakable::While);
                 self.check_expr(*cond, self.lang_type("bool-type"));
                 self.infer_expr(*body);
+                self.breakable.pop().unwrap();
                 self.unit()
             },
             | Expr::Loop { body } => {
+                self.breakable.push(Breakable::Loop(self.lang_type("never-type")));
                 self.infer_expr(*body);
-                self.lang_type("never-type")
-            },
-            | Expr::Next => self.lang_type("never-type"),
-            | Expr::Break { expr } => {
-                if let Some(expr) = expr {
-                    self.infer_expr(*expr);
-                }
 
-                self.lang_type("never-type")
-            },
-            | Expr::Yield { expr } => {
-                if let Some(expr) = expr {
-                    self.check_expr(*expr, self.yield_type);
+                match self.breakable.pop().unwrap() {
+                    | Breakable::Loop(ty) => ty,
+                    | _ => unreachable!(),
                 }
-
-                self.fresh_type()
             },
-            | Expr::Return { expr: inner } => {
+            | Expr::Next { expr: inner } => {
                 if let Some(inner) = inner {
-                    self.check_expr(*inner, self.ret_type);
-                } else {
-                    let ret_type = self.ret_type;
-                    let unit = self.unit();
+                    if let Some(block_ret) = self.block_ret_type {
+                        self.check_expr(*inner, block_ret);
+                    } else if let Some(_) = self.breakable.last() {
+                        self.report(InferenceDiagnostic::CannotNextWithValue { id: expr.into() });
+                    } else {
+                        self.report(InferenceDiagnostic::NextOutsideLoop { id: expr.into() });
+                    }
+                } else if let None = self.breakable.last() {
+                    self.report(InferenceDiagnostic::NextOutsideLoop { id: expr.into() });
+                }
 
-                    if !self.unify_types(ret_type, unit) {
+                self.lang_type("never-type")
+            },
+            | Expr::Break { expr: inner } => {
+                if let Some(inner) = inner {
+                    if let Some(break_type) = self.block_break_type {
+                        self.check_expr(*inner, break_type);
+                    } else if let Some(&br) = self.breakable.last() {
+                        if let Breakable::Loop(ty) = br {
+                            if ty == self.lang_type("never-type") {
+                                let ty = self.infer_expr(*inner);
+
+                                *self.breakable.last_mut().unwrap() = Breakable::Loop(ty);
+                            } else {
+                                self.check_expr(*inner, ty);
+                            }
+                        } else {
+                            self.report(InferenceDiagnostic::CannotBreakWithValue { id: expr.into() });
+                        }
+                    } else {
+                        self.report(InferenceDiagnostic::BreakOutsideLoop { id: expr.into() });
+                    }
+                } else if let Some(&br) = self.breakable.last() {
+                    if let Breakable::Loop(ty) = br {
+                        let unit = self.unit();
+
+                        if ty == self.lang_type("never-type") {
+                            *self.breakable.last_mut().unwrap() = Breakable::Loop(unit);
+                        } else if !self.unify_types(ty, unit) {
+                            self.report_mismatch(unit, ty, expr.into());
+                        }
+                    }
+                } else {
+                    self.report(InferenceDiagnostic::BreakOutsideLoop { id: expr.into() });
+                }
+
+                self.lang_type("never-type")
+            },
+            | Expr::Yield { exprs } => {
+                let ret = self.fresh_type();
+                let mut ty = ret;
+
+                for &expr in exprs.iter().rev() {
+                    let infer = self.infer_expr(expr);
+
+                    ty = self.fn_type(infer, ty);
+                }
+
+                if let Some(yield_ty) = self.yield_type {
+                    if !self.unify_types(yield_ty, ty) {
                         self.report(InferenceDiagnostic::MismatchedType {
                             id: expr.into(),
-                            expected: ret_type,
+                            expected: yield_ty,
+                            found: ty,
+                        });
+                    }
+                } else {
+                    self.yield_type = Some(ty);
+                }
+
+                ret
+            },
+            | Expr::Return { expr: inner } => {
+                let ret = self.clos_ret_type.unwrap_or(self.ret_type);
+
+                if let Some(inner) = inner {
+                    self.check_expr(*inner, ret);
+                } else {
+                    let unit = self.unit();
+
+                    if !self.unify_types(ret, unit) {
+                        self.report(InferenceDiagnostic::MismatchedType {
+                            id: expr.into(),
+                            expected: ret,
                             found: unit,
                         });
                     }
@@ -236,6 +317,7 @@ impl BodyInferenceContext<'_> {
             let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
             let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
             let last = stmts.len() - 1;
+            let mut diverges = false;
 
             for (i, stmt) in stmts.iter().enumerate() {
                 match *stmt {
@@ -245,28 +327,36 @@ impl BodyInferenceContext<'_> {
                         if i == last {
                             return self.infer_expr(expr);
                         } else {
-                            self.infer_expr(expr);
+                            let ty = self.infer_expr(expr);
+                            let ty = self.subst_type(ty);
+
+                            if ty == self.lang_type("never-type") {
+                                diverges = true;
+                            }
                         }
                     },
                     | Stmt::Bind { pat, val } => {
+                        let ty = self.infer_pat(pat);
+
                         self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-
-                        let ty = self.infer_expr(val);
-
-                        self.check_pat(pat, ty);
+                        self.check_expr(val, ty);
                     },
                     | Stmt::Let { pat, val } => {
+                        let ty = self.infer_pat(pat);
+
                         self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-
-                        let ty = self.infer_expr(val);
-
-                        self.check_pat(pat, ty);
+                        self.check_expr(val, ty);
                     },
                 }
             }
 
             self.resolver = old_resolver;
-            self.unit()
+
+            if diverges {
+                self.lang_type("never-type")
+            } else {
+                self.unit()
+            }
         } else {
             self.error()
         }
@@ -289,17 +379,6 @@ impl BodyInferenceContext<'_> {
             | (_, TyKind::Ctnt(ctnt, inner)) => {
                 // @TODO: check constraint
                 self.check_expr(expr, inner);
-            },
-            | (_, TyKind::Unknown(_)) => {
-                let infer = self.infer_expr(expr);
-
-                if !self.unify_types(infer, expected) {
-                    self.report(InferenceDiagnostic::MismatchedType {
-                        id: expr.into(),
-                        expected,
-                        found: infer,
-                    });
-                }
             },
             | (Expr::Typed { expr: inner, ty }, _) => self.owner.with_type_map(self.db.upcast(), |type_map| {
                 let mut lcx = LowerCtx::new(type_map, self);
@@ -339,6 +418,45 @@ impl BodyInferenceContext<'_> {
                     self.check_expr(expr, exp);
                 }
             },
+            | (Expr::Do { stmts }, _) => self.check_block(stmts, expected, expr),
+            | (Expr::Clos { pats, stmts }, _) => {
+                use hir_def::id::HasModule;
+                let module = self.owner.module(self.db.upcast());
+                let block_ty = self.db.lang_item(module.lib, "block-type".into()).unwrap();
+                let block_ty = block_ty.as_type_ctor().unwrap();
+
+                if let Some([f_ty, r_ty]) = expected.match_ctor(self.db, block_ty) {
+                    let ret = self.fresh_type();
+                    let mut ty = ret;
+
+                    self.block_ret_type = Some(ret);
+                    self.block_break_type = Some(r_ty);
+
+                    for &pat in pats.iter().rev() {
+                        let arg = self.infer_pat(pat);
+
+                        ty = self.fn_type(arg, ty);
+                    }
+
+                    self.check_block(stmts, ret, expr.into());
+                    self.block_ret_type = None;
+                    self.block_break_type = None;
+
+                    if !self.unify_types(f_ty, ty) {
+                        self.report_mismatch(f_ty, ty, expr.into());
+                    }
+                } else {
+                    let infer = self.infer_expr(expr);
+
+                    if !self.subsume_types(infer, expected, expr.into()) {
+                        self.report(InferenceDiagnostic::MismatchedType {
+                            id: expr.into(),
+                            expected,
+                            found: infer,
+                        });
+                    }
+                }
+            },
             | (_, _) => {
                 let infer = self.infer_expr(expr);
 
@@ -349,6 +467,57 @@ impl BodyInferenceContext<'_> {
                         found: infer,
                     });
                 }
+            },
+        }
+    }
+
+    pub fn check_app(&mut self, base_ty: Ty, arg: ExprId, expr: ExprId) -> Ty {
+        let base_ty = self.subst_type(base_ty);
+
+        match base_ty.lookup(self.db) {
+            | TyKind::App(b, r) => match b.lookup(self.db) {
+                | TyKind::App(f, a) => {
+                    let func_ty = self.lang_type("fn-type");
+
+                    if !self.unify_types(f, func_ty) {
+                        self.report_mismatch(func_ty, f, expr.into());
+                    }
+
+                    self.check_expr(arg, a);
+                    r
+                },
+                | _ => {
+                    let param = self.infer_expr(arg);
+                    let ret = self.fresh_type();
+                    let func_ty = self.fn_type(param, ret);
+
+                    if !self.unify_types(base_ty, func_ty) {
+                        self.report_mismatch(base_ty, func_ty, expr.into());
+                    }
+
+                    ret
+                },
+            },
+            | TyKind::ForAll(kind, ty) => {
+                let repl = self.fresh_type_with_kind(kind);
+                let ty = self.replace_var(ty, repl);
+
+                self.check_app(ty, arg, expr)
+            },
+            | TyKind::Ctnt(ctnt, ty) => {
+                self.constrain(expr.into(), ctnt);
+                self.check_app(ty, arg, expr)
+            },
+            | _ => {
+                let arg = self.infer_expr(arg);
+                let ret = self.fresh_type();
+                let func_ty = self.fn_type(arg, ret);
+
+                if !self.unify_types(base_ty, func_ty) {
+                    self.report_mismatch(base_ty, func_ty, expr.into());
+                }
+
+                ret
             },
         }
     }
@@ -366,25 +535,30 @@ impl BodyInferenceContext<'_> {
 
                         if i == last {
                             self.check_expr(expr, expected);
+                            return;
                         } else {
                             self.infer_expr(expr);
                         }
                     },
                     | Stmt::Bind { pat, val } => {
+                        let ty = self.infer_pat(pat);
+
                         self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-
-                        let ty = self.infer_expr(val);
-
-                        self.check_pat(pat, ty);
+                        self.check_expr(val, ty);
                     },
                     | Stmt::Let { pat, val } => {
+                        let ty = self.infer_pat(pat);
+
                         self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-
-                        let ty = self.infer_expr(val);
-
-                        self.check_pat(pat, ty);
+                        self.check_expr(val, ty);
                     },
                 }
+            }
+
+            let unit = self.unit();
+
+            if !self.unify_types(expected, unit) {
+                self.report_mismatch(expected, unit, expr.into());
             }
 
             self.resolver = old_resolver;

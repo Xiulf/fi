@@ -81,12 +81,14 @@ pub enum Expr {
     Loop {
         body: ExprId,
     },
-    Next,
+    Next {
+        expr: Option<ExprId>,
+    },
     Break {
         expr: Option<ExprId>,
     },
     Yield {
-        expr: Option<ExprId>,
+        exprs: Vec<ExprId>,
     },
     Return {
         expr: Option<ExprId>,
@@ -124,7 +126,7 @@ pub struct CaseArm {
 impl Expr {
     pub fn walk(&self, mut f: impl FnMut(ExprId)) {
         match self {
-            | Expr::Missing | Expr::Path { .. } | Expr::Lit { .. } | Expr::Next => {},
+            | Expr::Missing | Expr::Path { .. } | Expr::Lit { .. } => {},
             | Expr::Typed { expr, .. } => f(*expr),
             | Expr::Infix { lhs, rhs, .. } => {
                 f(*lhs);
@@ -178,8 +180,11 @@ impl Expr {
                 f(*body);
             },
             | Expr::Loop { body } => f(*body),
-            | Expr::Break { expr } | Expr::Yield { expr } | Expr::Return { expr } => {
+            | Expr::Next { expr } | Expr::Break { expr } | Expr::Return { expr } => {
                 expr.map(f);
+            },
+            | Expr::Yield { exprs } => {
+                exprs.iter().copied().for_each(f);
             },
         }
     }

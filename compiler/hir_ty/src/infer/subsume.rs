@@ -1,10 +1,16 @@
 use super::{ExprOrPatId, InferenceContext};
+use crate::display::HirDisplay;
 use crate::ty::*;
 
 impl InferenceContext<'_> {
     pub fn subsume_types(&mut self, t1: Ty, t2: Ty, origin: ExprOrPatId) -> bool {
         let t1 = self.subst_type(t1);
         let t2 = self.subst_type(t2);
+        let never = self.lang_type("never-type");
+
+        if t1 == never {
+            return true;
+        }
 
         match (t1.lookup(self.db), t2.lookup(self.db)) {
             | (TyKind::ForAll(kind, inner), _) => {

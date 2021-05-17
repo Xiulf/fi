@@ -52,7 +52,17 @@ struct BodyInferenceContext<'a> {
     icx: InferenceContext<'a>,
     body: Arc<Body>,
     ret_type: Ty,
-    yield_type: Ty,
+    yield_type: Option<Ty>,
+    clos_ret_type: Option<Ty>,
+    block_ret_type: Option<Ty>,
+    block_break_type: Option<Ty>,
+    breakable: Vec<Breakable>,
+}
+
+#[derive(Clone, Copy)]
+enum Breakable {
+    Loop(Ty),
+    While,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -162,6 +172,10 @@ impl<'a> InferenceContext<'a> {
         self.result.diagnostics.push(diag);
     }
 
+    pub(crate) fn report_mismatch(&mut self, expected: Ty, found: Ty, id: ExprOrPatId) {
+        self.report(InferenceDiagnostic::MismatchedType { id, expected, found });
+    }
+
     pub(crate) fn constrain(&mut self, id: ExprOrPatId, ctnt: Constraint) {
         self.constraints.push((ctnt, id));
     }
@@ -183,7 +197,11 @@ impl<'a> BodyInferenceContext<'a> {
             icx: InferenceContext::new(db, resolver, owner.into()),
             body: db.body(owner),
             ret_type: error,
-            yield_type: error,
+            yield_type: None,
+            clos_ret_type: None,
+            block_ret_type: None,
+            block_break_type: None,
+            breakable: Vec::new(),
         }
     }
 
@@ -203,8 +221,23 @@ impl<'a> BodyInferenceContext<'a> {
 
         self.result.self_type = ty;
         self.ret_type = ret;
-        self.yield_type = self.fresh_type();
         self.check_expr(self.body.body_expr(), ret);
+
+        if let Some(yield_type) = self.yield_type {
+            let block_type = self.lang_type("block-type");
+            let yield_type = TyKind::App(block_type, yield_type).intern(self.db);
+            let yield_type = TyKind::App(yield_type, ret).intern(self.db);
+
+            ty = self.fn_type(yield_type, ret);
+
+            for &pat in self.body.params().iter().rev() {
+                let arg = self.result.type_of_pat[pat];
+
+                ty = self.fn_type(arg, ty);
+            }
+
+            self.result.self_type = ty;
+        }
 
         if let TypeVarOwner::DefWithBodyId(DefWithBodyId::FuncId(id)) = self.owner {
             let loc = id.lookup(self.db.upcast());
@@ -261,6 +294,7 @@ pub(crate) mod diagnostics {
     use crate::diagnostics::*;
     use crate::ty::{Constraint, Ty};
     use hir_def::diagnostic::DiagnosticSink;
+    use hir_def::expr::ExprId;
     use hir_def::id::{HasSource, TypeVarOwner};
     use hir_def::type_ref::LocalTypeRefId;
 
@@ -285,6 +319,18 @@ pub(crate) mod diagnostics {
         UnsolvedConstraint {
             id: ExprOrPatId,
             ctnt: Constraint,
+        },
+        BreakOutsideLoop {
+            id: ExprId,
+        },
+        CannotBreakWithValue {
+            id: ExprId,
+        },
+        NextOutsideLoop {
+            id: ExprId,
+        },
+        CannotNextWithValue {
+            id: ExprId,
         },
     }
 
@@ -378,6 +424,46 @@ pub(crate) mod diagnostics {
                         src,
                         ctnt: ctnt.clone(),
                     });
+                },
+                | InferenceDiagnostic::BreakOutsideLoop { id } => {
+                    let source_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = source_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
+
+                    sink.push(BreakOutsideLoop { file, src });
+                },
+                | InferenceDiagnostic::CannotBreakWithValue { id } => {
+                    let source_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = source_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
+
+                    sink.push(CannotBreakWithValue { file, src });
+                },
+                | InferenceDiagnostic::NextOutsideLoop { id } => {
+                    let source_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = source_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
+
+                    sink.push(NextOutsideLoop { file, src });
+                },
+                | InferenceDiagnostic::CannotNextWithValue { id } => {
+                    let source_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = source_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
+
+                    sink.push(CannotNextWithValue { file, src });
                 },
             }
         }
