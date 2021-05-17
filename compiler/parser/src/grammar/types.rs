@@ -6,7 +6,7 @@ use crate::token_set::TokenSet;
 const TYPE_RECOVERY_SET: TokenSet = TokenSet::new(&[R_PAREN, COMMA]);
 
 crate fn ty(p: &mut Parser) {
-    if let Some(m) = func(p) {
+    if let Some(m) = ctnt(p) {
         if p.eat(DBL_COLON) {
             let m = m.precede(p);
             let _ = ctnt(p);
@@ -28,6 +28,11 @@ crate fn ctnt(p: &mut Parser) -> Option<CompletedMarker> {
                 let _ = ctnt(p);
 
                 return Some(m.complete(p, TYPE_CTNT));
+            } else if p.nth_at_ts(
+                i,
+                TokenSet::new(&[LYT_START, LYT_SEP, LYT_END, COMMA, R_PAREN, R_BRACE]),
+            ) {
+                break;
             }
         }
     }

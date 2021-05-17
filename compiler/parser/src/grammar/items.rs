@@ -107,7 +107,7 @@ crate fn fun(p: &mut Parser, m: Marker) {
         types::func(p);
         m.complete(p, ITEM_FUN);
     } else {
-        while !p.at(EOF) && !p.at(EQUALS) {
+        while !p.at(EOF) && !p.at(EQUALS) && !p.at(PIPE) {
             patterns::atom(p);
         }
 

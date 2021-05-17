@@ -199,6 +199,24 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::Lit { lit }, syntax_ptr)
             },
+            | ast::Expr::Infix(e) => {
+                if let Some(path) = e.path() {
+                    let path = Path::lower(path);
+                    let lhs = self.collect_expr_opt(e.lhs());
+                    let rhs = self.collect_expr_opt(e.rhs());
+                    let base = self.alloc_expr(Expr::Path { path }, syntax_ptr.clone());
+                    let base = self.alloc_expr(Expr::App { base, arg: lhs }, syntax_ptr.clone());
+
+                    self.alloc_expr(Expr::App { base, arg: rhs }, syntax_ptr)
+                } else {
+                    let op = e.op()?.as_name();
+                    let op = Path::from(op);
+                    let lhs = self.collect_expr_opt(e.lhs());
+                    let rhs = self.collect_expr_opt(e.rhs());
+
+                    self.alloc_expr(Expr::Infix { op, lhs, rhs }, syntax_ptr)
+                }
+            },
             | ast::Expr::Parens(e) => {
                 let inner = self.collect_expr_opt(e.expr());
                 let src = self.to_source(syntax_ptr);

@@ -30,6 +30,7 @@ pub enum SyntaxKind {
     QMARK,
     AT,
     STAR,
+    TICK,
     UNDERSCORE,
     OPERATOR,
     SYMBOL,

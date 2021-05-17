@@ -2,7 +2,7 @@ module main (main) =
 
 import core
 import core/libc
-import core/intrinsics (add_i32, sub_i32, ptr_offset, eq_i32)
+import core/intrinsics
 
 fun main argc argv = do
     print_args argc argv
@@ -27,5 +27,16 @@ fun test =
         else add_i32 i 1
 
 fun print (s :: Str) = do
-    (ptr, len) <- intrinsics/transmute s
+    (ptr, len) <- unsafe $ transmute s
     _ <- write STDOUT_FILENO ptr len
+
+
+
+foreign fun op_a :: Int32 -> Int32 -> Int8
+foreign fun op_b :: Int8 -> Int8 -> Int8
+
+infixl 6 op_b as (+)
+infixl 7 op_a as (*)
+
+fun test2 =
+    3 * 4 + 3

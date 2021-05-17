@@ -7,7 +7,6 @@ use std::cell::Cell;
 crate struct Parser<'t> {
     token_source: &'t mut dyn TokenSource,
     events: Vec<Event>,
-    steps: Cell<u32>,
 }
 
 impl<'t> Parser<'t> {
@@ -15,7 +14,6 @@ impl<'t> Parser<'t> {
         Parser {
             token_source,
             events: Vec::new(),
-            steps: Cell::new(0),
         }
     }
 
@@ -28,9 +26,6 @@ impl<'t> Parser<'t> {
     }
 
     crate fn nth(&self, n: usize) -> SyntaxKind {
-        let steps = self.steps.get();
-
-        self.steps.set(steps + 1);
         self.token_source.lookahead_nth(n).kind
     }
 
@@ -39,7 +34,15 @@ impl<'t> Parser<'t> {
     }
 
     crate fn nth_at(&self, n: usize, kind: SyntaxKind) -> bool {
-        self.token_source.lookahead_nth(n).kind == kind
+        self.nth(n) == kind
+    }
+
+    crate fn at_ts(&self, kinds: TokenSet) -> bool {
+        kinds.contains(self.current())
+    }
+
+    crate fn nth_at_ts(&self, n: usize, kinds: TokenSet) -> bool {
+        kinds.contains(self.nth(n))
     }
 
     crate fn eat(&mut self, kind: SyntaxKind) -> bool {
@@ -49,10 +52,6 @@ impl<'t> Parser<'t> {
         } else {
             return false;
         }
-    }
-
-    crate fn at_ts(&self, kinds: TokenSet) -> bool {
-        kinds.contains(self.current())
     }
 
     crate fn start(&mut self) -> Marker {

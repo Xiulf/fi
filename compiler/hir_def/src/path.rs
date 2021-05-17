@@ -90,7 +90,7 @@ impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, segment) in self.segments.iter().enumerate() {
             if i != 0 {
-                write!(f, ".")?;
+                write!(f, "/")?;
             }
 
             segment.fmt(f)?;

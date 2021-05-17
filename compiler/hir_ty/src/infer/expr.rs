@@ -74,6 +74,29 @@ impl BodyInferenceContext<'_> {
                 | Literal::Char(_) => self.lang_type("char-type"),
                 | Literal::String(_) => self.lang_type("str-type"),
             },
+            | Expr::Infix { op, lhs, rhs } => match self.resolver.resolve_value_fully(self.db.upcast(), op) {
+                | Some(ValueNs::Fixity(id)) => 't: {
+                    let data = self.db.fixity_data(id);
+                    let id = match self.resolver.resolve_value_fully(self.db.upcast(), &data.func) {
+                        | Some(ValueNs::Func(id)) => id.into(),
+                        | Some(ValueNs::Ctor(id)) => id.into(),
+                        | _ => {
+                            self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
+                            break 't self.error();
+                        },
+                    };
+
+                    let ty = self.db.value_ty(id);
+                    let ty = self.instantiate(ty);
+                    let mid = self.check_app(ty, *lhs, expr);
+
+                    self.check_app(mid, *rhs, expr)
+                },
+                | _ => {
+                    self.report(InferenceDiagnostic::UnresolvedOperator { id: expr.into() });
+                    self.error()
+                },
+            },
             | Expr::App { base, arg } => {
                 let base_ty = self.infer_expr(*base);
 
@@ -377,8 +400,9 @@ impl BodyInferenceContext<'_> {
                 self.result.type_of_expr.insert(expr, expected);
             },
             | (_, TyKind::Ctnt(ctnt, inner)) => {
-                // @TODO: check constraint
+                self.class_env.push(ctnt);
                 self.check_expr(expr, inner);
+                self.class_env.pop();
             },
             | (Expr::Typed { expr: inner, ty }, _) => self.owner.with_type_map(self.db.upcast(), |type_map| {
                 let mut lcx = LowerCtx::new(type_map, self);
@@ -535,6 +559,7 @@ impl BodyInferenceContext<'_> {
 
                         if i == last {
                             self.check_expr(expr, expected);
+                            self.resolver = old_resolver;
                             return;
                         } else {
                             self.infer_expr(expr);

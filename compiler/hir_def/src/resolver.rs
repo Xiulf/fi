@@ -304,6 +304,12 @@ impl HasResolver for ModuleId {
     }
 }
 
+impl HasResolver for FixityId {
+    fn resolver(self, db: &dyn DefDatabase) -> Resolver {
+        self.lookup(db).module.resolver(db)
+    }
+}
+
 impl HasResolver for FuncId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
         let data = db.func_data(self);

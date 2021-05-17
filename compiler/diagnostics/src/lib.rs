@@ -1,5 +1,6 @@
 mod mismatched_kind;
 mod mismatched_type;
+mod unresolved_operator;
 mod unsolved_constraint;
 
 use hir::InFile;
@@ -60,6 +61,8 @@ impl<DB: hir::db::HirDatabase> DiagnosticForWith<DB> for dyn hir::diagnostic::Di
             f(&mismatched_kind::MismatchedKind::new(with, v))
         } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::UnsolvedConstraint>() {
             f(&unsolved_constraint::UnsolvedConstraint::new(with, v))
+        } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::UnresolvedOperator>() {
+            f(&unresolved_operator::UnresolvedOperator::new(with, v))
         } else {
             f(&GenericDiagnostic { diagnostic: self })
         }

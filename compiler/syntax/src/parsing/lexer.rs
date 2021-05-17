@@ -274,6 +274,9 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, EQUALS);
                 },
             },
+            | '`' => {
+                self.insert_default(start, TICK);
+            },
             | '?' if !is_op_char(self.peek()) => {
                 self.insert_default(start, QMARK);
             },

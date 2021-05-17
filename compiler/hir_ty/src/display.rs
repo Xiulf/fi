@@ -304,8 +304,14 @@ impl HirDisplay for Constraint {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         let class_name = &f.db.class_data(self.class).name;
 
-        write!(f, "{} ", class_name)?;
-        f.write_joined(self.types.iter(), " ")
+        write!(f, "{}", class_name)?;
+
+        for ty in self.types.iter() {
+            write!(f, " ")?;
+            ty.hir_fmt(f)?;
+        }
+
+        Ok(())
     }
 }
 

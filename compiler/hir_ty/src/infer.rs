@@ -6,7 +6,9 @@ mod skolem;
 mod subsume;
 mod unify;
 
+use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
+use crate::lower::LowerCtx;
 use crate::ty::{Constraint, DebruijnIndex, Ty, TyKind, TypeVar, UniverseIndex};
 use diagnostics::InferenceDiagnostic;
 use hir_def::arena::ArenaMap;
@@ -24,7 +26,44 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
     let resolver = Resolver::for_expr(db.upcast(), def, body.body_expr());
     let mut icx = BodyInferenceContext::new(db, resolver, def);
 
-    icx.infer_body();
+    if let DefWithBodyId::FuncId(id) = def {
+        let data = db.func_data(id);
+        let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+        let var_kinds = data
+            .vars
+            .iter()
+            .rev()
+            .map(|&v| {
+                let var = &data.type_map()[v];
+                let kind = var.kind.map(|k| lcx.lower_ty(k)).unwrap_or(lcx.fresh_kind());
+
+                lcx.push_var_kind(kind);
+                kind
+            })
+            .collect::<Vec<_>>();
+
+        let ctnts = data
+            .constraints
+            .iter()
+            .filter_map(|c| lcx.lower_constraint(c))
+            .collect::<Vec<_>>();
+
+        for ctnt in &ctnts {
+            icx.class_env.push(ctnt.clone());
+        }
+
+        icx.infer_body();
+
+        for ctnt in ctnts {
+            icx.result.self_type = TyKind::Ctnt(ctnt, icx.result.self_type).intern(db);
+        }
+
+        for kind in var_kinds {
+            icx.result.self_type = TyKind::ForAll(kind, icx.result.self_type).intern(db);
+        }
+    } else {
+        icx.infer_body();
+    }
 
     Arc::new(icx.finish())
 }
@@ -45,7 +84,8 @@ pub(crate) struct InferenceContext<'a> {
     subst: unify::Substitution,
     pub(crate) var_kinds: Vec<Ty>,
     universes: UniverseIndex,
-    constraints: Vec<(Constraint, ExprOrPatId)>,
+    class_env: ClassEnv,
+    constraints: Vec<(Constraint, ExprOrPatId, Option<ClassEnvScope>)>,
 }
 
 struct BodyInferenceContext<'a> {
@@ -98,6 +138,7 @@ impl<'a> InferenceContext<'a> {
             subst: unify::Substitution::default(),
             var_kinds: Vec::default(),
             universes: UniverseIndex::ROOT,
+            class_env: ClassEnv::default(),
             constraints: Vec::default(),
         }
     }
@@ -116,10 +157,10 @@ impl<'a> InferenceContext<'a> {
             diagnostics: Vec::new(),
         });
 
+        res.self_type = self.generalize(res.self_type);
         res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(&self)).collect();
         res.type_of_expr.values_mut().for_each(|v| *v = self.subst_type(*v));
         res.type_of_pat.values_mut().for_each(|v| *v = self.subst_type(*v));
-        res.self_type = self.generalize(res.self_type);
 
         res
     }
@@ -177,7 +218,7 @@ impl<'a> InferenceContext<'a> {
     }
 
     pub(crate) fn constrain(&mut self, id: ExprOrPatId, ctnt: Constraint) {
-        self.constraints.push((ctnt, id));
+        self.constraints.push((ctnt, id, self.class_env.current()));
     }
 
     pub(crate) fn error(&self) -> Ty {
@@ -306,6 +347,9 @@ pub(crate) mod diagnostics {
         UnresolvedValue {
             id: ExprOrPatId,
         },
+        UnresolvedOperator {
+            id: ExprId,
+        },
         MismatchedKind {
             id: LocalTypeRefId,
             expected: Ty,
@@ -378,6 +422,16 @@ pub(crate) mod diagnostics {
                     };
 
                     sink.push(UnresolvedValue { file, src });
+                },
+                | InferenceDiagnostic::UnresolvedOperator { id } => {
+                    let soure_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = soure_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
+
+                    sink.push(UnresolvedOperator { file, src });
                 },
                 | InferenceDiagnostic::MismatchedKind { id, expected, found } => {
                     let src = owner.with_type_source_map(db.upcast(), |source_map| source_map.type_ref_syntax(*id));

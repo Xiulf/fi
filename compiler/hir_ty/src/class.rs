@@ -3,6 +3,7 @@ use crate::display::HirDisplay;
 use crate::infer::InferenceContext;
 use crate::lower::InstanceLowerResult;
 use crate::ty::{Constraint, Ty, TyKind, TypeVar, Unknown};
+use hir_def::arena::{Arena, Idx};
 use hir_def::id::{ClassId, InstanceId, Lookup, TypedDefId};
 use hir_def::resolver::Resolver;
 use rustc_hash::{FxHashMap, FxHasher};
@@ -39,6 +40,26 @@ pub struct Instances {
 #[derive(Debug, PartialEq, Eq)]
 pub struct InstanceMatchResult {
     pub instance: InstanceId,
+    pub subst: FxHashMap<Unknown, Ty>,
+}
+
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct ClassEnv {
+    entries: Arena<ClassEnvEntry>,
+    current: Option<ClassEnvScope>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ClassEnvEntry {
+    parent: Option<ClassEnvScope>,
+    ctnt: Constraint,
+}
+
+pub type ClassEnvScope = Idx<ClassEnvEntry>;
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ClassEnvMatchResult {
+    pub scope: ClassEnvScope,
     pub subst: FxHashMap<Unknown, Ty>,
 }
 
@@ -131,6 +152,52 @@ impl Instance {
             score -= self.constraints.len() as isize;
             score
         }
+    }
+}
+
+impl ClassEnv {
+    pub fn push(&mut self, ctnt: Constraint) {
+        let scope = self.entries.alloc(ClassEnvEntry {
+            ctnt,
+            parent: self.current,
+        });
+
+        self.current = Some(scope);
+    }
+
+    pub fn pop(&mut self) {
+        let cur = self.current.unwrap();
+
+        self.current = self.entries[cur].parent;
+    }
+
+    pub fn current(&self) -> Option<ClassEnvScope> {
+        self.current
+    }
+
+    fn in_socpe(&self, scope: Option<ClassEnvScope>) -> impl Iterator<Item = ClassEnvScope> + '_ {
+        std::iter::successors(scope, move |&s| self.entries[s].parent)
+    }
+
+    pub fn solve(
+        &self,
+        db: &dyn HirDatabase,
+        ctnt: Constraint,
+        scope: Option<ClassEnvScope>,
+    ) -> Option<ClassEnvMatchResult> {
+        self.in_socpe(scope).find_map(|scope| {
+            let entry = &self.entries[scope];
+            let mut subst = FxHashMap::default();
+            let mut vars = BTreeMap::new();
+
+            for (&ty, &with) in ctnt.types.iter().zip(entry.ctnt.types.iter()) {
+                if !match_type(db, ty, with, &mut subst, &mut vars) {
+                    return None;
+                }
+            }
+
+            Some(ClassEnvMatchResult { scope, subst })
+        })
     }
 }
 

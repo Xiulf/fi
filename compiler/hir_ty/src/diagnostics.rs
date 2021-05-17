@@ -46,6 +46,26 @@ impl Diagnostic for UnresolvedType {
 }
 
 #[derive(Debug)]
+pub struct UnresolvedOperator {
+    pub file: FileId,
+    pub src: SyntaxNodePtr,
+}
+
+impl Diagnostic for UnresolvedOperator {
+    fn message(&self) -> String {
+        "unknown operator".into()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src)
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
 pub struct MismatchedKind {
     pub file: FileId,
     pub src: SyntaxNodePtr,

@@ -651,7 +651,13 @@ impl ExprLit {
 }
 
 impl ExprInfix {
-    pub fn op(&self) -> Option<Path> {
+    pub fn op(&self) -> Option<Operator> {
+        support::token(&self.0, OPERATOR)
+            .or_else(|| support::token(&self.0, STAR))
+            .map(Operator)
+    }
+
+    pub fn path(&self) -> Option<Path> {
         support::child(&self.0)
     }
 

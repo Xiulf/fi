@@ -7,7 +7,11 @@ infixl 6 ptr_offset as (*+)
 
 @intrinsic foreign fun add_i32    :: Int32 -> Int32 -> Int32
 @intrinsic foreign fun sub_i32    :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun mul_i32    :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun div_i32    :: Int32 -> Int32 -> Int32
 @intrinsic foreign fun eq_i32     :: Int32 -> Int32 -> Bool
 @intrinsic foreign fun ptr_offset :: for ptr to. Pointer ptr to => ptr -> Int64 -> ptr
 @intrinsic foreign fun apply      :: for r a. (a -> r) -> a -> r
-@intrinsic foreign fun transmute  :: for a b. a -> b
+@intrinsic foreign fun transmute  :: for a b. Unsafe => a -> b
+
+@intrinsic foreign fun unsafe :: for a. (Unsafe => a) -> a
