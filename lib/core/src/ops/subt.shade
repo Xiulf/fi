@@ -1,0 +1,11 @@
+module sub =
+
+import prim (intrinsics)
+
+infixl 6 sub as (-)
+
+class Sub lhs rhs out | lhs rhs -> out =
+    fun sub :: lhs -> rhs -> out
+
+instance Sub Int32 Int32 Int32 =
+    fun sub lhs rhs = intrinsics/sub_i32 lhs rhs

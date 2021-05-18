@@ -295,17 +295,17 @@ impl Func {
         let lower = hir_ty::lower::func_ty(db, self.id);
         let body = db.body(self.id.into());
 
-        eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
-
-        for (expr, ty) in infer.type_of_expr.iter() {
-            eprintln!("{:?} :: {}", body[expr], ty.display(db));
-        }
-
-        for (pat, ty) in infer.type_of_pat.iter() {
-            eprintln!("{:?} :: {}", body[pat], ty.display(db));
-        }
-
-        eprintln!();
+        // eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
+        //
+        // for (expr, ty) in infer.type_of_expr.iter() {
+        //     eprintln!("{:?} :: {}", body[expr], ty.display(db));
+        // }
+        //
+        // for (pat, ty) in infer.type_of_pat.iter() {
+        //     eprintln!("{:?} :: {}", body[pat], ty.display(db));
+        // }
+        //
+        // eprintln!();
 
         infer.add_diagnostics(db, self.id.into(), sink);
         lower.add_diagnostics(db, TypeVarOwner::TypedDefId(self.id.into()), sink);

@@ -34,18 +34,21 @@ crate fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 crate fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = app(p, allow_do)?;
 
-    if p.at(OPERATOR) || p.at(STAR) {
-        let expr = m.precede(p);
-        let _ = p.bump_any();
-        let _ = infix(p, allow_do);
-
-        m = expr.complete(p, EXPR_INFIX);
-    } else if p.at(TICK) {
+    if p.at(TICK) {
         let expr = m.precede(p);
 
         paths::path(p);
         p.expect(TICK);
         infix(p, allow_do);
+
+        m = expr.complete(p, EXPR_INFIX);
+    } else if p.at(OPERATOR) || p.at(STAR) {
+        let expr = m.precede(p);
+
+        while p.at(OPERATOR) || p.at(STAR) {
+            p.bump_any();
+            app(p, allow_do);
+        }
 
         m = expr.complete(p, EXPR_INFIX);
     }

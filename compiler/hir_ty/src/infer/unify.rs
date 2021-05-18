@@ -1,4 +1,4 @@
-use super::InferenceContext;
+use super::{ExprOrPatId, InferenceContext};
 use crate::display::HirDisplay;
 use crate::ty::*;
 use rustc_hash::FxHashMap;
@@ -83,14 +83,19 @@ impl InferenceContext<'_> {
         })
     }
 
-    pub fn instantiate(&mut self, ty: Ty) -> Ty {
-        if let TyKind::ForAll(kind, inner) = ty.lookup(self.db) {
-            let u = self.fresh_type_with_kind(kind);
-            let ty = self.replace_var(inner, u);
+    pub fn instantiate(&mut self, ty: Ty, id: ExprOrPatId) -> Ty {
+        match ty.lookup(self.db) {
+            | TyKind::ForAll(kind, inner) => {
+                let u = self.fresh_type_with_kind(kind);
+                let ty = self.replace_var(inner, u);
 
-            self.instantiate(ty)
-        } else {
-            ty
+                self.instantiate(ty, id)
+            },
+            | TyKind::Ctnt(ctnt, inner) => {
+                self.constrain(id, ctnt);
+                self.instantiate(inner, id)
+            },
+            | _ => ty,
         }
     }
 

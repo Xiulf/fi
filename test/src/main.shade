@@ -3,40 +3,32 @@ module main (main) =
 import core
 import core/libc
 import core/intrinsics
+import core/ops/add ((+))
+import core/ops/sub ((-))
+import core/ops/eq ((==))
 
 fun main argc argv = do
     print_args argc argv
     0
 
-fun print_args argc (argv :: C_Array C_Str) =
-    unless eq_i32 argc 0 do
+fun print_args (argc :: Int32) (argv :: C_Array C_Str) =
+    unless argc == 0 do
         puts argv.*
-        print_args (sub_i32 argc 1) (ptr_offset argv 1)
+        print_args (argc - 1) (argv *+ 1)
 
 fun nats = do
     a <- yield 1
     b <- yield 2
     c <- yield 3
     d <- yield 4
-    add_i32 a (add_i32 b (add_i32 c d))
+    a + b + c + d
 
 fun test =
-    nats do |i|
-        if eq_i32 i 2
+    nats do |(i :: Int32)|
+        if i == 2
         then next 10
-        else add_i32 i 1
+        else i + 1
 
 fun print (s :: Str) = do
     (ptr, len) <- unsafe $ transmute s
     _ <- write STDOUT_FILENO ptr len
-
-
-
-foreign fun op_a :: Int32 -> Int32 -> Int8
-foreign fun op_b :: Int8 -> Int8 -> Int8
-
-infixl 6 op_b as (+)
-infixl 7 op_a as (*)
-
-fun test2 =
-    3 * 4 + 3

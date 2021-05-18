@@ -293,7 +293,8 @@ impl<'a> BodyInferenceContext<'a> {
                     | AssocItemId::StaticId(id) => self.db.value_ty(id.into()),
                 };
 
-                let item_ty = self.instantiate(item_ty);
+                let expr = self.body.body_expr();
+                let item_ty = self.instantiate(item_ty, expr.into());
                 let self_type = self.result.self_type;
                 let body_expr = self.body.body_expr();
 

@@ -1,0 +1,11 @@
+module add =
+
+import prim (intrinsics)
+
+infixl 6 add as (+)
+
+class Add lhs rhs out | lhs rhs -> out =
+    fun add :: lhs -> rhs -> out
+
+instance Add Int32 Int32 Int32 =
+    fun add lhs rhs = intrinsics/add_i32 lhs rhs

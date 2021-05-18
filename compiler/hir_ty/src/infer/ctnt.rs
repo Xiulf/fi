@@ -32,10 +32,7 @@ impl InferenceContext<'_> {
 
             true
         } else if let Some(res) = self.db.solve_constraint(self.subst_ctnt(&ctnt)) {
-            for (&u, &ty) in res.subst.iter() {
-                self.solve_type(u, ty);
-            }
-
+            res.apply(self, &ctnt.types);
             true
         } else {
             self.constraints.push((ctnt, id, scope));

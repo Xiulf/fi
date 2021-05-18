@@ -4,7 +4,7 @@ use crate::lower::LowerCtx;
 use crate::ty::*;
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::TypeVarOwner;
-use hir_def::resolver::{Resolver, ValueNs};
+use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 use std::sync::Arc;
 
 impl BodyInferenceContext<'_> {
@@ -41,7 +41,7 @@ impl BodyInferenceContext<'_> {
 
                     let ty = self.db.value_ty(id);
 
-                    self.instantiate(ty)
+                    self.instantiate(ty, expr.into())
                 },
                 | None => {
                     self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
@@ -77,7 +77,8 @@ impl BodyInferenceContext<'_> {
             | Expr::Infix { op, lhs, rhs } => match self.resolver.resolve_value_fully(self.db.upcast(), op) {
                 | Some(ValueNs::Fixity(id)) => 't: {
                     let data = self.db.fixity_data(id);
-                    let id = match self.resolver.resolve_value_fully(self.db.upcast(), &data.func) {
+                    let resolver = id.resolver(self.db.upcast());
+                    let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
                         | Some(ValueNs::Func(id)) => id.into(),
                         | Some(ValueNs::Ctor(id)) => id.into(),
                         | _ => {
@@ -87,7 +88,7 @@ impl BodyInferenceContext<'_> {
                     };
 
                     let ty = self.db.value_ty(id);
-                    let ty = self.instantiate(ty);
+                    let ty = self.instantiate(ty, expr.into());
                     let mid = self.check_app(ty, *lhs, expr);
 
                     self.check_app(mid, *rhs, expr)

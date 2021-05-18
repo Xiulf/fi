@@ -651,9 +651,11 @@ impl ExprLit {
 }
 
 impl ExprInfix {
-    pub fn op(&self) -> Option<Operator> {
-        support::token(&self.0, OPERATOR)
-            .or_else(|| support::token(&self.0, STAR))
+    pub fn ops(&self) -> impl Iterator<Item = Operator> {
+        self.0
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .filter(|it| it.kind() == SyntaxKind::OPERATOR || it.kind() == SyntaxKind::STAR)
             .map(Operator)
     }
 
@@ -666,7 +668,11 @@ impl ExprInfix {
     }
 
     pub fn rhs(&self) -> Option<Expr> {
-        support::children(&self.0).nth(1)
+        self.exprs().nth(1)
+    }
+
+    pub fn exprs(&self) -> AstChildren<Expr> {
+        support::children(&self.0)
     }
 }
 

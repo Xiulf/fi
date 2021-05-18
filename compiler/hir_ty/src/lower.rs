@@ -369,7 +369,6 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
             let ctnt = Constraint {
                 class,
                 types: (0..lower.class.vars.len() as u32)
-                    .rev()
                     .map(|i| TypeVar::new(DebruijnIndex::new(i)).to_ty(db))
                     .collect(),
             };

@@ -1,0 +1,16 @@
+module eq =
+
+import prim (intrinsics, Bool)
+
+infix 4 eq as (==)
+infix 4 ne as (!=)
+
+class PartialEq lhs rhs =
+    fun eq :: lhs -> rhs -> Bool
+
+class Eq t : PartialEq t t
+
+instance PartialEq Int32 Int32 =
+    fun eq lhs rhs = intrinsics/eq_i32 lhs rhs
+
+instance Eq Int32

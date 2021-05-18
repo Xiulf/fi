@@ -38,8 +38,8 @@ type Bool =
     | False
     | True
 
-@lang = "integer-class" class Integer t
-@lang = "decimal-class" class Decimal t
+@lang = "integer-class" class Integer t | -> t
+@lang = "decimal-class" class Decimal t | -> t
 @lang = "pointer-class" class Pointer t to | t -> to
 
 instance Integer Int8
@@ -58,7 +58,6 @@ instance Integer Uint128
 instance Decimal Float32
 instance Decimal Float64
 
-@default
 instance Pointer (Ptr t) t
 instance Pointer (BufPtr t) t
 instance Pointer (BufPtrSentinel t s) t

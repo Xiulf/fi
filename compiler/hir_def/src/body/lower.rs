@@ -1,11 +1,13 @@
 use crate::arena::Arena;
 use crate::ast_id::{AstIdMap, FileAstId};
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
+use crate::data::FixityData;
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::expr::{dummy_expr_id, Expr, ExprId, Literal, RecordField, Stmt};
-use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
+use crate::id::{FixityId, LocalModuleId, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
+use crate::item_tree::Assoc;
 use crate::name::{AsName, Name};
 use crate::pat::{Pat, PatId};
 use crate::path::Path;
@@ -209,12 +211,82 @@ impl<'a> ExprCollector<'a> {
 
                     self.alloc_expr(Expr::App { base, arg: rhs }, syntax_ptr)
                 } else {
-                    let op = e.op()?.as_name();
-                    let op = Path::from(op);
-                    let lhs = self.collect_expr_opt(e.lhs());
-                    let rhs = self.collect_expr_opt(e.rhs());
+                    let exprs = e.exprs().map(|e| self.collect_expr(e)).collect::<Vec<_>>();
+                    let ops = e.ops().map(|op| Path::from(op.as_name())).collect::<Vec<_>>();
+                    let fixities = ops
+                        .iter()
+                        .map(|op| {
+                            let (resolved, _) = self.def_map.resolve_path(self.db, self.module, op);
 
-                    self.alloc_expr(Expr::Infix { op, lhs, rhs }, syntax_ptr)
+                            match resolved.values {
+                                | Some(ModuleDefId::FixityId(id)) => Some((id, self.db.fixity_data(id))),
+                                | _ => None,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    return Some(go(
+                        self,
+                        ops.into_iter(),
+                        fixities.into_iter().peekable(),
+                        exprs.into_iter(),
+                        syntax_ptr,
+                    ));
+
+                    use std::iter::{once, Peekable};
+
+                    fn go(
+                        collector: &mut ExprCollector,
+                        mut ops: impl Iterator<Item = Path>,
+                        mut fixities: Peekable<impl Iterator<Item = Option<(FixityId, Arc<FixityData>)>>>,
+                        mut exprs: impl Iterator<Item = ExprId>,
+                        syntax_ptr: ExprPtr,
+                    ) -> ExprId {
+                        if let Some(op) = ops.next() {
+                            let left = if let Some((id, fixity)) = fixities.next().unwrap() {
+                                if let Some(next) = fixities.peek() {
+                                    if let Some((id2, fixity2)) = next {
+                                        if id == *id2 {
+                                            match fixity.assoc {
+                                                | Assoc::Left => true,
+                                                | Assoc::Right => false,
+                                                | Assoc::None => true, // @TODO: this should be an error
+                                            }
+                                        } else if fixity.prec >= fixity2.prec {
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    let lhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
+                                    let rhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
+
+                                    return collector.alloc_expr(Expr::Infix { op, lhs, rhs }, syntax_ptr);
+                                }
+                            } else {
+                                false
+                            };
+
+                            if left {
+                                let lhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
+                                let rhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
+                                let expr = collector.alloc_expr(Expr::Infix { op, lhs, rhs }, syntax_ptr.clone());
+                                let exprs = once(expr).chain(exprs).collect::<Vec<_>>();
+
+                                go(collector, ops, fixities, exprs.into_iter(), syntax_ptr)
+                            } else {
+                                let lhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
+                                let rhs = go(collector, ops, fixities, exprs, syntax_ptr.clone());
+
+                                collector.alloc_expr(Expr::Infix { op, lhs, rhs }, syntax_ptr)
+                            }
+                        } else {
+                            exprs.next().unwrap_or_else(|| collector.missing_expr())
+                        }
+                    }
                 }
             },
             | ast::Expr::Parens(e) => {

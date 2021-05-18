@@ -37,12 +37,12 @@ impl BodyInferenceContext<'_> {
                 | Some(ValueNs::Ctor(id)) => {
                     let ty = self.db.value_ty(id.into());
 
-                    self.instantiate(ty)
+                    self.instantiate(ty, pat.into())
                 },
                 | Some(ValueNs::Const(id)) => {
                     let ty = self.db.value_ty(id.into());
 
-                    self.instantiate(ty)
+                    self.instantiate(ty, pat.into())
                 },
                 | _ => {
                     self.report(InferenceDiagnostic::UnresolvedValue { id: pat.into() });
