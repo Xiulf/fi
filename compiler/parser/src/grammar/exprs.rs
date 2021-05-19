@@ -82,22 +82,12 @@ crate fn postfix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                 p.bump(DOT);
 
                 match p.current() {
-                    | STAR => {
-                        p.bump(STAR);
-                        m = expr.complete(p, EXPR_DEREF);
-                    },
                     | IDENT => {
                         paths::name_ref(p);
                         m = expr.complete(p, EXPR_FIELD);
                     },
-                    | L_PAREN => {
-                        p.bump(L_PAREN);
-                        types::ty(p);
-                        p.expect(R_PAREN);
-                        m = expr.complete(p, EXPR_CAST);
-                    },
                     | _ => {
-                        p.error("expected '*', '(' or an identifier");
+                        p.error("expected an identifier");
                         expr.abandon(p);
                         return None;
                     },

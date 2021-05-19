@@ -64,9 +64,9 @@ pub struct ClassEnvMatchResult {
     pub subst: FxHashMap<Unknown, Ty>,
 }
 
-#[derive(Debug, PartialEq)]
-enum Matched {
-    Match,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Matched<T> {
+    Match(T),
     Apart,
     Unknown,
 }
@@ -111,13 +111,13 @@ impl Instances {
     pub(crate) fn matches(&self, db: &dyn HirDatabase, ctnt: Constraint) -> Option<InstanceMatchResult> {
         self.matchers
             .iter()
-            .filter_map(|m| m.instance.matches(db, &ctnt.types, &self.deps))
+            .filter_map(|m| m.instance.matches(db, &ctnt, &self.deps))
             .next()
     }
 }
 
 impl InstanceMatchResult {
-    pub(crate) fn apply(&self, icx: &mut InferenceContext, tys: &[Ty]) {
+    pub(crate) fn apply(&self, icx: &mut InferenceContext) {
         for (&u, &ty) in self.subst.iter() {
             icx.solve_type(u, ty);
         }
@@ -125,16 +125,17 @@ impl InstanceMatchResult {
 }
 
 impl Instance {
-    fn matches(&self, db: &dyn HirDatabase, tys: &[Ty], deps: &[FunDep]) -> Option<InstanceMatchResult> {
+    fn matches(&self, db: &dyn HirDatabase, ctnt: &Constraint, deps: &[FunDep]) -> Option<InstanceMatchResult> {
         let mut subst = FxHashMap::default();
         let mut vars = BTreeMap::default();
-        let matches = tys
+        let matches = ctnt
+            .types
             .iter()
             .zip(self.types.iter())
             .map(|(&ty, &with)| match_type(db, ty, with, &mut subst, &mut vars))
             .collect::<Vec<_>>();
 
-        if !verify(matches, deps) {
+        if !verify(&matches, deps) {
             return None;
         }
 
@@ -215,7 +216,7 @@ impl ClassEnv {
             let mut vars = BTreeMap::new();
 
             for (&ty, &with) in ctnt.types.iter().zip(entry.ctnt.types.iter()) {
-                if match_type(db, ty, with, &mut subst, &mut vars) != Matched::Match {
+                if match_type(db, ty, with, &mut subst, &mut vars) != Matched::Match(()) {
                     return None;
                 }
             }
@@ -225,12 +226,27 @@ impl ClassEnv {
     }
 }
 
-fn verify(matches: Vec<Matched>, deps: &[FunDep]) -> bool {
+impl Constraint {
+    pub fn can_be_generalized(&self, db: &dyn HirDatabase) -> bool {
+        self.types.iter().any(|t| t.can_be_generalized(db))
+    }
+}
+
+impl Ty {
+    pub fn can_be_generalized(self, db: &dyn HirDatabase) -> bool {
+        match self.lookup(db) {
+            | TyKind::Unknown(_) => true,
+            | _ => false,
+        }
+    }
+}
+
+fn verify(matches: &[Matched<()>], deps: &[FunDep]) -> bool {
     let expected = (0..matches.len()).collect::<FxHashSet<_>>();
     let initial_set = matches
         .iter()
         .enumerate()
-        .filter(|(_, m)| matches!(m, Matched::Match))
+        .filter(|(_, m)| matches!(m, Matched::Match(_)))
         .map(|(i, _)| i)
         .collect::<FxHashSet<_>>();
 
@@ -271,28 +287,28 @@ fn match_type(
     with: Ty,
     subst: &mut FxHashMap<Unknown, Ty>,
     vars: &mut BTreeMap<TypeVar, Ty>,
-) -> Matched {
+) -> Matched<()> {
     match (ty.lookup(db), with.lookup(db)) {
         | (_, TyKind::Skolem(..)) | (_, TyKind::Unknown(_)) | (TyKind::Skolem(..), _) => {
             unreachable!()
         },
-        | (TyKind::Error, _) | (_, TyKind::Error) => Matched::Match,
+        | (TyKind::Error, _) | (_, TyKind::Error) => Matched::Match(()),
         | (TyKind::Unknown(u), _) => {
             subst.insert(u, with);
             Matched::Unknown
         },
         | (_, TyKind::TypeVar(tv)) => {
             vars.insert(tv, ty);
-            Matched::Match
+            Matched::Match(())
         },
-        | (TyKind::Figure(c1), TyKind::Figure(c2)) if c1 == c2 => Matched::Match,
-        | (TyKind::Symbol(c1), TyKind::Symbol(c2)) if c1 == c2 => Matched::Match,
-        | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => Matched::Match,
+        | (TyKind::Figure(c1), TyKind::Figure(c2)) if c1 == c2 => Matched::Match(()),
+        | (TyKind::Symbol(c1), TyKind::Symbol(c2)) if c1 == c2 => Matched::Match(()),
+        | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => Matched::Match(()),
         | (TyKind::Tuple(t1), TyKind::Tuple(t2)) if t1.len() == t2.len() => t1
             .iter()
             .zip(t2.iter())
             .map(|(t1, t2)| match_type(db, *t1, *t2, subst, vars))
-            .fold(Matched::Match, Matched::then),
+            .fold(Matched::Match(()), Matched::then),
         | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => {
             match_type(db, a1, b1, subst, vars).then(match_type(db, a2, b2, subst, vars))
         },
@@ -325,12 +341,30 @@ fn type_score(db: &dyn HirDatabase, ty: Ty) -> isize {
     }
 }
 
-impl Matched {
+impl Matched<()> {
     fn then(self, other: Self) -> Self {
         match (self, other) {
-            | (Matched::Match, Matched::Match) => Matched::Match,
+            | (Matched::Match(_), Matched::Match(_)) => Matched::Match(()),
             | (Matched::Apart, _) | (_, Matched::Apart) => Matched::Apart,
             | (_, _) => Matched::Unknown,
+        }
+    }
+
+    fn cast<U>(self) -> Matched<U> {
+        match self {
+            | Matched::Match(_) => unreachable!(),
+            | Matched::Apart => Matched::Apart,
+            | Matched::Unknown => Matched::Unknown,
+        }
+    }
+}
+
+impl<T> Matched<T> {
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> Matched<U> {
+        match self {
+            | Matched::Match(t) => Matched::Match(f(t)),
+            | Matched::Apart => Matched::Apart,
+            | Matched::Unknown => Matched::Unknown,
         }
     }
 }

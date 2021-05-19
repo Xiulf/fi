@@ -5,13 +5,17 @@ import prim
 infixr 0 apply as ($)
 infixl 6 ptr_offset as (*+)
 
-@intrinsic foreign fun add_i32    :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun sub_i32    :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun mul_i32    :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun div_i32    :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun eq_i32     :: Int32 -> Int32 -> Bool
-@intrinsic foreign fun ptr_offset :: for ptr to. Pointer ptr to => ptr -> Int64 -> ptr
-@intrinsic foreign fun apply      :: for r a. (a -> r) -> a -> r
-@intrinsic foreign fun transmute  :: for a b. Unsafe => a -> b
+@intrinsic foreign fun add_i32 :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun sub_i32 :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun mul_i32 :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun div_i32 :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun rem_i32 :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun eq_i32  :: Int32 -> Int32 -> Bool
 
-@intrinsic foreign fun unsafe :: for a. (Unsafe => a) -> a
+@intrinsic foreign fun ptr_offset :: for ptr to. Pointer ptr to => ptr -> Int64 -> ptr
+@intrinsic foreign fun ptr_read   :: for ptr to. Pointer ptr to => ptr -> to
+@intrinsic foreign fun ptr_write  :: for ptr to. Pointer ptr to => ptr -> to -> ()
+
+@intrinsic foreign fun apply     :: for r a. (a -> r) -> a -> r
+@intrinsic foreign fun transmute :: for a b. Unsafe => a -> b
+@intrinsic foreign fun unsafe    :: for a. (Unsafe => a) -> a

@@ -4,7 +4,8 @@ use crate::ty::*;
 
 impl InferenceContext<'_> {
     pub fn solve_constraints(&mut self) {
-        let mut unsolved = std::mem::replace(&mut self.constraints, Vec::new());
+        let n_constraints = self.constraints.len();
+        let mut unsolved = std::mem::replace(&mut self.constraints, Vec::with_capacity(n_constraints));
         let mut n_solved = 1;
 
         while !unsolved.is_empty() && n_solved > 0 {
@@ -16,23 +17,29 @@ impl InferenceContext<'_> {
                 }
             }
 
-            unsolved = std::mem::replace(&mut self.constraints, Vec::new());
+            unsolved = std::mem::replace(&mut self.constraints, Vec::with_capacity(n_constraints));
         }
 
-        for (ctnt, id, _) in unsolved {
-            self.report(InferenceDiagnostic::UnsolvedConstraint { id, ctnt });
+        for (ctnt, id, scope) in unsolved {
+            if ctnt.can_be_generalized(self.db) {
+                self.constraints.push((ctnt, id, scope));
+            } else {
+                self.report(InferenceDiagnostic::UnsolvedConstraint { id, ctnt });
+            }
         }
     }
 
     fn solve_constraint(&mut self, ctnt: Constraint, id: ExprOrPatId, scope: Option<ClassEnvScope>) -> bool {
-        if let Some(res) = self.class_env.solve(self.db, self.subst_ctnt(&ctnt), scope) {
+        let ctnt = self.subst_ctnt(&ctnt);
+
+        if let Some(res) = self.class_env.solve(self.db, ctnt.clone(), scope) {
             for (&u, &ty) in res.subst.iter() {
                 self.solve_type(u, ty);
             }
 
             true
-        } else if let Some(res) = self.db.solve_constraint(self.subst_ctnt(&ctnt)) {
-            res.apply(self, &ctnt.types);
+        } else if let Some(res) = self.db.solve_constraint(ctnt.clone()) {
+            res.apply(self);
             true
         } else {
             self.constraints.push((ctnt, id, scope));

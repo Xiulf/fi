@@ -36,13 +36,6 @@ pub enum Expr {
         base: ExprId,
         field: Name,
     },
-    Deref {
-        expr: ExprId,
-    },
-    Cast {
-        expr: ExprId,
-        ty: LocalTypeRefId,
-    },
     Index {
         base: ExprId,
         index: ExprId,
@@ -137,8 +130,6 @@ impl Expr {
                 f(*arg);
             },
             | Expr::Field { base, .. } => f(*base),
-            | Expr::Deref { expr } => f(*expr),
-            | Expr::Cast { expr, .. } => f(*expr),
             | Expr::Index { base, index } => {
                 f(*base);
                 f(*index);

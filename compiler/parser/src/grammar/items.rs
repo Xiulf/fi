@@ -50,9 +50,7 @@ crate fn import(p: &mut Parser, m: Marker) {
     p.expect(IMPORT_KW);
     paths::path(p);
 
-    if p.eat(AS_KW) {
-        paths::name(p);
-    } else if p.eat(L_PAREN) {
+    if p.eat(L_PAREN) {
         let items = p.start();
 
         while !p.at(EOF) && !p.at(R_PAREN) {
@@ -65,6 +63,10 @@ crate fn import(p: &mut Parser, m: Marker) {
 
         p.expect(R_PAREN);
         items.complete(p, IMPORT_ITEMS);
+    }
+
+    if p.eat(AS_KW) {
+        paths::name(p);
     }
 
     m.complete(p, IMPORT);

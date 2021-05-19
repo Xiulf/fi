@@ -5,3 +5,5 @@ module core (
 ) =
 
 import prim as c
+import prim/intrinsics (($)) as c
+import core/ops as c

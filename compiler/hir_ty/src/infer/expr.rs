@@ -122,29 +122,6 @@ impl BodyInferenceContext<'_> {
                 self.check_expr(*base, record);
                 res
             },
-            | Expr::Deref { expr: inner } => {
-                let pointer = self.lang_class("pointer-class");
-                let expr_ty = self.infer_expr(*inner);
-                let ty = self.fresh_type();
-
-                self.constrain(expr.into(), Constraint {
-                    class: pointer,
-                    types: vec![expr_ty, ty].into(),
-                });
-
-                ty
-            },
-            | Expr::Cast { expr, ty } => {
-                self.infer_expr(*expr);
-
-                self.owner.with_type_map(self.db.upcast(), |type_map| {
-                    let mut lcx = LowerCtx::new(type_map, self);
-                    let ty_ = lcx.lower_ty(*ty);
-
-                    self.check_kind_type(ty_, *ty);
-                    ty_
-                })
-            },
             | Expr::Tuple { exprs } => {
                 let tys = exprs.iter().map(|&e| self.infer_expr(e)).collect();
 

@@ -696,22 +696,6 @@ impl ExprField {
     }
 }
 
-impl ExprDeref {
-    pub fn expr(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-}
-
-impl ExprCast {
-    pub fn expr(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-
-    pub fn ty(&self) -> Option<Type> {
-        support::child(&self.0)
-    }
-}
-
 impl ExprIndex {
     pub fn base(&self) -> Option<Expr> {
         support::child(&self.0)

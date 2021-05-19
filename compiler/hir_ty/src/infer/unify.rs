@@ -112,16 +112,30 @@ impl InferenceContext<'_> {
     pub fn generalize(&mut self, ty: Ty) -> Ty {
         let mut ty = self.subst_type(ty);
         let mut unknowns = FxHashMap::default();
-
-        ty.everything(self.db, &mut |ty| match ty.lookup(self.db) {
+        let mut find_unknown = |ty: Ty| match ty.lookup(self.db) {
             | TyKind::Unknown(u) => {
                 unknowns.insert(u, self.subst.unsolved(u).1);
             },
             | _ => {},
-        });
+        };
 
-        for (i, (u, kind)) in unknowns.into_iter().enumerate() {
+        ty.everything(self.db, &mut find_unknown);
+
+        for (ctnt, _, _) in &self.constraints {
+            for &ty in ctnt.types.iter() {
+                ty.everything(self.db, &mut find_unknown);
+            }
+        }
+
+        for (i, (&u, _)) in unknowns.iter().enumerate() {
             self.solve_type(u, TypeVar::new(DebruijnIndex::new(i as u32)).to_ty(self.db));
+        }
+
+        for (ctnt, _, _) in &self.constraints {
+            ty = TyKind::Ctnt(self.subst_ctnt(&ctnt), ty).intern(self.db);
+        }
+
+        for (_, kind) in unknowns.into_iter() {
             ty = TyKind::ForAll(kind, ty).intern(self.db);
         }
 

@@ -147,8 +147,6 @@ pub enum SyntaxKind {
     EXPR_INFIX,
     EXPR_APP,
     EXPR_FIELD,
-    EXPR_DEREF,
-    EXPR_CAST,
     EXPR_INDEX,
     EXPR_PATH,
     EXPR_LITERAL,

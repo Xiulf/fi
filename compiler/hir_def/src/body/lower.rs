@@ -177,11 +177,6 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::Field { base, field }, syntax_ptr)
             },
-            | ast::Expr::Deref(e) => {
-                let expr = self.collect_expr_opt(e.expr());
-
-                self.alloc_expr(Expr::Deref { expr }, syntax_ptr)
-            },
             | ast::Expr::Path(e) => {
                 let path = e
                     .path()
