@@ -63,3 +63,4 @@ instance Pointer (BufPtr t) t
 instance Pointer (BufPtrSentinel t s) t
 
 class Unsafe
+class Partial

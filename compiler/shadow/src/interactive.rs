@@ -123,8 +123,25 @@ fn format_resolution(db: &dyn hir::db::HirDatabase, resolution: hir::PathResolut
         },
         | hir::PathResolution::Def(def) => {
             let name = def.name(db);
+            let m = Markup::new();
+            let m = match def {
+                | hir::ModuleDef::Module(_) => m.text("module ", Styles::BOLD),
+                | hir::ModuleDef::Fixity(f) => match f.assoc(db) {
+                    | hir::Assoc::Left => m.text("infixl ", Styles::BOLD),
+                    | hir::Assoc::Right => m.text("infixr ", Styles::BOLD),
+                    | hir::Assoc::None => m.text("infix ", Styles::BOLD),
+                },
+                | hir::ModuleDef::Func(_) => m.text("fun ", Styles::BOLD),
+                | hir::ModuleDef::Static(_) => m.text("static ", Styles::BOLD),
+                | hir::ModuleDef::Const(_) => m.text("const ", Styles::BOLD),
+                | hir::ModuleDef::TypeAlias(_) => m.text("type ", Styles::BOLD),
+                | hir::ModuleDef::TypeCtor(_) => m.text("type ", Styles::BOLD),
+                | hir::ModuleDef::Ctor(_) => m.text("ctor ", Styles::BOLD),
+                | hir::ModuleDef::Class(_) => m.text("class ", Styles::BOLD),
+                | _ => m,
+            };
 
-            Markup::new().text(name.to_string(), Styles::UNDERLINE)
+            m.text(name.to_string(), Styles::UNDERLINE)
         },
     }
 }

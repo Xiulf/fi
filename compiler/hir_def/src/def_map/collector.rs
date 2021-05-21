@@ -385,6 +385,11 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                                 self.def_collector.def_map.modules[module_id].origin =
                                     super::ModuleOrigin::Virtual { parent: self.module_id };
 
+                                def = Some(DefData {
+                                    id: ModuleDefId::ModuleId(self.def_collector.def_map.module_id(module_id)),
+                                    name: qual,
+                                });
+
                                 module_id
                             });
 
@@ -397,11 +402,6 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                                 path: it.path.clone(),
                                 is_glob: it.is_glob,
                             },
-                        });
-
-                        def = Some(DefData {
-                            id: ModuleDefId::ModuleId(self.def_collector.def_map.module_id(module_id)),
-                            name: qual,
                         });
                     } else {
                         self.def_collector.unresolved_imports.push(ImportDirective {

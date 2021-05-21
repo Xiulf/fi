@@ -81,10 +81,7 @@ impl BodyInferenceContext<'_> {
                     let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
                         | Some(ValueNs::Func(id)) => id.into(),
                         | Some(ValueNs::Ctor(id)) => id.into(),
-                        | _ => {
-                            self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
-                            break 't self.error();
-                        },
+                        | _ => break 't self.error(),
                     };
 
                     let ty = self.db.value_ty(id);

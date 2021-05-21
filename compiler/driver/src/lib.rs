@@ -22,12 +22,11 @@ pub struct Driver {
 }
 
 impl Driver {
-    pub fn init(opts: Opts) -> Option<Self> {
+    pub fn init(opts: Opts) -> Option<(Self, LibId)> {
         let mut driver = Driver::default();
+        let lib = driver.load(opts.input, false)?;
 
-        driver.load(opts.input, false)?;
-
-        Some(driver)
+        Some((driver, lib))
     }
 
     pub fn interactive() -> (Self, LibId, FileId, FileId, FileId) {
@@ -123,6 +122,7 @@ impl Driver {
         println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
     }
 
-    pub fn docs(&self) {
+    pub fn docs(&self, lib: LibId) {
+        docs::generate(&self.db, lib.into(), "target".as_ref())
     }
 }

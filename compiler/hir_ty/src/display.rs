@@ -205,18 +205,14 @@ impl HirDisplay for Ty {
                         write!(f, " -> ")?;
                         args[1].hir_fmt(f)
                     },
-                    "ptr-type"(1) => {
-                        write!(f, "*")?;
-                        TyParens(args[0]).hir_fmt(f)
-                    },
-                    "ptrb-type"(1) => {
-                        write!(f, "[*]")?;
-                        TyParens(args[0]).hir_fmt(f)
-                    },
-                    "ptrbs-type"(2) => {
-                        write!(f, "[*:")?;
-                        args[1].hir_fmt(f)?;
+                    "array-type"(2) => {
+                        write!(f, "[")?;
+                        args[0].hir_fmt(f)?;
                         write!(f, "]")?;
+                        TyParens(args[0]).hir_fmt(f)
+                    },
+                    "slice-type"(1) => {
+                        write!(f, "[]")?;
                         TyParens(args[0]).hir_fmt(f)
                     },
                     "record-type"(1) => {

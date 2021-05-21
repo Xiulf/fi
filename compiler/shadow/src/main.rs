@@ -8,7 +8,6 @@ use driver::{Driver, Opts};
 
 fn main() {
     let matches = clap_app!(shadow =>
-        (@setting ArgRequiredElseHelp)
         (@setting VersionlessSubcommands)
         (@subcommand check =>
             (@arg input: +takes_value default_value("."))
@@ -43,26 +42,26 @@ fn main() {
     if let Some(matches) = matches.subcommand_matches("check") {
         let input = matches.value_of("input").unwrap();
 
-        if let Some(driver) = Driver::init(Opts { input }) {
+        if let Some((driver, _)) = Driver::init(Opts { input }) {
             driver.check();
         }
     } else if let Some(matches) = matches.subcommand_matches("build") {
         let input = matches.value_of("input").unwrap();
 
-        if let Some(driver) = Driver::init(Opts { input }) {
+        if let Some((driver, _)) = Driver::init(Opts { input }) {
             driver.build();
         }
     } else if let Some(matches) = matches.subcommand_matches("run") {
         let input = matches.value_of("input").unwrap();
 
-        if let Some(driver) = Driver::init(Opts { input }) {
+        if let Some((driver, _)) = Driver::init(Opts { input }) {
             driver.build();
         }
     } else if let Some(matches) = matches.subcommand_matches("docs") {
         let input = matches.value_of("input").unwrap();
 
-        if let Some(driver) = Driver::init(Opts { input }) {
-            driver.docs();
+        if let Some((driver, lib)) = Driver::init(Opts { input }) {
+            driver.docs(lib);
         }
     } else {
         interactive::run();

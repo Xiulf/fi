@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 diagnostics = { path = "../diagnostics" }
+docs = { path = "../docs" }
 hir = { path = "../hir" }
 hir_def = { path = "../hir_def" }
 base_db = { path = "../base_db" }

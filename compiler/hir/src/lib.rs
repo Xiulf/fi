@@ -14,6 +14,7 @@ use hir_def::diagnostic::DiagnosticSink;
 pub use hir_def::expr::{Expr, Literal, Stmt};
 use hir_def::id::*;
 pub use hir_def::in_file::InFile;
+pub use hir_def::item_tree::{Assoc, Prec};
 pub use hir_def::name::{AsName, Name};
 pub use hir_def::pat::Pat;
 use hir_def::pat::PatId;
@@ -101,6 +102,12 @@ impl Module {
         let def_map = db.def_map(self.id.lib);
 
         def_map[self.id.local_id].origin.file_id(&def_map)
+    }
+
+    pub fn is_virtual(self, db: &dyn HirDatabase) -> bool {
+        let def_map = db.def_map(self.id.lib);
+
+        def_map[self.id.local_id].origin.is_virtual()
     }
 
     pub fn children(self, db: &dyn HirDatabase) -> Vec<Module> {
@@ -259,6 +266,14 @@ impl Fixity {
 
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.fixity_data(self.id).name.clone()
+    }
+
+    pub fn assoc(self, db: &dyn HirDatabase) -> Assoc {
+        db.fixity_data(self.id).assoc
+    }
+
+    pub fn prec(self, db: &dyn HirDatabase) -> Prec {
+        db.fixity_data(self.id).prec
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
