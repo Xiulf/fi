@@ -18,6 +18,7 @@ pub use hir_def::item_tree::{Assoc, Prec};
 pub use hir_def::name::{AsName, Name};
 pub use hir_def::pat::Pat;
 use hir_def::pat::PatId;
+pub use hir_def::path::Path;
 use hir_ty::db::HirDatabase;
 pub use hir_ty::display;
 use hir_ty::lower::LowerResult;
@@ -274,6 +275,18 @@ impl Fixity {
 
     pub fn prec(self, db: &dyn HirDatabase) -> Prec {
         db.fixity_data(self.id).prec
+    }
+
+    pub fn func(self, db: &dyn HirDatabase) -> Func {
+        let path = &db.fixity_data(self.id).func;
+        let resolver = hir_def::resolver::HasResolver::resolver(self.id, db.upcast());
+        let id = resolver.resolve_value_fully(db.upcast(), path);
+
+        if let Some(hir_def::resolver::ValueNs::Func(id)) = id {
+            Func::from(id)
+        } else {
+            unreachable!();
+        }
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {

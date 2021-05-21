@@ -1,7 +1,9 @@
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Markup {
     parts: Vec<Part>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Part {
     Text(String, Styles),
     Header(String, u8),
@@ -9,7 +11,7 @@ enum Part {
     Line,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Styles(u8);
 
 pub struct ParagraphBuilder {

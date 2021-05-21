@@ -1,3 +1,6 @@
+pub mod db;
+pub mod elems;
+
 use hir::db::HirDatabase;
 use html_builder::{Document, Html5, Node};
 use relative_path::{RelativePath, RelativePathBuf};
@@ -65,7 +68,7 @@ impl Generator<'_> {
                 if !it.is_virtual(self.db) {
                     fs::create_dir_all(dir.to_path("."))?;
 
-                    let name2 = it.name(self.db).to_string();
+                    let name2 = it.name(self.db);
                     let path = self.generate_module(it, &dir)?;
                     let path = dir.relative(path);
                     let mut module = modules.a().attr(&format!("href = '{}/{}'", name, path.display()));
@@ -77,11 +80,18 @@ impl Generator<'_> {
 
         let mut fixities = main.section().attr("class='fixities'");
 
-        write!(fixities.h2(), "Infix Operators");
+        write!(fixities.h3(), "Infix Operators");
 
         for def in &decls {
             if let hir::ModuleDef::Fixity(it) = *def {
-                self.generate_fixity(it, fixities.clone());
+                fs::create_dir_all(dir.to_path("."))?;
+
+                let name2 = it.name(self.db);
+                let path = self.generate_fixity(it, &dir)?;
+                let path = dir.relative(path);
+                let mut fixity = fixities.a().attr(&format!("href = '{}/{}'", name, path.display()));
+
+                write!(fixity, "{}", name2);
             }
         }
 
@@ -92,6 +102,16 @@ impl Generator<'_> {
         Ok(dir)
     }
 
-    fn generate_fixity(&self, fixity: hir::Fixity, node: Node) {
+    fn generate_fixity(&self, fixity: hir::Fixity, dir: &RelativePath) -> io::Result<RelativePathBuf> {
+        let name = fixity.name(self.db);
+        let dir = dir.join(name.to_string()).with_extension("html");
+        let mut doc = Document::new();
+        let mut html = doc.html().attr("lang='en'");
+
+        write!(html.head().title(), "infix operator {}", name);
+
+        fs::write(dir.to_path("."), doc.build())?;
+
+        Ok(dir)
     }
 }
