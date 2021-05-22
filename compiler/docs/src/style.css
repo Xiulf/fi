@@ -1,0 +1,135 @@
+:root {
+    --divider: #a3abc3;
+    --section: #f3f5f9;
+}
+
+body {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 0 1fr;
+}
+
+nav {
+    height: 100vh;
+    overflow-y: scroll;
+    background: var(--section);
+    border-right: 1px solid var(--divider);
+}
+
+nav h3 {
+    padding: 0;
+    margin: 10px;
+    margin-bottom: 0;
+}
+
+nav ul {
+    list-style: none;
+    padding: 10px;
+    margin: 0;
+}
+
+nav ul li {
+    padding: 5px;
+    font-family: Consolas;
+    font-size: 18px;
+}
+
+main {
+    max-width: 800px;
+    width: 100%;
+    margin: 50px auto;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+h1 {
+    margin-left: 20px;
+    margin-right: 20px;
+}
+
+h2 {
+    font-size: 1.5em;
+    margin: 0.83em 20px;
+}
+
+h3 {
+    font-size: 1.17em;
+    margin: 0 -20px 0 -20px;
+    padding: 0 20px 10px 20px;
+}
+
+section:not(:first-of-type) {
+    margin-top: 60px;
+}
+
+.entry {
+    background: var(--section);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+    margin: 20px 0;
+    padding: 20px;
+}
+
+.entry :last-child {
+    margin-bottom: 0;
+}
+
+.entry ul {
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    padding: 0;
+    margin: 0;
+}
+
+code {
+    display: block;
+    white-space: pre;
+    padding: 10px 20px;
+    margin-left: -20px;
+    margin-right: -20px;
+    margin-bottom: 1em;
+    border: solid var(--divider);
+    border-width: 1px 0;
+    font-family: Consolas;
+    font-size: 14px;
+}
+
+.source {
+    font-size: 14px;
+    opacity: 0.5;
+}
+
+.keyword {
+    color: #00afaf;
+}
+
+.constant {
+    color: #ff5faf;
+}
+
+.func {
+    color: #ff5faf;
+}
+
+.module {
+    color: #5faf5f;
+}
+
+.class {
+    color: #d7af00;
+}
+
+.ident {
+    color: #d7875f;
+}
+
+.symbol {
+    color: #5fafd7;
+}
+
+.type {
+    color: #afd600;
+}
+
+a {
+    color: inherit;
+}

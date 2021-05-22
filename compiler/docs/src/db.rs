@@ -1,8 +1,10 @@
 use crate::elems::{Page, PageId};
+use base_db::Upcast;
 use hir::db::HirDatabase;
+use std::sync::Arc;
 
 #[salsa::query_group(DocDatabaseStorage)]
-pub trait DocDatabase: HirDatabase {
+pub trait DocDatabase: HirDatabase + Upcast<dyn HirDatabase> {
     #[salsa::interned]
-    fn inter_page(&self, page: Page) -> PageId;
+    fn intern_page(&self, page: Arc<Page>) -> PageId;
 }

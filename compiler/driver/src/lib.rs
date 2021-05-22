@@ -123,6 +123,6 @@ impl Driver {
     }
 
     pub fn docs(&self, lib: LibId) {
-        docs::generate(&self.db, lib.into(), "target".as_ref())
+        docs::generate(&self.db, lib.into(), "target".as_ref()).unwrap();
     }
 }

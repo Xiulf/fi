@@ -22,6 +22,7 @@ pub use hir_def::path::Path;
 use hir_ty::db::HirDatabase;
 pub use hir_ty::display;
 use hir_ty::lower::LowerResult;
+pub use hir_ty::ty::Ty;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -142,6 +143,19 @@ impl Module {
         }
 
         res
+    }
+
+    pub fn path(&self, db: &dyn HirDatabase) -> Path {
+        self.path_to_root(db).into_iter().map(|m| m.name(db)).rev().collect()
+    }
+
+    pub fn path_to_name(self, db: &dyn HirDatabase, name: Name) -> Path {
+        let to_root = self.path_to_root(db);
+
+        std::iter::once(name)
+            .chain(to_root.into_iter().map(|m| m.name(db)))
+            .rev()
+            .collect()
     }
 
     pub fn declarations(self, db: &dyn HirDatabase) -> Vec<ModuleDef> {
@@ -269,6 +283,10 @@ impl Fixity {
         db.fixity_data(self.id).name.clone()
     }
 
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        self.module(db).path_to_name(db, self.name(db))
+    }
+
     pub fn assoc(self, db: &dyn HirDatabase) -> Assoc {
         db.fixity_data(self.id).assoc
     }
@@ -315,6 +333,14 @@ impl Func {
 
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.func_data(self.id).name.clone()
+    }
+
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        self.module(db).path_to_name(db, self.name(db))
+    }
+
+    pub fn ty(self, db: &dyn HirDatabase) -> Ty {
+        db.value_ty(self.id.into())
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
@@ -364,6 +390,10 @@ impl Static {
         db.static_data(self.id).name.clone()
     }
 
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        self.module(db).path_to_name(db, self.name(db))
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let infer = db.infer(self.id.into());
 
@@ -393,6 +423,10 @@ impl Const {
 
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.const_data(self.id).name.clone()
+    }
+
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        self.module(db).path_to_name(db, self.name(db))
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
@@ -426,6 +460,10 @@ impl TypeAlias {
         db.type_alias_data(self.id).name.clone()
     }
 
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        self.module(db).path_to_name(db, self.name(db))
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let lower = db.type_for_alias(self.id);
 
@@ -457,6 +495,10 @@ impl TypeCtor {
         db.type_ctor_data(self.id).name.clone()
     }
 
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        self.module(db).path_to_name(db, self.name(db))
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let lower = db.type_for_ctor(self.id);
 
@@ -485,6 +527,10 @@ impl Ctor {
 
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.type_ctor_data(self.parent.id).ctors[self.id].name.clone()
+    }
+
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        self.module(db).path_to_name(db, self.name(db))
     }
 
     pub fn type_ctor(self) -> TypeCtor {
@@ -525,6 +571,10 @@ impl Class {
 
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.class_data(self.id).name.clone()
+    }
+
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        self.module(db).path_to_name(db, self.name(db))
     }
 
     pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {

@@ -7,7 +7,8 @@ use std::sync::Arc;
     base_db::SourceDatabaseExtStorage,
     hir::db::InternDatabaseStorage,
     hir::db::DefDatabaseStorage,
-    hir::db::HirDatabaseStorage
+    hir::db::HirDatabaseStorage,
+    docs::db::DocDatabaseStorage
 )]
 #[derive(Default)]
 pub struct RootDatabase {
@@ -45,6 +46,12 @@ impl FileLoader for RootDatabase {
 
 impl Upcast<dyn hir::db::DefDatabase + 'static> for RootDatabase {
     fn upcast(&self) -> &(dyn hir::db::DefDatabase + 'static) {
+        self
+    }
+}
+
+impl Upcast<dyn hir::db::HirDatabase + 'static> for RootDatabase {
+    fn upcast(&self) -> &(dyn hir::db::HirDatabase + 'static) {
         self
     }
 }

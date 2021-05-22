@@ -86,6 +86,12 @@ impl From<Name> for Path {
     }
 }
 
+impl std::iter::FromIterator<Name> for Path {
+    fn from_iter<T: IntoIterator<Item = Name>>(iter: T) -> Self {
+        Self::from_segments(iter)
+    }
+}
+
 impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, segment) in self.segments.iter().enumerate() {

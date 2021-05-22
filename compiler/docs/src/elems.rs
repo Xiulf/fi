@@ -1,3 +1,4 @@
+use crate::db::DocDatabase;
 use markup::MarkupRenderer;
 pub use markup::{Markup, Styles};
 use relative_path::{RelativePath, RelativePathBuf};
@@ -67,6 +68,13 @@ pub struct Token {
     text: String,
 }
 
+#[derive(Clone, Copy)]
+struct Rcx<'a> {
+    db: &'a dyn DocDatabase,
+    target_dir: &'a RelativePath,
+    path: &'a RelativePath,
+}
+
 impl Page {
     pub fn new(path: hir::Path, title: impl Into<String>) -> Self {
         Self {
@@ -76,9 +84,18 @@ impl Page {
         }
     }
 
-    pub fn render(&self, path: &RelativePath) -> io::Result<()> {
+    pub fn render(&self, path: &RelativePath, db: &dyn DocDatabase) -> io::Result<()> {
+        let target_dir = path;
         let path = path.join(self.path.to_string());
-        let mut w = std::fs::File::create(path.to_path("."))?;
+        let stylesheet = target_dir.join("style.css");
+        let stylesheet = path.relative(stylesheet);
+        let _ = std::fs::create_dir_all(path.parent().unwrap().to_path("."))?;
+        let mut w = std::fs::File::create(path.to_path(".").with_extension("html"))?;
+        let rcx = Rcx {
+            db,
+            target_dir,
+            path: &path,
+        };
 
         write!(
             w,
@@ -86,16 +103,21 @@ impl Page {
                 <!DOCTYPE html>
                 <html>
                 <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
                     <title>{}</title>
+                    <link rel="stylesheet" href="{}">
                 </head>
                 <body>
+                    <nav></nav>
                     <main>
             "##,
             self.title,
+            stylesheet.to_string(),
         )?;
 
         for section in &self.sections {
-            section.render(&mut w)?;
+            section.render(&mut w, rcx)?;
         }
 
         write!(w, "</main></body></html>")
@@ -110,12 +132,12 @@ impl Section {
         }
     }
 
-    pub fn render(&self, w: &mut dyn Write) -> io::Result<()> {
+    fn render(&self, w: &mut dyn Write, rcx: Rcx) -> io::Result<()> {
         write!(w, r#"<section>"#)?;
         write!(w, r#"<h2>{}</h2>"#, self.title)?;
 
         for entry in &self.entries {
-            entry.render(w)?;
+            entry.render(w, rcx)?;
         }
 
         write!(w, "</section>")
@@ -157,11 +179,11 @@ impl Entry {
         }
     }
 
-    pub fn render(&self, w: &mut dyn Write) -> io::Result<()> {
+    fn render(&self, w: &mut dyn Write, rcx: Rcx) -> io::Result<()> {
         write!(w, r#"<div class="entry">"#)?;
 
         for elem in &self.elems {
-            elem.render(w)?;
+            elem.render(w, rcx)?;
         }
 
         write!(w, "</div>")
@@ -169,7 +191,7 @@ impl Entry {
 }
 
 impl EntryElem {
-    pub fn render(&self, w: &mut dyn Write) -> io::Result<()> {
+    fn render(&self, w: &mut dyn Write, rcx: Rcx) -> io::Result<()> {
         match self {
             | EntryElem::Title(title) => write!(w, r#"<h3>{}</h3>"#, title),
             | EntryElem::Source(src) => {
@@ -186,7 +208,7 @@ impl EntryElem {
 
                 for link in links {
                     write!(w, "<li>")?;
-                    link.render(w)?;
+                    link.render(w, rcx)?;
                     write!(w, "</li>")?;
                 }
 
@@ -208,8 +230,12 @@ impl Link {
         }
     }
 
-    pub fn render(&self, w: &mut dyn Write) -> io::Result<()> {
-        write!(w, r#"<a href="{}">{}</a>"#, "", self.name)
+    fn render(&self, w: &mut dyn Write, rcx: Rcx) -> io::Result<()> {
+        let page = rcx.db.lookup_intern_page(self.page);
+        let page_path = rcx.target_dir.join(page.path.to_string());
+        let page_path = rcx.path.parent().unwrap().relative(page_path).with_extension("html");
+
+        write!(w, r#"<a href="{}">{}</a>"#, page_path.display(), self.name)
     }
 }
 
@@ -281,7 +307,7 @@ impl Code {
             if token.class == "text" {
                 write!(w, "{} ", token.text)?;
             } else {
-                write!(w, r#"<span class="{}">{}</span>"#, token.class, token.text)?;
+                write!(w, r#"<span class="{}">{}</span> "#, token.class, token.text)?;
             }
         }
 
