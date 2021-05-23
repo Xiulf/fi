@@ -1,4 +1,5 @@
 use crate::db::MirDatabase;
+use hir::attrs::AttrInput;
 use hir::ty::{Ty, TyKind};
 use std::convert::TryInto;
 use std::ops::RangeInclusive;
@@ -7,17 +8,8 @@ use target_lexicon::{PointerWidth, Triple};
 
 pub fn layout_of_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Layout> {
     let triple = db.target_triple();
-    let scalar_unit = |value: Primitive| {
-        let bits = value.size(&triple).bits();
-
-        Scalar {
-            value,
-            valid_range: 0..=(!0 >> (128 - bits)),
-        }
-    };
-
     let scalar = |value: Primitive| {
-        let scalar = scalar_unit(value);
+        let scalar = Scalar::new(value, &triple);
 
         Layout::scalar(scalar, &triple)
     };
@@ -42,11 +34,329 @@ pub fn layout_of_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Layout> {
         | TyKind::ForAll(_, ty) => return db.layout_of(ty),
         | TyKind::Ctnt(_, ty) => return db.layout_of(ty),
         | TyKind::TypeVar(_) => unimplemented!(),
-        | TyKind::Tuple(tys) => unimplemented!(),
-        | TyKind::Ctor(id) => unimplemented!(),
+        | TyKind::Tuple(tys) => {
+            let lyts = tys.iter().map(|&t| db.layout_of(t)).collect();
+
+            struct_layout(lyts, &triple)
+        },
+        | TyKind::Ctor(id) => {
+            let attrs = db.attrs(id.into());
+            let mut attrs = attrs.by_key("repr").attrs();
+
+            if let Some(attr) = attrs.next().and_then(|a| a.group()) {
+                layout_from_repr(db, attr, &args)
+            } else {
+                let data = db.type_ctor_data(id);
+                let lyts = data
+                    .ctors
+                    .iter()
+                    .map(|(local_id, ctor)| {
+                        let lower = db.ctor_ty(hir::id::CtorId { local_id, parent: id });
+                        let lyts = ctor.types.iter().map(|&t| db.layout_of(lower.types[t])).collect();
+
+                        struct_layout(lyts, &triple)
+                    })
+                    .collect();
+
+                enum_layout(lyts, &triple)
+            }
+        },
     };
 
     Arc::new(layout)
+}
+
+fn struct_layout(lyts: Vec<Arc<Layout>>, triple: &Triple) -> Layout {
+    let mut align = Align::from_bytes(0);
+    let mut fields = lyts.iter().map(|lyt| (Size::ZERO, lyt.clone())).collect::<Vec<_>>();
+    let mut offset = Size::ZERO;
+    let mut niches = Vec::new();
+
+    for (i, lyt) in lyts.into_iter().enumerate() {
+        if let Some(niche) = &lyt.largest_niche {
+            niches.push(niche.clone());
+        }
+
+        offset = offset.align_to(lyt.align);
+        align = align.max(lyt.align);
+        fields[i].0 = offset;
+        offset = offset + lyt.size;
+    }
+
+    let size = offset;
+    let stride = offset.align_to(align);
+    let largest_niche = niches.into_iter().max_by_key(|n| n.available(triple));
+
+    Layout {
+        size,
+        align,
+        stride,
+        elem: None,
+        abi: Abi::Aggregate { sized: true },
+        fields: Fields::Arbitrary { fields },
+        variants: Variants::Single { index: 0 },
+        largest_niche,
+    }
+}
+
+fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
+    if lyts.is_empty() {
+        Layout::default()
+    } else if lyts.len() == 1 {
+        lyts.pop().unwrap()
+    } else {
+        let largest_niche = lyts
+            .iter()
+            .filter_map(|v| v.largest_niche.clone())
+            .max_by_key(|n| n.available(triple));
+
+        for (i, lyt) in lyts.iter_mut().enumerate() {
+            lyt.variants = Variants::Single { index: i };
+        }
+
+        let largest = lyts.iter().max_by_key(|l| l.size).unwrap();
+        let align = largest.align;
+        let mut size = largest.size;
+        let mut no_niche = |mut variants: Vec<Layout>| {
+            let tag_size = Size::from_bits(variants.len()).align_to(align);
+            let tag = Scalar {
+                value: Primitive::Int(
+                    match tag_size.bytes() {
+                        | 1 => Integer::I8,
+                        | 2 => Integer::I16,
+                        | 3 | 4 => Integer::I32,
+                        | 5 | 6 | 7 | 8 => Integer::I64,
+                        | _ => Integer::I128,
+                    },
+                    false,
+                ),
+                valid_range: 0..=variants.len() as u128 - 1,
+            };
+
+            for variant in &mut variants {
+                if let Fields::Arbitrary { fields } = &mut variant.fields {
+                    for (offset, _) in fields {
+                        *offset = *offset + tag_size;
+                    }
+                }
+            }
+
+            let variants = variants.into_iter().map(Arc::new).collect::<Vec<_>>();
+            let tag_encoding = TagEncoding::Direct;
+            let union_ = Layout {
+                size,
+                align,
+                stride: size.align_to(align),
+                elem: None,
+                abi: Abi::Aggregate { sized: true },
+                fields: Fields::Union {
+                    fields: variants.clone(),
+                },
+                variants: Variants::Single { index: 0 },
+                largest_niche: None,
+            };
+
+            let fields = vec![
+                (Size::ZERO, Arc::new(Layout::scalar(tag.clone(), triple))),
+                (tag_size, Arc::new(union_)),
+            ];
+
+            size = size + tag_size;
+
+            (Fields::Arbitrary { fields }, Variants::Multiple {
+                tag,
+                tag_encoding,
+                variants,
+                tag_field: 0,
+            })
+        };
+
+        let (fields, variants) = if let Some(niche) = largest_niche {
+            if niche.available(triple) >= lyts.len() as u128 {
+                // @TODO: implement niches
+                no_niche(lyts)
+            } else {
+                no_niche(lyts)
+            }
+        } else {
+            no_niche(lyts)
+        };
+
+        let stride = size.align_to(align);
+
+        Layout {
+            size,
+            align,
+            stride,
+            elem: None,
+            abi: Abi::Aggregate { sized: true },
+            fields,
+            variants,
+            largest_niche: None,
+        }
+    }
+}
+
+fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> Layout {
+    let triple = db.target_triple();
+    let mut layout = Layout::default();
+
+    if let Some(_) = group.iter().find(|i| i.ident("uninhabited")) {
+        layout.abi = Abi::Uninhabited;
+    }
+
+    if let Some(fst) = group.iter().find_map(|i| i.field("scalar_first")) {
+        if let Some(snd) = group.iter().find_map(|i| i.field("scalar_second")) {
+            let first = if let Some(val) = fst.string() {
+                scalar_from_repr(val, &triple)
+            } else {
+                let group = fst.group().unwrap();
+                let mut s = scalar_from_repr(group.iter().find_map(|i| i.string()).unwrap(), &triple);
+
+                if let Some(val) = group
+                    .iter()
+                    .find_map(|i| i.field("valid_range_start"))
+                    .and_then(|i| i.int())
+                {
+                    s.valid_range = (val as u128)..=*s.valid_range.end();
+                }
+
+                if let Some(val) = group
+                    .iter()
+                    .find_map(|i| i.field("valid_range_end"))
+                    .and_then(|i| i.int())
+                {
+                    s.valid_range = *s.valid_range.start()..=(val as u128);
+                }
+
+                s
+            };
+
+            let second = if let Some(val) = snd.string() {
+                scalar_from_repr(val, &triple)
+            } else {
+                let group = snd.group().unwrap();
+                let mut s = scalar_from_repr(group.iter().find_map(|i| i.string()).unwrap(), &triple);
+
+                if let Some(val) = group
+                    .iter()
+                    .find_map(|i| i.field("valid_range_start"))
+                    .and_then(|i| i.int())
+                {
+                    s.valid_range = (val as u128)..=*s.valid_range.end();
+                }
+
+                if let Some(val) = group
+                    .iter()
+                    .find_map(|i| i.field("valid_range_end"))
+                    .and_then(|i| i.int())
+                {
+                    s.valid_range = *s.valid_range.start()..=(val as u128);
+                }
+
+                s
+            };
+
+            let fst_niche = Niche::from_scalar(&triple, Size::ZERO, first.clone());
+            let snd_niche = Niche::from_scalar(&triple, first.value.size(&triple), second.clone());
+
+            layout.size = first.value.size(&triple) + second.value.size(&triple);
+            layout.align = Align::from_bytes(layout.size.bytes());
+            layout.stride = layout.size;
+            layout.abi = Abi::ScalarPair(first, second);
+            layout.largest_niche = fst_niche
+                .into_iter()
+                .chain(snd_niche)
+                .max_by_key(|n| n.available(&triple));
+        }
+    }
+
+    if let Some(val) = group.iter().find_map(|i| i.field("scalar")).and_then(|i| i.string()) {
+        layout = Layout::scalar(scalar_from_repr(val, &triple), &triple);
+    }
+
+    if let Some(val) = group
+        .iter()
+        .find_map(|i| i.field("valid_range_start"))
+        .and_then(|i| i.int())
+    {
+        if let Abi::Scalar(s) = &mut layout.abi {
+            s.valid_range = (val as u128)..=*s.valid_range.end();
+            layout.largest_niche = Niche::from_scalar(&triple, Size::ZERO, s.clone());
+        }
+    }
+
+    if let Some(val) = group
+        .iter()
+        .find_map(|i| i.field("valid_range_end"))
+        .and_then(|i| i.int())
+    {
+        if let Abi::Scalar(s) = &mut layout.abi {
+            s.valid_range = *s.valid_range.start()..=(val as u128);
+            layout.largest_niche = Niche::from_scalar(&triple, Size::ZERO, s.clone());
+        }
+    }
+
+    if let Some(elem) = group.iter().find_map(|i| i.field("elem")) {
+        if let Some(idx) = elem.int() {
+            layout.elem = Some(Ok(args[idx as usize]));
+        } else if let Some(group) = elem.group() {
+            layout.elem = Some(Err(Arc::new(layout_from_repr(db, group, args))));
+        }
+    }
+
+    if let Some(arr) = group.iter().find_map(|i| i.field("array")).and_then(|i| i.group()) {
+        if let Some(len) = arr.iter().find_map(|i| i.field("len")).and_then(|i| i.int()) {
+            if let Some(elem) = &layout.elem {
+                let stride = match elem {
+                    | Ok(ty) => db.layout_of(*ty).stride,
+                    | Err(lyt) => lyt.stride,
+                };
+
+                layout.size = stride * (len as u64);
+                layout.align = Align::from_bytes(stride.bytes());
+                layout.stride = layout.size;
+                layout.abi = Abi::Aggregate { sized: true };
+                layout.fields = Fields::Array {
+                    stride,
+                    count: len as usize,
+                };
+
+                layout.largest_niche = None;
+            }
+        }
+    }
+
+    if let Some(rec) = group.iter().find_map(|i| i.field("record")).and_then(|i| i.group()) {
+        if let Some(fields) = rec.iter().find_map(|i| i.field("fields")).and_then(|i| i.int()) {
+            if let TyKind::Row(fields, _tail) = args[fields as usize].lookup(db.upcast()) {
+                let lyts = fields.iter().map(|f| db.layout_of(f.ty)).collect();
+
+                layout = struct_layout(lyts, &triple);
+            }
+        }
+    }
+
+    layout
+}
+
+fn scalar_from_repr(repr: &str, triple: &Triple) -> Scalar {
+    match repr {
+        | "u8" => Scalar::new(Primitive::Int(Integer::I8, false), triple),
+        | "u16" => Scalar::new(Primitive::Int(Integer::I16, false), triple),
+        | "u32" => Scalar::new(Primitive::Int(Integer::I32, false), triple),
+        | "u64" => Scalar::new(Primitive::Int(Integer::I64, false), triple),
+        | "u128" => Scalar::new(Primitive::Int(Integer::I128, false), triple),
+        | "i8" => Scalar::new(Primitive::Int(Integer::I8, true), triple),
+        | "i16" => Scalar::new(Primitive::Int(Integer::I16, true), triple),
+        | "i32" => Scalar::new(Primitive::Int(Integer::I32, true), triple),
+        | "i64" => Scalar::new(Primitive::Int(Integer::I64, true), triple),
+        | "i128" => Scalar::new(Primitive::Int(Integer::I128, true), triple),
+        | "f32" => Scalar::new(Primitive::F32, triple),
+        | "f64" => Scalar::new(Primitive::F64, triple),
+        | "ptr" => Scalar::new(Primitive::Pointer, triple),
+        | _ => panic!("invalid scalar '{}'", repr),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -54,7 +364,7 @@ pub struct Layout {
     pub size: Size,
     pub align: Align,
     pub stride: Size,
-    pub elem: Option<Ty>,
+    pub elem: Option<Result<Ty, Arc<Layout>>>,
     pub abi: Abi,
     pub fields: Fields,
     pub variants: Variants,
@@ -83,8 +393,8 @@ pub enum Abi {
 pub enum Fields {
     Primitive,
     Array { stride: Size, count: usize },
-    Union { types: Vec<Ty> },
-    Arbitrary { fields: Vec<(Size, Ty)> },
+    Union { fields: Vec<Arc<Layout>> },
+    Arbitrary { fields: Vec<(Size, Arc<Layout>)> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -96,7 +406,7 @@ pub enum Variants {
         tag: Scalar,
         tag_encoding: TagEncoding,
         tag_field: usize,
-        variants: Vec<Layout>,
+        variants: Vec<Arc<Layout>>,
     },
 }
 
@@ -139,6 +449,21 @@ pub enum Integer {
     I128,
 }
 
+impl Default for Layout {
+    fn default() -> Self {
+        Self {
+            size: Size::ZERO,
+            align: Align::from_bytes(0),
+            stride: Size::ZERO,
+            elem: None,
+            abi: Abi::Aggregate { sized: true },
+            fields: Fields::Arbitrary { fields: Vec::new() },
+            variants: Variants::Single { index: 0 },
+            largest_niche: None,
+        }
+    }
+}
+
 impl Layout {
     pub fn scalar(scalar: Scalar, triple: &Triple) -> Self {
         let size = scalar.value.size(triple);
@@ -179,7 +504,10 @@ impl Layout {
     }
 
     pub fn elem(&self, db: &dyn MirDatabase) -> Option<Arc<Self>> {
-        self.elem.map(|e| db.layout_of(e))
+        match self.elem.as_ref()? {
+            | Ok(ty) => Some(db.layout_of(*ty)),
+            | Err(lyt) => Some(lyt.clone()),
+        }
     }
 
     pub fn field(&self, db: &dyn MirDatabase, field: usize) -> Option<Arc<Self>> {
@@ -188,8 +516,8 @@ impl Layout {
         match &self.fields {
             | Fields::Primitive => None,
             | Fields::Array { .. } => self.elem(db),
-            | Fields::Union { types } => Some(db.layout_of(types[field])),
-            | Fields::Arbitrary { fields } => Some(db.layout_of(fields[field].1)),
+            | Fields::Union { fields: types } => Some(types[field].clone()),
+            | Fields::Arbitrary { fields } => Some(fields[field].1.clone()),
         }
     }
 
@@ -206,7 +534,7 @@ impl Layout {
                 variants: Variants::Single { index },
                 largest_niche: None,
             },
-            | Variants::Multiple { ref variants, .. } => variants[variant].clone(),
+            | Variants::Multiple { ref variants, .. } => (*variants[variant]).clone(),
         }
     }
 }
@@ -318,7 +646,7 @@ impl Fields {
         match self {
             | Fields::Primitive => 0,
             | Fields::Array { count, .. } => *count,
-            | Fields::Union { types } => types.len(),
+            | Fields::Union { fields: types } => types.len(),
             | Fields::Arbitrary { fields } => fields.len(),
         }
     }
@@ -394,6 +722,17 @@ impl Niche {
                 value,
                 valid_range: *v.start()..=end,
             }))
+        }
+    }
+}
+
+impl Scalar {
+    pub fn new(value: Primitive, triple: &Triple) -> Self {
+        let bits = value.size(&triple).bits();
+
+        Scalar {
+            value,
+            valid_range: 0..=(!0 >> (128 - bits)),
         }
     }
 }

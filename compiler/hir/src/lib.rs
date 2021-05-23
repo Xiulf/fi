@@ -19,10 +19,10 @@ pub use hir_def::name::{AsName, Name};
 pub use hir_def::pat::Pat;
 use hir_def::pat::PatId;
 pub use hir_def::path::Path;
+pub use hir_def::{arena, attrs, id};
 use hir_ty::db::HirDatabase;
-pub use hir_ty::display;
 use hir_ty::lower::LowerResult;
-pub use hir_ty::ty;
+pub use hir_ty::{display, ty};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -543,7 +543,7 @@ impl Ctor {
             local_id: self.id,
         };
 
-        let lower = hir_ty::lower::ctor_ty(db, id);
+        let lower = db.ctor_ty(id);
 
         lower.add_diagnostics(db, TypeVarOwner::TypedDefId(id.into()), sink);
     }

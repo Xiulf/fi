@@ -32,6 +32,9 @@ pub struct Attr {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttrInput {
     Literal(Literal),
+    Group(Arc<[AttrInput]>),
+    Field(Name, Arc<AttrInput>),
+    Ident(Name),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -99,8 +102,8 @@ impl AttrsWithOwner {
 }
 
 impl<'a> AttrQuery<'a> {
-    pub fn string_value(self) -> Option<&'a str> {
-        self.attrs().find_map(Attr::string_value)
+    pub fn string_value(self) -> impl Iterator<Item = &'a str> {
+        self.attrs().filter_map(Attr::string_value)
     }
 
     pub fn exists(self) -> bool {
@@ -127,8 +130,73 @@ impl Attr {
     }
 
     pub fn string_value(&self) -> Option<&str> {
+        match self.literal()? {
+            | Literal::String(s) => Some(s),
+            | _ => None,
+        }
+    }
+
+    pub fn int_value(&self) -> Option<i128> {
+        match self.literal()? {
+            | Literal::Int(i) => Some(*i),
+            | _ => None,
+        }
+    }
+
+    pub fn literal(&self) -> Option<&Literal> {
         match self.input.as_ref()? {
-            | AttrInput::Literal(Literal::String(s)) => Some(s),
+            | AttrInput::Literal(lit) => Some(lit),
+            | _ => None,
+        }
+    }
+
+    pub fn group(&self) -> Option<&[AttrInput]> {
+        match self.input.as_ref()? {
+            | AttrInput::Group(g) => Some(g),
+            | _ => None,
+        }
+    }
+}
+
+impl AttrInput {
+    pub fn group(&self) -> Option<&[AttrInput]> {
+        match self {
+            | AttrInput::Group(g) => Some(g),
+            | _ => None,
+        }
+    }
+
+    pub fn field(&self, name: &'static str) -> Option<&AttrInput> {
+        match self {
+            | AttrInput::Field(field, val) if field.to_string() == name => Some(val),
+            | _ => None,
+        }
+    }
+
+    pub fn literal(&self) -> Option<&Literal> {
+        match self {
+            | AttrInput::Literal(l) => Some(l),
+            | _ => None,
+        }
+    }
+
+    pub fn ident(&self, name: &'static str) -> bool {
+        match self {
+            | AttrInput::Ident(i) => i.to_string() == name,
+            | _ => false,
+        }
+    }
+
+    pub fn string(&self) -> Option<&str> {
+        match self.literal()? {
+            | Literal::String(s) => Some(s),
+            | _ => None,
+        }
+    }
+
+    pub fn int(&self) -> Option<i128> {
+        match self.literal()? {
+            | Literal::Int(i) => Some(*i),
             | _ => None,
         }
     }

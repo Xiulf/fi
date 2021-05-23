@@ -350,7 +350,7 @@ pub(crate) fn value_ty(db: &dyn HirDatabase, id: ValueTyDefId) -> Ty {
         | ValueTyDefId::FuncId(id) => func_ty(db, id).ty,
         | ValueTyDefId::StaticId(id) => static_ty(db, id),
         | ValueTyDefId::ConstId(id) => const_ty(db, id),
-        | ValueTyDefId::CtorId(id) => ctor_ty(db, id).ty,
+        | ValueTyDefId::CtorId(id) => db.ctor_ty(id).ty,
     }
 }
 
@@ -412,7 +412,7 @@ pub(crate) fn const_ty(db: &dyn HirDatabase, id: ConstId) -> Ty {
     infer.type_of_expr[body.body_expr()]
 }
 
-pub fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult> {
+pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult> {
     let ty_data = db.type_ctor_data(id.parent);
     let ctor_data = &ty_data.ctors[id.local_id];
     let resolver = id.resolver(db.upcast());

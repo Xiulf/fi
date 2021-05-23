@@ -27,19 +27,19 @@ foreign type Str :: Type
 foreign type Fn :: Type -> Type -> Type
 
 @lang = "ptr-type"
-@repr(scalar = "ptr", valid_range_start = 1)
+@repr(scalar = "ptr", valid_range_start = 1, elem = 0)
 foreign type Ptr :: Type -> Type
 
 @lang = "ptrb-type"
-@repr(scalar = "ptr", valid_range_start = 1)
+@repr(scalar = "ptr", valid_range_start = 1, elem = 0)
 foreign type BufPtr :: Type -> Type
 
 @lang = "ptrbs-type"
-@repr(scalar = "ptr", valid_range_start = 1)
+@repr(scalar = "ptr", valid_range_start = 1, elem = 0)
 foreign type BufPtrSentinel :: Type -> Figure -> Type
 
 @lang = "array-type"
-@repr(array(elem = 0, len = 1))
+@repr(elem = 0, array(len = 1))
 foreign type Array :: Type -> Figure -> Type
 
 @lang = "slice-type"

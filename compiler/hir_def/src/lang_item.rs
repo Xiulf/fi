@@ -107,6 +107,7 @@ impl LangItems {
 
 fn lang_attr(db: &dyn DefDatabase, item: impl Into<AttrDefId> + Copy) -> Option<SmolStr> {
     let attrs = db.attrs(item.into());
+    let mut strings = attrs.by_key("lang").string_value();
 
-    attrs.by_key("lang").string_value().map(|s| s.into())
+    strings.next().map(|s| s.into())
 }

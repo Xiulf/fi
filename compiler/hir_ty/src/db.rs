@@ -4,7 +4,7 @@ use crate::lower::{ClassLowerResult, InstanceLowerResult, LowerResult};
 use crate::ty::{Constraint, Ty, TyKind};
 use base_db::Upcast;
 use hir_def::db::DefDatabase;
-use hir_def::id::{ClassId, DefWithBodyId, InstanceId, TypeAliasId, TypeCtorId, ValueTyDefId};
+use hir_def::id::{ClassId, CtorId, DefWithBodyId, InstanceId, TypeAliasId, TypeCtorId, ValueTyDefId};
 use std::sync::Arc;
 
 #[salsa::query_group(HirDatabaseStorage)]
@@ -14,6 +14,9 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
 
     #[salsa::invoke(crate::lower::value_ty)]
     fn value_ty(&self, id: ValueTyDefId) -> Ty;
+
+    #[salsa::invoke(crate::lower::ctor_ty)]
+    fn ctor_ty(&self, id: CtorId) -> Arc<LowerResult>;
 
     #[salsa::interned]
     fn intern_ty(&self, ty: TyKind) -> Ty;
