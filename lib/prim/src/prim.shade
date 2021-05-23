@@ -6,17 +6,56 @@ module prim =
 @lang = "symbol-kind" foreign type Symbol :: Kind
 @lang = "row-kind"    foreign type Row    :: Kind -> Kind
 
-@lang = "never-type"  foreign type Never          :: Type
-@lang = "char-type"   foreign type Char           :: Type
-@lang = "str-type"    foreign type Str            :: Type
-@lang = "fn-type"     foreign type Fn             :: Type -> Type -> Type
-@lang = "ptr-type"    foreign type Ptr            :: Type -> Type
-@lang = "ptrb-type"   foreign type BufPtr         :: Type -> Type
-@lang = "ptrbs-type"  foreign type BufPtrSentinel :: Type -> Figure -> Type
-@lang = "array-type"  foreign type Array          :: Type -> Figure -> Type
-@lang = "slice-type"  foreign type Slice          :: Type -> Type
-@lang = "record-type" foreign type Record         :: Row Type -> Type
-@lang = "block-type"  foreign type Block          :: Type -> Type -> Type
+@lang = "never-type"
+@repr(uninhabited)
+foreign type Never :: Type
+
+@lang = "char-type"
+@repr(scalar = "u32")
+foreign type Char :: Type
+
+@lang = "str-type"
+@repr(
+    scalar_first("ptr", valid_range_start = 1),
+    scalar_second("ptr"),
+    elem(scalar = "u8"),
+)
+foreign type Str :: Type
+
+@lang = "fn-type"
+@repr(scalar = "ptr", valid_range_start = 1)
+foreign type Fn :: Type -> Type -> Type
+
+@lang = "ptr-type"
+@repr(scalar = "ptr", valid_range_start = 1)
+foreign type Ptr :: Type -> Type
+
+@lang = "ptrb-type"
+@repr(scalar = "ptr", valid_range_start = 1)
+foreign type BufPtr :: Type -> Type
+
+@lang = "ptrbs-type"
+@repr(scalar = "ptr", valid_range_start = 1)
+foreign type BufPtrSentinel :: Type -> Figure -> Type
+
+@lang = "array-type"
+@repr(array(elem = 0, len = 1))
+foreign type Array :: Type -> Figure -> Type
+
+@lang = "slice-type"
+@repr(
+    scalar_first("ptr", valid_range_start = 1),
+    scalar_second("ptr"),
+    elem = 0,
+)
+foreign type Slice :: Type -> Type
+
+@lang = "record-type"
+@repr(record(fields = 0))
+foreign type Record         :: Row Type -> Type
+
+@lang = "block-type"
+foreign type Block          :: Type -> Type -> Type
 
 @repr(scalar = "i8"  ) foreign type Int8    :: Type
 @repr(scalar = "i16" ) foreign type Int16   :: Type

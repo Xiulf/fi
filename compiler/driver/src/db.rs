@@ -8,6 +8,7 @@ use std::sync::Arc;
     hir::db::InternDatabaseStorage,
     hir::db::DefDatabaseStorage,
     hir::db::HirDatabaseStorage,
+    mir::db::MirDatabaseStorage,
     docs::db::DocDatabaseStorage
 )]
 #[derive(Default)]

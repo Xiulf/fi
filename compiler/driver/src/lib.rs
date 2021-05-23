@@ -7,6 +7,7 @@ use base_db::libs::{LibId, LibSet};
 use base_db::SourceDatabase;
 use base_db::SourceDatabaseExt;
 use hir::db::DefDatabase;
+use mir::db::MirDatabase;
 use syntax::ast::{self, AstNode, NameOwner};
 
 pub struct Opts<'a> {
@@ -42,6 +43,7 @@ impl Driver {
         root.insert_file(type_file, "<type>");
         root.insert_file(resolve_file, "<resolve>");
 
+        driver.db.set_target_triple(mir::target_lexicon::HOST.into());
         driver.db.set_libs(driver.libs.clone().into());
         driver.db.set_source_root(root_id, root.into());
         driver.db.set_file_source_root(root_file, root_id);

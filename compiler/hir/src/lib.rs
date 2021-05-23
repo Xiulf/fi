@@ -22,7 +22,7 @@ pub use hir_def::path::Path;
 use hir_ty::db::HirDatabase;
 pub use hir_ty::display;
 use hir_ty::lower::LowerResult;
-pub use hir_ty::ty::Ty;
+pub use hir_ty::ty;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -339,7 +339,7 @@ impl Func {
         self.module(db).path_to_name(db, self.name(db))
     }
 
-    pub fn ty(self, db: &dyn HirDatabase) -> Ty {
+    pub fn ty(self, db: &dyn HirDatabase) -> ty::Ty {
         db.value_ty(self.id.into())
     }
 
