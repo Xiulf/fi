@@ -27,6 +27,8 @@ impl Driver {
         let mut driver = Driver::default();
         let lib = driver.load(opts.input, false)?;
 
+        driver.db.set_target_triple(mir::target_lexicon::HOST.into());
+
         Some((driver, lib))
     }
 
@@ -112,11 +114,22 @@ impl Driver {
     pub fn build(&self) {
         let start = std::time::Instant::now();
         let db = &self.db;
+        let mut has_error = false;
 
         for lib in hir::Lib::all(db) {
             println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
 
-            diagnostics::emit_diagnostics(db, lib, &mut std::io::stderr()).unwrap();
+            if let Ok(e) = diagnostics::emit_diagnostics(db, lib, &mut std::io::stderr()) {
+                has_error |= e;
+            }
+        }
+
+        if !has_error {
+            for lib in hir::Lib::all(db) {
+                for module in lib.modules(db) {
+                    self.write_assembly(module).unwrap();
+                }
+            }
         }
 
         let elapsed = start.elapsed();
@@ -126,5 +139,21 @@ impl Driver {
 
     pub fn docs(&self, lib: LibId) {
         docs::generate(&self.db, lib.into(), "target".as_ref()).unwrap();
+    }
+
+    fn write_assembly(&self, module: hir::Module) -> std::io::Result<bool> {
+        use hir::display::HirDisplay;
+
+        for def in module.declarations(&self.db) {
+            if let hir::ModuleDef::Func(f) = def {
+                if f.has_body(&self.db) {
+                    let body = self.db.body_mir(hir::id::DefWithBodyId::FuncId(f.into()));
+
+                    eprintln!("{}", body.display(&self.db));
+                }
+            }
+        }
+
+        Ok(true)
     }
 }

@@ -140,6 +140,26 @@ impl AttrArgLit {
     }
 }
 
+impl AttrArgEqual {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        support::child(&self.0)
+    }
+
+    pub fn literal(&self) -> Option<Literal> {
+        support::child(&self.0)
+    }
+}
+
+impl AttrArgCall {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        support::child(&self.0)
+    }
+
+    pub fn args(&self) -> Option<AstChildren<AttrArg>> {
+        support::child(&self.0).map(|c: AttrArgs| support::children(&c.0))
+    }
+}
+
 impl AttrsOwner for ItemImport {
 }
 

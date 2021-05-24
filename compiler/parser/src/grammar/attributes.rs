@@ -38,7 +38,9 @@ crate fn attr_args(p: &mut Parser) {
 crate fn attr_arg(p: &mut Parser) {
     let m = p.start();
 
-    if p.eat(IDENT) {
+    if p.at(IDENT) {
+        paths::name_ref(p);
+
         if p.at(L_PAREN) {
             attr_args(p);
             m.complete(p, ATTR_ARG_CALL);
@@ -46,7 +48,7 @@ crate fn attr_arg(p: &mut Parser) {
             exprs::literal(p);
             m.complete(p, ATTR_ARG_EQUAL);
         } else {
-            m.abandon(p);
+            m.complete(p, ATTR_ARG_IDENT);
         }
     } else if p.at_ts(TokenSet::new(&[INT, FLOAT, CHAR, STRING])) {
         exprs::literal(p);

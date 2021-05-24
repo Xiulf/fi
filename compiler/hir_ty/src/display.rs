@@ -1,6 +1,7 @@
 use crate::class::{Class, FunDep, Instance, Instances};
 use crate::db::HirDatabase;
 use crate::ty::*;
+pub use fmt::{Result, Write};
 use hir_def::id::Lookup;
 use hir_def::lang_item::LangItem;
 use std::fmt;
@@ -78,19 +79,25 @@ impl<'a> HirFormatter<'a> {
         Ok(())
     }
 
-    pub fn write_fmt(&mut self, args: fmt::Arguments) -> fmt::Result {
-        self.buf.clear();
-        fmt::write(&mut self.buf, args)?;
-        self.curr_size += self.buf.len();
-        self.fmt.write_str(&self.buf)
-    }
-
     pub fn should_truncate(&self) -> bool {
         if let Some(max_size) = self.max_size {
             self.curr_size >= max_size
         } else {
             false
         }
+    }
+}
+
+impl<'a> fmt::Write for HirFormatter<'a> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.fmt.write_str(s)
+    }
+
+    fn write_fmt(&mut self, args: fmt::Arguments) -> fmt::Result {
+        self.buf.clear();
+        fmt::write(&mut self.buf, args)?;
+        self.curr_size += self.buf.len();
+        self.fmt.write_str(&self.buf)
     }
 }
 
@@ -113,6 +120,33 @@ where
             max_size: self.max_size,
             display_target: self.display_target,
         })
+    }
+}
+
+pub struct Indent<'a, W: fmt::Write>(&'a mut W, bool, &'a str);
+
+pub fn indent<'a, W: fmt::Write>(f: &'a mut W) -> Indent<'a, W> {
+    Indent(f, true, "    ")
+}
+
+impl<'a, W: fmt::Write> fmt::Write for Indent<'a, W> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for c in s.chars() {
+            if c == '\n' {
+                self.0.write_char(c)?;
+                self.1 = true;
+                continue;
+            }
+
+            if self.1 {
+                self.0.write_str(self.2)?;
+                self.1 = false;
+            }
+
+            self.0.write_char(c)?;
+        }
+
+        Ok(())
     }
 }
 

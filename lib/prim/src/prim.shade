@@ -11,13 +11,13 @@ module prim =
 foreign type Never :: Type
 
 @lang = "char-type"
-@repr(scalar = "u32")
+@repr(scalar = "u32", valid_range_end = 0x10FFFF)
 foreign type Char :: Type
 
 @lang = "str-type"
 @repr(
     scalar_first("ptr", valid_range_start = 1),
-    scalar_second("ptr"),
+    scalar_second("ptr_sized_uint"),
     elem(scalar = "u8"),
 )
 foreign type Str :: Type

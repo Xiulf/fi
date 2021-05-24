@@ -13,7 +13,7 @@ ast_node!(Attr, ATTR);
 ast_node!(AttrArgs, ATTR_ARGS);
 
 ast_node!(AttrArg {
-    Ident(AttrArgIdent, IDENT),
+    Ident(AttrArgIdent, ATTR_ARG_IDENT),
     Call(AttrArgCall, ATTR_ARG_CALL),
     Equal(AttrArgEqual, ATTR_ARG_EQUAL),
     Literal(AttrArgLit, ATTR_ARG_LIT),

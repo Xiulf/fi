@@ -122,6 +122,10 @@ impl Attr {
         let name = ast.name()?.as_name();
         let input = if let Some(lit) = ast.value() {
             Some(AttrInput::Literal(Literal::from_src(lit)?))
+        } else if let Some(args) = ast.args() {
+            let group = args.filter_map(AttrInput::from_src).collect();
+
+            Some(AttrInput::Group(group))
         } else {
             None
         };
@@ -159,6 +163,35 @@ impl Attr {
 }
 
 impl AttrInput {
+    fn from_src(ast: ast::AttrArg) -> Option<Self> {
+        match ast {
+            | ast::AttrArg::Literal(lit) => {
+                let lit = Literal::from_src(lit.literal()?)?;
+
+                Some(Self::Literal(lit))
+            },
+            | ast::AttrArg::Ident(id) => {
+                let id = id.name_ref()?.as_name();
+
+                Some(Self::Ident(id))
+            },
+            | ast::AttrArg::Equal(eq) => {
+                let name = eq.name_ref()?.as_name();
+                let val = Literal::from_src(eq.literal()?)?;
+                let val = Self::Literal(val);
+
+                Some(Self::Field(name, Arc::new(val)))
+            },
+            | ast::AttrArg::Call(c) => {
+                let name = c.name_ref()?.as_name();
+                let val = c.args()?.filter_map(Self::from_src).collect();
+                let val = Self::Group(val);
+
+                Some(Self::Field(name, Arc::new(val)))
+            },
+        }
+    }
+
     pub fn group(&self) -> Option<&[AttrInput]> {
         match self {
             | AttrInput::Group(g) => Some(g),

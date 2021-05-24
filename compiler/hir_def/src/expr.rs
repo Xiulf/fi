@@ -102,14 +102,14 @@ pub struct RecordField<ID> {
     pub val: ID,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stmt {
     Let { pat: PatId, val: ExprId },
     Bind { pat: PatId, val: ExprId },
     Expr { expr: ExprId },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CaseArm {
     pub pat: PatId,
     pub guard: Option<ExprId>,

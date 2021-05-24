@@ -84,6 +84,7 @@ pub enum SyntaxKind {
     ATTR_ARG_CALL,
     ATTR_ARG_EQUAL,
     ATTR_ARG_LIT,
+    ATTR_ARG_IDENT,
     ATTR_ARGS,
 
     IMPORT,
