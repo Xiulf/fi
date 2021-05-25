@@ -57,6 +57,9 @@ foreign type Record         :: Row Type -> Type
 @lang = "block-type"
 foreign type Block          :: Type -> Type -> Type
 
+@repr(scalar = "ptr_sized_int" ) foreign type Int  :: Type
+@repr(scalar = "ptr_sized_uint") foreign type Uint :: Type
+
 @repr(scalar = "i8"  ) foreign type Int8    :: Type
 @repr(scalar = "i16" ) foreign type Int16   :: Type
 @repr(scalar = "i32" ) foreign type Int32   :: Type
@@ -81,9 +84,12 @@ type Bool =
 @lang = "decimal-class" class Decimal t | -> t
 @lang = "pointer-class" class Pointer t to | t -> to
 
+@default
+instance Integer Int
+instance Integer Uint
+
 instance Integer Int8
 instance Integer Int16
-@default
 instance Integer Int32
 instance Integer Int64
 instance Integer Int128

@@ -68,6 +68,7 @@ impl<'a> Builder<'a> {
         let entry = self.create_block();
 
         self.block = Some(entry);
+        self.body.entry = Some(entry);
 
         for param in self.hir.params().to_vec() {
             let ty = self.infer.type_of_pat[param];
@@ -77,10 +78,10 @@ impl<'a> Builder<'a> {
             self.lower_pat(param, place);
         }
 
-        let res = self.lower_expr(self.hir.body_expr());
         let ret = Place::new(self.ret);
 
-        self.assign(ret, RValue::Use(res));
+        self.body.ret = Some(self.ret);
+        self.lower_expr(self.hir.body_expr(), Some(ret));
         self.ret();
     }
 
@@ -108,13 +109,25 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn lower_expr(&mut self, id: hir::ExprId) -> Operand {
+    fn lower_expr(&mut self, id: hir::ExprId, mut ret: Option<Place>) -> Operand {
+        let op = self.lower_expr_impl(id, &mut ret);
+
+        if let Some(ret) = ret {
+            self.assign(ret.clone(), RValue::Use(op));
+
+            Operand::Place(ret)
+        } else {
+            op
+        }
+    }
+
+    fn lower_expr_impl(&mut self, id: hir::ExprId, ret: &mut Option<Place>) -> Operand {
         let body = Arc::clone(&self.hir);
         let ty = self.infer.type_of_expr[id];
 
         match body[id] {
             | hir::Expr::Missing => Operand::Const(Const::Undefined(self.db.layout_of(ty))),
-            | hir::Expr::Typed { expr, .. } => self.lower_expr(expr),
+            | hir::Expr::Typed { expr, .. } => self.lower_expr_impl(expr, ret),
             | hir::Expr::Path { ref path } => self.lower_path(id, path, ty),
             | hir::Expr::Lit { ref lit } => match *lit {
                 | hir::Literal::Int(i) => Operand::Const(Const::Scalar(i as u128, self.db.layout_of(ty))),
@@ -130,40 +143,42 @@ impl<'a> Builder<'a> {
                     let resolver = id.resolver(self.db.upcast());
 
                     match resolver.resolve_value_fully(self.db.upcast(), &fixity.func) {
-                        | Some(ValueNs::Func(id)) => self.lower_func_app(id, vec![lhs, rhs], ty),
-                        | Some(ValueNs::Ctor(id)) => self.lower_ctor_app(id, vec![lhs, rhs], ty),
+                        | Some(ValueNs::Func(id)) => self.lower_func_app(id, vec![lhs, rhs], ty, ret.take()),
+                        | Some(ValueNs::Ctor(id)) => self.lower_ctor_app(id, vec![lhs, rhs], ty, ret.take()),
                         | _ => Operand::Const(Const::Undefined(self.db.layout_of(ty))),
                     }
                 } else {
                     Operand::Const(Const::Undefined(self.db.layout_of(ty)))
                 }
             },
-            | hir::Expr::App { .. } => self.lower_app(id, ty),
+            | hir::Expr::App { .. } => self.lower_app(id, ty, ret.take()),
+            | hir::Expr::Tuple { ref exprs } => {
+                let ret = ret.take().unwrap_or_else(|| Place::new(self.create_tmp(ty)));
+
+                for (i, &expr) in exprs.iter().enumerate() {
+                    self.lower_expr(expr, Some(ret.clone().field(i)));
+                }
+
+                Operand::Place(ret)
+            },
             | hir::Expr::Do { ref stmts } => {
                 let last = stmts.len() - 1;
 
                 for (i, &stmt) in stmts.iter().enumerate() {
                     match stmt {
                         | hir::Stmt::Expr { expr } => {
-                            let op = self.lower_expr(expr);
-
                             if i == last {
-                                return op;
+                                return self.lower_expr(expr, ret.take());
+                            } else {
+                                self.lower_expr(expr, None);
                             }
                         },
                         | hir::Stmt::Bind { pat, val } | hir::Stmt::Let { pat, val } => {
-                            let place = match self.lower_expr(val) {
-                                | Operand::Place(p) => p,
-                                | Operand::Const(c) => {
-                                    let ty = self.infer.type_of_expr[val];
-                                    let p = self.create_tmp(ty);
-                                    let p = Place::new(p);
+                            let ty = self.infer.type_of_expr[val];
+                            let place = self.create_tmp(ty);
+                            let place = Place::new(place);
 
-                                    self.assign(p.clone(), RValue::Use(Operand::Const(c)));
-                                    p
-                                },
-                            };
-
+                            self.lower_expr(val, Some(place.clone()));
                             self.lower_pat(pat, place);
                         },
                     }
@@ -201,12 +216,15 @@ impl<'a> Builder<'a> {
                 }
             },
             | Some(ValueNs::Local(pat)) => Operand::Place(self.binders[&pat].clone()),
-            | Some(ValueNs::Const(_)) => Operand::Const(Const::Undefined(self.db.layout_of(ty))),
+            | Some(ValueNs::Const(id)) => match self.db.eval(id.into()) {
+                | crate::eval::EvalResult::Finished(c) => Operand::Const(c),
+                | _ => Operand::Const(Const::Undefined(self.db.layout_of(ty))),
+            },
             | r => unimplemented!("{:?}", r),
         }
     }
 
-    fn lower_app(&mut self, mut base: hir::ExprId, ret_ty: Ty) -> Operand {
+    fn lower_app(&mut self, mut base: hir::ExprId, ret_ty: Ty, ret: Option<Place>) -> Operand {
         let body = Arc::clone(&self.hir);
         let mut args = vec![];
 
@@ -219,64 +237,84 @@ impl<'a> Builder<'a> {
             let resolver = Resolver::for_expr(self.db.upcast(), self.def, base);
 
             match resolver.resolve_value_fully(self.db.upcast(), path) {
-                | Some(ValueNs::Func(id)) => return self.lower_func_app(id, args, ret_ty),
-                | Some(ValueNs::Ctor(id)) => return self.lower_ctor_app(id, args, ret_ty),
+                | Some(ValueNs::Func(id)) => return self.lower_func_app(id, args, ret_ty, ret),
+                | Some(ValueNs::Ctor(id)) => return self.lower_ctor_app(id, args, ret_ty, ret),
                 | _ => {},
             }
         }
 
-        let ret = self.create_tmp(ret_ty);
-        let ret = Place::new(ret);
-        let func = self.lower_expr(base);
-        let args = args.into_iter().map(|a| self.lower_expr(a)).collect();
+        let ret = ret.unwrap_or_else(|| Place::new(self.create_tmp(ret_ty)));
+        let func = self.lower_expr(base, None);
+        let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
         self.call(ret.clone(), func, args);
 
         Operand::Place(ret)
     }
 
-    fn lower_func_app(&mut self, func: hir::id::FuncId, args: Vec<hir::ExprId>, ret_ty: Ty) -> Operand {
-        let ret = self.create_tmp(ret_ty);
-        let ret = Place::new(ret);
-        let args = args.into_iter().map(|a| self.lower_expr(a)).collect();
+    fn lower_func_app(
+        &mut self,
+        func: hir::id::FuncId,
+        mut args: Vec<hir::ExprId>,
+        ret_ty: Ty,
+        ret: Option<Place>,
+    ) -> Operand {
+        let ret = ret.unwrap_or_else(|| Place::new(self.create_tmp(ret_ty)));
 
         if self.db.attrs(func.into()).by_key("intrinsic").exists() {
             let name = self.db.func_data(func).name.to_string();
 
-            self.assign(ret.clone(), RValue::Intrinsic(name, args));
+            match name.as_str() {
+                | "unsafe" => return self.lower_expr(args.remove(0), Some(ret)),
+                | "apply" => match self.lower_expr(args.remove(0), None) {
+                    | Operand::Const(Const::FuncAddr(f)) => {
+                        return self.lower_func_app(f.into(), args, ret_ty, Some(ret))
+                    },
+                    | f => {
+                        let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
-            return Operand::Place(ret);
+                        self.call(ret.clone(), f, args)
+                    },
+                },
+                | _ => {
+                    let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
+
+                    self.assign(ret.clone(), RValue::Intrinsic(name, args))
+                },
+            }
+        } else {
+            let func = Operand::Const(Const::FuncAddr(func.into()));
+            let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
+
+            self.call(ret.clone(), func, args);
         }
-
-        let func = Operand::Const(Const::FuncAddr(func.into()));
-
-        self.call(ret.clone(), func, args);
 
         Operand::Place(ret)
     }
 
-    fn lower_ctor_app(&mut self, id: hir::id::CtorId, args: Vec<hir::ExprId>, ret_ty: Ty) -> Operand {
+    fn lower_ctor_app(
+        &mut self,
+        id: hir::id::CtorId,
+        args: Vec<hir::ExprId>,
+        ret_ty: Ty,
+        ret: Option<Place>,
+    ) -> Operand {
         let data = self.db.type_ctor_data(id.parent);
-        let ret = self.create_tmp(ret_ty);
-        let ret = Place::new(ret);
+        let ret = ret.unwrap_or_else(|| Place::new(self.create_tmp(ret_ty)));
 
         if data.ctors.len() == 1 {
             for (i, arg) in args.into_iter().enumerate() {
-                let arg = self.lower_expr(arg);
-
-                self.assign(ret.clone().field(i), RValue::Use(arg));
+                self.lower_expr(arg, Some(ret.clone().field(i)));
             }
         } else {
             let idx: u32 = id.local_id.into_raw().into();
-            let mut p = ret.clone().downcast(idx as usize);
+            let p = ret.clone().downcast(idx as usize);
 
             for (i, arg) in args.into_iter().enumerate() {
-                let arg = self.lower_expr(arg);
-
-                self.assign(p.clone().field(i), RValue::Use(arg));
+                self.lower_expr(arg, Some(p.clone().field(i)));
             }
 
-            self.set_discr(p, idx as u128);
+            self.set_discr(ret.clone(), idx as u128);
         }
 
         Operand::Place(ret)

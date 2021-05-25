@@ -528,10 +528,10 @@ impl Layout {
         }
     }
 
-    pub fn variant(&self, variant: usize) -> Self {
+    pub fn variant(self: &Arc<Layout>, variant: usize) -> Arc<Layout> {
         match self.variants {
             | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self.clone(),
-            | Variants::Single { index } => Layout {
+            | Variants::Single { index } => Arc::new(Layout {
                 size: Size::ZERO,
                 stride: Size::ZERO,
                 align: Align::ONE,
@@ -540,8 +540,8 @@ impl Layout {
                 fields: Fields::Arbitrary { fields: Vec::new() },
                 variants: Variants::Single { index },
                 largest_niche: None,
-            },
-            | Variants::Multiple { ref variants, .. } => (*variants[variant]).clone(),
+            }),
+            | Variants::Multiple { ref variants, .. } => variants[variant].clone(),
         }
     }
 }

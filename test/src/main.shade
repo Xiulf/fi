@@ -8,5 +8,5 @@ fun main =
     print "Hello World!\n"
 
 fun print (s :: Str) = do
-    (ptr, len) <- unsafe $ transmute s
-    _ <- write STDOUT_FILENO ptr len
+    let (ptr, len) = unsafe $ transmute s
+    let _ = write STDOUT_FILENO ptr len

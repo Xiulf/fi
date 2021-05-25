@@ -109,7 +109,12 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             | TypeRef::Placeholder => self.fresh_type_without_kind(),
             | TypeRef::Figure(i) => TyKind::Figure(*i).intern(self.db),
             | TypeRef::Symbol(s) => TyKind::Symbol(s.clone()).intern(self.db),
-            | TypeRef::Path(path) => return self.lower_path(&path, ty),
+            | TypeRef::Path(path) => {
+                let r = self.lower_path(&path, ty);
+
+                res = r.1;
+                r.0
+            },
             | TypeRef::Tuple(tys) => {
                 let tys = tys.iter().map(|&t| self.lower_ty(t));
 

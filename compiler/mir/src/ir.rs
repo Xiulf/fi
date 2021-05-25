@@ -7,6 +7,8 @@ use std::sync::Arc;
 pub struct Body {
     pub locals: Arena<Local>,
     pub blocks: Arena<Block>,
+    pub entry: Option<BlockId>,
+    pub ret: Option<LocalId>,
 }
 
 pub type LocalId = Idx<Local>;
@@ -83,6 +85,8 @@ pub enum Const {
     StaticAddr(hir::Static),
     String(String),
     Tuple(Vec<Const>),
+    Ref(Box<Const>),
+    Ctor(hir::Ctor, Vec<Const>),
 }
 
 impl Place {
@@ -282,7 +286,7 @@ impl display::HirDisplay for Place {
                     op.hir_fmt(f)?;
                     write!(f, "]")?;
                 },
-                | PlaceElem::Downcast(v) => write!(f, " as {}", v)?,
+                | PlaceElem::Downcast(v) => write!(f, "{{{}}}", v)?,
             }
         }
 
@@ -295,8 +299,8 @@ impl display::HirDisplay for Const {
         match self {
             | Const::Undefined(layout) => write!(f, "undefined"),
             | Const::Scalar(int, layout) => write!(f, "{}", int),
-            | &Const::FuncAddr(func) => write!(f, "func({})", f.db.func_data(func.into()).name),
-            | &Const::StaticAddr(stat) => write!(f, "static({})", f.db.static_data(stat.into()).name),
+            | Const::FuncAddr(func) => write!(f, "func({})", func.path(f.db)),
+            | Const::StaticAddr(stat) => write!(f, "static({})", stat.path(f.db)),
             | Const::String(s) => write!(f, "{:?}", s),
             | Const::Tuple(cs) => {
                 write!(f, "(")?;
@@ -306,6 +310,21 @@ impl display::HirDisplay for Const {
                         write!(f, ", ")?;
                     }
 
+                    c.hir_fmt(f)?;
+                }
+
+                write!(f, ")")
+            },
+            | Const::Ref(to) => {
+                write!(f, "ref(")?;
+                to.hir_fmt(f)?;
+                write!(f, ")")
+            },
+            | Const::Ctor(ctor, cs) => {
+                write!(f, "ctor({}", ctor.path(f.db))?;
+
+                for c in cs.iter() {
+                    write!(f, ", ")?;
                     c.hir_fmt(f)?;
                 }
 

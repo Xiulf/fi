@@ -1,4 +1,5 @@
-use crate::ir::Body;
+use crate::eval::EvalResult;
+use crate::ir::{Body, Const};
 use crate::layout::Layout;
 use base_db::Upcast;
 use hir::db::HirDatabase;
@@ -15,4 +16,7 @@ pub trait MirDatabase: HirDatabase + Upcast<dyn HirDatabase> {
 
     #[salsa::invoke(Body::body_mir_query)]
     fn body_mir(&self, def: hir::id::DefWithBodyId) -> Arc<Body>;
+
+    #[salsa::invoke(crate::eval::eval_query)]
+    fn eval(&self, def: hir::id::DefWithBodyId) -> EvalResult<Const>;
 }
