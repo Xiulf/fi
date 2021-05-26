@@ -285,7 +285,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         },
         | L_BRACE => {
             p.bump(L_BRACE);
-            patterns::record_fields(p, expr);
+            patterns::record_fields(p, expr, false);
             p.expect(R_BRACE);
             Some(m.complete(p, EXPR_RECORD))
         },

@@ -499,7 +499,7 @@ impl BodyInferenceContext<'_> {
             },
             | TyKind::ForAll(kind, ty) => {
                 let repl = self.fresh_type_with_kind(kind);
-                let ty = self.replace_var(ty, repl);
+                let ty = ty.replace_var(self.db, repl);
 
                 self.check_app(ty, arg, expr)
             },

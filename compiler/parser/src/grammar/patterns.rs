@@ -88,7 +88,7 @@ crate fn atom(p: &mut Parser) {
         },
         | L_BRACE => {
             p.bump(L_BRACE);
-            record_fields(p, pattern);
+            record_fields(p, pattern, true);
             p.expect(R_BRACE);
             m.complete(p, PAT_RECORD);
         },
@@ -99,7 +99,7 @@ crate fn atom(p: &mut Parser) {
     }
 }
 
-crate fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser)) {
+crate fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser), allow_rest: bool) {
     while !p.at(R_BRACE) {
         let field = p.start();
 
@@ -115,6 +115,10 @@ crate fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser)) {
 
         if !p.at(R_BRACE) {
             p.expect(COMMA);
+        }
+
+        if allow_rest && p.eat(DBL_DOT) {
+            break;
         }
     }
 }

@@ -646,6 +646,10 @@ impl PatRecord {
     pub fn fields(&self) -> AstChildren<Field> {
         support::children(&self.0)
     }
+
+    pub fn has_rest(&self) -> bool {
+        support::token(&self.0, DBL_DOT).is_some()
+    }
 }
 
 impl ExprTyped {

@@ -58,12 +58,18 @@ impl BodyInferenceContext<'_> {
 
                 TyKind::Tuple(tys).intern(self.db)
             },
-            | Pat::Record { fields } => {
-                let row_kind = self.lang_type("row-kind");
-                let type_kind = self.lang_type("type-kind");
+            | Pat::Record { fields, has_rest } => {
+                let tail = if *has_rest {
+                    let row_kind = self.lang_type("row-kind");
+                    let type_kind = self.lang_type("type-kind");
+                    let kind = TyKind::App(row_kind, type_kind).intern(self.db);
+
+                    Some(self.fresh_type_with_kind(kind))
+                } else {
+                    None
+                };
+
                 let record_type = self.lang_type("record-type");
-                let kind = TyKind::App(row_kind, type_kind).intern(self.db);
-                let tail = self.fresh_type_with_kind(kind);
                 let fields = fields
                     .iter()
                     .map(|f| Field {
@@ -72,7 +78,7 @@ impl BodyInferenceContext<'_> {
                     })
                     .collect();
 
-                let row = TyKind::Row(fields, Some(tail)).intern(self.db);
+                let row = TyKind::Row(fields, tail).intern(self.db);
 
                 TyKind::App(record_type, row).intern(self.db)
             },

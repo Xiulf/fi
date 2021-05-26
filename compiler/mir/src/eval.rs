@@ -126,6 +126,13 @@ impl<'a> VM<'a> {
                         loc += *idx * stride.bytes() as usize;
                     },
                 },
+                | PlaceElem::Offset(offset) => {
+                    let offset = self.eval_operand(body, offset);
+
+                    if let Const::Scalar(offset, _) = offset {
+                        loc += offset as usize;
+                    }
+                },
                 | PlaceElem::Index(_) => unimplemented!(),
             }
         }

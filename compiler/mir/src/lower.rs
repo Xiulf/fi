@@ -105,6 +105,31 @@ impl<'a> Builder<'a> {
                     self.lower_pat(pat, place.clone().field(i));
                 }
             },
+            | hir::Pat::Record { ref fields, has_rest } => {
+                if let TyKind::App(_, row) = ty.lookup(self.db.upcast()) {
+                    if let TyKind::Row(ty_fields, tail) = row.lookup(self.db.upcast()) {
+                        if has_rest {
+                            let record = place.clone().field(0).deref();
+                            let offsets = place.field(1).deref();
+                            let uint_lyt = crate::layout::ptr_sized_uint(self.db);
+
+                            for field in fields {
+                                let idx = ty_fields.iter().position(|f| f.name == field.name).unwrap();
+                                let idx = Operand::Const(Const::Scalar(idx as u128, uint_lyt.clone()));
+                                let offset = Operand::Place(offsets.clone().index(idx));
+
+                                self.lower_pat(field.val, record.clone().offset(offset));
+                            }
+                        } else {
+                            for field in fields {
+                                let idx = ty_fields.iter().position(|f| f.name == field.name).unwrap();
+
+                                self.lower_pat(field.val, place.clone().field(idx));
+                            }
+                        }
+                    }
+                }
+            },
             | _ => unimplemented!(),
         }
     }

@@ -15,7 +15,7 @@ impl InferenceContext<'_> {
         match (t1.lookup(self.db), t2.lookup(self.db)) {
             | (TyKind::ForAll(kind, inner), _) => {
                 let var = self.fresh_type_with_kind(kind);
-                let repl = self.replace_var(inner, var);
+                let repl = inner.replace_var(self.db, var);
 
                 self.subsume_types_no_ctnt(repl, t2)
             },
@@ -42,7 +42,7 @@ impl InferenceContext<'_> {
         match (t1.lookup(self.db), t2.lookup(self.db)) {
             | (TyKind::ForAll(kind, inner), _) => {
                 let var = self.fresh_type_with_kind(kind);
-                let repl = self.replace_var(inner, var);
+                let repl = inner.replace_var(self.db, var);
 
                 self.subsume_types_no_ctnt(repl, t2)
             },

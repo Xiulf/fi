@@ -175,6 +175,69 @@ impl Ty {
         f(self)
     }
 
+    pub fn replace_var(self, db: &dyn HirDatabase, with: Ty) -> Ty {
+        Self::replace_var_impl(db, self, with, DebruijnIndex::INNER)
+    }
+
+    fn replace_var_impl(db: &dyn HirDatabase, ty: Ty, with: Ty, depth: DebruijnIndex) -> Ty {
+        match ty.lookup(db) {
+            | TyKind::TypeVar(var) if var.debruijn() == depth => with,
+            | TyKind::Skolem(sk, k) => {
+                let k = Self::replace_var_impl(db, k, with, depth);
+
+                sk.to_ty(db, k)
+            },
+            | TyKind::Row(fields, tail) => {
+                let fields = fields
+                    .iter()
+                    .map(|f| Field {
+                        name: f.name.clone(),
+                        ty: Self::replace_var_impl(db, f.ty, with, depth),
+                    })
+                    .collect();
+
+                let tail = tail.map(|t| Self::replace_var_impl(db, t, with, depth));
+
+                TyKind::Row(fields, tail).intern(db)
+            },
+            | TyKind::Tuple(tys) => {
+                let tys = tys
+                    .iter()
+                    .map(|&t| Self::replace_var_impl(db, t, with, depth))
+                    .collect();
+
+                TyKind::Tuple(tys).intern(db)
+            },
+            | TyKind::App(a, b) => {
+                let a = Self::replace_var_impl(db, a, with, depth);
+                let b = Self::replace_var_impl(db, b, with, depth);
+
+                TyKind::App(a, b).intern(db)
+            },
+            | TyKind::Ctnt(ctnt, ty) => {
+                let ctnt = Constraint {
+                    class: ctnt.class,
+                    types: ctnt
+                        .types
+                        .iter()
+                        .map(|&t| Self::replace_var_impl(db, t, with, depth))
+                        .collect(),
+                };
+
+                let ty = Self::replace_var_impl(db, ty, with, depth);
+
+                TyKind::Ctnt(ctnt, ty).intern(db)
+            },
+            | TyKind::ForAll(k, inner) => {
+                let k = Self::replace_var_impl(db, k, with, depth);
+                let inner = Self::replace_var_impl(db, inner, with, depth.shifted_in());
+
+                TyKind::ForAll(k, inner).intern(db)
+            },
+            | _ => ty,
+        }
+    }
+
     pub fn to_row_list(self, db: &dyn HirDatabase) -> (List<Field>, Option<Ty>) {
         match self.lookup(db) {
             | TyKind::Row(fields, tail) => (fields.clone(), tail),

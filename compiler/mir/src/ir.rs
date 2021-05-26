@@ -74,6 +74,7 @@ pub enum PlaceElem {
     Deref,
     Field(usize),
     Index(Operand),
+    Offset(Operand),
     Downcast(usize),
 }
 
@@ -109,6 +110,11 @@ impl Place {
 
     pub fn index(mut self, idx: Operand) -> Self {
         self.elems.push(PlaceElem::Index(idx));
+        self
+    }
+
+    pub fn offset(mut self, offset: Operand) -> Self {
+        self.elems.push(PlaceElem::Offset(offset));
         self
     }
 
@@ -286,7 +292,12 @@ impl display::HirDisplay for Place {
                     op.hir_fmt(f)?;
                     write!(f, "]")?;
                 },
-                | PlaceElem::Downcast(v) => write!(f, "{{{}}}", v)?,
+                | PlaceElem::Offset(op) => {
+                    write!(f, "{{")?;
+                    op.hir_fmt(f)?;
+                    write!(f, "}}")?;
+                },
+                | PlaceElem::Downcast(v) => write!(f, "({})", v)?,
             }
         }
 

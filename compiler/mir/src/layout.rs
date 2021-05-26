@@ -53,7 +53,16 @@ pub fn layout_of_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Layout> {
                     .iter()
                     .map(|(local_id, ctor)| {
                         let lower = db.ctor_ty(hir::id::CtorId { local_id, parent: id });
-                        let lyts = ctor.types.iter().map(|&t| db.layout_of(lower.types[t])).collect();
+                        let lyts = ctor
+                            .types
+                            .iter()
+                            .map(|&t| {
+                                let ty = lower.types[t];
+                                let ty = args.iter().fold(ty, |r, t| r.replace_var(db.upcast(), *t));
+
+                                db.layout_of(ty)
+                            })
+                            .collect();
 
                         struct_layout(lyts, &triple)
                     })
@@ -337,10 +346,14 @@ fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> L
 
     if let Some(rec) = group.iter().find_map(|i| i.field("record")).and_then(|i| i.group()) {
         if let Some(fields) = rec.iter().find_map(|i| i.field("fields")).and_then(|i| i.int()) {
-            if let TyKind::Row(fields, _tail) = args[fields as usize].lookup(db.upcast()) {
-                let lyts = fields.iter().map(|f| db.layout_of(f.ty)).collect();
+            if let TyKind::Row(fields, tail) = args[fields as usize].lookup(db.upcast()) {
+                if let Some(_) = tail {
+                    unimplemented!();
+                } else {
+                    let lyts = fields.iter().map(|f| db.layout_of(f.ty)).collect();
 
-                layout = struct_layout(lyts, &triple);
+                    layout = struct_layout(lyts, &triple);
+                }
             }
         }
     }
@@ -377,6 +390,18 @@ fn scalar_from_repr(repr: &str, triple: &Triple) -> Scalar {
         },
         | _ => panic!("invalid scalar '{}'", repr),
     }
+}
+
+pub fn ptr_sized_uint(db: &dyn MirDatabase) -> Arc<Layout> {
+    let triple = db.target_triple();
+    let scalar = match triple.pointer_width() {
+        | Ok(PointerWidth::U16) => Scalar::new(Primitive::Int(Integer::I16, false), &triple),
+        | Ok(PointerWidth::U32) => Scalar::new(Primitive::Int(Integer::I32, false), &triple),
+        | Ok(PointerWidth::U64) => Scalar::new(Primitive::Int(Integer::I64, false), &triple),
+        | Err(_) => Scalar::new(Primitive::Int(Integer::I32, false), &triple),
+    };
+
+    Arc::new(Layout::scalar(scalar, &triple))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

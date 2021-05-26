@@ -4,9 +4,11 @@ import core
 import core/libc (write, STDOUT_FILENO)
 import core/intrinsics (unsafe, transmute)
 
-fun main =
+fun main = do
     print "Hello World!\n"
 
 fun print (s :: Str) = do
     let (ptr, len) = unsafe $ transmute s
     let _ = write STDOUT_FILENO ptr len
+
+fun get_x { x, .. } = x :: Int32

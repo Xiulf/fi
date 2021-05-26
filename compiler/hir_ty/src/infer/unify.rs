@@ -87,7 +87,7 @@ impl InferenceContext<'_> {
         match ty.lookup(self.db) {
             | TyKind::ForAll(kind, inner) => {
                 let u = self.fresh_type_with_kind(kind);
-                let ty = self.replace_var(inner, u);
+                let ty = inner.replace_var(self.db, u);
 
                 self.instantiate(ty, id)
             },
@@ -102,7 +102,7 @@ impl InferenceContext<'_> {
     pub fn monomorphize(&mut self, ty: Ty) -> Ty {
         ty.everywhere(self.db, &mut |ty| match ty.lookup(self.db) {
             | TyKind::App(a, b) => match a.lookup(self.db) {
-                | TyKind::ForAll(_, a) => self.replace_var(a, b),
+                | TyKind::ForAll(_, a) => a.replace_var(self.db, b),
                 | _ => ty,
             },
             | _ => ty,
@@ -140,66 +140,6 @@ impl InferenceContext<'_> {
         }
 
         self.subst_type(ty)
-    }
-
-    pub fn replace_var(&mut self, ty: Ty, with: Ty) -> Ty {
-        self.replace_var_impl(ty, with, DebruijnIndex::INNER)
-    }
-
-    fn replace_var_impl(&mut self, ty: Ty, with: Ty, depth: DebruijnIndex) -> Ty {
-        match ty.lookup(self.db) {
-            | TyKind::TypeVar(var) if var.debruijn() == depth => with,
-            | TyKind::Skolem(sk, k) => {
-                let k = self.replace_var_impl(k, with, depth);
-
-                sk.to_ty(self.db, k)
-            },
-            | TyKind::Row(fields, tail) => {
-                let fields = fields
-                    .iter()
-                    .map(|f| Field {
-                        name: f.name.clone(),
-                        ty: self.replace_var_impl(f.ty, with, depth),
-                    })
-                    .collect();
-
-                let tail = tail.map(|t| self.replace_var_impl(t, with, depth));
-
-                TyKind::Row(fields, tail).intern(self.db)
-            },
-            | TyKind::Tuple(tys) => {
-                let tys = tys.iter().map(|&t| self.replace_var_impl(t, with, depth)).collect();
-
-                TyKind::Tuple(tys).intern(self.db)
-            },
-            | TyKind::App(a, b) => {
-                let a = self.replace_var_impl(a, with, depth);
-                let b = self.replace_var_impl(b, with, depth);
-
-                TyKind::App(a, b).intern(self.db)
-            },
-            | TyKind::Ctnt(ctnt, ty) => {
-                let ctnt = Constraint {
-                    class: ctnt.class,
-                    types: ctnt
-                        .types
-                        .iter()
-                        .map(|&t| self.replace_var_impl(t, with, depth))
-                        .collect(),
-                };
-
-                let ty = self.replace_var_impl(ty, with, depth);
-
-                TyKind::Ctnt(ctnt, ty).intern(self.db)
-            },
-            | TyKind::ForAll(k, inner) => {
-                let k = self.replace_var_impl(k, with, depth);
-                let inner = self.replace_var_impl(inner, with, depth.shifted_in());
-
-                TyKind::ForAll(k, inner).intern(self.db)
-            },
-            | _ => ty,
-        }
     }
 
     pub fn unify_types(&mut self, t1: Ty, t2: Ty) -> bool {

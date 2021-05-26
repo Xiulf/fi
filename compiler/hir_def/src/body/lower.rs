@@ -486,7 +486,9 @@ impl<'a> ExprCollector<'a> {
                     })
                     .collect();
 
-                Pat::Record { fields }
+                let has_rest = p.has_rest();
+
+                Pat::Record { fields, has_rest }
             },
             | _ => unimplemented!("{:?}", pat),
         };

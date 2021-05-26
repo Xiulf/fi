@@ -159,7 +159,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 self.check_kind_for_app(base, arg, ty);
 
                 if let TyKind::ForAll(_, inner) = base.lookup(self.db) {
-                    self.replace_var(inner, arg)
+                    inner.replace_var(self.db, arg)
                 } else {
                     TyKind::App(base, arg).intern(self.db)
                 }
@@ -427,6 +427,7 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult> {
     let mut vars = Vec::with_capacity(ty_data.vars.len());
 
     while let TyKind::ForAll(var, t) = ret.lookup(db) {
+        ctx.push_var_kind(var);
         vars.push(var);
         ret = t;
     }

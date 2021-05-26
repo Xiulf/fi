@@ -50,7 +50,7 @@ impl<'t> Parser<'t> {
             self.do_bump(kind);
             true
         } else {
-            return false;
+            false
         }
     }
 

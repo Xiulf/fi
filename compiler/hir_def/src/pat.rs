@@ -10,13 +10,31 @@ pub type PatId = Idx<Pat>;
 pub enum Pat {
     Missing,
     Wildcard,
-    Typed { pat: PatId, ty: LocalTypeRefId },
-    App { base: PatId, args: Vec<PatId> },
-    Path { path: Path },
-    Bind { name: Name, subpat: Option<PatId> },
-    Tuple { pats: Vec<PatId> },
-    Record { fields: Vec<RecordField<PatId>> },
-    Lit { lit: Literal },
+    Typed {
+        pat: PatId,
+        ty: LocalTypeRefId,
+    },
+    App {
+        base: PatId,
+        args: Vec<PatId>,
+    },
+    Path {
+        path: Path,
+    },
+    Bind {
+        name: Name,
+        subpat: Option<PatId>,
+    },
+    Tuple {
+        pats: Vec<PatId>,
+    },
+    Record {
+        fields: Vec<RecordField<PatId>>,
+        has_rest: bool,
+    },
+    Lit {
+        lit: Literal,
+    },
 }
 
 impl Pat {
@@ -34,7 +52,7 @@ impl Pat {
             | Pat::Tuple { pats } => {
                 pats.iter().copied().for_each(f);
             },
-            | Pat::Record { fields } => {
+            | Pat::Record { fields, .. } => {
                 fields.iter().map(|f| f.val).for_each(f);
             },
         }
