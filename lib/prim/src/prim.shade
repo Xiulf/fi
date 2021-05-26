@@ -65,13 +65,15 @@ foreign type Block          :: Type -> Type -> Type
 @repr(scalar = "i32" ) foreign type Int32   :: Type
 @repr(scalar = "i64" ) foreign type Int64   :: Type
 @repr(scalar = "i128") foreign type Int128  :: Type
+
 @repr(scalar = "u8"  ) foreign type Uint8   :: Type
 @repr(scalar = "u16" ) foreign type Uint16  :: Type
 @repr(scalar = "u32" ) foreign type Uint32  :: Type
 @repr(scalar = "u64" ) foreign type Uint64  :: Type
 @repr(scalar = "u128") foreign type Uint128 :: Type
-@repr(scalar = "f32" ) foreign type Float32 :: Type
-@repr(scalar = "f64" ) foreign type Float64 :: Type
+
+@repr(scalar = "f32") foreign type Float32 :: Type
+@repr(scalar = "f64") foreign type Float64 :: Type
 
 type Unit = ()
 

@@ -17,8 +17,20 @@ impl Body {
         };
 
         let mut args = Vec::new();
+        let mut vars = Vec::new();
+        let mut ctnts = Vec::new();
         let func_id = db.lang_item(def.module(db.upcast()).lib, "fn-type".into()).unwrap();
         let func_id = func_id.as_type_ctor().unwrap();
+
+        while let TyKind::ForAll(var, ret) = ty.lookup(db.upcast()) {
+            vars.push(var);
+            ty = ret;
+        }
+
+        while let TyKind::Ctnt(ctnt, ret) = ty.lookup(db.upcast()) {
+            ctnts.push(ctnt);
+            ty = ret;
+        }
 
         while let Some([arg, ret]) = ty.match_ctor(db.upcast(), func_id) {
             args.push(arg);

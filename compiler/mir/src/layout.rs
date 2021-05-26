@@ -1,5 +1,6 @@
 use crate::db::MirDatabase;
 use hir::attrs::AttrInput;
+use hir::display::HirDisplay;
 use hir::ty::{Ty, TyKind};
 use std::convert::TryInto;
 use std::fmt;
@@ -74,6 +75,55 @@ pub fn layout_of_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Layout> {
     };
 
     Arc::new(layout)
+}
+
+fn scalar_pair(a: Scalar, b: Scalar, triple: &Triple) -> Layout {
+    let b_align = b.value.align(triple);
+    let align = a.value.align(triple).max(b_align);
+    let b_offset = a.value.size(triple).align_to(b_align);
+    let size = b_offset + b.value.size(triple);
+    let largest_niche = Niche::from_scalar(triple, b_offset, b.clone())
+        .into_iter()
+        .chain(Niche::from_scalar(triple, Size::ZERO, a.clone()))
+        .max_by_key(|n| n.available(triple));
+
+    let a_lyt = Arc::new(Layout::scalar(a.clone(), triple));
+    let b_lyt = Arc::new(Layout::scalar(b.clone(), triple));
+
+    Layout {
+        size,
+        align,
+        stride: size.align_to(align),
+        elem: None,
+        abi: Abi::ScalarPair(a, b),
+        fields: Fields::Arbitrary {
+            fields: vec![(Size::ZERO, a_lyt), (b_offset, b_lyt)],
+        },
+        variants: Variants::Single { index: 0 },
+        largest_niche,
+    }
+}
+
+fn ptr_pair(a_lyt: Arc<Layout>, b_lyt: Arc<Layout>, triple: &Triple) -> Layout {
+    let mut scalar = Scalar::new(Primitive::Pointer, triple);
+    scalar.valid_range = 1..=*scalar.valid_range.end();
+    let align = scalar.value.align(triple);
+    let offset = scalar.value.size(triple);
+    let size = offset * 2;
+    let largest_niche = Niche::from_scalar(triple, offset, scalar.clone());
+
+    Layout {
+        size,
+        align,
+        stride: size.align_to(align),
+        elem: None,
+        abi: Abi::ScalarPair(scalar.clone(), scalar),
+        fields: Fields::Arbitrary {
+            fields: vec![(Size::ZERO, a_lyt), (offset, b_lyt)],
+        },
+        variants: Variants::Single { index: 0 },
+        largest_niche,
+    }
 }
 
 fn struct_layout(lyts: Vec<Arc<Layout>>, triple: &Triple) -> Layout {
@@ -267,24 +317,7 @@ fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> L
                 s
             };
 
-            let fst_niche = Niche::from_scalar(&triple, Size::ZERO, first.clone());
-            let snd_niche = Niche::from_scalar(&triple, first.value.size(&triple), second.clone());
-            let fst_layout = Arc::new(Layout::scalar(first.clone(), &triple));
-            let snd_layout = Arc::new(Layout::scalar(second.clone(), &triple));
-            let snd_offset = fst_layout.stride;
-
-            layout.size = first.value.size(&triple) + second.value.size(&triple);
-            layout.align = Align::from_bytes(layout.size.bytes());
-            layout.stride = layout.size;
-            layout.abi = Abi::ScalarPair(first, second);
-            layout.fields = Fields::Arbitrary {
-                fields: vec![(Size::ZERO, fst_layout), (snd_offset, snd_layout)],
-            };
-
-            layout.largest_niche = fst_niche
-                .into_iter()
-                .chain(snd_niche)
-                .max_by_key(|n| n.available(&triple));
+            layout = scalar_pair(first, second, &triple);
         }
     }
 
@@ -348,7 +381,33 @@ fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> L
         if let Some(fields) = rec.iter().find_map(|i| i.field("fields")).and_then(|i| i.int()) {
             if let TyKind::Row(fields, tail) = args[fields as usize].lookup(db.upcast()) {
                 if let Some(_) = tail {
-                    unimplemented!();
+                    let data_lyt = Arc::new(Layout {
+                        size: Size::ZERO,
+                        align: Align::ONE,
+                        stride: Size::ZERO,
+                        elem: None,
+                        abi: Abi::Aggregate { sized: false },
+                        fields: Fields::Arbitrary { fields: Vec::new() },
+                        variants: Variants::Single { index: 0 },
+                        largest_niche: None,
+                    });
+
+                    let uint = ptr_sized_uint(db);
+                    let idxs_layout = Arc::new(Layout {
+                        size: uint.stride * fields.len() as u64,
+                        align: uint.align,
+                        stride: uint.stride * fields.len() as u64,
+                        elem: Some(Err(uint.clone())),
+                        abi: Abi::Aggregate { sized: true },
+                        fields: Fields::Array {
+                            stride: uint.stride,
+                            count: fields.len(),
+                        },
+                        variants: Variants::Single { index: 0 },
+                        largest_niche: None,
+                    });
+
+                    layout = ptr_pair(data_lyt, idxs_layout, &triple);
                 } else {
                     let lyts = fields.iter().map(|f| db.layout_of(f.ty)).collect();
 
