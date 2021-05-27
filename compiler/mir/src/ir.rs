@@ -28,6 +28,12 @@ pub enum LocalKind {
     Tmp,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Location {
+    pub block: BlockId,
+    pub stmt: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Block {
     pub stmts: Vec<Stmt>,

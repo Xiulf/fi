@@ -52,10 +52,10 @@ foreign type Slice :: Type -> Type
 
 @lang = "record-type"
 @repr(record(fields = 0))
-foreign type Record         :: Row Type -> Type
+foreign type Record :: Row Type -> Type
 
 @lang = "block-type"
-foreign type Block          :: Type -> Type -> Type
+foreign type Block :: Type -> Type -> Type
 
 @repr(scalar = "ptr_sized_int" ) foreign type Int  :: Type
 @repr(scalar = "ptr_sized_uint") foreign type Uint :: Type

@@ -1,6 +1,6 @@
 use crate::db::MirDatabase;
 use crate::ir::*;
-use crate::layout::Layout;
+use crate::layout::{self, Layout};
 use hir::display::HirDisplay as _;
 use hir::id::HasModule as _;
 use hir::ty::{Ty, TyKind};
@@ -19,6 +19,12 @@ impl Body {
         let mut args = Vec::new();
         let mut vars = Vec::new();
         let mut ctnts = Vec::new();
+        let type_id = db.lang_item(def.module(db.upcast()).lib, "type-kind".into()).unwrap();
+        let type_id = type_id.as_type_ctor().unwrap();
+        let figure_id = db.lang_item(def.module(db.upcast()).lib, "figure-kind".into()).unwrap();
+        let figure_id = figure_id.as_type_ctor().unwrap();
+        let symbol_id = db.lang_item(def.module(db.upcast()).lib, "symbol-kind".into()).unwrap();
+        let symbol_id = symbol_id.as_type_ctor().unwrap();
         let func_id = db.lang_item(def.module(db.upcast()).lib, "fn-type".into()).unwrap();
         let func_id = func_id.as_type_ctor().unwrap();
 
@@ -38,6 +44,24 @@ impl Body {
         }
 
         let mut builder = Builder::new(db, def, ty);
+        let type_info = layout::type_info(db);
+        let type_info = layout::reference(db, type_info);
+        let figure = layout::ptr_sized_uint(db);
+        let symbol = layout::str_slice(db);
+
+        for var in vars {
+            let kind = var.lookup(db.upcast());
+
+            if kind == TyKind::Ctor(type_id) {
+                builder.add_type_var(Some(type_info.clone()));
+            } else if kind == TyKind::Ctor(figure_id) {
+                builder.add_type_var(Some(figure.clone()));
+            } else if kind == TyKind::Ctor(symbol_id) {
+                builder.add_type_var(Some(symbol.clone()));
+            } else {
+                builder.add_type_var(None);
+            }
+        }
 
         builder.lower();
 
@@ -54,6 +78,7 @@ struct Builder<'a> {
     ret: LocalId,
     block: Option<BlockId>,
     binders: FxHashMap<hir::PatId, Place>,
+    type_vars: Vec<Option<LocalId>>,
 }
 
 impl<'a> Builder<'a> {
@@ -73,7 +98,19 @@ impl<'a> Builder<'a> {
             infer: db.infer(def),
             block: None,
             binders: FxHashMap::default(),
+            type_vars: Vec::new(),
         }
+    }
+
+    fn add_type_var(&mut self, type_info: Option<Arc<Layout>>) {
+        let type_var = type_info.map(|layout| {
+            self.body.locals.alloc(Local {
+                layout,
+                kind: LocalKind::Arg,
+            })
+        });
+
+        self.type_vars.push(type_var);
     }
 
     fn lower(&mut self) {
@@ -123,7 +160,7 @@ impl<'a> Builder<'a> {
                         if has_rest {
                             let record = place.clone().field(0).deref();
                             let offsets = place.field(1).deref();
-                            let uint_lyt = crate::layout::ptr_sized_uint(self.db);
+                            let uint_lyt = layout::ptr_sized_uint(self.db);
 
                             for field in fields {
                                 let idx = ty_fields.iter().position(|f| f.name == field.name).unwrap();

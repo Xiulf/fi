@@ -35,7 +35,18 @@ pub fn layout_of_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Layout> {
         | TyKind::App(_, _) => unreachable!(),
         | TyKind::ForAll(_, ty) => return db.layout_of(ty),
         | TyKind::Ctnt(_, ty) => return db.layout_of(ty),
-        | TyKind::TypeVar(_) => unimplemented!(),
+        | TyKind::TypeVar(_) => {
+            let elem = Arc::new(Layout {
+                abi: Abi::Aggregate { sized: false },
+                ..Layout::default()
+            });
+
+            let scalar = Scalar::new(Primitive::Pointer, &triple);
+            let mut lyt = Layout::scalar(scalar, &triple);
+
+            lyt.elem = Some(Err(elem));
+            lyt
+        },
         | TyKind::Tuple(tys) => {
             let lyts = tys.iter().map(|&t| db.layout_of(t)).collect();
 
@@ -120,6 +131,38 @@ fn ptr_pair(a_lyt: Arc<Layout>, b_lyt: Arc<Layout>, triple: &Triple) -> Layout {
         abi: Abi::ScalarPair(scalar.clone(), scalar),
         fields: Fields::Arbitrary {
             fields: vec![(Size::ZERO, a_lyt), (offset, b_lyt)],
+        },
+        variants: Variants::Single { index: 0 },
+        largest_niche,
+    }
+}
+
+fn slice_layout(elem_lyt: Arc<Layout>, triple: &Triple) -> Layout {
+    let len = match triple.pointer_width() {
+        | Ok(PointerWidth::U16) => Scalar::new(Primitive::Int(Integer::I16, false), &triple),
+        | Ok(PointerWidth::U32) => Scalar::new(Primitive::Int(Integer::I32, false), &triple),
+        | Ok(PointerWidth::U64) => Scalar::new(Primitive::Int(Integer::I64, false), &triple),
+        | Err(_) => Scalar::new(Primitive::Int(Integer::I32, false), &triple),
+    };
+
+    let uint = Arc::new(Layout::scalar(len.clone(), triple));
+    let mut ptr = Scalar::new(Primitive::Pointer, triple);
+
+    ptr.valid_range = 1..=*ptr.valid_range.end();
+
+    let align = ptr.value.align(triple);
+    let offset = ptr.value.size(triple);
+    let size = offset * 2;
+    let largest_niche = Niche::from_scalar(triple, offset, ptr.clone());
+
+    Layout {
+        size,
+        align,
+        stride: size.align_to(align),
+        elem: None,
+        abi: Abi::ScalarPair(ptr, len),
+        fields: Fields::Arbitrary {
+            fields: vec![(Size::ZERO, elem_lyt), (offset, uint)],
         },
         variants: Variants::Single { index: 0 },
         largest_niche,
@@ -461,6 +504,46 @@ pub fn ptr_sized_uint(db: &dyn MirDatabase) -> Arc<Layout> {
     };
 
     Arc::new(Layout::scalar(scalar, &triple))
+}
+
+pub fn str_slice(db: &dyn MirDatabase) -> Arc<Layout> {
+    let triple = db.target_triple();
+    let uint8 = Scalar::new(Primitive::Int(Integer::I8, false), &triple);
+    let uint8 = Arc::new(Layout::scalar(uint8, &triple));
+    let ptr = reference(db, uint8);
+
+    Arc::new(slice_layout(ptr, &triple))
+}
+
+pub fn type_info(db: &dyn MirDatabase) -> Arc<Layout> {
+    let triple = db.target_triple();
+    let uint = ptr_sized_uint(db);
+
+    Arc::new(Layout {
+        size: uint.size,
+        align: uint.align,
+        stride: uint.stride,
+        elem: None,
+        abi: Abi::Aggregate { sized: true },
+        fields: Fields::Arbitrary {
+            fields: vec![(Size::ZERO, uint)],
+        },
+        variants: Variants::Single { index: 0 },
+        largest_niche: None,
+    })
+}
+
+pub fn reference(db: &dyn MirDatabase, to: Arc<Layout>) -> Arc<Layout> {
+    let triple = db.target_triple();
+    let mut scalar = Scalar::new(Primitive::Pointer, &triple);
+
+    scalar.valid_range = 1..=*scalar.valid_range.end();
+
+    let mut lyt = Layout::scalar(scalar, &triple);
+
+    lyt.elem = Some(Err(to));
+
+    Arc::new(lyt)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
