@@ -1,9 +1,12 @@
+pub mod builder;
+
 use crate::db::MirDatabase;
 use crate::ir::*;
 use crate::layout::{self, Layout};
+use builder::Builder;
 use hir::display::HirDisplay as _;
 use hir::id::HasModule as _;
-use hir::ty::{Ty, TyKind};
+use hir::ty::{Ty, TyKind, TypeVar};
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -43,7 +46,7 @@ impl Body {
             ty = ret;
         }
 
-        let mut builder = Builder::new(db, def, ty);
+        let mut lcx = LowerCtx::new(db, def, ty);
         let type_info = layout::type_info(db);
         let type_info = layout::reference(db, type_info);
         let figure = layout::ptr_sized_uint(db);
@@ -53,75 +56,65 @@ impl Body {
             let kind = var.lookup(db.upcast());
 
             if kind == TyKind::Ctor(type_id) {
-                builder.add_type_var(Some(type_info.clone()));
+                lcx.add_type_var(Some(type_info.clone()));
             } else if kind == TyKind::Ctor(figure_id) {
-                builder.add_type_var(Some(figure.clone()));
+                lcx.add_type_var(Some(figure.clone()));
             } else if kind == TyKind::Ctor(symbol_id) {
-                builder.add_type_var(Some(symbol.clone()));
+                lcx.add_type_var(Some(symbol.clone()));
             } else {
-                builder.add_type_var(None);
+                lcx.add_type_var(None);
             }
         }
 
-        builder.lower();
+        lcx.lower();
 
-        Arc::new(builder.body)
+        Arc::new(lcx.builder.finish())
     }
 }
 
-struct Builder<'a> {
+struct LowerCtx<'a> {
     db: &'a dyn MirDatabase,
     def: hir::id::DefWithBodyId,
     hir: Arc<hir::Body>,
     infer: Arc<hir::InferenceResult>,
-    body: Body,
+    builder: Builder,
     ret: LocalId,
-    block: Option<BlockId>,
     binders: FxHashMap<hir::PatId, Place>,
     type_vars: Vec<Option<LocalId>>,
 }
 
-impl<'a> Builder<'a> {
+impl<'a> LowerCtx<'a> {
     fn new(db: &'a dyn MirDatabase, def: hir::id::DefWithBodyId, ret_ty: Ty) -> Self {
-        let mut body = Body::default();
-        let ret = body.locals.alloc(Local {
-            layout: db.layout_of(ret_ty),
-            kind: LocalKind::Ret,
-        });
+        let mut builder = Builder::default();
+        let ret = builder.create_ret(db, ret_ty);
 
         Self {
             db,
             def,
-            body,
             ret,
+            builder,
             hir: db.body(def),
             infer: db.infer(def),
-            block: None,
             binders: FxHashMap::default(),
             type_vars: Vec::new(),
         }
     }
 
     fn add_type_var(&mut self, type_info: Option<Arc<Layout>>) {
-        let type_var = type_info.map(|layout| {
-            self.body.locals.alloc(Local {
-                layout,
-                kind: LocalKind::Arg,
-            })
-        });
+        let type_var = type_info.map(|layout| self.builder.create_arg(layout));
 
         self.type_vars.push(type_var);
     }
 
     fn lower(&mut self) {
-        let entry = self.create_block();
+        let entry = self.builder.create_block();
 
-        self.block = Some(entry);
-        self.body.entry = Some(entry);
+        self.builder.set_block(entry);
 
         for param in self.hir.params().to_vec() {
             let ty = self.infer.type_of_pat[param];
-            let arg = self.create_arg(ty);
+            let lyt = self.db.layout_of(ty);
+            let arg = self.builder.create_arg(lyt);
             let place = Place::new(arg);
 
             self.lower_pat(param, place);
@@ -129,9 +122,8 @@ impl<'a> Builder<'a> {
 
         let ret = Place::new(self.ret);
 
-        self.body.ret = Some(self.ret);
         self.lower_expr(self.hir.body_expr(), Some(ret));
-        self.ret();
+        self.builder.ret();
     }
 
     fn lower_pat(&mut self, id: hir::PatId, place: Place) {
@@ -183,11 +175,24 @@ impl<'a> Builder<'a> {
         }
     }
 
+    fn type_info(&self, var: TypeVar) -> LocalId {
+        let idx = self.type_vars.len() - 1 - var.debruijn().depth() as usize;
+
+        self.type_vars[idx].unwrap()
+    }
+
     fn lower_expr(&mut self, id: hir::ExprId, mut ret: Option<Place>) -> Operand {
         let op = self.lower_expr_impl(id, &mut ret);
 
         if let Some(ret) = ret {
-            self.assign(ret.clone(), RValue::Use(op));
+            if let TyKind::TypeVar(var) = self.infer.type_of_expr[id].lookup(self.db.upcast()) {
+                let info = self.type_info(var);
+                let info = Place::new(info);
+
+                self.builder.memcpy(ret.clone(), op, info.deref().field(0));
+            } else {
+                self.builder.use_op(ret.clone(), op);
+            }
 
             Operand::Place(ret)
         } else {
@@ -227,7 +232,11 @@ impl<'a> Builder<'a> {
             },
             | hir::Expr::App { .. } => self.lower_app(id, ty, ret.take()),
             | hir::Expr::Tuple { ref exprs } => {
-                let ret = ret.take().unwrap_or_else(|| Place::new(self.create_tmp(ty)));
+                let ret = ret.take().unwrap_or_else(|| {
+                    let lyt = self.db.layout_of(ty);
+
+                    Place::new(self.builder.create_var(lyt))
+                });
 
                 for (i, &expr) in exprs.iter().enumerate() {
                     self.lower_expr(expr, Some(ret.clone().field(i)));
@@ -249,7 +258,8 @@ impl<'a> Builder<'a> {
                         },
                         | hir::Stmt::Bind { pat, val } | hir::Stmt::Let { pat, val } => {
                             let ty = self.infer.type_of_expr[val];
-                            let place = self.create_tmp(ty);
+                            let lyt = self.db.layout_of(ty);
+                            let place = self.builder.create_var(lyt);
                             let place = Place::new(place);
 
                             self.lower_expr(val, Some(place.clone()));
@@ -280,11 +290,12 @@ impl<'a> Builder<'a> {
                 if let TyKind::App(..) = ty.lookup(self.db.upcast()) {
                     Operand::Const(Const::FuncAddr(id.into()))
                 } else {
-                    let ret = self.create_tmp(ty);
+                    let lyt = self.db.layout_of(ty);
+                    let ret = self.builder.create_var(lyt);
                     let ret = Place::new(ret);
                     let func = Operand::Const(Const::FuncAddr(id.into()));
 
-                    self.call(ret.clone(), func, Vec::new());
+                    self.builder.call(ret.clone(), func, Vec::new());
 
                     Operand::Place(ret)
                 }
@@ -317,11 +328,16 @@ impl<'a> Builder<'a> {
             }
         }
 
-        let ret = ret.unwrap_or_else(|| Place::new(self.create_tmp(ret_ty)));
+        let ret = ret.unwrap_or_else(|| {
+            let lyt = self.db.layout_of(ret_ty);
+
+            Place::new(self.builder.create_var(lyt))
+        });
+
         let func = self.lower_expr(base, None);
         let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
-        self.call(ret.clone(), func, args);
+        self.builder.call(ret.clone(), func, args);
 
         Operand::Place(ret)
     }
@@ -333,7 +349,11 @@ impl<'a> Builder<'a> {
         ret_ty: Ty,
         ret: Option<Place>,
     ) -> Operand {
-        let ret = ret.unwrap_or_else(|| Place::new(self.create_tmp(ret_ty)));
+        let ret = ret.unwrap_or_else(|| {
+            let lyt = self.db.layout_of(ret_ty);
+
+            Place::new(self.builder.create_var(lyt))
+        });
 
         if self.db.attrs(func.into()).by_key("intrinsic").exists() {
             let name = self.db.func_data(func).name.to_string();
@@ -347,20 +367,20 @@ impl<'a> Builder<'a> {
                     | f => {
                         let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
-                        self.call(ret.clone(), f, args)
+                        self.builder.call(ret.clone(), f, args)
                     },
                 },
                 | _ => {
                     let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
-                    self.assign(ret.clone(), RValue::Intrinsic(name, args))
+                    self.builder.intrinsic(ret.clone(), name, args)
                 },
             }
         } else {
             let func = Operand::Const(Const::FuncAddr(func.into()));
             let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
-            self.call(ret.clone(), func, args);
+            self.builder.call(ret.clone(), func, args);
         }
 
         Operand::Place(ret)
@@ -374,7 +394,11 @@ impl<'a> Builder<'a> {
         ret: Option<Place>,
     ) -> Operand {
         let data = self.db.type_ctor_data(id.parent);
-        let ret = ret.unwrap_or_else(|| Place::new(self.create_tmp(ret_ty)));
+        let ret = ret.unwrap_or_else(|| {
+            let lyt = self.db.layout_of(ret_ty);
+
+            Place::new(self.builder.create_var(lyt))
+        });
 
         if data.ctors.len() == 1 {
             for (i, arg) in args.into_iter().enumerate() {
@@ -388,67 +412,9 @@ impl<'a> Builder<'a> {
                 self.lower_expr(arg, Some(p.clone().field(i)));
             }
 
-            self.set_discr(ret.clone(), idx as u128);
+            self.builder.set_discr(ret.clone(), idx as u128);
         }
 
         Operand::Place(ret)
-    }
-
-    fn block(&mut self) -> &mut Block {
-        &mut self.body.blocks[self.block.unwrap()]
-    }
-
-    fn ret(&mut self) {
-        self.block().term = Term::Return;
-    }
-
-    fn jmp(&mut self, to: BlockId) {
-        self.block().term = Term::Jump(to);
-    }
-
-    fn assign(&mut self, p: Place, val: RValue) {
-        self.block().stmts.push(Stmt::Assign(p, val));
-    }
-
-    fn call(&mut self, p: Place, val: Operand, args: Vec<Operand>) {
-        self.block().stmts.push(Stmt::Call(p, val, args));
-    }
-
-    fn set_discr(&mut self, p: Place, discr: u128) {
-        self.block().stmts.push(Stmt::SetDiscr(p, discr));
-    }
-
-    fn create_block(&mut self) -> BlockId {
-        self.body.blocks.alloc(Block {
-            stmts: Vec::new(),
-            term: Term::Abort,
-        })
-    }
-
-    fn create_var(&mut self, ty: Ty) -> LocalId {
-        let layout = self.db.layout_of(ty);
-
-        self.body.locals.alloc(Local {
-            layout,
-            kind: LocalKind::Var,
-        })
-    }
-
-    fn create_tmp(&mut self, ty: Ty) -> LocalId {
-        let layout = self.db.layout_of(ty);
-
-        self.body.locals.alloc(Local {
-            layout,
-            kind: LocalKind::Tmp,
-        })
-    }
-
-    fn create_arg(&mut self, ty: Ty) -> LocalId {
-        let layout = self.db.layout_of(ty);
-
-        self.body.locals.alloc(Local {
-            layout,
-            kind: LocalKind::Arg,
-        })
     }
 }

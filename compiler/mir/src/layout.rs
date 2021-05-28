@@ -41,7 +41,10 @@ pub fn layout_of_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Layout> {
                 ..Layout::default()
             });
 
-            let scalar = Scalar::new(Primitive::Pointer, &triple);
+            let mut scalar = Scalar::new(Primitive::Pointer, &triple);
+
+            scalar.valid_range = 1..=*scalar.valid_range.end();
+
             let mut lyt = Layout::scalar(scalar, &triple);
 
             lyt.elem = Some(Err(elem));
@@ -121,7 +124,12 @@ fn ptr_pair(a_lyt: Arc<Layout>, b_lyt: Arc<Layout>, triple: &Triple) -> Layout {
     let align = scalar.value.align(triple);
     let offset = scalar.value.size(triple);
     let size = offset * 2;
-    let largest_niche = Niche::from_scalar(triple, offset, scalar.clone());
+    let largest_niche = Niche::from_scalar(triple, Size::ZERO, scalar.clone());
+    let mut a_ptr = Layout::scalar(scalar.clone(), &triple);
+    let mut b_ptr = Layout::scalar(scalar.clone(), &triple);
+
+    a_ptr.elem = Some(Err(a_lyt));
+    b_ptr.elem = Some(Err(b_lyt));
 
     Layout {
         size,
@@ -130,7 +138,7 @@ fn ptr_pair(a_lyt: Arc<Layout>, b_lyt: Arc<Layout>, triple: &Triple) -> Layout {
         elem: None,
         abi: Abi::ScalarPair(scalar.clone(), scalar),
         fields: Fields::Arbitrary {
-            fields: vec![(Size::ZERO, a_lyt), (offset, b_lyt)],
+            fields: vec![(Size::ZERO, Arc::new(a_ptr)), (offset, Arc::new(b_ptr))],
         },
         variants: Variants::Single { index: 0 },
         largest_niche,
@@ -638,20 +646,22 @@ pub enum Integer {
 
 impl Default for Layout {
     fn default() -> Self {
-        Self {
-            size: Size::ZERO,
-            align: Align::ONE,
-            stride: Size::ZERO,
-            elem: None,
-            abi: Abi::Aggregate { sized: true },
-            fields: Fields::Arbitrary { fields: Vec::new() },
-            variants: Variants::Single { index: 0 },
-            largest_niche: None,
-        }
+        Self::UNIT
     }
 }
 
 impl Layout {
+    pub const UNIT: Self = Self {
+        size: Size::ZERO,
+        align: Align::ONE,
+        stride: Size::ZERO,
+        elem: None,
+        abi: Abi::Aggregate { sized: true },
+        fields: Fields::Arbitrary { fields: Vec::new() },
+        variants: Variants::Single { index: 0 },
+        largest_niche: None,
+    };
+
     pub fn scalar(scalar: Scalar, triple: &Triple) -> Self {
         let size = scalar.value.size(triple);
         let align = Align::from_bytes(size.bytes());
@@ -951,132 +961,105 @@ impl Integer {
 
 impl fmt::Display for Layout {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{};{};{};",
-            self.size.bytes(),
-            self.align.bytes(),
-            self.stride.bytes()
-        )?;
-
-        if let Some(elem) = &self.elem {
-            match elem {
-                | Ok(_) => write!(f, "();")?,
-                | Err(l) => write!(f, "({});", l)?,
-            }
-        }
-
-        write!(f, "{};{};{}", self.abi, self.fields, self.variants)?;
-
-        if let Some(niche) = &self.largest_niche {
-            write!(f, ";{}", niche)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for Abi {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
+        match &self.abi {
             | Abi::Uninhabited => write!(f, "uninhabited"),
-            | Abi::Scalar(s) => write!(f, "({})", s),
-            | Abi::ScalarPair(a, b) => write!(f, "({}, {})", a, b),
-            | Abi::Aggregate { sized: true } => write!(f, "aggregate"),
-            | Abi::Aggregate { sized: false } => write!(f, "aggregate (unsized)"),
-        }
-    }
-}
+            | Abi::Scalar(s) => {
+                match s.value {
+                    | Primitive::Int(Integer::I8, false) => write!(f, "u8"),
+                    | Primitive::Int(Integer::I16, false) => write!(f, "u16"),
+                    | Primitive::Int(Integer::I32, false) => write!(f, "u32"),
+                    | Primitive::Int(Integer::I64, false) => write!(f, "u64"),
+                    | Primitive::Int(Integer::I128, false) => write!(f, "u128"),
+                    | Primitive::Int(Integer::I8, true) => write!(f, "i8"),
+                    | Primitive::Int(Integer::I16, true) => write!(f, "i16"),
+                    | Primitive::Int(Integer::I32, true) => write!(f, "i32"),
+                    | Primitive::Int(Integer::I64, true) => write!(f, "i64"),
+                    | Primitive::Int(Integer::I128, true) => write!(f, "i128"),
+                    | Primitive::F32 => write!(f, "f32"),
+                    | Primitive::F64 => write!(f, "f64"),
+                    | Primitive::Pointer => write!(f, "ptr"),
+                }?;
 
-impl fmt::Display for Scalar {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}@{:?}", self.value, self.valid_range)
-    }
-}
+                if *s.valid_range.start() != 0 {
+                    write!(f, "@{}..", s.valid_range.start())?;
+                }
 
-impl fmt::Display for Primitive {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            | Primitive::Int(Integer::I8, false) => write!(f, "u8"),
-            | Primitive::Int(Integer::I16, false) => write!(f, "u16"),
-            | Primitive::Int(Integer::I32, false) => write!(f, "u32"),
-            | Primitive::Int(Integer::I64, false) => write!(f, "u64"),
-            | Primitive::Int(Integer::I128, false) => write!(f, "u128"),
-            | Primitive::Int(Integer::I8, true) => write!(f, "i8"),
-            | Primitive::Int(Integer::I16, true) => write!(f, "i16"),
-            | Primitive::Int(Integer::I32, true) => write!(f, "i32"),
-            | Primitive::Int(Integer::I64, true) => write!(f, "i64"),
-            | Primitive::Int(Integer::I128, true) => write!(f, "i128"),
-            | Primitive::F32 => write!(f, "f32"),
-            | Primitive::F64 => write!(f, "f64"),
-            | Primitive::Pointer => write!(f, "ptr"),
-        }
-    }
-}
-
-impl fmt::Display for Fields {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            | Fields::Primitive => write!(f, "primitive"),
-            | Fields::Array { count, .. } => write!(f, "array({})", count),
-            | Fields::Union { fields } => {
-                write!(f, "union(")?;
-
-                for (i, field) in fields.iter().enumerate() {
-                    if i != 0 {
-                        write!(f, ", ")?;
+                if let Primitive::Pointer = s.value {
+                    if let Some(Err(lyt)) = &self.elem {
+                        write!(f, "->{}", lyt)?;
                     }
+                }
 
-                    write!(f, "{}", field)?;
+                Ok(())
+            },
+            | Abi::ScalarPair(_, _) => {
+                write!(f, "(")?;
+
+                if let Fields::Arbitrary { fields } = &self.fields {
+                    for (i, (_, field)) in fields.iter().enumerate() {
+                        if i != 0 {
+                            write!(f, ", ")?;
+                        }
+
+                        field.fmt(f)?;
+                    }
                 }
 
                 write!(f, ")")
             },
-            | Fields::Arbitrary { fields } => {
-                write!(f, "arbitrary(")?;
+            | Abi::Aggregate { .. } => match &self.variants {
+                | Variants::Single { .. } => match &self.fields {
+                    | Fields::Primitive => unreachable!(),
+                    | Fields::Array { count, .. } => {
+                        write!(f, "[{}]", count)?;
 
-                for (i, (_, field)) in fields.iter().enumerate() {
-                    if i != 0 {
-                        write!(f, ", ")?;
+                        if let Some(Err(lyt)) = &self.elem {
+                            lyt.fmt(f)?;
+                        }
+
+                        Ok(())
+                    },
+                    | Fields::Union { fields } => {
+                        write!(f, "union {{")?;
+
+                        for (i, field) in fields.iter().enumerate() {
+                            if i != 0 {
+                                write!(f, ",")?;
+                            }
+
+                            write!(f, " {}", field)?;
+                        }
+
+                        write!(f, " }}")
+                    },
+                    | Fields::Arbitrary { fields } => {
+                        write!(f, "struct {{")?;
+
+                        for (i, (_, field)) in fields.iter().enumerate() {
+                            if i != 0 {
+                                write!(f, ",")?;
+                            }
+
+                            write!(f, " {}", field)?;
+                        }
+
+                        write!(f, " }}")
+                    },
+                },
+                | Variants::Multiple { variants, .. } => {
+                    write!(f, "enum {{")?;
+
+                    for (i, variant) in variants.iter().enumerate() {
+                        if i != 0 {
+                            write!(f, ",")?;
+                        }
+
+                        write!(f, " {}", variant)?;
                     }
 
-                    write!(f, "{}", field)?;
-                }
-
-                write!(f, ")")
+                    write!(f, " }}")
+                },
             },
         }
-    }
-}
-
-impl fmt::Display for Variants {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            | Variants::Single { index } => write!(f, "{}", index),
-            | Variants::Multiple {
-                tag,
-                tag_encoding,
-                tag_field,
-                variants,
-            } => {
-                write!(f, "{}:{}:(", tag, tag_field)?;
-
-                for (i, field) in variants.iter().enumerate() {
-                    if i != 0 {
-                        write!(f, ", ")?;
-                    }
-
-                    write!(f, "{}", field)?;
-                }
-
-                write!(f, ")")
-            },
-        }
-    }
-}
-
-impl fmt::Display for Niche {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.offset.bytes(), self.scalar)
     }
 }

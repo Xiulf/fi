@@ -25,7 +25,6 @@ pub enum LocalKind {
     Ret,
     Arg,
     Var,
-    Tmp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -159,15 +158,12 @@ impl display::HirDisplay for Body {
 impl display::HirDisplay for Local {
     fn hir_fmt(&self, f: &mut display::HirFormatter<'_>) -> display::Result {
         match self.kind {
-            | LocalKind::Ret => write!(f, "ret")?,
-            | LocalKind::Arg => write!(f, "arg")?,
-            | LocalKind::Var => write!(f, "var")?,
-            | LocalKind::Tmp => write!(f, "tmp")?,
-        }
+            | LocalKind::Ret => write!(f, "ret"),
+            | LocalKind::Arg => write!(f, "arg"),
+            | LocalKind::Var => write!(f, "var"),
+        }?;
 
-        Ok(())
-
-        // write!(f, " {}", self.layout)
+        write!(f, " {}", self.layout)
     }
 }
 
