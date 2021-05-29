@@ -100,14 +100,14 @@ impl Builder {
         }
     }
 
-    pub fn placed(&mut self, op: Operand, lyt: Arc<Layout>) -> Place {
+    pub fn placed(&mut self, op: Operand) -> Place {
         match op {
             | Operand::Place(p) => p,
-            | Operand::Const(c) => {
-                let var = self.create_var(lyt);
+            | Operand::Const(c, lyt) => {
+                let var = self.create_var(lyt.clone());
                 let ret = Place::new(var);
 
-                self.use_op(ret.clone(), Operand::Const(c));
+                self.use_op(ret.clone(), Operand::Const(c, lyt));
                 ret
             },
         }

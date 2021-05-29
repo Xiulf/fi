@@ -129,7 +129,7 @@ impl<'a> VM<'a> {
                 | PlaceElem::Offset(offset) => {
                     let offset = self.eval_operand(body, offset);
 
-                    if let Const::Scalar(offset, _) = offset {
+                    if let Const::Scalar(offset) = offset {
                         loc += offset as usize;
                     }
                 },
@@ -147,7 +147,7 @@ impl<'a> VM<'a> {
 
                 self.read_const(loc, lyt)
             },
-            | Operand::Const(c) => c.clone(),
+            | Operand::Const(c, _) => c.clone(),
         }
     }
 
@@ -162,28 +162,28 @@ impl<'a> VM<'a> {
         let bytes = &self.stack[loc..loc + layout.size.bytes() as usize];
 
         match &layout.abi {
-            | Abi::Uninhabited => Const::Undefined(layout),
+            | Abi::Uninhabited => Const::Undefined,
             | Abi::Scalar(s) => match s.value {
-                | Primitive::Int(Integer::I8, _) => Const::Scalar(bytes[0] as u128, layout),
+                | Primitive::Int(Integer::I8, _) => Const::Scalar(bytes[0] as u128),
                 | Primitive::Int(Integer::I16, _) => {
                     let ptr = bytes.as_ptr() as *const u16;
 
-                    Const::Scalar(unsafe { *ptr } as u128, layout)
+                    Const::Scalar(unsafe { *ptr } as u128)
                 },
                 | Primitive::Int(Integer::I32, _) => {
                     let ptr = bytes.as_ptr() as *const u32;
 
-                    Const::Scalar(unsafe { *ptr } as u128, layout)
+                    Const::Scalar(unsafe { *ptr } as u128)
                 },
                 | Primitive::Int(Integer::I64, _) => {
                     let ptr = bytes.as_ptr() as *const u64;
 
-                    Const::Scalar(unsafe { *ptr } as u128, layout)
+                    Const::Scalar(unsafe { *ptr } as u128)
                 },
                 | Primitive::Int(Integer::I128, _) => {
                     let ptr = bytes.as_ptr() as *const u128;
 
-                    Const::Scalar(unsafe { *ptr } as u128, layout)
+                    Const::Scalar(unsafe { *ptr } as u128)
                 },
                 | _ => unimplemented!(),
             },
@@ -209,8 +209,8 @@ impl<'a> VM<'a> {
 impl Const {
     pub fn write(&self, buf: &mut [u8], lyt: Arc<Layout>) {
         match self {
-            | Const::Undefined(_) => {},
-            | Const::Scalar(s, l) => match l.size.bytes() {
+            | Const::Undefined => {},
+            | Const::Scalar(s) => match lyt.size.bytes() {
                 | 1 => buf[0] = *s as u8,
                 | 2 => {
                     let ptr = buf.as_mut_ptr() as *mut u16;

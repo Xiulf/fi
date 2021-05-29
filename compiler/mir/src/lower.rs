@@ -156,7 +156,7 @@ impl<'a> LowerCtx<'a> {
 
                             for field in fields {
                                 let idx = ty_fields.iter().position(|f| f.name == field.name).unwrap();
-                                let idx = Operand::Const(Const::Scalar(idx as u128, uint_lyt.clone()));
+                                let idx = Operand::Const(Const::Scalar(idx as u128), uint_lyt.clone());
                                 let offset = Operand::Place(offsets.clone().index(idx));
 
                                 self.lower_pat(field.val, record.clone().offset(offset));
@@ -203,16 +203,17 @@ impl<'a> LowerCtx<'a> {
     fn lower_expr_impl(&mut self, id: hir::ExprId, ret: &mut Option<Place>) -> Operand {
         let body = Arc::clone(&self.hir);
         let ty = self.infer.type_of_expr[id];
+        let lyt = self.db.layout_of(ty);
 
         match body[id] {
-            | hir::Expr::Missing => Operand::Const(Const::Undefined(self.db.layout_of(ty))),
+            | hir::Expr::Missing => Operand::Const(Const::Undefined, lyt),
             | hir::Expr::Typed { expr, .. } => self.lower_expr_impl(expr, ret),
             | hir::Expr::Path { ref path } => self.lower_path(id, path, ty),
             | hir::Expr::Lit { ref lit } => match *lit {
-                | hir::Literal::Int(i) => Operand::Const(Const::Scalar(i as u128, self.db.layout_of(ty))),
-                | hir::Literal::Float(i) => Operand::Const(Const::Scalar(i as u128, self.db.layout_of(ty))),
-                | hir::Literal::Char(i) => Operand::Const(Const::Scalar(i as u128, self.db.layout_of(ty))),
-                | hir::Literal::String(ref s) => Operand::Const(Const::String(s.clone())),
+                | hir::Literal::Int(i) => Operand::Const(Const::Scalar(i as u128), lyt),
+                | hir::Literal::Float(i) => Operand::Const(Const::Scalar(i as u128), lyt),
+                | hir::Literal::Char(i) => Operand::Const(Const::Scalar(i as u128), lyt),
+                | hir::Literal::String(ref s) => Operand::Const(Const::String(s.clone()), lyt),
             },
             | hir::Expr::Infix { ref op, lhs, rhs } => {
                 let resolver = Resolver::for_expr(self.db.upcast(), self.def, id);
@@ -224,10 +225,10 @@ impl<'a> LowerCtx<'a> {
                     match resolver.resolve_value_fully(self.db.upcast(), &fixity.func) {
                         | Some(ValueNs::Func(id)) => self.lower_func_app(id, vec![lhs, rhs], ty, ret.take()),
                         | Some(ValueNs::Ctor(id)) => self.lower_ctor_app(id, vec![lhs, rhs], ty, ret.take()),
-                        | _ => Operand::Const(Const::Undefined(self.db.layout_of(ty))),
+                        | _ => Operand::Const(Const::Undefined, lyt),
                     }
                 } else {
-                    Operand::Const(Const::Undefined(self.db.layout_of(ty)))
+                    Operand::Const(Const::Undefined, lyt)
                 }
             },
             | hir::Expr::App { .. } => self.lower_app(id, ty, ret.take()),
@@ -268,7 +269,7 @@ impl<'a> LowerCtx<'a> {
                     }
                 }
 
-                Operand::Const(Const::Tuple(Vec::new()))
+                Operand::Const(Const::Tuple(Vec::new()), lyt)
             },
             | ref e => unimplemented!("{:?}", e),
         }
@@ -288,12 +289,13 @@ impl<'a> LowerCtx<'a> {
                 }
 
                 if let TyKind::App(..) = ty.lookup(self.db.upcast()) {
-                    Operand::Const(Const::FuncAddr(id.into()))
+                    Operand::Const(Const::FuncAddr(id.into()), self.db.layout_of(ty))
                 } else {
+                    let func_lyt = self.func_layout();
                     let lyt = self.db.layout_of(ty);
                     let ret = self.builder.create_var(lyt);
                     let ret = Place::new(ret);
-                    let func = Operand::Const(Const::FuncAddr(id.into()));
+                    let func = Operand::Const(Const::FuncAddr(id.into()), func_lyt);
 
                     self.builder.call(ret.clone(), func, Vec::new());
 
@@ -302,8 +304,8 @@ impl<'a> LowerCtx<'a> {
             },
             | Some(ValueNs::Local(pat)) => Operand::Place(self.binders[&pat].clone()),
             | Some(ValueNs::Const(id)) => match self.db.eval(id.into()) {
-                | crate::eval::EvalResult::Finished(c) => Operand::Const(c),
-                | _ => Operand::Const(Const::Undefined(self.db.layout_of(ty))),
+                | crate::eval::EvalResult::Finished(c) => Operand::Const(c, self.db.layout_of(ty)),
+                | _ => Operand::Const(Const::Undefined, self.db.layout_of(ty)),
             },
             | r => unimplemented!("{:?}", r),
         }
@@ -361,7 +363,7 @@ impl<'a> LowerCtx<'a> {
             match name.as_str() {
                 | "unsafe" => return self.lower_expr(args.remove(0), Some(ret)),
                 | "apply" => match self.lower_expr(args.remove(0), None) {
-                    | Operand::Const(Const::FuncAddr(f)) => {
+                    | Operand::Const(Const::FuncAddr(f), _) => {
                         return self.lower_func_app(f.into(), args, ret_ty, Some(ret))
                     },
                     | f => {
@@ -377,7 +379,8 @@ impl<'a> LowerCtx<'a> {
                 },
             }
         } else {
-            let func = Operand::Const(Const::FuncAddr(func.into()));
+            let func_lyt = self.func_layout();
+            let func = Operand::Const(Const::FuncAddr(func.into()), func_lyt);
             let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
             self.builder.call(ret.clone(), func, args);
@@ -416,5 +419,15 @@ impl<'a> LowerCtx<'a> {
         }
 
         Operand::Place(ret)
+    }
+
+    fn func_layout(&self) -> Arc<Layout> {
+        let func_ty = self
+            .db
+            .lang_item(self.def.module(self.db.upcast()).lib, "fn-type".into())
+            .unwrap();
+        let func_ty = TyKind::Ctor(func_ty.as_type_ctor().unwrap()).intern(self.db.upcast());
+
+        self.db.layout_of(func_ty)
     }
 }

@@ -1,7 +1,8 @@
 use crate::*;
+use mir::layout::Layout;
 
 impl FunctionCtx<'_, '_> {
-    pub fn trans_place(&mut self, place: &ir::Place) -> place::Place {
+    pub fn lower_place(&mut self, place: &ir::Place) -> place::Place {
         let mut res = self.locals[place.local].clone();
 
         for elem in &place.elems {
@@ -9,12 +10,12 @@ impl FunctionCtx<'_, '_> {
                 | ir::PlaceElem::Deref => res = res.deref(self),
                 | ir::PlaceElem::Field(field) => res = res.field(self, *field),
                 | ir::PlaceElem::Index(op) => {
-                    let idx = self.trans_op(op, None);
+                    let idx = self.lower_op(op, None);
 
                     res = res.index(self, idx);
                 },
                 | ir::PlaceElem::Offset(op) => {
-                    let offset = self.trans_op(op, None);
+                    let offset = self.lower_op(op, None);
 
                     res = res.offset(self, offset);
                 },
@@ -25,10 +26,10 @@ impl FunctionCtx<'_, '_> {
         res
     }
 
-    fn trans_op(&mut self, op: &ir::Operand, into: Option<place::Place>) -> value::Value {
+    fn lower_op(&mut self, op: &ir::Operand, into: Option<place::Place>) -> value::Value {
         match op {
             | ir::Operand::Place(place) => {
-                let place = self.trans_place(place);
+                let place = self.lower_place(place);
                 let value = place.to_value(self);
 
                 if let Some(into) = into {
@@ -37,11 +38,11 @@ impl FunctionCtx<'_, '_> {
 
                 value
             },
-            | ir::Operand::Const(c) => self.trans_const(c, into),
+            | ir::Operand::Const(c, lyt) => self.lower_const(c, lyt.clone(), into),
         }
     }
 
-    fn trans_const(&mut self, c: &ir::Const, into: Option<place::Place>) -> value::Value {
+    fn lower_const(&mut self, c: &ir::Const, layout: Arc<Layout>, into: Option<place::Place>) -> value::Value {
         unimplemented!()
     }
 }

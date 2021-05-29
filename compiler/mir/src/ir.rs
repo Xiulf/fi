@@ -65,7 +65,7 @@ pub enum RValue {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Operand {
     Place(Place),
-    Const(Const),
+    Const(Const, Arc<Layout>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -85,8 +85,8 @@ pub enum PlaceElem {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Const {
-    Undefined(Arc<Layout>),
-    Scalar(u128, Arc<Layout>),
+    Undefined,
+    Scalar(u128),
     FuncAddr(hir::Func),
     StaticAddr(hir::Static),
     String(String),
@@ -274,7 +274,7 @@ impl display::HirDisplay for Operand {
     fn hir_fmt(&self, f: &mut display::HirFormatter<'_>) -> display::Result {
         match self {
             | Operand::Place(p) => p.hir_fmt(f),
-            | Operand::Const(c) => c.hir_fmt(f),
+            | Operand::Const(c, _) => c.hir_fmt(f),
         }
     }
 }
@@ -310,8 +310,8 @@ impl display::HirDisplay for Place {
 impl display::HirDisplay for Const {
     fn hir_fmt(&self, f: &mut display::HirFormatter<'_>) -> display::Result {
         match self {
-            | Const::Undefined(layout) => write!(f, "undefined"),
-            | Const::Scalar(int, layout) => write!(f, "{}", int),
+            | Const::Undefined => write!(f, "undefined"),
+            | Const::Scalar(int) => write!(f, "{}", int),
             | Const::FuncAddr(func) => write!(f, "func({})", func.path(f.db)),
             | Const::StaticAddr(stat) => write!(f, "static({})", stat.path(f.db)),
             | Const::String(s) => write!(f, "{:?}", s),
