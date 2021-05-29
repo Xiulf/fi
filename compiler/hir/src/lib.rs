@@ -159,6 +159,15 @@ impl Module {
             .collect()
     }
 
+    pub fn is_exported(self, db: &dyn HirDatabase, name: Name) -> bool {
+        let def_map = db.def_map(self.id.lib);
+
+        !def_map[self.id.local_id]
+            .exports
+            .get(db.upcast(), &def_map, self.id.local_id, &name)
+            .is_none()
+    }
+
     pub fn declarations(self, db: &dyn HirDatabase) -> Vec<ModuleDef> {
         let def_map = db.def_map(self.id.lib);
 
@@ -348,6 +357,25 @@ impl Func {
         db.func_data(self.id).has_body
     }
 
+    pub fn is_foreign(self, db: &dyn HirDatabase) -> bool {
+        db.func_data(self.id).is_foreign
+    }
+
+    pub fn as_assoc_item(self, db: &dyn HirDatabase) -> Option<AssocItem> {
+        match self.id.lookup(db.upcast()).container {
+            | ContainerId::Class(_) | ContainerId::Instance(_) => Some(AssocItem::Func(self)),
+            | ContainerId::Module(_) => None,
+        }
+    }
+
+    pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
+        if let Some(assoc) = self.as_assoc_item(db) {
+            matches!(assoc.container(db), AssocItemContainer::Instance(_))
+        } else {
+            self.module(db).is_exported(db, self.name(db))
+        }
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let data = db.func_data(self.id);
         let infer = db.infer(self.id.into());
@@ -397,6 +425,25 @@ impl Static {
 
     pub fn path(self, db: &dyn HirDatabase) -> Path {
         self.module(db).path_to_name(db, self.name(db))
+    }
+
+    pub fn as_assoc_item(self, db: &dyn HirDatabase) -> Option<AssocItem> {
+        match self.id.lookup(db.upcast()).container {
+            | ContainerId::Class(_) | ContainerId::Instance(_) => Some(AssocItem::Static(self)),
+            | ContainerId::Module(_) => None,
+        }
+    }
+
+    pub fn is_foreign(self, db: &dyn HirDatabase) -> bool {
+        db.static_data(self.id).is_foreign
+    }
+
+    pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
+        if let Some(assoc) = self.as_assoc_item(db) {
+            matches!(assoc.container(db), AssocItemContainer::Instance(_))
+        } else {
+            self.module(db).is_exported(db, self.name(db))
+        }
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {

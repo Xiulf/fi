@@ -1,4 +1,4 @@
-use crate::place::Place;
+use crate::place::PlaceRef;
 use crate::ptr::Pointer;
 use crate::FunctionCtx;
 use cranelift::codegen::ir as cir;
@@ -8,7 +8,7 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Value {
+pub(crate) struct ValueRef {
     pub(crate) kind: ValueKind,
     pub(crate) layout: Arc<Layout>,
 }
@@ -20,30 +20,30 @@ pub(crate) enum ValueKind {
     ValPair(cir::Value, cir::Value),
 }
 
-impl Value {
+impl ValueRef {
     pub(crate) fn new_ref(ptr: Pointer, layout: Arc<Layout>) -> Self {
-        Value {
+        ValueRef {
             kind: ValueKind::Ref(ptr, None),
             layout,
         }
     }
 
     pub(crate) fn new_ref_meta(ptr: Pointer, meta: cir::Value, layout: Arc<Layout>) -> Self {
-        Value {
+        ValueRef {
             kind: ValueKind::Ref(ptr, Some(meta)),
             layout,
         }
     }
 
     pub(crate) fn new_val(val: cir::Value, layout: Arc<Layout>) -> Self {
-        Value {
+        ValueRef {
             kind: ValueKind::Val(val),
             layout,
         }
     }
 
     pub(crate) fn new_val_pair(val1: cir::Value, val2: cir::Value, layout: Arc<Layout>) -> Self {
-        Value {
+        ValueRef {
             kind: ValueKind::ValPair(val1, val2),
             layout,
         }
@@ -60,18 +60,22 @@ impl Value {
             | _ => unimplemented!(),
         };
 
-        Value::new_val(val, layout)
+        ValueRef::new_val(val, layout)
     }
 
     pub(crate) fn new_unit() -> Self {
-        Value::new_val(cir::Value::with_number(0).unwrap(), Arc::new(Layout::UNIT))
+        Self::new_zst(Arc::new(Layout::UNIT))
+    }
+
+    pub(crate) fn new_zst(layout: Arc<Layout>) -> Self {
+        ValueRef::new_ref(Pointer::dangling(layout.align), layout)
     }
 
     pub(crate) fn on_stack(self, fx: &mut FunctionCtx) -> (Pointer, Option<cir::Value>) {
         match self.kind {
             | ValueKind::Ref(ptr, meta) => (ptr, meta),
             | ValueKind::Val(_) | ValueKind::ValPair(_, _) => {
-                let place = Place::new_stack(fx, self.layout.clone());
+                let place = PlaceRef::new_stack(fx, self.layout.clone());
 
                 place.clone().store(fx, self);
 
@@ -117,7 +121,7 @@ impl Value {
     }
 
     pub(crate) fn cast(self, _fx: &mut FunctionCtx, layout: Arc<Layout>) -> Self {
-        Value {
+        ValueRef {
             kind: self.kind,
             layout,
         }
@@ -135,20 +139,20 @@ impl Value {
             | ValueKind::Ref(ptr, None) => {
                 let (field_ptr, field_layout) = gen_field(fx, ptr, None, self.layout, idx);
 
-                Value::new_ref(field_ptr, field_layout)
+                ValueRef::new_ref(field_ptr, field_layout)
             },
             | ValueKind::Ref(ptr, Some(meta)) => {
                 let (field_ptr, field_layout) = gen_field(fx, ptr, Some(meta), self.layout, idx);
 
-                Value::new_ref_meta(field_ptr, meta, field_layout)
+                ValueRef::new_ref_meta(field_ptr, meta, field_layout)
             },
             | ValueKind::ValPair(a, b) => {
                 let field_layout = self.layout.field(fx.db.upcast(), idx).unwrap();
 
                 if idx == 0 {
-                    Value::new_val(a, field_layout)
+                    ValueRef::new_val(a, field_layout)
                 } else {
-                    Value::new_val(b, field_layout)
+                    ValueRef::new_val(b, field_layout)
                 }
             },
         }
@@ -166,7 +170,7 @@ impl Value {
         //
         //     Value::new_ref(Pointer::addr(ptr), pointee)
         // } else {
-        Value::new_val(ptr, pointee)
+        ValueRef::new_val(ptr, pointee)
         // }
     }
 }

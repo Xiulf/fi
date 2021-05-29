@@ -1,6 +1,6 @@
 use crate::db::MirDatabase;
 use crate::ir::*;
-use crate::layout::Layout;
+use crate::layout::{Abi, Layout};
 use hir::ty::{Ty, TyKind};
 use std::sync::Arc;
 
@@ -28,19 +28,26 @@ impl Builder {
             self.body.locals.alloc(Local {
                 layout: Arc::new(Layout::default()),
                 kind: LocalKind::Ret,
+                is_ssa: false,
             });
 
             let id = self.body.locals.alloc(Local {
                 layout: db.layout_of(ty),
                 kind: LocalKind::Arg,
+                is_ssa: true,
             });
 
             self.body.ret = Some(id);
             id
         } else {
+            let layout = db.layout_of(ty);
             let id = self.body.locals.alloc(Local {
-                layout: db.layout_of(ty),
+                is_ssa: match &layout.abi {
+                    | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
+                    | _ => false,
+                },
                 kind: LocalKind::Ret,
+                layout,
             });
 
             self.body.ret = Some(id);
@@ -50,8 +57,12 @@ impl Builder {
 
     pub fn create_arg(&mut self, layout: Arc<Layout>) -> LocalId {
         self.body.locals.alloc(Local {
-            layout,
+            is_ssa: match &layout.abi {
+                | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
+                | _ => false,
+            },
             kind: LocalKind::Arg,
+            layout,
         })
     }
 
@@ -69,12 +80,17 @@ impl Builder {
                 self.body.locals.alloc(Local {
                     layout,
                     kind: LocalKind::Var,
+                    is_ssa: false,
                 })
             }
         } else {
             self.body.locals.alloc(Local {
-                layout,
+                is_ssa: match &layout.abi {
+                    | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
+                    | _ => false,
+                },
                 kind: LocalKind::Var,
+                layout,
             })
         }
     }
@@ -142,6 +158,7 @@ impl Builder {
     }
 
     pub fn addr_of(&mut self, ret: Place, place: Place) {
+        self.body.locals[ret.local].is_ssa = false;
         self.stmt(Stmt::Assign(ret, RValue::AddrOf(place)));
     }
 
@@ -158,6 +175,10 @@ impl Builder {
     }
 
     pub fn call(&mut self, ret: Place, func: Operand, args: Vec<Operand>) {
+        if let Abi::Aggregate { .. } = self.body.locals[ret.local].layout.abi {
+            self.body.locals[ret.local].is_ssa = false;
+        }
+
         self.stmt(Stmt::Call(ret, func, args));
     }
 

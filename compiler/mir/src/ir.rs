@@ -18,6 +18,7 @@ pub type BlockId = Idx<Block>;
 pub struct Local {
     pub layout: Arc<Layout>,
     pub kind: LocalKind,
+    pub is_ssa: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -93,6 +94,15 @@ pub enum Const {
     Tuple(Vec<Const>),
     Ref(Box<Const>),
     Ctor(hir::Ctor, Vec<Const>),
+}
+
+impl Body {
+    pub fn args(&self) -> Vec<LocalId> {
+        self.locals
+            .iter()
+            .filter_map(|(id, l)| if l.kind == LocalKind::Arg { Some(id) } else { None })
+            .collect()
+    }
 }
 
 impl Place {

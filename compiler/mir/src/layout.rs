@@ -25,6 +25,7 @@ pub fn layout_of_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Layout> {
 
     args.reverse();
 
+    eprintln!("{}", ty.display(db.upcast()));
     let layout = match ty.lookup(db.upcast()) {
         | TyKind::Error
         | TyKind::Unknown(_)

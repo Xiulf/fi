@@ -6,6 +6,7 @@ use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibSet};
 use base_db::SourceDatabase;
 use base_db::SourceDatabaseExt;
+use codegen::db::CodegenDatabase;
 use hir::db::DefDatabase;
 use mir::db::MirDatabase;
 use syntax::ast::{self, AstNode, NameOwner};
@@ -142,17 +143,11 @@ impl Driver {
     }
 
     fn write_assembly(&self, module: hir::Module) -> std::io::Result<bool> {
-        use hir::display::HirDisplay;
+        let asm = self.db.module_assembly(module);
+        let ext = codegen::assembly::Assembly::extension(&self.db);
+        let asm_path = std::path::PathBuf::from(module.name(&self.db).to_string()).with_extension(ext);
 
-        for def in module.declarations(&self.db) {
-            if let hir::ModuleDef::Func(f) = def {
-                if f.has_body(&self.db) {
-                    let body = self.db.body_mir(hir::id::DefWithBodyId::FuncId(f.into()));
-
-                    eprintln!("{}", body.display(&self.db));
-                }
-            }
-        }
+        asm.copy_to(&asm_path)?;
 
         Ok(true)
     }

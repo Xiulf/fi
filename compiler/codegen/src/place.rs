@@ -1,5 +1,5 @@
 use crate::ptr::Pointer;
-use crate::value::{Value, ValueKind};
+use crate::value::{ValueKind, ValueRef};
 use crate::FunctionCtx;
 use cranelift::codegen::ir as cir;
 use cranelift::frontend::Variable;
@@ -9,7 +9,7 @@ use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Place {
+pub(crate) struct PlaceRef {
     pub(crate) kind: PlaceKind,
     pub(crate) layout: Arc<Layout>,
 }
@@ -21,13 +21,13 @@ pub(crate) enum PlaceKind {
     Addr(Pointer, Option<cir::Value>),
 }
 
-impl Place {
+impl PlaceRef {
     pub(crate) fn new_var(fx: &mut FunctionCtx, layout: Arc<Layout>) -> Self {
         let var = Variable::with_u32(fx.next_ssa_var());
 
         fx.bcx.declare_var(var, fx.ir_type(&layout).unwrap());
 
-        Place {
+        PlaceRef {
             kind: PlaceKind::Var(var),
             layout,
         }
@@ -41,14 +41,14 @@ impl Place {
         fx.bcx.declare_var(var1, ty1);
         fx.bcx.declare_var(var2, ty2);
 
-        Place {
+        PlaceRef {
             kind: PlaceKind::VarPair(var1, var2),
             layout,
         }
     }
 
     pub(crate) fn no_place(layout: Arc<Layout>) -> Self {
-        Place {
+        PlaceRef {
             kind: PlaceKind::Addr(Pointer::dangling(layout.align), None),
             layout,
         }
@@ -56,7 +56,7 @@ impl Place {
 
     pub(crate) fn new_stack(fx: &mut FunctionCtx, layout: Arc<Layout>) -> Self {
         if layout.is_zst() {
-            return Place::no_place(layout);
+            return PlaceRef::no_place(layout);
         }
 
         let slot = fx.bcx.create_stack_slot(cir::StackSlotData {
@@ -65,21 +65,21 @@ impl Place {
             offset: None,
         });
 
-        Place {
+        PlaceRef {
             kind: PlaceKind::Addr(Pointer::stack(slot), None),
             layout,
         }
     }
 
     pub(crate) fn new_ref(ptr: Pointer, layout: Arc<Layout>) -> Self {
-        Place {
+        PlaceRef {
             kind: PlaceKind::Addr(ptr, None),
             layout,
         }
     }
 
     pub(crate) fn new_ref_meta(ptr: Pointer, meta: cir::Value, layout: Arc<Layout>) -> Self {
-        Place {
+        PlaceRef {
             kind: PlaceKind::Addr(ptr, Some(meta)),
             layout,
         }
@@ -101,24 +101,24 @@ impl Place {
         }
     }
 
-    pub(crate) fn to_value(self, fx: &mut FunctionCtx) -> Value {
+    pub(crate) fn to_value(self, fx: &mut FunctionCtx) -> ValueRef {
         match self.kind {
             | PlaceKind::Var(var) => {
                 let val = fx.bcx.use_var(var);
 
-                Value::new_val(val, self.layout)
+                ValueRef::new_val(val, self.layout)
             },
             | PlaceKind::VarPair(var1, var2) => {
                 let val1 = fx.bcx.use_var(var1);
                 let val2 = fx.bcx.use_var(var2);
 
-                Value::new_val_pair(val1, val2, self.layout)
+                ValueRef::new_val_pair(val1, val2, self.layout)
             },
             | PlaceKind::Addr(ptr, meta) => {
                 if let Some(meta) = meta {
-                    Value::new_ref_meta(ptr, meta, self.layout)
+                    ValueRef::new_ref_meta(ptr, meta, self.layout)
                 } else {
-                    Value::new_ref(ptr, self.layout)
+                    ValueRef::new_ref(ptr, self.layout)
                 }
             },
         }
@@ -143,25 +143,25 @@ impl Place {
         // }
     }
 
-    pub(crate) fn index(self, fx: &mut FunctionCtx, idx: Value) -> Self {
+    pub(crate) fn index(self, fx: &mut FunctionCtx, idx: ValueRef) -> Self {
         let layout = self.layout.elem(fx.db.upcast()).unwrap();
         let idx = idx.load_scalar(fx);
         let new_idx = fx.bcx.ins().imul_imm(idx, layout.stride.bytes() as i64);
         let ptr = self.as_ptr();
         let new_ptr = ptr.offset_value(fx, new_idx);
 
-        Place {
+        PlaceRef {
             kind: PlaceKind::Addr(new_ptr, None),
             layout,
         }
     }
 
-    pub(crate) fn offset(self, fx: &mut FunctionCtx, offset: Value) -> Self {
+    pub(crate) fn offset(self, fx: &mut FunctionCtx, offset: ValueRef) -> Self {
         let offset = offset.load_scalar(fx);
         let ptr = self.as_ptr();
         let ptr = ptr.offset_value(fx, offset);
 
-        Place {
+        PlaceRef {
             kind: PlaceKind::Addr(ptr, None),
             layout: self.layout,
         }
@@ -184,13 +184,13 @@ impl Place {
             },
             | PlaceKind::VarPair(var1, var2) => match idx {
                 | 0 => {
-                    return Place {
+                    return PlaceRef {
                         kind: PlaceKind::Var(var1),
                         layout,
                     }
                 },
                 | 1 => {
-                    return Place {
+                    return PlaceRef {
                         kind: PlaceKind::Var(var2),
                         layout,
                     }
@@ -204,13 +204,13 @@ impl Place {
         let offset = self.layout.fields.offset(idx);
         let ptr = base.offset_i64(fx, i64::try_from(offset.bytes()).unwrap());
 
-        Place {
+        PlaceRef {
             kind: PlaceKind::Addr(ptr, extra),
             layout,
         }
     }
 
-    pub(crate) fn store(self, fx: &mut FunctionCtx, from: Value) {
+    pub(crate) fn store(self, fx: &mut FunctionCtx, from: ValueRef) {
         fn transmute_value(fx: &mut FunctionCtx, var: Variable, data: cir::Value, dst_ty: cir::Type) {
             let src_ty = fx.bcx.func.dfg.value_type(data);
             let data = match (src_ty, dst_ty) {
@@ -229,7 +229,7 @@ impl Place {
         let dst_layout = self.layout.clone();
         let to_ptr = match self.kind {
             | PlaceKind::Var(var) => {
-                let data = Value {
+                let data = ValueRef {
                     kind: from.kind,
                     layout: dst_layout,
                 }
@@ -242,7 +242,7 @@ impl Place {
                 return;
             },
             | PlaceKind::VarPair(var1, var2) => {
-                let (data1, data2) = Value {
+                let (data1, data2) = ValueRef {
                     kind: from.kind,
                     layout: dst_layout,
                 }
@@ -318,14 +318,14 @@ impl Place {
         if let Abi::ScalarPair(_, _) = self.layout.abi {
             let (ptr, extra) = self.as_ptr_maybe_unsized();
             let ptr = if let Some(extra) = extra {
-                Value::new_val_pair(ptr.get_addr(fx), extra, dest.layout.clone())
+                ValueRef::new_val_pair(ptr.get_addr(fx), extra, dest.layout.clone())
             } else {
-                Value::new_val(ptr.get_addr(fx), dest.layout.clone())
+                ValueRef::new_val(ptr.get_addr(fx), dest.layout.clone())
             };
 
             dest.store(fx, ptr);
         } else {
-            let ptr = Value::new_val(self.as_ptr().get_addr(fx), dest.layout.clone());
+            let ptr = ValueRef::new_val(self.as_ptr().get_addr(fx), dest.layout.clone());
 
             dest.store(fx, ptr);
         }
@@ -338,7 +338,7 @@ impl Place {
 
         let layout = self.layout.variant(variant);
 
-        Place {
+        PlaceRef {
             kind: self.kind,
             layout,
         }
