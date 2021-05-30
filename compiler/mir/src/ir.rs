@@ -173,6 +173,10 @@ impl display::HirDisplay for Local {
             | LocalKind::Var => write!(f, "var"),
         }?;
 
+        if self.is_ssa {
+            write!(f, " ssa")?;
+        }
+
         write!(f, " {}", self.layout)
     }
 }

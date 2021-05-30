@@ -25,20 +25,18 @@ impl Builder {
 
     pub fn create_ret(&mut self, db: &dyn MirDatabase, ty: Ty) -> LocalId {
         if let TyKind::TypeVar(_) = ty.lookup(db.upcast()) {
-            self.body.locals.alloc(Local {
+            let id = self.body.locals.alloc(Local {
                 layout: Arc::new(Layout::default()),
                 kind: LocalKind::Ret,
                 is_ssa: false,
             });
 
-            let id = self.body.locals.alloc(Local {
+            self.body.ret = Some(id);
+            self.body.locals.alloc(Local {
                 layout: db.layout_of(ty),
                 kind: LocalKind::Arg,
                 is_ssa: true,
-            });
-
-            self.body.ret = Some(id);
-            id
+            })
         } else {
             let layout = db.layout_of(ty);
             let id = self.body.locals.alloc(Local {
@@ -129,11 +127,31 @@ impl Builder {
         }
     }
 
-    pub fn memcpy(&mut self, to: Place, from: Operand, size: Place) {
+    pub fn place_layout(&self, db: &dyn MirDatabase, place: &Place) -> Arc<Layout> {
+        let mut lyt = self.body.locals[place.local].layout.clone();
+
+        for elem in &place.elems {
+            match elem {
+                | PlaceElem::Deref => lyt = lyt.elem(db).unwrap(),
+                | PlaceElem::Field(i) => lyt = lyt.field(db, *i).unwrap(),
+                | PlaceElem::Offset(_) => {},
+                | PlaceElem::Index(_) => lyt = lyt.elem(db).unwrap(),
+                | PlaceElem::Downcast(i) => lyt = lyt.variant(*i),
+            }
+        }
+
+        lyt
+    }
+
+    pub fn memcpy(&mut self, to: Place, from: Place, size: Place) {
         let ret = self.unit_tmp.unwrap_or_else(|| self.create_var(Arc::new(Layout::UNIT)));
         let ret = Place::new(ret);
 
-        self.intrinsic(ret, "memcpy", vec![Operand::Place(to), from, Operand::Place(size)]);
+        self.intrinsic(ret, "memcpy", vec![
+            Operand::Place(to),
+            Operand::Place(from),
+            Operand::Place(size),
+        ]);
     }
 
     pub fn abort(&mut self) {
@@ -158,7 +176,10 @@ impl Builder {
     }
 
     pub fn addr_of(&mut self, ret: Place, place: Place) {
-        self.body.locals[ret.local].is_ssa = false;
+        if !place.elems.iter().any(|e| matches!(e, PlaceElem::Deref)) {
+            self.body.locals[place.local].is_ssa = false;
+        }
+
         self.stmt(Stmt::Assign(ret, RValue::AddrOf(place)));
     }
 

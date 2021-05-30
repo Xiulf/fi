@@ -361,6 +361,25 @@ impl Func {
         db.func_data(self.id).is_foreign
     }
 
+    pub fn link_name(self, db: &dyn HirDatabase) -> String {
+        if self.is_foreign(db) {
+            self.name(db).to_string()
+        } else {
+            let mut path = self.path(db);
+
+            if let Some(it) = self.as_assoc_item(db) {
+                if let AssocItemContainer::Instance(inst) = it.container(db) {
+                    let name = format!("$instance");
+                    let name = name.as_name();
+
+                    path.to_instance(name);
+                }
+            }
+
+            path.to_string()
+        }
+    }
+
     pub fn as_assoc_item(self, db: &dyn HirDatabase) -> Option<AssocItem> {
         match self.id.lookup(db.upcast()).container {
             | ContainerId::Class(_) | ContainerId::Instance(_) => Some(AssocItem::Func(self)),

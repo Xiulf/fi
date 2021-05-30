@@ -55,6 +55,12 @@ impl ValueRef {
             | Abi::Scalar(scalar) => match scalar.value {
                 | Primitive::F32 => fx.bcx.ins().f32const(f64::from_bits(val as u64) as f32),
                 | Primitive::F64 => fx.bcx.ins().f64const(val as u64),
+                | Primitive::Int(mir::layout::Integer::I128, _) => {
+                    let lsb = fx.bcx.ins().iconst(cir::types::I64, val as u64 as i64);
+                    let msb = fx.bcx.ins().iconst(cir::types::I64, (val >> 64) as u64 as i64);
+
+                    fx.bcx.ins().iconcat(lsb, msb)
+                },
                 | _ => fx.bcx.ins().iconst(ty, val as i64),
             },
             | _ => unimplemented!(),

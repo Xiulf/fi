@@ -7,10 +7,24 @@ use std::ops::Index;
 pub struct LibData {
     pub id: LibId,
     pub name: String,
+    pub kind: LibKind,
     pub deps: Vec<LibId>,
     pub dependent: Vec<LibId>,
     pub source_root: SourceRootId,
     pub root_file: FileId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LibKind {
+    Dynamic,
+    Static,
+    Executable,
+}
+
+impl Default for LibKind {
+    fn default() -> Self {
+        LibKind::Dynamic
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -22,7 +36,13 @@ pub struct LibSet {
 }
 
 impl LibSet {
-    pub fn add_lib(&mut self, name: impl Into<String>, source_root: SourceRootId, root_file: FileId) -> (LibId, bool) {
+    pub fn add_lib(
+        &mut self,
+        name: impl Into<String>,
+        kind: LibKind,
+        source_root: SourceRootId,
+        root_file: FileId,
+    ) -> (LibId, bool) {
         let name = name.into();
 
         if let Some(id) = self
@@ -36,6 +56,7 @@ impl LibSet {
             let data = LibData {
                 id,
                 name,
+                kind,
                 root_file,
                 source_root,
                 deps: Vec::new(),

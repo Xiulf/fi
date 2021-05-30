@@ -126,21 +126,8 @@ impl PlaceRef {
 
     pub(crate) fn deref(self, fx: &mut FunctionCtx) -> Self {
         let pointee = self.layout.elem(fx.db.upcast()).unwrap();
-        // let is_box = matches!(self.layout.ty.kind, ir::Type::Box(_));
 
-        // if is_box {
-        //     use crate::clif::Module;
-        //     let val = self.to_value(fx).load_scalar(fx);
-        //     let ptr = Pointer::addr(val);
-        //     let ptr_type = fx.module.target_config().pointer_type();
-        //
-        //     Self::new_ref(
-        //         Pointer::addr(ptr.load(fx, ptr_type, crate::clif::MemFlags::trusted())),
-        //         pointee,
-        //     )
-        // } else {
         Self::new_ref(Pointer::addr(self.to_value(fx).load_scalar(fx)), pointee)
-        // }
     }
 
     pub(crate) fn index(self, fx: &mut FunctionCtx, idx: ValueRef) -> Self {
@@ -168,20 +155,9 @@ impl PlaceRef {
     }
 
     pub(crate) fn field(self, fx: &mut FunctionCtx, idx: usize) -> Self {
-        // if let ir::Type::Box(_) = self.layout.ty.kind {
-        //     return self.deref(fx).field(fx, idx);
-        // }
-
         let layout = self.layout.field(fx.db.upcast(), idx).unwrap();
 
         match self.kind {
-            | PlaceKind::Var(_) => {
-                if idx == 0 {
-                    return self;
-                } else {
-                    unreachable!();
-                }
-            },
             | PlaceKind::VarPair(var1, var2) => match idx {
                 | 0 => {
                     return PlaceRef {

@@ -44,6 +44,10 @@ impl Path {
         }
     }
 
+    pub fn to_instance(&mut self, name: Name) {
+        self.segments.insert(self.segments.len() - 1, name);
+    }
+
     pub(crate) fn expand_import(
         import: InFile<ast::ItemImport>,
         mut cb: impl FnMut(Path, Option<ast::NameRef>, bool, Option<Name>, Option<Name>),

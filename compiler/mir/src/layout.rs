@@ -25,7 +25,6 @@ pub fn layout_of_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Layout> {
 
     args.reverse();
 
-    eprintln!("{}", ty.display(db.upcast()));
     let layout = match ty.lookup(db.upcast()) {
         | TyKind::Error
         | TyKind::Unknown(_)
@@ -275,15 +274,30 @@ fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
 
             size = size + tag_size;
 
-            (Fields::Arbitrary { fields }, Variants::Multiple {
-                tag,
-                tag_encoding,
-                variants,
-                tag_field: 0,
-            })
+            if size == tag_size {
+                (
+                    tag.clone(),
+                    Fields::Arbitrary {
+                        fields: vec![(Size::ZERO, Arc::new(Layout::scalar(tag.clone(), triple)))],
+                    },
+                    Variants::Multiple {
+                        tag,
+                        tag_encoding,
+                        variants,
+                        tag_field: 0,
+                    },
+                )
+            } else {
+                (tag.clone(), Fields::Arbitrary { fields }, Variants::Multiple {
+                    tag,
+                    tag_encoding,
+                    variants,
+                    tag_field: 0,
+                })
+            }
         };
 
-        let (fields, variants) = if let Some(niche) = largest_niche {
+        let (tag, fields, variants) = if let Some(niche) = largest_niche {
             if niche.available(triple) >= lyts.len() as u128 {
                 // @TODO: implement niches
                 no_niche(lyts)
@@ -296,15 +310,28 @@ fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
 
         let stride = size.align_to(align);
 
-        Layout {
-            size,
-            align,
-            stride,
-            elem: None,
-            abi: Abi::Aggregate { sized: true },
-            fields,
-            variants,
-            largest_niche: None,
+        if tag.value.size(triple) == size {
+            Layout {
+                size,
+                align,
+                stride,
+                elem: None,
+                abi: Abi::Scalar(tag),
+                fields,
+                variants,
+                largest_niche: None,
+            }
+        } else {
+            Layout {
+                size,
+                align,
+                stride,
+                elem: None,
+                abi: Abi::Aggregate { sized: true },
+                fields,
+                variants,
+                largest_niche: None,
+            }
         }
     }
 }
@@ -522,6 +549,26 @@ pub fn str_slice(db: &dyn MirDatabase) -> Arc<Layout> {
     let ptr = reference(db, uint8);
 
     Arc::new(slice_layout(ptr, &triple))
+}
+
+pub fn type_var(db: &dyn MirDatabase, lib: base_db::libs::LibId, kind: Ty) -> Option<Arc<Layout>> {
+    let type_id = db.lang_item(lib, "type-kind".into()).unwrap();
+    let type_id = type_id.as_type_ctor().unwrap();
+    let figure_id = db.lang_item(lib, "figure-kind".into()).unwrap();
+    let figure_id = figure_id.as_type_ctor().unwrap();
+    let symbol_id = db.lang_item(lib, "symbol-kind".into()).unwrap();
+    let symbol_id = symbol_id.as_type_ctor().unwrap();
+    let kind = kind.lookup(db.upcast());
+
+    if kind == TyKind::Ctor(type_id) {
+        Some(reference(db, type_info(db)))
+    } else if kind == TyKind::Ctor(figure_id) {
+        Some(ptr_sized_uint(db))
+    } else if kind == TyKind::Ctor(symbol_id) {
+        Some(str_slice(db))
+    } else {
+        None
+    }
 }
 
 pub fn type_info(db: &dyn MirDatabase) -> Arc<Layout> {

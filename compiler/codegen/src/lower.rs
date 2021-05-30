@@ -1,5 +1,6 @@
 use crate::*;
 use clif::{InstBuilder, Module};
+use hir::display::HirDisplay;
 use mir::layout::{Abi, Fields, Layout, Variants};
 use std::sync::Arc;
 
@@ -7,11 +8,7 @@ impl FunctionCtx<'_, '_> {
     pub fn lower(&mut self) {
         let body = Arc::clone(&self.body);
 
-        for (id, _) in body.blocks.iter() {
-            let block = self.bcx.create_block();
-
-            self.blocks.insert(id, block);
-        }
+        // eprintln!("{}", body.display(self.db.upcast()));
 
         for (id, block) in body.blocks.iter() {
             self.bcx.switch_to_block(self.blocks[id]);
@@ -21,6 +18,7 @@ impl FunctionCtx<'_, '_> {
             }
 
             self.lower_term(&block.term);
+            self.bcx.seal_block(self.blocks[id]);
         }
     }
 
@@ -181,7 +179,7 @@ impl FunctionCtx<'_, '_> {
             .collect::<Vec<_>>();
 
         let inst = if let ir::Operand::Const(ir::Const::FuncAddr(id), _) = func {
-            let func = self.func_ids[id].0;
+            let func = self.func_id(id);
             let func = self.mcx.module.declare_func_in_func(func, &mut self.bcx.func);
 
             self.bcx.ins().call(func, &args)
@@ -277,6 +275,19 @@ impl FunctionCtx<'_, '_> {
                         self.lower_const(c, lyt, Some(field));
                     }
                 },
+                | ir::Const::String(s) => {
+                    let data_id = self.alloc_string(s);
+                    let ptr_type = self.module.target_config().pointer_type();
+                    let global = self.mcx.module.declare_data_in_func(data_id, &mut self.bcx.func);
+                    let global = self.bcx.ins().global_value(ptr_type, global);
+                    let ptr_field = layout.field(self.db.upcast(), 0).unwrap();
+                    let len_field = layout.field(self.db.upcast(), 1).unwrap();
+                    let ptr = ValueRef::new_val(global, ptr_field);
+                    let len = ValueRef::new_const(s.len() as u128, self, len_field);
+
+                    into.clone().field(self, 0).store(self, ptr);
+                    into.clone().field(self, 1).store(self, len);
+                },
                 | _ => unimplemented!(),
             }
 
@@ -313,8 +324,69 @@ impl FunctionCtx<'_, '_> {
 
                     ValueRef::new_val(global, layout)
                 },
+                | ir::Const::String(s) => {
+                    let data_id = self.alloc_string(s);
+                    let ptr_type = self.module.target_config().pointer_type();
+                    let global = self.mcx.module.declare_data_in_func(data_id, &mut self.bcx.func);
+                    let global = self.bcx.ins().global_value(ptr_type, global);
+                    let len = self.bcx.ins().iconst(ptr_type, s.len() as i64);
+
+                    ValueRef::new_ref_meta(Pointer::addr(global), len, layout)
+                },
                 | _ => unimplemented!(),
             }
+        }
+    }
+
+    fn alloc_string(&mut self, s: &str) -> clif::DataId {
+        let id = self.module.declare_anonymous_data(false, false).unwrap();
+        let mut dcx = clif::DataContext::new();
+
+        dcx.define(s.as_bytes().into());
+
+        self.module.define_data(id, &dcx).unwrap();
+        id
+    }
+
+    fn alloc_const(&mut self, c: &ir::Const, layout: Arc<Layout>, into: Option<clif::DataId>) -> clif::DataId {
+        let data_id = into.unwrap_or_else(|| self.module.declare_anonymous_data(false, false).unwrap());
+        let mut dcx = clif::DataContext::new();
+        let mut bytes = Vec::with_capacity(layout.size.bytes() as usize);
+
+        rec(self, &mut dcx, c, layout, &mut bytes);
+        bytes.resize(bytes.capacity(), 0);
+        dcx.define(bytes.into());
+        self.module.define_data(data_id, &dcx).unwrap();
+
+        return data_id;
+
+        fn rec(
+            fx: &mut FunctionCtx,
+            dcx: &mut clif::DataContext,
+            c: &ir::Const,
+            layout: Arc<Layout>,
+            bytes: &mut Vec<u8>,
+        ) {
+            match c {
+                | ir::Const::Undefined => {
+                    bytes.resize(bytes.len() + layout.size.bytes() as usize, 0);
+                },
+                | _ => unimplemented!(),
+            }
+        }
+    }
+
+    fn func_id(&mut self, func: &hir::Func) -> clif::FuncId {
+        if let Some(&(id, _)) = self.func_ids.get(func) {
+            id
+        } else {
+            let sig = self.func_signature(*func);
+            let name = func.link_name(self.db.upcast());
+
+            self.mcx
+                .module
+                .declare_function(&name, clif::Linkage::Import, &sig)
+                .unwrap()
         }
     }
 }

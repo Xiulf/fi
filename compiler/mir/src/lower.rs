@@ -22,12 +22,6 @@ impl Body {
         let mut args = Vec::new();
         let mut vars = Vec::new();
         let mut ctnts = Vec::new();
-        let type_id = db.lang_item(def.module(db.upcast()).lib, "type-kind".into()).unwrap();
-        let type_id = type_id.as_type_ctor().unwrap();
-        let figure_id = db.lang_item(def.module(db.upcast()).lib, "figure-kind".into()).unwrap();
-        let figure_id = figure_id.as_type_ctor().unwrap();
-        let symbol_id = db.lang_item(def.module(db.upcast()).lib, "symbol-kind".into()).unwrap();
-        let symbol_id = symbol_id.as_type_ctor().unwrap();
         let func_id = db.lang_item(def.module(db.upcast()).lib, "fn-type".into()).unwrap();
         let func_id = func_id.as_type_ctor().unwrap();
 
@@ -47,23 +41,11 @@ impl Body {
         }
 
         let mut lcx = LowerCtx::new(db, def, ty);
-        let type_info = layout::type_info(db);
-        let type_info = layout::reference(db, type_info);
-        let figure = layout::ptr_sized_uint(db);
-        let symbol = layout::str_slice(db);
 
         for var in vars {
-            let kind = var.lookup(db.upcast());
+            let layout = layout::type_var(db, def.module(db.upcast()).lib, var);
 
-            if kind == TyKind::Ctor(type_id) {
-                lcx.add_type_var(Some(type_info.clone()));
-            } else if kind == TyKind::Ctor(figure_id) {
-                lcx.add_type_var(Some(figure.clone()));
-            } else if kind == TyKind::Ctor(symbol_id) {
-                lcx.add_type_var(Some(symbol.clone()));
-            } else {
-                lcx.add_type_var(None);
-            }
+            lcx.add_type_var(layout);
         }
 
         lcx.lower();
@@ -188,8 +170,13 @@ impl<'a> LowerCtx<'a> {
             if let TyKind::TypeVar(var) = self.infer.type_of_expr[id].lookup(self.db.upcast()) {
                 let info = self.type_info(var);
                 let info = Place::new(info);
+                let rhs = self.builder.placed(op);
+                let layout = self.builder.place_layout(self.db, &rhs);
+                let place = self.builder.create_var(layout::reference(self.db, layout));
+                let place = Place::new(place);
 
-                self.builder.memcpy(ret.clone(), op, info.deref().field(0));
+                self.builder.addr_of(place.clone(), rhs);
+                self.builder.memcpy(ret.clone(), place, info.deref().field(0));
             } else {
                 self.builder.use_op(ret.clone(), op);
             }

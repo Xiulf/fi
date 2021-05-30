@@ -9,6 +9,7 @@ use base_db::SourceDatabaseExt;
 use codegen::db::CodegenDatabase;
 use hir::db::DefDatabase;
 use mir::db::MirDatabase;
+use std::path::PathBuf;
 use syntax::ast::{self, AstNode, NameOwner};
 
 pub struct Opts<'a> {
@@ -18,6 +19,7 @@ pub struct Opts<'a> {
 #[derive(Default)]
 pub struct Driver {
     pub db: db::RootDatabase,
+    target_dir: PathBuf,
     libs: LibSet,
     lib_count: u32,
     file_count: u32,
@@ -28,6 +30,7 @@ impl Driver {
         let mut driver = Driver::default();
         let lib = driver.load(opts.input, false)?;
 
+        driver.target_dir = PathBuf::from(opts.input).join("target");
         driver.db.set_target_triple(mir::target_lexicon::HOST.into());
 
         Some((driver, lib))
@@ -40,7 +43,9 @@ impl Driver {
         let root_file = FileId(0);
         let type_file = FileId(1);
         let resolve_file = FileId(2);
-        let (lib, _) = driver.libs.add_lib("<interactive>", root_id, root_file);
+        let (lib, _) = driver
+            .libs
+            .add_lib("<interactive>", Default::default(), root_id, root_file);
 
         root.insert_file(root_file, "<interactive>");
         root.insert_file(type_file, "<type>");
@@ -126,10 +131,10 @@ impl Driver {
         }
 
         if !has_error {
+            std::fs::create_dir_all(&self.target_dir).unwrap();
+
             for lib in hir::Lib::all(db) {
-                for module in lib.modules(db) {
-                    self.write_assembly(module).unwrap();
-                }
+                self.write_assembly(lib).unwrap();
             }
         }
 
@@ -139,13 +144,13 @@ impl Driver {
     }
 
     pub fn docs(&self, lib: LibId) {
-        docs::generate(&self.db, lib.into(), "target".as_ref()).unwrap();
+        docs::generate(&self.db, lib.into(), &self.target_dir).unwrap();
     }
 
-    fn write_assembly(&self, module: hir::Module) -> std::io::Result<bool> {
-        let asm = self.db.module_assembly(module);
-        let ext = codegen::assembly::Assembly::extension(&self.db);
-        let asm_path = std::path::PathBuf::from(module.name(&self.db).to_string()).with_extension(ext);
+    fn write_assembly(&self, lib: hir::Lib) -> std::io::Result<bool> {
+        let asm = self.db.lib_assembly(lib);
+        let ext = codegen::assembly::Assembly::extension(&self.db, lib);
+        let asm_path = self.target_dir.join(lib.name(&self.db).to_string()).with_extension(ext);
 
         asm.copy_to(&asm_path)?;
 

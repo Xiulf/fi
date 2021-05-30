@@ -34,7 +34,6 @@ struct ModuleCtx<'a> {
     fcx: &'a mut clif::FunctionBuilderContext,
     func_ids: FxHashMap<hir::Func, (clif::FuncId, clif::Signature)>,
     static_ids: FxHashMap<hir::Static, clif::DataId>,
-    anon_count: usize,
 }
 
 struct FunctionCtx<'a, 'mcx> {
@@ -64,43 +63,48 @@ impl<'a> ModuleCtx<'a> {
             fcx: &mut fcx,
             func_ids: FxHashMap::default(),
             static_ids: FxHashMap::default(),
-            anon_count: 0,
         };
 
         f(mcx)
     }
 
-    pub fn build(mut self, module: hir::Module) -> cranelift_object::ObjectProduct {
-        for def in module.declarations(self.db.upcast()) {
-            match def {
-                | hir::ModuleDef::Func(f) => self.register_func(f),
-                | hir::ModuleDef::Static(s) => self.register_static(s),
-                | _ => {},
+    pub fn build(mut self, lib: hir::Lib) -> cranelift_object::ObjectProduct {
+        for module in lib.modules(self.db.upcast()) {
+            if module.is_virtual(self.db.upcast()) {
+                continue;
             }
-        }
 
-        for inst in module.instances(self.db.upcast()) {
-            for def in inst.items(self.db.upcast()) {
+            for def in module.declarations(self.db.upcast()) {
                 match def {
-                    | hir::AssocItem::Func(f) => self.register_func(f),
-                    | hir::AssocItem::Static(s) => self.register_static(s),
+                    | hir::ModuleDef::Func(f) => self.register_func(f),
+                    | hir::ModuleDef::Static(s) => self.register_static(s),
+                    | _ => {},
                 }
             }
-        }
 
-        for def in module.declarations(self.db.upcast()) {
-            match def {
-                | hir::ModuleDef::Func(f) => self.lower_func(f),
-                | hir::ModuleDef::Static(s) => self.lower_static(s),
-                | _ => {},
+            for inst in module.instances(self.db.upcast()) {
+                for def in inst.items(self.db.upcast()) {
+                    match def {
+                        | hir::AssocItem::Func(f) => self.register_func(f),
+                        | hir::AssocItem::Static(s) => self.register_static(s),
+                    }
+                }
             }
-        }
 
-        for inst in module.instances(self.db.upcast()) {
-            for def in inst.items(self.db.upcast()) {
+            for def in module.declarations(self.db.upcast()) {
                 match def {
-                    | hir::AssocItem::Func(f) => self.lower_func(f),
-                    | hir::AssocItem::Static(s) => self.lower_static(s),
+                    | hir::ModuleDef::Func(f) => self.lower_func(f),
+                    | hir::ModuleDef::Static(s) => self.lower_static(s),
+                    | _ => {},
+                }
+            }
+
+            for inst in module.instances(self.db.upcast()) {
+                for def in inst.items(self.db.upcast()) {
+                    match def {
+                        | hir::AssocItem::Func(f) => self.lower_func(f),
+                        | hir::AssocItem::Static(s) => self.lower_static(s),
+                    }
                 }
             }
         }
@@ -115,30 +119,8 @@ impl<'a> ModuleCtx<'a> {
             }
         }
 
-        let lib = func.lib(self.db.upcast()).into();
-        let func_id = self.db.lang_item(lib, "fn-type".into()).unwrap();
-        let func_id = func_id.as_type_ctor().unwrap();
-        let mut args = Vec::new();
-        let mut ty = self.db.value_ty(hir::id::ValueTyDefId::FuncId(func.into()));
-
-        while let hir::ty::TyKind::ForAll(var, ret) = ty.lookup(self.db.upcast()) {
-            ty = ret;
-        }
-
-        while let hir::ty::TyKind::Ctnt(ctnt, ret) = ty.lookup(self.db.upcast()) {
-            ty = ret;
-        }
-
-        while let Some([arg, ret]) = ty.match_ctor(self.db.upcast(), func_id) {
-            args.push(arg);
-            ty = ret;
-        }
-
-        let ret = self.db.layout_of(ty);
-        let args = args.into_iter().map(|a| self.db.layout_of(a)).collect();
-        let sig = self.mk_signature(&ret, args);
-        let is_foreign = func.is_foreign(self.db.upcast());
-        let linkage = if is_foreign {
+        let sig = self.func_signature(func);
+        let linkage = if func.is_foreign(self.db.upcast()) {
             clif::Linkage::Import
         } else if func.is_exported(self.db.upcast()) {
             clif::Linkage::Export
@@ -146,12 +128,7 @@ impl<'a> ModuleCtx<'a> {
             clif::Linkage::Local
         };
 
-        let name = if is_foreign {
-            func.name(self.db.upcast()).to_string()
-        } else {
-            func.path(self.db.upcast()).to_string()
-        };
-
+        let name = func.link_name(self.db.upcast());
         let id = self.module.declare_function(&name, linkage, &sig).unwrap();
 
         self.func_ids.insert(func, (id, sig));
@@ -185,6 +162,10 @@ impl<'a> ModuleCtx<'a> {
     }
 
     pub fn lower_func(&mut self, func: hir::Func) {
+        if func.is_foreign(self.db.upcast()) {
+            return;
+        }
+
         if let Some(&(id, ref sig)) = self.func_ids.get(&func) {
             use clif::InstBuilder;
             let sig = sig.clone();
@@ -273,15 +254,22 @@ impl<'a> ModuleCtx<'a> {
                 }
             }
 
+            for (id, _) in fx.body.blocks.iter() {
+                let block = fx.bcx.create_block();
+
+                fx.blocks.insert(id, block);
+            }
+
             fx.bcx.ins().jump(fx.blocks[fx.body.entry.unwrap()], &[]);
+            fx.bcx.seal_block(start_block);
             fx.lower();
             fx.bcx.finalize();
             fx.ctx.compute_cfg();
             fx.ctx.compute_domtree();
-
-            eprintln!("{}", fx.ctx.func);
-
             fx.mcx.ctx.eliminate_unreachable_code(fx.mcx.module.isa()).unwrap();
+
+            eprintln!("{}: {}", func.link_name(fx.db.upcast()), fx.ctx.func);
+
             fx.mcx
                 .module
                 .define_function(
@@ -312,6 +300,10 @@ impl<'a> ModuleCtx<'a> {
     }
 
     pub fn lower_static(&mut self, static_: hir::Static) {
+        if static_.is_foreign(self.db.upcast()) {
+            return;
+        }
+
         if let Some(id) = self.static_ids.get(&static_) {
             unimplemented!();
         }
@@ -362,6 +354,40 @@ impl<'a> ModuleCtx<'a> {
             | Primitive::F64 => types::F64,
             | Primitive::Pointer => self.module.target_config().pointer_type(),
         }
+    }
+
+    pub fn func_signature(&self, func: hir::Func) -> clif::Signature {
+        let lib = func.lib(self.db.upcast()).into();
+        let func_id = self.db.lang_item(lib, "fn-type".into()).unwrap();
+        let func_id = func_id.as_type_ctor().unwrap();
+        let mut args = Vec::new();
+        let mut ty = self.db.value_ty(hir::id::ValueTyDefId::FuncId(func.into()));
+
+        while let hir::ty::TyKind::ForAll(var, ret) = ty.lookup(self.db.upcast()) {
+            if let Some(layout) = mir::layout::type_var(self.db.upcast(), lib, var) {
+                args.push(layout);
+            }
+
+            ty = ret;
+        }
+
+        while let hir::ty::TyKind::Ctnt(ctnt, ret) = ty.lookup(self.db.upcast()) {
+            ty = ret;
+        }
+
+        while let Some([arg, ret]) = ty.match_ctor(self.db.upcast(), func_id) {
+            args.push(self.db.layout_of(arg));
+            ty = ret;
+        }
+
+        let ret = if let hir::ty::TyKind::TypeVar(_) = ty.lookup(self.db.upcast()) {
+            args.insert(0, self.db.layout_of(ty));
+            Arc::new(mir::layout::Layout::UNIT)
+        } else {
+            self.db.layout_of(ty)
+        };
+
+        self.mk_signature(&ret, args)
     }
 
     pub fn mk_signature(&self, ret: &mir::layout::Layout, args: Vec<Arc<mir::layout::Layout>>) -> clif::Signature {

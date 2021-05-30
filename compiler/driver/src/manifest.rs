@@ -1,7 +1,7 @@
 use crate::db::RootDatabase;
 use anyhow::{Context, Result};
 use base_db::input::{FileId, SourceRoot, SourceRootId};
-use base_db::libs::{LibId, LibSet};
+use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::SourceDatabaseExt;
 use path_slash::PathExt as _;
 use relative_path::RelativePath;
@@ -22,6 +22,10 @@ pub struct Project {
     pub name: String,
     pub version: String,
     pub entry: String,
+
+    #[serde(default)]
+    #[serde(with = "lib_kind")]
+    pub output: LibKind,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,7 +74,12 @@ pub fn load_project(
     let manifest = Manifest::load(path)?;
     let root_id = SourceRootId(*roots);
     let root_file = FileId(*files);
-    let (lib, exists) = libs.add_lib(manifest.project.name.clone(), root_id, root_file);
+    let (lib, exists) = libs.add_lib(
+        manifest.project.name.clone(),
+        manifest.project.output,
+        root_id,
+        root_file,
+    );
 
     if exists {
         return Ok(lib);
@@ -155,4 +164,34 @@ fn file_as_dir(path: &Path) -> PathBuf {
     let dir = path.parent().unwrap();
 
     dir.join(file_stem)
+}
+
+mod lib_kind {
+    use base_db::libs::LibKind;
+    use serde::de::{Deserialize, Deserializer, Error, Unexpected};
+    use serde::ser::{Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(lib_kind: &LibKind, serializer: S) -> Result<S::Ok, S::Error> {
+        let s = match lib_kind {
+            | LibKind::Dynamic => "dynamic",
+            | LibKind::Static => "static",
+            | LibKind::Executable => "executable",
+        };
+
+        s.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LibKind, D::Error> {
+        let s = <&str>::deserialize(deserializer)?;
+
+        match s {
+            | "dynamic" => Ok(LibKind::Dynamic),
+            | "static" => Ok(LibKind::Static),
+            | "executable" => Ok(LibKind::Executable),
+            | _ => Err(Error::invalid_value(
+                Unexpected::Str(s),
+                &"dynamic, static or executable",
+            )),
+        }
+    }
 }
