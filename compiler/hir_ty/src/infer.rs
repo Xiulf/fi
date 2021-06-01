@@ -73,6 +73,7 @@ pub struct InferenceResult {
     pub self_type: Ty,
     pub type_of_expr: ArenaMap<ExprId, Ty>,
     pub type_of_pat: ArenaMap<PatId, Ty>,
+    pub instances: ArenaMap<ExprId, Vec<Ty>>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic>,
 }
 
@@ -133,6 +134,7 @@ impl<'a> InferenceContext<'a> {
                 self_type: TyKind::Error.intern(db),
                 type_of_expr: ArenaMap::default(),
                 type_of_pat: ArenaMap::default(),
+                instances: ArenaMap::default(),
                 diagnostics: Vec::new(),
             },
             subst: unify::Substitution::default(),
@@ -154,6 +156,7 @@ impl<'a> InferenceContext<'a> {
             self_type: TyKind::Error.intern(self.db),
             type_of_expr: ArenaMap::default(),
             type_of_pat: ArenaMap::default(),
+            instances: ArenaMap::default(),
             diagnostics: Vec::new(),
         });
 
@@ -161,6 +164,10 @@ impl<'a> InferenceContext<'a> {
         res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(&self)).collect();
         res.type_of_expr.values_mut().for_each(|v| *v = self.subst_type(*v));
         res.type_of_pat.values_mut().for_each(|v| *v = self.subst_type(*v));
+        res.instances.values_mut().for_each(|v| {
+            // v.reverse();
+            v.iter_mut().for_each(|t| *t = self.subst_type(*t));
+        });
 
         res
     }

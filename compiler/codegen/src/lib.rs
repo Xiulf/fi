@@ -109,12 +109,22 @@ impl<'a> ModuleCtx<'a> {
             }
         }
 
+        if let base_db::libs::LibKind::Executable = self.db.libs()[lib.into()].kind {
+            self.generate_main(lib);
+        }
+
         self.module.finish()
     }
 
     pub fn register_func(&mut self, func: hir::Func) {
         if let Some(it) = func.as_assoc_item(self.db.upcast()) {
             if let hir::AssocItemContainer::Class(_) = it.container(self.db.upcast()) {
+                return;
+            }
+        } else if func.is_foreign(self.db.upcast()) {
+            let attrs = self.db.attrs(hir::id::AttrDefId::FuncId(func.into()));
+
+            if attrs.by_key("intrinsic").exists() {
                 return;
             }
         }
@@ -268,7 +278,7 @@ impl<'a> ModuleCtx<'a> {
             fx.ctx.compute_domtree();
             fx.mcx.ctx.eliminate_unreachable_code(fx.mcx.module.isa()).unwrap();
 
-            eprintln!("{}: {}", func.link_name(fx.db.upcast()), fx.ctx.func);
+            // eprintln!("{}: {}", func.link_name(fx.db.upcast()), fx.ctx.func);
 
             fx.mcx
                 .module
@@ -322,6 +332,67 @@ impl<'a> ModuleCtx<'a> {
             ssa_vars: 0,
             mcx: self,
         }
+    }
+
+    fn generate_main(&mut self, lib: hir::Lib) {
+        let main = (|| {
+            for module in lib.modules(self.db.upcast()) {
+                for def in module.declarations(self.db.upcast()) {
+                    if let hir::ModuleDef::Func(f) = def {
+                        if f.name(self.db.upcast()).to_string() == "main" {
+                            return Some(f);
+                        } else {
+                            let attrs = self.db.attrs(hir::id::AttrDefId::FuncId(f.into()));
+
+                            if attrs.by_key("main").exists() {
+                                return Some(f);
+                            }
+                        }
+                    }
+                }
+            }
+
+            None
+        })();
+
+        let main = main.expect("executable contains no main function");
+        let main = self.func_ids[&main].0;
+        let mut sig = self.module.make_signature();
+        let ptr_type = self.module.target_config().pointer_type();
+
+        sig.params.push(clif::AbiParam::new(ptr_type));
+        sig.params.push(clif::AbiParam::new(ptr_type));
+        sig.returns.push(clif::AbiParam::new(ptr_type));
+
+        let id = self
+            .module
+            .declare_function("main", clif::Linkage::Export, &sig)
+            .unwrap();
+
+        use clif::InstBuilder;
+        let mut bcx = clif::FunctionBuilder::new(&mut self.ctx.func, &mut self.fcx);
+        let block = bcx.create_block();
+
+        bcx.func.signature = sig;
+        bcx.switch_to_block(block);
+        bcx.append_block_params_for_function_params(block);
+
+        let main = self.module.declare_func_in_func(main, &mut bcx.func);
+        let _ = bcx.ins().call(main, &[]);
+        let ret = bcx.ins().iconst(ptr_type, 0);
+
+        bcx.ins().return_(&[ret]);
+        bcx.seal_block(block);
+        bcx.finalize();
+
+        self.module
+            .define_function(
+                id,
+                &mut self.ctx,
+                &mut clif::NullTrapSink {},
+                &mut clif::NullStackMapSink {},
+            )
+            .unwrap();
     }
 
     pub fn ir_type(&self, layout: &mir::layout::Layout) -> Option<clif::Type> {

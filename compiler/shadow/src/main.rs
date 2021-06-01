@@ -54,8 +54,14 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("run") {
         let input = matches.value_of("input").unwrap();
 
-        if let Some((driver, _)) = Driver::init(Opts { input }) {
-            driver.build();
+        if let Some((driver, lib)) = Driver::init(Opts { input }) {
+            let status = if let Some(args) = matches.values_of_os("args") {
+                driver.run(lib, args.into_iter())
+            } else {
+                driver.run(lib, std::iter::empty())
+            };
+
+            std::process::exit(status.code().unwrap());
         }
     } else if let Some(matches) = matches.subcommand_matches("docs") {
         let input = matches.value_of("input").unwrap();

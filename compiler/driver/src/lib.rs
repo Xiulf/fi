@@ -9,6 +9,7 @@ use base_db::SourceDatabaseExt;
 use codegen::db::CodegenDatabase;
 use hir::db::DefDatabase;
 use mir::db::MirDatabase;
+use rustc_hash::FxHashSet;
 use std::path::PathBuf;
 use syntax::ast::{self, AstNode, NameOwner};
 
@@ -133,8 +134,10 @@ impl Driver {
         if !has_error {
             std::fs::create_dir_all(&self.target_dir).unwrap();
 
+            let mut done = FxHashSet::default();
+
             for lib in hir::Lib::all(db) {
-                self.write_assembly(lib).unwrap();
+                self.write_assembly(lib, &mut done).unwrap();
             }
         }
 
@@ -143,16 +146,35 @@ impl Driver {
         println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
     }
 
+    pub fn run<'a>(&self, lib: LibId, args: impl Iterator<Item = &'a std::ffi::OsStr>) -> std::process::ExitStatus {
+        self.build();
+
+        let asm = self.db.lib_assembly(lib.into());
+        let path = asm.path(&self.db, &self.target_dir);
+        let mut cmd = std::process::Command::new(path);
+
+        cmd.args(args);
+        cmd.status().unwrap()
+    }
+
     pub fn docs(&self, lib: LibId) {
         docs::generate(&self.db, lib.into(), &self.target_dir).unwrap();
     }
 
-    fn write_assembly(&self, lib: hir::Lib) -> std::io::Result<bool> {
-        let asm = self.db.lib_assembly(lib);
-        let ext = codegen::assembly::Assembly::extension(&self.db, lib);
-        let asm_path = self.target_dir.join(lib.name(&self.db).to_string()).with_extension(ext);
+    fn write_assembly(&self, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> std::io::Result<bool> {
+        if done.contains(&lib) {
+            return Ok(false);
+        }
 
-        asm.copy_to(&asm_path)?;
+        let deps = lib.dependencies(&self.db).into_iter().map(|dep| {
+            let _ = self.write_assembly(dep.lib, done);
+            dep.lib
+        });
+
+        let asm = self.db.lib_assembly(lib);
+
+        asm.link(&self.db, deps, &self.target_dir);
+        done.insert(lib);
 
         Ok(true)
     }

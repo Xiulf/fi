@@ -178,6 +178,18 @@ fn slice_layout(elem_lyt: Arc<Layout>, triple: &Triple) -> Layout {
 }
 
 fn struct_layout(lyts: Vec<Arc<Layout>>, triple: &Triple) -> Layout {
+    match (lyts.get(0), lyts.get(1)) {
+        | (Some(a), Some(b)) => match (&a.abi, &b.abi) {
+            | (Abi::Scalar(a), Abi::Scalar(b)) => return scalar_pair(a.clone(), b.clone(), triple),
+            | (_, _) => {},
+        },
+        | (Some(s), None) | (None, Some(s)) => match &s.abi {
+            | Abi::Scalar(s) => return Layout::scalar(s.clone(), triple),
+            | _ => {},
+        },
+        | (None, None) => {},
+    }
+
     let mut align = Align::ONE;
     let mut fields = lyts.iter().map(|lyt| (Size::ZERO, lyt.clone())).collect::<Vec<_>>();
     let mut offset = Size::ZERO;
@@ -471,7 +483,7 @@ fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> L
                         largest_niche: None,
                     });
 
-                    let uint = ptr_sized_uint(db);
+                    let uint = ptr_sized_int(db, false);
                     let idxs_layout = Arc::new(Layout {
                         size: uint.stride * fields.len() as u64,
                         align: uint.align,
@@ -530,13 +542,13 @@ fn scalar_from_repr(repr: &str, triple: &Triple) -> Scalar {
     }
 }
 
-pub fn ptr_sized_uint(db: &dyn MirDatabase) -> Arc<Layout> {
+pub fn ptr_sized_int(db: &dyn MirDatabase, sign: bool) -> Arc<Layout> {
     let triple = db.target_triple();
     let scalar = match triple.pointer_width() {
-        | Ok(PointerWidth::U16) => Scalar::new(Primitive::Int(Integer::I16, false), &triple),
-        | Ok(PointerWidth::U32) => Scalar::new(Primitive::Int(Integer::I32, false), &triple),
-        | Ok(PointerWidth::U64) => Scalar::new(Primitive::Int(Integer::I64, false), &triple),
-        | Err(_) => Scalar::new(Primitive::Int(Integer::I32, false), &triple),
+        | Ok(PointerWidth::U16) => Scalar::new(Primitive::Int(Integer::I16, sign), &triple),
+        | Ok(PointerWidth::U32) => Scalar::new(Primitive::Int(Integer::I32, sign), &triple),
+        | Ok(PointerWidth::U64) => Scalar::new(Primitive::Int(Integer::I64, sign), &triple),
+        | Err(_) => Scalar::new(Primitive::Int(Integer::I32, sign), &triple),
     };
 
     Arc::new(Layout::scalar(scalar, &triple))
@@ -563,7 +575,7 @@ pub fn type_var(db: &dyn MirDatabase, lib: base_db::libs::LibId, kind: Ty) -> Op
     if kind == TyKind::Ctor(type_id) {
         Some(reference(db, type_info(db)))
     } else if kind == TyKind::Ctor(figure_id) {
-        Some(ptr_sized_uint(db))
+        Some(ptr_sized_int(db, true))
     } else if kind == TyKind::Ctor(symbol_id) {
         Some(str_slice(db))
     } else {
@@ -573,7 +585,7 @@ pub fn type_var(db: &dyn MirDatabase, lib: base_db::libs::LibId, kind: Ty) -> Op
 
 pub fn type_info(db: &dyn MirDatabase) -> Arc<Layout> {
     let triple = db.target_triple();
-    let uint = ptr_sized_uint(db);
+    let uint = ptr_sized_int(db, false);
 
     Arc::new(Layout {
         size: uint.size,

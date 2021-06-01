@@ -1,18 +1,19 @@
 use crate::db::CodegenDatabase;
 use base_db::libs::LibKind;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::NamedTempFile;
 
 #[derive(Debug)]
 pub struct Assembly {
+    lib: hir::Lib,
     file: NamedTempFile,
 }
 
 impl PartialEq for Assembly {
     fn eq(&self, other: &Self) -> bool {
-        self.path().eq(other.path())
+        self.tmp_path().eq(other.tmp_path())
     }
 }
 
@@ -20,8 +21,46 @@ impl Eq for Assembly {
 }
 
 impl Assembly {
-    pub fn extension(db: &dyn CodegenDatabase, lib: hir::Lib) -> &'static str {
-        match db.libs()[lib.into()].kind {
+    pub fn tmp_path(&self) -> &Path {
+        self.file.path()
+    }
+
+    pub fn path(&self, db: &dyn CodegenDatabase, target_dir: &Path) -> PathBuf {
+        target_dir
+            .join(format!("{}{}", self.prefix(db), self.lib.name(db.upcast())))
+            .with_extension(self.extension(db))
+    }
+
+    pub fn link(&self, db: &dyn CodegenDatabase, deps: impl Iterator<Item = hir::Lib>, target_dir: &Path) {
+        let mut linker = crate::linker::create();
+        let out = self.path(db, target_dir);
+
+        linker.add_object(self.tmp_path());
+        linker.rpath(target_dir);
+        linker.arg("-L");
+        linker.arg(target_dir);
+
+        for dep in deps {
+            let name = dep.name(db.upcast()).to_string();
+
+            match db.libs()[dep.into()].kind {
+                | LibKind::Dynamic => linker.add_shared_object(&name),
+                | LibKind::Static => linker.add_static_lib(&name),
+                | LibKind::Executable => panic!("cannot link with an executable"),
+            }
+        }
+
+        match db.libs()[self.lib.into()].kind {
+            | LibKind::Dynamic => linker.build_shared_object(&out),
+            | LibKind::Static => linker.build_static_lib(&out),
+            | LibKind::Executable => linker.build_executable(&out),
+        }
+
+        linker.run();
+    }
+
+    fn extension(&self, db: &dyn CodegenDatabase) -> &'static str {
+        match db.libs()[self.lib.into()].kind {
             | LibKind::Dynamic => match db.target_triple().operating_system {
                 | target_lexicon::OperatingSystem::Windows => "dll",
                 | target_lexicon::OperatingSystem::MacOSX { .. } => "dylib",
@@ -41,12 +80,14 @@ impl Assembly {
         }
     }
 
-    pub fn path(&self) -> &Path {
-        self.file.path()
-    }
-
-    pub fn copy_to(&self, dest: impl AsRef<Path>) -> std::io::Result<()> {
-        std::fs::copy(self.path(), dest).map(|_| ())
+    fn prefix(&self, db: &dyn CodegenDatabase) -> &'static str {
+        match db.libs()[self.lib.into()].kind {
+            | LibKind::Dynamic | LibKind::Static => match db.target_triple().operating_system {
+                | target_lexicon::OperatingSystem::Wasi => "",
+                | _ => "lib",
+            },
+            | LibKind::Executable => "",
+        }
     }
 }
 
@@ -83,5 +124,5 @@ pub(crate) fn build_assembly(db: &dyn CodegenDatabase, lib: hir::Lib) -> Arc<Ass
     //
     // linker.run();
 
-    Arc::new(Assembly { file })
+    Arc::new(Assembly { lib, file })
 }

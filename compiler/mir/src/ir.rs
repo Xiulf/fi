@@ -139,6 +139,15 @@ impl Place {
     }
 }
 
+impl Const {
+    pub fn type_info(lyt: &Layout) -> Self {
+        let size = Const::Scalar(lyt.size.bytes() as u128);
+        let tuple = Const::Tuple(vec![size]);
+
+        Const::Ref(Box::new(tuple))
+    }
+}
+
 impl display::HirDisplay for Body {
     fn hir_fmt(&self, f: &mut display::HirFormatter<'_>) -> display::Result {
         writeln!(f, "body {{")?;

@@ -8,7 +8,7 @@ impl FunctionCtx<'_, '_> {
     pub fn lower(&mut self) {
         let body = Arc::clone(&self.body);
 
-        // eprintln!("{}", body.display(self.db.upcast()));
+        eprintln!("{}", body.display(self.db.upcast()));
 
         for (id, block) in body.blocks.iter() {
             self.bcx.switch_to_block(self.blocks[id]);

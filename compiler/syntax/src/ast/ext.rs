@@ -1,5 +1,6 @@
 use super::*;
 use parser::syntax_kind::*;
+use std::iter::Peekable;
 
 pub trait AttrsOwner: AstNode {
     fn attrs(&self) -> AstChildren<Attr> {
@@ -908,12 +909,10 @@ impl LitChar {
         let text = ch.text();
         let chars = text[1..text.len() - 1].chars();
 
-        Self::escape(chars)
+        Self::escape(&mut chars.peekable())
     }
 
-    fn escape(mut input: impl Iterator<Item = char>) -> Option<char> {
-        let mut input = input.peekable();
-
+    fn escape(input: &mut Peekable<impl Iterator<Item = char>>) -> Option<char> {
         match input.next()? {
             | '\\' => match *input.peek()? {
                 | '\'' => {
@@ -949,7 +948,7 @@ impl LitChar {
 
                     let mut num = String::with_capacity(2);
 
-                    while input.peek().map(|c| c.is_digit(16)).unwrap_or(false) && num.len() < 2 {
+                    while num.len() < 2 && input.peek().map(|c| c.is_digit(16)).unwrap_or(false) {
                         num.push(input.next()?);
                     }
 
@@ -991,6 +990,7 @@ impl LitString {
         } else {
             let mut chars = text[1..text.len() - 1].chars();
             let mut text = String::with_capacity(chars.as_str().len());
+            let mut chars = chars.peekable();
 
             while let Some(ch) = LitChar::escape(&mut chars) {
                 text.push(ch);
