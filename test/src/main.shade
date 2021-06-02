@@ -5,7 +5,7 @@ import core/libc (write, STDOUT_FILENO)
 import core/intrinsics (unsafe, transmute)
 
 fun main = do
-    let text = get_x { x: "Hello World\n", y: 'a' }
+    let text = get_x { x: "Hello World!\n", y: 'a' }
     print text
 
 fun print (s :: Str) = do

@@ -8,7 +8,7 @@ impl FunctionCtx<'_, '_> {
     pub fn lower(&mut self) {
         let body = Arc::clone(&self.body);
 
-        eprintln!("{}", body.display(self.db.upcast()));
+        // eprintln!("{}", body.display(self.db.upcast()));
 
         for (id, block) in body.blocks.iter() {
             self.bcx.switch_to_block(self.blocks[id]);
@@ -308,6 +308,25 @@ impl FunctionCtx<'_, '_> {
                 },
                 | ir::Const::Scalar(s) => ValueRef::new_const(*s, self, layout),
                 | ir::Const::Tuple(cs) if cs.is_empty() => ValueRef::new_unit(),
+                | ir::Const::Tuple(cs) => match &layout.abi {
+                    | Abi::Uninhabited => unreachable!(),
+                    | Abi::Scalar(_) => {
+                        assert_eq!(cs.len(), 1);
+                        self.lower_const(&cs[0], layout, None)
+                    },
+                    | _ => {
+                        let place = PlaceRef::new_stack(self, layout.clone());
+
+                        for (i, c) in cs.iter().enumerate() {
+                            let layout = layout.field(self.db.upcast(), i).unwrap();
+                            let place = place.clone().field(self, i);
+
+                            self.lower_const(c, layout, Some(place));
+                        }
+
+                        place.to_value(self)
+                    },
+                },
                 | ir::Const::FuncAddr(id) => {
                     let ptr_type = self.module.target_config().pointer_type();
                     let func = self.func_ids[id].0;
@@ -333,6 +352,15 @@ impl FunctionCtx<'_, '_> {
 
                     ValueRef::new_ref_meta(Pointer::addr(global), len, layout)
                 },
+                | ir::Const::Ref(to) => {
+                    let elem = layout.elem(self.db.upcast()).unwrap();
+                    let data_id = self.alloc_const(to, elem, None);
+                    let ptr_type = self.module.target_config().pointer_type();
+                    let global = self.mcx.module.declare_data_in_func(data_id, &mut self.bcx.func);
+                    let global = self.bcx.ins().global_value(ptr_type, global);
+
+                    ValueRef::new_val(global, layout)
+                },
                 | _ => unimplemented!(),
             }
         }
@@ -353,8 +381,8 @@ impl FunctionCtx<'_, '_> {
         let mut dcx = clif::DataContext::new();
         let mut bytes = Vec::with_capacity(layout.size.bytes() as usize);
 
-        rec(self, &mut dcx, c, layout, &mut bytes);
         bytes.resize(bytes.capacity(), 0);
+        rec(self, &mut dcx, c, layout, &mut bytes, 0);
         dcx.define(bytes.into());
         self.module.define_data(data_id, &dcx).unwrap();
 
@@ -365,13 +393,82 @@ impl FunctionCtx<'_, '_> {
             dcx: &mut clif::DataContext,
             c: &ir::Const,
             layout: Arc<Layout>,
-            bytes: &mut Vec<u8>,
+            bytes: &mut [u8],
+            offset: usize,
         ) {
             match c {
-                | ir::Const::Undefined => {
-                    bytes.resize(bytes.len() + layout.size.bytes() as usize, 0);
+                | ir::Const::Undefined => {},
+                | ir::Const::Scalar(s) => match layout.size.bytes() {
+                    | 1 => bytes[0] = *s as u8,
+                    | 2 => {
+                        let ptr = bytes.as_mut_ptr() as *mut u16;
+
+                        unsafe {
+                            *ptr = *s as u16;
+                        }
+                    },
+                    | 4 => {
+                        let ptr = bytes.as_mut_ptr() as *mut u32;
+
+                        unsafe {
+                            *ptr = *s as u32;
+                        }
+                    },
+                    | 8 => {
+                        let ptr = bytes.as_mut_ptr() as *mut u64;
+
+                        unsafe {
+                            *ptr = *s as u64;
+                        }
+                    },
+                    | 16 => {
+                        let ptr = bytes.as_mut_ptr() as *mut u128;
+
+                        unsafe {
+                            *ptr = *s;
+                        }
+                    },
+                    | _ => unreachable!(),
                 },
-                | _ => unimplemented!(),
+                | ir::Const::Tuple(cs) => match &layout.fields {
+                    | Fields::Primitive => unimplemented!(),
+                    | Fields::Array { stride, count } => {
+                        assert_eq!(*count, cs.len());
+                        let mut off = 0;
+                        let stride = stride.bytes() as usize;
+
+                        for i in 0..*count {
+                            let field = layout.field(fx.db.upcast(), i).unwrap();
+
+                            rec(fx, dcx, &cs[i], field, &mut bytes[off..off + stride], offset + off);
+                            off += stride;
+                        }
+                    },
+                    | Fields::Union { .. } => unimplemented!(),
+                    | Fields::Arbitrary { fields } => {
+                        for (i, (off, field)) in fields.iter().enumerate() {
+                            let off = off.bytes() as usize;
+                            let size = field.size.bytes() as usize;
+
+                            rec(
+                                fx,
+                                dcx,
+                                &cs[i],
+                                field.clone(),
+                                &mut bytes[off..off + size],
+                                offset + off,
+                            );
+                        }
+                    },
+                },
+                | ir::Const::Ref(to) => {
+                    let elem = layout.elem(fx.db.upcast()).unwrap();
+                    let data_id = fx.alloc_const(to, elem, None);
+                    let global = fx.module.declare_data_in_data(data_id, dcx);
+
+                    dcx.write_data_addr(offset as u32, global, 0);
+                },
+                | _ => unimplemented!("{:?}", c),
             }
         }
     }

@@ -614,6 +614,22 @@ pub fn reference(db: &dyn MirDatabase, to: Arc<Layout>) -> Arc<Layout> {
     Arc::new(lyt)
 }
 
+pub fn array(of: Arc<Layout>, count: usize) -> Arc<Layout> {
+    Arc::new(Layout {
+        size: of.stride * count as u64,
+        align: of.align,
+        stride: of.stride * count as u64,
+        abi: Abi::Aggregate { sized: true },
+        fields: Fields::Array {
+            stride: of.stride,
+            count,
+        },
+        variants: Variants::Single { index: 0 },
+        elem: Some(Err(of)),
+        largest_niche: None,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Layout {
     pub size: Size,

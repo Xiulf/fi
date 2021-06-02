@@ -389,10 +389,11 @@ impl<'a> LowerCtx<'a> {
             let func_ty = self.db.value_ty(func.into());
             let func_lyt = self.db.layout_of(func_ty);
             let func = Operand::Const(Const::FuncAddr(func.into()), func_lyt);
+            let arg_tys = args.iter().map(|&a| self.infer.type_of_expr[a]).collect();
             let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
             if let Some(inst) = self.infer.instances.get(func_expr) {
-                self.lower_generic_call(ret.clone(), inst.clone(), func_ty, func, args);
+                self.lower_generic_call(ret.clone(), inst.clone(), func_ty, func, args, arg_tys);
             } else {
                 self.builder.call(ret.clone(), func, args);
             }
@@ -450,6 +451,7 @@ impl<'a> LowerCtx<'a> {
         mut func_ty: Ty,
         func: Operand,
         mut args: Vec<Operand>,
+        arg_tys: Vec<Ty>,
     ) {
         let func_id = self.lang_type("fn-type");
         let record_id = self.lang_type("record-type");
@@ -495,6 +497,8 @@ impl<'a> LowerCtx<'a> {
             func_ty = t;
         }
 
+        let arg_base = arg_offset;
+
         while let Some([arg_ty, ret]) = func_ty.match_ctor(self.db.upcast(), func_id) {
             if let TyKind::TypeVar(_) = arg_ty.lookup(self.db.upcast()) {
                 let arg = self.builder.placed(args[arg_offset].clone());
@@ -509,9 +513,28 @@ impl<'a> LowerCtx<'a> {
                     let arg = self.builder.placed(args[arg_offset].clone());
                     let mut offsets = Vec::new();
 
-                    for field in fields.iter() {}
+                    if let TyKind::App(_, row) = arg_tys[arg_offset - arg_base].lookup(self.db.upcast()) {
+                        if let TyKind::Row(ty_fields, _) = row.lookup(self.db.upcast()) {
+                            let layout = self.db.layout_of(arg_tys[arg_offset - arg_base]);
 
+                            for field in fields.iter() {
+                                let idx = ty_fields.iter().position(|f| f.name == field.name).unwrap();
+                                let offset = layout.fields.offset(idx);
+
+                                offsets.push(Const::Scalar(offset.bytes() as u128));
+                            }
+                        }
+                    }
+
+                    let uint = layout::ptr_sized_int(self.db, false);
+                    let lyt = layout::array(uint, offsets.len());
+                    let arr = Const::Tuple(offsets);
+                    let meta = self.builder.create_var(lyt.clone());
+                    let meta = Place::new(meta);
+
+                    self.builder.use_op(meta.clone(), Operand::Const(arr, lyt));
                     self.builder.addr_of(param.clone().field(0), arg);
+                    self.builder.addr_of(param.clone().field(1), meta);
                     args[arg_offset] = Operand::Place(param);
                 }
             }
