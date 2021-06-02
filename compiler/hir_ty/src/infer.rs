@@ -8,6 +8,7 @@ mod unify;
 
 use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
+use crate::display::HirDisplay;
 use crate::lower::LowerCtx;
 use crate::ty::{Constraint, DebruijnIndex, Ty, TyKind, TypeVar, UniverseIndex};
 use diagnostics::InferenceDiagnostic;
@@ -295,19 +296,23 @@ impl<'a> BodyInferenceContext<'a> {
                 let lower = self.db.lower_instance(inst);
                 let class = self.db.class_data(lower.instance.class);
                 let item = class.item(&data.name).unwrap();
-                let item_ty = match item {
+                let mut item_ty = match item {
                     | AssocItemId::FuncId(id) => self.db.value_ty(id.into()),
                     | AssocItemId::StaticId(id) => self.db.value_ty(id.into()),
                 };
 
-                let expr = self.body.body_expr();
-                let item_ty = self.instantiate(item_ty, expr.into());
-                let self_type = self.result.self_type;
-                let body_expr = self.body.body_expr();
+                for &ty in lower.instance.types.iter() {
+                    if let TyKind::ForAll(_, t) = item_ty.lookup(self.db) {
+                        item_ty = t.replace_var(self.db, ty);
+                    }
+                }
 
-                if !self.subsume_types(item_ty, self_type, body_expr.into()) {
+                let expr = self.body.body_expr();
+                let self_type = self.result.self_type;
+
+                if !self.subsume_types(item_ty, self_type, expr.into()) {
                     self.report(InferenceDiagnostic::MismatchedType {
-                        id: body_expr.into(),
+                        id: expr.into(),
                         expected: item_ty,
                         found: self_type,
                     });

@@ -83,7 +83,7 @@ impl<'a> LowerCtx<'a> {
     }
 
     fn add_type_var(&mut self, type_info: Option<Arc<Layout>>) {
-        let type_var = type_info.map(|layout| self.builder.create_arg(layout));
+        let type_var = type_info.map(|layout| self.builder.create_arg(layout, false));
 
         self.type_vars.push(type_var);
     }
@@ -95,8 +95,9 @@ impl<'a> LowerCtx<'a> {
 
         for param in self.hir.params().to_vec() {
             let ty = self.infer.type_of_pat[param];
+            let by_ref = matches!(ty.lookup(self.db.upcast()), TyKind::TypeVar(_));
             let lyt = self.db.layout_of(ty);
-            let arg = self.builder.create_arg(lyt);
+            let arg = self.builder.create_arg(lyt, by_ref);
             let place = Place::new(arg);
 
             self.lower_pat(param, place);
@@ -171,11 +172,17 @@ impl<'a> LowerCtx<'a> {
                 let info = self.type_info(var);
                 let info = Place::new(info);
                 let rhs = self.builder.placed(op);
-                let layout = self.builder.place_layout(self.db, &rhs);
-                let place = self.builder.create_var(layout::reference(self.db, layout));
-                let place = Place::new(place);
+                let place = if self.builder.is_by_ref(&rhs) {
+                    rhs
+                } else {
+                    let layout = self.builder.place_layout(self.db, &rhs);
+                    let place = self.builder.create_var(layout::reference(self.db, layout));
+                    let place = Place::new(place);
 
-                self.builder.addr_of(place.clone(), rhs);
+                    self.builder.addr_of(place.clone(), rhs);
+                    place
+                };
+
                 self.builder.memcpy(ret.clone(), place, info.deref().field(0));
             } else {
                 self.builder.use_op(ret.clone(), op);

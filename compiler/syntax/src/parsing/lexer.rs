@@ -142,7 +142,8 @@ impl<'src> Lexer<'src> {
                     self.advance();
                 }
 
-                self.emit(COMMENT);
+                // self.insert_default(start, COMMENT);
+                self.emit(COMMENT)
             },
             | '-' if self.peek().is_digit(10) => self.number(ch, start),
             | '0'..='9' => self.number(ch, start),
@@ -259,7 +260,7 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 self.insert_default(start, FAT_ARROW);
             },
-            | '=' if !is_op_char(self.peek()) => match self.stack[..] {
+            | '=' => match self.stack[..] {
                 | [.., (_, LayoutDelim::TopDeclHead)] => {
                     self.stack.pop().unwrap();
                     self.emit(EQUALS);

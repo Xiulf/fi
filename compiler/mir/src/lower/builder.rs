@@ -29,6 +29,7 @@ impl Builder {
                 layout: Arc::new(Layout::default()),
                 kind: LocalKind::Ret,
                 is_ssa: false,
+                is_by_ref: false,
             });
 
             self.body.ret = Some(id);
@@ -36,6 +37,7 @@ impl Builder {
                 layout: db.layout_of(ty),
                 kind: LocalKind::Arg,
                 is_ssa: true,
+                is_by_ref: true,
             })
         } else {
             let layout = db.layout_of(ty);
@@ -44,6 +46,7 @@ impl Builder {
                     | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
                     | _ => false,
                 },
+                is_by_ref: false,
                 kind: LocalKind::Ret,
                 layout,
             });
@@ -53,12 +56,13 @@ impl Builder {
         }
     }
 
-    pub fn create_arg(&mut self, layout: Arc<Layout>) -> LocalId {
+    pub fn create_arg(&mut self, layout: Arc<Layout>, by_ref: bool) -> LocalId {
         self.body.locals.alloc(Local {
             is_ssa: match &layout.abi {
                 | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
                 | _ => false,
             },
+            is_by_ref: by_ref,
             kind: LocalKind::Arg,
             layout,
         })
@@ -79,6 +83,7 @@ impl Builder {
                     layout,
                     kind: LocalKind::Var,
                     is_ssa: false,
+                    is_by_ref: false,
                 })
             }
         } else {
@@ -87,6 +92,7 @@ impl Builder {
                     | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
                     | _ => false,
                 },
+                is_by_ref: false,
                 kind: LocalKind::Var,
                 layout,
             })
@@ -141,6 +147,10 @@ impl Builder {
         }
 
         lyt
+    }
+
+    pub fn is_by_ref(&self, place: &Place) -> bool {
+        place.elems.is_empty() && self.body.locals[place.local].is_by_ref
     }
 
     pub fn memcpy(&mut self, to: Place, from: Place, size: Place) {

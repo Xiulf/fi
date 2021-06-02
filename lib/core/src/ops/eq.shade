@@ -1,6 +1,6 @@
 module eq =
 
-import prim (intrinsics, Bool)
+import prim (intrinsics, Bool, Int32)
 
 infix 4 eq as (==)
 infix 4 ne as (!=)

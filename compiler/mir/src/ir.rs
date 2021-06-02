@@ -19,6 +19,7 @@ pub struct Local {
     pub layout: Arc<Layout>,
     pub kind: LocalKind,
     pub is_ssa: bool,
+    pub is_by_ref: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

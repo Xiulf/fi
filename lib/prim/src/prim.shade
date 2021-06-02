@@ -76,6 +76,7 @@ foreign type Block :: Type -> Type -> Type
 @repr(scalar = "f64") foreign type Float64 :: Type
 
 type Unit = ()
+type Byte = Uint8
 
 @lang = "bool-type"
 type Bool =

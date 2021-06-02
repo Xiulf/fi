@@ -208,7 +208,7 @@ impl<'a> ModuleCtx<'a> {
                 .body
                 .args()
                 .into_iter()
-                .filter_map(|arg| {
+                .map(|arg| {
                     let arg = &fx.body.locals[arg];
                     let value = match fx.mcx.pass_mode(&arg.layout) {
                         | abi::PassMode::NoPass => return None,
@@ -241,18 +241,23 @@ impl<'a> ModuleCtx<'a> {
                 .collect::<Vec<_>>();
 
             for (arg, value) in fx.body.args().into_iter().zip(vals) {
-                let layout = value.layout.clone();
-                let place = if fx.body.locals[arg].is_ssa {
-                    let place = if let mir::layout::Abi::ScalarPair(_, _) = layout.abi {
-                        PlaceRef::new_var_pair(&mut fx, layout)
-                    } else {
-                        PlaceRef::new_var(&mut fx, layout)
-                    };
+                let place = if let Some(value) = value {
+                    let layout = value.layout.clone();
 
-                    place.clone().store(&mut fx, value);
-                    place
+                    if fx.body.locals[arg].is_ssa {
+                        let place = if let mir::layout::Abi::ScalarPair(_, _) = layout.abi {
+                            PlaceRef::new_var_pair(&mut fx, layout)
+                        } else {
+                            PlaceRef::new_var(&mut fx, layout)
+                        };
+
+                        place.clone().store(&mut fx, value);
+                        place
+                    } else {
+                        PlaceRef::new_ref(value.on_stack(&mut fx).0, layout)
+                    }
                 } else {
-                    PlaceRef::new_ref(value.on_stack(&mut fx).0, layout)
+                    PlaceRef::no_place(fx.body.locals[arg].layout.clone())
                 };
 
                 fx.locals.insert(arg, place);

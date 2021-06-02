@@ -181,6 +181,14 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
 
                 TyKind::App(record_ty, row).intern(self.db)
             },
+            | TypeRef::Slice(of) => {
+                let slice_ty = self.lang_type("slice-type");
+                let of_ = self.lower_ty(*of);
+
+                self.check_kind_type(of_, *of);
+
+                TyKind::App(slice_ty, of_).intern(self.db)
+            },
             | TypeRef::Row(fields, tail) => self.lower_row(fields, *tail),
             | TypeRef::Forall(vars, inner) => {
                 let new_resolver = Resolver::for_type(self.db.upcast(), self.owner.into(), *inner);
@@ -367,9 +375,7 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
         let resolver = id.resolver(db.upcast());
         let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
         let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
-        let mut ty = ctx.lower_ty(ty);
-
-        if let ContainerId::Class(class) = loc.container {
+        let ty = if let ContainerId::Class(class) = loc.container {
             let lower = db.lower_class(class);
             let ctnt = Constraint {
                 class,
@@ -378,12 +384,22 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
                     .collect(),
             };
 
+            for &kind in lower.class.vars.iter() {
+                ctx.push_var_kind(kind);
+            }
+
+            let mut ty = ctx.lower_ty(ty);
+
             ty = TyKind::Ctnt(ctnt, ty).intern(db);
 
             for &var in lower.class.vars.iter().rev() {
                 ty = TyKind::ForAll(var, ty).intern(db);
             }
-        }
+
+            ty
+        } else {
+            ctx.lower_ty(ty)
+        };
 
         let ty = ctx.subst_type(ty);
 

@@ -330,6 +330,7 @@ crate fn block(p: &mut Parser) {
     p.expect(LYT_START);
 
     while !p.at(EOF) && !p.at(LYT_END) {
+        p.eat(LYT_SEP);
         stmt(p);
 
         if !p.at(LYT_END) {

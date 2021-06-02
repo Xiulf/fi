@@ -1,6 +1,6 @@
 module sub =
 
-import prim (intrinsics)
+import prim (intrinsics, Int32)
 
 infixl 6 sub as (-)
 
