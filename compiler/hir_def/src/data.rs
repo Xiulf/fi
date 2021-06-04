@@ -86,7 +86,7 @@ pub struct InstanceData {
     pub vars: Box<[LocalTypeVarId]>,
     pub types: Box<[LocalTypeRefId]>,
     pub constraints: Box<[Constraint]>,
-    pub items: Box<[AssocItemId]>,
+    pub items: Box<[(Name, AssocItemId)]>,
     type_map: TypeMap,
     type_source_map: TypeSourceMap,
 }
@@ -360,7 +360,7 @@ impl InstanceData {
 
         Arc::new(InstanceData {
             class: it.class.clone(),
-            items: items.into_iter().map(|(_, it)| it).collect(),
+            items: items.into(),
             types,
             vars,
             constraints,
@@ -375,6 +375,12 @@ impl InstanceData {
 
     pub fn type_source_map(&self) -> &TypeSourceMap {
         &self.type_source_map
+    }
+
+    pub fn item(&self, name: &Name) -> Option<AssocItemId> {
+        self.items
+            .iter()
+            .find_map(|(n, id)| if n == name { Some(*id) } else { None })
     }
 }
 

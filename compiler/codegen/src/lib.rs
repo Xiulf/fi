@@ -138,7 +138,7 @@ impl<'a> ModuleCtx<'a> {
             clif::Linkage::Local
         };
 
-        let name = func.link_name(self.db.upcast());
+        let name = func.link_name(self.db.upcast()).to_string();
         let id = self.module.declare_function(&name, linkage, &sig).unwrap();
 
         self.func_ids.insert(func, (id, sig));
@@ -160,12 +160,7 @@ impl<'a> ModuleCtx<'a> {
             clif::Linkage::Local
         };
 
-        let name = if is_foreign {
-            static_.name(self.db.upcast()).to_string()
-        } else {
-            static_.path(self.db.upcast()).to_string()
-        };
-
+        let name = static_.link_name(self.db.upcast()).to_string();
         let id = self.module.declare_data(&name, linkage, false, false).unwrap();
 
         self.static_ids.insert(static_, id);

@@ -32,19 +32,6 @@ impl<T, V> ArenaMap<Idx<T>, V> {
         self.v.get_mut(Self::to_idx(idx)).and_then(Option::as_mut)
     }
 
-    pub fn get_or_default(&mut self, idx: Idx<T>) -> &mut V
-    where
-        V: Default,
-    {
-        let i = Self::to_idx(idx);
-
-        if i >= self.v.len() || self.v[i].is_none() {
-            self.insert(idx, V::default());
-        }
-
-        self.v.get_mut(i).and_then(Option::as_mut).unwrap()
-    }
-
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.v.iter().filter_map(Option::as_ref)
     }

@@ -21,7 +21,7 @@ pub use hir_def::pat::{Pat, PatId};
 pub use hir_def::path::Path;
 pub use hir_def::{arena, attrs, id};
 use hir_ty::db::HirDatabase;
-pub use hir_ty::infer::InferenceResult;
+pub use hir_ty::infer::{InferenceResult, MethodSource};
 use hir_ty::lower::LowerResult;
 pub use hir_ty::{display, ty};
 use std::sync::Arc;
@@ -361,22 +361,21 @@ impl Func {
         db.func_data(self.id).is_foreign
     }
 
-    pub fn link_name(self, db: &dyn HirDatabase) -> String {
+    pub fn link_name(self, db: &dyn HirDatabase) -> Name {
         if self.is_foreign(db) {
-            self.name(db).to_string()
+            self.name(db)
         } else {
             let mut path = self.path(db);
 
             if let Some(it) = self.as_assoc_item(db) {
                 if let AssocItemContainer::Instance(inst) = it.container(db) {
-                    let name = format!("$instance");
-                    let name = name.as_name();
+                    let name = inst.link_name(db);
 
                     path.to_instance(name);
                 }
             }
 
-            path.to_string()
+            path.to_string().as_name()
         }
     }
 
@@ -444,6 +443,24 @@ impl Static {
 
     pub fn path(self, db: &dyn HirDatabase) -> Path {
         self.module(db).path_to_name(db, self.name(db))
+    }
+
+    pub fn link_name(self, db: &dyn HirDatabase) -> Name {
+        if self.is_foreign(db) {
+            self.name(db)
+        } else {
+            let mut path = self.path(db);
+
+            if let Some(it) = self.as_assoc_item(db) {
+                if let AssocItemContainer::Instance(inst) = it.container(db) {
+                    let name = inst.link_name(db);
+
+                    path.to_instance(name);
+                }
+            }
+
+            path.to_string().as_name()
+        }
     }
 
     pub fn as_assoc_item(self, db: &dyn HirDatabase) -> Option<AssocItem> {
@@ -683,8 +700,25 @@ impl Instance {
         self.id.lookup(db.upcast()).id.file_id
     }
 
+    pub fn link_name(self, db: &dyn HirDatabase) -> Name {
+        let data = db.instance_data(self.id);
+        let type_map = data.type_map();
+        let mut name = data.class.segments().last().unwrap().to_string();
+
+        for (i, ty) in data.types.iter().enumerate() {
+            name.push('_');
+            ty_link_name(&type_map, ty, &mut name).unwrap();
+        }
+
+        name.as_name()
+    }
+
     pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {
-        db.instance_data(self.id).items.iter().map(|id| (*id).into()).collect()
+        db.instance_data(self.id)
+            .items
+            .iter()
+            .map(|(_, id)| (*id).into())
+            .collect()
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
@@ -695,6 +729,71 @@ impl Instance {
         for item in self.items(db) {
             item.diagnostics(db, sink);
         }
+    }
+}
+
+fn ty_link_name(
+    map: &hir_def::type_ref::TypeMap,
+    ty: &hir_def::type_ref::LocalTypeRefId,
+    out: &mut String,
+) -> std::fmt::Result {
+    use hir_def::type_ref::{PtrLen, TypeRef};
+    use std::fmt::Write;
+
+    match &map[*ty] {
+        | TypeRef::Error => write!(out, "error"),
+        | TypeRef::Placeholder => write!(out, "_"),
+        | TypeRef::Figure(i) => write!(out, "{}", i),
+        | TypeRef::Symbol(s) => write!(out, "{:?}", s),
+        | TypeRef::Kinded(t, k) => {
+            write!(out, "(")?;
+            ty_link_name(map, t, out)?;
+            write!(out, " :: ")?;
+            ty_link_name(map, k, out)?;
+            write!(out, ")")
+        },
+        | TypeRef::App(a, b) => {
+            write!(out, "(")?;
+            ty_link_name(map, a, out)?;
+            write!(out, " ")?;
+            ty_link_name(map, b, out)?;
+            write!(out, ")")
+        },
+        | TypeRef::Tuple(ts) => {
+            write!(out, "(")?;
+
+            for (i, t) in ts.iter().enumerate() {
+                if i != 0 {
+                    write!(out, ", ")?;
+                }
+
+                ty_link_name(map, t, out)?;
+            }
+
+            write!(out, ")")
+        },
+        | TypeRef::Path(p) => write!(out, "{}", p),
+        | TypeRef::Ptr(t, PtrLen::Single) => {
+            write!(out, "*")?;
+            ty_link_name(map, t, out)
+        },
+        | TypeRef::Ptr(t, PtrLen::Multiple(None)) => {
+            write!(out, "[*]")?;
+            ty_link_name(map, t, out)
+        },
+        | TypeRef::Ptr(t, PtrLen::Multiple(Some(s))) => {
+            write!(out, "[*:{}]", s.0)?;
+            ty_link_name(map, t, out)
+        },
+        | TypeRef::Slice(t) => {
+            write!(out, "[]")?;
+            ty_link_name(map, t, out)
+        },
+        | TypeRef::Array(t, len) => {
+            write!(out, "[{}]", len)?;
+            ty_link_name(map, t, out)
+        },
+        | _ => unimplemented!(),
     }
 }
 

@@ -7,6 +7,7 @@ use builder::Builder;
 use hir::display::HirDisplay as _;
 use hir::id::HasModule as _;
 use hir::ty::{Ty, TyKind, TypeVar};
+use hir::MethodSource;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -202,7 +203,7 @@ impl<'a> LowerCtx<'a> {
         match body[id] {
             | hir::Expr::Missing => Operand::Const(Const::Undefined, lyt),
             | hir::Expr::Typed { expr, .. } => self.lower_expr_impl(expr, ret),
-            | hir::Expr::Path { ref path } => self.lower_path(id, path, ty),
+            | hir::Expr::Path { ref path } => self.lower_path(id, path, ty, ret),
             | hir::Expr::Lit { ref lit } => match *lit {
                 | hir::Literal::Int(i) => Operand::Const(Const::Scalar(i as u128), lyt),
                 | hir::Literal::Float(i) => Operand::Const(Const::Scalar(i as u128), lyt),
@@ -288,11 +289,25 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
-    fn lower_path(&mut self, expr: hir::ExprId, path: &hir::Path, mut ty: Ty) -> Operand {
+    fn lower_path(&mut self, expr: hir::ExprId, path: &hir::Path, mut ty: Ty, ret: &mut Option<Place>) -> Operand {
         let resolver = Resolver::for_expr(self.db.upcast(), self.def, expr);
 
         match resolver.resolve_value_fully(self.db.upcast(), path) {
-            | Some(ValueNs::Func(id)) => {
+            | Some(ValueNs::Func(mut id)) => {
+                if let Some(method) = self.infer.methods.get(&expr) {
+                    match method {
+                        | MethodSource::Instance(inst) => {
+                            let data = self.db.instance_data(*inst);
+                            let item = data.item(path.segments().last().unwrap()).unwrap();
+
+                            id = match item {
+                                | hir::id::AssocItemId::FuncId(id) => id,
+                                | _ => unreachable!(),
+                            };
+                        },
+                    }
+                }
+
                 while let TyKind::ForAll(_, t) = ty.lookup(self.db.upcast()) {
                     ty = t;
                 }
@@ -305,9 +320,12 @@ impl<'a> LowerCtx<'a> {
                     Operand::Const(Const::FuncAddr(id.into()), self.db.layout_of(ty))
                 } else {
                     let func_lyt = self.func_layout();
-                    let lyt = self.db.layout_of(ty);
-                    let ret = self.builder.create_var(lyt);
-                    let ret = Place::new(ret);
+                    let ret = ret.take().unwrap_or_else(|| {
+                        let lyt = self.db.layout_of(ty);
+
+                        Place::new(self.builder.create_var(lyt))
+                    });
+
                     let func = Operand::Const(Const::FuncAddr(id.into()), func_lyt);
 
                     self.builder.call(ret.clone(), func, Vec::new());
@@ -319,6 +337,15 @@ impl<'a> LowerCtx<'a> {
             | Some(ValueNs::Const(id)) => match self.db.eval(id.into()) {
                 | crate::eval::EvalResult::Finished(c) => Operand::Const(c, self.db.layout_of(ty)),
                 | _ => Operand::Const(Const::Undefined, self.db.layout_of(ty)),
+            },
+            | Some(ValueNs::Ctor(id)) => {
+                let ret = ret.take().unwrap_or_else(|| {
+                    let lyt = self.db.layout_of(ty);
+
+                    Place::new(self.builder.create_var(lyt))
+                });
+
+                Operand::Place(ret)
             },
             | r => unimplemented!("{:?}", r),
         }
@@ -337,7 +364,23 @@ impl<'a> LowerCtx<'a> {
             let resolver = Resolver::for_expr(self.db.upcast(), self.def, base);
 
             match resolver.resolve_value_fully(self.db.upcast(), path) {
-                | Some(ValueNs::Func(id)) => return self.lower_func_app(id, base, args, ret_ty, ret),
+                | Some(ValueNs::Func(mut id)) => {
+                    if let Some(method) = self.infer.methods.get(&base) {
+                        match method {
+                            | MethodSource::Instance(inst) => {
+                                let data = self.db.instance_data(*inst);
+                                let item = data.item(path.segments().last().unwrap()).unwrap();
+
+                                id = match item {
+                                    | hir::id::AssocItemId::FuncId(id) => id,
+                                    | _ => unreachable!(),
+                                };
+                            },
+                        }
+                    }
+
+                    return self.lower_func_app(id, base, args, ret_ty, ret);
+                },
                 | Some(ValueNs::Ctor(id)) => return self.lower_ctor_app(id, args, ret_ty, ret),
                 | _ => {},
             }
@@ -399,7 +442,7 @@ impl<'a> LowerCtx<'a> {
             let arg_tys = args.iter().map(|&a| self.infer.type_of_expr[a]).collect();
             let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
-            if let Some(inst) = self.infer.instances.get(func_expr) {
+            if let Some(inst) = self.infer.instances.get(&func_expr) {
                 self.lower_generic_call(ret.clone(), inst.clone(), func_ty, func, args, arg_tys);
             } else {
                 self.builder.call(ret.clone(), func, args);

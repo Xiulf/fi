@@ -1,0 +1,38 @@
+module io =
+
+import prim
+import prim/intrinsics (unsafe, transmute, ($))
+
+class Write p =
+    fun write :: p -> []Byte -> p
+
+type Stdout =| Stdout
+type Stderr =| Stderr
+
+fun print (s :: Str) = do
+    let s = unsafe $ transmute s
+    write Stdout s
+
+fun println (s :: Str) = do
+    print s
+    print "\n"
+
+fun eprint (s :: Str) = do
+    let s = unsafe $ transmute s
+    write Stderr s
+
+fun eprintln (s :: Str) = do
+    eprint s
+    eprint "\n"
+
+instance Write Stdout =
+    fun write s bytes = do
+        let (ptr, len) = unsafe $ transmute bytes
+        libc/write libc/STDOUT_FILENO ptr len
+        s
+
+instance Write Stderr =
+    fun write s bytes = do
+        let (ptr, len) = unsafe $ transmute bytes
+        libc/write libc/STDERR_FILENO ptr len
+        s

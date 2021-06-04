@@ -8,7 +8,7 @@ impl FunctionCtx<'_, '_> {
     pub fn lower(&mut self) {
         let body = Arc::clone(&self.body);
 
-        eprintln!("{}", body.display(self.db.upcast()));
+        // eprintln!("{}", body.display(self.db.upcast()));
 
         for (id, block) in body.blocks.iter() {
             self.bcx.switch_to_block(self.blocks[id]);
@@ -478,7 +478,7 @@ impl FunctionCtx<'_, '_> {
             id
         } else {
             let sig = self.func_signature(*func);
-            let name = func.link_name(self.db.upcast());
+            let name = func.link_name(self.db.upcast()).to_string();
 
             self.mcx
                 .module

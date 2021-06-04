@@ -45,7 +45,7 @@ foreign type Array :: Type -> Figure -> Type
 @lang = "slice-type"
 @repr(
     scalar_first("ptr", valid_range_start = 1),
-    scalar_second("ptr"),
+    scalar_second("ptr_sized_uint"),
     elem = 0,
 )
 foreign type Slice :: Type -> Type

@@ -1,4 +1,4 @@
-use super::{ExprOrPatId, InferenceContext, InferenceDiagnostic};
+use super::{ExprOrPatId, InferenceContext, InferenceDiagnostic, MethodSource};
 use crate::class::ClassEnvScope;
 use crate::ty::*;
 
@@ -40,6 +40,11 @@ impl InferenceContext<'_> {
             true
         } else if let Some(res) = self.db.solve_constraint(ctnt.clone()) {
             res.apply(self);
+
+            if let ExprOrPatId::ExprId(expr) = id {
+                self.result.methods.insert(expr, MethodSource::Instance(res.instance));
+            }
+
             true
         } else {
             self.constraints.push((ctnt, id, scope));

@@ -90,7 +90,7 @@ impl InferenceContext<'_> {
                 let ty = inner.replace_var(self.db, u);
 
                 if let ExprOrPatId::ExprId(e) = id {
-                    self.result.instances.get_or_default(e).push(u);
+                    self.result.instances.entry(e).or_default().push(u);
                 }
 
                 self.instantiate(ty, id)

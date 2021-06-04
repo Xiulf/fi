@@ -7,3 +7,4 @@ module core (
 import prim as c
 import prim/intrinsics (($)) as c
 import core/ops as c
+import core/io (print, println, eprint, eprintln) as c

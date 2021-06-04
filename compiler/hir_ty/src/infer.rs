@@ -16,7 +16,9 @@ use hir_def::arena::ArenaMap;
 use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
-use hir_def::id::{AssocItemId, ClassId, ContainerId, DefWithBodyId, FuncId, HasModule, Lookup, TypeVarOwner};
+use hir_def::id::{
+    AssocItemId, ClassId, ContainerId, DefWithBodyId, FuncId, HasModule, InstanceId, Lookup, TypeVarOwner,
+};
 use hir_def::pat::PatId;
 use hir_def::resolver::{HasResolver, Resolver};
 use rustc_hash::FxHashMap;
@@ -74,8 +76,14 @@ pub struct InferenceResult {
     pub self_type: Ty,
     pub type_of_expr: ArenaMap<ExprId, Ty>,
     pub type_of_pat: ArenaMap<PatId, Ty>,
-    pub instances: ArenaMap<ExprId, Vec<Ty>>,
+    pub instances: FxHashMap<ExprId, Vec<Ty>>,
+    pub methods: FxHashMap<ExprId, MethodSource>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MethodSource {
+    Instance(InstanceId),
 }
 
 pub(crate) struct InferenceContext<'a> {
@@ -135,7 +143,8 @@ impl<'a> InferenceContext<'a> {
                 self_type: TyKind::Error.intern(db),
                 type_of_expr: ArenaMap::default(),
                 type_of_pat: ArenaMap::default(),
-                instances: ArenaMap::default(),
+                instances: FxHashMap::default(),
+                methods: FxHashMap::default(),
                 diagnostics: Vec::new(),
             },
             subst: unify::Substitution::default(),
@@ -157,7 +166,8 @@ impl<'a> InferenceContext<'a> {
             self_type: TyKind::Error.intern(self.db),
             type_of_expr: ArenaMap::default(),
             type_of_pat: ArenaMap::default(),
-            instances: ArenaMap::default(),
+            instances: FxHashMap::default(),
+            methods: FxHashMap::default(),
             diagnostics: Vec::new(),
         });
 
