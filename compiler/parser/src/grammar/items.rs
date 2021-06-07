@@ -1,6 +1,7 @@
 use super::*;
 use crate::parser::{Marker, Parser};
 use crate::syntax_kind::*;
+use crate::token_set::TokenSet;
 
 crate fn any_item(p: &mut Parser) {
     let m = p.start();
@@ -109,7 +110,7 @@ crate fn fun(p: &mut Parser, m: Marker) {
         types::func(p);
         m.complete(p, ITEM_FUN);
     } else {
-        while !p.at(EOF) && !p.at(EQUALS) && !p.at(PIPE) {
+        while !p.at_ts(TokenSet::new(&[EOF, LYT_SEP, LYT_END, EQUALS, PIPE])) {
             patterns::atom(p);
         }
 

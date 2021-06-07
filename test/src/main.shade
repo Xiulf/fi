@@ -2,5 +2,13 @@ module main =
 
 import core
 
-fun main =
+fun main = do
+    let _ = test 4 5 3
     println "Hello World!"
+
+fun test
+    (a :: Int32)
+    (b :: Int32)
+    (c :: Int32)
+=
+    a + b + c

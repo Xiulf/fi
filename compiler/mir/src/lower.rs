@@ -218,7 +218,23 @@ impl<'a> LowerCtx<'a> {
                     let resolver = f.resolver(self.db.upcast());
 
                     match resolver.resolve_value_fully(self.db.upcast(), &fixity.func) {
-                        | Some(ValueNs::Func(f)) => self.lower_func_app(f, id, vec![lhs, rhs], ty, ret.take()),
+                        | Some(ValueNs::Func(mut f)) => {
+                            if let Some(method) = self.infer.methods.get(&id) {
+                                match method {
+                                    | MethodSource::Instance(inst) => {
+                                        let data = self.db.instance_data(*inst);
+                                        let item = data.item(fixity.func.segments().last().unwrap()).unwrap();
+
+                                        f = match item {
+                                            | hir::id::AssocItemId::FuncId(id) => id,
+                                            | _ => unreachable!(),
+                                        };
+                                    },
+                                }
+                            }
+
+                            self.lower_func_app(f, id, vec![lhs, rhs], ty, ret.take())
+                        },
                         | Some(ValueNs::Ctor(c)) => self.lower_ctor_app(c, vec![lhs, rhs], ty, ret.take()),
                         | _ => Operand::Const(Const::Undefined, lyt),
                     }
