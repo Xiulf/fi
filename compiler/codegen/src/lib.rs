@@ -8,6 +8,7 @@ mod place;
 mod ptr;
 mod value;
 
+use clif::InstBuilder as _;
 use clif::Module as _;
 use hir::arena::ArenaMap;
 use mir::ir;
@@ -20,6 +21,8 @@ use value::ValueRef;
 mod clif {
     pub use cranelift::codegen::binemit::{NullRelocSink, NullStackMapSink, NullTrapSink};
     pub use cranelift::codegen::ir;
+    pub use cranelift::codegen::ir::LibCall;
+    pub use cranelift::codegen::ir::{Heap, HeapData, HeapStyle};
     pub use cranelift::codegen::Context;
     pub use cranelift::frontend::*;
     pub use cranelift::prelude::*;
@@ -32,7 +35,7 @@ struct ModuleCtx<'a> {
     module: cranelift_object::ObjectModule,
     ctx: &'a mut clif::Context,
     fcx: &'a mut clif::FunctionBuilderContext,
-    func_ids: FxHashMap<hir::Func, (clif::FuncId, clif::Signature)>,
+    func_ids: FxHashMap<hir::Func, Arities>,
     static_ids: FxHashMap<hir::Static, clif::DataId>,
 }
 
@@ -43,6 +46,47 @@ struct FunctionCtx<'a, 'mcx> {
     blocks: ArenaMap<ir::BlockId, clif::Block>,
     locals: ArenaMap<ir::LocalId, PlaceRef>,
     ssa_vars: u32,
+}
+
+#[derive(Clone)]
+struct Arities {
+    max: usize,
+    sigs: Vec<clif::Signature>,
+    ids: Vec<clif::FuncId>,
+}
+
+impl Arities {
+    fn new(max: usize) -> Self {
+        Self {
+            max,
+            sigs: Vec::new(),
+            ids: Vec::new(),
+        }
+    }
+
+    fn max_sig(&self) -> &clif::Signature {
+        &self.sigs[0]
+    }
+
+    fn max_id(&self) -> clif::FuncId {
+        self.ids[0]
+    }
+
+    fn get_sig(&self, arity: usize) -> &clif::Signature {
+        if self.max == 0 {
+            &self.sigs[0]
+        } else {
+            &self.sigs[self.max - arity]
+        }
+    }
+
+    fn get_id(&self, arity: usize) -> clif::FuncId {
+        if self.max == 0 {
+            self.ids[0]
+        } else {
+            self.ids[self.max - arity]
+        }
+    }
 }
 
 impl<'a> ModuleCtx<'a> {
@@ -129,7 +173,7 @@ impl<'a> ModuleCtx<'a> {
             }
         }
 
-        let sig = self.func_signature(func);
+        let mut arities = self.func_signature(func);
         let linkage = if func.is_foreign(self.db.upcast()) {
             clif::Linkage::Import
         } else if func.is_exported(self.db.upcast()) {
@@ -139,9 +183,23 @@ impl<'a> ModuleCtx<'a> {
         };
 
         let name = func.link_name(self.db.upcast()).to_string();
-        let id = self.module.declare_function(&name, linkage, &sig).unwrap();
+        let id = self.module.declare_function(&name, linkage, arities.max_sig()).unwrap();
 
-        self.func_ids.insert(func, (id, sig));
+        arities.ids.push(id);
+
+        if matches!(linkage, clif::Linkage::Local | clif::Linkage::Export) {
+            for i in (1..arities.max).rev() {
+                let name = format!("{}'{}", name, i);
+                let id = self
+                    .module
+                    .declare_function(&name, linkage, arities.get_sig(i))
+                    .unwrap();
+
+                arities.ids.push(id);
+            }
+        }
+
+        self.func_ids.insert(func, arities);
     }
 
     pub fn register_static(&mut self, static_: hir::Static) {
@@ -171,9 +229,11 @@ impl<'a> ModuleCtx<'a> {
             return;
         }
 
-        if let Some(&(id, ref sig)) = self.func_ids.get(&func) {
-            use clif::InstBuilder;
-            let sig = sig.clone();
+        if let Some(arr) = self.func_ids.get(&func).cloned() {
+            self.lower_func_arities(&arr);
+
+            let id = arr.max_id();
+            let sig = arr.max_sig().clone();
             let def = hir::id::DefWithBodyId::FuncId(func.into());
             let mut fx = self.function(def);
             let start_block = fx.bcx.create_block();
@@ -309,6 +369,31 @@ impl<'a> ModuleCtx<'a> {
         }
     }
 
+    pub fn lower_func_arities(&mut self, arities: &Arities) {
+        for (id, sig) in arities.ids.iter().copied().zip(&arities.sigs).skip(1) {
+            let mut bcx = clif::FunctionBuilder::new(&mut self.ctx.func, &mut self.fcx);
+            let ptr_type = self.module.target_config().pointer_type();
+            let block = bcx.create_block();
+
+            bcx.func.signature = sig.clone();
+            bcx.switch_to_block(block);
+            bcx.append_block_params_for_function_params(block);
+
+            let a = bcx.ins().iconst(ptr_type, 0);
+            let b = bcx.ins().iconst(ptr_type, 0);
+
+            bcx.ins().return_(&[a, b]);
+            bcx.seal_block(block);
+            bcx.finalize();
+
+            self.module
+                .define_function(id, self.ctx, &mut clif::NullTrapSink {}, &mut clif::NullStackMapSink {})
+                .unwrap();
+
+            self.ctx.clear();
+        }
+    }
+
     pub fn lower_static(&mut self, static_: hir::Static) {
         if static_.is_foreign(self.db.upcast()) {
             return;
@@ -356,7 +441,7 @@ impl<'a> ModuleCtx<'a> {
         })();
 
         let main = main.expect("executable contains no main function");
-        let main = self.func_ids[&main].0;
+        let main = self.func_ids[&main].max_id();
         let mut sig = self.module.make_signature();
         let ptr_type = self.module.target_config().pointer_type();
 
@@ -369,7 +454,6 @@ impl<'a> ModuleCtx<'a> {
             .declare_function("main", clif::Linkage::Export, &sig)
             .unwrap();
 
-        use clif::InstBuilder;
         let mut bcx = clif::FunctionBuilder::new(&mut self.ctx.func, &mut self.fcx);
         let block = bcx.create_block();
 
@@ -427,12 +511,13 @@ impl<'a> ModuleCtx<'a> {
         }
     }
 
-    pub fn func_signature(&self, func: hir::Func) -> clif::Signature {
+    pub fn func_signature(&self, func: hir::Func) -> Arities {
         let lib = func.lib(self.db.upcast()).into();
         let func_id = self.db.lang_item(lib, "fn-type".into()).unwrap();
         let func_id = func_id.as_type_ctor().unwrap();
         let mut args = Vec::new();
         let mut ty = self.db.value_ty(hir::id::ValueTyDefId::FuncId(func.into()));
+        let mut arity = 0;
 
         while let hir::ty::TyKind::ForAll(var, ret) = ty.lookup(self.db.upcast()) {
             if let Some(layout) = mir::layout::type_var(self.db.upcast(), lib, var) {
@@ -448,6 +533,7 @@ impl<'a> ModuleCtx<'a> {
 
         while let Some([arg, ret]) = ty.match_ctor(self.db.upcast(), func_id) {
             args.push(self.db.layout_of(arg));
+            arity += 1;
             ty = ret;
         }
 
@@ -458,10 +544,29 @@ impl<'a> ModuleCtx<'a> {
             self.db.layout_of(ty)
         };
 
-        self.mk_signature(&ret, args)
+        let mut arities = Arities::new(arity);
+
+        if arity == 0 {
+            let sig = self.mk_signature(&ret, &args);
+
+            arities.sigs.push(sig);
+        } else {
+            let sig = self.mk_signature(&ret, &args);
+            let closure = mir::layout::closure(self.db.upcast());
+
+            arities.sigs.push(sig);
+
+            for i in (1..arity).rev() {
+                let sig = self.mk_signature(&closure, &args[0..i]);
+
+                arities.sigs.push(sig);
+            }
+        }
+
+        arities
     }
 
-    pub fn mk_signature(&self, ret: &mir::layout::Layout, args: Vec<Arc<mir::layout::Layout>>) -> clif::Signature {
+    pub fn mk_signature(&self, ret: &mir::layout::Layout, args: &[Arc<mir::layout::Layout>]) -> clif::Signature {
         let mut sig = self.module.make_signature();
         let ptr_type = self.module.target_config().pointer_type();
 
@@ -489,12 +594,54 @@ impl<'a> ModuleCtx<'a> {
 
         sig
     }
+
+    pub fn call_malloc(&mut self, bcx: &mut clif::FunctionBuilder, size: clif::Value) -> clif::Value {
+        let ptr_type = self.module.target_config().pointer_type();
+        let mut sig = self.module.make_signature();
+
+        sig.params.push(clif::AbiParam::new(ptr_type));
+        sig.returns.push(clif::AbiParam::new(ptr_type));
+
+        let libc_malloc = self
+            .module
+            .declare_function("malloc", clif::Linkage::Import, &sig)
+            .unwrap();
+
+        let libc_malloc = self.module.declare_func_in_func(libc_malloc, &mut self.ctx.func);
+        let inst = bcx.ins().call(libc_malloc, &[size]);
+
+        bcx.inst_results(inst)[0]
+    }
+
+    pub fn call_free(&mut self, bcx: &mut clif::FunctionBuilder, ptr: clif::Value) {
+        let ptr_type = self.module.target_config().pointer_type();
+        let mut sig = self.module.make_signature();
+
+        sig.params.push(clif::AbiParam::new(ptr_type));
+
+        let libc_free = self
+            .module
+            .declare_function("free", clif::Linkage::Import, &sig)
+            .unwrap();
+
+        let libc_free = self.module.declare_func_in_func(libc_free, &mut self.ctx.func);
+
+        bcx.ins().call(libc_free, &[ptr]);
+    }
 }
 
 impl<'a, 'mcx> FunctionCtx<'a, 'mcx> {
     pub fn next_ssa_var(&mut self) -> u32 {
         self.ssa_vars += 1;
         self.ssa_vars
+    }
+
+    pub fn call_malloc(&mut self, size: clif::Value) -> clif::Value {
+        self.mcx.call_malloc(&mut self.bcx, size)
+    }
+
+    pub fn call_free(&mut self, ptr: clif::Value) {
+        self.mcx.call_free(&mut self.bcx, ptr)
     }
 }
 

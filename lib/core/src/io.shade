@@ -3,11 +3,14 @@ module io =
 import prim
 import prim/intrinsics (unsafe, transmute, ($))
 
-class Write p =
-    fun write :: p -> []Byte -> p
+class Write w =
+    fun write :: w -> []Byte -> w
 
-type Stdout =| Stdout
-type Stderr =| Stderr
+type Stdout =
+    | Stdout
+
+type Stderr =
+    | Stderr
 
 fun print (s :: Str) = do
     let s = unsafe $ transmute s

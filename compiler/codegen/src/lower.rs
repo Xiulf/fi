@@ -166,25 +166,26 @@ impl FunctionCtx<'_, '_> {
     }
 
     pub fn lower_call(&mut self, ret: PlaceRef, func: &ir::Operand, args: Vec<ValueRef>) {
+        let arity = args.len();
         let ret_mode = self.pass_mode(&ret.layout);
         let ret_ptr = match ret_mode {
             | abi::PassMode::ByRef { size: _ } => Some(ret.as_ptr().get_addr(self)),
             | _ => None,
         };
 
-        let arg_layouts = args.iter().map(|a| a.layout.clone()).collect();
+        let arg_layouts = args.iter().map(|a| a.layout.clone()).collect::<Vec<_>>();
         let args = ret_ptr
             .into_iter()
             .chain(args.into_iter().flat_map(|a| self.value_for_arg(a)))
             .collect::<Vec<_>>();
 
         let inst = if let ir::Operand::Const(ir::Const::FuncAddr(id), _) = func {
-            let func = self.func_id(id);
+            let func = self.func_id(id, arity);
             let func = self.mcx.module.declare_func_in_func(func, &mut self.bcx.func);
 
             self.bcx.ins().call(func, &args)
         } else {
-            let sig = self.mk_signature(&ret.layout, arg_layouts);
+            let sig = self.mk_signature(&ret.layout, &arg_layouts);
             let sig = self.bcx.import_signature(sig);
             let func = self.lower_op(func, None).load_scalar(self);
 
@@ -329,7 +330,7 @@ impl FunctionCtx<'_, '_> {
                 },
                 | ir::Const::FuncAddr(id) => {
                     let ptr_type = self.module.target_config().pointer_type();
-                    let func = self.func_ids[id].0;
+                    let func = self.func_ids[id].max_id();
                     let func = self.mcx.module.declare_func_in_func(func, &mut self.bcx.func);
                     let func = self.bcx.ins().func_addr(ptr_type, func);
 
@@ -473,12 +474,17 @@ impl FunctionCtx<'_, '_> {
         }
     }
 
-    fn func_id(&mut self, func: &hir::Func) -> clif::FuncId {
-        if let Some(&(id, _)) = self.func_ids.get(func) {
-            id
+    fn func_id(&mut self, func: &hir::Func, arity: usize) -> clif::FuncId {
+        if let Some(arr) = self.func_ids.get(func) {
+            arr.get_id(arity)
         } else {
-            let sig = self.func_signature(*func);
-            let name = func.link_name(self.db.upcast()).to_string();
+            let arities = self.func_signature(*func);
+            let sig = arities.get_sig(arity);
+            let mut name = func.link_name(self.db.upcast()).to_string();
+
+            if arity != arities.max {
+                name = format!("{}'{}", name, arity);
+            }
 
             self.mcx
                 .module

@@ -77,6 +77,8 @@ foreign type Block :: Type -> Type -> Type
 
 type Unit = ()
 type Byte = Uint8
+type Float = Float32
+type Double = Float64
 
 @lang = "bool-type"
 type Bool =

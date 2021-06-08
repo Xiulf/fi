@@ -150,20 +150,20 @@ impl<'a, W: fmt::Write> fmt::Write for Indent<'a, W> {
     }
 }
 
-impl HirDisplay for TypeVar {
-    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
-        self.debruijn().hir_fmt(f)
+impl fmt::Display for TypeVar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.debruijn().fmt(f)
     }
 }
 
-impl HirDisplay for Unknown {
-    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+impl fmt::Display for Unknown {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "?{}", self.raw())
     }
 }
 
-impl HirDisplay for DebruijnIndex {
-    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+impl fmt::Display for DebruijnIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let depth = self.depth();
         let depth = unsafe { std::char::from_u32_unchecked('a' as u32 + depth) };
 
@@ -276,13 +276,13 @@ impl HirDisplay for Ty {
 
         match self.lookup(f.db) {
             | TyKind::Error => write!(f, "{{error}}"),
-            | TyKind::Unknown(u) => u.hir_fmt(f),
+            | TyKind::Unknown(u) => write!(f, "{}", u),
             | TyKind::Skolem(p, kind) => {
                 write!(f, "(_ :: ")?;
                 kind.hir_fmt(f)?;
                 write!(f, ")")
             },
-            | TyKind::TypeVar(t) => t.hir_fmt(f),
+            | TyKind::TypeVar(t) => write!(f, "{}", t),
             | TyKind::Figure(i) => write!(f, "{}", i),
             | TyKind::Symbol(s) => write!(f, "{}", s),
             | TyKind::Row(fields, tail) => {
@@ -368,15 +368,13 @@ impl HirDisplay for Class {
 impl HirDisplay for FunDep {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         for var in self.determiners.iter() {
-            var.hir_fmt(f)?;
-            write!(f, " ")?;
+            write!(f, "{} ", var)?;
         }
 
         write!(f, "->")?;
 
         for var in self.determined.iter() {
-            write!(f, " ")?;
-            var.hir_fmt(f)?;
+            write!(f, " {}", var)?;
         }
 
         Ok(())

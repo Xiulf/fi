@@ -601,6 +601,15 @@ pub fn type_info(db: &dyn MirDatabase) -> Arc<Layout> {
     })
 }
 
+pub fn closure(db: &dyn MirDatabase) -> Arc<Layout> {
+    let triple = db.target_triple();
+    let mut scalar = Scalar::new(Primitive::Pointer, &triple);
+
+    scalar.valid_range = 1..=*scalar.valid_range.end();
+
+    Arc::new(scalar_pair(scalar.clone(), scalar, &triple))
+}
+
 pub fn reference(db: &dyn MirDatabase, to: Arc<Layout>) -> Arc<Layout> {
     let triple = db.target_triple();
     let mut scalar = Scalar::new(Primitive::Pointer, &triple);
