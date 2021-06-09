@@ -24,6 +24,7 @@ foreign type Str :: Type
 
 @lang = "fn-type"
 @repr(scalar = "ptr", valid_range_start = 1)
+-- @repr(func(arg = 0, ret = 1))
 foreign type Fn :: Type -> Type -> Type
 
 @lang = "ptr-type"

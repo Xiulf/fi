@@ -1,5 +1,5 @@
 use crate::db::MirDatabase;
-use hir::attrs::AttrInput;
+use hir::attrs::{AttrInput, AttrInputGroup};
 use hir::display::HirDisplay;
 use hir::ty::{Ty, TyKind};
 use std::convert::TryInto;
@@ -348,35 +348,27 @@ fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
     }
 }
 
-fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> Layout {
+fn layout_from_repr(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) -> Layout {
     let triple = db.target_triple();
     let mut layout = Layout::default();
 
-    if let Some(_) = group.iter().find(|i| i.ident("uninhabited")) {
+    if group.ident("uninhabited") {
         layout.abi = Abi::Uninhabited;
     }
 
-    if let Some(fst) = group.iter().find_map(|i| i.field("scalar_first")) {
-        if let Some(snd) = group.iter().find_map(|i| i.field("scalar_second")) {
+    if let Some(fst) = group.field("scalar_first") {
+        if let Some(snd) = group.field("scalar_second") {
             let first = if let Some(val) = fst.string() {
                 scalar_from_repr(val, &triple)
             } else {
                 let group = fst.group().unwrap();
-                let mut s = scalar_from_repr(group.iter().find_map(|i| i.string()).unwrap(), &triple);
+                let mut s = scalar_from_repr(group.string().unwrap(), &triple);
 
-                if let Some(val) = group
-                    .iter()
-                    .find_map(|i| i.field("valid_range_start"))
-                    .and_then(|i| i.int())
-                {
+                if let Some(val) = group.field("valid_range_start").and_then(AttrInput::int) {
                     s.valid_range = (val as u128)..=*s.valid_range.end();
                 }
 
-                if let Some(val) = group
-                    .iter()
-                    .find_map(|i| i.field("valid_range_end"))
-                    .and_then(|i| i.int())
-                {
+                if let Some(val) = group.field("valid_range_end").and_then(AttrInput::int) {
                     s.valid_range = *s.valid_range.start()..=(val as u128);
                 }
 
@@ -387,21 +379,13 @@ fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> L
                 scalar_from_repr(val, &triple)
             } else {
                 let group = snd.group().unwrap();
-                let mut s = scalar_from_repr(group.iter().find_map(|i| i.string()).unwrap(), &triple);
+                let mut s = scalar_from_repr(group.string().unwrap(), &triple);
 
-                if let Some(val) = group
-                    .iter()
-                    .find_map(|i| i.field("valid_range_start"))
-                    .and_then(|i| i.int())
-                {
+                if let Some(val) = group.field("valid_range_start").and_then(AttrInput::int) {
                     s.valid_range = (val as u128)..=*s.valid_range.end();
                 }
 
-                if let Some(val) = group
-                    .iter()
-                    .find_map(|i| i.field("valid_range_end"))
-                    .and_then(|i| i.int())
-                {
+                if let Some(val) = group.field("valid_range_end").and_then(AttrInput::int) {
                     s.valid_range = *s.valid_range.start()..=(val as u128);
                 }
 
@@ -412,33 +396,25 @@ fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> L
         }
     }
 
-    if let Some(val) = group.iter().find_map(|i| i.field("scalar")).and_then(|i| i.string()) {
+    if let Some(val) = group.field("scalar").and_then(AttrInput::string) {
         layout = Layout::scalar(scalar_from_repr(val, &triple), &triple);
     }
 
-    if let Some(val) = group
-        .iter()
-        .find_map(|i| i.field("valid_range_start"))
-        .and_then(|i| i.int())
-    {
+    if let Some(val) = group.field("valid_range_start").and_then(AttrInput::int) {
         if let Abi::Scalar(s) = &mut layout.abi {
             s.valid_range = (val as u128)..=*s.valid_range.end();
             layout.largest_niche = Niche::from_scalar(&triple, Size::ZERO, s.clone());
         }
     }
 
-    if let Some(val) = group
-        .iter()
-        .find_map(|i| i.field("valid_range_end"))
-        .and_then(|i| i.int())
-    {
+    if let Some(val) = group.field("valid_range_end").and_then(AttrInput::int) {
         if let Abi::Scalar(s) = &mut layout.abi {
             s.valid_range = *s.valid_range.start()..=(val as u128);
             layout.largest_niche = Niche::from_scalar(&triple, Size::ZERO, s.clone());
         }
     }
 
-    if let Some(elem) = group.iter().find_map(|i| i.field("elem")) {
+    if let Some(elem) = group.field("elem") {
         if let Some(idx) = elem.int() {
             layout.elem = Some(Ok(args[idx as usize]));
         } else if let Some(group) = elem.group() {
@@ -446,8 +422,8 @@ fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> L
         }
     }
 
-    if let Some(arr) = group.iter().find_map(|i| i.field("array")).and_then(|i| i.group()) {
-        if let Some(len) = arr.iter().find_map(|i| i.field("len")).and_then(|i| i.int()) {
+    if let Some(arr) = group.field("array").and_then(AttrInput::group) {
+        if let Some(len) = arr.field("len").and_then(AttrInput::int) {
             if let Some(elem) = &layout.elem {
                 let stride = match elem {
                     | Ok(ty) => db.layout_of(*ty).stride,
@@ -468,8 +444,8 @@ fn layout_from_repr(db: &dyn MirDatabase, group: &[AttrInput], args: &[Ty]) -> L
         }
     }
 
-    if let Some(rec) = group.iter().find_map(|i| i.field("record")).and_then(|i| i.group()) {
-        if let Some(fields) = rec.iter().find_map(|i| i.field("fields")).and_then(|i| i.int()) {
+    if let Some(rec) = group.field("record").and_then(AttrInput::group) {
+        if let Some(fields) = rec.field("fields").and_then(AttrInput::int) {
             if let TyKind::Row(fields, tail) = args[fields as usize].lookup(db.upcast()) {
                 if let Some(_) = tail {
                     let data_lyt = Arc::new(Layout {

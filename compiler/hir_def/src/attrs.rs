@@ -32,10 +32,13 @@ pub struct Attr {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttrInput {
     Literal(Literal),
-    Group(Arc<[AttrInput]>),
+    Group(AttrInputGroup),
     Field(Name, Arc<AttrInput>),
     Ident(Name),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttrInputGroup(Arc<[AttrInput]>);
 
 #[derive(Debug, Clone, Copy)]
 pub struct AttrQuery<'a> {
@@ -125,7 +128,7 @@ impl Attr {
         } else if let Some(args) = ast.args() {
             let group = args.filter_map(AttrInput::from_src).collect();
 
-            Some(AttrInput::Group(group))
+            Some(AttrInput::Group(AttrInputGroup(group)))
         } else {
             None
         };
@@ -154,7 +157,7 @@ impl Attr {
         }
     }
 
-    pub fn group(&self) -> Option<&[AttrInput]> {
+    pub fn group(&self) -> Option<&AttrInputGroup> {
         match self.input.as_ref()? {
             | AttrInput::Group(g) => Some(g),
             | _ => None,
@@ -185,14 +188,14 @@ impl AttrInput {
             | ast::AttrArg::Call(c) => {
                 let name = c.name_ref()?.as_name();
                 let val = c.args()?.filter_map(Self::from_src).collect();
-                let val = Self::Group(val);
+                let val = Self::Group(AttrInputGroup(val));
 
                 Some(Self::Field(name, Arc::new(val)))
             },
         }
     }
 
-    pub fn group(&self) -> Option<&[AttrInput]> {
+    pub fn group(&self) -> Option<&AttrInputGroup> {
         match self {
             | AttrInput::Group(g) => Some(g),
             | _ => None,
@@ -232,6 +235,20 @@ impl AttrInput {
             | Literal::Int(i) => Some(*i),
             | _ => None,
         }
+    }
+}
+
+impl AttrInputGroup {
+    pub fn field(&self, name: &'static str) -> Option<&AttrInput> {
+        self.0.iter().find_map(|i| i.field(name))
+    }
+
+    pub fn ident(&self, name: &'static str) -> bool {
+        self.0.iter().any(|i| i.ident(name))
+    }
+
+    pub fn string(&self) -> Option<&str> {
+        self.0.iter().find_map(AttrInput::string)
     }
 }
 
