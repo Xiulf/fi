@@ -202,7 +202,7 @@ impl AttrInput {
         }
     }
 
-    pub fn field(&self, name: &'static str) -> Option<&AttrInput> {
+    pub fn field(&self, name: &str) -> Option<&AttrInput> {
         match self {
             | AttrInput::Field(field, val) if field.to_string() == name => Some(val),
             | _ => None,
@@ -216,7 +216,7 @@ impl AttrInput {
         }
     }
 
-    pub fn ident(&self, name: &'static str) -> bool {
+    pub fn ident(&self, name: &str) -> bool {
         match self {
             | AttrInput::Ident(i) => i.to_string() == name,
             | _ => false,
@@ -239,11 +239,11 @@ impl AttrInput {
 }
 
 impl AttrInputGroup {
-    pub fn field(&self, name: &'static str) -> Option<&AttrInput> {
+    pub fn field(&self, name: &str) -> Option<&AttrInput> {
         self.0.iter().find_map(|i| i.field(name))
     }
 
-    pub fn ident(&self, name: &'static str) -> bool {
+    pub fn ident(&self, name: &str) -> bool {
         self.0.iter().any(|i| i.ident(name))
     }
 

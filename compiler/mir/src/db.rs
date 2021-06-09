@@ -13,7 +13,7 @@ pub trait MirDatabase: HirDatabase + Upcast<dyn HirDatabase> {
     fn target_triple(&self) -> Arc<target_lexicon::Triple>;
 
     #[salsa::invoke(crate::layout::layout_of_query)]
-    fn layout_of(&self, ty: Ty) -> Arc<Layout>;
+    fn layout_of(&self, ty: Arc<Type>) -> Arc<Layout>;
 
     #[salsa::invoke(Type::mir_type_query)]
     fn mir_type(&self, ty: Ty) -> Arc<Type>;

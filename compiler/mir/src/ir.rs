@@ -1,4 +1,5 @@
 use crate::layout::Layout;
+use crate::ty::Type;
 use hir::arena::{Arena, Idx};
 use hir::display::{self, Write as _};
 use std::sync::Arc;
@@ -16,7 +17,7 @@ pub type BlockId = Idx<Block>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Local {
-    pub layout: Arc<Layout>,
+    pub ty: Arc<Type>,
     pub kind: LocalKind,
     pub is_ssa: bool,
     pub is_by_ref: bool,
@@ -67,7 +68,7 @@ pub enum RValue {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Operand {
     Place(Place),
-    Const(Const, Arc<Layout>),
+    Const(Const, Arc<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -187,7 +188,7 @@ impl display::HirDisplay for Local {
             write!(f, " ssa")?;
         }
 
-        write!(f, " {}", self.layout)
+        write!(f, " {}", self.ty)
     }
 }
 

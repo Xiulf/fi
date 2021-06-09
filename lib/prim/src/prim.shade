@@ -16,38 +16,37 @@ foreign type Char :: Type
 
 @lang = "str-type"
 @repr(
-    scalar_first("ptr", valid_range_start = 1),
-    scalar_second("ptr_sized_uint"),
-    elem(scalar = "u8"),
+    fields = 2,
+    f0(ptr(elem(scalar = "u8")), valid_range_start = 1),
+    f1(scalar = "ptr_sized_uint")
 )
 foreign type Str :: Type
 
 @lang = "fn-type"
-@repr(scalar = "ptr", valid_range_start = 1)
--- @repr(func(arg = 0, ret = 1))
+@repr(func(arg = 0, ret = 1))
 foreign type Fn :: Type -> Type -> Type
 
 @lang = "ptr-type"
-@repr(scalar = "ptr", valid_range_start = 1, elem = 0)
+@repr(ptr(elem = 0))
 foreign type Ptr :: Type -> Type
 
 @lang = "ptrb-type"
-@repr(scalar = "ptr", valid_range_start = 1, elem = 0)
+@repr(ptr(elem = 0))
 foreign type BufPtr :: Type -> Type
 
 @lang = "ptrbs-type"
-@repr(scalar = "ptr", valid_range_start = 1, elem = 0)
+@repr(ptr(elem = 0))
 foreign type BufPtrSentinel :: Type -> Figure -> Type
 
 @lang = "array-type"
-@repr(elem = 0, array(len = 1))
+@repr(array(elem = 0, len = 1))
 foreign type Array :: Type -> Figure -> Type
 
 @lang = "slice-type"
 @repr(
-    scalar_first("ptr", valid_range_start = 1),
-    scalar_second("ptr_sized_uint"),
-    elem = 0,
+    fields = 2,
+    f0(ptr(elem = 0), valid_range_start = 1),
+    f1(scalar = "ptr_sized_uint")
 )
 foreign type Slice :: Type -> Type
 

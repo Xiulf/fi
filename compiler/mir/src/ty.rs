@@ -218,6 +218,18 @@ impl Type {
             }
         }
 
+        if let Some(count) = group.field("fields").and_then(AttrInput::int) {
+            let mut fields = Vec::with_capacity(count as usize);
+
+            for i in 0..count {
+                if let Some(field) = group.field(&format!("f{}", i)).and_then(AttrInput::group) {
+                    fields.push(Self::from_repr(db, field, args));
+                }
+            }
+
+            kind = TypeKind::And(fields.into());
+        }
+
         Arc::new(Type { repr, kind })
     }
 
