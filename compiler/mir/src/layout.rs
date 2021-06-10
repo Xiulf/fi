@@ -16,7 +16,7 @@ pub fn layout_of_query(db: &dyn MirDatabase, ty: Arc<Type>) -> Arc<Layout> {
         Layout::scalar(scalar, &triple)
     };
 
-    let layout = match ty.kind.clone() {
+    let mut layout = match ty.kind.clone() {
         | TypeKind::Unit => {
             if let Some(prim) = ty.repr.scalar {
                 scalar(prim)

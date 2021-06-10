@@ -63,3 +63,9 @@ impl<T, V> std::ops::Index<Idx<T>> for ArenaMap<Idx<T>, V> {
         self.v[Self::to_idx(idx)].as_ref().unwrap()
     }
 }
+
+impl<T, V> std::ops::IndexMut<Idx<T>> for ArenaMap<Idx<T>, V> {
+    fn index_mut(&mut self, idx: Idx<T>) -> &mut V {
+        self.v[Self::to_idx(idx)].as_mut().unwrap()
+    }
+}

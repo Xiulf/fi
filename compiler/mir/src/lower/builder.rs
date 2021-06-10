@@ -1,21 +1,31 @@
 use crate::db::MirDatabase;
 use crate::ir::*;
-use crate::layout::{Abi, Layout};
+use crate::ty::{Type, TypeKind};
 use hir::ty::{Ty, TyKind};
 use std::sync::Arc;
 
 #[derive(Default)]
-pub struct Builder {
-    body: Body,
+pub struct Builder<'a> {
+    bodies: &'a mut Bodies,
+    body: LocalBodyId,
     block: Option<BlockId>,
     unit_tmp: Option<LocalId>,
 }
 
-impl Builder {
-    pub fn finish(self) -> Body {
-        self.body
-    }
+impl Bodies {
+    pub fn add(&mut self) -> Builder {
+        let id = self.bodies.alloc(Body::default());
 
+        Builder {
+            bodies: self,
+            body: id,
+            block: None,
+            unit_tmp: None,
+        }
+    }
+}
+
+impl<'a> Builder<'a> {
     pub fn create_block(&mut self) -> BlockId {
         self.body.blocks.alloc(Block {
             stmts: Vec::new(),
@@ -24,77 +34,42 @@ impl Builder {
     }
 
     pub fn create_ret(&mut self, db: &dyn MirDatabase, ty: Ty) -> LocalId {
-        if let TyKind::TypeVar(_) = ty.lookup(db.upcast()) {
-            let id = self.body.locals.alloc(Local {
-                layout: Arc::new(Layout::default()),
-                kind: LocalKind::Ret,
-                is_ssa: false,
-                is_by_ref: false,
-            });
+        let id = self.body.locals.alloc(Local {
+            kind: LocalKind::Ret,
+            ty: db.mir_type(ty),
+        });
 
-            self.body.ret = Some(id);
-            self.body.locals.alloc(Local {
-                layout: db.layout_of(ty),
-                kind: LocalKind::Arg,
-                is_ssa: true,
-                is_by_ref: true,
-            })
-        } else {
-            let layout = db.layout_of(ty);
-            let id = self.body.locals.alloc(Local {
-                is_ssa: match &layout.abi {
-                    | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
-                    | _ => false,
-                },
-                is_by_ref: false,
-                kind: LocalKind::Ret,
-                layout,
-            });
-
-            self.body.ret = Some(id);
-            id
-        }
+        self.body.ret = Some(id);
+        id
     }
 
-    pub fn create_arg(&mut self, layout: Arc<Layout>, by_ref: bool) -> LocalId {
+    pub fn create_arg(&mut self, ty: Arc<Type>) -> LocalId {
         self.body.locals.alloc(Local {
-            is_ssa: match &layout.abi {
-                | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
-                | _ => false,
-            },
-            is_by_ref: by_ref,
             kind: LocalKind::Arg,
-            layout,
+            ty,
         })
     }
 
-    pub fn create_var(&mut self, layout: Arc<Layout>) -> LocalId {
-        if *layout == Layout::UNIT {
+    pub fn create_var(&mut self, ty: Arc<Type>) -> LocalId {
+        if *ty == Type::UNIT {
             let val = self
                 .body
                 .locals
                 .iter()
-                .find_map(|(id, l)| if *l.layout == Layout::UNIT { Some(id) } else { None });
+                .find_map(|(id, l)| if *l.ty == Type::UNIT { Some(id) } else { None });
 
             if let Some(id) = val {
                 id
             } else {
                 self.body.locals.alloc(Local {
-                    layout,
+                    ty,
                     kind: LocalKind::Var,
-                    is_ssa: false,
-                    is_by_ref: false,
                 })
             }
         } else {
             self.body.locals.alloc(Local {
-                is_ssa: match &layout.abi {
-                    | Abi::Scalar(_) | Abi::ScalarPair(_, _) => true,
-                    | _ => false,
-                },
-                is_by_ref: false,
                 kind: LocalKind::Var,
-                layout,
+                ty,
             })
         }
     }
@@ -133,35 +108,36 @@ impl Builder {
         }
     }
 
-    pub fn place_layout(&self, db: &dyn MirDatabase, place: &Place) -> Arc<Layout> {
-        let mut lyt = self.body.locals[place.local].layout.clone();
+    pub fn place_type(&self, db: &dyn MirDatabase, place: &Place) -> Arc<Type> {
+        let mut ty = self.body.locals[place.local].ty.clone();
 
         for elem in &place.elems {
             match elem {
-                | PlaceElem::Deref => lyt = lyt.elem(db).unwrap(),
-                | PlaceElem::Field(i) => lyt = lyt.field(db, *i).unwrap(),
+                | PlaceElem::Deref => {
+                    if let TypeKind::Ptr(elem) = &ty.kind {
+                        ty = elem.clone();
+                    }
+                },
+                | PlaceElem::Field(i) => {
+                    if let TypeKind::And(fields) = &ty.kind {
+                        ty = fields[*i].clone();
+                    }
+                },
                 | PlaceElem::Offset(_) => {},
-                | PlaceElem::Index(_) => lyt = lyt.elem(db).unwrap(),
-                | PlaceElem::Downcast(i) => lyt = lyt.variant(*i),
+                | PlaceElem::Index(_) => {
+                    if let TypeKind::Array(elem, _) = &ty.kind {
+                        ty = elem.clone();
+                    }
+                },
+                | PlaceElem::Downcast(i) => {
+                    if let TypeKind::Or(variants, true) = &ty.kind {
+                        ty = variants[*i].clone();
+                    }
+                },
             }
         }
 
-        lyt
-    }
-
-    pub fn is_by_ref(&self, place: &Place) -> bool {
-        place.elems.is_empty() && self.body.locals[place.local].is_by_ref
-    }
-
-    pub fn memcpy(&mut self, to: Place, from: Place, size: Place) {
-        let ret = self.unit_tmp.unwrap_or_else(|| self.create_var(Arc::new(Layout::UNIT)));
-        let ret = Place::new(ret);
-
-        self.intrinsic(ret, "memcpy", vec![
-            Operand::Place(to),
-            Operand::Place(from),
-            Operand::Place(size),
-        ]);
+        ty
     }
 
     pub fn abort(&mut self) {
@@ -186,10 +162,6 @@ impl Builder {
     }
 
     pub fn addr_of(&mut self, ret: Place, place: Place) {
-        if !place.elems.iter().any(|e| matches!(e, PlaceElem::Deref)) {
-            self.body.locals[place.local].is_ssa = false;
-        }
-
         self.stmt(Stmt::Assign(ret, RValue::AddrOf(place)));
     }
 
@@ -206,10 +178,6 @@ impl Builder {
     }
 
     pub fn call(&mut self, ret: Place, func: Operand, args: Vec<Operand>) {
-        if let Abi::Aggregate { .. } = self.body.locals[ret.local].layout.abi {
-            self.body.locals[ret.local].is_ssa = false;
-        }
-
         self.stmt(Stmt::Call(ret, func, args));
     }
 

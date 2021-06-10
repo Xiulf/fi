@@ -6,6 +6,7 @@ pub mod linker;
 mod lower;
 mod place;
 mod ptr;
+mod ssa;
 mod value;
 
 use clif::InstBuilder as _;
@@ -243,14 +244,15 @@ impl<'a> ModuleCtx<'a> {
 
             let ptr_type = fx.module.target_config().pointer_type();
             let ret = fx.body.ret.unwrap();
-            let ret_lyt = fx.body.locals[ret].layout.clone();
+            let ret_lyt = fx.db.layout_of(fx.body.locals[ret].ty.clone());
+            let ssa = ssa::analyze(&fx);
 
             match fx.pass_mode(&ret_lyt) {
                 | abi::PassMode::NoPass => {
                     fx.locals.insert(ret, PlaceRef::no_place(ret_lyt));
                 },
                 | abi::PassMode::ByVal(_) | abi::PassMode::ByValPair(_, _) => {
-                    local_place(&mut fx, ret, ret_lyt);
+                    local_place(&mut fx, &ssa, ret, ret_lyt);
                 },
                 | abi::PassMode::ByRef { size: _ } => {
                     let val = fx.bcx.append_block_param(start_block, ptr_type);
@@ -265,29 +267,30 @@ impl<'a> ModuleCtx<'a> {
                 .into_iter()
                 .map(|arg| {
                     let arg = &fx.body.locals[arg];
-                    let value = match fx.mcx.pass_mode(&arg.layout) {
+                    let layout = fx.db.layout_of(arg.ty.clone());
+                    let value = match fx.mcx.pass_mode(&layout) {
                         | abi::PassMode::NoPass => return None,
                         | abi::PassMode::ByVal(ty) => {
                             let param = fx.bcx.append_block_param(start_block, ty);
 
-                            ValueRef::new_val(param, arg.layout.clone())
+                            ValueRef::new_val(param, layout)
                         },
                         | abi::PassMode::ByValPair(a, b) => {
                             let a = fx.bcx.append_block_param(start_block, a);
                             let b = fx.bcx.append_block_param(start_block, b);
 
-                            ValueRef::new_val_pair(a, b, arg.layout.clone())
+                            ValueRef::new_val_pair(a, b, layout)
                         },
                         | abi::PassMode::ByRef { size: Some(_) } => {
                             let param = fx.bcx.append_block_param(start_block, ptr_type);
 
-                            ValueRef::new_ref(Pointer::addr(param), arg.layout.clone())
+                            ValueRef::new_ref(Pointer::addr(param), layout)
                         },
                         | abi::PassMode::ByRef { size: None } => {
                             let ptr = fx.bcx.append_block_param(start_block, ptr_type);
                             let meta = fx.bcx.append_block_param(start_block, ptr_type);
 
-                            ValueRef::new_ref_meta(Pointer::addr(ptr), meta, arg.layout.clone())
+                            ValueRef::new_ref_meta(Pointer::addr(ptr), meta, layout)
                         },
                     };
 
@@ -299,7 +302,7 @@ impl<'a> ModuleCtx<'a> {
                 let place = if let Some(value) = value {
                     let layout = value.layout.clone();
 
-                    if fx.body.locals[arg].is_ssa {
+                    if let ssa::SsaKind::Ssa = ssa[arg] {
                         let place = if let mir::layout::Abi::ScalarPair(_, _) = layout.abi {
                             PlaceRef::new_var_pair(&mut fx, layout)
                         } else {
@@ -312,7 +315,7 @@ impl<'a> ModuleCtx<'a> {
                         PlaceRef::new_ref(value.on_stack(&mut fx).0, layout)
                     }
                 } else {
-                    PlaceRef::no_place(fx.body.locals[arg].layout.clone())
+                    PlaceRef::no_place(fx.db.layout_of(fx.body.locals[arg].ty.clone()))
                 };
 
                 fx.locals.insert(arg, place);
@@ -320,7 +323,9 @@ impl<'a> ModuleCtx<'a> {
 
             for (id, local) in fx.body.locals.clone().iter() {
                 if let ir::LocalKind::Var = local.kind {
-                    local_place(&mut fx, id, local.layout.clone());
+                    let layout = fx.db.layout_of(local.ty.clone());
+
+                    local_place(&mut fx, &ssa, id, layout);
                 }
             }
 
@@ -352,8 +357,13 @@ impl<'a> ModuleCtx<'a> {
 
             fx.ctx.clear();
 
-            fn local_place(fx: &mut FunctionCtx, local: ir::LocalId, layout: Arc<mir::layout::Layout>) -> PlaceRef {
-                let place = if fx.body.locals[local].is_ssa {
+            fn local_place(
+                fx: &mut FunctionCtx,
+                ssa: &ArenaMap<ir::LocalId, ssa::SsaKind>,
+                local: ir::LocalId,
+                layout: Arc<mir::layout::Layout>,
+            ) -> PlaceRef {
+                let place = if let ssa::SsaKind::Ssa = ssa[local] {
                     if let mir::layout::Abi::ScalarPair(_, _) = layout.abi {
                         PlaceRef::new_var_pair(fx, layout)
                     } else {
@@ -520,9 +530,9 @@ impl<'a> ModuleCtx<'a> {
         let mut arity = 0;
 
         while let hir::ty::TyKind::ForAll(var, ret) = ty.lookup(self.db.upcast()) {
-            if let Some(layout) = mir::layout::type_var(self.db.upcast(), lib, var) {
-                args.push(layout);
-            }
+            // if let Some(layout) = mir::layout::type_var(self.db.upcast(), lib, var) {
+            //     args.push(layout);
+            // }
 
             ty = ret;
         }
@@ -532,16 +542,16 @@ impl<'a> ModuleCtx<'a> {
         }
 
         while let Some([arg, ret]) = ty.match_ctor(self.db.upcast(), func_id) {
-            args.push(self.db.layout_of(arg));
+            args.push(self.db.layout_of(self.db.mir_type(arg)));
             arity += 1;
             ty = ret;
         }
 
         let ret = if let hir::ty::TyKind::TypeVar(_) = ty.lookup(self.db.upcast()) {
-            args.insert(0, self.db.layout_of(ty));
+            args.insert(0, self.db.layout_of(self.db.mir_type(ty)));
             Arc::new(mir::layout::Layout::UNIT)
         } else {
-            self.db.layout_of(ty)
+            self.db.layout_of(self.db.mir_type(ty))
         };
 
         let mut arities = Arities::new(arity);

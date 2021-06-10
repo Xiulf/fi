@@ -1,10 +1,10 @@
 use crate::db::MirDatabase;
 use crate::ir::*;
-use crate::layout::*;
+use crate::ty::{Type, TypeKind};
 use hir_def::arena::ArenaMap;
 use std::sync::Arc;
 
-pub fn eval_query(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> EvalResult<Const> {
+pub fn eval_query(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> EvalResult {
     let body = db.body_mir(def);
     let mut vm = VM::new(db);
 
@@ -14,13 +14,12 @@ pub fn eval_query(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> EvalResu
 
 pub struct VM<'a> {
     db: &'a dyn MirDatabase,
-    stack: Vec<u8>,
-    locals: ArenaMap<LocalId, usize>,
+    locals: ArenaMap<LocalId, Const>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum EvalResult<T> {
-    Finished(T),
+pub enum EvalResult {
+    Finished(Const),
     Next(BlockId),
     Abort,
 }
@@ -29,31 +28,22 @@ impl<'a> VM<'a> {
     pub fn new(db: &'a dyn MirDatabase) -> Self {
         VM {
             db,
-            stack: Vec::new(),
             locals: ArenaMap::default(),
         }
     }
 
     pub fn init(&mut self, body: &Body) {
         for (id, local) in body.locals.iter() {
-            let loc = self.push_undefined(&local.layout);
-
-            self.locals.insert(id, loc);
+            self.locals.insert(id, Const::undefined(&local.ty));
         }
     }
 
-    pub fn eval(&mut self, body: &Body) -> EvalResult<Const> {
+    pub fn eval(&mut self, body: &Body) -> EvalResult {
         let mut block = body.entry;
 
         while let Some(id) = block {
             match self.eval_block(body, id) {
-                | EvalResult::Finished(_) => {
-                    let ret = body.ret.unwrap();
-                    let layout = body.locals[ret].layout.clone();
-                    let val = self.read_const(self.locals[ret], layout);
-
-                    return EvalResult::Finished(val);
-                },
+                | EvalResult::Finished(r) => return EvalResult::Finished(r),
                 | EvalResult::Abort => return EvalResult::Abort,
                 | EvalResult::Next(id) => block = Some(id),
             }
@@ -62,7 +52,7 @@ impl<'a> VM<'a> {
         EvalResult::Abort
     }
 
-    fn eval_block(&mut self, body: &Body, block: BlockId) -> EvalResult<()> {
+    fn eval_block(&mut self, body: &Body, block: BlockId) -> EvalResult {
         let Block { stmts, term } = &body.blocks[block];
 
         for stmt in stmts {
@@ -72,10 +62,14 @@ impl<'a> VM<'a> {
         self.eval_term(body, term)
     }
 
-    fn eval_term(&mut self, body: &Body, term: &Term) -> EvalResult<()> {
+    fn eval_term(&mut self, body: &Body, term: &Term) -> EvalResult {
         match term {
             | Term::Abort => EvalResult::Abort,
-            | Term::Return => EvalResult::Finished(()),
+            | Term::Return => {
+                let ret = body.ret.unwrap();
+
+                EvalResult::Finished(self.locals[ret].clone())
+            },
             | Term::Jump(id) => EvalResult::Next(*id),
             | Term::Switch(..) => unimplemented!(),
         }
@@ -90,171 +84,98 @@ impl<'a> VM<'a> {
     }
 
     fn eval_assign(&mut self, body: &Body, place: &Place, rvalue: &RValue) {
-        let (loc, lyt) = self.eval_place(body, place);
-
         match rvalue {
             | RValue::Use(op) => {
                 let val = self.eval_operand(body, op);
-                let buf = &mut self.stack[loc..loc + lyt.size.bytes() as usize];
 
-                val.write(buf, lyt);
+                self.store(body, place, val);
             },
             | _ => unimplemented!(),
         }
     }
 
-    fn eval_place(&mut self, body: &Body, place: &Place) -> (usize, Arc<Layout>) {
-        let mut lyt = body.locals[place.local].layout.clone();
-        let mut loc = self.locals[place.local];
+    fn store(&mut self, body: &Body, place: &Place, value: Const) {
+        let mut ty = body.locals[place.local].ty.clone();
+        let mut val = &mut self.locals[place.local];
 
         for elem in &place.elems {
             match elem {
-                | PlaceElem::Deref => unimplemented!(),
-                | PlaceElem::Downcast(idx) => {
-                    lyt = lyt.variant(*idx);
+                | PlaceElem::Deref => {
+                    if let Const::Ref(to) = val {
+                        val = to;
+                    }
                 },
-                | PlaceElem::Field(idx) => match &lyt.fields {
-                    | Fields::Primitive => unreachable!(),
-                    | Fields::Union { fields } => {
-                        lyt = fields[*idx].clone();
-                    },
-                    | Fields::Arbitrary { fields } => {
-                        loc += fields[*idx].0.bytes() as usize;
-                        lyt = fields[*idx].1.clone();
-                    },
-                    | Fields::Array { stride, .. } => {
-                        loc += *idx * stride.bytes() as usize;
-                    },
+                | PlaceElem::Field(idx) => {
+                    if let Const::Tuple(cs) = val {
+                        val = &mut cs[*idx];
+                    }
+                },
+                | _ => unimplemented!(),
+            }
+        }
+
+        *val = value;
+    }
+
+    fn load(&mut self, body: &Body, place: &Place) -> (Const, Arc<Type>) {
+        let mut ty = body.locals[place.local].ty.clone();
+        let mut val = self.locals[place.local].clone();
+
+        for elem in &place.elems {
+            match elem {
+                | PlaceElem::Deref => {
+                    if let Const::Ref(to) = val {
+                        val = *to;
+                    }
+                },
+                | PlaceElem::Downcast(idx) => {
+                    // lyt = lyt.variant(*idx);
+                    unimplemented!();
+                },
+                | PlaceElem::Field(idx) => {
+                    if let Const::Tuple(mut cs) = val {
+                        val = cs.swap_remove(*idx);
+                    }
                 },
                 | PlaceElem::Offset(offset) => {
-                    let offset = self.eval_operand(body, offset);
-
-                    if let Const::Scalar(offset) = offset {
-                        loc += offset as usize;
-                    }
+                    // let offset = self.eval_operand(body, offset);
+                    //
+                    // if let Const::Scalar(offset) = offset {
+                    //     loc += offset as usize;
+                    // }
+                    unimplemented!();
                 },
                 | PlaceElem::Index(_) => unimplemented!(),
             }
         }
 
-        (loc, lyt)
+        (val, ty)
     }
 
     fn eval_operand(&mut self, body: &Body, op: &Operand) -> Const {
         match op {
-            | Operand::Place(place) => {
-                let (loc, lyt) = self.eval_place(body, place);
-
-                self.read_const(loc, lyt)
-            },
+            | Operand::Place(place) => self.load(body, place).0,
             | Operand::Const(c, _) => c.clone(),
-        }
-    }
-
-    fn push_undefined(&mut self, layout: &Layout) -> usize {
-        let loc = self.stack.len();
-
-        self.stack.resize(self.stack.len() + layout.size.bytes() as usize, 0);
-        loc
-    }
-
-    fn read_const(&self, loc: usize, layout: Arc<Layout>) -> Const {
-        let bytes = &self.stack[loc..loc + layout.size.bytes() as usize];
-
-        match &layout.abi {
-            | Abi::Uninhabited => Const::Undefined,
-            | Abi::Scalar(s) => match s.value {
-                | Primitive::Int(Integer::I8, _) => Const::Scalar(bytes[0] as u128),
-                | Primitive::Int(Integer::I16, _) => {
-                    let ptr = bytes.as_ptr() as *const u16;
-
-                    Const::Scalar(unsafe { *ptr } as u128)
-                },
-                | Primitive::Int(Integer::I32, _) => {
-                    let ptr = bytes.as_ptr() as *const u32;
-
-                    Const::Scalar(unsafe { *ptr } as u128)
-                },
-                | Primitive::Int(Integer::I64, _) => {
-                    let ptr = bytes.as_ptr() as *const u64;
-
-                    Const::Scalar(unsafe { *ptr } as u128)
-                },
-                | Primitive::Int(Integer::I128, _) => {
-                    let ptr = bytes.as_ptr() as *const u128;
-
-                    Const::Scalar(unsafe { *ptr } as u128)
-                },
-                | _ => unimplemented!(),
-            },
-            | Abi::Aggregate { sized: true } => match &layout.variants {
-                | &Variants::Single { index: 0 } => match &layout.fields {
-                    | Fields::Arbitrary { fields } => {
-                        let vals = fields
-                            .iter()
-                            .map(|(offset, field)| self.read_const(loc + offset.bytes() as usize, field.clone()))
-                            .collect();
-
-                        Const::Tuple(vals)
-                    },
-                    | _ => unimplemented!(),
-                },
-                | _ => unimplemented!(),
-            },
-            | _ => unimplemented!(),
         }
     }
 }
 
 impl Const {
-    pub fn write(&self, buf: &mut [u8], lyt: Arc<Layout>) {
-        match self {
-            | Const::Undefined => {},
-            | Const::Scalar(s) => match lyt.size.bytes() {
-                | 1 => buf[0] = *s as u8,
-                | 2 => {
-                    let ptr = buf.as_mut_ptr() as *mut u16;
+    pub fn undefined(ty: &Type) -> Self {
+        match &ty.kind {
+            | TypeKind::Ptr(elem) => Const::Ref(Box::new(Const::undefined(elem))),
+            | TypeKind::Array(elem, len) => {
+                let elem = Const::undefined(elem);
+                let cs = vec![elem; *len];
 
-                    unsafe {
-                        *ptr = *s as u16;
-                    }
-                },
-                | 4 => {
-                    let ptr = buf.as_mut_ptr() as *mut u32;
-
-                    unsafe {
-                        *ptr = *s as u32;
-                    }
-                },
-                | 8 => {
-                    let ptr = buf.as_mut_ptr() as *mut u64;
-
-                    unsafe {
-                        *ptr = *s as u64;
-                    }
-                },
-                | 16 => {
-                    let ptr = buf.as_mut_ptr() as *mut u128;
-
-                    unsafe {
-                        *ptr = *s;
-                    }
-                },
-                | _ => unreachable!(),
+                Const::Tuple(cs)
             },
-            | Const::Tuple(cs) => match &lyt.fields {
-                | Fields::Primitive => unreachable!(),
-                | Fields::Arbitrary { fields } => {
-                    for (c, (offset, lyt)) in cs.iter().zip(fields.iter()) {
-                        let offset = offset.bytes() as usize;
-                        let size = lyt.size.bytes() as usize;
+            | TypeKind::And(fields) => {
+                let cs = fields.iter().map(|f| Const::undefined(f)).collect();
 
-                        c.write(&mut buf[offset..offset + size], lyt.clone());
-                    }
-                },
-                | _ => unimplemented!(),
+                Const::Tuple(cs)
             },
-            | _ => unimplemented!(),
+            | _ => Const::Undefined,
         }
     }
 }

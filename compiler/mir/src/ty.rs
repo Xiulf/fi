@@ -45,6 +45,16 @@ pub enum TypeVarKind {
 }
 
 impl Type {
+    pub const UNIT: Self = Self {
+        repr: ReprOptions {
+            uninhabited: false,
+            scalar: None,
+            valid_range_start: None,
+            valid_range_end: None,
+        },
+        kind: TypeKind::Unit,
+    };
+
     pub fn mir_type_query(db: &dyn MirDatabase, mut ty: Ty) -> Arc<Type> {
         let mut args = Vec::new();
 
@@ -263,18 +273,54 @@ impl Type {
             | _ => panic!("invalid scalar repr"),
         }
     }
+
+    pub fn unit_func(ret: Arc<Type>) -> Arc<Type> {
+        Arc::new(Type {
+            repr: ReprOptions::default(),
+            kind: TypeKind::Func(Signature {
+                params: Arc::new([]),
+                ret,
+            }),
+        })
+    }
+
+    pub fn ptr_sized_int(db: &dyn MirDatabase, sign: bool) -> Arc<Type> {
+        Arc::new(Type {
+            kind: TypeKind::Unit,
+            repr: ReprOptions {
+                scalar: Some(match db.target_triple().pointer_width() {
+                    | Ok(target_lexicon::PointerWidth::U16) => Primitive::Int(Integer::I16, sign),
+                    | Ok(target_lexicon::PointerWidth::U32) => Primitive::Int(Integer::I32, sign),
+                    | Ok(target_lexicon::PointerWidth::U64) => Primitive::Int(Integer::I64, sign),
+                    | Err(_) => Primitive::Int(Integer::I32, sign),
+                }),
+                ..ReprOptions::default()
+            },
+        })
+    }
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.kind.fmt(f)
-    }
-}
-
-impl fmt::Display for TypeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            | TypeKind::Unit => write!(f, "()"),
+        match &self.kind {
+            | TypeKind::Unit => match &self.repr.scalar {
+                | Some(s) => match s {
+                    | Primitive::Int(Integer::I8, false) => write!(f, "u8"),
+                    | Primitive::Int(Integer::I16, false) => write!(f, "u16"),
+                    | Primitive::Int(Integer::I32, false) => write!(f, "u32"),
+                    | Primitive::Int(Integer::I64, false) => write!(f, "u64"),
+                    | Primitive::Int(Integer::I128, false) => write!(f, "u128"),
+                    | Primitive::Int(Integer::I8, true) => write!(f, "i8"),
+                    | Primitive::Int(Integer::I16, true) => write!(f, "i16"),
+                    | Primitive::Int(Integer::I32, true) => write!(f, "i32"),
+                    | Primitive::Int(Integer::I64, true) => write!(f, "i64"),
+                    | Primitive::Int(Integer::I128, true) => write!(f, "i128"),
+                    | Primitive::F32 => write!(f, "f32"),
+                    | Primitive::F64 => write!(f, "f64"),
+                    | Primitive::Pointer => write!(f, "ptr"),
+                },
+                | None => write!(f, "()"),
+            },
             | TypeKind::Var(var) => var.fmt(f),
             | TypeKind::Ptr(to) => write!(f, "*{}", to),
             | TypeKind::Array(of, len) => write!(f, "[{}]{}", len, of),

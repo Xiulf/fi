@@ -8,7 +8,7 @@ impl FunctionCtx<'_, '_> {
     pub fn lower(&mut self) {
         let body = Arc::clone(&self.body);
 
-        // eprintln!("{}", body.display(self.db.upcast()));
+        eprintln!("{}", body.display(self.db.upcast()));
 
         for (id, block) in body.blocks.iter() {
             self.bcx.switch_to_block(self.blocks[id]);
@@ -255,7 +255,11 @@ impl FunctionCtx<'_, '_> {
 
                 value
             },
-            | ir::Operand::Const(c, lyt) => self.lower_const(c, lyt.clone(), into),
+            | ir::Operand::Const(c, ty) => {
+                let layout = self.db.layout_of(ty.clone());
+
+                self.lower_const(c, layout, into)
+            },
         }
     }
 

@@ -2,9 +2,25 @@ use crate::layout::Layout;
 use crate::ty::Type;
 use hir::arena::{Arena, Idx};
 use hir::display::{self, Write as _};
+use hir::id::DefWithBodyId;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct Bodies {
+    pub(crate) bodies: Arena<Body>,
+    pub(crate) arities: FxHashMap<usize, LocalBodyId>,
+}
+
+pub type LocalBodyId = Idx<Body>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BodyId {
+    pub def: DefWithBodyId,
+    pub local_id: LocalBodyId,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Body {
     pub locals: Arena<Local>,
     pub blocks: Arena<Block>,
@@ -19,8 +35,6 @@ pub type BlockId = Idx<Block>;
 pub struct Local {
     pub ty: Arc<Type>,
     pub kind: LocalKind,
-    pub is_ssa: bool,
-    pub is_by_ref: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,12 +104,38 @@ pub enum PlaceElem {
 pub enum Const {
     Undefined,
     Scalar(u128),
-    FuncAddr(hir::Func),
-    StaticAddr(hir::Static),
+    Addr(BodyId),
     String(String),
     Tuple(Vec<Const>),
     Ref(Box<Const>),
     Ctor(hir::Ctor, Vec<Const>),
+}
+
+impl Bodies {
+    pub fn main_id(&self, def: DefWithBodyId) -> BodyId {
+        let local_id = self.bodies.iter().next().unwrap().0;
+
+        BodyId { def, local_id }
+    }
+
+    pub fn arity(&self, mut arity: usize) -> (&Body, usize) {
+        loop {
+            match self.arities.get(&arity) {
+                | Some(id) => return (&self.bodies[*id], arity),
+                | None => arity -= 1,
+            }
+        }
+
+        unreachable!()
+    }
+}
+
+impl std::ops::Index<LocalBodyId> for Bodies {
+    type Output = Body;
+
+    fn index(&self, id: LocalBodyId) -> &Self::Output {
+        &self.bodies[id]
+    }
 }
 
 impl Body {
@@ -150,6 +190,20 @@ impl Const {
     }
 }
 
+impl display::HirDisplay for BodyId {
+    fn hir_fmt(&self, f: &mut display::HirFormatter) -> display::Result {
+        let path = match self.def {
+            | DefWithBodyId::FuncId(d) => hir::Func::from(d).path(f.db),
+            | DefWithBodyId::StaticId(d) => hir::Static::from(d).path(f.db),
+            | DefWithBodyId::ConstId(d) => hir::Const::from(d).path(f.db),
+        };
+
+        let local: u32 = self.local_id.into_raw().into();
+
+        write!(f, "{}^{}", path, local)
+    }
+}
+
 impl display::HirDisplay for Body {
     fn hir_fmt(&self, f: &mut display::HirFormatter<'_>) -> display::Result {
         writeln!(f, "body {{")?;
@@ -183,10 +237,6 @@ impl display::HirDisplay for Local {
             | LocalKind::Arg => write!(f, "arg"),
             | LocalKind::Var => write!(f, "var"),
         }?;
-
-        if self.is_ssa {
-            write!(f, " ssa")?;
-        }
 
         write!(f, " {}", self.ty)
     }
@@ -337,8 +387,11 @@ impl display::HirDisplay for Const {
         match self {
             | Const::Undefined => write!(f, "undefined"),
             | Const::Scalar(int) => write!(f, "{}", int),
-            | Const::FuncAddr(func) => write!(f, "func({})", func.path(f.db)),
-            | Const::StaticAddr(stat) => write!(f, "static({})", stat.path(f.db)),
+            | Const::Addr(id) => {
+                write!(f, "addr(")?;
+                id.hir_fmt(f)?;
+                write!(f, ")")
+            },
             | Const::String(s) => write!(f, "{:?}", s),
             | Const::Tuple(cs) => {
                 write!(f, "(")?;

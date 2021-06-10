@@ -2,7 +2,7 @@ pub mod builder;
 
 use crate::db::MirDatabase;
 use crate::ir::*;
-use crate::layout::{self, Layout};
+use crate::ty::{self, *};
 use builder::Builder;
 use hir::display::HirDisplay as _;
 use hir::id::HasModule as _;
@@ -12,7 +12,7 @@ use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-impl Body {
+impl Bodies {
     pub(crate) fn body_mir_query(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> Arc<Self> {
         let mut ty = match def {
             | hir::id::DefWithBodyId::FuncId(id) => db.value_ty(id.into()),
@@ -43,15 +43,15 @@ impl Body {
 
         let mut lcx = LowerCtx::new(db, def, ty);
 
-        for var in vars {
-            let layout = layout::type_var(db, def.module(db.upcast()).lib, var);
-
-            lcx.add_type_var(layout);
-        }
+        // for var in vars {
+        //     let layout = layout::type_var(db, def.module(db.upcast()).lib, var);
+        //
+        //     lcx.add_type_var(layout);
+        // }
 
         lcx.lower();
 
-        Arc::new(lcx.builder.finish())
+        Arc::new(lcx.finish())
     }
 }
 
@@ -60,34 +60,38 @@ struct LowerCtx<'a> {
     def: hir::id::DefWithBodyId,
     hir: Arc<hir::Body>,
     infer: Arc<hir::InferenceResult>,
-    builder: Builder,
+    bodies: Bodies,
+}
+
+struct BodyLowerCtx<'a> {
+    db: &'a dyn MirDatabase,
+    def: hir::id::DefWithBodyId,
+    hir: &'a hir::InferenceResult,
+    builder: Builder<'a>,
     ret: LocalId,
     binders: FxHashMap<hir::PatId, Place>,
-    type_vars: Vec<Option<LocalId>>,
 }
 
 impl<'a> LowerCtx<'a> {
     fn new(db: &'a dyn MirDatabase, def: hir::id::DefWithBodyId, ret_ty: Ty) -> Self {
-        let mut builder = Builder::default();
-        let ret = builder.create_ret(db, ret_ty);
-
         Self {
             db,
             def,
-            ret,
-            builder,
+            bodies: Bodies::default(),
             hir: db.body(def),
             infer: db.infer(def),
-            binders: FxHashMap::default(),
-            type_vars: Vec::new(),
         }
     }
 
-    fn add_type_var(&mut self, type_info: Option<Arc<Layout>>) {
-        let type_var = type_info.map(|layout| self.builder.create_arg(layout, false));
-
-        self.type_vars.push(type_var);
+    fn finish(self) -> Bodies {
+        self.bodies
     }
+
+    // fn add_type_var(&mut self, type_info: Option<Arc<Layout>>) {
+    //     let type_var = type_info.map(|layout| self.builder.create_arg(layout, false));
+    //
+    //     self.type_vars.push(type_var);
+    // }
 
     fn lower(&mut self) {
         let entry = self.builder.create_block();
@@ -96,9 +100,8 @@ impl<'a> LowerCtx<'a> {
 
         for param in self.hir.params().to_vec() {
             let ty = self.infer.type_of_pat[param];
-            let by_ref = matches!(ty.lookup(self.db.upcast()), TyKind::TypeVar(_));
-            let lyt = self.db.layout_of(ty);
-            let arg = self.builder.create_arg(lyt, by_ref);
+            let ty = self.db.mir_type(ty);
+            let arg = self.builder.create_arg(ty);
             let place = Place::new(arg);
 
             self.lower_pat(param, place);
@@ -136,7 +139,7 @@ impl<'a> LowerCtx<'a> {
                         if has_rest {
                             let record = place.clone().field(0).deref();
                             let offsets = place.field(1).deref();
-                            let uint_lyt = layout::ptr_sized_int(self.db, false);
+                            let uint_lyt = Type::ptr_sized_int(self.db, false);
 
                             for field in fields {
                                 let idx = ty_fields.iter().position(|f| f.name == field.name).unwrap();
@@ -169,25 +172,7 @@ impl<'a> LowerCtx<'a> {
         let op = self.lower_expr_impl(id, &mut ret);
 
         if let Some(ret) = ret {
-            if let TyKind::TypeVar(var) = self.infer.type_of_expr[id].lookup(self.db.upcast()) {
-                let info = self.type_info(var);
-                let info = Place::new(info);
-                let rhs = self.builder.placed(op);
-                let place = if self.builder.is_by_ref(&rhs) {
-                    rhs
-                } else {
-                    let layout = self.builder.place_layout(self.db, &rhs);
-                    let place = self.builder.create_var(layout::reference(self.db, layout));
-                    let place = Place::new(place);
-
-                    self.builder.addr_of(place.clone(), rhs);
-                    place
-                };
-
-                self.builder.memcpy(ret.clone(), place, info.deref().field(0));
-            } else {
-                self.builder.use_op(ret.clone(), op);
-            }
+            self.builder.use_op(ret.clone(), op);
 
             Operand::Place(ret)
         } else {
@@ -197,18 +182,18 @@ impl<'a> LowerCtx<'a> {
 
     fn lower_expr_impl(&mut self, id: hir::ExprId, ret: &mut Option<Place>) -> Operand {
         let body = Arc::clone(&self.hir);
-        let ty = self.infer.type_of_expr[id];
-        let lyt = self.db.layout_of(ty);
+        let hir_ty = self.infer.type_of_expr[id];
+        let ty = self.db.mir_type(hir_ty);
 
         match body[id] {
-            | hir::Expr::Missing => Operand::Const(Const::Undefined, lyt),
+            | hir::Expr::Missing => Operand::Const(Const::Undefined, ty),
             | hir::Expr::Typed { expr, .. } => self.lower_expr_impl(expr, ret),
-            | hir::Expr::Path { ref path } => self.lower_path(id, path, ty, ret),
+            | hir::Expr::Path { ref path } => self.lower_path(id, path, hir_ty, ret),
             | hir::Expr::Lit { ref lit } => match *lit {
-                | hir::Literal::Int(i) => Operand::Const(Const::Scalar(i as u128), lyt),
-                | hir::Literal::Float(i) => Operand::Const(Const::Scalar(i as u128), lyt),
-                | hir::Literal::Char(i) => Operand::Const(Const::Scalar(i as u128), lyt),
-                | hir::Literal::String(ref s) => Operand::Const(Const::String(s.clone()), lyt),
+                | hir::Literal::Int(i) => Operand::Const(Const::Scalar(i as u128), ty),
+                | hir::Literal::Float(i) => Operand::Const(Const::Scalar(i as u128), ty),
+                | hir::Literal::Char(i) => Operand::Const(Const::Scalar(i as u128), ty),
+                | hir::Literal::String(ref s) => Operand::Const(Const::String(s.clone()), ty),
             },
             | hir::Expr::Infix { ref op, lhs, rhs } => {
                 let resolver = Resolver::for_expr(self.db.upcast(), self.def, id);
@@ -233,22 +218,18 @@ impl<'a> LowerCtx<'a> {
                                 }
                             }
 
-                            self.lower_func_app(f, id, vec![lhs, rhs], ty, ret.take())
+                            self.lower_func_app(f, id, vec![lhs, rhs], hir_ty, ret.take())
                         },
-                        | Some(ValueNs::Ctor(c)) => self.lower_ctor_app(c, vec![lhs, rhs], ty, ret.take()),
-                        | _ => Operand::Const(Const::Undefined, lyt),
+                        | Some(ValueNs::Ctor(c)) => self.lower_ctor_app(c, vec![lhs, rhs], hir_ty, ret.take()),
+                        | _ => Operand::Const(Const::Undefined, ty),
                     }
                 } else {
-                    Operand::Const(Const::Undefined, lyt)
+                    Operand::Const(Const::Undefined, ty)
                 }
             },
-            | hir::Expr::App { .. } => self.lower_app(id, ty, ret.take()),
+            | hir::Expr::App { .. } => self.lower_app(id, hir_ty, ret.take()),
             | hir::Expr::Tuple { ref exprs } => {
-                let ret = ret.take().unwrap_or_else(|| {
-                    let lyt = self.db.layout_of(ty);
-
-                    Place::new(self.builder.create_var(lyt))
-                });
+                let ret = ret.take().unwrap_or_else(|| Place::new(self.builder.create_var(ty)));
 
                 for (i, &expr) in exprs.iter().enumerate() {
                     self.lower_expr(expr, Some(ret.clone().field(i)));
@@ -257,7 +238,7 @@ impl<'a> LowerCtx<'a> {
                 Operand::Place(ret)
             },
             | hir::Expr::Record { ref fields } => {
-                let row_fields = match ty.lookup(self.db.upcast()) {
+                let row_fields = match hir_ty.lookup(self.db.upcast()) {
                     | TyKind::App(_, row) => match row.lookup(self.db.upcast()) {
                         | TyKind::Row(row_fields, _) => row_fields,
                         | _ => unreachable!(),
@@ -265,7 +246,7 @@ impl<'a> LowerCtx<'a> {
                     | _ => unreachable!(),
                 };
 
-                let ret = ret.take().unwrap_or_else(|| Place::new(self.builder.create_var(lyt)));
+                let ret = ret.take().unwrap_or_else(|| Place::new(self.builder.create_var(ty)));
 
                 for field in fields {
                     let idx = row_fields.iter().position(|f| f.name == field.name).unwrap();
@@ -288,9 +269,9 @@ impl<'a> LowerCtx<'a> {
                             }
                         },
                         | hir::Stmt::Bind { pat, val } | hir::Stmt::Let { pat, val } => {
-                            let ty = self.infer.type_of_expr[val];
-                            let lyt = self.db.layout_of(ty);
-                            let place = self.builder.create_var(lyt);
+                            let hir_ty = self.infer.type_of_expr[val];
+                            let ty = self.db.mir_type(hir_ty);
+                            let place = self.builder.create_var(ty);
                             let place = Place::new(place);
 
                             self.lower_expr(val, Some(place.clone()));
@@ -299,13 +280,13 @@ impl<'a> LowerCtx<'a> {
                     }
                 }
 
-                Operand::Const(Const::Tuple(Vec::new()), lyt)
+                Operand::Const(Const::Tuple(Vec::new()), ty)
             },
             | ref e => unimplemented!("{:?}", e),
         }
     }
 
-    fn lower_path(&mut self, expr: hir::ExprId, path: &hir::Path, mut ty: Ty, ret: &mut Option<Place>) -> Operand {
+    fn lower_path(&mut self, expr: hir::ExprId, path: &hir::Path, mut hir_ty: Ty, ret: &mut Option<Place>) -> Operand {
         let resolver = Resolver::for_expr(self.db.upcast(), self.def, expr);
 
         match resolver.resolve_value_fully(self.db.upcast(), path) {
@@ -324,23 +305,22 @@ impl<'a> LowerCtx<'a> {
                     }
                 }
 
-                while let TyKind::ForAll(_, t) = ty.lookup(self.db.upcast()) {
-                    ty = t;
+                while let TyKind::ForAll(_, t) = hir_ty.lookup(self.db.upcast()) {
+                    hir_ty = t;
                 }
 
-                while let TyKind::Ctnt(_, t) = ty.lookup(self.db.upcast()) {
-                    ty = t;
+                while let TyKind::Ctnt(_, t) = hir_ty.lookup(self.db.upcast()) {
+                    hir_ty = t;
                 }
 
-                if let TyKind::App(..) = ty.lookup(self.db.upcast()) {
-                    Operand::Const(Const::FuncAddr(id.into()), self.db.layout_of(ty))
+                if let TyKind::App(..) = hir_ty.lookup(self.db.upcast()) {
+                    Operand::Const(Const::FuncAddr(id.into()), self.db.mir_type(hir_ty))
                 } else {
-                    let func_lyt = self.func_layout();
-                    let ret = ret.take().unwrap_or_else(|| {
-                        let lyt = self.db.layout_of(ty);
-
-                        Place::new(self.builder.create_var(lyt))
-                    });
+                    let ret_ty = self.db.mir_type(hir_ty);
+                    let func_lyt = Type::unit_func(ret_ty.clone());
+                    let ret = ret
+                        .take()
+                        .unwrap_or_else(|| Place::new(self.builder.create_var(ret_ty)));
 
                     let func = Operand::Const(Const::FuncAddr(id.into()), func_lyt);
 
@@ -351,14 +331,14 @@ impl<'a> LowerCtx<'a> {
             },
             | Some(ValueNs::Local(pat)) => Operand::Place(self.binders[&pat].clone()),
             | Some(ValueNs::Const(id)) => match self.db.eval(id.into()) {
-                | crate::eval::EvalResult::Finished(c) => Operand::Const(c, self.db.layout_of(ty)),
-                | _ => Operand::Const(Const::Undefined, self.db.layout_of(ty)),
+                | crate::eval::EvalResult::Finished(c) => Operand::Const(c, self.db.mir_type(hir_ty)),
+                | _ => Operand::Const(Const::Undefined, self.db.mir_type(hir_ty)),
             },
             | Some(ValueNs::Ctor(id)) => {
                 let ret = ret.take().unwrap_or_else(|| {
-                    let lyt = self.db.layout_of(ty);
+                    let ty = self.db.mir_type(hir_ty);
 
-                    Place::new(self.builder.create_var(lyt))
+                    Place::new(self.builder.create_var(ty))
                 });
 
                 Operand::Place(ret)
@@ -403,9 +383,9 @@ impl<'a> LowerCtx<'a> {
         }
 
         let ret = ret.unwrap_or_else(|| {
-            let lyt = self.db.layout_of(ret_ty);
+            let ty = self.db.mir_type(ret_ty);
 
-            Place::new(self.builder.create_var(lyt))
+            Place::new(self.builder.create_var(ty))
         });
 
         let func = self.lower_expr(base, None);
@@ -425,9 +405,9 @@ impl<'a> LowerCtx<'a> {
         ret: Option<Place>,
     ) -> Operand {
         let ret = ret.unwrap_or_else(|| {
-            let lyt = self.db.layout_of(ret_ty);
+            let ty = self.db.mir_type(ret_ty);
 
-            Place::new(self.builder.create_var(lyt))
+            Place::new(self.builder.create_var(ty))
         });
 
         if self.db.attrs(func.into()).by_key("intrinsic").exists() {
@@ -453,13 +433,18 @@ impl<'a> LowerCtx<'a> {
             }
         } else {
             let func_ty = self.db.value_ty(func.into());
-            let func_lyt = self.db.layout_of(func_ty);
+            let func_lyt = self.db.mir_type(func_ty);
             let func = Operand::Const(Const::FuncAddr(func.into()), func_lyt);
-            let arg_tys = args.iter().map(|&a| self.infer.type_of_expr[a]).collect();
+            let arg_tys = args.iter().map(|&a| self.infer.type_of_expr[a]).collect::<Vec<_>>();
             let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
             if let Some(inst) = self.infer.instances.get(&func_expr) {
-                self.lower_generic_call(ret.clone(), inst.clone(), func_ty, func, args, arg_tys);
+                if let Some(_) = self.infer.methods.get(&func_expr) {
+                    self.builder.call(ret.clone(), func, args);
+                } else {
+                    // self.lower_generic_call(ret.clone(), inst.clone(), func_ty, func, args, arg_tys);
+                    unimplemented!();
+                }
             } else {
                 self.builder.call(ret.clone(), func, args);
             }
@@ -477,9 +462,9 @@ impl<'a> LowerCtx<'a> {
     ) -> Operand {
         let data = self.db.type_ctor_data(id.parent);
         let ret = ret.unwrap_or_else(|| {
-            let lyt = self.db.layout_of(ret_ty);
+            let ty = self.db.mir_type(ret_ty);
 
-            Place::new(self.builder.create_var(lyt))
+            Place::new(self.builder.create_var(ty))
         });
 
         if data.ctors.len() == 1 {
@@ -500,17 +485,7 @@ impl<'a> LowerCtx<'a> {
         Operand::Place(ret)
     }
 
-    fn func_layout(&self) -> Arc<Layout> {
-        let func_ty = self
-            .db
-            .lang_item(self.def.module(self.db.upcast()).lib, "fn-type".into())
-            .unwrap();
-        let func_ty = TyKind::Ctor(func_ty.as_type_ctor().unwrap()).intern(self.db.upcast());
-
-        self.db.layout_of(func_ty)
-    }
-
-    fn lower_generic_call(
+    /* fn lower_generic_call(
         &mut self,
         ret: Place,
         inst: Vec<Ty>,
@@ -619,9 +594,9 @@ impl<'a> LowerCtx<'a> {
         } else {
             self.builder.call(ret, func, args);
         }
-    }
+    } */
 
-    fn by_ref(&mut self, place: Place) -> Place {
+    /* fn by_ref(&mut self, place: Place) -> Place {
         let lyt = self.builder.place_layout(self.db, &place);
         let lyt = layout::reference(self.db, lyt);
         let var = self.builder.create_var(lyt);
@@ -629,7 +604,7 @@ impl<'a> LowerCtx<'a> {
 
         self.builder.addr_of(var.clone(), place);
         var
-    }
+    } */
 
     fn lang_type(&self, name: &'static str) -> hir::id::TypeCtorId {
         let item = self
