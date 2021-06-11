@@ -5,7 +5,7 @@ use mir::layout::{Abi, Fields, Layout, Variants};
 use std::sync::Arc;
 
 impl FunctionCtx<'_, '_> {
-    pub fn lower(&mut self) {
+    /* pub fn lower(&mut self) {
         let body = Arc::clone(&self.body);
 
         eprintln!("{}", body.display(self.db.upcast()));
@@ -179,7 +179,7 @@ impl FunctionCtx<'_, '_> {
             .chain(args.into_iter().flat_map(|a| self.value_for_arg(a)))
             .collect::<Vec<_>>();
 
-        let inst = if let ir::Operand::Const(ir::Const::FuncAddr(id), _) = func {
+        let inst = if let ir::Operand::Const(ir::Const::Addr(id), _) = func {
             let func = self.func_id(id, arity);
             let func = self.mcx.module.declare_func_in_func(func, &mut self.bcx.func);
 
@@ -478,7 +478,7 @@ impl FunctionCtx<'_, '_> {
         }
     }
 
-    fn func_id(&mut self, func: &hir::Func, arity: usize) -> clif::FuncId {
+    fn func_id(&mut self, func: &ir::BodyId, arity: usize) -> clif::FuncId {
         if let Some(arr) = self.func_ids.get(func) {
             arr.get_id(arity)
         } else {
@@ -495,5 +495,5 @@ impl FunctionCtx<'_, '_> {
                 .declare_function(&name, clif::Linkage::Import, &sig)
                 .unwrap()
         }
-    }
+    } */
 }

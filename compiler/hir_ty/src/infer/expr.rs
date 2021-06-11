@@ -165,7 +165,7 @@ impl BodyInferenceContext<'_> {
                     ty = self.fn_type(param, ty);
                 }
 
-                ret
+                ty
             },
             | Expr::If { cond, then, else_, .. } => {
                 self.check_expr(*cond, self.lang_type("bool-type"));

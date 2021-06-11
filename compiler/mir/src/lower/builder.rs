@@ -4,7 +4,6 @@ use crate::ty::{Type, TypeKind};
 use hir::ty::{Ty, TyKind};
 use std::sync::Arc;
 
-#[derive(Default)]
 pub struct Builder<'a> {
     bodies: &'a mut Bodies,
     body: LocalBodyId,
@@ -13,9 +12,15 @@ pub struct Builder<'a> {
 }
 
 impl Bodies {
-    pub fn add(&mut self) -> Builder {
-        let id = self.bodies.alloc(Body::default());
+    pub fn add(&mut self) -> LocalBodyId {
+        self.bodies.alloc(Body::default())
+    }
 
+    pub fn set_arity(&mut self, id: LocalBodyId, arity: usize) {
+        self.arities.insert(arity, id);
+    }
+
+    pub fn builder(&mut self, id: LocalBodyId) -> Builder {
         Builder {
             bodies: self,
             body: id,
@@ -25,26 +30,48 @@ impl Bodies {
     }
 }
 
+impl<'a> std::ops::Deref for Builder<'a> {
+    type Target = Bodies;
+
+    fn deref(&self) -> &Self::Target {
+        self.bodies
+    }
+}
+
+impl<'a> std::ops::DerefMut for Builder<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.bodies
+    }
+}
+
 impl<'a> Builder<'a> {
+    fn body(&self) -> &Body {
+        &self.bodies[self.body]
+    }
+
+    fn body_mut(&mut self) -> &mut Body {
+        &mut self.bodies[self.body]
+    }
+
     pub fn create_block(&mut self) -> BlockId {
-        self.body.blocks.alloc(Block {
+        self.body_mut().blocks.alloc(Block {
             stmts: Vec::new(),
             term: Term::Abort,
         })
     }
 
-    pub fn create_ret(&mut self, db: &dyn MirDatabase, ty: Ty) -> LocalId {
-        let id = self.body.locals.alloc(Local {
+    pub fn create_ret(&mut self, ty: Arc<Type>) -> LocalId {
+        let id = self.body_mut().locals.alloc(Local {
             kind: LocalKind::Ret,
-            ty: db.mir_type(ty),
+            ty,
         });
 
-        self.body.ret = Some(id);
+        self.body_mut().ret = Some(id);
         id
     }
 
     pub fn create_arg(&mut self, ty: Arc<Type>) -> LocalId {
-        self.body.locals.alloc(Local {
+        self.body_mut().locals.alloc(Local {
             kind: LocalKind::Arg,
             ty,
         })
@@ -53,7 +80,7 @@ impl<'a> Builder<'a> {
     pub fn create_var(&mut self, ty: Arc<Type>) -> LocalId {
         if *ty == Type::UNIT {
             let val = self
-                .body
+                .body()
                 .locals
                 .iter()
                 .find_map(|(id, l)| if *l.ty == Type::UNIT { Some(id) } else { None });
@@ -61,13 +88,13 @@ impl<'a> Builder<'a> {
             if let Some(id) = val {
                 id
             } else {
-                self.body.locals.alloc(Local {
+                self.body_mut().locals.alloc(Local {
                     ty,
                     kind: LocalKind::Var,
                 })
             }
         } else {
-            self.body.locals.alloc(Local {
+            self.body_mut().locals.alloc(Local {
                 kind: LocalKind::Var,
                 ty,
             })
@@ -77,13 +104,13 @@ impl<'a> Builder<'a> {
     pub fn set_block(&mut self, block: BlockId) {
         self.block = Some(block);
 
-        if let None = self.body.entry {
-            self.body.entry = Some(block);
+        if let None = self.body().entry {
+            self.body_mut().entry = Some(block);
         }
     }
 
     pub fn get_ret(&self) -> LocalId {
-        self.body.ret.unwrap()
+        self.body().ret.unwrap()
     }
 
     pub fn location(&self) -> Location {
@@ -91,7 +118,7 @@ impl<'a> Builder<'a> {
 
         Location {
             block,
-            stmt: self.body.blocks[block].stmts.len(),
+            stmt: self.body().blocks[block].stmts.len(),
         }
     }
 
@@ -109,7 +136,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn place_type(&self, db: &dyn MirDatabase, place: &Place) -> Arc<Type> {
-        let mut ty = self.body.locals[place.local].ty.clone();
+        let mut ty = self.body().locals[place.local].ty.clone();
 
         for elem in &place.elems {
             match elem {
@@ -186,6 +213,7 @@ impl<'a> Builder<'a> {
     }
 
     fn block(&mut self) -> &mut Block {
-        &mut self.body.blocks[self.block.unwrap()]
+        let block = self.block.unwrap();
+        &mut self.body_mut().blocks[block]
     }
 }

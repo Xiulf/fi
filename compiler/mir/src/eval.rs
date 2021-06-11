@@ -5,11 +5,13 @@ use hir_def::arena::ArenaMap;
 use std::sync::Arc;
 
 pub fn eval_query(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> EvalResult {
-    let body = db.body_mir(def);
+    let bodies = db.body_mir(def);
+    let main_id = bodies.main_id(def);
+    let body = &bodies[main_id.local_id];
     let mut vm = VM::new(db);
 
-    vm.init(&body);
-    vm.eval(&body)
+    vm.init(body);
+    vm.eval(body)
 }
 
 pub struct VM<'a> {

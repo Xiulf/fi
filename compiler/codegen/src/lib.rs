@@ -12,6 +12,7 @@ mod value;
 use clif::InstBuilder as _;
 use clif::Module as _;
 use hir::arena::ArenaMap;
+use hir::display::HirDisplay;
 use mir::ir;
 use place::PlaceRef;
 use ptr::Pointer;
@@ -36,14 +37,14 @@ struct ModuleCtx<'a> {
     module: cranelift_object::ObjectModule,
     ctx: &'a mut clif::Context,
     fcx: &'a mut clif::FunctionBuilderContext,
-    func_ids: FxHashMap<hir::Func, Arities>,
+    func_ids: FxHashMap<ir::BodyId, Arities>,
     static_ids: FxHashMap<hir::Static, clif::DataId>,
 }
 
 struct FunctionCtx<'a, 'mcx> {
     mcx: &'mcx mut ModuleCtx<'a>,
     bcx: clif::FunctionBuilder<'a>,
-    body: Arc<ir::Body>,
+    body: Arc<ir::Bodies>,
     blocks: ArenaMap<ir::BlockId, clif::Block>,
     locals: ArenaMap<ir::LocalId, PlaceRef>,
     ssa_vars: u32,
@@ -136,7 +137,7 @@ impl<'a> ModuleCtx<'a> {
                 }
             }
 
-            for def in module.declarations(self.db.upcast()) {
+            /* for def in module.declarations(self.db.upcast()) {
                 match def {
                     | hir::ModuleDef::Func(f) => self.lower_func(f),
                     | hir::ModuleDef::Static(s) => self.lower_static(s),
@@ -151,12 +152,12 @@ impl<'a> ModuleCtx<'a> {
                         | hir::AssocItem::Static(s) => self.lower_static(s),
                     }
                 }
-            }
+            } */
         }
 
-        if let base_db::libs::LibKind::Executable = self.db.libs()[lib.into()].kind {
+        /* if let base_db::libs::LibKind::Executable = self.db.libs()[lib.into()].kind {
             self.generate_main(lib);
-        }
+        } */
 
         self.module.finish()
     }
@@ -167,40 +168,51 @@ impl<'a> ModuleCtx<'a> {
                 return;
             }
         } else if func.is_foreign(self.db.upcast()) {
-            let attrs = self.db.attrs(hir::id::AttrDefId::FuncId(func.into()));
+            // let attrs = self.db.attrs(hir::id::AttrDefId::FuncId(func.into()));
 
-            if attrs.by_key("intrinsic").exists() {
-                return;
-            }
+            // if attrs.by_key("intrinsic").exists() {
+            return;
+            // }
         }
 
-        let mut arities = self.func_signature(func);
-        let linkage = if func.is_foreign(self.db.upcast()) {
-            clif::Linkage::Import
-        } else if func.is_exported(self.db.upcast()) {
-            clif::Linkage::Export
-        } else {
-            clif::Linkage::Local
-        };
+        let def: hir::id::FuncId = func.into();
+        let def: hir::id::DefWithBodyId = def.into();
+        let bodies = self.db.body_mir(def);
 
-        let name = func.link_name(self.db.upcast()).to_string();
-        let id = self.module.declare_function(&name, linkage, arities.max_sig()).unwrap();
+        // eprintln!("{}:", func.link_name(self.db.upcast()));
+        // eprintln!("{}", bodies.display(self.db.upcast()));
 
-        arities.ids.push(id);
-
-        if matches!(linkage, clif::Linkage::Local | clif::Linkage::Export) {
-            for i in (1..arities.max).rev() {
-                let name = format!("{}'{}", name, i);
-                let id = self
-                    .module
-                    .declare_function(&name, linkage, arities.get_sig(i))
-                    .unwrap();
-
-                arities.ids.push(id);
-            }
-        }
-
-        self.func_ids.insert(func, arities);
+        // let mut arities = self.func_signature(func);
+        // let linkage = if func.is_foreign(self.db.upcast()) {
+        //     clif::Linkage::Import
+        // } else if func.is_exported(self.db.upcast()) {
+        //     clif::Linkage::Export
+        // } else {
+        //     clif::Linkage::Local
+        // };
+        //
+        // let name = func.link_name(self.db.upcast()).to_string();
+        // let id = self.module.declare_function(&name, linkage, arities.max_sig()).unwrap();
+        //
+        // arities.ids.push(id);
+        //
+        // if matches!(linkage, clif::Linkage::Local | clif::Linkage::Export) {
+        //     for i in (1..arities.max).rev() {
+        //         let name = format!("{}'{}", name, i);
+        //         let id = self
+        //             .module
+        //             .declare_function(&name, linkage, arities.get_sig(i))
+        //             .unwrap();
+        //
+        //         arities.ids.push(id);
+        //     }
+        // }
+        //
+        // let def: hir::id::FuncId = func.into();
+        // let def: hir::id::DefWithBodyId = def.into();
+        // let bodies = self.db.body_mir(def);
+        //
+        // self.func_ids.insert(bodies.main_id(def), arities);
     }
 
     pub fn register_static(&mut self, static_: hir::Static) {
@@ -210,27 +222,38 @@ impl<'a> ModuleCtx<'a> {
             }
         }
 
-        let is_foreign = static_.is_foreign(self.db.upcast());
-        let linkage = if is_foreign {
-            clif::Linkage::Import
-        } else if static_.is_exported(self.db.upcast()) {
-            clif::Linkage::Export
-        } else {
-            clif::Linkage::Local
-        };
+        let def: hir::id::StaticId = static_.into();
+        let def: hir::id::DefWithBodyId = def.into();
+        let bodies = self.db.body_mir(def);
 
-        let name = static_.link_name(self.db.upcast()).to_string();
-        let id = self.module.declare_data(&name, linkage, false, false).unwrap();
+        // eprintln!("{}:", static_.link_name(self.db.upcast()));
+        // eprintln!("{}", bodies.display(self.db.upcast()));
 
-        self.static_ids.insert(static_, id);
+        // let is_foreign = static_.is_foreign(self.db.upcast());
+        // let linkage = if is_foreign {
+        //     clif::Linkage::Import
+        // } else if static_.is_exported(self.db.upcast()) {
+        //     clif::Linkage::Export
+        // } else {
+        //     clif::Linkage::Local
+        // };
+        //
+        // let name = static_.link_name(self.db.upcast()).to_string();
+        // let id = self.module.declare_data(&name, linkage, false, false).unwrap();
+        //
+        // self.static_ids.insert(static_, id);
     }
 
-    pub fn lower_func(&mut self, func: hir::Func) {
+    /*pub fn lower_func(&mut self, func: hir::Func) {
         if func.is_foreign(self.db.upcast()) {
             return;
         }
 
-        if let Some(arr) = self.func_ids.get(&func).cloned() {
+        let def: hir::id::FuncId = func.into();
+        let def: hir::id::DefWithBodyId = def.into();
+        let bodies = self.db.body_mir(def);
+
+        if let Some(arr) = self.func_ids.get(&bodies.main_id(def)).cloned() {
             self.lower_func_arities(&arr);
 
             let id = arr.max_id();
@@ -487,7 +510,7 @@ impl<'a> ModuleCtx<'a> {
                 &mut clif::NullStackMapSink {},
             )
             .unwrap();
-    }
+    } */
 
     pub fn ir_type(&self, layout: &mir::layout::Layout) -> Option<clif::Type> {
         if let mir::layout::Abi::Scalar(s) = &layout.abi {

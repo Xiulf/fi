@@ -1,5 +1,5 @@
 use crate::layout::Layout;
-use crate::ty::Type;
+use crate::ty::{Signature, Type};
 use hir::arena::{Arena, Idx};
 use hir::display::{self, Write as _};
 use hir::id::DefWithBodyId;
@@ -128,6 +128,14 @@ impl Bodies {
 
         unreachable!()
     }
+
+    pub fn signature(&self, local_id: LocalBodyId) -> Arc<Type> {
+        let body = &self.bodies[local_id];
+        let args = body.args().iter().map(|&l| body.locals[l].ty.clone()).collect();
+        let ret = body.locals[body.ret.unwrap()].ty.clone();
+
+        Type::func(args, ret)
+    }
 }
 
 impl std::ops::Index<LocalBodyId> for Bodies {
@@ -135,6 +143,12 @@ impl std::ops::Index<LocalBodyId> for Bodies {
 
     fn index(&self, id: LocalBodyId) -> &Self::Output {
         &self.bodies[id]
+    }
+}
+
+impl std::ops::IndexMut<LocalBodyId> for Bodies {
+    fn index_mut(&mut self, id: LocalBodyId) -> &mut Self::Output {
+        &mut self.bodies[id]
     }
 }
 
@@ -190,6 +204,20 @@ impl Const {
     }
 }
 
+impl display::HirDisplay for Bodies {
+    fn hir_fmt(&self, f: &mut display::HirFormatter) -> display::Result {
+        for (id, body) in self.bodies.iter() {
+            let id: u32 = id.into_raw().into();
+
+            write!(f, "^{} :: ", id)?;
+            body.hir_fmt(f)?;
+            writeln!(f)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl display::HirDisplay for BodyId {
     fn hir_fmt(&self, f: &mut display::HirFormatter) -> display::Result {
         let path = match self.def {
@@ -223,7 +251,7 @@ impl display::HirDisplay for Body {
             let db = f.db;
 
             writeln!(f, "%{}:", id)?;
-            writeln!(display::indent(f), "{}", block.display(db))?;
+            write!(display::indent(f), "{}", block.display(db))?;
         }
 
         write!(f, "}}")

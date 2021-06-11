@@ -1,6 +1,7 @@
 use crate::db::MirDatabase;
 use crate::layout::{Integer, Primitive};
 use hir::attrs::{AttrInput, AttrInputGroup};
+use hir::display::HirDisplay;
 use hir::ty::{Ty, TyKind, TypeVar};
 use std::fmt;
 use std::sync::Arc;
@@ -66,13 +67,13 @@ impl Type {
         args.reverse();
 
         let kind = match ty.lookup(db.upcast()) {
-            | TyKind::Error
+            | TyKind::Error => TypeKind::Unit,
             | TyKind::Unknown(_)
             | TyKind::Skolem(_, _)
             | TyKind::Row(_, _)
             | TyKind::Figure(_)
             | TyKind::Symbol(_)
-            | TyKind::App(_, _) => unreachable!(),
+            | TyKind::App(_, _) => unreachable!("{}", ty.display(db.upcast())),
             | TyKind::ForAll(_, ty) => return db.mir_type(ty),
             | TyKind::Ctnt(_, ty) => return db.mir_type(ty),
             | TyKind::TypeVar(tv) => TypeKind::Var(tv),
@@ -284,6 +285,23 @@ impl Type {
         })
     }
 
+    pub fn func(params: Arc<[Arc<Type>]>, ret: Arc<Type>) -> Arc<Type> {
+        Arc::new(Type {
+            repr: ReprOptions::default(),
+            kind: TypeKind::Func(Signature { params, ret }),
+        })
+    }
+
+    pub fn closure(arg: Arc<Type>, ret: Arc<Type>) -> Arc<Type> {
+        Arc::new(Type {
+            repr: ReprOptions::default(),
+            kind: TypeKind::Clos(Signature {
+                params: Arc::new([arg]),
+                ret,
+            }),
+        })
+    }
+
     pub fn ptr_sized_int(db: &dyn MirDatabase, sign: bool) -> Arc<Type> {
         Arc::new(Type {
             kind: TypeKind::Unit,
@@ -355,7 +373,19 @@ impl fmt::Display for Type {
                 write!(f, ")")
             },
             | TypeKind::Func(sig) => sig.fmt(f),
-            | TypeKind::Clos(sig) => write!(f, "closure {}", sig),
+            | TypeKind::Clos(sig) => {
+                write!(f, "|")?;
+
+                for (i, ty) in sig.params.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+
+                    ty.fmt(f)?;
+                }
+
+                write!(f, "| -> {}", sig.ret)
+            },
         }
     }
 }
