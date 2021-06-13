@@ -37,58 +37,17 @@ struct ModuleCtx<'a> {
     module: cranelift_object::ObjectModule,
     ctx: &'a mut clif::Context,
     fcx: &'a mut clif::FunctionBuilderContext,
-    func_ids: FxHashMap<ir::BodyId, Arities>,
+    func_ids: FxHashMap<ir::BodyId, (clif::FuncId, clif::Signature)>,
     static_ids: FxHashMap<hir::Static, clif::DataId>,
 }
 
 struct FunctionCtx<'a, 'mcx> {
     mcx: &'mcx mut ModuleCtx<'a>,
     bcx: clif::FunctionBuilder<'a>,
-    body: Arc<ir::Bodies>,
+    body: &'mcx ir::Body,
     blocks: ArenaMap<ir::BlockId, clif::Block>,
     locals: ArenaMap<ir::LocalId, PlaceRef>,
     ssa_vars: u32,
-}
-
-#[derive(Clone)]
-struct Arities {
-    max: usize,
-    sigs: Vec<clif::Signature>,
-    ids: Vec<clif::FuncId>,
-}
-
-impl Arities {
-    fn new(max: usize) -> Self {
-        Self {
-            max,
-            sigs: Vec::new(),
-            ids: Vec::new(),
-        }
-    }
-
-    fn max_sig(&self) -> &clif::Signature {
-        &self.sigs[0]
-    }
-
-    fn max_id(&self) -> clif::FuncId {
-        self.ids[0]
-    }
-
-    fn get_sig(&self, arity: usize) -> &clif::Signature {
-        if self.max == 0 {
-            &self.sigs[0]
-        } else {
-            &self.sigs[self.max - arity]
-        }
-    }
-
-    fn get_id(&self, arity: usize) -> clif::FuncId {
-        if self.max == 0 {
-            self.ids[0]
-        } else {
-            self.ids[self.max - arity]
-        }
-    }
 }
 
 impl<'a> ModuleCtx<'a> {
@@ -137,7 +96,7 @@ impl<'a> ModuleCtx<'a> {
                 }
             }
 
-            /* for def in module.declarations(self.db.upcast()) {
+            for def in module.declarations(self.db.upcast()) {
                 match def {
                     | hir::ModuleDef::Func(f) => self.lower_func(f),
                     | hir::ModuleDef::Static(s) => self.lower_static(s),
@@ -152,12 +111,12 @@ impl<'a> ModuleCtx<'a> {
                         | hir::AssocItem::Static(s) => self.lower_static(s),
                     }
                 }
-            } */
+            }
         }
 
-        /* if let base_db::libs::LibKind::Executable = self.db.libs()[lib.into()].kind {
+        if let base_db::libs::LibKind::Executable = self.db.libs()[lib.into()].kind {
             self.generate_main(lib);
-        } */
+        }
 
         self.module.finish()
     }
@@ -168,51 +127,43 @@ impl<'a> ModuleCtx<'a> {
                 return;
             }
         } else if func.is_foreign(self.db.upcast()) {
-            // let attrs = self.db.attrs(hir::id::AttrDefId::FuncId(func.into()));
+            let attrs = self.db.attrs(hir::id::AttrDefId::FuncId(func.into()));
 
-            // if attrs.by_key("intrinsic").exists() {
-            return;
-            // }
+            if attrs.by_key("intrinsic").exists() {
+                return;
+            }
         }
 
         let def: hir::id::FuncId = func.into();
         let def: hir::id::DefWithBodyId = def.into();
         let bodies = self.db.body_mir(def);
+        let linkage = if func.is_foreign(self.db.upcast()) {
+            clif::Linkage::Import
+        } else if func.is_exported(self.db.upcast()) {
+            clif::Linkage::Export
+        } else {
+            clif::Linkage::Local
+        };
 
-        // eprintln!("{}:", func.link_name(self.db.upcast()));
-        // eprintln!("{}", bodies.display(self.db.upcast()));
+        let name = func.link_name(self.db.upcast()).to_string();
+        let mut first = true;
 
-        // let mut arities = self.func_signature(func);
-        // let linkage = if func.is_foreign(self.db.upcast()) {
-        //     clif::Linkage::Import
-        // } else if func.is_exported(self.db.upcast()) {
-        //     clif::Linkage::Export
-        // } else {
-        //     clif::Linkage::Local
-        // };
-        //
-        // let name = func.link_name(self.db.upcast()).to_string();
-        // let id = self.module.declare_function(&name, linkage, arities.max_sig()).unwrap();
-        //
-        // arities.ids.push(id);
-        //
-        // if matches!(linkage, clif::Linkage::Local | clif::Linkage::Export) {
-        //     for i in (1..arities.max).rev() {
-        //         let name = format!("{}'{}", name, i);
-        //         let id = self
-        //             .module
-        //             .declare_function(&name, linkage, arities.get_sig(i))
-        //             .unwrap();
-        //
-        //         arities.ids.push(id);
-        //     }
-        // }
-        //
-        // let def: hir::id::FuncId = func.into();
-        // let def: hir::id::DefWithBodyId = def.into();
-        // let bodies = self.db.body_mir(def);
-        //
-        // self.func_ids.insert(bodies.main_id(def), arities);
+        for body in bodies.ids(def) {
+            let name = if first {
+                first = false;
+                name.clone()
+            } else {
+                let local_id: u32 = body.local_id.into_raw().into();
+
+                format!("{}^{}", name, local_id)
+            };
+
+            let sig = self.func_signature(body);
+            // eprintln!("{}: {}", name, sig);
+            let id = self.module.declare_function(&name, linkage, &sig).unwrap();
+
+            self.func_ids.insert(body, (id, sig));
+        }
     }
 
     pub fn register_static(&mut self, static_: hir::Static) {
@@ -222,29 +173,22 @@ impl<'a> ModuleCtx<'a> {
             }
         }
 
-        let def: hir::id::StaticId = static_.into();
-        let def: hir::id::DefWithBodyId = def.into();
-        let bodies = self.db.body_mir(def);
+        let is_foreign = static_.is_foreign(self.db.upcast());
+        let linkage = if is_foreign {
+            clif::Linkage::Import
+        } else if static_.is_exported(self.db.upcast()) {
+            clif::Linkage::Export
+        } else {
+            clif::Linkage::Local
+        };
 
-        // eprintln!("{}:", static_.link_name(self.db.upcast()));
-        // eprintln!("{}", bodies.display(self.db.upcast()));
+        let name = static_.link_name(self.db.upcast()).to_string();
+        let id = self.module.declare_data(&name, linkage, false, false).unwrap();
 
-        // let is_foreign = static_.is_foreign(self.db.upcast());
-        // let linkage = if is_foreign {
-        //     clif::Linkage::Import
-        // } else if static_.is_exported(self.db.upcast()) {
-        //     clif::Linkage::Export
-        // } else {
-        //     clif::Linkage::Local
-        // };
-        //
-        // let name = static_.link_name(self.db.upcast()).to_string();
-        // let id = self.module.declare_data(&name, linkage, false, false).unwrap();
-        //
-        // self.static_ids.insert(static_, id);
+        self.static_ids.insert(static_, id);
     }
 
-    /*pub fn lower_func(&mut self, func: hir::Func) {
+    pub fn lower_func(&mut self, func: hir::Func) {
         if func.is_foreign(self.db.upcast()) {
             return;
         }
@@ -253,177 +197,154 @@ impl<'a> ModuleCtx<'a> {
         let def: hir::id::DefWithBodyId = def.into();
         let bodies = self.db.body_mir(def);
 
-        if let Some(arr) = self.func_ids.get(&bodies.main_id(def)).cloned() {
-            self.lower_func_arities(&arr);
-
-            let id = arr.max_id();
-            let sig = arr.max_sig().clone();
-            let def = hir::id::DefWithBodyId::FuncId(func.into());
-            let mut fx = self.function(def);
-            let start_block = fx.bcx.create_block();
-
-            fx.bcx.func.signature = sig;
-            fx.bcx.switch_to_block(start_block);
-
-            let ptr_type = fx.module.target_config().pointer_type();
-            let ret = fx.body.ret.unwrap();
-            let ret_lyt = fx.db.layout_of(fx.body.locals[ret].ty.clone());
-            let ssa = ssa::analyze(&fx);
-
-            match fx.pass_mode(&ret_lyt) {
-                | abi::PassMode::NoPass => {
-                    fx.locals.insert(ret, PlaceRef::no_place(ret_lyt));
-                },
-                | abi::PassMode::ByVal(_) | abi::PassMode::ByValPair(_, _) => {
-                    local_place(&mut fx, &ssa, ret, ret_lyt);
-                },
-                | abi::PassMode::ByRef { size: _ } => {
-                    let val = fx.bcx.append_block_param(start_block, ptr_type);
-
-                    fx.locals.insert(ret, PlaceRef::new_ref(Pointer::addr(val), ret_lyt));
-                },
-            }
-
-            let vals = fx
-                .body
-                .args()
-                .into_iter()
-                .map(|arg| {
-                    let arg = &fx.body.locals[arg];
-                    let layout = fx.db.layout_of(arg.ty.clone());
-                    let value = match fx.mcx.pass_mode(&layout) {
-                        | abi::PassMode::NoPass => return None,
-                        | abi::PassMode::ByVal(ty) => {
-                            let param = fx.bcx.append_block_param(start_block, ty);
-
-                            ValueRef::new_val(param, layout)
-                        },
-                        | abi::PassMode::ByValPair(a, b) => {
-                            let a = fx.bcx.append_block_param(start_block, a);
-                            let b = fx.bcx.append_block_param(start_block, b);
-
-                            ValueRef::new_val_pair(a, b, layout)
-                        },
-                        | abi::PassMode::ByRef { size: Some(_) } => {
-                            let param = fx.bcx.append_block_param(start_block, ptr_type);
-
-                            ValueRef::new_ref(Pointer::addr(param), layout)
-                        },
-                        | abi::PassMode::ByRef { size: None } => {
-                            let ptr = fx.bcx.append_block_param(start_block, ptr_type);
-                            let meta = fx.bcx.append_block_param(start_block, ptr_type);
-
-                            ValueRef::new_ref_meta(Pointer::addr(ptr), meta, layout)
-                        },
-                    };
-
-                    Some(value)
-                })
-                .collect::<Vec<_>>();
-
-            for (arg, value) in fx.body.args().into_iter().zip(vals) {
-                let place = if let Some(value) = value {
-                    let layout = value.layout.clone();
-
-                    if let ssa::SsaKind::Ssa = ssa[arg] {
-                        let place = if let mir::layout::Abi::ScalarPair(_, _) = layout.abi {
-                            PlaceRef::new_var_pair(&mut fx, layout)
-                        } else {
-                            PlaceRef::new_var(&mut fx, layout)
-                        };
-
-                        place.clone().store(&mut fx, value);
-                        place
-                    } else {
-                        PlaceRef::new_ref(value.on_stack(&mut fx).0, layout)
-                    }
-                } else {
-                    PlaceRef::no_place(fx.db.layout_of(fx.body.locals[arg].ty.clone()))
-                };
-
-                fx.locals.insert(arg, place);
-            }
-
-            for (id, local) in fx.body.locals.clone().iter() {
-                if let ir::LocalKind::Var = local.kind {
-                    let layout = fx.db.layout_of(local.ty.clone());
-
-                    local_place(&mut fx, &ssa, id, layout);
-                }
-            }
-
-            for (id, _) in fx.body.blocks.iter() {
-                let block = fx.bcx.create_block();
-
-                fx.blocks.insert(id, block);
-            }
-
-            fx.bcx.ins().jump(fx.blocks[fx.body.entry.unwrap()], &[]);
-            fx.bcx.seal_block(start_block);
-            fx.lower();
-            fx.bcx.finalize();
-            fx.ctx.compute_cfg();
-            fx.ctx.compute_domtree();
-            fx.mcx.ctx.eliminate_unreachable_code(fx.mcx.module.isa()).unwrap();
-
-            // eprintln!("{}: {}", func.link_name(fx.db.upcast()), fx.ctx.func);
-
-            fx.mcx
-                .module
-                .define_function(
-                    id,
-                    &mut fx.mcx.ctx,
-                    &mut clif::NullTrapSink {},
-                    &mut clif::NullStackMapSink {},
-                )
-                .unwrap();
-
-            fx.ctx.clear();
-
-            fn local_place(
-                fx: &mut FunctionCtx,
-                ssa: &ArenaMap<ir::LocalId, ssa::SsaKind>,
-                local: ir::LocalId,
-                layout: Arc<mir::layout::Layout>,
-            ) -> PlaceRef {
-                let place = if let ssa::SsaKind::Ssa = ssa[local] {
-                    if let mir::layout::Abi::ScalarPair(_, _) = layout.abi {
-                        PlaceRef::new_var_pair(fx, layout)
-                    } else {
-                        PlaceRef::new_var(fx, layout)
-                    }
-                } else {
-                    PlaceRef::new_stack(fx, layout)
-                };
-
-                fx.locals.insert(local, place.clone());
-                place
+        for id in bodies.ids(def) {
+            if let Some((func, sig)) = self.func_ids.get(&id).cloned() {
+                self.lower_body(def, &bodies[id.local_id], func, sig);
             }
         }
     }
 
-    pub fn lower_func_arities(&mut self, arities: &Arities) {
-        for (id, sig) in arities.ids.iter().copied().zip(&arities.sigs).skip(1) {
-            let mut bcx = clif::FunctionBuilder::new(&mut self.ctx.func, &mut self.fcx);
-            let ptr_type = self.module.target_config().pointer_type();
-            let block = bcx.create_block();
+    pub fn lower_body(&mut self, def: hir::id::DefWithBodyId, body: &ir::Body, id: clif::FuncId, sig: clif::Signature) {
+        let mut fx = self.function(def, body);
+        let start_block = fx.bcx.create_block();
 
-            bcx.func.signature = sig.clone();
-            bcx.switch_to_block(block);
-            bcx.append_block_params_for_function_params(block);
+        fx.bcx.func.signature = sig;
+        fx.bcx.switch_to_block(start_block);
 
-            let a = bcx.ins().iconst(ptr_type, 0);
-            let b = bcx.ins().iconst(ptr_type, 0);
+        let ptr_type = fx.module.target_config().pointer_type();
+        let ret = fx.body.ret.unwrap();
+        let ret_lyt = fx.db.layout_of(fx.body.locals[ret].ty.clone());
+        let ssa = ssa::analyze(&fx);
 
-            bcx.ins().return_(&[a, b]);
-            bcx.seal_block(block);
-            bcx.finalize();
+        match fx.pass_mode(&ret_lyt) {
+            | abi::PassMode::NoPass => {
+                fx.locals.insert(ret, PlaceRef::no_place(ret_lyt));
+            },
+            | abi::PassMode::ByVal(_) | abi::PassMode::ByValPair(_, _) => {
+                local_place(&mut fx, &ssa, ret, ret_lyt);
+            },
+            | abi::PassMode::ByRef { size: _ } => {
+                let val = fx.bcx.append_block_param(start_block, ptr_type);
 
-            self.module
-                .define_function(id, self.ctx, &mut clif::NullTrapSink {}, &mut clif::NullStackMapSink {})
-                .unwrap();
+                fx.locals.insert(ret, PlaceRef::new_ref(Pointer::addr(val), ret_lyt));
+            },
+        }
 
-            self.ctx.clear();
+        let vals = fx
+            .body
+            .args()
+            .into_iter()
+            .map(|arg| {
+                let arg = &fx.body.locals[arg];
+                let layout = fx.db.layout_of(arg.ty.clone());
+                let value = match fx.mcx.pass_mode(&layout) {
+                    | abi::PassMode::NoPass => return None,
+                    | abi::PassMode::ByVal(ty) => {
+                        let param = fx.bcx.append_block_param(start_block, ty);
+
+                        ValueRef::new_val(param, layout)
+                    },
+                    | abi::PassMode::ByValPair(a, b) => {
+                        let a = fx.bcx.append_block_param(start_block, a);
+                        let b = fx.bcx.append_block_param(start_block, b);
+
+                        ValueRef::new_val_pair(a, b, layout)
+                    },
+                    | abi::PassMode::ByRef { size: Some(_) } => {
+                        let param = fx.bcx.append_block_param(start_block, ptr_type);
+
+                        ValueRef::new_ref(Pointer::addr(param), layout)
+                    },
+                    | abi::PassMode::ByRef { size: None } => {
+                        let ptr = fx.bcx.append_block_param(start_block, ptr_type);
+                        let meta = fx.bcx.append_block_param(start_block, ptr_type);
+
+                        ValueRef::new_ref_meta(Pointer::addr(ptr), meta, layout)
+                    },
+                };
+
+                Some(value)
+            })
+            .collect::<Vec<_>>();
+
+        for (arg, value) in fx.body.args().into_iter().zip(vals) {
+            let place = if let Some(value) = value {
+                let layout = value.layout.clone();
+
+                if let ssa::SsaKind::Ssa = ssa[arg] {
+                    let place = if let mir::layout::Abi::ScalarPair(_, _) = layout.abi {
+                        PlaceRef::new_var_pair(&mut fx, layout)
+                    } else {
+                        PlaceRef::new_var(&mut fx, layout)
+                    };
+
+                    place.clone().store(&mut fx, value);
+                    place
+                } else {
+                    PlaceRef::new_ref(value.on_stack(&mut fx).0, layout)
+                }
+            } else {
+                PlaceRef::no_place(fx.db.layout_of(fx.body.locals[arg].ty.clone()))
+            };
+
+            fx.locals.insert(arg, place);
+        }
+
+        for (id, local) in fx.body.locals.clone().iter() {
+            if let ir::LocalKind::Var = local.kind {
+                let layout = fx.db.layout_of(local.ty.clone());
+
+                local_place(&mut fx, &ssa, id, layout);
+            }
+        }
+
+        for (id, _) in fx.body.blocks.iter() {
+            let block = fx.bcx.create_block();
+
+            fx.blocks.insert(id, block);
+        }
+
+        fx.bcx.ins().jump(fx.blocks[fx.body.entry.unwrap()], &[]);
+        fx.bcx.seal_block(start_block);
+        fx.lower();
+        fx.bcx.finalize();
+        fx.ctx.compute_cfg();
+        fx.ctx.compute_domtree();
+
+        let name = &fx.module.declarations().get_function_decl(id).name;
+        eprintln!("{}: {}", name, fx.ctx.func);
+
+        fx.mcx.ctx.eliminate_unreachable_code(fx.mcx.module.isa()).unwrap();
+        fx.mcx
+            .module
+            .define_function(
+                id,
+                &mut fx.mcx.ctx,
+                &mut clif::NullTrapSink {},
+                &mut clif::NullStackMapSink {},
+            )
+            .unwrap();
+
+        fx.ctx.clear();
+
+        fn local_place(
+            fx: &mut FunctionCtx,
+            ssa: &ArenaMap<ir::LocalId, ssa::SsaKind>,
+            local: ir::LocalId,
+            layout: Arc<mir::layout::Layout>,
+        ) -> PlaceRef {
+            let place = if let ssa::SsaKind::Ssa = ssa[local] {
+                if let mir::layout::Abi::ScalarPair(_, _) = layout.abi {
+                    PlaceRef::new_var_pair(fx, layout)
+                } else {
+                    PlaceRef::new_var(fx, layout)
+                }
+            } else {
+                PlaceRef::new_stack(fx, layout)
+            };
+
+            fx.locals.insert(local, place.clone());
+            place
         }
     }
 
@@ -437,14 +358,14 @@ impl<'a> ModuleCtx<'a> {
         }
     }
 
-    fn function<'mcx>(&'mcx mut self, def: hir::id::DefWithBodyId) -> FunctionCtx<'a, 'mcx> {
+    fn function<'mcx>(&'mcx mut self, def: hir::id::DefWithBodyId, body: &'mcx ir::Body) -> FunctionCtx<'a, 'mcx> {
         // unsafe is used here to fix lifetimes, this is indeed very unsafe :/
         let func = unsafe { &mut *(&mut self.ctx.func as *mut _) };
         let fcx = unsafe { &mut *(self.fcx as *mut _) };
 
         FunctionCtx {
             bcx: clif::FunctionBuilder::new(func, fcx),
-            body: self.db.body_mir(def),
+            body,
             blocks: ArenaMap::default(),
             locals: ArenaMap::default(),
             ssa_vars: 0,
@@ -473,8 +394,11 @@ impl<'a> ModuleCtx<'a> {
             None
         })();
 
-        let main = main.expect("executable contains no main function");
-        let main = self.func_ids[&main].max_id();
+        let main: hir::id::FuncId = main.expect("executable contains no main function").into();
+        let main_def = main.into();
+        let main = self.db.body_mir(main_def);
+        let main = main.main_id(main_def);
+        let main = self.func_ids[&main].0;
         let mut sig = self.module.make_signature();
         let ptr_type = self.module.target_config().pointer_type();
 
@@ -510,7 +434,7 @@ impl<'a> ModuleCtx<'a> {
                 &mut clif::NullStackMapSink {},
             )
             .unwrap();
-    } */
+    }
 
     pub fn ir_type(&self, layout: &mir::layout::Layout) -> Option<clif::Type> {
         if let mir::layout::Abi::Scalar(s) = &layout.abi {
@@ -544,59 +468,18 @@ impl<'a> ModuleCtx<'a> {
         }
     }
 
-    pub fn func_signature(&self, func: hir::Func) -> Arities {
-        let lib = func.lib(self.db.upcast()).into();
-        let func_id = self.db.lang_item(lib, "fn-type".into()).unwrap();
-        let func_id = func_id.as_type_ctor().unwrap();
-        let mut args = Vec::new();
-        let mut ty = self.db.value_ty(hir::id::ValueTyDefId::FuncId(func.into()));
-        let mut arity = 0;
+    pub fn func_signature(&self, id: ir::BodyId) -> clif::Signature {
+        let bodies = self.db.body_mir(id.def);
+        let body = &bodies[id.local_id];
+        let args = body
+            .args()
+            .into_iter()
+            .map(|a| self.db.layout_of(body.locals[a].ty.clone()))
+            .collect::<Vec<_>>();
 
-        while let hir::ty::TyKind::ForAll(var, ret) = ty.lookup(self.db.upcast()) {
-            // if let Some(layout) = mir::layout::type_var(self.db.upcast(), lib, var) {
-            //     args.push(layout);
-            // }
+        let ret = self.db.layout_of(body.locals[body.ret.unwrap()].ty.clone());
 
-            ty = ret;
-        }
-
-        while let hir::ty::TyKind::Ctnt(ctnt, ret) = ty.lookup(self.db.upcast()) {
-            ty = ret;
-        }
-
-        while let Some([arg, ret]) = ty.match_ctor(self.db.upcast(), func_id) {
-            args.push(self.db.layout_of(self.db.mir_type(arg)));
-            arity += 1;
-            ty = ret;
-        }
-
-        let ret = if let hir::ty::TyKind::TypeVar(_) = ty.lookup(self.db.upcast()) {
-            args.insert(0, self.db.layout_of(self.db.mir_type(ty)));
-            Arc::new(mir::layout::Layout::UNIT)
-        } else {
-            self.db.layout_of(self.db.mir_type(ty))
-        };
-
-        let mut arities = Arities::new(arity);
-
-        if arity == 0 {
-            let sig = self.mk_signature(&ret, &args);
-
-            arities.sigs.push(sig);
-        } else {
-            let sig = self.mk_signature(&ret, &args);
-            let closure = mir::layout::closure(self.db.upcast());
-
-            arities.sigs.push(sig);
-
-            for i in (1..arity).rev() {
-                let sig = self.mk_signature(&closure, &args[0..i]);
-
-                arities.sigs.push(sig);
-            }
-        }
-
-        arities
+        self.mk_signature(&ret, &args)
     }
 
     pub fn mk_signature(&self, ret: &mir::layout::Layout, args: &[Arc<mir::layout::Layout>]) -> clif::Signature {

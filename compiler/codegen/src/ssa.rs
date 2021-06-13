@@ -10,7 +10,7 @@ pub(super) enum SsaKind {
 pub(super) fn analyze(fx: &FunctionCtx) -> ArenaMap<ir::LocalId, SsaKind> {
     let mut map = ArenaMap::default();
 
-    /* for (id, local) in fx.body.locals.iter() {
+    for (id, local) in fx.body.locals.iter() {
         let layout = fx.db.layout_of(local.ty.clone());
 
         if fx.ir_type(&layout).is_some() || fx.ir_pair_type(&layout).is_some() {
@@ -37,7 +37,7 @@ pub(super) fn analyze(fx: &FunctionCtx) -> ArenaMap<ir::LocalId, SsaKind> {
                 }
             }
         }
-    } */
+    }
 
     map
 }

@@ -23,7 +23,7 @@ foreign type Char :: Type
 foreign type Str :: Type
 
 @lang = "fn-type"
-@repr(func(arg = 0, ret = 1))
+@repr(func(args = 0, ret = 1))
 foreign type Fn :: Type -> Type -> Type
 
 @lang = "ptr-type"

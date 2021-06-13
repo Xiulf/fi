@@ -1,5 +1,5 @@
 use crate::layout::Layout;
-use crate::ty::{Signature, Type};
+use crate::ty::{Signature, Type, TypeKind};
 use hir::arena::{Arena, Idx};
 use hir::display::{self, Write as _};
 use hir::id::DefWithBodyId;
@@ -118,10 +118,10 @@ impl Bodies {
         BodyId { def, local_id }
     }
 
-    pub fn arity(&self, mut arity: usize) -> (&Body, usize) {
+    pub fn arity(&self, def: DefWithBodyId, mut arity: usize) -> (BodyId, usize) {
         loop {
             match self.arities.get(&arity) {
-                | Some(id) => return (&self.bodies[*id], arity),
+                | Some(&id) => return (BodyId { def, local_id: id }, arity),
                 | None => arity -= 1,
             }
         }
@@ -135,6 +135,10 @@ impl Bodies {
         let ret = body.locals[body.ret.unwrap()].ty.clone();
 
         Type::func(args, ret)
+    }
+
+    pub fn ids(&self, def: DefWithBodyId) -> impl Iterator<Item = BodyId> + '_ {
+        self.bodies.iter().map(move |(local_id, _)| BodyId { def, local_id })
     }
 }
 
@@ -158,6 +162,45 @@ impl Body {
             .iter()
             .filter_map(|(id, l)| if l.kind == LocalKind::Arg { Some(id) } else { None })
             .collect()
+    }
+
+    pub fn operand_type(&self, op: &Operand) -> Arc<Type> {
+        match op {
+            | Operand::Place(place) => self.place_type(place),
+            | Operand::Const(_, ty) => ty.clone(),
+        }
+    }
+
+    pub fn place_type(&self, place: &Place) -> Arc<Type> {
+        let mut ty = self.locals[place.local].ty.clone();
+
+        for elem in &place.elems {
+            match elem {
+                | PlaceElem::Deref => {
+                    if let TypeKind::Ptr(elem) = &ty.kind {
+                        ty = elem.clone();
+                    }
+                },
+                | PlaceElem::Field(i) => {
+                    if let TypeKind::And(fields) = &ty.kind {
+                        ty = fields[*i].clone();
+                    }
+                },
+                | PlaceElem::Offset(_) => {},
+                | PlaceElem::Index(_) => {
+                    if let TypeKind::Array(elem, _) = &ty.kind {
+                        ty = elem.clone();
+                    }
+                },
+                | PlaceElem::Downcast(i) => {
+                    if let TypeKind::Or(variants, true) = &ty.kind {
+                        ty = variants[*i].clone();
+                    }
+                },
+            }
+        }
+
+        ty
     }
 }
 
@@ -220,10 +263,11 @@ impl display::HirDisplay for Bodies {
 
 impl display::HirDisplay for BodyId {
     fn hir_fmt(&self, f: &mut display::HirFormatter) -> display::Result {
+        use hir::AsName;
         let path = match self.def {
-            | DefWithBodyId::FuncId(d) => hir::Func::from(d).path(f.db),
-            | DefWithBodyId::StaticId(d) => hir::Static::from(d).path(f.db),
-            | DefWithBodyId::ConstId(d) => hir::Const::from(d).path(f.db),
+            | DefWithBodyId::FuncId(d) => hir::Func::from(d).link_name(f.db),
+            | DefWithBodyId::StaticId(d) => hir::Static::from(d).link_name(f.db),
+            | DefWithBodyId::ConstId(d) => hir::Const::from(d).path(f.db).to_string().as_name(),
         };
 
         let local: u32 = self.local_id.into_raw().into();

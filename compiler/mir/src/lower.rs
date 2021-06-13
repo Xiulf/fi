@@ -37,22 +37,23 @@ impl Bodies {
             ty = ret;
         }
 
-        while let Some([arg, ret]) = ty.match_ctor(db.upcast(), func_id) {
-            if args.len() == body.params().len() {
-                break;
+        if !def.has_body(db.upcast()) {
+            while let Some([arg, ret]) = ty.match_ctor(db.upcast(), func_id) {
+                args.push(arg);
+                ty = ret;
             }
+        } else {
+            while let Some([arg, ret]) = ty.match_ctor(db.upcast(), func_id) {
+                if args.len() == body.params().len() {
+                    break;
+                }
 
-            args.push(arg);
-            ty = ret;
+                args.push(arg);
+                ty = ret;
+            }
         }
 
         let mut lcx = LowerCtx::new(db, def);
-
-        // for var in vars {
-        //     let layout = layout::type_var(db, def.module(db.upcast()).lib, var);
-        //
-        //     lcx.add_type_var(layout);
-        // }
 
         lcx.lower(ty, args);
 
@@ -98,7 +99,7 @@ impl<'a> LowerCtx<'a> {
 
         self.bodies.set_arity(local_id, args.len());
 
-        if args.len() > 1 {
+        if self.def.has_body(self.db.upcast()) && args.len() > 1 {
             let params = args.iter().map(|&t| self.db.mir_type(t)).collect();
             let ret = self.db.mir_type(ret_ty);
             let ty = Type::func(params, ret);
@@ -118,6 +119,14 @@ impl<'a> LowerCtx<'a> {
             binders: FxHashMap::default(),
         };
 
+        if !bcx.def.has_body(bcx.db.upcast()) {
+            for arg in args {
+                let ty = bcx.db.mir_type(arg);
+
+                bcx.builder.create_arg(ty);
+            }
+        }
+
         bcx.lower();
 
         eprintln!("{}", self.bodies.display(self.db.upcast()));
@@ -126,9 +135,11 @@ impl<'a> LowerCtx<'a> {
     fn generate_curry(&mut self, ret_ty: Ty, arg_tys: &[Ty], arity: usize, parent: LocalBodyId, parent_ty: Arc<Type>) {
         let db = self.db;
         let local_id = self.bodies.add();
-        let (clos_id, clos_ret_ty) = self.generate_curry_closure(ret_ty, &arg_tys[arity..], parent, parent_ty);
+        let (clos_id, clos_ret_ty, clos_env_ty) =
+            self.generate_curry_closure(ret_ty, arg_tys, arity, parent, parent_ty);
         let mut builder = self.bodies.builder(local_id);
-        let ret = builder.create_ret(clos_ret_ty);
+        let ret = builder.create_ret(clos_ret_ty.clone());
+        let ret = Place::new(ret);
         let args = arg_tys[..arity]
             .iter()
             .map(|&t| {
@@ -138,6 +149,31 @@ impl<'a> LowerCtx<'a> {
             })
             .collect::<Vec<_>>();
 
+        let entry = builder.create_block();
+
+        builder.set_block(entry);
+        builder.alloc(self.db, ret.clone().field(0), clos_env_ty);
+        builder.use_op(
+            ret.clone().field(1),
+            Operand::Const(
+                Const::Addr(BodyId {
+                    def: self.def,
+                    local_id: clos_id,
+                }),
+                clos_ret_ty,
+            ),
+        );
+
+        let env = ret.clone().field(0).deref();
+
+        for (i, arg) in args.into_iter().enumerate() {
+            let place = env.clone().field(i);
+            let arg = Place::new(arg);
+
+            builder.use_op(place, Operand::Place(arg));
+        }
+
+        builder.ret();
         self.bodies.set_arity(local_id, arity);
 
         if arity > 1 {
@@ -151,23 +187,34 @@ impl<'a> LowerCtx<'a> {
         &mut self,
         ret_ty: Ty,
         arg_tys: &[Ty],
+        arity: usize,
         parent: LocalBodyId,
         parent_ty: Arc<Type>,
-    ) -> (LocalBodyId, Arc<Type>) {
-        let arg_tys = arg_tys.iter().map(|&t| self.db.mir_type(t)).collect::<Vec<_>>();
+    ) -> (LocalBodyId, Arc<Type>, Arc<Type>) {
+        let env = arg_tys[..arity].iter().map(|&t| self.db.mir_type(t));
+        let env_ty = Type::and(env);
+        let env = Type::ref_(env_ty.clone());
+        let arg_tys = arg_tys[arity..]
+            .iter()
+            .map(|&t| self.db.mir_type(t))
+            .collect::<Vec<_>>();
         let mut ret_ty = self.db.mir_type(ret_ty);
 
         for ty in arg_tys[1..].iter().rev() {
-            ret_ty = Type::closure(ty.clone(), ret_ty);
+            ret_ty = Type::closure(ty.clone(), ret_ty, None);
         }
 
         let local_id = self.bodies.add();
         let mut builder = self.bodies.builder(local_id);
         let ret = builder.create_ret(ret_ty.clone());
         let ret = Place::new(ret);
-        // @TODO: add env arg
+
+        let env = builder.create_arg(env);
+        let env = Place::new(env);
+
         let arg = builder.create_arg(arg_tys[0].clone());
         let arg = Place::new(arg);
+
         let entry = builder.create_block();
 
         builder.set_block(entry);
@@ -177,11 +224,20 @@ impl<'a> LowerCtx<'a> {
             local_id: parent,
         });
 
-        // @TODO: pass other args
-        builder.call(ret, Operand::Const(parent, parent_ty), vec![Operand::Place(arg)]);
+        let args = (0..arity)
+            .map(|i| env.clone().deref().field(i))
+            .map(Operand::Place)
+            .chain(Some(Operand::Place(arg)))
+            .collect::<Vec<_>>();
+
+        builder.call(ret, Operand::Const(parent, parent_ty), args);
         builder.ret();
 
-        (local_id, Type::closure(arg_tys[0].clone(), ret_ty))
+        (
+            local_id,
+            Type::closure(arg_tys[0].clone(), ret_ty, Some(env_ty.clone())),
+            env_ty,
+        )
     }
 }
 
@@ -254,12 +310,6 @@ impl<'a> BodyLowerCtx<'a> {
             | _ => unimplemented!(),
         }
     }
-
-    // fn type_info(&self, var: TypeVar) -> LocalId {
-    //     let idx = self.type_vars.len() - 1 - var.debruijn().depth() as usize;
-    //
-    //     self.type_vars[idx].unwrap()
-    // }
 
     fn lower_expr(&mut self, id: hir::ExprId, mut ret: Option<Place>) -> Operand {
         let op = self.lower_expr_impl(id, &mut ret);
@@ -408,9 +458,19 @@ impl<'a> BodyLowerCtx<'a> {
 
                 let def = id.into();
                 let bodies = self.db.body_mir(def);
-                let id = bodies.main_id(def);
+                let lib = self.def.module(self.db.upcast()).lib;
+                let func_id = self.db.lang_item(lib, "fn-type".into()).unwrap();
+                let func_id = func_id.as_type_ctor().unwrap();
+                let mut arity = 0;
 
-                if let TyKind::App(..) = hir_ty.lookup(self.db.upcast()) {
+                while let Some([_, r]) = hir_ty.match_ctor(self.db.upcast(), func_id) {
+                    arity += 1;
+                    hir_ty = r;
+                }
+
+                let (id, arity) = bodies.arity(def, arity);
+
+                if arity > 0 {
                     Operand::Const(Const::Addr(id), self.db.mir_type(hir_ty))
                 } else {
                     let ret_ty = self.db.mir_type(hir_ty);
@@ -447,6 +507,8 @@ impl<'a> BodyLowerCtx<'a> {
     fn lower_app(&mut self, mut base: hir::ExprId, ret_ty: Ty, ret: Option<Place>) -> Operand {
         let body = Arc::clone(&self.hir);
         let mut args = vec![];
+
+        eprintln!("{}", ret_ty.display(self.db.upcast()));
 
         while let hir::Expr::App { base: base2, arg } = body[base] {
             args.insert(0, arg);
@@ -537,7 +599,7 @@ impl<'a> BodyLowerCtx<'a> {
             let func_lyt = self.db.mir_type(func_ty);
             let def = func.into();
             let bodies = self.db.body_mir(def);
-            let func = bodies.main_id(def);
+            let (func, _) = bodies.arity(def, args.len());
             let func = Operand::Const(Const::Addr(func), func_lyt);
             let arg_tys = args.iter().map(|&a| self.infer.type_of_expr[a]).collect::<Vec<_>>();
             let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();

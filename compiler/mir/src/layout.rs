@@ -24,7 +24,10 @@ pub fn layout_of_query(db: &dyn MirDatabase, ty: Arc<Type>) -> Arc<Layout> {
                 Layout::default()
             }
         },
-        | TypeKind::Var(_) => unimplemented!(),
+        | TypeKind::Var(_) => {
+            // @TODO: type var layout
+            Layout::default()
+        },
         | TypeKind::Ptr(elem) => {
             let mut lyt = scalar(Primitive::Pointer);
 
@@ -84,12 +87,22 @@ pub fn layout_of_query(db: &dyn MirDatabase, ty: Arc<Type>) -> Arc<Layout> {
 
             Layout::scalar(scalar, &triple)
         },
-        | TypeKind::Clos(_) => {
+        | TypeKind::Clos(_, env) => {
             let mut scalar = Scalar::new(Primitive::Pointer, &triple);
 
             scalar.valid_range = 1..=*scalar.valid_range.end();
 
-            scalar_pair(scalar.clone(), scalar, &triple)
+            let mut lyt = scalar_pair(scalar.clone(), scalar, &triple);
+
+            if let Fields::Arbitrary { fields } = &mut lyt.fields {
+                if let Some(first) = fields.first_mut() {
+                    if let Some(env) = env {
+                        first.1 = reference(db, env);
+                    }
+                }
+            }
+
+            lyt
         },
     };
 
@@ -178,7 +191,16 @@ fn struct_layout(lyts: Vec<Arc<Layout>>, triple: &Triple) -> Layout {
             | (_, _) => {},
         },
         | (Some(s), None) | (None, Some(s)) => match &s.abi {
-            | Abi::Scalar(s) => return Layout::scalar(s.clone(), triple),
+            | Abi::Scalar(s) => {
+                let mut lyt = Layout::scalar(s.clone(), triple);
+                let field = Arc::new(lyt.clone());
+
+                lyt.fields = Fields::Arbitrary {
+                    fields: vec![(Size::ZERO, field)],
+                };
+
+                return lyt;
+            },
             | _ => {},
         },
         | (None, None) => {},
@@ -410,18 +432,18 @@ pub fn closure(db: &dyn MirDatabase) -> Arc<Layout> {
     Arc::new(scalar_pair(scalar.clone(), scalar, &triple))
 }
 
-// pub fn reference(db: &dyn MirDatabase, to: Arc<Layout>) -> Arc<Layout> {
-//     let triple = db.target_triple();
-//     let mut scalar = Scalar::new(Primitive::Pointer, &triple);
-//
-//     scalar.valid_range = 1..=*scalar.valid_range.end();
-//
-//     let mut lyt = Layout::scalar(scalar, &triple);
-//
-//     lyt.elem = Some(Err(to));
-//
-//     Arc::new(lyt)
-// }
+pub fn reference(db: &dyn MirDatabase, to: Arc<Type>) -> Arc<Layout> {
+    let triple = db.target_triple();
+    let mut scalar = Scalar::new(Primitive::Pointer, &triple);
+
+    scalar.valid_range = 1..=*scalar.valid_range.end();
+
+    let mut lyt = Layout::scalar(scalar, &triple);
+
+    lyt.elem = Some(to);
+
+    Arc::new(lyt)
+}
 
 // pub fn array(of: Arc<Layout>, count: usize) -> Arc<Layout> {
 //     Arc::new(Layout {

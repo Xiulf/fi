@@ -135,36 +135,17 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn place_type(&self, db: &dyn MirDatabase, place: &Place) -> Arc<Type> {
-        let mut ty = self.body().locals[place.local].ty.clone();
+    pub fn place_type(&self, place: &Place) -> Arc<Type> {
+        self.body().place_type(place)
+    }
 
-        for elem in &place.elems {
-            match elem {
-                | PlaceElem::Deref => {
-                    if let TypeKind::Ptr(elem) = &ty.kind {
-                        ty = elem.clone();
-                    }
-                },
-                | PlaceElem::Field(i) => {
-                    if let TypeKind::And(fields) = &ty.kind {
-                        ty = fields[*i].clone();
-                    }
-                },
-                | PlaceElem::Offset(_) => {},
-                | PlaceElem::Index(_) => {
-                    if let TypeKind::Array(elem, _) = &ty.kind {
-                        ty = elem.clone();
-                    }
-                },
-                | PlaceElem::Downcast(i) => {
-                    if let TypeKind::Or(variants, true) = &ty.kind {
-                        ty = variants[*i].clone();
-                    }
-                },
-            }
-        }
+    pub fn alloc(&mut self, db: &dyn MirDatabase, ret: Place, ty: Arc<Type>) {
+        let uint_ty = Type::ptr_sized_int(db, false);
+        let layout = db.layout_of(ty);
+        let size = Const::Scalar(layout.size.bytes() as u128);
+        let size = Operand::Const(size, uint_ty);
 
-        ty
+        self.intrinsic(ret, "alloc", vec![size]);
     }
 
     pub fn abort(&mut self) {

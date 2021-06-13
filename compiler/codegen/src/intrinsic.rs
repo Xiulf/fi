@@ -17,6 +17,12 @@ impl FunctionCtx<'_, '_> {
 
                 self.bcx.call_memcpy(self.module.target_config(), dest, src, size);
             },
+            | "alloc" => {
+                let size = args.next()?.load_scalar(self);
+                let val = self.call_malloc(size);
+
+                place.store(self, ValueRef::new_val(val, layout));
+            },
             | "add_i32" => {
                 let lhs = args.next()?.load_scalar(self);
                 let rhs = args.next()?.load_scalar(self);

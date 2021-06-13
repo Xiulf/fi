@@ -29,7 +29,7 @@ pub enum TypeKind {
     And(Arc<[Arc<Type>]>),
     Or(Arc<[Arc<Type>]>, bool),
     Func(Signature),
-    Clos(Signature),
+    Clos(Signature, Option<Arc<Type>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -211,10 +211,13 @@ impl Type {
                         Self::from_repr(db, ret.group().unwrap(), args)
                     };
 
-                    kind = TypeKind::Func(Signature {
-                        params: Arc::new([arg]),
-                        ret,
-                    });
+                    kind = TypeKind::Clos(
+                        Signature {
+                            params: Arc::new([arg]),
+                            ret,
+                        },
+                        None,
+                    );
                 }
             }
         }
@@ -275,6 +278,16 @@ impl Type {
         }
     }
 
+    pub fn ref_(to: Arc<Type>) -> Arc<Type> {
+        Arc::new(Type {
+            repr: ReprOptions {
+                valid_range_start: Some(1),
+                ..ReprOptions::default()
+            },
+            kind: TypeKind::Ptr(to),
+        })
+    }
+
     pub fn unit_func(ret: Arc<Type>) -> Arc<Type> {
         Arc::new(Type {
             repr: ReprOptions::default(),
@@ -292,13 +305,23 @@ impl Type {
         })
     }
 
-    pub fn closure(arg: Arc<Type>, ret: Arc<Type>) -> Arc<Type> {
+    pub fn closure(arg: Arc<Type>, ret: Arc<Type>, env: Option<Arc<Type>>) -> Arc<Type> {
         Arc::new(Type {
             repr: ReprOptions::default(),
-            kind: TypeKind::Clos(Signature {
-                params: Arc::new([arg]),
-                ret,
-            }),
+            kind: TypeKind::Clos(
+                Signature {
+                    params: Arc::new([arg]),
+                    ret,
+                },
+                env,
+            ),
+        })
+    }
+
+    pub fn and(i: impl IntoIterator<Item = Arc<Type>>) -> Arc<Type> {
+        Arc::new(Type {
+            repr: ReprOptions::default(),
+            kind: TypeKind::And(i.into_iter().collect()),
         })
     }
 
@@ -373,7 +396,7 @@ impl fmt::Display for Type {
                 write!(f, ")")
             },
             | TypeKind::Func(sig) => sig.fmt(f),
-            | TypeKind::Clos(sig) => {
+            | TypeKind::Clos(sig, _) => {
                 write!(f, "|")?;
 
                 for (i, ty) in sig.params.iter().enumerate() {

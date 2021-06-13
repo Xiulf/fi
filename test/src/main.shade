@@ -3,7 +3,8 @@ module main =
 import core
 
 fun main = do
-    let _ = test 4 5 3
+    let x = test 4 5
+    let _ = x 3
     println "Hello World!"
 
 fun test

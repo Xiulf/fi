@@ -2,15 +2,14 @@ use crate::*;
 use clif::{InstBuilder, Module};
 use hir::display::HirDisplay;
 use mir::layout::{Abi, Fields, Layout, Variants};
+use mir::ty::TypeKind;
 use std::sync::Arc;
 
 impl FunctionCtx<'_, '_> {
-    /* pub fn lower(&mut self) {
-        let body = Arc::clone(&self.body);
+    pub fn lower(&mut self) {
+        // eprintln!("{}", self.body.display(self.db.upcast()));
 
-        eprintln!("{}", body.display(self.db.upcast()));
-
-        for (id, block) in body.blocks.iter() {
+        for (id, block) in self.body.blocks.iter() {
             self.bcx.switch_to_block(self.blocks[id]);
 
             for stmt in &block.stmts {
@@ -166,7 +165,6 @@ impl FunctionCtx<'_, '_> {
     }
 
     pub fn lower_call(&mut self, ret: PlaceRef, func: &ir::Operand, args: Vec<ValueRef>) {
-        let arity = args.len();
         let ret_mode = self.pass_mode(&ret.layout);
         let ret_ptr = match ret_mode {
             | abi::PassMode::ByRef { size: _ } => Some(ret.as_ptr().get_addr(self)),
@@ -174,22 +172,37 @@ impl FunctionCtx<'_, '_> {
         };
 
         let arg_layouts = args.iter().map(|a| a.layout.clone()).collect::<Vec<_>>();
-        let args = ret_ptr
+        let mut args = ret_ptr
             .into_iter()
             .chain(args.into_iter().flat_map(|a| self.value_for_arg(a)))
             .collect::<Vec<_>>();
 
         let inst = if let ir::Operand::Const(ir::Const::Addr(id), _) = func {
-            let func = self.func_id(id, arity);
+            let func = self.func_id(id);
             let func = self.mcx.module.declare_func_in_func(func, &mut self.bcx.func);
 
             self.bcx.ins().call(func, &args)
         } else {
-            let sig = self.mk_signature(&ret.layout, &arg_layouts);
-            let sig = self.bcx.import_signature(sig);
-            let func = self.lower_op(func, None).load_scalar(self);
+            let func_ty = self.body.operand_type(func);
+            let mut sig = self.mk_signature(&ret.layout, &arg_layouts);
+            let func = self.lower_op(func, None);
 
-            self.bcx.ins().call_indirect(sig, func, &args)
+            if let TypeKind::Clos(_, _) = func_ty.kind {
+                let (env, func) = func.load_scalar_pair(self);
+                let ptr_type = self.module.target_config().pointer_type();
+
+                sig.params.insert(0, clif::AbiParam::new(ptr_type));
+                args.insert(0, env);
+
+                let sig = self.bcx.import_signature(sig);
+
+                self.bcx.ins().call_indirect(sig, func, &args)
+            } else {
+                let func = func.load_scalar(self);
+                let sig = self.bcx.import_signature(sig);
+
+                self.bcx.ins().call_indirect(sig, func, &args)
+            }
         };
 
         let mut res = self
@@ -280,6 +293,24 @@ impl FunctionCtx<'_, '_> {
                         self.lower_const(c, lyt, Some(field));
                     }
                 },
+                | ir::Const::Addr(id) => {
+                    let ptr_type = self.module.target_config().pointer_type();
+                    let val = if let hir::id::DefWithBodyId::StaticId(id) = id.def {
+                        let global = self.static_ids[&id.into()];
+                        let global = self.mcx.module.declare_data_in_func(global, &mut self.bcx.func);
+                        let global = self.bcx.ins().global_value(ptr_type, global);
+
+                        ValueRef::new_val(global, layout)
+                    } else {
+                        let func = self.func_ids[id].0;
+                        let func = self.mcx.module.declare_func_in_func(func, &mut self.bcx.func);
+                        let func = self.bcx.ins().func_addr(ptr_type, func);
+
+                        ValueRef::new_val(func, layout)
+                    };
+
+                    into.clone().store(self, val);
+                },
                 | ir::Const::String(s) => {
                     let data_id = self.alloc_string(s);
                     let ptr_type = self.module.target_config().pointer_type();
@@ -293,7 +324,7 @@ impl FunctionCtx<'_, '_> {
                     into.clone().field(self, 0).store(self, ptr);
                     into.clone().field(self, 1).store(self, len);
                 },
-                | _ => unimplemented!(),
+                | _ => unimplemented!("{}", c.display(self.db.upcast())),
             }
 
             into.to_value(self)
@@ -332,21 +363,22 @@ impl FunctionCtx<'_, '_> {
                         place.to_value(self)
                     },
                 },
-                | ir::Const::FuncAddr(id) => {
+                | ir::Const::Addr(id) => {
                     let ptr_type = self.module.target_config().pointer_type();
-                    let func = self.func_ids[id].max_id();
-                    let func = self.mcx.module.declare_func_in_func(func, &mut self.bcx.func);
-                    let func = self.bcx.ins().func_addr(ptr_type, func);
 
-                    ValueRef::new_val(func, layout)
-                },
-                | ir::Const::StaticAddr(id) => {
-                    let ptr_type = self.module.target_config().pointer_type();
-                    let global = self.static_ids[id];
-                    let global = self.mcx.module.declare_data_in_func(global, &mut self.bcx.func);
-                    let global = self.bcx.ins().global_value(ptr_type, global);
+                    if let hir::id::DefWithBodyId::StaticId(id) = id.def {
+                        let global = self.static_ids[&id.into()];
+                        let global = self.mcx.module.declare_data_in_func(global, &mut self.bcx.func);
+                        let global = self.bcx.ins().global_value(ptr_type, global);
 
-                    ValueRef::new_val(global, layout)
+                        ValueRef::new_val(global, layout)
+                    } else {
+                        let func = self.func_ids[id].0;
+                        let func = self.mcx.module.declare_func_in_func(func, &mut self.bcx.func);
+                        let func = self.bcx.ins().func_addr(ptr_type, func);
+
+                        ValueRef::new_val(func, layout)
+                    }
                 },
                 | ir::Const::String(s) => {
                     let data_id = self.alloc_string(s);
@@ -478,16 +510,24 @@ impl FunctionCtx<'_, '_> {
         }
     }
 
-    fn func_id(&mut self, func: &ir::BodyId, arity: usize) -> clif::FuncId {
-        if let Some(arr) = self.func_ids.get(func) {
-            arr.get_id(arity)
+    fn func_id(&mut self, func: &ir::BodyId) -> clif::FuncId {
+        if let Some((id, _)) = self.func_ids.get(func) {
+            *id
         } else {
-            let arities = self.func_signature(*func);
-            let sig = arities.get_sig(arity);
-            let mut name = func.link_name(self.db.upcast()).to_string();
+            let sig = self.func_signature(*func);
+            let mut name = match func.def {
+                | hir::id::DefWithBodyId::FuncId(func) => {
+                    let func: hir::Func = func.into();
 
-            if arity != arities.max {
-                name = format!("{}'{}", name, arity);
+                    func.link_name(self.db.upcast()).to_string()
+                },
+                | _ => unreachable!(),
+            };
+
+            let local_id: u32 = func.local_id.into_raw().into();
+
+            if local_id != 0 {
+                name = format!("{}^{}", name, local_id);
             }
 
             self.mcx
@@ -495,5 +535,5 @@ impl FunctionCtx<'_, '_> {
                 .declare_function(&name, clif::Linkage::Import, &sig)
                 .unwrap()
         }
-    } */
+    }
 }

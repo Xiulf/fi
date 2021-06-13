@@ -327,6 +327,14 @@ impl DefWithBodyId {
             | DefWithBodyId::ConstId(id) => ContainerId::Module(id.lookup(db).module),
         }
     }
+
+    pub fn has_body(self, db: &dyn DefDatabase) -> bool {
+        match self {
+            | DefWithBodyId::FuncId(id) => db.func_data(id).has_body,
+            | DefWithBodyId::StaticId(id) => !db.static_data(id).is_foreign,
+            | DefWithBodyId::ConstId(_) => true,
+        }
+    }
 }
 
 impl TypedDefId {
