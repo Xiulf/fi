@@ -351,6 +351,15 @@ impl TypedDefId {
     }
 }
 
+impl AssocItemId {
+    pub fn as_func_id(self) -> Option<FuncId> {
+        match self {
+            | AssocItemId::FuncId(id) => Some(id),
+            | _ => None,
+        }
+    }
+}
+
 impl<N: ItemTreeNode> HasModule for ItemLoc<N> {
     fn module(&self, _: &dyn DefDatabase) -> ModuleId {
         self.module

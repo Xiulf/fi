@@ -45,6 +45,14 @@ impl FunctionCtx<'_, '_> {
 
                 place.store(self, ValueRef::new_val(val, layout));
             },
+            | "u16_to_u8" | "u32_to_u8" | "u64_to_u8" | "u128_to_u8" | "i16_to_u8" | "i32_to_u8" | "i64_to_u8"
+            | "i128_to_u8" | "u16_to_i8" | "u32_to_i8" | "u64_to_i8" | "u128_to_i8" | "i16_to_i8" | "i32_to_i8"
+            | "i64_to_i8" | "i128_to_i8" => {
+                let val = args.next()?.load_scalar(self);
+                let val = self.bcx.ins().ireduce(clif::types::I8, val);
+
+                place.store(self, ValueRef::new_val(val, layout));
+            },
             | _ => panic!("unknown intrinsic '{}'", name),
         }
 

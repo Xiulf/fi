@@ -84,6 +84,7 @@ pub struct InferenceResult {
 #[derive(Debug, PartialEq, Eq)]
 pub enum MethodSource {
     Instance(InstanceId),
+    Record(usize),
 }
 
 pub(crate) struct InferenceContext<'a> {
@@ -95,6 +96,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(crate) var_kinds: Vec<Ty>,
     universes: UniverseIndex,
     class_env: ClassEnv,
+    instance_records: usize,
     constraints: Vec<(Constraint, ExprOrPatId, Option<ClassEnvScope>)>,
 }
 
@@ -151,6 +153,7 @@ impl<'a> InferenceContext<'a> {
             var_kinds: Vec::default(),
             universes: UniverseIndex::ROOT,
             class_env: ClassEnv::default(),
+            instance_records: 0,
             constraints: Vec::default(),
         }
     }

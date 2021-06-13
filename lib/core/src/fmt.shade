@@ -1,0 +1,13 @@
+module fmt =
+
+import prim (Str)
+import core/io (Write, write)
+import prim/intrinsics (transmute, unsafe, ($))
+
+class Fmt f =
+    fun fmt :: for w. Write w => w -> f -> w
+
+instance Fmt Str =
+    fun fmt w self = do
+        let bytes = unsafe $ transmute self
+        write w bytes

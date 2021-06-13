@@ -80,6 +80,17 @@ impl Ty {
         }
     }
 
+    pub fn ret_type(mut self, db: &dyn HirDatabase, lib: base_db::libs::LibId) -> Ty {
+        let func_type = db.lang_item(lib, "fn-type".into()).unwrap();
+        let func_type = func_type.as_type_ctor().unwrap();
+
+        while let Some([_, ret]) = self.match_ctor(db, func_type) {
+            self = ret;
+        }
+
+        self
+    }
+
     pub fn everywhere<F>(self, db: &dyn HirDatabase, f: &mut F) -> Ty
     where
         F: FnMut(Ty) -> Ty,
@@ -293,6 +304,15 @@ impl Ty {
 impl TyKind {
     pub fn intern(self, db: &dyn HirDatabase) -> Ty {
         db.intern_ty(self)
+    }
+}
+
+impl Constraint {
+    pub fn new(class: ClassId, tys: impl IntoIterator<Item = Ty>) -> Self {
+        Constraint {
+            class,
+            types: tys.into_iter().collect(),
+        }
     }
 }
 

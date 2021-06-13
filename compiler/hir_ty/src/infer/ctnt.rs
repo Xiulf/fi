@@ -37,6 +37,13 @@ impl InferenceContext<'_> {
                 self.solve_type(u, ty);
             }
 
+            if let ExprOrPatId::ExprId(expr) = id {
+                self.result
+                    .methods
+                    .insert(expr, MethodSource::Record(self.instance_records));
+                self.instance_records += 1;
+            }
+
             true
         } else if let Some(res) = self.db.solve_constraint(ctnt.clone()) {
             res.apply(self);

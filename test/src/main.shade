@@ -3,13 +3,4 @@ module main =
 import core
 
 fun main = do
-    let x = test 4 5
-    let _ = x 3
     println "Hello World!"
-
-fun test
-    (a :: Int32)
-    (b :: Int32)
-    (c :: Int32)
-=
-    a + b + c

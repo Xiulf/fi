@@ -1,6 +1,7 @@
 use crate::db::MirDatabase;
+use crate::instance_record::InstanceRecord;
 use crate::ir::*;
-use crate::ty::{Type, TypeKind};
+use crate::ty::{Type, TypeKind, TypeVarKind};
 use hir::ty::{Ty, TyKind};
 use std::sync::Arc;
 
@@ -12,8 +13,12 @@ pub struct Builder<'a> {
 }
 
 impl Bodies {
-    pub fn add(&mut self) -> LocalBodyId {
-        self.bodies.alloc(Body::default())
+    pub fn add(&mut self, type_vars: Vec<Option<TypeVarKind>>, records: Vec<Arc<InstanceRecord>>) -> LocalBodyId {
+        self.bodies.alloc(Body {
+            type_vars,
+            records,
+            ..Body::default()
+        })
     }
 
     pub fn set_arity(&mut self, id: LocalBodyId, arity: usize) {
@@ -45,11 +50,11 @@ impl<'a> std::ops::DerefMut for Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
-    fn body(&self) -> &Body {
+    pub fn body(&self) -> &Body {
         &self.bodies[self.body]
     }
 
-    fn body_mut(&mut self) -> &mut Body {
+    pub fn body_mut(&mut self) -> &mut Body {
         &mut self.bodies[self.body]
     }
 

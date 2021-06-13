@@ -23,7 +23,7 @@ foreign type Char :: Type
 foreign type Str :: Type
 
 @lang = "fn-type"
-@repr(func(args = 0, ret = 1))
+@repr(func(arg = 0, ret = 1))
 foreign type Fn :: Type -> Type -> Type
 
 @lang = "ptr-type"
@@ -114,3 +114,10 @@ instance Pointer (BufPtrSentinel t s) t
 
 class Unsafe
 class Partial
+
+@lang = "termination-class"
+class Termination t =
+    fun report :: t -> Int32
+
+instance Termination Unit =
+    fun report _ = 0

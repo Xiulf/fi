@@ -12,6 +12,8 @@ infixl 6 ptr_offset as (*+)
 @intrinsic foreign fun rem_i32 :: Int32 -> Int32 -> Int32
 @intrinsic foreign fun eq_i32  :: Int32 -> Int32 -> Bool
 
+@intrinsic foreign fun u32_to_u8 :: Uint32 -> Uint8
+
 @intrinsic foreign fun ptr_offset :: for ptr to. Pointer ptr to => ptr -> Int64 -> ptr
 @intrinsic foreign fun ptr_read   :: for ptr to. Pointer ptr to => ptr -> to
 @intrinsic foreign fun ptr_write  :: for ptr to. Pointer ptr to => ptr -> to -> ()

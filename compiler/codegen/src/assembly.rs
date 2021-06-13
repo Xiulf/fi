@@ -40,13 +40,19 @@ impl Assembly {
         linker.arg("-L");
         linker.arg(target_dir);
 
-        for dep in deps {
-            let name = dep.name(db.upcast()).to_string();
+        add_deps(&mut *linker, db.upcast(), deps.collect());
 
-            match db.libs()[dep.into()].kind {
-                | LibKind::Dynamic => linker.add_shared_object(&name),
-                | LibKind::Static => linker.add_static_lib(&name),
-                | LibKind::Executable => panic!("cannot link with an executable"),
+        fn add_deps(linker: &mut dyn crate::linker::Linker, db: &dyn hir::db::HirDatabase, deps: Vec<hir::Lib>) {
+            for dep in deps {
+                add_deps(linker, db, dep.dependencies(db).into_iter().map(|d| d.lib).collect());
+
+                let name = dep.name(db).to_string();
+
+                match db.libs()[dep.into()].kind {
+                    | LibKind::Dynamic => linker.add_shared_object(&name),
+                    | LibKind::Static => linker.add_static_lib(&name),
+                    | LibKind::Executable => panic!("cannot link with an executable"),
+                }
             }
         }
 

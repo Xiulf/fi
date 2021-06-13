@@ -325,6 +325,17 @@ impl Type {
         })
     }
 
+    pub fn ptr(valid_range_start: Option<u128>) -> Arc<Type> {
+        Arc::new(Type {
+            repr: ReprOptions {
+                valid_range_start,
+                scalar: Some(Primitive::Pointer),
+                ..ReprOptions::default()
+            },
+            kind: TypeKind::Unit,
+        })
+    }
+
     pub fn ptr_sized_int(db: &dyn MirDatabase, sign: bool) -> Arc<Type> {
         Arc::new(Type {
             kind: TypeKind::Unit,

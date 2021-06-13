@@ -665,6 +665,10 @@ impl Class {
         self.module(db).path_to_name(db, self.name(db))
     }
 
+    pub fn constraints(self, db: &dyn HirDatabase) -> Vec<ty::Constraint> {
+        Vec::new()
+    }
+
     pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {
         db.class_data(self.id)
             .items
@@ -711,6 +715,12 @@ impl Instance {
         }
 
         name.as_name()
+    }
+
+    pub fn class(self, db: &dyn HirDatabase) -> Class {
+        let lower = db.lower_instance(self.id);
+
+        lower.instance.class.into()
     }
 
     pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {

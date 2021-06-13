@@ -1,6 +1,7 @@
 pub mod builder;
 
 use crate::db::MirDatabase;
+use crate::instance_record::InstanceRecord;
 use crate::ir::*;
 use crate::ty::{self, *};
 use builder::Builder;
@@ -54,6 +55,31 @@ impl Bodies {
         }
 
         let mut lcx = LowerCtx::new(db, def);
+        let lib = def.module(db.upcast()).lib;
+        let type_kind = db.lang_item(lib, "type-kind".into()).unwrap();
+        let type_kind = type_kind.as_type_ctor().unwrap();
+        let figure_kind = db.lang_item(lib, "figure-kind".into()).unwrap();
+        let figure_kind = figure_kind.as_type_ctor().unwrap();
+        let symbol_kind = db.lang_item(lib, "symbol-kind".into()).unwrap();
+        let symbol_kind = symbol_kind.as_type_ctor().unwrap();
+
+        for var in vars {
+            let kind = var.lookup(db.upcast());
+
+            if TyKind::Ctor(type_kind) == kind {
+                lcx.add_type_var(Some(TypeVarKind::Type));
+            } else if TyKind::Ctor(figure_kind) == kind {
+                lcx.add_type_var(Some(TypeVarKind::Figure));
+            } else if TyKind::Ctor(symbol_kind) == kind {
+                lcx.add_type_var(Some(TypeVarKind::Symbol));
+            } else {
+                lcx.add_type_var(None);
+            }
+        }
+
+        for ctnt in ctnts {
+            lcx.add_instance_record(ctnt.class);
+        }
 
         lcx.lower(ty, args);
 
@@ -66,6 +92,8 @@ struct LowerCtx<'a> {
     def: hir::id::DefWithBodyId,
     hir: Arc<hir::Body>,
     infer: Arc<hir::InferenceResult>,
+    type_vars: Vec<Option<TypeVarKind>>,
+    instance_records: Vec<Arc<InstanceRecord>>,
     bodies: Bodies,
 }
 
@@ -87,6 +115,8 @@ impl<'a> LowerCtx<'a> {
             bodies: Bodies::default(),
             hir: db.body(def),
             infer: db.infer(def),
+            type_vars: Vec::new(),
+            instance_records: Vec::new(),
         }
     }
 
@@ -94,8 +124,18 @@ impl<'a> LowerCtx<'a> {
         self.bodies
     }
 
+    fn add_type_var(&mut self, kind: Option<TypeVarKind>) {
+        self.type_vars.push(kind);
+    }
+
+    fn add_instance_record(&mut self, id: hir::id::ClassId) {
+        let record = self.db.instance_record(id.into());
+
+        self.instance_records.push(record);
+    }
+
     fn lower(&mut self, ret_ty: Ty, args: Vec<Ty>) {
-        let local_id = self.bodies.add();
+        let local_id = self.bodies.add(self.type_vars.clone(), self.instance_records.clone());
 
         self.bodies.set_arity(local_id, args.len());
 
@@ -134,7 +174,7 @@ impl<'a> LowerCtx<'a> {
 
     fn generate_curry(&mut self, ret_ty: Ty, arg_tys: &[Ty], arity: usize, parent: LocalBodyId, parent_ty: Arc<Type>) {
         let db = self.db;
-        let local_id = self.bodies.add();
+        let local_id = self.bodies.add(self.type_vars.clone(), self.instance_records.clone());
         let (clos_id, clos_ret_ty, clos_env_ty) =
             self.generate_curry_closure(ret_ty, arg_tys, arity, parent, parent_ty);
         let mut builder = self.bodies.builder(local_id);
@@ -204,7 +244,7 @@ impl<'a> LowerCtx<'a> {
             ret_ty = Type::closure(ty.clone(), ret_ty, None);
         }
 
-        let local_id = self.bodies.add();
+        let local_id = self.bodies.add(Vec::new(), Vec::new());
         let mut builder = self.bodies.builder(local_id);
         let ret = builder.create_ret(ret_ty.clone());
         let ret = Place::new(ret);
@@ -328,6 +368,8 @@ impl<'a> BodyLowerCtx<'a> {
         let hir_ty = self.infer.type_of_expr[id];
         let ty = self.db.mir_type(hir_ty);
 
+        // eprintln!("{:?}: {:?} :: {}", id, body[id], hir_ty.display(self.db.upcast()));
+
         match body[id] {
             | hir::Expr::Missing => Operand::Const(Const::Undefined, ty),
             | hir::Expr::Typed { expr, .. } => self.lower_expr_impl(expr, ret),
@@ -358,6 +400,7 @@ impl<'a> BodyLowerCtx<'a> {
                                             | _ => unreachable!(),
                                         };
                                     },
+                                    | MethodSource::Record(_) => unimplemented!(),
                                 }
                             }
 
@@ -445,6 +488,7 @@ impl<'a> BodyLowerCtx<'a> {
                                 | _ => unreachable!(),
                             };
                         },
+                        | MethodSource::Record(_) => unimplemented!(),
                     }
                 }
 
@@ -508,7 +552,7 @@ impl<'a> BodyLowerCtx<'a> {
         let body = Arc::clone(&self.hir);
         let mut args = vec![];
 
-        eprintln!("{}", ret_ty.display(self.db.upcast()));
+        // eprintln!("{}", self.db.mir_type(ret_ty));
 
         while let hir::Expr::App { base: base2, arg } = body[base] {
             args.insert(0, arg);
@@ -521,15 +565,20 @@ impl<'a> BodyLowerCtx<'a> {
             match resolver.resolve_value_fully(self.db.upcast(), path) {
                 | Some(ValueNs::Func(mut id)) => {
                     if let Some(method) = self.infer.methods.get(&base) {
-                        match method {
+                        match *method {
                             | MethodSource::Instance(inst) => {
-                                let data = self.db.instance_data(*inst);
+                                let data = self.db.instance_data(inst);
                                 let item = data.item(path.segments().last().unwrap()).unwrap();
 
                                 id = match item {
                                     | hir::id::AssocItemId::FuncId(id) => id,
                                     | _ => unreachable!(),
                                 };
+                            },
+                            | MethodSource::Record(idx) => {
+                                let record = self.builder.body().records[idx].clone();
+
+                                unimplemented!("{}", record.to_type())
                             },
                         }
                     }
@@ -601,19 +650,9 @@ impl<'a> BodyLowerCtx<'a> {
             let bodies = self.db.body_mir(def);
             let (func, _) = bodies.arity(def, args.len());
             let func = Operand::Const(Const::Addr(func), func_lyt);
-            let arg_tys = args.iter().map(|&a| self.infer.type_of_expr[a]).collect::<Vec<_>>();
             let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
-            if let Some(inst) = self.infer.instances.get(&func_expr) {
-                if let Some(_) = self.infer.methods.get(&func_expr) {
-                    self.builder.call(ret.clone(), func, args);
-                } else {
-                    // self.lower_generic_call(ret.clone(), inst.clone(), func_ty, func, args, arg_tys);
-                    unimplemented!();
-                }
-            } else {
-                self.builder.call(ret.clone(), func, args);
-            }
+            self.builder.call(ret.clone(), func, args);
         }
 
         Operand::Place(ret)

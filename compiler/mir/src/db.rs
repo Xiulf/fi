@@ -1,4 +1,5 @@
 use crate::eval::EvalResult;
+use crate::instance_record::InstanceRecord;
 use crate::ir::Bodies;
 use crate::layout::Layout;
 use crate::ty::Type;
@@ -17,6 +18,9 @@ pub trait MirDatabase: HirDatabase + Upcast<dyn HirDatabase> {
 
     #[salsa::invoke(Type::mir_type_query)]
     fn mir_type(&self, ty: Ty) -> Arc<Type>;
+
+    #[salsa::invoke(InstanceRecord::instance_record_query)]
+    fn instance_record(&self, class: hir::Class) -> Arc<InstanceRecord>;
 
     #[salsa::invoke(Bodies::body_mir_query)]
     fn body_mir(&self, def: hir::id::DefWithBodyId) -> Arc<Bodies>;

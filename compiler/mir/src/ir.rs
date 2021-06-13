@@ -1,5 +1,6 @@
+use crate::instance_record::InstanceRecord;
 use crate::layout::Layout;
-use crate::ty::{Signature, Type, TypeKind};
+use crate::ty::{Signature, Type, TypeKind, TypeVarKind};
 use hir::arena::{Arena, Idx};
 use hir::display::{self, Write as _};
 use hir::id::DefWithBodyId;
@@ -24,6 +25,8 @@ pub struct BodyId {
 pub struct Body {
     pub locals: Arena<Local>,
     pub blocks: Arena<Block>,
+    pub type_vars: Vec<Option<TypeVarKind>>,
+    pub records: Vec<Arc<InstanceRecord>>,
     pub entry: Option<BlockId>,
     pub ret: Option<LocalId>,
 }
@@ -278,7 +281,21 @@ impl display::HirDisplay for BodyId {
 
 impl display::HirDisplay for Body {
     fn hir_fmt(&self, f: &mut display::HirFormatter<'_>) -> display::Result {
-        writeln!(f, "body {{")?;
+        write!(f, "body (")?;
+        let mut first = true;
+
+        for var in &self.type_vars {
+            if let Some(var) = var {
+                if !first {
+                    write!(f, ", ")?;
+                }
+
+                write!(f, "{:?}", var)?;
+                first = false;
+            }
+        }
+
+        writeln!(f, ") {{")?;
 
         for (id, local) in self.locals.iter() {
             let id: u32 = id.into_raw().into();

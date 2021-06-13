@@ -13,6 +13,7 @@ use clif::InstBuilder as _;
 use clif::Module as _;
 use hir::arena::ArenaMap;
 use hir::display::HirDisplay;
+use hir::AsName as _;
 use mir::ir;
 use place::PlaceRef;
 use ptr::Pointer;
@@ -311,8 +312,8 @@ impl<'a> ModuleCtx<'a> {
         fx.ctx.compute_cfg();
         fx.ctx.compute_domtree();
 
-        let name = &fx.module.declarations().get_function_decl(id).name;
-        eprintln!("{}: {}", name, fx.ctx.func);
+        // let name = &fx.module.declarations().get_function_decl(id).name;
+        // eprintln!("{}: {}", name, fx.ctx.func);
 
         fx.mcx.ctx.eliminate_unreachable_code(fx.mcx.module.isa()).unwrap();
         fx.mcx
@@ -394,7 +395,9 @@ impl<'a> ModuleCtx<'a> {
             None
         })();
 
-        let main: hir::id::FuncId = main.expect("executable contains no main function").into();
+        let main = main.expect("executable contains no main function");
+        let main_ret_ty = main.ty(self.db.upcast()).ret_type(self.db.upcast(), lib.into());
+        let main: hir::id::FuncId = main.into();
         let main_def = main.into();
         let main = self.db.body_mir(main_def);
         let main = main.main_id(main_def);
@@ -411,6 +414,22 @@ impl<'a> ModuleCtx<'a> {
             .declare_function("main", clif::Linkage::Export, &sig)
             .unwrap();
 
+        let termination = self.db.lang_item(lib.into(), "termination-class".into()).unwrap();
+        let termination = termination.as_class().unwrap();
+        let ctnt = hir::ty::Constraint::new(termination, [main_ret_ty]);
+        let solved = self.db.solve_constraint(ctnt).unwrap();
+        let inst = self.db.instance_data(solved.instance);
+        let method = inst.item(&"report".as_name()).unwrap();
+        let method = method.as_func_id().unwrap();
+        let method_bodies = self.db.body_mir(method.into());
+        let method_body_id = method_bodies.main_id(method.into());
+        let method_sig = self.func_signature(method_body_id);
+        let method_name = hir::Func::from(method).link_name(self.db.upcast()).to_string();
+        let method = self
+            .module
+            .declare_function(&method_name, clif::Linkage::Import, &method_sig)
+            .unwrap();
+
         let mut bcx = clif::FunctionBuilder::new(&mut self.ctx.func, &mut self.fcx);
         let block = bcx.create_block();
 
@@ -419,8 +438,16 @@ impl<'a> ModuleCtx<'a> {
         bcx.append_block_params_for_function_params(block);
 
         let main = self.module.declare_func_in_func(main, &mut bcx.func);
-        let _ = bcx.ins().call(main, &[]);
-        let ret = bcx.ins().iconst(ptr_type, 0);
+        let main_inst = bcx.ins().call(main, &[]);
+        let main_res = bcx.inst_results(main_inst).to_vec();
+        let method = self.module.declare_func_in_func(method, &mut bcx.func);
+        let method_inst = bcx.ins().call(method, &main_res);
+        let ret = bcx.inst_results(method_inst)[0];
+        let ret = match self.module.target_config().pointer_width {
+            | target_lexicon::PointerWidth::U32 => ret,
+            | target_lexicon::PointerWidth::U16 => bcx.ins().ireduce(clif::types::I16, ret),
+            | target_lexicon::PointerWidth::U64 => bcx.ins().sextend(clif::types::I64, ret),
+        };
 
         bcx.ins().return_(&[ret]);
         bcx.seal_block(block);
