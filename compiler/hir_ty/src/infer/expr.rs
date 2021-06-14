@@ -367,17 +367,22 @@ impl BodyInferenceContext<'_> {
 
         match (&body[expr], expected.lookup(self.db)) {
             | (_, TyKind::ForAll(kind, inner)) => {
-                let skolem = self.enter_universe();
-                let sk = self.skolemize(skolem, kind, inner);
+                let sk = self.skolemize(kind, inner);
 
                 self.check_expr(expr, sk);
-                self.exit_universe();
-                self.result.type_of_expr.insert(expr, expected);
             },
             | (_, TyKind::Ctnt(ctnt, inner)) => {
                 self.class_env.push(ctnt);
                 self.check_expr(expr, inner);
                 self.class_env.pop();
+            },
+            | (_, TyKind::Unknown(_)) => {
+                let infer = self.infer_expr(expr);
+                let infer = self.instantiate(infer, expr.into());
+
+                if !self.unify_types(infer, expected) {
+                    self.report_mismatch(expected, infer, expr.into());
+                }
             },
             | (Expr::Typed { expr: inner, ty }, _) => self.owner.with_type_map(self.db.upcast(), |type_map| {
                 let mut lcx = LowerCtx::new(type_map, self);
@@ -396,6 +401,34 @@ impl BodyInferenceContext<'_> {
 
                 self.check_expr(*inner, ty_);
             }),
+            | (Expr::Path { path }, _) => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
+                | Some(res) => {
+                    let ty = match res {
+                        | ValueNs::Local(pat) => self.result.type_of_pat[pat],
+                        | ValueNs::Fixity(_) => unimplemented!(),
+                        | ValueNs::Func(id) => {
+                            if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
+                                self.subst_type(self.result.self_type)
+                            } else {
+                                self.db.value_ty(id.into())
+                            }
+                        },
+                        | ValueNs::Static(id) => self.db.value_ty(id.into()),
+                        | ValueNs::Const(id) => self.db.value_ty(id.into()),
+                        | ValueNs::Ctor(id) => self.db.value_ty(id.into()),
+                    };
+
+                    if !self.subsume_types(ty, expected, expr.into()) {
+                        self.report_mismatch(expected, ty, expr.into());
+                    }
+                },
+                | None => {
+                    let error = self.error();
+
+                    self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
+                    self.unify_types(expected, error);
+                },
+            },
             | (Expr::Lit { lit: Literal::Int(_) }, _) => {
                 let integer = self.lang_class("integer-class");
 
@@ -411,6 +444,14 @@ impl BodyInferenceContext<'_> {
                     class: decimal,
                     types: vec![expected].into(),
                 });
+            },
+            | (Expr::App { base, arg }, _) => {
+                let base_ty = self.infer_expr(*base);
+                let ret = self.check_app(base_ty, *arg, expr);
+
+                if !self.subsume_types(ret, expected, expr.into()) {
+                    self.report_mismatch(expected, ret, expr.into());
+                }
             },
             | (Expr::Tuple { exprs }, TyKind::Tuple(tys)) if exprs.len() == tys.len() => {
                 for (&expr, &exp) in exprs.iter().zip(tys.iter()) {

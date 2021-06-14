@@ -129,6 +129,7 @@ impl<'a> Builder<'a> {
 
     pub fn placed(&mut self, op: Operand) -> Place {
         match op {
+            | Operand::Record(..) => unimplemented!(),
             | Operand::Place(p) => p,
             | Operand::Const(c, lyt) => {
                 let var = self.create_var(lyt.clone());

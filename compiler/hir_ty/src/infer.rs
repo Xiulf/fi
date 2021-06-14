@@ -10,7 +10,7 @@ use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
 use crate::display::HirDisplay;
 use crate::lower::LowerCtx;
-use crate::ty::{Constraint, DebruijnIndex, Ty, TyKind, TypeVar, UniverseIndex};
+use crate::ty::{Constraint, DebruijnIndex, Ty, TyKind, TypeVar};
 use diagnostics::InferenceDiagnostic;
 use hir_def::arena::ArenaMap;
 use hir_def::body::Body;
@@ -94,7 +94,6 @@ pub(crate) struct InferenceContext<'a> {
     pub(crate) result: InferenceResult,
     subst: unify::Substitution,
     pub(crate) var_kinds: Vec<Ty>,
-    universes: UniverseIndex,
     class_env: ClassEnv,
     instance_records: usize,
     constraints: Vec<(Constraint, ExprOrPatId, Option<ClassEnvScope>)>,
@@ -151,7 +150,6 @@ impl<'a> InferenceContext<'a> {
             },
             subst: unify::Substitution::default(),
             var_kinds: Vec::default(),
-            universes: UniverseIndex::ROOT,
             class_env: ClassEnv::default(),
             instance_records: 0,
             constraints: Vec::default(),
@@ -176,12 +174,17 @@ impl<'a> InferenceContext<'a> {
 
         res.self_type = self.generalize(res.self_type);
         res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(&self)).collect();
-        res.type_of_expr.values_mut().for_each(|v| *v = self.subst_type(*v));
-        res.type_of_pat.values_mut().for_each(|v| *v = self.subst_type(*v));
-        res.instances.values_mut().for_each(|v| {
-            // v.reverse();
-            v.iter_mut().for_each(|t| *t = self.subst_type(*t));
-        });
+
+        let mut finalize = |v: &mut Ty| {
+            *v = self.subst_type(*v);
+            *v = self.unskolemize(*v);
+        };
+
+        res.type_of_expr.values_mut().for_each(&mut finalize);
+        res.type_of_pat.values_mut().for_each(&mut finalize);
+        res.instances
+            .values_mut()
+            .for_each(|v| v.iter_mut().for_each(&mut finalize));
 
         res
     }
@@ -192,6 +195,13 @@ impl<'a> InferenceContext<'a> {
         let ty = ty.as_type_ctor().unwrap();
 
         self.db.type_for_ctor(ty).ty
+    }
+
+    pub(crate) fn fn_type_id(&self) -> hir_def::id::TypeCtorId {
+        let module = self.owner.module(self.db.upcast());
+        let ty = self.db.lang_item(module.lib, "fn-type".into()).unwrap();
+
+        ty.as_type_ctor().unwrap()
     }
 
     pub(crate) fn lang_class(&self, name: &'static str) -> ClassId {
@@ -272,6 +282,56 @@ impl<'a> BodyInferenceContext<'a> {
     }
 
     fn infer_body(&mut self) {
+        if let TypeVarOwner::DefWithBodyId(DefWithBodyId::FuncId(id)) = self.owner {
+            let loc = id.lookup(self.db.upcast());
+
+            if let ContainerId::Instance(inst) = loc.container {
+                let data = self.db.func_data(id);
+                let lower = self.db.lower_instance(inst);
+                let class = self.db.class_data(lower.instance.class);
+                let item = class.item(&data.name).unwrap();
+                let mut item_ty = match item {
+                    | AssocItemId::FuncId(id) => self.db.value_ty(id.into()),
+                    | AssocItemId::StaticId(id) => self.db.value_ty(id.into()),
+                };
+
+                for &ty in lower.instance.types.iter() {
+                    if let TyKind::ForAll(_, t) = item_ty.lookup(self.db) {
+                        item_ty = t.replace_var(self.db, ty);
+                    }
+                }
+
+                if let TyKind::Ctnt(_, ty) = item_ty.lookup(self.db) {
+                    item_ty = ty;
+                }
+
+                self.result.self_type = item_ty;
+
+                while let TyKind::ForAll(kind, ty) = item_ty.lookup(self.db) {
+                    item_ty = self.skolemize(kind, ty);
+                }
+
+                while let TyKind::Ctnt(ctnt, ty) = item_ty.lookup(self.db) {
+                    self.class_env.push(ctnt);
+                    item_ty = ty;
+                }
+
+                let fn_type_id = self.fn_type_id();
+
+                for pat in self.body.params().to_vec() {
+                    if let Some([arg, ret]) = item_ty.match_ctor(self.db, fn_type_id) {
+                        self.check_pat(pat, arg);
+                        item_ty = ret;
+                    }
+                }
+
+                self.ret_type = item_ty;
+                self.check_expr(self.body.body_expr(), item_ty);
+
+                return;
+            }
+        }
+
         let ret = self.fresh_type();
         let mut ty = ret;
 
@@ -299,38 +359,6 @@ impl<'a> BodyInferenceContext<'a> {
             }
 
             self.result.self_type = ty;
-        }
-
-        if let TypeVarOwner::DefWithBodyId(DefWithBodyId::FuncId(id)) = self.owner {
-            let loc = id.lookup(self.db.upcast());
-
-            if let ContainerId::Instance(inst) = loc.container {
-                let data = self.db.func_data(id);
-                let lower = self.db.lower_instance(inst);
-                let class = self.db.class_data(lower.instance.class);
-                let item = class.item(&data.name).unwrap();
-                let mut item_ty = match item {
-                    | AssocItemId::FuncId(id) => self.db.value_ty(id.into()),
-                    | AssocItemId::StaticId(id) => self.db.value_ty(id.into()),
-                };
-
-                for &ty in lower.instance.types.iter() {
-                    if let TyKind::ForAll(_, t) = item_ty.lookup(self.db) {
-                        item_ty = t.replace_var(self.db, ty);
-                    }
-                }
-
-                let expr = self.body.body_expr();
-                let self_type = self.result.self_type;
-
-                if !self.subsume_types(item_ty, self_type, expr.into()) {
-                    self.report(InferenceDiagnostic::MismatchedType {
-                        id: expr.into(),
-                        expected: item_ty,
-                        found: self_type,
-                    });
-                }
-            }
         }
     }
 }

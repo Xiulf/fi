@@ -258,6 +258,7 @@ impl FunctionCtx<'_, '_> {
 
     fn lower_op(&mut self, op: &ir::Operand, into: Option<place::PlaceRef>) -> value::ValueRef {
         match op {
+            | ir::Operand::Record(_, _) => unimplemented!(),
             | ir::Operand::Place(place) => {
                 let place = self.lower_place(place);
                 let value = place.to_value(self);

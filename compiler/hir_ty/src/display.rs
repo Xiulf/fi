@@ -278,7 +278,7 @@ impl HirDisplay for Ty {
             | TyKind::Error => write!(f, "{{error}}"),
             | TyKind::Unknown(u) => write!(f, "{}", u),
             | TyKind::Skolem(p, kind) => {
-                write!(f, "(_ :: ")?;
+                write!(f, "({} :: ", p)?;
                 kind.hir_fmt(f)?;
                 write!(f, ")")
             },

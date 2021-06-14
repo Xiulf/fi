@@ -281,6 +281,30 @@ impl<'a> LowerCtx<'a> {
     }
 }
 
+macro_rules! resolve_method {
+    ($self:ident, $expr:ident, $path:ident, | $i:ident | $instance:expr, | $r:ident | $record:expr, || $else:expr) => {
+        'block: {
+            if let Some(method) = $self.infer.methods.get(&$expr) {
+                match *method {
+                    | MethodSource::Instance(inst) => {
+                        let data = $self.db.instance_data(inst);
+                        let item = data.item($path.segments().last().unwrap()).unwrap();
+
+                        if let hir::id::AssocItemId::FuncId($i) = item {
+                            break 'block $instance;
+                        }
+                    },
+                    | MethodSource::Record($r) => {
+                        break 'block $record;
+                    },
+                }
+            }
+
+            $else
+        }
+    };
+}
+
 impl<'a> BodyLowerCtx<'a> {
     fn lower(&mut self) {
         let entry = self.builder.create_block();
@@ -552,56 +576,46 @@ impl<'a> BodyLowerCtx<'a> {
         let body = Arc::clone(&self.hir);
         let mut args = vec![];
 
-        // eprintln!("{}", self.db.mir_type(ret_ty));
-
         while let hir::Expr::App { base: base2, arg } = body[base] {
             args.insert(0, arg);
             base = base2;
         }
 
-        if let hir::Expr::Path { path } = &body[base] {
-            let resolver = Resolver::for_expr(self.db.upcast(), self.def, base);
-
-            match resolver.resolve_value_fully(self.db.upcast(), path) {
+        let func = if let hir::Expr::Path { path } = &body[base] {
+            match self.resolve_path(base, path) {
                 | Some(ValueNs::Func(mut id)) => {
-                    if let Some(method) = self.infer.methods.get(&base) {
-                        match *method {
-                            | MethodSource::Instance(inst) => {
-                                let data = self.db.instance_data(inst);
-                                let item = data.item(path.segments().last().unwrap()).unwrap();
-
-                                id = match item {
-                                    | hir::id::AssocItemId::FuncId(id) => id,
-                                    | _ => unreachable!(),
-                                };
-                            },
-                            | MethodSource::Record(idx) => {
-                                let record = self.builder.body().records[idx].clone();
-
-                                unimplemented!("{}", record.to_type())
-                            },
-                        }
-                    }
-
-                    return self.lower_func_app(id, base, args, ret_ty, ret);
+                    resolve_method!(
+                        self,
+                        base,
+                        path,
+                        |inst| return self.lower_func_app(inst, base, args, ret_ty, ret),
+                        |idx| Operand::Record(idx, path.segments().last().unwrap().clone()),
+                        || return self.lower_func_app(id, base, args, ret_ty, ret)
+                    )
                 },
                 | Some(ValueNs::Ctor(id)) => return self.lower_ctor_app(id, args, ret_ty, ret),
-                | _ => {},
+                | _ => self.lower_expr(base, None),
             }
-        }
+        } else {
+            self.lower_expr(base, None)
+        };
 
+        let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
         let ret = ret.unwrap_or_else(|| {
             let ty = self.db.mir_type(ret_ty);
 
             Place::new(self.builder.create_var(ty))
         });
 
-        let func = self.lower_expr(base, None);
-        let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
-
         self.builder.call(ret.clone(), func, args);
 
         Operand::Place(ret)
+    }
+
+    fn resolve_path(&self, expr: hir::ExprId, path: &hir::Path) -> Option<ValueNs> {
+        let resolver = Resolver::for_expr(self.db.upcast(), self.def, expr);
+
+        resolver.resolve_value_fully(self.db.upcast(), path)
     }
 
     fn lower_func_app(

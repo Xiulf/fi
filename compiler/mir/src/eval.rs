@@ -156,6 +156,7 @@ impl<'a> VM<'a> {
 
     fn eval_operand(&mut self, body: &Body, op: &Operand) -> Const {
         match op {
+            | Operand::Record(..) => unimplemented!(),
             | Operand::Place(place) => self.load(body, place).0,
             | Operand::Const(c, _) => c.clone(),
         }

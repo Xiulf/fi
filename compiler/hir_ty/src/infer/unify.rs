@@ -173,21 +173,15 @@ impl InferenceContext<'_> {
             },
             | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => self.unify_types(a1, b1) && self.unify_types(a2, b2),
             | (TyKind::ForAll(k1, t1), TyKind::ForAll(k2, t2)) => {
-                let skolem = self.enter_universe();
-                let sk1 = self.skolemize(skolem, k1, t1);
-                let sk2 = self.skolemize(skolem, k2, t2);
-                let res = self.unify_types(sk1, sk2);
+                let sk1 = self.skolemize(k1, t1);
+                let sk2 = self.skolemize(k2, t2);
 
-                self.exit_universe();
-                res
+                self.unify_types(sk1, sk2)
             },
             | (TyKind::ForAll(kind, ty), _) => {
-                let skolem = self.enter_universe();
-                let sk = self.skolemize(skolem, kind, ty);
-                let res = self.unify_types(sk, t2);
+                let sk = self.skolemize(kind, ty);
 
-                self.exit_universe();
-                res
+                self.unify_types(sk, t2)
             },
             | (_, TyKind::ForAll(_, _)) => self.unify_types(t2, t1),
             | (_, _) => false,

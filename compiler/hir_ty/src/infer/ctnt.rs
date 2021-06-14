@@ -23,6 +23,13 @@ impl InferenceContext<'_> {
         for (ctnt, id, scope) in unsolved {
             if ctnt.can_be_generalized(self.db) {
                 self.constraints.push((ctnt, id, scope));
+
+                if let ExprOrPatId::ExprId(expr) = id {
+                    self.result
+                        .methods
+                        .insert(expr, MethodSource::Record(self.instance_records));
+                    self.instance_records += 1;
+                }
             } else {
                 self.report(InferenceDiagnostic::UnsolvedConstraint { id, ctnt });
             }

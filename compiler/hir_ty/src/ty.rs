@@ -13,7 +13,7 @@ pub enum TyKind {
     Error,
 
     Unknown(Unknown),
-    Skolem(Skolem, Ty),
+    Skolem(TypeVar, Ty),
     TypeVar(TypeVar),
 
     Figure(i128),
@@ -48,12 +48,6 @@ pub struct TypeVar(DebruijnIndex);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DebruijnIndex(u32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Skolem(UniverseIndex);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct UniverseIndex(u32);
 
 impl Ty {
     pub fn lookup(self, db: &dyn HirDatabase) -> TyKind {
@@ -99,7 +93,7 @@ impl Ty {
             | TyKind::Skolem(sk, k) => {
                 let k = k.everywhere(db, f);
 
-                f(sk.to_ty(db, k))
+                f(TyKind::Skolem(sk, k).intern(db))
             },
             | TyKind::Row(fields, tail) => {
                 let fields = fields
@@ -196,7 +190,7 @@ impl Ty {
             | TyKind::Skolem(sk, k) => {
                 let k = Self::replace_var_impl(db, k, with, depth);
 
-                sk.to_ty(db, k)
+                TyKind::Skolem(sk, k).intern(db)
             },
             | TyKind::Row(fields, tail) => {
                 let fields = fields
@@ -414,40 +408,6 @@ impl DebruijnIndex {
         } else {
             Some(Self(self.0 - other.0))
         }
-    }
-}
-
-impl Skolem {
-    pub const fn new(universe: UniverseIndex) -> Self {
-        Self(universe)
-    }
-
-    pub fn to_ty(self, db: &dyn HirDatabase, kind: Ty) -> Ty {
-        TyKind::Skolem(self, kind).intern(db)
-    }
-
-    pub fn universe(self) -> UniverseIndex {
-        self.0
-    }
-}
-
-impl UniverseIndex {
-    pub const ROOT: Self = Self(0);
-
-    pub fn can_see(self, other: Self) -> bool {
-        self.0 >= other.0
-    }
-
-    pub fn next(self) -> Self {
-        Self(self.0 + 1)
-    }
-
-    pub fn prev(self) -> Self {
-        Self(self.0 - 1)
-    }
-
-    pub fn index(self) -> u32 {
-        self.0
     }
 }
 

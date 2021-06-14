@@ -20,12 +20,9 @@ impl InferenceContext<'_> {
                 self.subsume_types(repl, t2, origin)
             },
             | (_, TyKind::ForAll(kind, inner)) => {
-                let skolem = self.enter_universe();
-                let sk = self.skolemize(skolem, kind, inner);
-                let res = self.subsume_types(t1, sk, origin);
+                let sk = self.skolemize(kind, inner);
 
-                self.exit_universe();
-                res
+                self.subsume_types(t1, sk, origin)
             },
             | (TyKind::Ctnt(ctnt, inner), _) => {
                 self.constrain(origin, ctnt);
@@ -61,12 +58,9 @@ impl InferenceContext<'_> {
                 self.subsume_types_no_ctnt(repl, t2)
             },
             | (_, TyKind::ForAll(kind, inner)) => {
-                let skolem = self.enter_universe();
-                let sk = self.skolemize(skolem, kind, inner);
-                let res = self.subsume_types_no_ctnt(t1, sk);
+                let sk = self.skolemize(kind, inner);
 
-                self.exit_universe();
-                res
+                self.subsume_types_no_ctnt(t1, sk)
             },
             | (_, _) => self.unify_types(t1, t2),
         }

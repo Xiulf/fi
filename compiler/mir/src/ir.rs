@@ -4,6 +4,7 @@ use crate::ty::{Signature, Type, TypeKind, TypeVarKind};
 use hir::arena::{Arena, Idx};
 use hir::display::{self, Write as _};
 use hir::id::DefWithBodyId;
+use hir::Name;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -84,6 +85,7 @@ pub enum RValue {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Operand {
+    Record(usize, Name),
     Place(Place),
     Const(Const, Arc<Type>),
 }
@@ -169,6 +171,7 @@ impl Body {
 
     pub fn operand_type(&self, op: &Operand) -> Arc<Type> {
         match op {
+            | Operand::Record(_, _) => Type::ptr(Some(1)),
             | Operand::Place(place) => self.place_type(place),
             | Operand::Const(_, ty) => ty.clone(),
         }
@@ -296,6 +299,10 @@ impl display::HirDisplay for Body {
         }
 
         writeln!(f, ") {{")?;
+
+        for (i, rec) in self.records.iter().enumerate() {
+            writeln!(display::indent(f), "rec{}: {}", i, rec.to_type())?;
+        }
 
         for (id, local) in self.locals.iter() {
             let id: u32 = id.into_raw().into();
@@ -437,6 +444,7 @@ impl display::HirDisplay for RValue {
 impl display::HirDisplay for Operand {
     fn hir_fmt(&self, f: &mut display::HirFormatter<'_>) -> display::Result {
         match self {
+            | Operand::Record(idx, name) => write!(f, "rec{}.{}", idx, name),
             | Operand::Place(p) => p.hir_fmt(f),
             | Operand::Const(c, _) => c.hir_fmt(f),
         }

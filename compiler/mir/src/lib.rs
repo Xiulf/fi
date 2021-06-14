@@ -1,3 +1,5 @@
+#![feature(label_break_value)]
+
 pub extern crate target_lexicon;
 
 pub mod db;

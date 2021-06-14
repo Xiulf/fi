@@ -289,7 +289,7 @@ fn match_type(
     vars: &mut BTreeMap<TypeVar, Ty>,
 ) -> Matched<()> {
     match (ty.lookup(db), with.lookup(db)) {
-        | (_, TyKind::Skolem(..)) | (_, TyKind::Unknown(_)) | (TyKind::Skolem(..), _) => {
+        | (_, TyKind::Unknown(_)) => {
             unreachable!()
         },
         | (TyKind::Error, _) | (_, TyKind::Error) => Matched::Match(()),
@@ -297,6 +297,8 @@ fn match_type(
             subst.insert(u, with);
             Matched::Unknown
         },
+        | (TyKind::Skolem(s1, _), TyKind::Skolem(s2, _)) if s1 == s2 => Matched::Match(()),
+        | (TyKind::Skolem(_, _), _) | (_, TyKind::Skolem(_, _)) => Matched::Unknown,
         | (_, TyKind::TypeVar(tv)) => {
             vars.insert(tv, ty);
             Matched::Match(())
