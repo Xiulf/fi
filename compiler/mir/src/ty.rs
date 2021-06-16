@@ -278,6 +278,24 @@ impl Type {
         }
     }
 
+    pub fn discriminant(db: &dyn MirDatabase, ty: Arc<Type>) -> Arc<Type> {
+        use crate::layout::*;
+        let layout = db.layout_of(ty);
+
+        match &layout.variants {
+            | Variants::Single { .. } => Arc::new(Type::UNIT),
+            | Variants::Multiple { tag, .. } => Arc::new(Type {
+                repr: ReprOptions {
+                    scalar: Some(tag.value),
+                    valid_range_start: Some(*tag.valid_range.start()),
+                    valid_range_end: Some(*tag.valid_range.end()),
+                    ..Default::default()
+                },
+                kind: TypeKind::Unit,
+            }),
+        }
+    }
+
     pub fn ref_(to: Arc<Type>) -> Arc<Type> {
         Arc::new(Type {
             repr: ReprOptions {
@@ -349,6 +367,28 @@ impl Type {
                 ..ReprOptions::default()
             },
         })
+    }
+
+    pub fn type_info(db: &dyn MirDatabase) -> Arc<Type> {
+        let uint = Type::ptr_sized_int(db, false);
+        let struc = Type::and([uint]);
+
+        Type::ref_(struc)
+    }
+
+    pub fn str_slice(db: &dyn MirDatabase) -> Arc<Type> {
+        let byte = Arc::new(Type {
+            kind: TypeKind::Unit,
+            repr: ReprOptions {
+                scalar: Some(Primitive::Int(Integer::I8, false)),
+                ..ReprOptions::default()
+            },
+        });
+
+        let ptr = Type::ref_(byte);
+        let uint = Type::ptr_sized_int(db, false);
+
+        Type::and([ptr, uint])
     }
 }
 

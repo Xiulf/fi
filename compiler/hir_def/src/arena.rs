@@ -70,6 +70,13 @@ impl<T> Arena<T> {
             .enumerate()
             .map(|(idx, value)| (Idx::from_raw(RawIdx(idx as u32)), value))
     }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (Idx<T>, &mut T)> + ExactSizeIterator + DoubleEndedIterator {
+        self.data
+            .iter_mut()
+            .enumerate()
+            .map(|(idx, value)| (Idx::from_raw(RawIdx(idx as u32)), value))
+    }
 }
 
 impl<T> Default for Arena<T> {

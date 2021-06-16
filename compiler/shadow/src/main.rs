@@ -61,7 +61,11 @@ fn main() {
                 driver.run(lib, std::iter::empty())
             };
 
-            std::process::exit(status.code().unwrap());
+            if status {
+                std::process::exit(0);
+            } else {
+                std::process::exit(1);
+            }
         }
     } else if let Some(matches) = matches.subcommand_matches("docs") {
         let input = matches.value_of("input").unwrap();

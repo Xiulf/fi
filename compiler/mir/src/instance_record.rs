@@ -1,13 +1,13 @@
 use crate::db::MirDatabase;
-use crate::ir::BodyId;
+use crate::ir::{BodyId, Place};
 use crate::ty::Type;
 use hir::Name;
-use rustc_hash::FxHashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct InstanceRecord {
-    pub items: FxHashMap<Name, Arc<Type>>,
+    pub items: BTreeMap<Name, Arc<Type>>,
     pub parent: Vec<Arc<InstanceRecord>>,
 }
 
@@ -43,5 +43,19 @@ impl InstanceRecord {
                 .cloned()
                 .chain(self.parent.iter().map(|ir| Type::ref_(ir.to_type()))),
         )
+    }
+
+    pub fn field(&self, base: Place, name: &Name) -> Option<Place> {
+        if let Some(idx) = self.items.iter().position(|(n, _)| n == name) {
+            Some(base.field(idx))
+        } else {
+            for (i, parent) in self.parent.iter().enumerate() {
+                if let Some(place) = parent.field(base.clone().field(i + self.items.len()), name) {
+                    return Some(place);
+                }
+            }
+
+            None
+        }
     }
 }

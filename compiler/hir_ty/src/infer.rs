@@ -52,7 +52,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             .collect::<Vec<_>>();
 
         for ctnt in &ctnts {
-            icx.class_env.push(ctnt.clone());
+            icx.class_env.push(ctnt.clone(), true);
         }
 
         icx.infer_body();
@@ -178,6 +178,7 @@ impl<'a> InferenceContext<'a> {
         let mut finalize = |v: &mut Ty| {
             *v = self.subst_type(*v);
             *v = self.unskolemize(*v);
+            *v = v.normalize(self.db);
         };
 
         res.type_of_expr.values_mut().for_each(&mut finalize);
@@ -312,7 +313,7 @@ impl<'a> BodyInferenceContext<'a> {
                 }
 
                 while let TyKind::Ctnt(ctnt, ty) = item_ty.lookup(self.db) {
-                    self.class_env.push(ctnt);
+                    self.class_env.push(ctnt, true);
                     item_ty = ty;
                 }
 

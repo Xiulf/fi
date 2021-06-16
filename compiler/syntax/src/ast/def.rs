@@ -111,6 +111,9 @@ ast_node!(Expr {
 
 ast_node!(Block, BLOCK);
 
+ast_node!(CaseArm, CASE_ARM);
+ast_node!(CaseGuard, CASE_GUARD);
+
 ast_node!(Field {
     Normal(FieldNormal, FIELD_NORMAL),
     Pun(FieldPun, FIELD_PUN),

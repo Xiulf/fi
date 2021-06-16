@@ -118,20 +118,26 @@ impl Driver {
         println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
     }
 
-    pub fn build(&self) {
+    pub fn build(&self) -> bool {
         let start = std::time::Instant::now();
         let db = &self.db;
-        let mut has_error = false;
+        let mut errors = 0;
 
         for lib in hir::Lib::all(db) {
             println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
 
             if let Ok(e) = diagnostics::emit_diagnostics(db, lib, &mut std::io::stderr()) {
-                has_error |= e;
+                errors += e;
             }
         }
 
-        if !has_error {
+        if errors == 1 {
+            eprintln!("\x1B[1;31mAborting due to previous error\x1B[0m");
+            return false;
+        } else if errors > 1 {
+            eprintln!("\x1B[1;31mAborting due to {} previous errors\x1B[0m", errors);
+            return false;
+        } else {
             std::fs::create_dir_all(&self.target_dir).unwrap();
 
             let mut done = FxHashSet::default();
@@ -144,17 +150,21 @@ impl Driver {
         let elapsed = start.elapsed();
 
         println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
+
+        true
     }
 
-    pub fn run<'a>(&self, lib: LibId, args: impl Iterator<Item = &'a std::ffi::OsStr>) -> std::process::ExitStatus {
-        self.build();
+    pub fn run<'a>(&self, lib: LibId, args: impl Iterator<Item = &'a std::ffi::OsStr>) -> bool {
+        if self.build() {
+            let asm = self.db.lib_assembly(lib.into());
+            let path = asm.path(&self.db, &self.target_dir);
+            let mut cmd = std::process::Command::new(path);
 
-        let asm = self.db.lib_assembly(lib.into());
-        let path = asm.path(&self.db, &self.target_dir);
-        let mut cmd = std::process::Command::new(path);
-
-        cmd.args(args);
-        cmd.status().unwrap()
+            cmd.args(args);
+            cmd.status().unwrap().success()
+        } else {
+            false
+        }
     }
 
     pub fn docs(&self, lib: LibId) {

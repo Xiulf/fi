@@ -44,11 +44,15 @@ impl InferenceContext<'_> {
                 self.solve_type(u, ty);
             }
 
-            if let ExprOrPatId::ExprId(expr) = id {
-                self.result
-                    .methods
-                    .insert(expr, MethodSource::Record(self.instance_records));
-                self.instance_records += 1;
+            let entry = &self.class_env[res.scope];
+
+            if entry.is_method() {
+                if let ExprOrPatId::ExprId(expr) = id {
+                    self.result
+                        .methods
+                        .insert(expr, MethodSource::Record(self.instance_records));
+                    self.instance_records += 1;
+                }
             }
 
             true

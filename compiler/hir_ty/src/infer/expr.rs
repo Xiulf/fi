@@ -101,23 +101,34 @@ impl BodyInferenceContext<'_> {
                 self.check_app(base_ty, *arg, expr)
             },
             | Expr::Field { base, field } => {
-                let row_kind = self.lang_type("row-kind");
-                let type_kind = self.lang_type("type-kind");
-                let record_type = self.lang_type("record-type");
-                let kind = TyKind::App(row_kind, type_kind).intern(self.db);
-                let tail = self.fresh_type_with_kind(kind);
-                let res = self.fresh_type();
-                let fields = vec![Field {
-                    name: field.clone(),
-                    ty: res,
-                }]
-                .into();
+                if let Some(idx) = field.as_tuple_index() {
+                    let base_ty = self.infer_expr(*base);
+                    let base_ty = self.subst_type(base_ty);
 
-                let row = TyKind::Row(fields, Some(tail)).intern(self.db);
-                let record = TyKind::App(record_type, row).intern(self.db);
+                    if let TyKind::Tuple(tys) = base_ty.lookup(self.db) {
+                        tys[idx]
+                    } else {
+                        unimplemented!("{}", base_ty.display(self.db));
+                    }
+                } else {
+                    let row_kind = self.lang_type("row-kind");
+                    let type_kind = self.lang_type("type-kind");
+                    let record_type = self.lang_type("record-type");
+                    let kind = TyKind::App(row_kind, type_kind).intern(self.db);
+                    let tail = self.fresh_type_with_kind(kind);
+                    let res = self.fresh_type();
+                    let fields = vec![Field {
+                        name: field.clone(),
+                        ty: res,
+                    }]
+                    .into();
 
-                self.check_expr(*base, record);
-                res
+                    let row = TyKind::Row(fields, Some(tail)).intern(self.db);
+                    let record = TyKind::App(record_type, row).intern(self.db);
+
+                    self.check_expr(*base, record);
+                    res
+                }
             },
             | Expr::Tuple { exprs } => {
                 let tys = exprs.iter().map(|&e| self.infer_expr(e)).collect();
@@ -190,6 +201,32 @@ impl BodyInferenceContext<'_> {
                 } else {
                     self.infer_expr(*then);
                     self.unit()
+                }
+            },
+            | Expr::Case { pred, arms } => {
+                if let TypeVarOwner::DefWithBodyId(def) = self.owner {
+                    let pred_ty = self.infer_expr(*pred);
+                    let bool_ty = self.lang_type("bool-type");
+                    let never_ty = self.lang_type("never-type");
+                    let res = self.fresh_type();
+
+                    for arm in arms {
+                        self.check_pat(arm.pat, pred_ty);
+
+                        let new_resolver = Resolver::for_expr(self.db.upcast(), def, arm.expr);
+                        let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
+
+                        if let Some(guard) = arm.guard {
+                            self.check_expr(guard, bool_ty);
+                        }
+
+                        self.check_expr(arm.expr, res);
+                        self.resolver = old_resolver;
+                    }
+
+                    res
+                } else {
+                    unreachable!();
                 }
             },
             | Expr::While { cond, body, .. } => {
@@ -371,8 +408,13 @@ impl BodyInferenceContext<'_> {
 
                 self.check_expr(expr, sk);
             },
+            | (Expr::Path { .. }, TyKind::Ctnt(ctnt, inner)) => {
+                self.class_env.push(ctnt, true);
+                self.check_expr(expr, inner);
+                self.class_env.pop();
+            },
             | (_, TyKind::Ctnt(ctnt, inner)) => {
-                self.class_env.push(ctnt);
+                self.class_env.push(ctnt, false);
                 self.check_expr(expr, inner);
                 self.class_env.pop();
             },

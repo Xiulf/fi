@@ -54,6 +54,7 @@ pub struct ClassEnv {
 pub struct ClassEnvEntry {
     parent: Option<ClassEnvScope>,
     ctnt: Constraint,
+    is_method: bool,
 }
 
 pub type ClassEnvScope = Idx<ClassEnvEntry>;
@@ -181,9 +182,10 @@ impl Instance {
 }
 
 impl ClassEnv {
-    pub fn push(&mut self, ctnt: Constraint) {
+    pub fn push(&mut self, ctnt: Constraint, is_method: bool) {
         let scope = self.entries.alloc(ClassEnvEntry {
             ctnt,
+            is_method,
             parent: self.current,
         });
 
@@ -223,6 +225,20 @@ impl ClassEnv {
 
             Some(ClassEnvMatchResult { scope, subst })
         })
+    }
+}
+
+impl std::ops::Index<ClassEnvScope> for ClassEnv {
+    type Output = ClassEnvEntry;
+
+    fn index(&self, scope: ClassEnvScope) -> &Self::Output {
+        &self.entries[scope]
+    }
+}
+
+impl ClassEnvEntry {
+    pub fn is_method(&self) -> bool {
+        self.is_method
     }
 }
 

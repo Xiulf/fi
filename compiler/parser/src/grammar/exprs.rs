@@ -86,6 +86,10 @@ crate fn postfix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                         paths::name_ref(p);
                         m = expr.complete(p, EXPR_FIELD);
                     },
+                    | INT => {
+                        p.bump(INT);
+                        m = expr.complete(p, EXPR_FIELD);
+                    },
                     | _ => {
                         p.error("expected an identifier");
                         expr.abandon(p);

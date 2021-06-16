@@ -1,6 +1,15 @@
 module main =
 
 import core
+import core/intrinsics
+
+type Option t =
+    | None
+    | Some t
 
 fun main = do
-    println "Hello World!"
+    let x = Some "Hello World"
+
+    case x of
+        Some s -> println s
+        None -> ()

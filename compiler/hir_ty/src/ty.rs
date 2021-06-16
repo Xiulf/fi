@@ -1,4 +1,5 @@
 use crate::db::HirDatabase;
+use crate::display::HirDisplay;
 use hir_def::id::{ClassId, TypeCtorId};
 use hir_def::name::Name;
 use std::sync::Arc;
@@ -180,6 +181,25 @@ impl Ty {
         f(self)
     }
 
+    pub fn normalize(self, db: &dyn HirDatabase) -> Ty {
+        self.everywhere(db, &mut |ty| match ty.lookup(db) {
+            | TyKind::App(a, b) => match a.lookup(db) {
+                | TyKind::ForAll(_, a) => a.replace_var(db, b),
+                | _ => ty,
+            },
+            | TyKind::Row(f1, Some(tail)) => match tail.lookup(db) {
+                | TyKind::Row(f2, None) => {
+                    let fields = f1.iter().cloned().chain(f2.iter().cloned()).collect();
+
+                    TyKind::Row(fields, None).intern(db)
+                },
+                | TyKind::TypeVar(_) | TyKind::Unknown(_) | TyKind::Error => ty,
+                | _ => unreachable!("{}", tail.display(db)),
+            },
+            | _ => ty,
+        })
+    }
+
     pub fn replace_var(self, db: &dyn HirDatabase, with: Ty) -> Ty {
         Self::replace_var_impl(db, self, with, DebruijnIndex::INNER)
     }
@@ -296,7 +316,15 @@ impl Ty {
 }
 
 impl TyKind {
-    pub fn intern(self, db: &dyn HirDatabase) -> Ty {
+    pub fn intern(mut self, db: &dyn HirDatabase) -> Ty {
+        if let TyKind::Row(fields, tail) = self {
+            let mut fields = fields.to_vec();
+
+            fields.sort_by_key(|f| f.name.clone());
+
+            self = TyKind::Row(fields.into(), tail);
+        }
+
         db.intern_ty(self)
     }
 }

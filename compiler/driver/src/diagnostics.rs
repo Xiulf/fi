@@ -13,8 +13,8 @@ use std::io;
 use std::sync::Arc;
 use syntax::{SyntaxError, TextRange, TextSize};
 
-pub fn emit_diagnostics(db: &RootDatabase, lib: hir::Lib, writer: &mut dyn io::Write) -> io::Result<bool> {
-    let mut has_error = false;
+pub fn emit_diagnostics(db: &RootDatabase, lib: hir::Lib, writer: &mut dyn io::Write) -> io::Result<usize> {
+    let mut errors = 0;
 
     for module in lib.modules(db) {
         let file_id = module.file_id(db);
@@ -26,19 +26,19 @@ pub fn emit_diagnostics(db: &RootDatabase, lib: hir::Lib, writer: &mut dyn io::W
         let line_index = db.line_index(file_id);
 
         for err in parse.errors().iter() {
+            errors += 1;
             emit_syntax_error(err, source_path, &source_code, &line_index, writer)?;
-            has_error = true;
         }
 
         let mut diagnostic_sink = DiagnosticSink::new(|d| {
-            has_error = true;
+            errors += 1;
             emit_hir_diagnostic(d, db, file_id, writer);
         });
 
         module.diagnostics(db, &mut diagnostic_sink);
     }
 
-    Ok(has_error)
+    Ok(errors)
 }
 
 const FMT_OPTS: FormatOptions = FormatOptions {

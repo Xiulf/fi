@@ -631,6 +631,16 @@ impl PatBind {
     }
 }
 
+impl PatApp {
+    pub fn base(&self) -> Option<Pat> {
+        support::child(&self.0)
+    }
+
+    pub fn args(&self) -> impl Iterator<Item = Pat> {
+        support::children(&self.0).skip(1)
+    }
+}
+
 impl PatParens {
     pub fn pat(&self) -> Option<Pat> {
         support::child(&self.0)
@@ -719,6 +729,13 @@ impl ExprField {
     pub fn field(&self) -> Option<NameRef> {
         support::child(&self.0)
     }
+
+    pub fn tuple_field(&self) -> Option<usize> {
+        let int = support::token(&self.0, INT)?;
+        let text = int.text();
+
+        text.parse().ok()
+    }
 }
 
 impl ExprIndex {
@@ -786,6 +803,36 @@ impl ExprIf {
 
     pub fn is_unless(&self) -> bool {
         support::token(&self.0, UNLESS_KW).is_some()
+    }
+}
+
+impl ExprCase {
+    pub fn pred(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn arms(&self) -> AstChildren<CaseArm> {
+        support::children(&self.0)
+    }
+}
+
+impl CaseArm {
+    pub fn pat(&self) -> Option<Pat> {
+        support::child(&self.0)
+    }
+
+    pub fn guard(&self) -> Option<CaseGuard> {
+        support::child(&self.0)
+    }
+
+    pub fn val(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
+impl CaseGuard {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
     }
 }
 

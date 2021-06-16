@@ -4,7 +4,7 @@ use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, S
 use crate::data::FixityData;
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
-use crate::expr::{dummy_expr_id, Expr, ExprId, Literal, RecordField, Stmt};
+use crate::expr::{dummy_expr_id, CaseArm, Expr, ExprId, Literal, RecordField, Stmt};
 use crate::id::{FixityId, LocalModuleId, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
 use crate::item_tree::Assoc;
@@ -173,7 +173,11 @@ impl<'a> ExprCollector<'a> {
             },
             | ast::Expr::Field(e) => {
                 let base = self.collect_expr_opt(e.base());
-                let field = e.field()?.as_name();
+                let field = e
+                    .field()
+                    .as_ref()
+                    .map(AsName::as_name)
+                    .or_else(|| e.tuple_field().map(Name::new_tuple_field))?;
 
                 self.alloc_expr(Expr::Field { base, field }, syntax_ptr)
             },
@@ -349,6 +353,21 @@ impl<'a> ExprCollector<'a> {
                     syntax_ptr,
                 )
             },
+            | ast::Expr::Case(e) => {
+                let pred = self.collect_expr_opt(e.pred());
+                let arms = e
+                    .arms()
+                    .map(|arm| {
+                        let pat = self.collect_pat_opt(arm.pat());
+                        let guard = arm.guard().map(|g| self.collect_expr_opt(g.expr()));
+                        let expr = self.collect_expr_opt(arm.val());
+
+                        CaseArm { pat, guard, expr }
+                    })
+                    .collect();
+
+                self.alloc_expr(Expr::Case { pred, arms }, syntax_ptr)
+            },
             | ast::Expr::While(e) => {
                 let cond = self.collect_expr_opt(e.cond());
                 let body = self.collect_expr_opt(e.body());
@@ -447,6 +466,12 @@ impl<'a> ExprCollector<'a> {
                 } else {
                     Pat::Bind { name, subpat }
                 }
+            },
+            | ast::Pat::App(p) => {
+                let base = self.collect_pat_opt(p.base());
+                let args = p.args().map(|p| self.collect_pat(p)).collect();
+
+                Pat::App { base, args }
             },
             | ast::Pat::Parens(p) => {
                 let inner = self.collect_pat_opt(p.pat());
