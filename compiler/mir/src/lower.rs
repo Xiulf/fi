@@ -7,7 +7,7 @@ use crate::ir::*;
 use crate::ty::{self, *};
 use builder::Builder;
 use hir::display::HirDisplay as _;
-use hir::id::HasModule as _;
+use hir::id::{DefWithBodyId, HasModule as _};
 use hir::ty::{Ty, TyKind, TypeVar};
 use hir::MethodSource;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
@@ -292,10 +292,11 @@ macro_rules! resolve_method {
                 match *method {
                     | MethodSource::Instance(inst) => {
                         let data = $self.db.instance_data(inst);
-                        let item = data.item($path.segments().last().unwrap()).unwrap();
 
-                        if let hir::id::AssocItemId::FuncId($i) = item {
-                            break 'block $instance;
+                        if let Some(item) = data.item($path.segments().last().unwrap()) {
+                            if let hir::id::AssocItemId::FuncId($i) = item {
+                                break 'block $instance;
+                            }
                         }
                     },
                     | MethodSource::Record($r) => {
@@ -320,7 +321,7 @@ impl<'a> BodyLowerCtx<'a> {
             let ty = self.db.mir_type(ty);
             let arg = self.builder.create_arg(ty);
             let place = Place::new(arg);
-            let pat = self.convert_pat(param, place);
+            let pat = self.convert_pat(param, place, &mut FxHashMap::default());
 
             assert!(pat.is_none());
             // self.lower_pat(param, place);
@@ -419,6 +420,14 @@ impl<'a> BodyLowerCtx<'a> {
 
                     match resolver.resolve_value_fully(self.db.upcast(), &fixity.func) {
                         | Some(ValueNs::Func(mut f)) => {
+                            // resolve_method!(
+                            //     self,
+                            //     id,
+                            //     path,
+                            //     |inst| return self.lower_func_app(inst, base, args, ret_ty, ret),
+                            //     |idx| Operand::Record(idx, path.segments().last().unwrap().clone()),
+                            //     || return self.lower_func_app(id, base, args, ret_ty, ret)
+                            // )
                             if let Some(method) = self.infer.methods.get(&id) {
                                 match method {
                                     | MethodSource::Instance(inst) => {
@@ -522,6 +531,51 @@ impl<'a> BodyLowerCtx<'a> {
 
                 Operand::Const(Const::Tuple(Vec::new()), ty)
             },
+            | hir::Expr::If {
+                cond,
+                then,
+                else_,
+                inverse,
+            } => {
+                let exit_block = self.builder.create_block();
+                let cond = self.lower_expr(cond, None);
+                let ret = ret.take().unwrap_or_else(|| Place::new(self.builder.create_var(ty)));
+
+                if let Some(else_) = else_ {
+                    let then_block = self.builder.create_block();
+                    let else_block = self.builder.create_block();
+
+                    if inverse {
+                        self.builder.switch(cond, vec![0], vec![then_block, else_block]);
+                    } else {
+                        self.builder.switch(cond, vec![0], vec![else_block, then_block]);
+                    }
+
+                    self.builder.set_block(then_block);
+                    self.lower_expr(then, Some(ret.clone()));
+                    self.builder.jump(exit_block);
+
+                    self.builder.set_block(else_block);
+                    self.lower_expr(else_, Some(ret.clone()));
+                    self.builder.jump(exit_block);
+                } else {
+                    let then_block = self.builder.create_block();
+
+                    if inverse {
+                        self.builder.switch(cond, vec![0], vec![then_block, exit_block]);
+                    } else {
+                        self.builder.switch(cond, vec![0], vec![exit_block, then_block]);
+                    }
+
+                    self.builder.set_block(then_block);
+                    self.lower_expr(then, None);
+                    self.builder.jump(exit_block);
+                }
+
+                self.builder.set_block(exit_block);
+
+                Operand::Place(ret)
+            },
             | hir::Expr::Case { pred, ref arms } => {
                 let pred = self.lower_expr(pred, None);
                 let pred = self.builder.placed(pred);
@@ -561,8 +615,7 @@ impl<'a> BodyLowerCtx<'a> {
                     hir_ty = t;
                 }
 
-                let def = id.into();
-                let bodies = self.db.body_mir(def);
+                let def: DefWithBodyId = id.into();
                 let lib = self.def.module(self.db.upcast()).lib;
                 let func_id = self.db.lang_item(lib, "fn-type".into()).unwrap();
                 let func_id = func_id.as_type_ctor().unwrap();
@@ -573,7 +626,13 @@ impl<'a> BodyLowerCtx<'a> {
                     hir_ty = r;
                 }
 
-                let (id, arity) = bodies.arity(def, arity);
+                let (id, arity) = if def == self.def {
+                    self.builder.arity(def, arity)
+                } else {
+                    let bodies = self.db.body_mir(def);
+
+                    bodies.arity(def, arity)
+                };
 
                 if arity > 0 {
                     Operand::Const(Const::Addr(id), self.db.mir_type(hir_ty))
@@ -688,6 +747,40 @@ impl<'a> BodyLowerCtx<'a> {
                         self.builder.call(ret.clone(), f, args)
                     },
                 },
+                | "size_of" => {
+                    let arg_ty = self.infer.type_of_expr[args[0]];
+                    let proxy_id = self.lang_type("proxy-type");
+
+                    if let Some([ty]) = arg_ty.match_ctor(self.db.upcast(), proxy_id) {
+                        let ty = self.db.mir_type(ty);
+                        let layout = self.db.layout_of(ty);
+                        let size = Const::Scalar(layout.size.bytes() as u128);
+                        let ty = self.builder.place_type(&ret);
+
+                        self.builder.use_op(ret.clone(), Operand::Const(size, ty));
+                    } else {
+                        unreachable!();
+                    }
+                },
+                | "addr_of" => {
+                    let arg = self.lower_expr(args[0], None);
+                    let arg = self.builder.placed(arg);
+
+                    self.builder.addr_of(ret.clone(), arg);
+                },
+                | "ptr_read" => {
+                    let arg = self.lower_expr(args[0], None);
+                    let arg = self.builder.placed(arg);
+
+                    self.builder.use_op(ret.clone(), Operand::Place(arg.deref()));
+                },
+                | "ptr_write" => {
+                    let ptr = self.lower_expr(args[0], None);
+                    let ptr = self.builder.placed(ptr);
+                    let val = self.lower_expr(args[1], None);
+
+                    self.builder.use_op(ptr.deref(), val);
+                },
                 | _ => {
                     let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 
@@ -697,9 +790,15 @@ impl<'a> BodyLowerCtx<'a> {
         } else {
             let func_ty = self.db.value_ty(func.into());
             let func_lyt = self.db.mir_type(func_ty);
-            let def = func.into();
-            let bodies = self.db.body_mir(def);
-            let (func, _) = bodies.arity(def, args.len());
+            let def: DefWithBodyId = func.into();
+            let (func, _) = if def == self.def {
+                self.builder.arity(def, args.len())
+            } else {
+                let bodies = self.db.body_mir(def);
+
+                bodies.arity(def, args.len())
+            };
+
             let func = Operand::Const(Const::Addr(func), func_lyt);
             let args = args.into_iter().map(|a| self.lower_expr(a, None)).collect();
 

@@ -308,7 +308,13 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 type_var.to_ty(self.db)
             },
             | TypeNs::TypeAlias(id) => self.db.type_for_alias(id).ty,
-            | TypeNs::TypeCtor(id) => self.db.type_for_ctor(id).ty,
+            | TypeNs::TypeCtor(id) => {
+                if TypeVarOwner::TypedDefId(id.into()) == self.owner {
+                    TyKind::Ctor(id).intern(self.db)
+                } else {
+                    self.db.type_for_ctor(id).ty
+                }
+            },
         };
 
         if remaining > 0 {
@@ -531,6 +537,14 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         })
         .collect::<Vec<_>>();
 
+    let mut ty_kind = ctx.type_kind();
+
+    for &kind in &var_kinds {
+        ty_kind = ctx.fn_type(kind, ty_kind);
+    }
+
+    ctx.icx.result.self_type = ty_kind;
+
     for (_, ctor) in data.ctors.iter() {
         for &ty in ctor.types.iter() {
             let ty_ = ctx.lower_ty(ty);
@@ -545,7 +559,7 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         let kind = ctx.subst_type(kind);
 
         if let TyKind::Unknown(u) = kind.lookup(db) {
-            let kind = *type_kind.get_or_init(|| ctx.lang_type("type-kind"));
+            let kind = *type_kind.get_or_init(|| ctx.type_kind());
 
             ctx.solve_type(u, kind);
             ty = TyKind::ForAll(kind, ty).intern(db);
@@ -562,6 +576,7 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
 }
 
 pub(crate) fn type_for_ctor_recover(db: &dyn HirDatabase, _cycle: &[String], id: &TypeCtorId) -> Arc<LowerResult> {
+    dbg!(_cycle);
     unimplemented!();
 }
 

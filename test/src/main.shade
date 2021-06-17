@@ -1,15 +1,9 @@
 module main =
 
 import core
-import core/intrinsics
-
-type Option t =
-    | None
-    | Some t
+import term (Term, Var, Abs, App)
 
 fun main = do
-    let x = Some "Hello World"
+    let x = term/new $ Var 0
 
-    case x of
-        Some s -> println s
-        None -> ()
+    term/drop x

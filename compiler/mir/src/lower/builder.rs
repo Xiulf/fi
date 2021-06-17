@@ -106,6 +106,10 @@ impl<'a> Builder<'a> {
         }
     }
 
+    pub fn current_block(&self) -> BlockId {
+        self.block.unwrap()
+    }
+
     pub fn set_block(&mut self, block: BlockId) {
         self.block = Some(block);
 

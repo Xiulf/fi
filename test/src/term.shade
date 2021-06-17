@@ -1,0 +1,45 @@
+module term (
+    Term, Abs, Var, App,
+    new, drop,
+) =
+
+import core
+
+type Term =
+    | Abs *Term
+    | Var Int32
+    | App *Term *Term
+
+fun new t = do
+    let size = intrinsics/size_of (Proxy :: Proxy Term)
+    let ptr = intrinsics/alloc size :: *Term
+    intrinsics/ptr_write ptr t
+    ptr
+
+fun drop (ptr :: *Term) = do
+    let t = intrinsics/ptr_read ptr
+
+    case t of
+        Abs t' -> drop t'
+        Var _ -> ()
+        App t' t'' -> do
+            drop t'
+            drop t''
+
+    intrinsics/dealloc ptr
+
+fun print ptr = do
+    let t = intrinsics/ptr_read ptr
+
+    case t of
+        Abs t' -> do
+            io/print "\\ "
+            print t'
+        App t' t'' -> do
+            io/print "("
+            print t'
+            io/print " "
+            print t''
+            io/print ")"
+        Var v -> do
+            let _ = io/write_i32 io/Stdout v

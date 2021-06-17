@@ -22,6 +22,7 @@ pub struct ReprOptions {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeKind {
+    Recurse(Ty),
     Unit,
     Var(TypeVar),
     Ptr(Arc<Type>),
@@ -395,6 +396,7 @@ impl Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
+            | TypeKind::Recurse(t) => write!(f, "recurse({:?})", t),
             | TypeKind::Unit => match &self.repr.scalar {
                 | Some(s) => match s {
                     | Primitive::Int(Integer::I8, false) => write!(f, "u8"),

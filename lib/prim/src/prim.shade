@@ -85,6 +85,10 @@ type Bool =
     | False
     | True
 
+@lang = "proxy-type"
+type Proxy a =
+    | Proxy
+
 @lang = "integer-class" class Integer t | -> t
 @lang = "decimal-class" class Decimal t | -> t
 @lang = "pointer-class" class Pointer t to | t -> to

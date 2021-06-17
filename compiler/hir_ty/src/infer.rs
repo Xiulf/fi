@@ -198,6 +198,14 @@ impl<'a> InferenceContext<'a> {
         self.db.type_for_ctor(ty).ty
     }
 
+    pub(crate) fn type_kind(&self) -> Ty {
+        let module = self.owner.module(self.db.upcast());
+        let ty = self.db.lang_item(module.lib, "type-kind".into()).unwrap();
+        let ty = ty.as_type_ctor().unwrap();
+
+        TyKind::Ctor(ty).intern(self.db)
+    }
+
     pub(crate) fn fn_type_id(&self) -> hir_def::id::TypeCtorId {
         let module = self.owner.module(self.db.upcast());
         let ty = self.db.lang_item(module.lib, "fn-type".into()).unwrap();

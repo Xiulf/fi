@@ -1,0 +1,11 @@
+module rem =
+
+import prim (intrinsics, Int32)
+
+infixl 7 rem as (%)
+
+class Rem lhs rhs out | lhs rhs -> out =
+    fun rem :: lhs -> rhs -> out
+
+instance Rem Int32 Int32 Int32 =
+    fun rem lhs rhs = intrinsics/rem_i32 lhs rhs

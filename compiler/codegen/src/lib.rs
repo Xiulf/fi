@@ -308,6 +308,7 @@ impl<'a> ModuleCtx<'a> {
         fx.bcx.ins().jump(fx.blocks[fx.body.entry.unwrap()], &[]);
         fx.bcx.seal_block(start_block);
         fx.lower();
+        fx.bcx.seal_all_blocks();
         fx.bcx.finalize();
         fx.ctx.compute_cfg();
         fx.ctx.compute_domtree();

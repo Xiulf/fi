@@ -17,6 +17,7 @@ pub trait MirDatabase: HirDatabase + Upcast<dyn HirDatabase> {
     fn layout_of(&self, ty: Arc<Type>) -> Arc<Layout>;
 
     #[salsa::invoke(Type::mir_type_query)]
+    #[salsa::cycle(mir_type_recover)]
     fn mir_type(&self, ty: Ty) -> Arc<Type>;
 
     #[salsa::invoke(InstanceRecord::instance_record_query)]
@@ -27,4 +28,11 @@ pub trait MirDatabase: HirDatabase + Upcast<dyn HirDatabase> {
 
     #[salsa::invoke(crate::eval::eval_query)]
     fn eval(&self, def: hir::id::DefWithBodyId) -> EvalResult;
+}
+
+fn mir_type_recover(db: &dyn MirDatabase, _cycle: &[String], ty: &Ty) -> Arc<Type> {
+    Arc::new(Type {
+        kind: crate::ty::TypeKind::Recurse(*ty),
+        repr: crate::ty::ReprOptions::default(),
+    })
 }

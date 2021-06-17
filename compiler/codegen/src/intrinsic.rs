@@ -23,6 +23,11 @@ impl FunctionCtx<'_, '_> {
 
                 place.store(self, ValueRef::new_val(val, layout));
             },
+            | "dealloc" => {
+                let ptr = args.next()?.load_scalar(self);
+
+                self.call_free(ptr);
+            },
             | "add_i32" => {
                 let lhs = args.next()?.load_scalar(self);
                 let rhs = args.next()?.load_scalar(self);
@@ -37,10 +42,32 @@ impl FunctionCtx<'_, '_> {
 
                 place.store(self, ValueRef::new_val(val, layout));
             },
+            | "div_i32" => {
+                let lhs = args.next()?.load_scalar(self);
+                let rhs = args.next()?.load_scalar(self);
+                let val = self.bcx.ins().sdiv(lhs, rhs);
+
+                place.store(self, ValueRef::new_val(val, layout));
+            },
+            | "rem_i32" => {
+                let lhs = args.next()?.load_scalar(self);
+                let rhs = args.next()?.load_scalar(self);
+                let val = self.bcx.ins().srem(lhs, rhs);
+
+                place.store(self, ValueRef::new_val(val, layout));
+            },
             | "eq_i32" => {
                 let lhs = args.next()?.load_scalar(self);
                 let rhs = args.next()?.load_scalar(self);
                 let val = self.bcx.ins().icmp(clif::IntCC::Equal, lhs, rhs);
+                let val = self.bcx.ins().bint(clif::types::I8, val);
+
+                place.store(self, ValueRef::new_val(val, layout));
+            },
+            | "ge_i32" => {
+                let lhs = args.next()?.load_scalar(self);
+                let rhs = args.next()?.load_scalar(self);
+                let val = self.bcx.ins().icmp(clif::IntCC::SignedGreaterThanOrEqual, lhs, rhs);
                 let val = self.bcx.ins().bint(clif::types::I8, val);
 
                 place.store(self, ValueRef::new_val(val, layout));

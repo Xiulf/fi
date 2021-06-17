@@ -2,6 +2,7 @@ module io =
 
 import prim
 import prim/intrinsics (unsafe, transmute, ($))
+import core/ops
 
 class Write w =
     fun write :: w -> []Byte -> w
@@ -39,3 +40,12 @@ instance Write Stderr =
         let (ptr, len) = unsafe $ transmute bytes
         libc/write libc/STDERR_FILENO ptr len
         s
+
+fun write_i32 w i =
+    if intrinsics/ge_i32 i 10
+    then write_i32 w (i / (10 :: Int32))
+    else do
+        let ch = 48 + (i % (10 :: Int32))
+        let bytes = (intrinsics/addr_of ch, 4 :: Uint)
+        let bytes = unsafe $ transmute bytes
+        write w bytes

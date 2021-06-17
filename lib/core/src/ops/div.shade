@@ -1,0 +1,11 @@
+module div =
+
+import prim (intrinsics, Int32)
+
+infixl 7 div as (/)
+
+class Div lhs rhs out | lhs rhs -> out =
+    fun div :: lhs -> rhs -> out
+
+instance Div Int32 Int32 Int32 =
+    fun div lhs rhs = intrinsics/div_i32 lhs rhs

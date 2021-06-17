@@ -263,7 +263,7 @@ crate fn type_var(p: &mut Parser) {
 
 crate fn peek(p: &Parser) -> bool {
     match p.current() {
-        | IDENT | L_PAREN | L_BRACKET | L_BRACE | FOR_KW | INT | STRING => true,
+        | IDENT | STAR | L_PAREN | L_BRACKET | L_BRACE | FOR_KW | INT | STRING => true,
         | _ => false,
     }
 }

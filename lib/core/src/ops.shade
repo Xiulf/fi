@@ -2,4 +2,6 @@ module ops (module o) =
 
 import core/ops/add as o
 import core/ops/sub as o
+import core/ops/div as o
+import core/ops/rem as o
 import core/ops/eq as o

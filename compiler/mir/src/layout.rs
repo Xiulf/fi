@@ -17,6 +17,10 @@ pub fn layout_of_query(db: &dyn MirDatabase, ty: Arc<Type>) -> Arc<Layout> {
     };
 
     let mut layout = match ty.kind.clone() {
+        | TypeKind::Recurse(ty) => {
+            let ty = Type::mir_type_query(db, ty);
+            return db.layout_of(ty);
+        },
         | TypeKind::Unit => {
             if let Some(prim) = ty.repr.scalar {
                 scalar(prim)

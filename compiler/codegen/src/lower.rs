@@ -17,7 +17,6 @@ impl FunctionCtx<'_, '_> {
             }
 
             self.lower_term(&block.term);
-            self.bcx.seal_block(self.blocks[id]);
         }
     }
 

@@ -1,6 +1,7 @@
 use super::{InferenceContext, InferenceDiagnostic};
 use crate::display::HirDisplay;
 use crate::ty::*;
+use hir_def::id::TypeVarOwner;
 use hir_def::type_ref::LocalTypeRefId;
 
 impl InferenceContext<'_> {
@@ -36,7 +37,13 @@ impl InferenceContext<'_> {
 
                 kind
             },
-            | TyKind::Ctor(id) => self.db.kind_for_ctor(id),
+            | TyKind::Ctor(id) => {
+                if TypeVarOwner::TypedDefId(id.into()) == self.owner {
+                    self.result.self_type
+                } else {
+                    self.db.kind_for_ctor(id)
+                }
+            },
             | TyKind::Tuple(tys) => {
                 let type_kind = self.lang_type("type-kind");
 
