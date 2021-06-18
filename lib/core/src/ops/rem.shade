@@ -4,7 +4,7 @@ import prim (intrinsics, Int32)
 
 infixl 7 rem as (%)
 
-class Rem lhs rhs out | lhs rhs -> out =
+class Rem lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
     fun rem :: lhs -> rhs -> out
 
 instance Rem Int32 Int32 Int32 =

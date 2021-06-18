@@ -143,13 +143,13 @@ impl<'a> LowerCtx<'a> {
 
         self.bodies.set_arity(local_id, args.len());
 
-        if self.def.has_body(self.db.upcast()) && args.len() > 1 {
-            let params = args.iter().map(|&t| self.db.mir_type(t)).collect();
-            let ret = self.db.mir_type(ret_ty);
-            let ty = Type::func(params, ret);
-
-            self.generate_curry(ret_ty, &args, args.len() - 1, local_id, ty);
-        }
+        // if self.def.has_body(self.db.upcast()) && args.len() > 1 {
+        //     let params = args.iter().map(|&t| self.db.mir_type(t)).collect();
+        //     let ret = self.db.mir_type(ret_ty);
+        //     let ty = Type::func(params, ret);
+        //
+        //     self.generate_curry(ret_ty, &args, args.len() - 1, local_id, ty);
+        // }
 
         let mut builder = self.bodies.builder(local_id);
         let ret = builder.create_ret(self.db.mir_type(ret_ty));
@@ -286,7 +286,7 @@ impl<'a> LowerCtx<'a> {
 }
 
 macro_rules! resolve_method {
-    ($self:ident, $expr:ident, $path:ident, | $i:ident | $instance:expr, | $r:ident | $record:expr, || $else:expr) => {
+    ($self:ident, $expr:ident, $path:expr, | $i:ident | $instance:expr, | $r:ident | $record:expr, || $else:expr) => {
         'block: {
             if let Some(method) = $self.infer.methods.get(&$expr) {
                 match *method {
@@ -420,30 +420,17 @@ impl<'a> BodyLowerCtx<'a> {
 
                     match resolver.resolve_value_fully(self.db.upcast(), &fixity.func) {
                         | Some(ValueNs::Func(mut f)) => {
-                            // resolve_method!(
-                            //     self,
-                            //     id,
-                            //     path,
-                            //     |inst| return self.lower_func_app(inst, base, args, ret_ty, ret),
-                            //     |idx| Operand::Record(idx, path.segments().last().unwrap().clone()),
-                            //     || return self.lower_func_app(id, base, args, ret_ty, ret)
-                            // )
-                            if let Some(method) = self.infer.methods.get(&id) {
-                                match method {
-                                    | MethodSource::Instance(inst) => {
-                                        let data = self.db.instance_data(*inst);
-                                        let item = data.item(fixity.func.segments().last().unwrap()).unwrap();
-
-                                        f = match item {
-                                            | hir::id::AssocItemId::FuncId(id) => id,
-                                            | _ => unreachable!(),
-                                        };
-                                    },
-                                    | MethodSource::Record(_) => unimplemented!(),
-                                }
-                            }
-
-                            self.lower_func_app(f, id, vec![lhs, rhs], hir_ty, ret.take())
+                            resolve_method!(
+                                self,
+                                id,
+                                &fixity.func,
+                                |inst| self.lower_func_app(inst, id, vec![lhs, rhs], hir_ty, ret.take()),
+                                |idx| {
+                                    // @TODO: use record
+                                    self.lower_func_app(f, id, vec![lhs, rhs], hir_ty, ret.take())
+                                },
+                                || self.lower_func_app(f, id, vec![lhs, rhs], hir_ty, ret.take())
+                            )
                         },
                         | Some(ValueNs::Ctor(c)) => self.lower_ctor_app(c, vec![lhs, rhs], hir_ty, ret.take()),
                         | _ => Operand::Const(Const::Undefined, ty),
@@ -592,20 +579,7 @@ impl<'a> BodyLowerCtx<'a> {
 
         match resolver.resolve_value_fully(self.db.upcast(), path) {
             | Some(ValueNs::Func(mut id)) => {
-                if let Some(method) = self.infer.methods.get(&expr) {
-                    match method {
-                        | MethodSource::Instance(inst) => {
-                            let data = self.db.instance_data(*inst);
-                            let item = data.item(path.segments().last().unwrap()).unwrap();
-
-                            id = match item {
-                                | hir::id::AssocItemId::FuncId(id) => id,
-                                | _ => unreachable!(),
-                            };
-                        },
-                        | MethodSource::Record(_) => unimplemented!(),
-                    }
-                }
+                resolve_method!(self, expr, path, |inst| id = inst, |rec| unimplemented!(), || {});
 
                 while let TyKind::ForAll(_, t) = hir_ty.lookup(self.db.upcast()) {
                     hir_ty = t;

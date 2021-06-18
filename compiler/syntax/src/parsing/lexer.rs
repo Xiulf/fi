@@ -661,7 +661,7 @@ impl<'src> Lexer<'src> {
                 },
                 | [.., (_, LayoutDelim::If)] => {
                     self.stack.pop().unwrap();
-                    self.insert_default(start, DO_KW);
+                    self.emit(DO_KW);
                     self.insert_start(LayoutDelim::Do);
                 },
                 | _ => {

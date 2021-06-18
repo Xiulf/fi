@@ -41,11 +41,12 @@ instance Write Stderr =
         libc/write libc/STDERR_FILENO ptr len
         s
 
-fun write_i32 w i =
+fun print_i32 i = do
     if intrinsics/ge_i32 i 10
-    then write_i32 w (i / (10 :: Int32))
-    else do
-        let ch = 48 + (i % (10 :: Int32))
-        let bytes = (intrinsics/addr_of ch, 4 :: Uint)
-        let bytes = unsafe $ transmute bytes
-        write w bytes
+    do print_i32 $ i / 10
+
+    let ch = i % 10 :: Int32
+    let ch = 48 + ch :: Int32
+    let addr = intrinsics/addr_of ch :: *Int32
+    let bytes = unsafe $ transmute (addr, 4 :: Uint)
+    print bytes

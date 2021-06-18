@@ -150,6 +150,8 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                 | THEN_KW => {
                     p.bump(THEN_KW);
                     expr(p);
+                    p.expect(ELSE_KW);
+                    expr(p);
                 },
                 | DO_KW => {
                     let do_expr = p.start();
@@ -157,16 +159,17 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                     p.bump(DO_KW);
                     block(p);
                     do_expr.complete(p, EXPR_DO);
+
+                    if p.eat(ELSE_KW) {
+                        expr(p);
+                    }
                 },
-                | _ => {
+                | c => {
+                    dbg!(c);
                     p.error("expected 'then' or 'do'");
                     m.abandon(p);
                     return None;
                 },
-            }
-
-            if p.eat(ELSE_KW) {
-                expr(p);
             }
 
             Some(m.complete(p, EXPR_IF))

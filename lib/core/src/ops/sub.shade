@@ -4,7 +4,7 @@ import prim (intrinsics, Int32)
 
 infixl 6 sub as (-)
 
-class Sub lhs rhs out | lhs rhs -> out =
+class Sub lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
     fun sub :: lhs -> rhs -> out
 
 instance Sub Int32 Int32 Int32 =

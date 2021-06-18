@@ -4,7 +4,7 @@ import prim (intrinsics, Int32)
 
 infixl 6 add as (+)
 
-class Add lhs rhs out | lhs rhs -> out =
+class Add lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
     fun add :: lhs -> rhs -> out
 
 instance Add Int32 Int32 Int32 =

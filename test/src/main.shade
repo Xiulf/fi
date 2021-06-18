@@ -4,6 +4,12 @@ import core
 import term (Term, Var, Abs, App)
 
 fun main = do
-    let x = term/new $ Var 0
+    let t = term/new $ Var 0
+    let t = term/new $ Abs t
+    let s = term/new $ Var 0
+    let s = term/new $ Abs s
+    let t = term/new $ App t s
 
-    term/drop x
+    term/print t
+    print "\n"
+    term/drop t
