@@ -1,9 +1,7 @@
 use base_db::input::FileId;
 use base_db::libs::LibId;
-use base_db::SourceDatabase as _;
 use base_db::SourceDatabaseExt as _;
 use driver::Driver;
-use hir::db::DefDatabase as _;
 use markup::{Markup, MarkupRenderer, Styles};
 use repl::{ReadLine, Repl};
 
@@ -64,7 +62,7 @@ impl Interactive {
     }
 
     fn load(&mut self, text: &str) {
-        if let Some(lib) = self.driver.load(text, true) {
+        if let Some(lib) = self.driver.load(text) {
             self.driver.add_dep(self.lib, lib);
         }
     }

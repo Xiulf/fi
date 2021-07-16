@@ -110,6 +110,39 @@ pub fn load_project(
     Ok(lib)
 }
 
+pub fn load_normal(
+    rdb: &mut RootDatabase,
+    libs: &mut LibSet,
+    roots: &mut u32,
+    files: &mut u32,
+    path: &Path,
+    kind: LibKind,
+) -> Result<LibId> {
+    let name = path.file_stem().unwrap().to_str().unwrap();
+    let mut root = SourceRoot::new_local();
+    let root_id = SourceRootId(*roots);
+    let root_file = FileId(*files);
+    let (lib, _) = libs.add_lib(name, kind, root_id, root_file);
+
+    *roots += 1;
+
+    load_file(
+        rdb,
+        &mut root,
+        root_id,
+        root_file,
+        lib,
+        files,
+        path.parent().unwrap(),
+        path,
+        true,
+    )?;
+
+    rdb.set_source_root(root_id, root.into());
+
+    Ok(lib)
+}
+
 fn load_file(
     rdb: &mut RootDatabase,
     root: &mut SourceRoot,

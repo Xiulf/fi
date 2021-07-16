@@ -14,7 +14,7 @@ pub fn postprocess(db: &dyn MirDatabase, bodies: &mut Bodies) {
         process_body(db, bodies.builder(id));
     }
 
-    eprintln!("{}", bodies.display(db.upcast()));
+    // eprintln!("{}", bodies.display(db.upcast()));
 }
 
 struct PostCtx<'a> {

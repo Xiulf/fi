@@ -81,3 +81,12 @@ impl fmt::Display for Name {
         }
     }
 }
+
+impl PartialEq<str> for Name {
+    fn eq(&self, other: &str) -> bool {
+        match self.0 {
+            | Repr::Text(ref t) => t.eq(other),
+            | Repr::TupleField(_) => false,
+        }
+    }
+}

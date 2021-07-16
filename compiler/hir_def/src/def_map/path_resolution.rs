@@ -89,7 +89,11 @@ impl DefMap {
 
                     let module_data = &self[module.local_id];
 
-                    module_data.scope.get(&segment)
+                    if module.local_id == original {
+                        module_data.scope.get(&segment)
+                    } else {
+                        module_data.exports.get(db, self, module.local_id, &segment)
+                    }
                 },
                 | s => return ResolveResult::with(PerNs::from(s), FixPoint::Yes, Some(i), Some(self.lib)),
             };
@@ -105,6 +109,10 @@ impl DefMap {
         name: &Name,
         mode: ResolveMode,
     ) -> PerNs {
+        // if name == "print" {
+        //     eprintln!("{}, {:?}, {:#?}", name, mode, self[module].exports);
+        // }
+
         let from_scope = match mode {
             | ResolveMode::Import => self[module].exports.get(db, self, module, name),
             | ResolveMode::Other => self[module].scope.get(name),

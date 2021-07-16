@@ -1,6 +1,6 @@
 module term (
     Term, Abs, Var, App,
-    new, drop,
+    new, drop, print, eval,
 ) =
 
 import core
@@ -59,7 +59,10 @@ fun apply base arg i = do
 
     case base' of
         Var i' -> do
-            if intrinsics/eq_i32 i' i then arg else base
+            if intrinsics/eq_i32 i' i then do
+                intrinsics/dealloc base
+                arg
+            else base
         App a b -> do
             let a = apply a arg i
             let b = apply b arg i

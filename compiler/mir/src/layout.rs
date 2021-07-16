@@ -189,25 +189,24 @@ fn slice_layout(elem_lyt: Arc<Layout>, triple: &Triple) -> Layout {
 }
 
 fn struct_layout(lyts: Vec<Arc<Layout>>, triple: &Triple) -> Layout {
-    match (lyts.get(0), lyts.get(1)) {
-        | (Some(a), Some(b)) => match (&a.abi, &b.abi) {
-            | (Abi::Scalar(a), Abi::Scalar(b)) => return scalar_pair(a.clone(), b.clone(), triple),
+    let mut abi = Abi::Aggregate { sized: true };
+
+    match (lyts.get(0), lyts.get(1), lyts.get(2)) {
+        | (Some(a), Some(b), None) => match (&a.abi, &b.abi) {
+            | (Abi::Scalar(a), Abi::Scalar(b)) => {
+                let pair = scalar_pair(a.clone(), b.clone(), triple);
+
+                abi = pair.abi;
+            },
             | (_, _) => {},
         },
-        | (Some(s), None) | (None, Some(s)) => match &s.abi {
-            | Abi::Scalar(s) => {
-                let mut lyt = Layout::scalar(s.clone(), triple);
-                let field = Arc::new(lyt.clone());
-
-                lyt.fields = Fields::Arbitrary {
-                    fields: vec![(Size::ZERO, field)],
-                };
-
-                return lyt;
+        | (Some(s), None, None) => match &s.abi {
+            | Abi::Scalar(_) | Abi::ScalarPair(_, _) => {
+                abi = s.abi.clone();
             },
             | _ => {},
         },
-        | (None, None) => {},
+        | (_, _, _) => {},
     }
 
     let mut align = Align::ONE;
@@ -234,8 +233,8 @@ fn struct_layout(lyts: Vec<Arc<Layout>>, triple: &Triple) -> Layout {
         size,
         align,
         stride,
+        abi,
         elem: None,
-        abi: Abi::Aggregate { sized: true },
         fields: Fields::Arbitrary { fields },
         variants: Variants::Single { index: 0 },
         largest_niche,

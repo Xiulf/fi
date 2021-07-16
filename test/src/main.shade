@@ -12,4 +12,9 @@ fun main = do
 
     term/print t
     print "\n"
+
+    let t = term/eval t
+
+    term/print t
+    print "\n"
     term/drop t

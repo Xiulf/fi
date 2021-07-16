@@ -3,18 +3,20 @@ pub mod diagnostics;
 pub mod manifest;
 
 use base_db::input::{FileId, SourceRoot, SourceRootId};
-use base_db::libs::{LibId, LibSet};
+use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::SourceDatabase;
 use base_db::SourceDatabaseExt;
 use codegen::db::CodegenDatabase;
-use hir::db::DefDatabase;
 use mir::db::MirDatabase;
 use rustc_hash::FxHashSet;
 use std::path::PathBuf;
-use syntax::ast::{self, AstNode, NameOwner};
+use std::sync::Arc;
 
+#[derive(Default)]
 pub struct Opts<'a> {
     pub input: &'a str,
+    pub target: Option<&'a str>,
+    pub output: Option<LibKind>,
 }
 
 #[derive(Default)]
@@ -29,10 +31,35 @@ pub struct Driver {
 impl Driver {
     pub fn init(opts: Opts) -> Option<(Self, LibId)> {
         let mut driver = Driver::default();
-        let lib = driver.load(opts.input, false)?;
+        let lib = driver.load(opts.input)?;
 
         driver.target_dir = PathBuf::from(opts.input).join("target");
-        driver.db.set_target_triple(mir::target_lexicon::HOST.into());
+        driver.db.set_target_triple(match opts.target {
+            | Some(target) => Arc::new(target.parse().unwrap()),
+            | None => Arc::new(mir::target_lexicon::HOST),
+        });
+
+        Some((driver, lib))
+    }
+
+    pub fn init_no_manifest(opts: Opts) -> Option<(Self, LibId)> {
+        let mut driver = Driver::default();
+        let path = std::path::PathBuf::from(opts.input);
+        let lib = manifest::load_normal(
+            &mut driver.db,
+            &mut driver.libs,
+            &mut driver.lib_count,
+            &mut driver.file_count,
+            &path,
+            opts.output.unwrap_or(LibKind::Executable),
+        )
+        .ok()?;
+
+        driver.target_dir = PathBuf::from(opts.input).join("target");
+        driver.db.set_target_triple(match opts.target {
+            | Some(target) => Arc::new(target.parse().unwrap()),
+            | None => Arc::new(mir::target_lexicon::HOST),
+        });
 
         Some((driver, lib))
     }
@@ -72,7 +99,7 @@ impl Driver {
         (driver, lib, root_file, type_file, resolve_file)
     }
 
-    pub fn load(&mut self, input: &str, interactive: bool) -> Option<LibId> {
+    pub fn load(&mut self, input: &str) -> Option<LibId> {
         let path = std::path::PathBuf::from(input);
 
         match manifest::load_project(
@@ -84,10 +111,6 @@ impl Driver {
         ) {
             | Ok(lib) => {
                 self.db.set_libs(self.libs.clone().into());
-
-                if interactive {
-                    println!("loaded {}", self.libs[lib].name);
-                }
 
                 Some(lib)
             },

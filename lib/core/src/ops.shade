@@ -1,4 +1,4 @@
-module ops (module o) =
+module ops (module o, add, sub, div, rem, eq) =
 
 import core/ops/add as o
 import core/ops/sub as o
