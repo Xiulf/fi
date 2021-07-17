@@ -3,7 +3,7 @@ use crate::lower::LowerCtx;
 use crate::ty::*;
 use hir_def::expr::Literal;
 use hir_def::pat::{Pat, PatId};
-use hir_def::path::Path;
+use hir_def::per_ns::Visibility;
 use hir_def::resolver::ValueNs;
 use std::sync::Arc;
 
@@ -34,15 +34,19 @@ impl BodyInferenceContext<'_> {
                 ret
             },
             | Pat::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
-                | Some(ValueNs::Ctor(id)) => {
+                | Some((ValueNs::Ctor(id), Visibility::Public)) => {
                     let ty = self.db.value_ty(id.into());
 
                     self.instantiate(ty, pat.into())
                 },
-                | Some(ValueNs::Const(id)) => {
+                | Some((ValueNs::Const(id), Visibility::Public)) => {
                     let ty = self.db.value_ty(id.into());
 
                     self.instantiate(ty, pat.into())
+                },
+                | Some((_, Visibility::Private)) => {
+                    self.report(InferenceDiagnostic::PrivateValue { id: pat.into() });
+                    self.error()
                 },
                 | _ => {
                     self.report(InferenceDiagnostic::UnresolvedValue { id: pat.into() });

@@ -218,7 +218,7 @@ impl<'a> ExprCollector<'a> {
                             let (resolved, _) = self.def_map.resolve_path(self.db, self.module, op);
 
                             match resolved.values {
-                                | Some(ModuleDefId::FixityId(id)) => Some((id, self.db.fixity_data(id))),
+                                | Some((ModuleDefId::FixityId(id), _)) => Some((id, self.db.fixity_data(id))),
                                 | _ => None,
                             }
                         })
@@ -458,7 +458,7 @@ impl<'a> ExprCollector<'a> {
                     let (resolved, _) = self.def_map.resolve_path(self.db, self.module, &name.clone().into());
 
                     match resolved.values {
-                        | Some(ModuleDefId::ConstId(_)) | Some(ModuleDefId::CtorId(_)) => {
+                        | Some((ModuleDefId::ConstId(_), _)) | Some((ModuleDefId::CtorId(_), _)) => {
                             Pat::Path { path: name.into() }
                         },
                         | _ => Pat::Bind { name, subpat },

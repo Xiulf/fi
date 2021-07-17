@@ -2,7 +2,7 @@ use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::id::{ClassId, HasModule, InstanceId, LocalModuleId, Lookup, ModuleDefId, ModuleId};
 use crate::name::Name;
-use crate::per_ns::PerNs;
+use crate::per_ns::{PerNs, Visibility};
 use base_db::libs::LibId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
@@ -72,9 +72,9 @@ impl ItemScope {
 
     pub fn get(&self, name: &Name) -> PerNs {
         PerNs {
-            types: self.types.get(name).copied(),
-            values: self.values.get(name).copied(),
-            modules: self.modules.get(name).copied(),
+            types: self.types.get(name).map(|&id| (id, Visibility::Public)),
+            values: self.values.get(name).map(|&id| (id, Visibility::Public)),
+            modules: self.modules.get(name).map(|&id| (id, Visibility::Public)),
         }
     }
 
@@ -106,21 +106,21 @@ impl ItemScope {
     pub fn push_res(&mut self, name: Name, def: PerNs) -> bool {
         let mut changed = false;
 
-        if let Some(types) = def.types {
+        if let Some((types, _)) = def.types {
             self.types.entry(name.clone()).or_insert_with(|| {
                 changed = true;
                 types
             });
         }
 
-        if let Some(values) = def.values {
+        if let Some((values, _)) = def.values {
             self.values.entry(name.clone()).or_insert_with(|| {
                 changed = true;
                 values
             });
         }
 
-        if let Some(modules) = def.modules {
+        if let Some((modules, _)) = def.modules {
             self.modules.entry(name.clone()).or_insert_with(|| {
                 changed = true;
                 modules
@@ -165,7 +165,7 @@ impl ItemScope {
                             },
                         }
 
-                        if let Some(f_id) = $def.$field {
+                        if let Some((f_id, _)) = $def.$field {
                             entry.insert(f_id);
                         }
 
@@ -176,7 +176,7 @@ impl ItemScope {
                     {
                         $all_imports.$field.remove(&$lookup);
 
-                        if let Some(f_id) = $def.$field {
+                        if let Some((f_id, _)) = $def.$field {
                             entry.insert(f_id);
                         }
 
@@ -314,9 +314,9 @@ impl ItemExports {
 impl ItemInNs {
     fn match_with(self, per_ns: PerNs) -> bool {
         match self {
-            | ItemInNs::Types(def) => per_ns.types.filter(|other_def| *other_def == def).is_some(),
-            | ItemInNs::Values(def) => per_ns.values.filter(|other_def| *other_def == def).is_some(),
-            | ItemInNs::Modules(def) => per_ns.modules.filter(|other_def| *other_def == def).is_some(),
+            | ItemInNs::Types(def) => per_ns.types.filter(|other_def| other_def.0 == def).is_some(),
+            | ItemInNs::Values(def) => per_ns.values.filter(|other_def| other_def.0 == def).is_some(),
+            | ItemInNs::Modules(def) => per_ns.modules.filter(|other_def| other_def.0 == def).is_some(),
         }
     }
 

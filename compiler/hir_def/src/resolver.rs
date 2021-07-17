@@ -2,10 +2,9 @@ use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::expr::ExprId;
 use crate::id::*;
-use crate::name::Name;
 use crate::pat::PatId;
 use crate::path::Path;
-use crate::per_ns::PerNs;
+use crate::per_ns::{PerNs, Visibility};
 use crate::scope::{ExprScopeId, ExprScopes, TypeScopeId, TypeScopes};
 use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap};
 use base_db::libs::LibId;
@@ -80,7 +79,7 @@ impl Resolver {
         module_res
     }
 
-    pub fn resolve_type(&self, db: &dyn DefDatabase, path: &Path) -> Option<(TypeNs, Option<usize>)> {
+    pub fn resolve_type(&self, db: &dyn DefDatabase, path: &Path) -> Option<(TypeNs, Visibility, Option<usize>)> {
         let n_segments = path.segments().len();
         let first_name = path.segments().first()?;
 
@@ -94,7 +93,7 @@ impl Resolver {
                         .find(|entry| entry.name() == first_name);
 
                     if let Some(e) = entry {
-                        return Some((TypeNs::TypeVar(e.type_var()), None));
+                        return Some((TypeNs::TypeVar(e.type_var()), Visibility::Public, None));
                     }
                 },
                 | Scope::TypeScope(_) => continue,
@@ -110,7 +109,7 @@ impl Resolver {
         None
     }
 
-    pub fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<(ValueNs, Option<usize>)> {
+    pub fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<(ValueNs, Visibility, Option<usize>)> {
         let n_segments = path.segments().len();
         let first_name = path.segments().first()?;
 
@@ -124,7 +123,7 @@ impl Resolver {
                         .find(|entry| entry.name() == first_name);
 
                     if let Some(e) = entry {
-                        return Some((ValueNs::Local(e.pat()), None));
+                        return Some((ValueNs::Local(e.pat()), Visibility::Public, None));
                     }
                 },
                 | Scope::ExprScope(_) => continue,
@@ -140,11 +139,11 @@ impl Resolver {
         None
     }
 
-    pub fn resolve_value_fully(&self, db: &dyn DefDatabase, path: &Path) -> Option<ValueNs> {
-        let (value, idx) = self.resolve_value(db, path)?;
+    pub fn resolve_value_fully(&self, db: &dyn DefDatabase, path: &Path) -> Option<(ValueNs, Visibility)> {
+        let (value, vis, idx) = self.resolve_value(db, path)?;
 
         match idx {
-            | None => Some(value),
+            | None => Some((value, vis)),
             | Some(_) => None,
         }
     }
@@ -221,7 +220,7 @@ impl Resolver {
     }
 
     pub fn with_type_vars(
-        mut self,
+        self,
         map: &TypeMap,
         owner: TypeVarOwner,
         vars: impl Iterator<Item = LocalTypeVarId>,
@@ -257,34 +256,36 @@ impl Resolver {
 }
 
 impl ModuleItemMap {
-    fn resolve_type(&self, db: &dyn DefDatabase, path: &Path) -> Option<(TypeNs, Option<usize>)> {
+    fn resolve_type(&self, db: &dyn DefDatabase, path: &Path) -> Option<(TypeNs, Visibility, Option<usize>)> {
         let (module_def, idx) = self.def_map.resolve_path(db, self.module_id, path);
-        let res = to_type_ns(module_def)?;
+        let (res, vis) = to_type_ns(module_def)?;
 
-        Some((res, idx))
+        Some((res, vis, idx))
     }
 
-    fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<(ValueNs, Option<usize>)> {
+    fn resolve_value(&self, db: &dyn DefDatabase, path: &Path) -> Option<(ValueNs, Visibility, Option<usize>)> {
         let (module_def, idx) = self.def_map.resolve_path(db, self.module_id, path);
-        let res = to_value_ns(module_def)?;
+        let (res, vis) = to_value_ns(module_def)?;
 
-        Some((res, idx))
+        Some((res, vis, idx))
     }
 }
 
-fn to_type_ns(per_ns: PerNs) -> Option<TypeNs> {
-    let res = match per_ns.types? {
+fn to_type_ns(per_ns: PerNs) -> Option<(TypeNs, Visibility)> {
+    let (def, vis) = per_ns.types?;
+    let res = match def {
         | ModuleDefId::TypeAliasId(id) => TypeNs::TypeAlias(id),
         | ModuleDefId::TypeCtorId(id) => TypeNs::TypeCtor(id),
         | ModuleDefId::ClassId(id) => TypeNs::Class(id),
         | _ => return None,
     };
 
-    Some(res)
+    Some((res, vis))
 }
 
-fn to_value_ns(per_ns: PerNs) -> Option<ValueNs> {
-    let res = match per_ns.values? {
+fn to_value_ns(per_ns: PerNs) -> Option<(ValueNs, Visibility)> {
+    let (def, vis) = per_ns.values?;
+    let res = match def {
         | ModuleDefId::FixityId(id) => ValueNs::Fixity(id),
         | ModuleDefId::FuncId(id) => ValueNs::Func(id),
         | ModuleDefId::ConstId(id) => ValueNs::Const(id),
@@ -293,7 +294,7 @@ fn to_value_ns(per_ns: PerNs) -> Option<ValueNs> {
         | _ => return None,
     };
 
-    Some(res)
+    Some((res, vis))
 }
 
 impl HasResolver for ModuleId {

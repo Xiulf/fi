@@ -2,13 +2,12 @@ use crate::db::HirDatabase;
 use crate::{Class, Const, Ctor, Fixity, Func, Local, PathResolution, Static, TypeAlias, TypeCtor};
 use base_db::input::FileId;
 use hir_def::body::{Body, BodySourceMap};
-use hir_def::in_file::InFile;
 use hir_def::path::Path;
 use hir_def::resolver::{Resolver, TypeNs, ValueNs};
 use hir_def::scope::ExprScopes;
 use std::sync::Arc;
 use syntax::ast;
-use syntax::{AstNode, SyntaxNode};
+use syntax::AstNode;
 
 #[derive(Debug)]
 pub(crate) struct SourceAnalyzer {
@@ -56,7 +55,7 @@ fn resolve_hir_path_(
     prefer_value_ns: bool,
 ) -> Option<PathResolution> {
     let types = || {
-        let (ty, remaining) = resolver.resolve_type(db.upcast(), path)?;
+        let (ty, _vis, remaining) = resolver.resolve_type(db.upcast(), path)?;
         let (ty, unresolved) = match remaining {
             | Some(remaining) if remaining > 1 => return None,
             | _ => (ty, path.segments().get(1)),
@@ -77,7 +76,7 @@ fn resolve_hir_path_(
 
     let body_owner = resolver.body_owner();
     let values = || {
-        resolver.resolve_value_fully(db.upcast(), path).and_then(|val| {
+        resolver.resolve_value_fully(db.upcast(), path).and_then(|(val, _vis)| {
             Some(match val {
                 | ValueNs::Local(pat_id) => {
                     let var = Local {
@@ -99,7 +98,10 @@ fn resolve_hir_path_(
     let items = || {
         let per_ns = resolver.resolve_module_path(db.upcast(), path);
 
-        per_ns.types.or(per_ns.modules).map(|it| PathResolution::Def(it.into()))
+        per_ns
+            .types
+            .or(per_ns.modules)
+            .map(|it| PathResolution::Def(it.0.into()))
     };
 
     if prefer_value_ns {

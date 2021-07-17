@@ -11,6 +11,7 @@ use hir_def::id::*;
 use hir_def::item_tree::{Assoc, Prec};
 use hir_def::name::Name;
 use hir_def::path::Path;
+use hir_def::per_ns::Visibility;
 use hir_def::resolver::HasResolver;
 use hir_def::resolver::{Resolver, TypeNs, ValueNs};
 use hir_def::type_ref::{LocalTypeRefId, PtrLen, TypeMap, TypeRef, TypeSourceMap};
@@ -278,13 +279,17 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
     }
 
     pub(crate) fn lower_path(&mut self, path: &Path, type_ref: LocalTypeRefId) -> (Ty, Option<TypeNs>) {
-        let (resolution, remaining) = match self.resolver.resolve_type(self.db.upcast(), path) {
+        let (resolution, vis, remaining) = match self.resolver.resolve_type(self.db.upcast(), path) {
             | Some(it) => it,
             | None => {
                 self.report(InferenceDiagnostic::UnresolvedType { id: type_ref });
                 return (TyKind::Error.intern(self.db), None);
             },
         };
+
+        if let Visibility::Private = vis {
+            self.report(InferenceDiagnostic::PrivateType { id: type_ref });
+        }
 
         self.lower_partly_resolved_path(resolution, remaining.unwrap_or(0), type_ref)
     }
@@ -293,7 +298,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         &self,
         resolution: TypeNs,
         remaining: usize,
-        type_ref: LocalTypeRefId,
+        _type_ref: LocalTypeRefId,
     ) -> (Ty, Option<TypeNs>) {
         let ty = match resolution {
             | TypeNs::Class(_) => {
@@ -332,19 +337,21 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
     }
 
     fn lower_class_path(&mut self, path: &Path) -> Option<ClassId> {
-        let (resolution, _) = match self.resolver.resolve_type(self.db.upcast(), path) {
+        let (resolution, vis, _) = match self.resolver.resolve_type(self.db.upcast(), path) {
             | Some(it) => it,
             | None => {
-                // @TODO: report error: unresolved class
-                return None;
+                todo!("report error: unresolved class");
             },
         };
+
+        if let Visibility::Private = vis {
+            todo!("report error: private class");
+        }
 
         match resolution {
             | TypeNs::Class(id) => Some(id),
             | _ => {
-                // @TODO: report error: unresolved class
-                None
+                todo!("report error: not a class");
             },
         }
     }

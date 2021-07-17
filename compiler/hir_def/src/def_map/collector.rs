@@ -1,5 +1,5 @@
 use crate::db::DefDatabase;
-use crate::def_map::path_resolution::{FixPoint, ResolveMode, ResolveResult};
+use crate::def_map::path_resolution::{FixPoint, ResolveMode};
 use crate::def_map::DefMap;
 use crate::diagnostics::DefDiagnostic;
 use crate::id::*;
@@ -8,7 +8,7 @@ use crate::item_scope::{ImportType, PerNsAllImports};
 use crate::item_tree::{self, Item, ItemTree, ItemTreeId};
 use crate::name::{AsName, Name};
 use crate::path::Path;
-use crate::per_ns::PerNs;
+use crate::per_ns::{PerNs, Visibility};
 use base_db::input::{FileId, FileTree};
 use rustc_hash::FxHashMap;
 use syntax::ast;
@@ -128,7 +128,11 @@ impl<'a> DefCollector<'a> {
                     this.def_map.modules[module_id].children.insert(name.clone(), child);
                     this.def_map.modules[module_id].scope.define_def(def);
                     this.def_map.modules[child].parent = Some(module_id);
-                    this.update(module_id, &[(name, PerNs::modules(def))], ImportType::Named);
+                    this.update(
+                        module_id,
+                        &[(name, PerNs::modules(def, Visibility::Public))],
+                        ImportType::Named,
+                    );
                 }
             }
 
@@ -230,7 +234,7 @@ impl<'a> DefCollector<'a> {
                 self.update(module_id, &[(alias.clone(), def)], ImportType::Named);
             } else {
                 match def.modules {
-                    | Some(ModuleDefId::ModuleId(m)) => {
+                    | Some((ModuleDefId::ModuleId(m), _)) => {
                         if m.lib != self.def_map.lib {
                             let item_map = self.db.def_map(m.lib);
                             let exports = &item_map[m.local_id].exports;
@@ -324,7 +328,8 @@ impl<'a, 'b> ModCollector<'a, 'b> {
 
                         if name == def_map[self.module_id].name {
                             Self::collect_module_exports(def_map, self.module_id);
-                        } else if let Some(ModuleDefId::ModuleId(m)) = def_map[self.module_id].scope.get(&name).modules
+                        } else if let Some((ModuleDefId::ModuleId(m), _)) =
+                            def_map[self.module_id].scope.get(&name).modules
                         {
                             def_map.modules[self.module_id].exports.add_module(m);
                         } else {
@@ -345,7 +350,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
 
     fn collect_module_exports(def_map: &mut DefMap, module_id: LocalModuleId) {
         for (name, res) in def_map[module_id].scope.resolutions().collect::<Vec<_>>() {
-            if let Some(ModuleDefId::ModuleId(m)) = res.modules {
+            if let Some((ModuleDefId::ModuleId(m), _)) = res.modules {
                 // at this point imports are not yet resolved and thus the module must be from
                 // this lib.
                 if def_map[m.local_id].origin.is_virtual() {
@@ -374,7 +379,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                             .scope
                             .get(qual)
                             .modules
-                            .map(|id| match id {
+                            .map(|id| match id.0 {
                                 | ModuleDefId::ModuleId(id) => id.local_id,
                                 | _ => unreachable!(),
                             })

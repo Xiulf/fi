@@ -3,9 +3,15 @@ use crate::item_scope::ItemInNs;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PerNs<T = ModuleDefId> {
-    pub types: Option<T>,
-    pub values: Option<T>,
-    pub modules: Option<T>,
+    pub types: Option<(T, Visibility)>,
+    pub values: Option<(T, Visibility)>,
+    pub modules: Option<(T, Visibility)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Visibility {
+    Private,
+    Public,
 }
 
 impl<T> PerNs<T> {
@@ -17,34 +23,34 @@ impl<T> PerNs<T> {
         }
     }
 
-    pub fn values(id: T) -> Self {
+    pub fn values(id: T, v: Visibility) -> Self {
         PerNs {
-            values: Some(id),
+            values: Some((id, v)),
             ..Self::none()
         }
     }
 
-    pub fn types(id: T) -> Self {
+    pub fn types(id: T, v: Visibility) -> Self {
         PerNs {
-            types: Some(id),
+            types: Some((id, v)),
             ..Self::none()
         }
     }
 
-    pub fn modules(id: T) -> Self {
+    pub fn modules(id: T, v: Visibility) -> Self {
         PerNs {
-            modules: Some(id),
+            modules: Some((id, v)),
             ..Self::none()
         }
     }
 
-    pub fn both(id: T) -> Self
+    pub fn both(id: T, v: Visibility) -> Self
     where
         T: Clone,
     {
         PerNs {
-            values: Some(id.clone()),
-            types: Some(id),
+            values: Some((id.clone(), v)),
+            types: Some((id, v)),
             modules: None,
         }
     }
@@ -61,11 +67,19 @@ impl<T> PerNs<T> {
         }
     }
 
-    pub fn filter_vis(self, f: impl Fn(&T) -> bool + Clone) -> Self {
+    pub fn filter_vis(self, f: impl Fn(&(T, Visibility)) -> bool) -> Self {
         PerNs {
-            types: self.types.filter(f.clone()),
-            values: self.values.filter(f.clone()),
+            types: self.types.filter(&f),
+            values: self.values.filter(&f),
             modules: self.modules.filter(f),
+        }
+    }
+
+    pub fn with_vis(self, v: Visibility) -> Self {
+        Self {
+            values: self.values.map(|it| (it.0, v)),
+            types: self.types.map(|it| (it.0, v)),
+            modules: self.modules.map(|it| (it.0, v)),
         }
     }
 }
@@ -73,25 +87,25 @@ impl<T> PerNs<T> {
 impl PerNs<ModuleDefId> {
     pub fn iter_items(self) -> impl Iterator<Item = ItemInNs> {
         self.types
-            .map(ItemInNs::Types)
+            .map(|it| ItemInNs::Types(it.0))
             .into_iter()
-            .chain(self.values.map(ItemInNs::Values))
-            .chain(self.modules.map(ItemInNs::Modules))
+            .chain(self.values.map(|it| ItemInNs::Values(it.0)))
+            .chain(self.modules.map(|it| ItemInNs::Modules(it.0)))
     }
 }
 
 impl From<ModuleDefId> for PerNs<ModuleDefId> {
     fn from(def: ModuleDefId) -> Self {
         match def {
-            | ModuleDefId::ModuleId(_) => PerNs::modules(def),
-            | ModuleDefId::FixityId(_) => PerNs::values(def),
-            | ModuleDefId::FuncId(_) => PerNs::values(def),
-            | ModuleDefId::StaticId(_) => PerNs::values(def),
-            | ModuleDefId::ConstId(_) => PerNs::values(def),
-            | ModuleDefId::TypeAliasId(_) => PerNs::types(def),
-            | ModuleDefId::TypeCtorId(_) => PerNs::types(def),
-            | ModuleDefId::CtorId(_) => PerNs::values(def),
-            | ModuleDefId::ClassId(_) => PerNs::types(def),
+            | ModuleDefId::ModuleId(_) => PerNs::modules(def, Visibility::Public),
+            | ModuleDefId::FixityId(_) => PerNs::values(def, Visibility::Public),
+            | ModuleDefId::FuncId(_) => PerNs::values(def, Visibility::Public),
+            | ModuleDefId::StaticId(_) => PerNs::values(def, Visibility::Public),
+            | ModuleDefId::ConstId(_) => PerNs::values(def, Visibility::Public),
+            | ModuleDefId::TypeAliasId(_) => PerNs::types(def, Visibility::Public),
+            | ModuleDefId::TypeCtorId(_) => PerNs::types(def, Visibility::Public),
+            | ModuleDefId::CtorId(_) => PerNs::values(def, Visibility::Public),
+            | ModuleDefId::ClassId(_) => PerNs::types(def, Visibility::Public),
         }
     }
 }
@@ -100,12 +114,12 @@ impl<T> Iterator for PerNs<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(id) = self.types.take() {
+        if let Some((id, _)) = self.types.take() {
             Some(id)
-        } else if let Some(id) = self.values.take() {
+        } else if let Some((id, _)) = self.values.take() {
             Some(id)
         } else {
-            self.modules.take()
+            self.modules.take().map(|it| it.0)
         }
     }
 }

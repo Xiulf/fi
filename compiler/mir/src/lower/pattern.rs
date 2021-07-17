@@ -86,7 +86,7 @@ impl BodyLowerCtx<'_> {
                     let resolver = self.def.resolver(self.db.upcast());
 
                     match resolver.resolve_value_fully(self.db.upcast(), path) {
-                        | Some(ValueNs::Ctor(id)) => self.convert_ctor_pat(id, args, pred, discrs),
+                        | Some((ValueNs::Ctor(id), _)) => self.convert_ctor_pat(id, args, pred, discrs),
                         | _ => unreachable!(),
                     }
                 } else {
@@ -97,7 +97,7 @@ impl BodyLowerCtx<'_> {
                 let resolver = self.def.resolver(self.db.upcast());
 
                 match resolver.resolve_value_fully(self.db.upcast(), path) {
-                    | Some(ValueNs::Ctor(id)) => self.convert_ctor_pat(id, &[], pred, discrs),
+                    | Some((ValueNs::Ctor(id), _)) => self.convert_ctor_pat(id, &[], pred, discrs),
                     | _ => unimplemented!(),
                 }
             },

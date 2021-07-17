@@ -66,6 +66,46 @@ impl Diagnostic for UnresolvedOperator {
 }
 
 #[derive(Debug)]
+pub struct PrivateValue {
+    pub file: FileId,
+    pub src: SyntaxNodePtr,
+}
+
+impl Diagnostic for PrivateValue {
+    fn message(&self) -> String {
+        "value is not exported".to_string()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src)
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct PrivateType {
+    pub file: FileId,
+    pub src: AstPtr<ast::Type>,
+}
+
+impl Diagnostic for PrivateType {
+    fn message(&self) -> String {
+        "type is not exported".to_string()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src.syntax_node_ptr())
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
 pub struct MismatchedKind {
     pub file: FileId,
     pub src: SyntaxNodePtr,

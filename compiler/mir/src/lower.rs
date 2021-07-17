@@ -414,12 +414,12 @@ impl<'a> BodyLowerCtx<'a> {
             | hir::Expr::Infix { ref op, lhs, rhs } => {
                 let resolver = Resolver::for_expr(self.db.upcast(), self.def, id);
 
-                if let Some(ValueNs::Fixity(f)) = resolver.resolve_value_fully(self.db.upcast(), op) {
+                if let Some((ValueNs::Fixity(f), _)) = resolver.resolve_value_fully(self.db.upcast(), op) {
                     let fixity = self.db.fixity_data(f);
                     let resolver = f.resolver(self.db.upcast());
 
                     match resolver.resolve_value_fully(self.db.upcast(), &fixity.func) {
-                        | Some(ValueNs::Func(mut f)) => {
+                        | Some((ValueNs::Func(mut f), _)) => {
                             resolve_method!(
                                 self,
                                 id,
@@ -432,7 +432,7 @@ impl<'a> BodyLowerCtx<'a> {
                                 || self.lower_func_app(f, id, vec![lhs, rhs], hir_ty, ret.take())
                             )
                         },
-                        | Some(ValueNs::Ctor(c)) => self.lower_ctor_app(c, vec![lhs, rhs], hir_ty, ret.take()),
+                        | Some((ValueNs::Ctor(c), _)) => self.lower_ctor_app(c, vec![lhs, rhs], hir_ty, ret.take()),
                         | _ => Operand::Const(Const::Undefined, ty),
                     }
                 } else {
@@ -578,7 +578,7 @@ impl<'a> BodyLowerCtx<'a> {
         let resolver = Resolver::for_expr(self.db.upcast(), self.def, expr);
 
         match resolver.resolve_value_fully(self.db.upcast(), path) {
-            | Some(ValueNs::Func(mut id)) => {
+            | Some((ValueNs::Func(mut id), _)) => {
                 resolve_method!(self, expr, path, |inst| id = inst, |rec| unimplemented!(), || {});
 
                 while let TyKind::ForAll(_, t) = hir_ty.lookup(self.db.upcast()) {
@@ -624,12 +624,12 @@ impl<'a> BodyLowerCtx<'a> {
                     Operand::Place(ret)
                 }
             },
-            | Some(ValueNs::Local(pat)) => Operand::Place(self.binders[&pat].clone()),
-            | Some(ValueNs::Const(id)) => match self.db.eval(id.into()) {
+            | Some((ValueNs::Local(pat), _)) => Operand::Place(self.binders[&pat].clone()),
+            | Some((ValueNs::Const(id), _)) => match self.db.eval(id.into()) {
                 | crate::eval::EvalResult::Finished(c) => Operand::Const(c, self.db.mir_type(hir_ty)),
                 | _ => Operand::Const(Const::Undefined, self.db.mir_type(hir_ty)),
             },
-            | Some(ValueNs::Ctor(id)) => {
+            | Some((ValueNs::Ctor(id), _)) => {
                 let ret = ret.take().unwrap_or_else(|| {
                     let ty = self.db.mir_type(hir_ty);
 
@@ -685,7 +685,7 @@ impl<'a> BodyLowerCtx<'a> {
     fn resolve_path(&self, expr: hir::ExprId, path: &hir::Path) -> Option<ValueNs> {
         let resolver = Resolver::for_expr(self.db.upcast(), self.def, expr);
 
-        resolver.resolve_value_fully(self.db.upcast(), path)
+        resolver.resolve_value_fully(self.db.upcast(), path).map(|it| it.0)
     }
 
     fn lower_func_app(

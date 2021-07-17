@@ -3,7 +3,7 @@ use crate::def_map::DefMap;
 use crate::id::{LocalModuleId, ModuleDefId};
 use crate::name::Name;
 use crate::path::Path;
-use crate::per_ns::PerNs;
+use crate::per_ns::{PerNs, Visibility};
 use base_db::libs::LibId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,7 +73,7 @@ impl DefMap {
 
         for (i, segment) in segments {
             let curr = match curr_per_ns.modules {
-                | Some(r) => r,
+                | Some(r) => r.0,
                 | None => return ResolveResult::empty(FixPoint::No),
             };
 
@@ -88,11 +88,15 @@ impl DefMap {
                     }
 
                     let module_data = &self[module.local_id];
+                    let in_scope = module_data.scope.get(&segment);
 
                     if module.local_id == original {
-                        module_data.scope.get(&segment)
+                        in_scope
                     } else {
-                        module_data.exports.get(db, self, module.local_id, &segment)
+                        module_data
+                            .exports
+                            .get(db, self, module.local_id, &segment)
+                            .or(in_scope.with_vis(Visibility::Private))
                     }
                 },
                 | s => return ResolveResult::with(PerNs::from(s), FixPoint::Yes, Some(i), Some(self.lib)),
@@ -109,19 +113,19 @@ impl DefMap {
         name: &Name,
         mode: ResolveMode,
     ) -> PerNs {
-        // if name == "print" {
-        //     eprintln!("{}, {:?}, {:#?}", name, mode, self[module].exports);
-        // }
-
+        let in_scope = self[module].scope.get(name);
         let from_scope = match mode {
-            | ResolveMode::Import => self[module].exports.get(db, self, module, name),
-            | ResolveMode::Other => self[module].scope.get(name),
+            | ResolveMode::Import => self[module]
+                .exports
+                .get(db, self, module, name)
+                .or(in_scope.with_vis(Visibility::Private)),
+            | ResolveMode::Other => in_scope,
         };
 
         let from_extern = self
             .extern_prelude
             .get(name)
-            .map_or(PerNs::none(), |&it| PerNs::modules(it));
+            .map_or(PerNs::none(), |&it| PerNs::modules(it, Visibility::Public));
 
         from_scope.or(from_extern)
     }

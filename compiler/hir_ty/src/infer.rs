@@ -413,6 +413,12 @@ pub(crate) mod diagnostics {
         UnresolvedOperator {
             id: ExprId,
         },
+        PrivateValue {
+            id: ExprOrPatId,
+        },
+        PrivateType {
+            id: LocalTypeRefId,
+        },
         MismatchedKind {
             id: LocalTypeRefId,
             expected: Ty,
@@ -495,6 +501,26 @@ pub(crate) mod diagnostics {
                     let src = soure_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
 
                     sink.push(UnresolvedOperator { file, src });
+                },
+                | InferenceDiagnostic::PrivateValue { id } => {
+                    let soure_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = match *id {
+                        | ExprOrPatId::ExprId(e) => soure_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
+                        | ExprOrPatId::PatId(e) => soure_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
+                    };
+
+                    sink.push(PrivateValue { file, src });
+                },
+                | InferenceDiagnostic::PrivateType { id } => {
+                    owner.with_type_source_map(db.upcast(), |source_map| {
+                        let src = source_map.type_ref_syntax(*id).unwrap();
+
+                        sink.push(PrivateType { file, src });
+                    });
                 },
                 | InferenceDiagnostic::MismatchedKind { id, expected, found } => {
                     let src = owner.with_type_source_map(db.upcast(), |source_map| source_map.type_ref_syntax(*id));

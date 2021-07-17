@@ -310,7 +310,7 @@ impl Fixity {
         let resolver = hir_def::resolver::HasResolver::resolver(self.id, db.upcast());
         let id = resolver.resolve_value_fully(db.upcast(), path);
 
-        if let Some(hir_def::resolver::ValueNs::Func(id)) = id {
+        if let Some((hir_def::resolver::ValueNs::Func(id), _)) = id {
             Func::from(id)
         } else {
             unreachable!();

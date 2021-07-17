@@ -4,6 +4,7 @@ use crate::lower::LowerCtx;
 use crate::ty::*;
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::TypeVarOwner;
+use hir_def::per_ns::Visibility;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 use std::sync::Arc;
 
@@ -24,9 +25,13 @@ impl BodyInferenceContext<'_> {
             }),
             | Expr::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
                 | Some(res) => 't: {
-                    let id = match res {
+                    if let Visibility::Private = res.1 {
+                        self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
+                    }
+
+                    let id = match res.0 {
                         | ValueNs::Local(pat) => break 't self.result.type_of_pat[pat],
-                        | ValueNs::Fixity(id) => unimplemented!(),
+                        | ValueNs::Fixity(_id) => unimplemented!(),
                         | ValueNs::Func(id) => {
                             if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
                                 break 't self.subst_type(self.result.self_type);
@@ -75,12 +80,16 @@ impl BodyInferenceContext<'_> {
                 | Literal::String(_) => self.lang_type("str-type"),
             },
             | Expr::Infix { op, lhs, rhs } => match self.resolver.resolve_value_fully(self.db.upcast(), op) {
-                | Some(ValueNs::Fixity(id)) => 't: {
+                | Some((ValueNs::Fixity(id), Visibility::Public)) => 't: {
                     let data = self.db.fixity_data(id);
                     let resolver = id.resolver(self.db.upcast());
                     let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
-                        | Some(ValueNs::Func(id)) => id.into(),
-                        | Some(ValueNs::Ctor(id)) => id.into(),
+                        | Some((ValueNs::Func(id), Visibility::Public)) => id.into(),
+                        | Some((ValueNs::Ctor(id), Visibility::Public)) => id.into(),
+                        | Some((_, Visibility::Private)) => {
+                            self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
+                            break 't self.error();
+                        },
                         | _ => break 't self.error(),
                     };
 
@@ -89,6 +98,10 @@ impl BodyInferenceContext<'_> {
                     let mid = self.check_app(ty, *lhs, expr);
 
                     self.check_app(mid, *rhs, expr)
+                },
+                | Some((_, Visibility::Private)) => {
+                    self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
+                    self.error()
                 },
                 | _ => {
                     self.report(InferenceDiagnostic::UnresolvedOperator { id: expr.into() });
@@ -207,7 +220,6 @@ impl BodyInferenceContext<'_> {
                 if let TypeVarOwner::DefWithBodyId(def) = self.owner {
                     let pred_ty = self.infer_expr(*pred);
                     let bool_ty = self.lang_type("bool-type");
-                    let never_ty = self.lang_type("never-type");
                     let res = self.fresh_type();
 
                     for arm in arms {
@@ -445,7 +457,11 @@ impl BodyInferenceContext<'_> {
             }),
             | (Expr::Path { path }, _) => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
                 | Some(res) => {
-                    let ty = match res {
+                    if let Visibility::Private = res.1 {
+                        self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
+                    }
+
+                    let ty = match res.0 {
                         | ValueNs::Local(pat) => self.result.type_of_pat[pat],
                         | ValueNs::Fixity(_) => unimplemented!(),
                         | ValueNs::Func(id) => {
