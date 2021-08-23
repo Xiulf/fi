@@ -5,6 +5,7 @@ authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+itertools = "0.10.1"
 parser = { path = "../parser" }
 rowan = "0.12.5"
 smol_str = "0.1.17"

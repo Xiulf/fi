@@ -1,5 +1,4 @@
 #![feature(crate_visibility_modifier)]
-#![feature(or_patterns)]
 
 pub mod ast;
 pub mod error;
@@ -121,4 +120,36 @@ impl Parsed<ast::Type> {
             _marker: PhantomData,
         }
     }
+}
+
+#[macro_export]
+macro_rules! match_ast {
+    (match $node:ident { $($tt:tt)* }) => {
+        $crate::match_ast!(match ($node) { $($tt)* })
+    };
+
+    (match ($node:expr) {
+        $($ast:ident($it:ident) => $res:expr, )*
+        _ => $catch_all:expr $(,)?
+    }) => {{
+        use $crate::ast::AstNode;
+        $(if let Some($it) = $crate::ast::$ast::cast($node.clone()) { $res } else )*
+        { $catch_all }
+    }};
+}
+
+use itertools::Itertools;
+
+pub fn ancestors_at_offset(node: &SyntaxNode, offset: TextSize) -> impl Iterator<Item = SyntaxNode> {
+    node.token_at_offset(offset)
+        .map(|t| t.ancestors())
+        .kmerge_by(|node1, node2| node1.text_range().len() < node2.text_range().len())
+}
+
+pub fn find_node_at_offset<N: ast::AstNode>(node: &SyntaxNode, offset: TextSize) -> Option<N> {
+    ancestors_at_offset(node, offset).find_map(N::cast)
+}
+
+pub fn find_node_at_range<N: ast::AstNode>(node: &SyntaxNode, range: TextRange) -> Option<N> {
+    node.covering_element(range).ancestors().find_map(N::cast)
 }

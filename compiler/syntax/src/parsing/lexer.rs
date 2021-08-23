@@ -58,7 +58,6 @@ enum LayoutDelim {
     Paren,
     Brace,
     Square,
-    Angle,
     If,
     Then,
     Else,
@@ -157,7 +156,7 @@ impl<'src> Lexer<'src> {
             | ch if ch.is_xid_start() => self.name(start),
             | '_' if self.peek().is_xid_continue() => self.name(start),
             | '_' => self.insert_default(start, UNDERSCORE),
-            | '(' if is_op_char(self.peek()) => {
+            | '(' if is_op_char(self.peek()) && (is_op_char(self.peek_n(1)) || self.peek_n(1) == ')') => {
                 while is_op_char(self.peek()) {
                     self.advance();
                 }
@@ -288,6 +287,9 @@ impl<'src> Lexer<'src> {
             },
             | '@' if !is_op_char(self.peek()) => {
                 self.insert_default(start, AT);
+            },
+            | '#' if !is_op_char(self.peek()) => {
+                self.insert_default(start, HASH);
             },
             | '*' if !is_op_char(self.peek()) => {
                 self.insert_default(start, STAR);

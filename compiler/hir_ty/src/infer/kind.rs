@@ -1,5 +1,4 @@
 use super::{InferenceContext, InferenceDiagnostic};
-use crate::display::HirDisplay;
 use crate::ty::*;
 use hir_def::id::TypeVarOwner;
 use hir_def::type_ref::LocalTypeRefId;
@@ -63,7 +62,6 @@ impl InferenceContext<'_> {
                 self.pop_var_kind();
                 self.fn_type(kind, inner_kind)
             },
-            | _ => unimplemented!("{}", ty.display(self.db)),
         }
     }
 

@@ -85,7 +85,7 @@ impl TypeRef {
             | ast::Type::Kinded(inner) => {
                 TypeRef::Kinded(map.alloc_type_ref_opt(inner.ty()), map.alloc_type_ref_opt(inner.kind()))
             },
-            | ast::Type::Placeholder(_) => TypeRef::Placeholder,
+            | ast::Type::Hole(_) => TypeRef::Placeholder,
             | ast::Type::Figure(inner) => {
                 if let Some(int) = inner.int() {
                     if let Some(val) = int.value() {

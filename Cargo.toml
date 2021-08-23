@@ -13,4 +13,5 @@ members = [
     "compiler/base_db",
     "compiler/syntax",
     "compiler/parser",
+    "compiler/arena",
 ]

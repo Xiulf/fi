@@ -137,6 +137,7 @@ impl LineIndex {
             .position(|l| l > &offset)
             .unwrap_or(self.newlines.len())
             - 1;
+
         let line_start_offset = self.newlines[line];
         let col = offset - line_start_offset;
 
@@ -144,6 +145,11 @@ impl LineIndex {
             line: line as u32,
             col: col.into(),
         }
+    }
+
+    pub fn offset(&self, line_col: LineCol) -> TextSize {
+        // @TODO: modify this to account for characters larger than 1 byte
+        self.newlines[line_col.line as usize] + TextSize::from(line_col.col)
     }
 
     pub fn line_offset(&self, line: u32) -> usize {

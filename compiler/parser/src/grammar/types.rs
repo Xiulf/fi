@@ -78,7 +78,7 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
         },
         | UNDERSCORE => {
             p.bump(UNDERSCORE);
-            Some(m.complete(p, TYPE_PLACEHOLDER))
+            Some(m.complete(p, TYPE_HOLE))
         },
         | INT => {
             let lit = p.start();
@@ -98,6 +98,33 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
             p.bump(STAR);
             atom(p);
             Some(m.complete(p, TYPE_PTR))
+        },
+        | HASH => {
+            p.bump(HASH);
+            p.expect(L_PAREN);
+
+            while !p.at(EOF) && !p.at(R_PAREN) {
+                let field = p.start();
+
+                paths::name(p);
+                p.expect(DBL_COLON);
+                ty(p);
+                field.complete(p, ROW_FIELD);
+
+                if !p.at(R_PAREN) && !p.at(PIPE) {
+                    p.expect(COMMA);
+                }
+
+                if p.eat(PIPE) {
+                    let tail = p.start();
+
+                    ty(p);
+                    tail.complete(p, ROW_TAIL);
+                }
+            }
+
+            p.expect(R_PAREN);
+            Some(m.complete(p, TYPE_ROW))
         },
         | L_BRACKET => {
             p.bump(L_BRACKET);
@@ -122,29 +149,6 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
             if p.eat(R_PAREN) {
                 Some(m.complete(p, TYPE_TUPLE))
-            } else if p.at(IDENT) && p.nth_at(1, DBL_COLON) {
-                while !p.at(EOF) && !p.at(R_PAREN) {
-                    let field = p.start();
-
-                    paths::name(p);
-                    p.expect(DBL_COLON);
-                    ty(p);
-                    field.complete(p, ROW_FIELD);
-
-                    if !p.at(R_PAREN) && !p.at(PIPE) {
-                        p.expect(COMMA);
-                    }
-
-                    if p.eat(PIPE) {
-                        let tail = p.start();
-
-                        ty(p);
-                        tail.complete(p, ROW_TAIL);
-                    }
-                }
-
-                p.expect(R_PAREN);
-                Some(m.complete(p, TYPE_ROW))
             } else {
                 let mut is_tuple = false;
 
@@ -263,7 +267,7 @@ crate fn type_var(p: &mut Parser) {
 
 crate fn peek(p: &Parser) -> bool {
     match p.current() {
-        | IDENT | STAR | L_PAREN | L_BRACKET | L_BRACE | FOR_KW | INT | STRING => true,
+        | IDENT | STAR | HASH | L_PAREN | L_BRACKET | L_BRACE | FOR_KW | INT | STRING => true,
         | _ => false,
     }
 }

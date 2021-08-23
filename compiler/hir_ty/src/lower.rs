@@ -1,24 +1,20 @@
 use crate::class::{Class, FunDep, Instance};
 use crate::db::HirDatabase;
-use crate::display::HirDisplay;
 use crate::infer::diagnostics::InferenceDiagnostic;
 use crate::infer::InferenceContext;
 use crate::ty::*;
-use base_db::input::FileId;
 use hir_def::arena::ArenaMap;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::id::*;
-use hir_def::item_tree::{Assoc, Prec};
-use hir_def::name::Name;
 use hir_def::path::Path;
 use hir_def::per_ns::Visibility;
 use hir_def::resolver::HasResolver;
-use hir_def::resolver::{Resolver, TypeNs, ValueNs};
-use hir_def::type_ref::{LocalTypeRefId, PtrLen, TypeMap, TypeRef, TypeSourceMap};
+use hir_def::resolver::{Resolver, TypeNs};
+use hir_def::type_ref::{LocalTypeRefId, PtrLen, TypeMap, TypeRef};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-pub(crate) struct LowerCtx<'a, 'b> {
+pub struct LowerCtx<'a, 'b> {
     type_map: &'a TypeMap,
     icx: &'a mut InferenceContext<'b>,
     types: ArenaMap<LocalTypeRefId, Ty>,
@@ -44,7 +40,7 @@ pub struct InstanceLowerResult {
 }
 
 impl<'a, 'b> LowerCtx<'a, 'b> {
-    pub(crate) fn new(type_map: &'a TypeMap, icx: &'a mut InferenceContext<'b>) -> Self {
+    pub fn new(type_map: &'a TypeMap, icx: &'a mut InferenceContext<'b>) -> Self {
         Self {
             type_map,
             icx,
@@ -52,7 +48,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         }
     }
 
-    pub fn finish(mut self, ty: Ty) -> Arc<LowerResult> {
+    pub fn finish(self, ty: Ty) -> Arc<LowerResult> {
         let icx_res = self.icx.finish_mut();
 
         Arc::new(LowerResult {
@@ -62,7 +58,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         })
     }
 
-    fn finish_class(mut self, class: Class) -> Arc<ClassLowerResult> {
+    fn finish_class(self, class: Class) -> Arc<ClassLowerResult> {
         let icx_res = self.icx.finish_mut();
 
         Arc::new(ClassLowerResult {
@@ -71,7 +67,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         })
     }
 
-    fn finish_instance(mut self, instance: Instance) -> Arc<InstanceLowerResult> {
+    fn finish_instance(self, instance: Instance) -> Arc<InstanceLowerResult> {
         let icx_res = self.icx.finish_mut();
 
         Arc::new(InstanceLowerResult {

@@ -46,6 +46,12 @@ impl FileLoader for RootDatabase {
     }
 }
 
+impl Upcast<dyn base_db::SourceDatabase + 'static> for RootDatabase {
+    fn upcast(&self) -> &(dyn base_db::SourceDatabase + 'static) {
+        self
+    }
+}
+
 impl Upcast<dyn hir::db::DefDatabase + 'static> for RootDatabase {
     fn upcast(&self) -> &(dyn hir::db::DefDatabase + 'static) {
         self

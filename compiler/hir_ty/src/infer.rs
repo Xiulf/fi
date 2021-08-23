@@ -8,19 +8,16 @@ mod unify;
 
 use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
-use crate::display::HirDisplay;
 use crate::lower::LowerCtx;
-use crate::ty::{Constraint, DebruijnIndex, Ty, TyKind, TypeVar};
+use crate::ty::{Constraint, Ty, TyKind};
 use diagnostics::InferenceDiagnostic;
 use hir_def::arena::ArenaMap;
 use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
-use hir_def::id::{
-    AssocItemId, ClassId, ContainerId, DefWithBodyId, FuncId, HasModule, InstanceId, Lookup, TypeVarOwner,
-};
+use hir_def::id::{AssocItemId, ClassId, ContainerId, DefWithBodyId, HasModule, InstanceId, Lookup, TypeVarOwner};
 use hir_def::pat::PatId;
-use hir_def::resolver::{HasResolver, Resolver};
+use hir_def::resolver::Resolver;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -87,7 +84,7 @@ pub enum MethodSource {
     Record(usize),
 }
 
-pub(crate) struct InferenceContext<'a> {
+pub struct InferenceContext<'a> {
     pub(crate) db: &'a dyn HirDatabase,
     pub(crate) resolver: Resolver,
     pub(crate) owner: TypeVarOwner,
@@ -135,7 +132,7 @@ impl From<PatId> for ExprOrPatId {
 }
 
 impl<'a> InferenceContext<'a> {
-    pub(crate) fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: TypeVarOwner) -> Self {
+    pub fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: TypeVarOwner) -> Self {
         InferenceContext {
             db,
             owner,
@@ -156,11 +153,11 @@ impl<'a> InferenceContext<'a> {
         }
     }
 
-    pub(crate) fn finish(mut self) -> InferenceResult {
+    pub fn finish(mut self) -> InferenceResult {
         self.finish_mut()
     }
 
-    pub(crate) fn finish_mut(&mut self) -> InferenceResult {
+    pub fn finish_mut(&mut self) -> InferenceResult {
         self.solve_constraints();
 
         let mut res = std::mem::replace(&mut self.result, InferenceResult {

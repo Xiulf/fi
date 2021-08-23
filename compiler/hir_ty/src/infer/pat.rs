@@ -53,7 +53,7 @@ impl BodyInferenceContext<'_> {
                     self.error()
                 },
             },
-            | Pat::Bind { name, subpat: None } => self.fresh_type(),
+            | Pat::Bind { subpat: None, .. } => self.fresh_type(),
             | Pat::Bind {
                 subpat: Some(subpat), ..
             } => self.infer_pat(*subpat),

@@ -54,7 +54,7 @@ ast_node!(Pat {
 
 ast_node!(Type {
     Kinded(TypeKinded, TYPE_KINDED),
-    Placeholder(TypePlaceholder, TYPE_PLACEHOLDER),
+    Hole(TypeHole, TYPE_HOLE),
     Figure(TypeFigure, TYPE_FIGURE),
     Symbol(TypeSymbol, TYPE_SYMBOL),
     App(TypeApp, TYPE_APP),
@@ -87,6 +87,7 @@ ast_node!(Stmt {
 
 ast_node!(Expr {
     Typed(ExprTyped, EXPR_TYPED),
+    Hole(ExprHole, EXPR_HOLE),
     Infix(ExprInfix, EXPR_INFIX),
     App(ExprApp, EXPR_APP),
     Field(ExprField, EXPR_FIELD),

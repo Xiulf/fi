@@ -1,11 +1,9 @@
 use crate::db::HirDatabase;
-use crate::display::HirDisplay;
 use crate::infer::InferenceContext;
 use crate::lower::InstanceLowerResult;
 use crate::ty::{Constraint, Ty, TyKind, TypeVar, Unknown};
 use hir_def::arena::{Arena, Idx};
-use hir_def::id::{ClassId, InstanceId, Lookup, TypedDefId};
-use hir_def::resolver::Resolver;
+use hir_def::id::{ClassId, InstanceId, Lookup};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -112,8 +110,7 @@ impl Instances {
     pub(crate) fn matches(&self, db: &dyn HirDatabase, ctnt: Constraint) -> Option<InstanceMatchResult> {
         self.matchers
             .iter()
-            .filter_map(|m| m.instance.matches(db, &ctnt, &self.deps))
-            .next()
+            .find_map(|m| m.instance.matches(db, &ctnt, &self.deps))
     }
 }
 

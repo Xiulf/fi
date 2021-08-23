@@ -108,7 +108,11 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let m = p.start();
 
     match p.current() {
-        | IDENT => {
+        | UNDERSCORE => {
+            p.bump(UNDERSCORE);
+            Some(m.complete(p, EXPR_HOLE))
+        },
+        | IDENT | SYMBOL => {
             paths::path(p);
             Some(m.complete(p, EXPR_PATH))
         },
@@ -192,7 +196,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 
             Some(m.complete(p, EXPR_CASE))
         },
-        | WHILE_KW | UNLESS_KW => {
+        | WHILE_KW | UNTIL_KW => {
             p.bump_any();
             expr_(p, false);
 
@@ -308,8 +312,8 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 fn peek(p: &Parser, allow_do: bool) -> bool {
     match p.current() {
         | DO_KW => allow_do,
-        | IDENT | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | UNLESS_KW | WHILE_KW
-        | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW | UNDERSCORE => true,
+        | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | UNLESS_KW
+        | WHILE_KW | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW | UNDERSCORE => true,
         | _ => false,
     }
 }
@@ -353,7 +357,7 @@ crate fn stmt(p: &mut Parser) {
     let m = p.start();
 
     if p.eat(LET_KW) {
-        patterns::app(p);
+        patterns::pattern(p);
         p.expect(EQUALS);
         expr(p);
         m.complete(p, STMT_LET);

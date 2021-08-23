@@ -89,6 +89,10 @@ impl ExprScopes {
         scopes
     }
 
+    pub fn scopes_by_expr(&self) -> &FxHashMap<ExprId, ExprScopeId> {
+        &self.scopes_by_expr
+    }
+
     pub fn entries(&self, id: ExprScopeId) -> &[ExprScopeEntry] {
         &self.scopes[id].entries
     }

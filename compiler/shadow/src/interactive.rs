@@ -1,23 +1,23 @@
-use base_db::input::FileId;
+use base_db::input::{FileId, LineCol};
 use base_db::libs::LibId;
 use base_db::SourceDatabaseExt as _;
 use driver::Driver;
+use hir::semantics::Semantics;
+use hir::HirDisplay;
 use markup::{Markup, MarkupRenderer, Styles};
 use repl::{ReadLine, Repl};
+use syntax::ast::AstNode;
 
 pub fn run() {
-    let (driver, lib, main_file, type_file, resolve_file) = Driver::interactive();
+    let (driver, lib, file) = Driver::interactive();
 
     Interactive {
         repl: Repl::new((), ()),
-        main_str: String::new(),
-        type_str: String::new(),
-        resolve_str: String::new(),
+        imports: Vec::new(),
+        lines: vec![String::new()],
         driver,
         lib,
-        main_file,
-        type_file,
-        resolve_file,
+        file,
     }
     .run();
 }
@@ -26,13 +26,10 @@ struct Interactive {
     repl: Repl<(), ()>,
     driver: Driver,
     lib: LibId,
-    main_file: FileId,
-    type_file: FileId,
-    resolve_file: FileId,
+    file: FileId,
 
-    main_str: String,
-    type_str: String,
-    resolve_str: String,
+    imports: Vec<String>,
+    lines: Vec<String>,
 }
 
 impl Interactive {
@@ -44,10 +41,22 @@ impl Interactive {
 
                     match words.next() {
                         | Some(".exit") => break,
-                        | Some(".clear") => self.repl.clear().unwrap(),
+                        | Some(".clear") => {
+                            self.repl.clear().unwrap();
+                        },
+                        | Some(".reset") => {
+                            self.imports.clear();
+                            self.lines = vec![String::new()];
+                        },
+                        | Some(".code") => {
+                            println!("{}", self.text());
+                        },
                         | Some(".load") => self.load(words.as_str()),
+                        | Some(".import") => self.add_import(words.as_str()),
+                        | Some(".let") => self.add_let(words.as_str()),
                         | Some(".r" | ".resolve") => self.resolve(words.as_str()),
-                        | Some(".t" | ".type") => self.type_(words.as_str()),
+                        | Some(".t" | ".type") => self.type_of(words.as_str()),
+                        | Some(".k" | ".kind") => self.kind_of(words.as_str()),
                         | Some(_) => self.eval(&text),
                         | None => {},
                     }
@@ -67,31 +76,127 @@ impl Interactive {
         }
     }
 
+    fn add_import(&mut self, text: &str) {
+        self.imports.push(text.to_string());
+    }
+
+    fn add_let(&mut self, text: &str) {
+        *self.lines.last_mut().unwrap() = format!("let {}", text);
+        self.lines.push(String::new());
+    }
+
     fn resolve(&mut self, text: &str) {
-        self.resolve_str.clear();
-        self.resolve_str.push_str(text);
-        self.driver
-            .db
-            .set_file_text(self.resolve_file, self.resolve_str.clone().into());
+        if text.is_empty() {
+            return;
+        }
 
-        let sema = hir::semantics::Semantics::new(&self.db);
-        let parsed = sema.parse_path(self.resolve_file);
-        let resolution = sema.resolve_path_in(&parsed, self.main_file);
+        *self.lines.last_mut().unwrap() = format!("let _ = {}", text);
+        self.driver.db.set_file_text(self.file, self.text().into());
 
-        if let Some(resolution) = resolution {
-            let markup = format_resolution(&self.db, resolution);
+        let sema = Semantics::new(&self.db);
+        let parsed = sema.parse(self.file);
+        let offset = self.offset(12);
 
-            TermRenderer.render_markup(&markup);
-            println!();
+        if let Some(path) = sema.find_node_at_offset::<syntax::ast::Path>(parsed.syntax(), offset) {
+            let resolution = sema.resolve_path(&path);
+
+            if let Some(resolution) = resolution {
+                let markup = format_resolution(&self.db, resolution);
+
+                TermRenderer.render_markup(&markup);
+                println!();
+            } else {
+                println!("not found");
+            }
         } else {
-            println!("not found");
+            println!("invalid path");
         }
     }
 
-    fn type_(&mut self, text: &str) {
+    fn type_of(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
+        *self.lines.last_mut().unwrap() = format!("let _ = {}", text);
+        self.driver.db.set_file_text(self.file, self.text().into());
+
+        let sema = Semantics::new(&self.db);
+        let parsed = sema.parse(self.file);
+        let offset = self.offset(12);
+
+        if let Some(mut expr) = sema.find_node_at_offset::<syntax::ast::Expr>(parsed.syntax(), offset) {
+            while let Some(parent) = expr.parent() {
+                expr = parent;
+            }
+
+            let ty = sema.type_of_expr(&expr).unwrap();
+
+            println!("{}", ty.display(&self.db));
+        } else {
+            println!("invalid expression");
+        }
+    }
+
+    fn kind_of(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
+        *self.lines.last_mut().unwrap() = format!("let _ = _ :: {}", text);
+        self.driver.db.set_file_text(self.file, self.text().into());
+
+        let sema = Semantics::new(&self.db);
+        let parsed = sema.parse(self.file);
+        let offset = self.offset(17);
+
+        if let Some(mut ty) = sema.find_node_at_offset::<syntax::ast::Type>(parsed.syntax(), offset) {
+            while let Some(parent) = ty.parent() {
+                ty = parent;
+            }
+
+            let kind = sema.kind_of(&ty).unwrap();
+
+            println!("{}", kind.display(&self.db));
+        } else {
+            println!("invalid type");
+        }
     }
 
     fn eval(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
+        *self.lines.last_mut().unwrap() = text.to_string();
+        self.driver.db.set_file_text(self.file, self.text().into());
+    }
+
+    fn text(&self) -> String {
+        let mut text = String::from("module INTERACTIVE =");
+
+        for import in &self.imports {
+            text.push_str("\nimport ");
+            text.push_str(import);
+        }
+
+        text.push_str("\nfun main = do");
+
+        for line in &self.lines {
+            text.push_str("\n    ");
+            text.push_str(line);
+        }
+
+        text
+    }
+
+    fn offset(&self, col: u32) -> syntax::TextSize {
+        let line_index = self.db.line_index(self.file);
+
+        line_index.offset(LineCol {
+            line: self.imports.len() as u32 + self.lines.len() as u32 + 1,
+            col,
+        })
     }
 }
 
@@ -136,7 +241,6 @@ fn format_resolution(db: &dyn hir::db::HirDatabase, resolution: hir::PathResolut
                 | hir::ModuleDef::TypeCtor(_) => m.text("type ", Styles::BOLD),
                 | hir::ModuleDef::Ctor(_) => m.text("ctor ", Styles::BOLD),
                 | hir::ModuleDef::Class(_) => m.text("class ", Styles::BOLD),
-                | _ => m,
             };
 
             m.text(name.to_string(), Styles::UNDERLINE)

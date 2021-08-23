@@ -241,7 +241,7 @@ impl HirDisplay for Ty {
                     },
                     "array-type"(2) => {
                         write!(f, "[")?;
-                        args[0].hir_fmt(f)?;
+                        args[1].hir_fmt(f)?;
                         write!(f, "]")?;
                         TyParens(args[0]).hir_fmt(f)
                     },

@@ -29,6 +29,7 @@ pub enum SyntaxKind {
     EQUALS,
     QMARK,
     AT,
+    HASH,
     STAR,
     TICK,
     UNDERSCORE,
@@ -115,7 +116,7 @@ pub enum SyntaxKind {
     FIELD_PUN,
 
     TYPE_KINDED,
-    TYPE_PLACEHOLDER,
+    TYPE_HOLE,
     TYPE_FIGURE,
     TYPE_SYMBOL,
     TYPE_APP,
@@ -144,6 +145,7 @@ pub enum SyntaxKind {
     STMT_EXPR,
 
     EXPR_TYPED,
+    EXPR_HOLE,
     EXPR_ASSIGN,
     EXPR_INFIX,
     EXPR_APP,

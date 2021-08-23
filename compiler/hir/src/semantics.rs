@@ -5,12 +5,13 @@ use crate::PathResolution;
 use base_db::input::FileId;
 use hir_def::in_file::InFile;
 use hir_def::resolver::{HasResolver, Resolver};
+use hir_ty::ty::Ty;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 use std::fmt;
-use syntax::ast;
 use syntax::AstNode as _;
 use syntax::SyntaxNode;
+use syntax::{ast, TextSize};
 
 pub struct Semantics<'db, DB> {
     pub db: &'db DB,
@@ -40,16 +41,24 @@ impl<'db, DB: HirDatabase> Semantics<'db, DB> {
         self.imp.parse(file_id)
     }
 
-    pub fn parse_path(&self, file_id: FileId) -> ast::Path {
-        self.imp.parse_path(file_id)
+    pub fn find_node_at_offset<N: ast::AstNode>(&self, node: &SyntaxNode, offset: TextSize) -> Option<N> {
+        self.imp.find_node_at_offset(node, offset)
     }
 
     pub fn resolve_path(&self, path: &ast::Path) -> Option<PathResolution> {
         self.imp.resolve_path(path)
     }
 
-    pub fn resolve_path_in(&self, path: &ast::Path, file: FileId) -> Option<PathResolution> {
-        self.imp.resolve_path_in(path, file)
+    pub fn type_of_expr(&self, expr: &ast::Expr) -> Option<Ty> {
+        self.imp.type_of_expr(expr)
+    }
+
+    pub fn type_of_pat(&self, pat: &ast::Pat) -> Option<Ty> {
+        self.imp.type_of_pat(pat)
+    }
+
+    pub fn kind_of(&self, ty: &ast::Type) -> Option<Ty> {
+        self.imp.kind_of(ty)
     }
 }
 
@@ -69,19 +78,24 @@ impl<'db> SemanticsImpl<'db> {
         tree
     }
 
-    fn parse_path(&self, file_id: FileId) -> ast::Path {
-        let tree = self.db.parse_path(file_id).tree();
-
-        self.cache(tree.syntax().clone(), file_id);
-        tree
+    fn find_node_at_offset<N: ast::AstNode>(&self, node: &SyntaxNode, offset: TextSize) -> Option<N> {
+        syntax::find_node_at_offset(node, offset)
     }
 
     fn resolve_path(&self, path: &ast::Path) -> Option<PathResolution> {
         self.analyze(path.syntax()).resolve_path(self.db, path)
     }
 
-    fn resolve_path_in(&self, path: &ast::Path, file: FileId) -> Option<PathResolution> {
-        self.analyze_file(file).resolve_path(self.db, path)
+    fn type_of_expr(&self, expr: &ast::Expr) -> Option<Ty> {
+        self.analyze(expr.syntax()).type_of_expr(self.db, expr)
+    }
+
+    fn type_of_pat(&self, pat: &ast::Pat) -> Option<Ty> {
+        self.analyze(pat.syntax()).type_of_pat(self.db, pat)
+    }
+
+    fn kind_of(&self, ty: &ast::Type) -> Option<Ty> {
+        self.analyze(ty.syntax()).kind_of(self.db, ty)
     }
 
     fn with_ctx<T>(&self, f: impl FnOnce(&mut SourceToDefCtx) -> T) -> T {
@@ -98,17 +112,8 @@ impl<'db> SemanticsImpl<'db> {
         self.analyze_impl(node, None)
     }
 
-    fn analyze_file(&self, file: FileId) -> SourceAnalyzer {
-        let lib = self.db.file_lib(file);
-        let def_map = self.db.def_map(lib);
-        let module = match def_map.modules_for_file(file).next() {
-            | Some(it) => def_map.module_id(it),
-            | None => return SourceAnalyzer::new_for_resolver(Resolver::default(), file),
-        };
-
-        let resolver = module.resolver(self.db.upcast());
-
-        SourceAnalyzer::new_for_resolver(resolver, file)
+    fn _analyze_with_offset(&self, node: &SyntaxNode, offset: TextSize) -> SourceAnalyzer {
+        self.analyze_impl(node, Some(offset))
     }
 
     fn analyze_impl(&self, node: &SyntaxNode, offset: Option<syntax::TextSize>) -> SourceAnalyzer {
@@ -121,7 +126,7 @@ impl<'db> SemanticsImpl<'db> {
 
         let resolver = match container {
             | ChildContainer::ModuleId(m) => m.resolver(self.db.upcast()),
-            | ChildContainer::DefwithBodyId(def) => def.resolver(self.db.upcast()),
+            | ChildContainer::DefwithBodyId(def) => return SourceAnalyzer::new_for_body(self.db, def, node, offset),
         };
 
         SourceAnalyzer::new_for_resolver(resolver, node.file_id)

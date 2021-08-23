@@ -206,6 +206,18 @@ impl Resolver {
         r
     }
 
+    pub fn for_expr_scope(db: &dyn DefDatabase, owner: DefWithBodyId, scope_id: Option<ExprScopeId>) -> Self {
+        let mut r = owner.resolver(db);
+        let scopes = db.expr_scopes(owner);
+        let scope_chain = scopes.scope_chain(scope_id).collect::<Vec<_>>();
+
+        for scope in scope_chain.into_iter().rev() {
+            r = r.push_expr_scope(owner, Arc::clone(&scopes), scope);
+        }
+
+        r
+    }
+
     pub fn for_type(db: &dyn DefDatabase, owner: TypeVarOwner, id: LocalTypeRefId) -> Self {
         let mut r = owner.resolver(db);
         let scopes = db.type_scopes(owner);

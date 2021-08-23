@@ -2,7 +2,6 @@ use crate::db::RootDatabase;
 use annotate_snippets::display_list::{DisplayList, FormatOptions};
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use base_db::input::{FileId, LineIndex};
-use base_db::libs::LibId;
 use base_db::{SourceDatabase, SourceDatabaseExt};
 use diagnostics::DiagnosticForWith;
 use hir::db::HirDatabase;
@@ -30,12 +29,21 @@ pub fn emit_diagnostics(db: &RootDatabase, lib: hir::Lib, writer: &mut dyn io::W
             emit_syntax_error(err, source_path, &source_code, &line_index, writer)?;
         }
 
+        let mut error = None;
         let mut diagnostic_sink = DiagnosticSink::new(|d| {
             errors += 1;
-            emit_hir_diagnostic(d, db, file_id, writer);
+
+            if let Err(e) = emit_hir_diagnostic(d, db, file_id, writer) {
+                error = Some(e);
+            }
         });
 
         module.diagnostics(db, &mut diagnostic_sink);
+        drop(diagnostic_sink);
+
+        if let Some(e) = error {
+            return Err(e);
+        }
     }
 
     Ok(errors)

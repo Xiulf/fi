@@ -1,13 +1,13 @@
 #![feature(try_blocks)]
 
 use crossterm::cursor::{
-    MoveDown, MoveLeft, MoveRight, MoveTo, MoveToColumn, MoveToNextLine, MoveUp, RestorePosition,
+    position, MoveDown, MoveLeft, MoveRight, MoveTo, MoveToColumn, MoveToNextLine, MoveUp, RestorePosition,
     SavePosition,
 };
 
 use crossterm::event::{read, Event, KeyCode, KeyModifiers};
 use crossterm::style::Print;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType, ScrollUp};
 use crossterm::{execute, queue, Result};
 use std::io::{stdout, Stdout};
 
@@ -83,15 +83,19 @@ impl<V: Verify, I: Indent> Repl<V, I> {
 
         loop {
             match read()? {
-                Event::Key(evt) => match evt.code {
-                    KeyCode::Char('c') if evt.modifiers.contains(KeyModifiers::CONTROL) => {
+                | Event::Key(evt) => match evt.code {
+                    | KeyCode::Char('c') if evt.modifiers.contains(KeyModifiers::CONTROL) => {
                         queue!(self.stdout, Clear(ClearType::CurrentLine))?;
                         execute!(self.stdout, MoveToColumn(0))?;
 
                         return Ok(ReadLine::Exit);
-                    }
-                    KeyCode::Enter => {
+                    },
+                    | KeyCode::Enter => {
                         if cursor.1 == lines.len() - 1 && self.verifier.verify(&lines) {
+                            if position().unwrap().1 == size().unwrap().1 - 1 {
+                                queue!(self.stdout, ScrollUp(1))?;
+                            }
+
                             execute!(self.stdout, MoveToNextLine(1))?;
 
                             return Ok(ReadLine::Line(lines.join("\n")));
@@ -105,42 +109,36 @@ impl<V: Verify, I: Indent> Repl<V, I> {
                             cursor.0 = lvl * self.config.indent;
 
                             if lvl > indent[cursor.1] {
-                                lines[cursor.1].insert_str(
-                                    0,
-                                    &" ".repeat((lvl - indent[cursor.1]) * self.config.indent),
-                                );
+                                lines[cursor.1]
+                                    .insert_str(0, &" ".repeat((lvl - indent[cursor.1]) * self.config.indent));
                             } else if lvl < indent[cursor.1] {
-                                lines[cursor.1].replace_range(
-                                    0..(indent[cursor.1] - lvl) * self.config.indent,
-                                    "",
-                                );
+                                lines[cursor.1].replace_range(0..(indent[cursor.1] - lvl) * self.config.indent, "");
                             }
 
                             indent[cursor.1] = lvl;
+
+                            if position().unwrap().1 == size().unwrap().1 - 1 {
+                                queue!(self.stdout, ScrollUp(1))?;
+                            }
 
                             queue!(self.stdout, MoveToNextLine(1))?;
                             queue!(self.stdout, Print(" ".repeat(prompt.len())))?;
                             execute!(self.stdout, Print(lines[cursor.1].clone()))?;
                         }
-                    }
-                    KeyCode::Char(c) => {
+                    },
+                    | KeyCode::Char(c) => {
                         lines[cursor.1].insert(cursor.0, c);
 
                         if self.indent.trigger(c) {
                             let lvl = self.indent.indent(&lines, cursor.1, cursor.0);
 
                             if lvl > indent[cursor.1] {
-                                lines[cursor.1].insert_str(
-                                    0,
-                                    &" ".repeat((lvl - indent[cursor.1]) * self.config.indent),
-                                );
+                                lines[cursor.1]
+                                    .insert_str(0, &" ".repeat((lvl - indent[cursor.1]) * self.config.indent));
 
                                 cursor.0 += indent[cursor.1] * self.config.indent;
                             } else if lvl < indent[cursor.1] {
-                                lines[cursor.1].replace_range(
-                                    0..(indent[cursor.1] - lvl) * self.config.indent,
-                                    "",
-                                );
+                                lines[cursor.1].replace_range(0..(indent[cursor.1] - lvl) * self.config.indent, "");
 
                                 cursor.0 -= (indent[cursor.1] - lvl) * self.config.indent;
                             }
@@ -162,31 +160,28 @@ impl<V: Verify, I: Indent> Repl<V, I> {
                             Print(lines[cursor.1].clone())
                         )?;
 
-                        execute!(
-                            self.stdout,
-                            MoveToColumn((prompt.len() + cursor.0 + 1) as u16)
-                        )?;
-                    }
-                    KeyCode::Left if cursor.0 > 0 => {
+                        execute!(self.stdout, MoveToColumn((prompt.len() + cursor.0 + 1) as u16))?;
+                    },
+                    | KeyCode::Left if cursor.0 > 0 => {
                         cursor.0 -= 1;
                         execute!(self.stdout, MoveLeft(1))?;
-                    }
-                    KeyCode::Right if cursor.0 < lines[cursor.1].len() => {
+                    },
+                    | KeyCode::Right if cursor.0 < lines[cursor.1].len() => {
                         cursor.0 += 1;
                         execute!(self.stdout, MoveRight(1))?;
-                    }
-                    KeyCode::Home => {
+                    },
+                    | KeyCode::Home => {
                         cursor.0 = 0;
                         execute!(self.stdout, MoveToColumn(prompt.len() as u16 + 1))?;
-                    }
-                    KeyCode::End => {
+                    },
+                    | KeyCode::End => {
                         cursor.0 = lines[cursor.1].len();
                         execute!(
                             self.stdout,
                             MoveToColumn((lines[cursor.1].len() + prompt.len()) as u16 + 1)
                         )?;
-                    }
-                    KeyCode::Down if cursor.1 < lines.len() - 1 => {
+                    },
+                    | KeyCode::Down if cursor.1 < lines.len() - 1 => {
                         cursor.1 += 1;
                         execute!(self.stdout, MoveDown(1))?;
 
@@ -198,8 +193,8 @@ impl<V: Verify, I: Indent> Repl<V, I> {
                                 MoveToColumn((lines[cursor.1].len() + prompt.len()) as u16 + 1)
                             )?;
                         }
-                    }
-                    KeyCode::Up if cursor.1 > 0 => {
+                    },
+                    | KeyCode::Up if cursor.1 > 0 => {
                         cursor.1 -= 1;
                         execute!(self.stdout, MoveUp(1))?;
 
@@ -211,10 +206,8 @@ impl<V: Verify, I: Indent> Repl<V, I> {
                                 MoveToColumn((lines[cursor.1].len() + prompt.len()) as u16 + 1)
                             )?;
                         }
-                    }
-                    KeyCode::Backspace
-                        if cursor.0 == 0 && lines.len() > 1 && lines[cursor.1].is_empty() =>
-                    {
+                    },
+                    | KeyCode::Backspace if cursor.0 == 0 && lines.len() > 1 && lines[cursor.1].is_empty() => {
                         lines.remove(cursor.1);
                         indent.remove(cursor.1);
                         cursor.1 -= 1;
@@ -238,8 +231,8 @@ impl<V: Verify, I: Indent> Repl<V, I> {
                         }
 
                         execute!(self.stdout, RestorePosition)?;
-                    }
-                    KeyCode::Backspace if cursor.0 > 0 => {
+                    },
+                    | KeyCode::Backspace if cursor.0 > 0 => {
                         cursor.0 -= 1;
                         lines[cursor.1].remove(cursor.0);
 
@@ -258,8 +251,8 @@ impl<V: Verify, I: Indent> Repl<V, I> {
                         )?;
 
                         execute!(self.stdout, RestorePosition)?;
-                    }
-                    KeyCode::Delete if cursor.0 < lines[cursor.1].len() => {
+                    },
+                    | KeyCode::Delete if cursor.0 < lines[cursor.1].len() => {
                         lines[cursor.1].remove(cursor.0);
 
                         queue!(
@@ -276,10 +269,10 @@ impl<V: Verify, I: Indent> Repl<V, I> {
                         )?;
 
                         execute!(self.stdout, RestorePosition)?;
-                    }
-                    _ => {}
+                    },
+                    | _ => {},
                 },
-                _ => {}
+                | _ => {},
             }
         }
     }

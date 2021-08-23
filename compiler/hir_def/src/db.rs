@@ -9,7 +9,7 @@ use crate::lang_item::{LangItem, LangItems};
 use crate::scope::{ExprScopes, TypeScopes};
 use base_db::input::FileId;
 use base_db::libs::LibId;
-use base_db::{SourceDatabaseExt, Upcast};
+use base_db::{SourceDatabase, SourceDatabaseExt, Upcast};
 use smol_str::SmolStr;
 use std::sync::Arc;
 
@@ -41,7 +41,7 @@ pub trait InternDatabase: SourceDatabaseExt {
 }
 
 #[salsa::query_group(DefDatabaseStorage)]
-pub trait DefDatabase: InternDatabase {
+pub trait DefDatabase: InternDatabase + Upcast<dyn SourceDatabase> {
     #[salsa::invoke(AstIdMap::ast_id_map_query)]
     fn ast_id_map(&self, file_id: FileId) -> Arc<AstIdMap>;
 

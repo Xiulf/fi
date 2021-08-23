@@ -430,6 +430,14 @@ impl ItemInstance {
     }
 }
 
+impl Type {
+    pub fn parent(&self) -> Option<Self> {
+        let node = self.syntax().parent()?;
+
+        Self::cast(node)
+    }
+}
+
 impl TypeKinded {
     pub fn ty(&self) -> Option<Type> {
         support::children(&self.0).nth(0)
@@ -660,6 +668,14 @@ impl PatRecord {
 
     pub fn has_rest(&self) -> bool {
         support::token(&self.0, DBL_DOT).is_some()
+    }
+}
+
+impl Expr {
+    pub fn parent(&self) -> Option<Self> {
+        let node = self.syntax().parent()?;
+
+        Self::cast(node)
     }
 }
 
@@ -1035,7 +1051,7 @@ impl LitString {
         if text.starts_with('r') {
             Some(text[2..text.len() - 1].into())
         } else {
-            let mut chars = text[1..text.len() - 1].chars();
+            let chars = text[1..text.len() - 1].chars();
             let mut text = String::with_capacity(chars.as_str().len());
             let mut chars = chars.peekable();
 

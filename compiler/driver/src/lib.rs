@@ -64,39 +64,29 @@ impl Driver {
         Some((driver, lib))
     }
 
-    pub fn interactive() -> (Self, LibId, FileId, FileId, FileId) {
+    pub fn interactive() -> (Self, LibId, FileId) {
         let mut driver = Driver::default();
         let mut root = SourceRoot::new_local();
         let root_id = SourceRootId(0);
         let root_file = FileId(0);
-        let type_file = FileId(1);
-        let resolve_file = FileId(2);
         let (lib, _) = driver
             .libs
             .add_lib("<interactive>", Default::default(), root_id, root_file);
 
         root.insert_file(root_file, "<interactive>");
-        root.insert_file(type_file, "<type>");
-        root.insert_file(resolve_file, "<resolve>");
 
         driver.db.set_target_triple(mir::target_lexicon::HOST.into());
         driver.db.set_libs(driver.libs.clone().into());
         driver.db.set_source_root(root_id, root.into());
         driver.db.set_file_source_root(root_file, root_id);
-        driver.db.set_file_source_root(type_file, root_id);
-        driver.db.set_file_source_root(resolve_file, root_id);
         driver
             .db
             .set_file_text(root_file, String::from("module INTERACTIVE").into());
-        driver.db.set_file_text(type_file, Default::default());
-        driver.db.set_file_text(resolve_file, Default::default());
         driver.db.set_file_lib(root_file, lib);
-        driver.db.set_file_lib(type_file, lib);
-        driver.db.set_file_lib(resolve_file, lib);
         driver.lib_count = 1;
-        driver.file_count = 3;
+        driver.file_count = 1;
 
-        (driver, lib, root_file, type_file, resolve_file)
+        (driver, lib, root_file)
     }
 
     pub fn load(&mut self, input: &str) -> Option<LibId> {

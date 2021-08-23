@@ -1,9 +1,9 @@
-use super::{BodyInferenceContext, Breakable, InferenceDiagnostic};
+use super::{BodyInferenceContext, Breakable, ExprOrPatId, InferenceDiagnostic};
 use crate::display::HirDisplay;
 use crate::lower::LowerCtx;
 use crate::ty::*;
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
-use hir_def::id::TypeVarOwner;
+use hir_def::id::{FixityId, TypeVarOwner};
 use hir_def::per_ns::Visibility;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 use std::sync::Arc;
@@ -23,6 +23,7 @@ impl BodyInferenceContext<'_> {
                 self.check_expr(*expr, ty_);
                 ty_
             }),
+            | Expr::Hole => self.fresh_type(),
             | Expr::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
                 | Some(res) => 't: {
                     if let Visibility::Private = res.1 {
@@ -31,7 +32,7 @@ impl BodyInferenceContext<'_> {
 
                     let id = match res.0 {
                         | ValueNs::Local(pat) => break 't self.result.type_of_pat[pat],
-                        | ValueNs::Fixity(_id) => unimplemented!(),
+                        | ValueNs::Fixity(id) => break 't self.infer_infix(id, expr.into()),
                         | ValueNs::Func(id) => {
                             if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
                                 break 't self.subst_type(self.result.self_type);
@@ -46,7 +47,9 @@ impl BodyInferenceContext<'_> {
 
                     let ty = self.db.value_ty(id);
 
-                    self.instantiate(ty, expr.into())
+                    self.result.type_of_expr.insert(expr, ty);
+
+                    return self.instantiate(ty, expr.into());
                 },
                 | None => {
                     self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
@@ -80,21 +83,8 @@ impl BodyInferenceContext<'_> {
                 | Literal::String(_) => self.lang_type("str-type"),
             },
             | Expr::Infix { op, lhs, rhs } => match self.resolver.resolve_value_fully(self.db.upcast(), op) {
-                | Some((ValueNs::Fixity(id), Visibility::Public)) => 't: {
-                    let data = self.db.fixity_data(id);
-                    let resolver = id.resolver(self.db.upcast());
-                    let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
-                        | Some((ValueNs::Func(id), Visibility::Public)) => id.into(),
-                        | Some((ValueNs::Ctor(id), Visibility::Public)) => id.into(),
-                        | Some((_, Visibility::Private)) => {
-                            self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
-                            break 't self.error();
-                        },
-                        | _ => break 't self.error(),
-                    };
-
-                    let ty = self.db.value_ty(id);
-                    let ty = self.instantiate(ty, expr.into());
+                | Some((ValueNs::Fixity(id), Visibility::Public)) => {
+                    let ty = self.infer_infix(id, expr.into());
                     let mid = self.check_app(ty, *lhs, expr);
 
                     self.check_app(mid, *rhs, expr)
@@ -357,6 +347,24 @@ impl BodyInferenceContext<'_> {
 
         self.result.type_of_expr.insert(expr, ty);
         ty
+    }
+
+    pub fn infer_infix(&mut self, id: FixityId, origin: ExprOrPatId) -> Ty {
+        let data = self.db.fixity_data(id);
+        let resolver = id.resolver(self.db.upcast());
+        let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
+            | Some((ValueNs::Func(id), Visibility::Public)) => id.into(),
+            | Some((ValueNs::Ctor(id), Visibility::Public)) => id.into(),
+            | Some((_, Visibility::Private)) => {
+                self.report(InferenceDiagnostic::PrivateValue { id: origin });
+                return self.error();
+            },
+            | _ => return self.error(),
+        };
+
+        let ty = self.db.value_ty(id);
+
+        self.instantiate(ty, origin)
     }
 
     pub fn infer_block(&mut self, stmts: &[Stmt], expr: ExprId) -> Ty {

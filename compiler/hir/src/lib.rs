@@ -5,9 +5,6 @@ pub mod semantics;
 pub mod source_analyzer;
 mod source_to_def;
 
-#[cfg(debug_assertions)]
-use hir_ty::display::HirDisplay;
-
 use base_db::input::FileId;
 use base_db::libs::LibId;
 pub use hir_def::body::Body;
@@ -21,10 +18,9 @@ pub use hir_def::pat::{Pat, PatId};
 pub use hir_def::path::Path;
 pub use hir_def::{arena, attrs, id};
 use hir_ty::db::HirDatabase;
+pub use hir_ty::display::HirDisplay;
 pub use hir_ty::infer::{InferenceResult, MethodSource};
-use hir_ty::lower::LowerResult;
 pub use hir_ty::{display, ty};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Lib {

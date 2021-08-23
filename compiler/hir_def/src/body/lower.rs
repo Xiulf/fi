@@ -165,6 +165,7 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::Typed { expr, ty }, syntax_ptr)
             },
+            | ast::Expr::Hole(_) => self.alloc_expr(Expr::Hole, syntax_ptr),
             | ast::Expr::App(e) => {
                 let base = self.collect_expr_opt(e.base());
                 let arg = self.collect_expr_opt(e.arg());
