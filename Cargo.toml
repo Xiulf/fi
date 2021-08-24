@@ -6,6 +6,7 @@ members = [
     "compiler/markup",
     "compiler/diagnostics",
     "compiler/codegen",
+    "compiler/lower",
     "compiler/mir",
     "compiler/hir",
     "compiler/hir_ty",
