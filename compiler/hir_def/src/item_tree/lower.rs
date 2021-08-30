@@ -1,17 +1,14 @@
 use crate::arena::{Idx, RawIdx};
 use crate::ast_id::AstIdMap;
 use crate::db::DefDatabase;
-use crate::id::Intern;
 use crate::in_file::InFile;
 use crate::item_tree::*;
 use crate::name::AsName;
 use crate::path::Path;
-use crate::type_ref::TypeRef;
 use base_db::input::FileId;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use syntax::ast::{self, NameOwner};
-use syntax::AstPtr;
 
 fn id<N: ItemTreeNode>(index: Idx<N>) -> LocalItemTreeId<N> {
     LocalItemTreeId {
@@ -20,8 +17,7 @@ fn id<N: ItemTreeNode>(index: Idx<N>) -> LocalItemTreeId<N> {
     }
 }
 
-pub(super) struct Ctx<'db> {
-    db: &'db dyn DefDatabase,
+pub(super) struct Ctx {
     tree: ItemTree,
     file_id: FileId,
     ast_id_map: Arc<AstIdMap>,
@@ -35,37 +31,76 @@ impl<T: Into<Item>> From<T> for Items {
     }
 }
 
-impl<'db> Ctx<'db> {
-    pub fn new(db: &'db dyn DefDatabase, file_id: FileId) -> Self {
+impl Ctx {
+    pub fn new(db: &dyn DefDatabase, file_id: FileId) -> Self {
         Ctx {
             tree: ItemTree::new(file_id),
             ast_id_map: db.ast_id_map(file_id),
             file_id,
-            db,
         }
     }
 
     pub fn lower_items(mut self, module: &ast::Module) -> ItemTree {
         self.tree.top_level = module
-            .items()
-            .flat_map(|item| self.lower_item(&item))
+            .item_groups()
+            .flat_map(|(item, rest)| self.lower_item(&item, &rest))
             .flat_map(|item| item.0)
             .collect();
+
+        let mut values = FxHashMap::<Name, Item>::default();
+        let mut types = FxHashMap::<Name, Item>::default();
+        let mut diagnostics = Vec::new();
+
+        for &item in &self.tree.top_level {
+            let (name, is_type) = match item {
+                | Item::Fixity(it) => (Some(&self.tree[it].name), false),
+                | Item::Func(it) => (Some(&self.tree[it].name), false),
+                | Item::Static(it) => (Some(&self.tree[it].name), false),
+                | Item::Const(it) => (Some(&self.tree[it].name), false),
+                | Item::TypeCtor(it) => (Some(&self.tree[it].name), true),
+                | Item::TypeAlias(it) => (Some(&self.tree[it].name), true),
+                | Item::Class(it) => (Some(&self.tree[it].name), true),
+                | _ => (None, false),
+            };
+
+            if let Some(name) = name {
+                let set = if is_type { &mut types } else { &mut values };
+
+                if let Some(first_item) = set.get(name) {
+                    diagnostics.push(ItemTreeDiagnostic::DuplicateDeclaration {
+                        name: name.clone(),
+                        first: *first_item,
+                        second: item,
+                    });
+                } else {
+                    set.insert(name.clone(), item);
+                }
+            }
+        }
+
+        self.tree.diagnostics = diagnostics;
         self.tree
     }
 
-    fn lower_item(&mut self, item: &ast::Item) -> Option<Items> {
+    fn lower_item(&mut self, item: &ast::Item, rest: &[ast::Item]) -> Option<Items> {
         let attrs = RawAttrs::new(item);
         let items = match item {
             | ast::Item::Import(ast) => Some(Items(self.lower_import(ast).into_iter().map(Into::into).collect())),
             | ast::Item::Fixity(ast) => self.lower_fixity(ast).map(Into::into),
-            | ast::Item::Fun(ast) => self.lower_fun(ast).map(Into::into),
+            | ast::Item::Fun(ast) => self
+                .lower_fun(
+                    ast,
+                    rest.iter().map(|it| match it {
+                        | ast::Item::Fun(it) => it.clone(),
+                        | _ => unreachable!(),
+                    }),
+                )
+                .map(Into::into),
             | ast::Item::Static(ast) => self.lower_static(ast).map(Into::into),
             | ast::Item::Const(ast) => self.lower_const(ast).map(Into::into),
             | ast::Item::Type(ast) => self.lower_type(ast),
             | ast::Item::Class(ast) => self.lower_class(ast).map(Into::into),
             | ast::Item::Instance(ast) => self.lower_instance(ast).map(Into::into),
-            | _ => return None,
         };
 
         if !attrs.is_empty() {
@@ -114,10 +149,14 @@ impl<'db> Ctx<'db> {
         })))
     }
 
-    fn lower_fun(&mut self, item: &ast::ItemFun) -> Option<LocalItemTreeId<Func>> {
+    fn lower_fun(
+        &mut self,
+        item: &ast::ItemFun,
+        mut rest: impl Iterator<Item = ast::ItemFun>,
+    ) -> Option<LocalItemTreeId<Func>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
-        let has_body = item.body().is_some();
+        let has_body = item.body().is_some() || rest.any(|i| i.body().is_some());
         let is_foreign = item.is_foreign();
 
         Some(id(self.tree.data.funcs.alloc(Func {
@@ -216,7 +255,7 @@ impl<'db> Ctx<'db> {
 
     fn lower_assoc_item(&mut self, item: ast::AssocItem) -> Option<AssocItem> {
         match item {
-            | ast::AssocItem::Fun(it) => self.lower_fun(&it).map(AssocItem::Func),
+            | ast::AssocItem::Fun(it) => self.lower_fun(&it, std::iter::empty()).map(AssocItem::Func),
             | ast::AssocItem::Static(it) => self.lower_static(&it).map(AssocItem::Static),
         }
     }

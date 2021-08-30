@@ -311,6 +311,10 @@ impl ItemConst {
     pub fn value(&self) -> Option<Expr> {
         support::child(&self.0)
     }
+
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
 }
 
 impl AttrsOwner for ItemType {

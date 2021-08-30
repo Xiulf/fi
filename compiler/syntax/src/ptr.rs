@@ -27,6 +27,10 @@ impl SyntaxNodePtr {
         self.range
     }
 
+    pub fn kind(&self) -> SyntaxKind {
+        self.kind
+    }
+
     pub fn to_node(&self, root: &SyntaxNode) -> SyntaxNode {
         successors(Some(root.clone()), |node| {
             node.children().find(|it| it.text_range().contains_range(self.range))

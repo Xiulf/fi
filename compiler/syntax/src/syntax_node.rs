@@ -45,7 +45,6 @@ impl SyntaxTreeBuilder<'_> {
 
     pub fn finish(self) -> Parsed<SyntaxNode> {
         let (green, errors) = self.finish_raw();
-        let node = SyntaxNode::new_root(green.clone());
 
         Parsed::new(green, errors)
     }

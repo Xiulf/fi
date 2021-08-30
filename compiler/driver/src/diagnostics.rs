@@ -123,7 +123,15 @@ fn emit_diagnostic(
         path: RelativePathBuf,
         source_code: Arc<String>,
         line_index: Arc<LineIndex>,
-        annotations: Vec<diagnostics::SourceAnnotation>,
+        annotations: Vec<(diagnostics::SourceAnnotation, AnnotationType)>,
+    }
+
+    fn level(level: diagnostics::Level) -> AnnotationType {
+        match level {
+            | diagnostics::Level::Error => AnnotationType::Error,
+            | diagnostics::Level::Warning => AnnotationType::Warning,
+            | diagnostics::Level::Info => AnnotationType::Info,
+        }
     }
 
     let annotations = {
@@ -136,13 +144,16 @@ fn emit_diagnostic(
             path: source_root.relative_path(file_id).to_owned(),
             source_code: SourceDatabaseExt::file_text(db, file_id),
             line_index: db.line_index(file_id),
-            annotations: vec![match diag.primary_annotation() {
-                | None => diagnostics::SourceAnnotation {
-                    range,
-                    message: title.clone(),
+            annotations: vec![(
+                match diag.primary_annotation() {
+                    | None => diagnostics::SourceAnnotation {
+                        range,
+                        message: title.clone(),
+                    },
+                    | Some(ann) => ann,
                 },
-                | Some(ann) => ann,
-            }],
+                level(diag.level()),
+            )],
         });
 
         file_to_index.insert(file_id, 0);
@@ -169,7 +180,9 @@ fn emit_diagnostic(
                 | Some(idx) => *idx,
             };
 
-            annotations[file_idx].annotations.push(ann.into());
+            annotations[file_idx]
+                .annotations
+                .push((ann.into(), AnnotationType::Info));
         }
 
         annotations
@@ -180,7 +193,7 @@ fn emit_diagnostic(
         title: Some(Annotation {
             id: None,
             label: Some(&title),
-            annotation_type: AnnotationType::Error,
+            annotation_type: level(diag.level()),
         }),
         slices: annotations
             .iter()
@@ -189,10 +202,10 @@ fn emit_diagnostic(
                     let mut iter = file.annotations.iter();
 
                     match iter.next() {
-                        | Some(first) => {
+                        | Some((first, _)) => {
                             let first = first.range.start();
 
-                            iter.fold(first, |init, value| init.min(value.range.start()))
+                            iter.fold(first, |init, (value, _)| init.min(value.range.start()))
                         },
                         | None => return None,
                     }
@@ -208,13 +221,13 @@ fn emit_diagnostic(
                     annotations: file
                         .annotations
                         .iter()
-                        .map(|ann| SourceAnnotation {
+                        .map(|(ann, ty)| SourceAnnotation {
                             range: (
                                 usize::from(ann.range.start()) - line_offset,
                                 usize::from(ann.range.end()) - line_offset,
                             ),
                             label: ann.message.as_str(),
-                            annotation_type: AnnotationType::Error,
+                            annotation_type: *ty,
                         })
                         .collect(),
                     fold: true,

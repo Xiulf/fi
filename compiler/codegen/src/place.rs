@@ -158,6 +158,15 @@ impl PlaceRef {
         let layout = self.layout.field(fx.db.upcast(), idx).unwrap();
 
         match self.kind {
+            | PlaceKind::Var(var) => match idx {
+                | 0 => {
+                    return PlaceRef {
+                        kind: PlaceKind::Var(var),
+                        layout,
+                    }
+                },
+                | _ => unreachable!(),
+            },
             | PlaceKind::VarPair(var1, var2) => match idx {
                 | 0 => {
                     return PlaceRef {

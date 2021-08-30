@@ -185,7 +185,13 @@ impl Module {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        let file = self.file_id(db);
+        let item_tree = db.item_tree(file);
         let def_map = db.def_map(self.id.lib);
+
+        for diag in &item_tree.diagnostics {
+            diag.add_to(db.upcast(), &item_tree, sink);
+        }
 
         def_map.diagnostics().for_each(|d| {
             d.add_to(db.upcast(), self.id.local_id, sink);
@@ -396,17 +402,17 @@ impl Func {
         let lower = hir_ty::lower::func_ty(db, self.id);
         let body = db.body(self.id.into());
 
-        // eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
-        //
-        // for (expr, ty) in infer.type_of_expr.iter() {
-        //     eprintln!("{:?} :: {}", body[expr], ty.display(db));
-        // }
-        //
-        // for (pat, ty) in infer.type_of_pat.iter() {
-        //     eprintln!("{:?} :: {}", body[pat], ty.display(db));
-        // }
-        //
-        // eprintln!();
+        eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
+
+        for (expr, ty) in infer.type_of_expr.iter() {
+            eprintln!("{:?} :: {}", body[expr], ty.display(db));
+        }
+
+        for (pat, ty) in infer.type_of_pat.iter() {
+            eprintln!("{:?} :: {}", body[pat], ty.display(db));
+        }
+
+        eprintln!();
 
         infer.add_diagnostics(db, self.id.into(), sink);
         lower.add_diagnostics(db, TypeVarOwner::TypedDefId(self.id.into()), sink);
@@ -705,7 +711,7 @@ impl Instance {
         let type_map = data.type_map();
         let mut name = data.class.segments().last().unwrap().to_string();
 
-        for (i, ty) in data.types.iter().enumerate() {
+        for (_i, ty) in data.types.iter().enumerate() {
             name.push('_');
             ty_link_name(&type_map, ty, &mut name).unwrap();
         }
@@ -900,6 +906,7 @@ impl TypeVar {
             | TypeVarOwner::TypedDefId(id) => match id {
                 | TypedDefId::FuncId(id) => db.func_data(id).type_map()[self.id.local_id].name.clone(),
                 | TypedDefId::StaticId(id) => db.static_data(id).type_map()[self.id.local_id].name.clone(),
+                | TypedDefId::ConstId(id) => db.const_data(id).type_map()[self.id.local_id].name.clone(),
                 | TypedDefId::TypeAliasId(id) => db.type_alias_data(id).type_map()[self.id.local_id].name.clone(),
                 | TypedDefId::TypeCtorId(id) => db.type_ctor_data(id).type_map()[self.id.local_id].name.clone(),
                 | TypedDefId::CtorId(id) => db.type_ctor_data(id.parent).type_map()[self.id.local_id].name.clone(),

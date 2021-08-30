@@ -41,6 +41,11 @@ pub struct BodySourceMap {
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SyntheticSyntax;
 
+enum BodyExpr {
+    Single(ast::Expr),
+    Case(Vec<ast::Expr>),
+}
+
 impl Body {
     pub fn body_source_map_query(db: &dyn DefDatabase, def: DefWithBodyId) -> (Arc<Body>, Arc<BodySourceMap>) {
         let mut params = None;
@@ -49,21 +54,43 @@ impl Body {
             | DefWithBodyId::FuncId(f) => {
                 let f = f.lookup(db);
                 let src = f.source(db);
+                let group = src.value.group().collect::<Vec<_>>();
+                let expr = if group.len() == 1 {
+                    group.first().and_then(|it| it.body()).map(BodyExpr::Single)
+                } else {
+                    Some(BodyExpr::Case(group.iter().filter_map(|it| it.body()).collect()))
+                };
 
-                params = Some(src.value.args());
-                (src.file_id, f.module(db), src.value.body())
+                params = Some(
+                    group
+                        .iter()
+                        .filter_map(|it| if it.ty().is_none() { Some(it.args()) } else { None })
+                        .collect::<Vec<_>>(),
+                );
+
+                (src.file_id, f.module(db), expr)
             },
             | DefWithBodyId::ConstId(c) => {
                 let c = c.lookup(db);
                 let src = c.source(db);
+                let expr = src
+                    .value
+                    .value()
+                    .or_else(|| src.value.next().and_then(|it| it.value()))
+                    .map(BodyExpr::Single);
 
-                (src.file_id, c.module(db), src.value.value())
+                (src.file_id, c.module(db), expr)
             },
             | DefWithBodyId::StaticId(s) => {
                 let s = s.lookup(db);
                 let src = s.source(db);
+                let expr = src
+                    .value
+                    .value()
+                    .or_else(|| src.value.next().and_then(|it| it.value()))
+                    .map(BodyExpr::Single);
 
-                (src.file_id, s.module(db), src.value.value())
+                (src.file_id, s.module(db), expr)
             },
         };
 
@@ -78,8 +105,8 @@ impl Body {
 
     fn new(
         db: &dyn DefDatabase,
-        params: Option<ast::AstChildren<ast::Pat>>,
-        body: Option<ast::Expr>,
+        params: Option<Vec<ast::AstChildren<ast::Pat>>>,
+        body: Option<BodyExpr>,
         file_id: FileId,
         module: ModuleId,
     ) -> (Body, BodySourceMap) {

@@ -435,6 +435,7 @@ impl HasResolver for TypedDefId {
         match self {
             | TypedDefId::FuncId(id) => id.resolver(db),
             | TypedDefId::StaticId(id) => id.resolver(db),
+            | TypedDefId::ConstId(id) => id.resolver(db),
             | TypedDefId::TypeAliasId(id) => id.resolver(db),
             | TypedDefId::TypeCtorId(id) => id.resolver(db),
             | TypedDefId::CtorId(id) => id.resolver(db),

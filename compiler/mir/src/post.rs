@@ -4,8 +4,6 @@ use crate::lower::builder::Builder;
 use crate::ty::{Type, TypeVarKind};
 use crate::visit::VisitorMut;
 use hir::display::HirDisplay;
-use hir::ty::TypeVar;
-use rustc_hash::FxHashMap;
 
 pub fn postprocess(db: &dyn MirDatabase, bodies: &mut Bodies) {
     let ids = bodies.bodies.iter().map(|(id, _)| id).collect::<Vec<_>>();

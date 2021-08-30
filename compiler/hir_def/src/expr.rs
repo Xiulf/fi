@@ -1,14 +1,10 @@
-use crate::arena::{Idx, RawIdx};
+use crate::arena::Idx;
 use crate::name::Name;
 use crate::pat::PatId;
 use crate::path::Path;
 use crate::type_ref::LocalTypeRefId;
 
 pub type ExprId = Idx<Expr>;
-
-pub(crate) fn dummy_expr_id() -> ExprId {
-    ExprId::from_raw(RawIdx::from(0))
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {

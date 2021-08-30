@@ -31,7 +31,7 @@ crate fn any_item(p: &mut Parser) {
             const_(p, m);
         },
         | TYPE_KW => {
-            type_(p, m, false);
+            type_(p, m);
         },
         | CLASS_KW => {
             class(p, m);
@@ -93,7 +93,7 @@ crate fn foreign(p: &mut Parser, m: Marker) {
     match p.current() {
         | FUN_KW => fun(p, m),
         | STATIC_KW => static_(p, m),
-        | TYPE_KW => type_(p, m, true),
+        | TYPE_KW => type_(p, m),
         | _ => {
             p.error("expected 'fun', 'static' or 'type'");
             m.abandon(p);
@@ -152,11 +152,11 @@ crate fn const_(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn type_(p: &mut Parser, m: Marker, foreign: bool) {
+crate fn type_(p: &mut Parser, m: Marker) {
     p.expect(TYPE_KW);
     paths::name(p);
 
-    if foreign && p.eat(DBL_COLON) {
+    if p.eat(DBL_COLON) {
         types::func(p);
     } else {
         while p.at(L_PAREN) || p.at(IDENT) {

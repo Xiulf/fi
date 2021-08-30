@@ -353,15 +353,15 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
     }
 }
 
-impl<'a> std::ops::Deref for LowerCtx<'_, 'a> {
-    type Target = InferenceContext<'a>;
+impl<'a, 'b> std::ops::Deref for LowerCtx<'a, 'b> {
+    type Target = InferenceContext<'b>;
 
     fn deref(&self) -> &Self::Target {
         &self.icx
     }
 }
 
-impl std::ops::DerefMut for LowerCtx<'_, '_> {
+impl<'a, 'b> std::ops::DerefMut for LowerCtx<'a, 'b> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.icx
     }
@@ -427,19 +427,41 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
 }
 
 pub(crate) fn static_ty(db: &dyn HirDatabase, id: StaticId) -> Ty {
-    let def = id.into();
-    let infer = db.infer(def);
-    let body = db.body(def);
+    let data = db.static_data(id);
 
-    infer.type_of_expr[body.body_expr()]
+    if let Some(ty) = data.ty {
+        let resolver = id.resolver(db.upcast());
+        let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+        let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+        let ty = lcx.lower_ty(ty);
+
+        lcx.finish(ty).ty
+    } else {
+        let def = id.into();
+        let infer = db.infer(def);
+        let body = db.body(def);
+
+        infer.type_of_expr[body.body_expr()]
+    }
 }
 
 pub(crate) fn const_ty(db: &dyn HirDatabase, id: ConstId) -> Ty {
-    let def = id.into();
-    let infer = db.infer(def);
-    let body = db.body(def);
+    let data = db.const_data(id);
 
-    infer.type_of_expr[body.body_expr()]
+    if let Some(ty) = data.ty {
+        let resolver = id.resolver(db.upcast());
+        let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+        let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+        let ty = lcx.lower_ty(ty);
+
+        lcx.finish(ty).ty
+    } else {
+        let def = id.into();
+        let infer = db.infer(def);
+        let body = db.body(def);
+
+        infer.type_of_expr[body.body_expr()]
+    }
 }
 
 pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult> {

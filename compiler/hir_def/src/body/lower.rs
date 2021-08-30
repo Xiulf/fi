@@ -1,10 +1,9 @@
 use crate::arena::Arena;
-use crate::ast_id::{AstIdMap, FileAstId};
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
 use crate::data::FixityData;
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
-use crate::expr::{dummy_expr_id, CaseArm, Expr, ExprId, Literal, RecordField, Stmt};
+use crate::expr::{CaseArm, Expr, ExprId, Literal, RecordField, Stmt};
 use crate::id::{FixityId, LocalModuleId, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
 use crate::item_tree::Assoc;
@@ -16,36 +15,10 @@ use base_db::input::FileId;
 use std::sync::Arc;
 use syntax::{ast, AstPtr};
 
-pub struct LowerCtx {
-    file_id: FileId,
-    source_ast_id_map: Arc<AstIdMap>,
-}
-
-impl LowerCtx {
-    pub fn new(db: &dyn DefDatabase, file_id: FileId) -> Self {
-        LowerCtx {
-            file_id,
-            source_ast_id_map: db.ast_id_map(file_id),
-        }
-    }
-
-    pub(crate) fn file_id(&self) -> FileId {
-        self.file_id
-    }
-
-    pub(crate) fn lower_path(&self, ast: ast::Path) -> Path {
-        Path::lower(ast)
-    }
-
-    pub(crate) fn ast_id<N: ast::AstNode>(&self, item: &N) -> FileAstId<N> {
-        self.source_ast_id_map.ast_id(item)
-    }
-}
-
 pub(super) fn lower(
     db: &dyn DefDatabase,
-    params: Option<ast::AstChildren<ast::Pat>>,
-    body: Option<ast::Expr>,
+    params: Option<Vec<ast::AstChildren<ast::Pat>>>,
+    body: Option<super::BodyExpr>,
     file_id: FileId,
     module: ModuleId,
 ) -> (Body, BodySourceMap) {
@@ -59,7 +32,7 @@ pub(super) fn lower(
             exprs: Arena::default(),
             pats: Arena::default(),
             params: Vec::new(),
-            body_expr: dummy_expr_id(),
+            body_expr: ExprId::DUMMY,
             type_map: TypeMap::default(),
         },
         type_builder: TypeMapBuilder::default(),
@@ -78,16 +51,57 @@ struct ExprCollector<'a> {
 }
 
 impl<'a> ExprCollector<'a> {
-    fn collect(mut self, params: Option<ast::AstChildren<ast::Pat>>, body: Option<ast::Expr>) -> (Body, BodySourceMap) {
-        if let Some(params) = params {
-            for param in params {
-                let pat = self.collect_pat(param);
+    fn collect(
+        mut self,
+        params: Option<Vec<ast::AstChildren<ast::Pat>>>,
+        body: Option<super::BodyExpr>,
+    ) -> (Body, BodySourceMap) {
+        match body {
+            | Some(super::BodyExpr::Single(expr)) => {
+                if let Some(mut params) = params {
+                    for param in params.remove(0) {
+                        let pat = self.collect_pat(param);
 
-                self.body.params.push(pat);
-            }
+                        self.body.params.push(pat);
+                    }
+                }
+
+                self.body.body_expr = self.collect_expr(expr);
+            },
+            | Some(super::BodyExpr::Case(exprs)) => {
+                let params = params.unwrap();
+                let mut param_count = 0;
+                let mut arms = Vec::new();
+
+                for (params, expr) in params.into_iter().zip(exprs) {
+                    let pats = params.into_iter().map(|p| self.collect_pat(p)).collect::<Vec<_>>();
+                    param_count = pats.len();
+                    let pat = self.alloc_pat_desugared(Pat::Tuple { pats });
+                    let expr = self.collect_expr(expr);
+
+                    arms.push(CaseArm { pat, expr, guard: None });
+                }
+
+                let exprs = (0..param_count)
+                    .map(|i| {
+                        let name = format!("${}", i).as_name();
+                        let path = Path::from(name.clone());
+                        let pat = self.alloc_pat_desugared(Pat::Bind { name, subpat: None });
+                        let expr = self.alloc_expr_desugared(Expr::Path { path });
+
+                        self.body.params.push(pat);
+                        expr
+                    })
+                    .collect::<Vec<_>>();
+
+                let pred = self.alloc_expr_desugared(Expr::Tuple { exprs });
+
+                self.body.body_expr = self.alloc_expr_desugared(Expr::Case { pred, arms });
+            },
+            | None => {
+                self.body.body_expr = self.missing_expr();
+            },
         }
-
-        self.body.body_expr = self.collect_expr_opt(body);
 
         let (type_map, type_source_map) = self.type_builder.finish();
 
@@ -95,10 +109,6 @@ impl<'a> ExprCollector<'a> {
         self.source_map.type_source_map = type_source_map;
 
         (self.body, self.source_map)
-    }
-
-    fn ctx(&self) -> LowerCtx {
-        LowerCtx::new(self.db, self.file_id)
     }
 
     fn to_source<T>(&mut self, value: T) -> InFile<T> {

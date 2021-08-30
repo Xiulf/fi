@@ -8,7 +8,7 @@ use crate::path::Path;
 use crate::type_ref::{Constraint, LocalTypeRefId, LocalTypeVarId, TypeMap, TypeRef, TypeSourceMap};
 use base_db::input::FileId;
 use std::sync::Arc;
-use syntax::{ast, AstPtr};
+use syntax::ast;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct FixityData {
@@ -42,6 +42,9 @@ pub struct StaticData {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConstData {
     pub name: Name,
+    pub ty: Option<LocalTypeRefId>,
+    type_map: TypeMap,
+    type_source_map: TypeSourceMap,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -182,8 +185,25 @@ impl ConstData {
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
+        let src = loc.source(db);
+        let mut type_builder = TypeMap::builder();
+        let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
+        let (type_map, type_source_map) = type_builder.finish();
 
-        Arc::new(ConstData { name: it.name.clone() })
+        Arc::new(ConstData {
+            name: it.name.clone(),
+            ty,
+            type_map,
+            type_source_map,
+        })
+    }
+
+    pub fn type_map(&self) -> &TypeMap {
+        &self.type_map
+    }
+
+    pub fn type_source_map(&self) -> &TypeSourceMap {
+        &self.type_source_map
     }
 }
 

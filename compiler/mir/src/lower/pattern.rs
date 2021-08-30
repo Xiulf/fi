@@ -113,14 +113,13 @@ impl BodyLowerCtx<'_> {
         discrs: &mut FxHashMap<Place, Place>,
     ) -> Option<Pattern> {
         let data = self.db.type_ctor_data(id.parent);
-        let ctor = &data.ctors[id.local_id];
 
         if data.ctors.len() == 1 {
             let preds = (0..args.len()).map(|i| pred.clone().field(i)).collect::<Vec<_>>();
 
             self.convert_pats(&preds, args, discrs)
         } else {
-            let idx = data.ctors.iter().position(|(i, _)| i == id.local_id).unwrap();
+            let idx: u32 = id.local_id.into_raw().into();
             let discr = discrs
                 .entry(pred.clone())
                 .or_insert_with(|| {
@@ -134,7 +133,7 @@ impl BodyLowerCtx<'_> {
                 .clone();
 
             let discr = Pattern::Check(Operand::Place(discr), CheckVal::Scalar(idx as u128));
-            let pred = pred.downcast(idx);
+            let pred = pred.downcast(idx as usize);
             let preds = (0..args.len()).map(|i| pred.clone().field(i)).collect::<Vec<_>>();
 
             if let Some(mut pats) = self.convert_pats(&preds, args, discrs) {

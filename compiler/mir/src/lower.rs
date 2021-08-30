@@ -629,11 +629,17 @@ impl<'a> BodyLowerCtx<'a> {
                 | _ => Operand::Const(Const::Undefined, self.db.mir_type(hir_ty)),
             },
             | Some((ValueNs::Ctor(id), _)) => {
+                let data = self.db.type_ctor_data(id.parent);
+                let idx: u32 = id.local_id.into_raw().into();
                 let ret = ret.take().unwrap_or_else(|| {
                     let ty = self.db.mir_type(hir_ty);
 
                     Place::new(self.builder.create_var(ty))
                 });
+
+                if data.ctors.len() > 1 {
+                    self.builder.set_discr(ret.clone(), idx as u128);
+                }
 
                 Operand::Place(ret)
             },

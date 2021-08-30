@@ -1,3 +1,4 @@
+mod duplicate_declaration;
 mod mismatched_kind;
 mod mismatched_type;
 mod unresolved_operator;
@@ -11,6 +12,10 @@ pub trait Diagnostic {
 
     fn range(&self) -> TextRange;
 
+    fn level(&self) -> Level {
+        Level::Error
+    }
+
     fn primary_annotation(&self) -> Option<SourceAnnotation> {
         None
     }
@@ -22,6 +27,13 @@ pub trait Diagnostic {
     fn notes(&self) -> Vec<String> {
         Vec::new()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Level {
+    Error,
+    Warning,
+    Info,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +75,8 @@ impl<DB: hir::db::HirDatabase> DiagnosticForWith<DB> for dyn hir::diagnostic::Di
             f(&unsolved_constraint::UnsolvedConstraint::new(with, v))
         } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::UnresolvedOperator>() {
             f(&unresolved_operator::UnresolvedOperator::new(with, v))
+        } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::DuplicateDeclaration>() {
+            f(&duplicate_declaration::DuplicateDeclaration::new(with, v))
         } else {
             f(&GenericDiagnostic { diagnostic: self })
         }

@@ -174,6 +174,7 @@ impl Driver {
             let mut cmd = std::process::Command::new(path);
 
             cmd.args(args);
+            println!("    \x1B[1;32m\x1B[1mRunning\x1B[0m {:?}", cmd);
             cmd.status().unwrap().success()
         } else {
             false

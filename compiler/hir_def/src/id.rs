@@ -184,6 +184,7 @@ pub enum ModuleDefId {
 pub enum TypedDefId {
     FuncId(FuncId),
     StaticId(StaticId),
+    ConstId(ConstId),
     TypeAliasId(TypeAliasId),
     TypeCtorId(TypeCtorId),
     CtorId(CtorId),
@@ -243,6 +244,7 @@ impl HasModule for TypedDefId {
         match *self {
             | TypedDefId::FuncId(id) => id.lookup(db).module(db),
             | TypedDefId::StaticId(id) => id.lookup(db).module(db),
+            | TypedDefId::ConstId(id) => id.lookup(db).module(db),
             | TypedDefId::TypeAliasId(id) => id.lookup(db).module,
             | TypedDefId::TypeCtorId(id) => id.lookup(db).module,
             | TypedDefId::CtorId(id) => id.parent.lookup(db).module(db),
@@ -287,6 +289,7 @@ impl TypeVarOwner {
             | TypeVarOwner::TypedDefId(id) => match id {
                 | TypedDefId::FuncId(id) => f(db.func_data(id).type_map()),
                 | TypedDefId::StaticId(id) => f(db.static_data(id).type_map()),
+                | TypedDefId::ConstId(id) => f(db.const_data(id).type_map()),
                 | TypedDefId::TypeAliasId(id) => f(db.type_alias_data(id).type_map()),
                 | TypedDefId::TypeCtorId(id) => f(db.type_ctor_data(id).type_map()),
                 | TypedDefId::CtorId(id) => f(db.type_ctor_data(id.parent).type_map()),
@@ -302,6 +305,7 @@ impl TypeVarOwner {
             | TypeVarOwner::TypedDefId(id) => match id {
                 | TypedDefId::FuncId(id) => f(db.func_data(id).type_source_map()),
                 | TypedDefId::StaticId(id) => f(db.static_data(id).type_source_map()),
+                | TypedDefId::ConstId(id) => f(db.const_data(id).type_source_map()),
                 | TypedDefId::TypeAliasId(id) => f(db.type_alias_data(id).type_source_map()),
                 | TypedDefId::TypeCtorId(id) => f(db.type_ctor_data(id).type_source_map()),
                 | TypedDefId::CtorId(id) => f(db.type_ctor_data(id.parent).type_source_map()),
@@ -342,6 +346,7 @@ impl TypedDefId {
         match self {
             | TypedDefId::FuncId(id) => id.lookup(db).container,
             | TypedDefId::StaticId(id) => id.lookup(db).container,
+            | TypedDefId::ConstId(id) => ContainerId::Module(id.lookup(db).module),
             | TypedDefId::TypeAliasId(id) => ContainerId::Module(id.lookup(db).module),
             | TypedDefId::TypeCtorId(id) => ContainerId::Module(id.lookup(db).module),
             | TypedDefId::CtorId(id) => ContainerId::Module(id.parent.lookup(db).module),
@@ -405,6 +410,7 @@ impl HasSource for TypedDefId {
         match self {
             | TypedDefId::FuncId(id) => id.lookup(db).source(db).map(Into::into),
             | TypedDefId::StaticId(id) => id.lookup(db).source(db).map(Into::into),
+            | TypedDefId::ConstId(id) => id.lookup(db).source(db).map(Into::into),
             | TypedDefId::TypeAliasId(id) => id.lookup(db).source(db).map(Into::into),
             | TypedDefId::TypeCtorId(id) => id.lookup(db).source(db).map(Into::into),
             | TypedDefId::CtorId(id) => id.parent.lookup(db).source(db).map(Into::into),
@@ -499,7 +505,7 @@ macro_rules! impl_from {
 
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, ClassId, InstanceId for AttrDefId);
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId for ModuleDefId);
-impl_from!(FuncId, StaticId, TypeAliasId, TypeCtorId, CtorId, ClassId, InstanceId for TypedDefId);
+impl_from!(FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId, InstanceId for TypedDefId);
 impl_from!(FuncId, StaticId, ConstId, CtorId for ValueTyDefId);
 impl_from!(FuncId, StaticId, ConstId for DefWithBodyId);
 impl_from!(DefWithBodyId, TypedDefId for TypeVarOwner);

@@ -15,7 +15,9 @@ use hir_def::arena::ArenaMap;
 use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
-use hir_def::id::{AssocItemId, ClassId, ContainerId, DefWithBodyId, HasModule, InstanceId, Lookup, TypeVarOwner};
+use hir_def::id::{
+    AssocItemId, ClassId, ContainerId, DefWithBodyId, HasModule, InstanceId, Lookup, TypeVarOwner, ValueTyDefId,
+};
 use hir_def::pat::PatId;
 use hir_def::resolver::Resolver;
 use rustc_hash::FxHashMap;
@@ -29,6 +31,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
     if let DefWithBodyId::FuncId(id) = def {
         let data = db.func_data(id);
         let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+        let diags = lcx.result.diagnostics.len();
         let var_kinds = data
             .vars
             .iter()
@@ -48,6 +51,8 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             .filter_map(|c| lcx.lower_constraint(c))
             .collect::<Vec<_>>();
 
+        icx.result.diagnostics.truncate(diags);
+
         for ctnt in &ctnts {
             icx.class_env.push(ctnt.clone(), true);
         }
@@ -63,6 +68,24 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
         }
     } else {
         icx.infer_body();
+    }
+
+    let has_ann = match def {
+        | DefWithBodyId::FuncId(id) => db.func_data(id).ty.is_some(),
+        | DefWithBodyId::StaticId(id) => db.static_data(id).ty.is_some(),
+        | DefWithBodyId::ConstId(id) => db.const_data(id).ty.is_some(),
+    };
+
+    if has_ann {
+        let ann = db.value_ty(match def {
+            | DefWithBodyId::FuncId(id) => ValueTyDefId::FuncId(id),
+            | DefWithBodyId::StaticId(id) => ValueTyDefId::StaticId(id),
+            | DefWithBodyId::ConstId(id) => ValueTyDefId::ConstId(id),
+        });
+
+        let self_type = icx.result.self_type;
+
+        assert!(icx.subsume_types(self_type, ann, body.body_expr().into()));
     }
 
     Arc::new(icx.finish())
