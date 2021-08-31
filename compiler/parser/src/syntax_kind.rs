@@ -136,7 +136,6 @@ pub enum SyntaxKind {
     ROW_TAIL,
 
     SENTINEL,
-    GENERICS,
     TYPE_VAR,
     CONSTRAINT,
 

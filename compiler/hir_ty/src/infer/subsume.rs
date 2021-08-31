@@ -1,5 +1,4 @@
 use super::{ExprOrPatId, InferenceContext};
-use crate::display::HirDisplay;
 use crate::ty::*;
 
 #[derive(PartialEq)]

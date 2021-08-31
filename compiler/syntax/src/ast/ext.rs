@@ -275,10 +275,6 @@ impl ItemFun {
     pub fn is_foreign(&self) -> bool {
         support::token(&self.0, FOREIGN_KW).is_some()
     }
-
-    pub fn generics(&self) -> Option<Generics> {
-        support::child(&self.0)
-    }
 }
 
 impl AttrsOwner for ItemStatic {
@@ -591,16 +587,6 @@ impl Sentinel {
         let text = int.text();
 
         text.parse().unwrap()
-    }
-}
-
-impl Generics {
-    pub fn vars(&self) -> AstChildren<TypeVar> {
-        support::children(&self.0)
-    }
-
-    pub fn constraints(&self) -> AstChildren<Constraint> {
-        support::children(&self.0)
     }
 }
 

@@ -2,8 +2,8 @@ module main =
 
 import core
 import term (Term, Var, Abs, App)
+import core/ops/add/intrinsics as i
 
-fun main :: ()
 fun main = do
     let t = term/new $ Var 0
     let t = term/new $ Abs t
@@ -19,7 +19,3 @@ fun main = do
     term/print t
     print "\n"
     term/drop t
-
-
-fun not False = True
-fun not True = False

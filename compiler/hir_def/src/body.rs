@@ -55,8 +55,8 @@ impl Body {
                 let f = f.lookup(db);
                 let src = f.source(db);
                 let group = src.value.group().collect::<Vec<_>>();
-                let expr = if group.len() == 1 {
-                    group.first().and_then(|it| it.body()).map(BodyExpr::Single)
+                let expr = if group.len() == 1 || (group.len() == 2 && group[0].ty().is_some()) {
+                    group.last().and_then(|it| it.body()).map(BodyExpr::Single)
                 } else {
                     Some(BodyExpr::Case(group.iter().filter_map(|it| it.body()).collect()))
                 };
@@ -64,7 +64,7 @@ impl Body {
                 params = Some(
                     group
                         .iter()
-                        .filter_map(|it| if it.ty().is_none() { Some(it.args()) } else { None })
+                        .filter_map(|it| if it.body().is_some() { Some(it.args()) } else { None })
                         .collect::<Vec<_>>(),
                 );
 

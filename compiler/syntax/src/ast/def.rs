@@ -75,7 +75,6 @@ ast_node!(RowField, ROW_FIELD);
 ast_node!(RowTail, ROW_TAIL);
 
 ast_node!(Sentinel, SENTINEL);
-ast_node!(Generics, GENERICS);
 ast_node!(TypeVar, TYPE_VAR);
 ast_node!(Constraint, CONSTRAINT);
 

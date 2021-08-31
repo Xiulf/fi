@@ -184,6 +184,13 @@ impl InferenceContext<'_> {
                 self.unify_types(sk, t2)
             },
             | (_, TyKind::ForAll(_, _)) => self.unify_types(t2, t1),
+            | (TyKind::Ctnt(c1, t1), TyKind::Ctnt(c2, t2)) if c1.class == c2.class => {
+                c1.types
+                    .iter()
+                    .zip(c2.types.iter())
+                    .all(|(&t1, &t2)| self.unify_types(t1, t2))
+                    && self.unify_types(t1, t2)
+            },
             | (_, _) => false,
         }
     }

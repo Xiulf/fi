@@ -110,12 +110,8 @@ crate fn fun(p: &mut Parser, m: Marker) {
         types::func(p);
         m.complete(p, ITEM_FUN);
     } else {
-        while !p.at_ts(TokenSet::new(&[EOF, LYT_SEP, LYT_END, EQUALS, PIPE])) {
+        while !p.at_ts(TokenSet::new(&[EOF, LYT_SEP, LYT_END, EQUALS])) {
             patterns::atom(p);
-        }
-
-        if p.eat(PIPE) {
-            types::generics(p, EQUALS);
         }
 
         p.expect(EQUALS);

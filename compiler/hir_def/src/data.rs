@@ -117,14 +117,27 @@ impl FuncData {
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
-        let (vars, constraints) = if let Some(gen) = src.value.generics() {
-            let vars = gen.vars().filter_map(|t| type_builder.alloc_type_var(t)).collect();
-            let constraints = gen
-                .constraints()
-                .filter_map(|c| type_builder.lower_constraint(c))
-                .collect();
+        let (vars, constraints) = if let Some(mut ty) = ty {
+            let mut vars = Vec::new();
+            let mut constraints = Vec::new();
 
-            (vars, constraints)
+            if it.has_body {
+                while it.has_body {
+                    match type_builder.map()[ty] {
+                        | TypeRef::Forall(ref vs, t) => {
+                            vars.extend_from_slice(vs);
+                            ty = t;
+                        },
+                        | TypeRef::Constraint(ref ctnt, t) => {
+                            constraints.push(ctnt.clone());
+                            ty = t;
+                        },
+                        | _ => break,
+                    }
+                }
+            }
+
+            (vars.into_boxed_slice(), constraints.into_boxed_slice())
         } else {
             (Box::new([]) as Box<[_]>, Box::new([]) as Box<[_]>)
         };

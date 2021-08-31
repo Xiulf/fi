@@ -218,26 +218,6 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     }
 }
 
-crate fn generics(p: &mut Parser, end: SyntaxKind) {
-    let m = p.start();
-
-    while !p.at_ts(TokenSet::new(&[EOF, COLON, end])) {
-        type_var(p);
-    }
-
-    if p.eat(COLON) {
-        while !p.at(EOF) && !p.at(end) {
-            constraint(p);
-
-            if !p.at(end) {
-                p.expect(COMMA);
-            }
-        }
-    }
-
-    m.complete(p, GENERICS);
-}
-
 crate fn constraint(p: &mut Parser) {
     let m = p.start();
 
