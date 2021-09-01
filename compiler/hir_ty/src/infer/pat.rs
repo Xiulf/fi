@@ -3,7 +3,6 @@ use crate::lower::LowerCtx;
 use crate::ty::*;
 use hir_def::expr::Literal;
 use hir_def::pat::{Pat, PatId};
-use hir_def::per_ns::Visibility;
 use hir_def::resolver::ValueNs;
 use std::sync::Arc;
 
@@ -34,21 +33,28 @@ impl BodyInferenceContext<'_> {
                 ret
             },
             | Pat::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
-                | Some((ValueNs::Ctor(id), Visibility::Public)) => {
-                    let ty = self.db.value_ty(id.into());
+                | Some((value, vis)) => {
+                    if !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
+                        self.report(InferenceDiagnostic::PrivateValue { id: pat.into() });
+                    }
 
-                    self.instantiate(ty, pat.into())
-                },
-                | Some((ValueNs::Const(id), Visibility::Public)) => {
-                    let ty = self.db.value_ty(id.into());
+                    match value {
+                        | ValueNs::Ctor(id) => {
+                            let ty = self.db.value_ty(id.into());
 
-                    self.instantiate(ty, pat.into())
+                            self.instantiate(ty, pat.into())
+                        },
+                        | ValueNs::Const(id) => {
+                            let ty = self.db.value_ty(id.into());
+
+                            self.instantiate(ty, pat.into())
+                        },
+                        | _ => {
+                            todo!();
+                        },
+                    }
                 },
-                | Some((_, Visibility::Private)) => {
-                    self.report(InferenceDiagnostic::PrivateValue { id: pat.into() });
-                    self.error()
-                },
-                | _ => {
+                | None => {
                     self.report(InferenceDiagnostic::UnresolvedValue { id: pat.into() });
                     self.error()
                 },

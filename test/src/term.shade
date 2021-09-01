@@ -1,6 +1,5 @@
 module term (
-    Term, Abs, Var, App,
-    new, drop, print, eval,
+    Term, new, drop, print, eval,
 ) =
 
 import core

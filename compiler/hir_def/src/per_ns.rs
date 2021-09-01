@@ -1,17 +1,12 @@
 use crate::id::ModuleDefId;
 use crate::item_scope::ItemInNs;
+use crate::visibility::Visibility;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PerNs<T = ModuleDefId> {
     pub types: Option<(T, Visibility)>,
     pub values: Option<(T, Visibility)>,
     pub modules: Option<(T, Visibility)>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Visibility {
-    Private,
-    Public,
 }
 
 impl<T> PerNs<T> {
@@ -67,11 +62,11 @@ impl<T> PerNs<T> {
         }
     }
 
-    pub fn filter_vis(self, f: impl Fn(&(T, Visibility)) -> bool) -> Self {
+    pub fn filter_vis(self, mut f: impl FnMut(Visibility) -> bool) -> Self {
         PerNs {
-            types: self.types.filter(&f),
-            values: self.values.filter(&f),
-            modules: self.modules.filter(f),
+            types: self.types.filter(|&(_, v)| f(v)),
+            values: self.values.filter(|&(_, v)| f(v)),
+            modules: self.modules.filter(|&(_, v)| f(v)),
         }
     }
 

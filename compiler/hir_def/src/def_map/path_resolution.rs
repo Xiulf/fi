@@ -3,7 +3,8 @@ use crate::def_map::DefMap;
 use crate::id::{LocalModuleId, ModuleDefId};
 use crate::name::Name;
 use crate::path::Path;
-use crate::per_ns::{PerNs, Visibility};
+use crate::per_ns::PerNs;
+use crate::visibility::Visibility;
 use base_db::libs::LibId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,14 +91,15 @@ impl DefMap {
                     let module_data = &self[module.local_id];
                     let in_scope = module_data.scope.get(&segment);
 
-                    if module.local_id == original {
-                        in_scope
-                    } else {
-                        module_data
-                            .exports
-                            .get(db, self, module.local_id, &segment)
-                            .or(in_scope.with_vis(Visibility::Private))
-                    }
+                    in_scope
+                    // if module.local_id == original {
+                    //     in_scope
+                    // } else {
+                    //     module_data
+                    //         .exports
+                    //         .get(db, self, module.local_id, &segment)
+                    //         .or(in_scope)
+                    // }
                 },
                 | s => return ResolveResult::with(PerNs::from(s), FixPoint::Yes, Some(i), Some(self.lib)),
             };
@@ -114,13 +116,11 @@ impl DefMap {
         mode: ResolveMode,
     ) -> PerNs {
         let in_scope = self[module].scope.get(name);
-        let from_scope = match mode {
-            | ResolveMode::Import => self[module]
-                .exports
-                .get(db, self, module, name)
-                .or(in_scope.with_vis(Visibility::Private)),
-            | ResolveMode::Other => in_scope,
-        };
+        // let from_scope = match mode {
+        //     | ResolveMode::Import => self[module].exports.get(db, self, module, name).or(in_scope),
+        //     | ResolveMode::Other => in_scope,
+        // };
+        let from_scope = in_scope;
 
         let from_extern = self
             .extern_prelude

@@ -4,9 +4,10 @@ use crate::expr::ExprId;
 use crate::id::*;
 use crate::pat::PatId;
 use crate::path::Path;
-use crate::per_ns::{PerNs, Visibility};
+use crate::per_ns::PerNs;
 use crate::scope::{ExprScopeId, ExprScopes, TypeScopeId, TypeScopes};
 use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap};
+use crate::visibility::Visibility;
 use base_db::libs::LibId;
 use std::sync::Arc;
 
@@ -167,6 +168,12 @@ impl Resolver {
             | Scope::ExprScope(it) => Some(it.owner),
             | _ => None,
         })
+    }
+
+    pub fn module(&self) -> Option<ModuleId> {
+        let (def_map, local_id) = self.module_scope()?;
+
+        Some(def_map.module_id(local_id))
     }
 
     pub fn type_var_index(&self, tv: TypeVarId) -> Option<usize> {

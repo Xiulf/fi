@@ -7,10 +7,10 @@ use hir_def::arena::ArenaMap;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::id::*;
 use hir_def::path::Path;
-use hir_def::per_ns::Visibility;
 use hir_def::resolver::HasResolver;
 use hir_def::resolver::{Resolver, TypeNs};
 use hir_def::type_ref::{LocalTypeRefId, PtrLen, TypeMap, TypeRef};
+use hir_def::visibility::Visibility;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -283,7 +283,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
         };
 
-        if let Visibility::Private = vis {
+        if !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
             self.report(InferenceDiagnostic::PrivateType { id: type_ref });
         }
 
@@ -340,7 +340,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
         };
 
-        if let Visibility::Private = vis {
+        if !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
             todo!("report error: private class");
         }
 
@@ -503,7 +503,7 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
         .iter()
         .enumerate()
         .rev()
-        .map(|(i, &var)| {
+        .map(|(_i, &var)| {
             let data = &data.type_map()[var];
             let kind = data.kind.map(|k| ctx.lower_ty(k)).unwrap_or_else(|| ctx.fresh_kind());
 
@@ -535,7 +535,7 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
     ctx.finish(ty)
 }
 
-pub(crate) fn type_for_alias_recover(db: &dyn HirDatabase, _cycle: &[String], id: &TypeAliasId) -> Arc<LowerResult> {
+pub(crate) fn type_for_alias_recover(_db: &dyn HirDatabase, _cycle: &[String], _id: &TypeAliasId) -> Arc<LowerResult> {
     unimplemented!();
 }
 
@@ -600,7 +600,7 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
     ctx.finish(ty)
 }
 
-pub(crate) fn type_for_ctor_recover(db: &dyn HirDatabase, _cycle: &[String], id: &TypeCtorId) -> Arc<LowerResult> {
+pub(crate) fn type_for_ctor_recover(_db: &dyn HirDatabase, _cycle: &[String], _id: &TypeCtorId) -> Arc<LowerResult> {
     dbg!(_cycle);
     unimplemented!();
 }
@@ -709,7 +709,7 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
 
 pub(crate) fn lower_instance_query(db: &dyn HirDatabase, id: InstanceId) -> Arc<InstanceLowerResult> {
     let data = db.instance_data(id);
-    let type_map = data.type_map();
+    let _type_map = data.type_map();
     let resolver = id.resolver(db.upcast());
     let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
@@ -718,7 +718,7 @@ pub(crate) fn lower_instance_query(db: &dyn HirDatabase, id: InstanceId) -> Arc<
         .iter()
         .enumerate()
         .rev()
-        .map(|(i, &var)| {
+        .map(|(_i, &_var)| {
             let kind = ctx.fresh_kind();
 
             ctx.push_var_kind(kind);

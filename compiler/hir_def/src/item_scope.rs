@@ -2,7 +2,8 @@ use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::id::{ClassId, HasModule, InstanceId, LocalModuleId, Lookup, ModuleDefId, ModuleId};
 use crate::name::Name;
-use crate::per_ns::{PerNs, Visibility};
+use crate::per_ns::PerNs;
+use crate::visibility::Visibility;
 use base_db::libs::LibId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
@@ -23,9 +24,9 @@ pub struct PerNsAllImports {
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct ItemScope {
-    types: FxHashMap<Name, ModuleDefId>,
-    values: FxHashMap<Name, ModuleDefId>,
-    modules: FxHashMap<Name, ModuleDefId>,
+    types: FxHashMap<Name, (ModuleDefId, Visibility)>,
+    values: FxHashMap<Name, (ModuleDefId, Visibility)>,
+    modules: FxHashMap<Name, (ModuleDefId, Visibility)>,
     unresolved: FxHashSet<Name>,
     defs: Vec<ModuleDefId>,
     instances: Vec<InstanceId>,
@@ -34,8 +35,15 @@ pub struct ItemScope {
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct ItemExports {
     pub(crate) export_all: bool,
-    names: FxHashSet<Name>,
+    names: FxHashMap<Name, ExportNs>,
     modules: FxHashSet<ModuleId>,
+}
+
+#[derive(Debug, Eq, Hash)]
+pub enum ExportNs {
+    Values,
+    Types,
+    Any,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -66,15 +74,15 @@ impl ItemScope {
         self.instances.iter().copied()
     }
 
-    pub fn values(&self) -> impl Iterator<Item = ModuleDefId> + ExactSizeIterator + '_ {
+    pub fn values(&self) -> impl Iterator<Item = (ModuleDefId, Visibility)> + ExactSizeIterator + '_ {
         self.values.values().copied()
     }
 
     pub fn get(&self, name: &Name) -> PerNs {
         PerNs {
-            types: self.types.get(name).map(|&id| (id, Visibility::Public)),
-            values: self.values.get(name).map(|&id| (id, Visibility::Public)),
-            modules: self.modules.get(name).map(|&id| (id, Visibility::Public)),
+            types: self.types.get(name).copied(),
+            values: self.values.get(name).copied(),
+            modules: self.modules.get(name).copied(),
         }
     }
 
@@ -88,8 +96,8 @@ impl ItemScope {
         None
     }
 
-    pub fn classes<'a>(&'a self) -> impl Iterator<Item = ClassId> + 'a {
-        self.types.values().filter_map(|def| match def {
+    pub fn classes(&self) -> impl Iterator<Item = ClassId> + '_ {
+        self.types.values().filter_map(|(def, _)| match def {
             | ModuleDefId::ClassId(t) => Some(*t),
             | _ => None,
         })
@@ -101,39 +109,6 @@ impl ItemScope {
 
     pub fn define_instance(&mut self, instance: InstanceId) {
         self.instances.push(instance);
-    }
-
-    pub fn push_res(&mut self, name: Name, def: PerNs) -> bool {
-        let mut changed = false;
-
-        if let Some((types, _)) = def.types {
-            self.types.entry(name.clone()).or_insert_with(|| {
-                changed = true;
-                types
-            });
-        }
-
-        if let Some((values, _)) = def.values {
-            self.values.entry(name.clone()).or_insert_with(|| {
-                changed = true;
-                values
-            });
-        }
-
-        if let Some((modules, _)) = def.modules {
-            self.modules.entry(name.clone()).or_insert_with(|| {
-                changed = true;
-                modules
-            });
-        }
-
-        if def.is_none() {
-            if self.unresolved.insert(name) {
-                changed = true;
-            }
-        }
-
-        changed
     }
 
     pub fn push_res_with_import(
@@ -165,7 +140,7 @@ impl ItemScope {
                             },
                         }
 
-                        if let Some((f_id, _)) = $def.$field {
+                        if let Some(f_id) = $def.$field {
                             entry.insert(f_id);
                         }
 
@@ -176,7 +151,7 @@ impl ItemScope {
                     {
                         $all_imports.$field.remove(&$lookup);
 
-                        if let Some((f_id, _)) = $def.$field {
+                        if let Some(f_id) = $def.$field {
                             entry.insert(f_id);
                         }
 
@@ -236,78 +211,108 @@ impl ItemScope {
 }
 
 impl ItemExports {
-    pub fn add_name(&mut self, name: Name) {
-        self.names.insert(name);
+    pub fn add_name(&mut self, name: Name, ns: ExportNs) {
+        self.names.insert(name, ns);
     }
 
     pub fn add_module(&mut self, module: ModuleId) {
         self.modules.insert(module);
     }
 
-    pub fn get(&self, db: &dyn DefDatabase, def_map: &DefMap, module: LocalModuleId, name: &Name) -> PerNs {
+    pub fn resolve_visibility(&self, name: &Name, ns: ExportNs, in_module: ModuleId) -> Visibility {
         if self.export_all {
-            def_map[module].scope.get(name)
-        } else if self.names.contains(name) {
-            def_map[module].scope.get(name)
+            Visibility::Public
+        } else if Some(&ns) == self.names.get(name) {
+            Visibility::Public
         } else {
-            for module in &self.modules {
-                let res = if module.lib == def_map.lib() {
-                    def_map[module.local_id].exports.get(db, def_map, module.local_id, name)
-                } else {
-                    let def_map = db.def_map(module.lib);
-
-                    def_map[module.local_id]
-                        .exports
-                        .get(db, &def_map, module.local_id, name)
-                };
-
-                if !res.is_none() {
-                    return res;
-                }
-            }
-
-            PerNs::none()
+            Visibility::Module(in_module)
         }
     }
 
-    pub fn resolutions(&self, db: &dyn DefDatabase, def_map: &DefMap, module: LocalModuleId) -> Vec<(Name, PerNs)> {
-        let get_module_resolutions = |module: &ModuleId| {
-            if module.lib == def_map.lib() {
-                def_map[module.local_id]
-                    .exports
-                    .resolutions(db, def_map, module.local_id)
-            } else {
-                let def_map = db.def_map(module.lib);
-
-                def_map[module.local_id]
-                    .exports
-                    .resolutions(db, &def_map, module.local_id)
-            }
-        };
-
-        let mut res = if self.export_all {
-            self.modules
-                .iter()
-                .flat_map(get_module_resolutions)
-                .chain(def_map[module].scope.resolutions())
-                .filter(|(_, p)| !p.is_none())
-                .collect::<Vec<_>>()
+    pub fn resolve_module_visibility(&self, id: ModuleId, in_module: ModuleId) -> Visibility {
+        if self.modules.contains(&id) {
+            Visibility::Public
         } else {
-            self.modules
-                .iter()
-                .flat_map(get_module_resolutions)
-                .chain(
-                    self.names
-                        .iter()
-                        .map(|name| (name.clone(), def_map[module].scope.get(name))),
-                )
-                .filter(|(_, p)| !p.is_none())
-                .collect::<Vec<_>>()
-        };
+            Visibility::Module(in_module)
+        }
+    }
 
-        res.sort_by_key(|(n, _)| n.clone());
-        res.dedup_by_key(|(n, _)| n.clone());
-        res
+    // pub fn get(&self, db: &dyn DefDatabase, def_map: &DefMap, module: LocalModuleId, name: &Name) -> PerNs {
+    //     if self.export_all {
+    //         def_map[module].scope.get(name)
+    //     } else if self.names.contains(name) {
+    //         def_map[module].scope.get(name)
+    //     } else {
+    //         for module in &self.modules {
+    //             let res = if module.lib == def_map.lib() {
+    //                 def_map[module.local_id].exports.get(db, def_map, module.local_id, name)
+    //             } else {
+    //                 let def_map = db.def_map(module.lib);
+    //
+    //                 def_map[module.local_id]
+    //                     .exports
+    //                     .get(db, &def_map, module.local_id, name)
+    //             };
+    //
+    //             if !res.is_none() {
+    //                 return res;
+    //             }
+    //         }
+    //
+    //         PerNs::none()
+    //     }
+    // }
+    //
+    // pub fn resolutions(&self, db: &dyn DefDatabase, def_map: &DefMap, module: LocalModuleId) -> Vec<(Name, PerNs)> {
+    //     let get_module_resolutions = |module: &ModuleId| {
+    //         if module.lib == def_map.lib() {
+    //             def_map[module.local_id]
+    //                 .exports
+    //                 .resolutions(db, def_map, module.local_id)
+    //         } else {
+    //             let def_map = db.def_map(module.lib);
+    //
+    //             def_map[module.local_id]
+    //                 .exports
+    //                 .resolutions(db, &def_map, module.local_id)
+    //         }
+    //     };
+    //
+    //     let mut res = if self.export_all {
+    //         self.modules
+    //             .iter()
+    //             .flat_map(get_module_resolutions)
+    //             .chain(def_map[module].scope.resolutions())
+    //             .filter(|(_, p)| !p.is_none())
+    //             .collect::<Vec<_>>()
+    //     } else {
+    //         self.modules
+    //             .iter()
+    //             .flat_map(get_module_resolutions)
+    //             .chain(
+    //                 self.names
+    //                     .iter()
+    //                     .map(|name| (name.clone(), def_map[module].scope.get(name))),
+    //             )
+    //             .filter(|(_, p)| !p.is_none())
+    //             .collect::<Vec<_>>()
+    //     };
+    //
+    //     res.sort_by_key(|(n, _)| n.clone());
+    //     res.dedup_by_key(|(n, _)| n.clone());
+    //     res
+    // }
+}
+
+impl PartialEq for ExportNs {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            | (Self::Values, Self::Values) => true,
+            | (Self::Types, Self::Types) => true,
+            | (Self::Any, _) => true,
+            | (_, Self::Any) => true,
+            | (_, _) => false,
+        }
     }
 }
 

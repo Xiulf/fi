@@ -158,10 +158,11 @@ impl Module {
     pub fn is_exported(self, db: &dyn HirDatabase, name: Name) -> bool {
         let def_map = db.def_map(self.id.lib);
 
-        !def_map[self.id.local_id]
-            .exports
-            .get(db.upcast(), &def_map, self.id.local_id, &name)
-            .is_none()
+        true
+        // !def_map[self.id.local_id]
+        //     .exports
+        //     .get(db.upcast(), &def_map, self.id.local_id, &name)
+        //     .is_none()
     }
 
     pub fn declarations(self, db: &dyn HirDatabase) -> Vec<ModuleDef> {

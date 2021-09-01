@@ -9,7 +9,6 @@ use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
 use crate::item_scope::{ItemExports, ItemScope};
 use crate::name::Name;
-use crate::per_ns::PerNs;
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use rustc_hash::FxHashMap;

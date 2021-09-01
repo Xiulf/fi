@@ -23,3 +23,4 @@ pub mod per_ns;
 pub mod resolver;
 pub mod scope;
 pub mod type_ref;
+pub mod visibility;

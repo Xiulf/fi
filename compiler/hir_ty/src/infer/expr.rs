@@ -4,8 +4,8 @@ use crate::lower::LowerCtx;
 use crate::ty::*;
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::{FixityId, TypeVarOwner};
-use hir_def::per_ns::Visibility;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
+use hir_def::visibility::Visibility;
 use std::sync::Arc;
 
 impl BodyInferenceContext<'_> {
@@ -25,12 +25,12 @@ impl BodyInferenceContext<'_> {
             }),
             | Expr::Hole => self.fresh_type(),
             | Expr::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
-                | Some(res) => 't: {
-                    if let Visibility::Private = res.1 {
+                | Some((value, vis)) => 't: {
+                    if !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
                         self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
                     }
 
-                    let id = match res.0 {
+                    let id = match value {
                         | ValueNs::Local(pat) => break 't self.result.type_of_pat[pat],
                         | ValueNs::Fixity(id) => break 't self.infer_infix(id, expr.into()),
                         | ValueNs::Func(id) => {
@@ -89,7 +89,7 @@ impl BodyInferenceContext<'_> {
 
                     self.check_app(mid, *rhs, expr)
                 },
-                | Some((_, Visibility::Private)) => {
+                | Some((_, Visibility::Module(_))) => {
                     self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
                     self.error()
                 },
@@ -355,7 +355,7 @@ impl BodyInferenceContext<'_> {
         let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
             | Some((ValueNs::Func(id), Visibility::Public)) => id.into(),
             | Some((ValueNs::Ctor(id), Visibility::Public)) => id.into(),
-            | Some((_, Visibility::Private)) => {
+            | Some((_, Visibility::Module(_))) => {
                 self.report(InferenceDiagnostic::PrivateValue { id: origin });
                 return self.error();
             },
@@ -465,7 +465,7 @@ impl BodyInferenceContext<'_> {
             }),
             | (Expr::Path { path }, _) => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
                 | Some(res) => {
-                    if let Visibility::Private = res.1 {
+                    if let Visibility::Module(_) = res.1 {
                         self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
                     }
 
