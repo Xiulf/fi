@@ -14,7 +14,7 @@ use base_db::input::{FileId, FileTree};
 use rustc_hash::FxHashMap;
 use syntax::ast;
 
-const FIXED_POINT_LIMIT: usize = 8192;
+// const FIXED_POINT_LIMIT: usize = 8192;
 const GLOBAL_RECURSION_LIMIT: usize = 100;
 
 pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
@@ -378,7 +378,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                 }
             }
         } else {
-            def_map.modules[self.module_id].exports.export_all = true;
+            self.export_all = true;
         }
     }
 

@@ -1,5 +1,4 @@
 use crate::db::DefDatabase;
-use crate::def_map::DefMap;
 use crate::id::{ClassId, HasModule, InstanceId, LocalModuleId, Lookup, ModuleDefId, ModuleId};
 use crate::name::Name;
 use crate::per_ns::PerNs;
