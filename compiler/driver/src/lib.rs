@@ -61,6 +61,8 @@ impl Driver {
             | None => Arc::new(mir::target_lexicon::HOST),
         });
 
+        driver.db.set_libs(driver.libs.clone().into());
+
         Some((driver, lib))
     }
 

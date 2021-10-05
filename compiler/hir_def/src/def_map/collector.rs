@@ -11,7 +11,7 @@ use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::visibility::Visibility;
 use base_db::input::{FileId, FileTree};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use syntax::ast;
 
 // const FIXED_POINT_LIMIT: usize = 8192;
@@ -22,9 +22,10 @@ pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
         db,
         def_map,
         glob_imports: FxHashMap::default(),
+        reexports: FxHashMap::default(),
         unresolved_imports: Vec::new(),
         resolved_imports: Vec::new(),
-        from_all_import: PerNsAllImports::default(),
+        all_imports: PerNsAllImports::default(),
     };
 
     for &dep in &db.libs()[collector.def_map.lib].deps {
@@ -38,16 +39,19 @@ pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
 
     collector.seed_with_items();
     collector.collect();
-    collector.finish()
+    let map = collector.finish();
+    map.dump(&mut std::io::stdout()).unwrap();
+    map
 }
 
 struct DefCollector<'a> {
     db: &'a dyn DefDatabase,
     def_map: DefMap,
-    glob_imports: FxHashMap<LocalModuleId, Vec<LocalModuleId>>,
+    glob_imports: FxHashMap<LocalModuleId, FxHashSet<LocalModuleId>>,
+    reexports: FxHashMap<LocalModuleId, FxHashSet<LocalModuleId>>,
     unresolved_imports: Vec<ImportDirective>,
     resolved_imports: Vec<ImportDirective>,
-    from_all_import: PerNsAllImports,
+    all_imports: PerNsAllImports,
 }
 
 struct ModCollector<'a, 'b> {
@@ -266,9 +270,7 @@ impl<'a> DefCollector<'a> {
 
                             let glob = self.glob_imports.entry(m.local_id).or_default();
 
-                            if !glob.iter().any(|mid| *mid == module_id) {
-                                glob.push(module_id);
-                            }
+                            glob.insert(module_id);
                         }
                     },
                     | Some(_) => unreachable!("invalid type stored in module namespace"),
@@ -315,7 +317,7 @@ impl<'a> DefCollector<'a> {
             let scope = &mut self.def_map.modules[module_id].scope;
 
             changed |= scope.push_res_with_import(
-                &mut self.from_all_import,
+                &mut self.all_imports,
                 (module_id, name.clone()),
                 res.with_vis(visibility),
                 import_type,
@@ -344,6 +346,19 @@ impl<'a> DefCollector<'a> {
                 depth + 1,
             );
         }
+
+        let reexports = self
+            .reexports
+            .get(&module_id)
+            .into_iter()
+            .flat_map(|v| v.iter())
+            .flat_map(|m| self.glob_imports.get(m).into_iter().flat_map(|v| v.iter()))
+            .copied()
+            .collect::<Vec<_>>();
+
+        for m in reexports {
+            self.update_recursive(m, resolutions, visibility, ImportType::Glob, depth + 1);
+        }
     }
 }
 
@@ -355,19 +370,36 @@ impl<'a, 'b> ModCollector<'a, 'b> {
             for export in exports {
                 match export {
                     | ast::Export::Module(name) => {
-                        let name = name.name_ref().unwrap().as_name();
+                        let path = crate::path::convert_path(name.path()).unwrap();
 
-                        if name == def_map[self.module_id].name {
+                        if path.as_ident() == Some(&def_map[self.module_id].name) {
                             self.export_all = true;
                         } else {
-                            let module_id = def_map.add_module(name);
+                            let (res, _) = def_map.resolve_import(self.def_collector.db, self.module_id, &path);
 
-                            def_map.modules[module_id].exports.export_all = true;
-                            def_map.modules[module_id].origin = super::ModuleOrigin::Virtual { parent: self.module_id };
+                            if let Some((ModuleDefId::ModuleId(m), _)) = res.modules {
+                                def_map.modules[self.module_id].exports.add_module(m);
 
-                            let module_id = def_map.module_id(module_id);
+                                if m.lib == def_map.lib {
+                                    let entry = self.def_collector.reexports.entry(m.local_id).or_default();
 
-                            def_map.modules[self.module_id].exports.add_module(module_id);
+                                    entry.insert(self.module_id);
+                                }
+                            } else if let Some(name) = path.as_ident() {
+                                let module_id = def_map.add_module(name.clone());
+                                let entry = self.def_collector.reexports.entry(module_id).or_default();
+
+                                entry.insert(self.module_id);
+                                def_map.modules[module_id].exports.export_all = true;
+                                def_map.modules[module_id].origin =
+                                    super::ModuleOrigin::Virtual { parent: self.module_id };
+
+                                let module_id = def_map.module_id(module_id);
+
+                                def_map.modules[self.module_id].exports.add_module(module_id);
+                            } else {
+                                todo!();
+                            }
                         }
                     },
                     | ast::Export::Name(name) => {

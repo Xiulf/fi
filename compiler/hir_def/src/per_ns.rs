@@ -3,10 +3,10 @@ use crate::item_scope::ItemInNs;
 use crate::visibility::Visibility;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PerNs<T = ModuleDefId> {
-    pub types: Option<(T, Visibility)>,
-    pub values: Option<(T, Visibility)>,
-    pub modules: Option<(T, Visibility)>,
+pub struct PerNs<T = (ModuleDefId, Visibility)> {
+    pub types: Option<T>,
+    pub values: Option<T>,
+    pub modules: Option<T>,
 }
 
 impl<T> PerNs<T> {
@@ -18,6 +18,20 @@ impl<T> PerNs<T> {
         }
     }
 
+    pub fn is_none(&self) -> bool {
+        self.types.is_none() && self.values.is_none() && self.modules.is_none()
+    }
+
+    pub fn or(self, other: Self) -> Self {
+        PerNs {
+            types: self.types.or(other.types),
+            values: self.values.or(other.values),
+            modules: self.modules.or(other.modules),
+        }
+    }
+}
+
+impl<T> PerNs<(T, Visibility)> {
     pub fn values(id: T, v: Visibility) -> Self {
         PerNs {
             values: Some((id, v)),
@@ -50,18 +64,6 @@ impl<T> PerNs<T> {
         }
     }
 
-    pub fn is_none(&self) -> bool {
-        self.types.is_none() && self.values.is_none() && self.modules.is_none()
-    }
-
-    pub fn or(self, other: Self) -> Self {
-        PerNs {
-            types: self.types.or(other.types),
-            values: self.values.or(other.values),
-            modules: self.modules.or(other.modules),
-        }
-    }
-
     pub fn filter_vis(self, mut f: impl FnMut(Visibility) -> bool) -> Self {
         PerNs {
             types: self.types.filter(|&(_, v)| f(v)),
@@ -79,7 +81,7 @@ impl<T> PerNs<T> {
     }
 }
 
-impl PerNs<ModuleDefId> {
+impl PerNs<(ModuleDefId, Visibility)> {
     pub fn iter_items(self) -> impl Iterator<Item = ItemInNs> {
         self.types
             .map(|it| ItemInNs::Types(it.0))
@@ -89,7 +91,7 @@ impl PerNs<ModuleDefId> {
     }
 }
 
-impl From<ModuleDefId> for PerNs<ModuleDefId> {
+impl From<ModuleDefId> for PerNs<(ModuleDefId, Visibility)> {
     fn from(def: ModuleDefId) -> Self {
         match def {
             | ModuleDefId::ModuleId(_) => PerNs::modules(def, Visibility::Public),
@@ -105,7 +107,7 @@ impl From<ModuleDefId> for PerNs<ModuleDefId> {
     }
 }
 
-impl<T> Iterator for PerNs<T> {
+impl<T> Iterator for PerNs<(T, Visibility)> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

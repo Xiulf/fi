@@ -26,6 +26,7 @@ pub struct ItemScope {
     types: FxHashMap<Name, (ModuleDefId, Visibility)>,
     values: FxHashMap<Name, (ModuleDefId, Visibility)>,
     modules: FxHashMap<Name, (ModuleDefId, Visibility)>,
+    reexports: PerNs<FxHashMap<Name, ModuleDefId>>,
     unresolved: FxHashSet<Name>,
     defs: Vec<ModuleDefId>,
     instances: Vec<InstanceId>,

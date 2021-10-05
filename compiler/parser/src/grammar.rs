@@ -73,7 +73,7 @@ fn export(p: &mut Parser) {
         },
         | MODULE_KW => {
             p.bump(MODULE_KW);
-            paths::name_ref(p);
+            paths::path(p);
             m.complete(p, EXPORT_MODULE);
         },
         | _ => {

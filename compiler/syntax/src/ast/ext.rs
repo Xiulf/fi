@@ -95,12 +95,12 @@ impl IntoIterator for Exports {
 }
 
 impl Export {
-    pub fn name_ref(&self) -> Option<NameRef> {
-        match self {
-            | Export::Name(e) => e.name_ref(),
-            | Export::Module(e) => e.name_ref(),
-        }
-    }
+    // pub fn name_ref(&self) -> Option<NameRef> {
+    //     match self {
+    //         | Export::Name(e) => e.name_ref(),
+    //         | Export::Module(e) => e.name_ref(),
+    //     }
+    // }
 }
 
 impl ExportName {
@@ -110,7 +110,7 @@ impl ExportName {
 }
 
 impl ExportModule {
-    pub fn name_ref(&self) -> Option<NameRef> {
+    pub fn path(&self) -> Option<Path> {
         support::child(&self.0)
     }
 }

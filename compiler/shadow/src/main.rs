@@ -94,7 +94,7 @@ fn main() {
         }) {
             driver.docs(lib);
         }
-    } else if let Some(input) = matches.value_of("input") {
+    } else if let Some(input) = matches.value_of("file") {
         let target = matches.value_of("target");
         let output = matches.value_of("output").map(|o| match o {
             | "dynamic" => LibKind::Dynamic,

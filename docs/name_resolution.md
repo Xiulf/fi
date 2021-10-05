@@ -58,6 +58,7 @@ module A {
             public B,
         ],
     },
+    reexports: [],
 }
 
 module B {
@@ -70,7 +71,8 @@ module B {
         modules: [
             public C,
         ],
-    }
+    },
+    reexports: [c]
 }
 
 module C {
@@ -80,6 +82,7 @@ module C {
         ],
         types: [],
         modules: [],
-    }
+    },
+    reexports: [],
 }
 ```

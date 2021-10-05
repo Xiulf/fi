@@ -101,7 +101,7 @@ impl DefMap {
         return go(self, self.root, "root", writer);
 
         fn go(map: &DefMap, module: LocalModuleId, path: &str, writer: &mut dyn io::Write) -> io::Result<()> {
-            write!(writer, "{}\n", path);
+            write!(writer, "{}\n", path)?;
 
             map.modules[module].scope.dump(writer)?;
 

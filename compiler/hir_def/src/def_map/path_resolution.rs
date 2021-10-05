@@ -49,7 +49,12 @@ impl DefMap {
         (res.resolved_def, res.segment_index)
     }
 
-    fn resolve_import(&self, db: &dyn DefDatabase, original: LocalModuleId, path: &Path) -> (PerNs, Option<usize>) {
+    pub(super) fn resolve_import(
+        &self,
+        db: &dyn DefDatabase,
+        original: LocalModuleId,
+        path: &Path,
+    ) -> (PerNs, Option<usize>) {
         let res = self.resolve_mod_path(db, ResolveMode::Import, original, path);
 
         (res.resolved_def, res.segment_index)
