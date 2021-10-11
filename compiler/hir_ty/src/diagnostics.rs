@@ -106,6 +106,26 @@ impl Diagnostic for PrivateType {
 }
 
 #[derive(Debug)]
+pub struct PrivateOperator {
+    pub file: FileId,
+    pub src: SyntaxNodePtr,
+}
+
+impl Diagnostic for PrivateOperator {
+    fn message(&self) -> String {
+        "operator is not exported".to_string()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src)
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
 pub struct MismatchedKind {
     pub file: FileId,
     pub src: SyntaxNodePtr,

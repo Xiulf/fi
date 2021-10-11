@@ -1,5 +1,0 @@
-module B (module B, module C) =
-
-import C
-
-fun b = ()

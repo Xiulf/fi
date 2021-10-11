@@ -26,7 +26,7 @@ pub struct ItemScope {
     types: FxHashMap<Name, (ModuleDefId, Visibility)>,
     values: FxHashMap<Name, (ModuleDefId, Visibility)>,
     modules: FxHashMap<Name, (ModuleDefId, Visibility)>,
-    reexports: PerNs<FxHashMap<Name, ModuleDefId>>,
+    reexports: FxHashMap<Name, PerNs<ModuleDefId>>,
     unresolved: FxHashSet<Name>,
     defs: Vec<ModuleDefId>,
     instances: Vec<InstanceId>,
@@ -36,6 +36,7 @@ pub struct ItemScope {
 pub struct ItemExports {
     pub(crate) export_all: bool,
     names: FxHashMap<Name, ExportNs>,
+    groups: FxHashMap<Name, ExportGroup>,
     modules: FxHashSet<ModuleId>,
 }
 
@@ -44,6 +45,12 @@ pub enum ExportNs {
     Values,
     Types,
     Any,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExportGroup {
+    All,
+    Named(FxHashSet<Name>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,6 +93,14 @@ impl ItemScope {
         }
     }
 
+    pub fn get_reexport(&self, name: &Name) -> PerNs {
+        self.reexports
+            .get(name)
+            .copied()
+            .map(|id| id.map(|id| (id, Visibility::Public)))
+            .unwrap_or_else(PerNs::none)
+    }
+
     pub fn name_of(&self, item: ItemInNs) -> Option<&Name> {
         for (name, per_ns) in self.entries() {
             if item.match_with(per_ns) {
@@ -111,6 +126,17 @@ impl ItemScope {
         self.instances.push(instance);
     }
 
+    pub fn push_reexport(&mut self, name: Name, def: PerNs<ModuleDefId>) {
+        match self.reexports.entry(name) {
+            | Entry::Vacant(e) => {
+                e.insert(def);
+            },
+            | Entry::Occupied(mut e) => {
+                e.insert(e.get().or(def));
+            },
+        }
+    }
+
     pub fn push_res_with_import(
         &mut self,
         all_imports: &mut PerNsAllImports,
@@ -130,7 +156,7 @@ impl ItemScope {
                 let existing = $this.$field.entry($lookup.1.clone());
 
                 match (existing, $def.$field) {
-                    | (Entry::Vacant(entry), Some(_)) => {
+                    | (Entry::Vacant(entry), Some(f_id)) => {
                         match $def_import_type {
                             | ImportType::Glob => {
                                 $all_imports.$field.insert($lookup.clone());
@@ -140,21 +166,15 @@ impl ItemScope {
                             },
                         }
 
-                        if let Some(f_id) = $def.$field {
-                            entry.insert(f_id);
-                        }
-
+                        entry.insert(f_id);
                         $changed = true;
                     },
-                    | (Entry::Occupied(mut entry), Some(_))
+                    | (Entry::Occupied(mut entry), Some(f_id))
                         if $all_imports.$field.contains(&$lookup) && matches!($def_import_type, ImportType::Named) =>
                     {
                         $all_imports.$field.remove(&$lookup);
 
-                        if let Some(f_id) = $def.$field {
-                            entry.insert(f_id);
-                        }
-
+                        entry.insert(f_id);
                         $changed = true;
                     }
                     | _ => {},
@@ -166,17 +186,21 @@ impl ItemScope {
         check_changed!(changed, (self / def).values, all_imports[lookup], def_import_type);
         check_changed!(changed, (self / def).modules, all_imports[lookup], def_import_type);
 
-        if def.is_none() {
-            if self.unresolved.insert(lookup.1) {
-                changed = true;
-            }
+        if def.is_none() && self.unresolved.insert(lookup.1) {
+            changed = true;
         }
 
         changed
     }
 
     pub fn resolutions<'a>(&'a self) -> impl Iterator<Item = (Name, PerNs)> + 'a {
-        self.entries().map(|(name, res)| (name.clone(), res))
+        self.entries()
+            .chain(
+                self.reexports
+                    .iter()
+                    .map(|(name, def)| (name, def.map(|id| (id, Visibility::Public)))),
+            )
+            .map(|(name, res)| (name.clone(), res))
     }
 
     pub fn dump(&self, writer: &mut dyn io::Write) -> io::Result<()> {
@@ -187,16 +211,16 @@ impl ItemScope {
         for (name, def) in entries {
             write!(writer, "{}:", name)?;
 
-            if def.types.is_some() {
-                write!(writer, " t")?;
+            if let Some((_, vis)) = def.types {
+                write!(writer, " {} t", vis)?;
             }
 
-            if def.values.is_some() {
-                write!(writer, " v")?;
+            if let Some((_, vis)) = def.values {
+                write!(writer, " {} v", vis)?;
             }
 
-            if def.modules.is_some() {
-                write!(writer, " m")?;
+            if let Some((_, vis)) = def.modules {
+                write!(writer, " {} m", vis)?;
             }
 
             if def.is_none() {
@@ -219,6 +243,15 @@ impl ItemExports {
         self.modules.insert(module);
     }
 
+    pub fn add_group(&mut self, name: Name, group: ExportGroup) {
+        self.names.insert(name.clone(), ExportNs::Types);
+        self.groups.insert(name, group);
+    }
+
+    pub fn get_group(&self, name: &Name) -> Option<&ExportGroup> {
+        self.groups.get(name)
+    }
+
     pub fn resolve_visibility(&self, name: &Name, ns: ExportNs, in_module: ModuleId) -> Visibility {
         if self.export_all {
             Visibility::Public
@@ -236,72 +269,6 @@ impl ItemExports {
             Visibility::Module(in_module)
         }
     }
-
-    // pub fn get(&self, db: &dyn DefDatabase, def_map: &DefMap, module: LocalModuleId, name: &Name) -> PerNs {
-    //     if self.export_all {
-    //         def_map[module].scope.get(name)
-    //     } else if self.names.contains(name) {
-    //         def_map[module].scope.get(name)
-    //     } else {
-    //         for module in &self.modules {
-    //             let res = if module.lib == def_map.lib() {
-    //                 def_map[module.local_id].exports.get(db, def_map, module.local_id, name)
-    //             } else {
-    //                 let def_map = db.def_map(module.lib);
-    //
-    //                 def_map[module.local_id]
-    //                     .exports
-    //                     .get(db, &def_map, module.local_id, name)
-    //             };
-    //
-    //             if !res.is_none() {
-    //                 return res;
-    //             }
-    //         }
-    //
-    //         PerNs::none()
-    //     }
-    // }
-    //
-    // pub fn resolutions(&self, db: &dyn DefDatabase, def_map: &DefMap, module: LocalModuleId) -> Vec<(Name, PerNs)> {
-    //     let get_module_resolutions = |module: &ModuleId| {
-    //         if module.lib == def_map.lib() {
-    //             def_map[module.local_id]
-    //                 .exports
-    //                 .resolutions(db, def_map, module.local_id)
-    //         } else {
-    //             let def_map = db.def_map(module.lib);
-    //
-    //             def_map[module.local_id]
-    //                 .exports
-    //                 .resolutions(db, &def_map, module.local_id)
-    //         }
-    //     };
-    //
-    //     let mut res = if self.export_all {
-    //         self.modules
-    //             .iter()
-    //             .flat_map(get_module_resolutions)
-    //             .chain(def_map[module].scope.resolutions())
-    //             .filter(|(_, p)| !p.is_none())
-    //             .collect::<Vec<_>>()
-    //     } else {
-    //         self.modules
-    //             .iter()
-    //             .flat_map(get_module_resolutions)
-    //             .chain(
-    //                 self.names
-    //                     .iter()
-    //                     .map(|name| (name.clone(), def_map[module].scope.get(name))),
-    //             )
-    //             .filter(|(_, p)| !p.is_none())
-    //             .collect::<Vec<_>>()
-    //     };
-    //
-    //     res.sort_by_key(|(n, _)| n.clone());
-    //     res.dedup_by_key(|(n, _)| n.clone());
-    //     res
-    // }
 }
 
 impl PartialEq for ExportNs {

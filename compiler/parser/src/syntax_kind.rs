@@ -80,6 +80,9 @@ pub enum SyntaxKind {
     EXPORTS,
     EXPORT_NAME,
     EXPORT_MODULE,
+    EXPORT_GROUP,
+    EXPORT_GROUP_ALL,
+    EXPORT_GROUP_NAMED,
 
     ATTR,
     ATTR_ARG_CALL,

@@ -19,6 +19,7 @@ pub struct DefDiagnostic {
 #[derive(Debug, PartialEq, Eq)]
 pub enum DefDiagnosticKind {
     UnresolvedImport { ast: AstId<ast::ItemImport>, index: usize },
+    PrivateImport { ast: AstId<ast::ItemImport>, index: usize },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -31,6 +32,13 @@ impl DefDiagnostic {
         DefDiagnostic {
             in_module: container,
             kind: DefDiagnosticKind::UnresolvedImport { ast, index },
+        }
+    }
+
+    pub fn private_import(container: LocalModuleId, ast: AstId<ast::ItemImport>, index: usize) -> Self {
+        DefDiagnostic {
+            in_module: container,
+            kind: DefDiagnosticKind::PrivateImport { ast, index },
         }
     }
 
@@ -60,6 +68,31 @@ impl DefDiagnostic {
                     });
                 } else {
                     sink.push(UnresolvedImport {
+                        file: ast.file_id,
+                        node: AstPtr::new(&item.path().unwrap().segments().last().unwrap().name_ref().unwrap()),
+                    });
+                }
+            },
+            | DefDiagnosticKind::PrivateImport { ast, index } => {
+                let item = ast.to_node(db);
+                let mut curr = 0;
+                let mut name = None;
+
+                crate::path::Path::expand_import(InFile::new(ast.file_id, item.clone()), |_, import, _, _, _| {
+                    if curr == *index {
+                        name = import;
+                    }
+
+                    curr += 1;
+                });
+
+                if let Some(name) = name {
+                    sink.push(PrivateImport {
+                        file: ast.file_id,
+                        node: AstPtr::new(&name),
+                    });
+                } else {
+                    sink.push(PrivateImport {
                         file: ast.file_id,
                         node: AstPtr::new(&item.path().unwrap().segments().last().unwrap().name_ref().unwrap()),
                     });
@@ -105,6 +138,26 @@ pub struct UnresolvedImport {
 impl Diagnostic for UnresolvedImport {
     fn message(&self) -> String {
         "unresolved import".to_string()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.node.clone().into())
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct PrivateImport {
+    pub file: FileId,
+    pub node: AstPtr<ast::NameRef>,
+}
+
+impl Diagnostic for PrivateImport {
+    fn message(&self) -> String {
+        "private import".to_string()
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {

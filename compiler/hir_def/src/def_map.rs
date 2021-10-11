@@ -98,7 +98,7 @@ impl DefMap {
     }
 
     pub fn dump(&self, writer: &mut dyn io::Write) -> io::Result<()> {
-        return go(self, self.root, "root", writer);
+        return go(self, self.root, "/", writer);
 
         fn go(map: &DefMap, module: LocalModuleId, path: &str, writer: &mut dyn io::Write) -> io::Result<()> {
             write!(writer, "{}\n", path)?;
@@ -106,7 +106,7 @@ impl DefMap {
             map.modules[module].scope.dump(writer)?;
 
             for (name, child) in &map.modules[module].children {
-                let path = format!("{}.{}", path, name);
+                let path = format!("{}/{}", path, name);
 
                 write!(writer, "\n")?;
                 go(map, *child, &path, writer)?;

@@ -44,18 +44,18 @@ impl Driver {
 
     pub fn init_no_manifest(opts: Opts) -> Option<(Self, LibId)> {
         let mut driver = Driver::default();
-        let path = std::path::PathBuf::from(opts.input);
+        let path = std::path::Path::new(opts.input);
         let lib = manifest::load_normal(
             &mut driver.db,
             &mut driver.libs,
             &mut driver.lib_count,
             &mut driver.file_count,
-            &path,
+            path,
             opts.output.unwrap_or(LibKind::Executable),
         )
         .ok()?;
 
-        driver.target_dir = PathBuf::from(opts.input).join("target");
+        driver.target_dir = path.parent().unwrap().join("target");
         driver.db.set_target_triple(match opts.target {
             | Some(target) => Arc::new(target.parse().unwrap()),
             | None => Arc::new(mir::target_lexicon::HOST),

@@ -7,6 +7,12 @@ ast_node!(Exports, EXPORTS);
 ast_node!(Export {
     Name(ExportName, EXPORT_NAME),
     Module(ExportModule, EXPORT_MODULE),
+    Group(ExportGroup, EXPORT_GROUP),
+});
+
+ast_node!(ExportGroupKind {
+    All(ExportGroupAll, EXPORT_GROUP_ALL),
+    Named(ExportGroupNamed, EXPORT_GROUP_NAMED),
 });
 
 ast_node!(Attr, ATTR);

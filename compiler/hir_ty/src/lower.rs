@@ -10,7 +10,6 @@ use hir_def::path::Path;
 use hir_def::resolver::HasResolver;
 use hir_def::resolver::{Resolver, TypeNs};
 use hir_def::type_ref::{LocalTypeRefId, PtrLen, TypeMap, TypeRef};
-use hir_def::visibility::Visibility;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -283,7 +282,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
         };
 
-        if !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
+        if path.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
             self.report(InferenceDiagnostic::PrivateType { id: type_ref });
         }
 
@@ -340,7 +339,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
         };
 
-        if !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
+        if path.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
             todo!("report error: private class");
         }
 

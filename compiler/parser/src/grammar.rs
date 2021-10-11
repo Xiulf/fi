@@ -67,6 +67,31 @@ fn export(p: &mut Parser) {
     let m = p.start();
 
     match p.current() {
+        | IDENT if p.nth_at(1, L_PAREN) => {
+            paths::name_or_symbol_ref(p);
+
+            let inner = p.start();
+
+            p.bump(L_PAREN);
+
+            if p.eat(DBL_DOT) {
+                p.expect(R_PAREN);
+                inner.complete(p, EXPORT_GROUP_ALL);
+            } else {
+                while !p.at(EOF) && !p.at(R_PAREN) {
+                    paths::name_ref(p);
+
+                    if !p.at(R_PAREN) {
+                        p.expect(COMMA);
+                    }
+                }
+
+                p.expect(R_PAREN);
+                inner.complete(p, EXPORT_GROUP_NAMED);
+            }
+
+            m.complete(p, EXPORT_GROUP);
+        },
         | IDENT | SYMBOL => {
             paths::name_or_symbol_ref(p);
             m.complete(p, EXPORT_NAME);

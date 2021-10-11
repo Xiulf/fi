@@ -688,7 +688,7 @@ impl Align {
     pub const ONE: Self = Self { pow2: 0 };
 
     pub fn from_bits(bits: u64) -> Self {
-        Self::from_bytes(Self::from_bits(bits).bytes())
+        Self::from_bytes(Size::from_bits(bits).bytes())
     }
 
     pub fn from_bytes(mut bytes: u64) -> Self {

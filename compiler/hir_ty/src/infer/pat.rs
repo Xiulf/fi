@@ -34,7 +34,9 @@ impl BodyInferenceContext<'_> {
             },
             | Pat::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
                 | Some((value, vis)) => {
-                    if !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
+                    if path.segments().len() > 1
+                        && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
+                    {
                         self.report(InferenceDiagnostic::PrivateValue { id: pat.into() });
                     }
 

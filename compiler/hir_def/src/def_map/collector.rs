@@ -4,7 +4,7 @@ use crate::def_map::DefMap;
 use crate::diagnostics::DefDiagnostic;
 use crate::id::*;
 use crate::in_file::InFile;
-use crate::item_scope::{ExportNs, ImportType, PerNsAllImports};
+use crate::item_scope::{ExportGroup, ExportNs, ImportType, PerNsAllImports};
 use crate::item_tree::{self, Item, ItemTree, ItemTreeId};
 use crate::name::{AsName, Name};
 use crate::path::Path;
@@ -39,9 +39,7 @@ pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
 
     collector.seed_with_items();
     collector.collect();
-    let map = collector.finish();
-    map.dump(&mut std::io::stdout()).unwrap();
-    map
+    collector.finish()
 }
 
 struct DefCollector<'a> {
@@ -80,6 +78,7 @@ enum PartialResolvedImport {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ImportDirective {
+    resolve_in: LocalModuleId,
     module_id: LocalModuleId,
     import: Import,
     status: PartialResolvedImport,
@@ -104,17 +103,26 @@ impl PartialResolvedImport {
 impl<'a> DefCollector<'a> {
     fn seed_with_items(&mut self) {
         let file_tree = self.db.file_tree(self.def_map.lib);
+        let mut modules = FxHashMap::default();
 
-        if let None = go(self, &file_tree, file_tree.root()) {
+        if let None = go(self, &mut modules, &file_tree, file_tree.root()) {
             let module_id = self.def_map.add_module(Name::default());
 
             self.def_map.root = module_id;
         }
 
-        fn go(this: &mut DefCollector, file_tree: &FileTree, file_id: FileId) -> Option<(Name, LocalModuleId)> {
+        go2(self, &modules, &file_tree, file_tree.root());
+
+        fn go(
+            this: &mut DefCollector,
+            modules: &mut FxHashMap<FileId, (LocalModuleId, bool)>,
+            file_tree: &FileTree,
+            file_id: FileId,
+        ) -> Option<(Name, LocalModuleId)> {
             use syntax::ast::NameOwner;
             let module = this.db.parse(file_id).tree();
             let name = module.name()?.as_name();
+            let exports = module.exports();
             let item_tree = this.db.item_tree(file_id);
             let ast_id_map = this.db.ast_id_map(file_id);
             let module_id = this.def_map.add_module(name.clone());
@@ -128,20 +136,34 @@ impl<'a> DefCollector<'a> {
                 this.def_map.extern_prelude.insert(name.clone(), id);
             }
 
+            let is_exported = |name: &Name| match exports.clone() {
+                | Some(e) => e.into_iter().any(|e| match e {
+                    | ast::Export::Name(n) => match n.name_ref() {
+                        | Some(n) => n.as_name() == *name,
+                        | None => false,
+                    },
+                    | _ => false,
+                }),
+                | None => false,
+            };
+
             for child in file_tree.children(file_id) {
-                if let Some((name, child)) = go(this, file_tree, child) {
+                if let Some((name, child)) = go(this, modules, file_tree, child) {
                     let module = this.def_map.module_id(child);
+                    let parent = this.def_map.module_id(module_id);
                     let def = ModuleDefId::ModuleId(module);
 
                     this.def_map.modules[module_id].children.insert(name.clone(), child);
                     this.def_map.modules[module_id].scope.define_def(def);
                     this.def_map.modules[child].parent = Some(module_id);
-                    this.update(
-                        module_id,
-                        &[(name, PerNs::modules(def, Visibility::Public))],
-                        Visibility::Public,
-                        ImportType::Named,
-                    );
+
+                    let vis = if is_exported(&name) {
+                        Visibility::Public
+                    } else {
+                        Visibility::Module(parent)
+                    };
+
+                    this.update(module_id, &[(name, PerNs::modules(def))], vis, ImportType::Named);
                 }
             }
 
@@ -156,9 +178,32 @@ impl<'a> DefCollector<'a> {
             };
 
             mcoll.collect_exports(module.exports());
-            mcoll.collect(item_tree.top_level());
+            modules.insert(file_id, (module_id, mcoll.export_all));
 
             Some((name, module_id))
+        }
+
+        fn go2(
+            this: &mut DefCollector,
+            modules: &FxHashMap<FileId, (LocalModuleId, bool)>,
+            file_tree: &FileTree,
+            file_id: FileId,
+        ) {
+            for child in file_tree.children(file_id) {
+                go2(this, modules, file_tree, child);
+            }
+
+            let (module_id, export_all) = modules[&file_id];
+            let item_tree = this.db.item_tree(file_id);
+            let mut mcoll = ModCollector {
+                def_collector: this,
+                item_tree: &item_tree,
+                module_id,
+                file_id,
+                export_all,
+            };
+
+            mcoll.collect(item_tree.top_level());
         }
     }
 
@@ -192,7 +237,7 @@ impl<'a> DefCollector<'a> {
             let imports = std::mem::replace(&mut self.unresolved_imports, Vec::new());
 
             for mut directive in imports {
-                directive.status = self.resolve_import(directive.module_id, &directive.import);
+                directive.status = self.resolve_import(directive.resolve_in, &directive.import);
 
                 match directive.status {
                     | PartialResolvedImport::Indeterminate(_) => {
@@ -240,9 +285,29 @@ impl<'a> DefCollector<'a> {
         let def = directive.status.namespaces();
         let visibility = import.visibility;
 
+        if def
+            .filter_vis(|v| v.is_visible_from_def_map(&self.def_map, directive.resolve_in))
+            .is_none()
+        {
+            let import = &import.source;
+            let item_tree = self.db.item_tree(import.file_id);
+            let import_data = &item_tree[import.value];
+
+            self.def_map.diagnostics.push(DefDiagnostic::private_import(
+                directive.resolve_in,
+                InFile::new(import.file_id, import_data.ast_id),
+                import_data.index,
+            ));
+        }
+
         if import.is_glob {
             if let Some(alias) = &import.alias {
-                self.update(module_id, &[(alias.clone(), def)], visibility, ImportType::Named);
+                self.update(
+                    module_id,
+                    &[(alias.clone(), def.map(|(id, _)| id))],
+                    visibility,
+                    ImportType::Named,
+                );
             } else {
                 match def.modules {
                     | Some((ModuleDefId::ModuleId(m), _)) => {
@@ -253,6 +318,7 @@ impl<'a> DefCollector<'a> {
                                 .resolutions()
                                 .map(|(n, r)| (n, r.filter_vis(|v| v == Visibility::Public)))
                                 .filter(|(_, r)| !r.is_none())
+                                .map(|(n, r)| (n, r.map(|(id, _)| id)))
                                 .collect::<Vec<_>>();
 
                             self.update(module_id, &items, visibility, ImportType::Glob);
@@ -264,6 +330,7 @@ impl<'a> DefCollector<'a> {
                                     (n, r.filter_vis(|v| v.is_visible_from_def_map(&self.def_map, module_id)))
                                 })
                                 .filter(|(_, r)| !r.is_none())
+                                .map(|(n, r)| (n, r.map(|(id, _)| id)))
                                 .collect::<Vec<_>>();
 
                             self.update(module_id, &items, visibility, ImportType::Glob);
@@ -284,14 +351,19 @@ impl<'a> DefCollector<'a> {
                 | None => last_segment.clone(),
             };
 
-            self.update(module_id, &[(name, def)], visibility, ImportType::Named);
+            self.update(
+                module_id,
+                &[(name, def.map(|(id, _)| id))],
+                visibility,
+                ImportType::Named,
+            );
         }
     }
 
     fn update(
         &mut self,
         module_id: LocalModuleId,
-        resolutions: &[(Name, PerNs)],
+        resolutions: &[(Name, PerNs<ModuleDefId>)],
         visibility: Visibility,
         import_type: ImportType,
     ) {
@@ -302,7 +374,7 @@ impl<'a> DefCollector<'a> {
     fn update_recursive(
         &mut self,
         module_id: LocalModuleId,
-        resolutions: &[(Name, PerNs)],
+        resolutions: &[(Name, PerNs<ModuleDefId>)],
         visibility: Visibility,
         import_type: ImportType,
         depth: usize,
@@ -319,13 +391,19 @@ impl<'a> DefCollector<'a> {
             changed |= scope.push_res_with_import(
                 &mut self.all_imports,
                 (module_id, name.clone()),
-                res.with_vis(visibility),
+                res.map(|id| (id, visibility)),
                 import_type,
             );
         }
 
         if !changed {
             return;
+        }
+
+        for &m in self.reexports.get(&module_id).into_iter().flat_map(|v| v.iter()) {
+            for (name, res) in resolutions {
+                self.def_map.modules[m].scope.push_reexport(name.clone(), *res);
+            }
         }
 
         let glob_imports = self
@@ -347,18 +425,18 @@ impl<'a> DefCollector<'a> {
             );
         }
 
-        let reexports = self
-            .reexports
-            .get(&module_id)
-            .into_iter()
-            .flat_map(|v| v.iter())
-            .flat_map(|m| self.glob_imports.get(m).into_iter().flat_map(|v| v.iter()))
-            .copied()
-            .collect::<Vec<_>>();
-
-        for m in reexports {
-            self.update_recursive(m, resolutions, visibility, ImportType::Glob, depth + 1);
-        }
+        // let reexports = self
+        //     .reexports
+        //     .get(&module_id)
+        //     .into_iter()
+        //     .flat_map(|v| v.iter())
+        //     .flat_map(|m| self.glob_imports.get(m).into_iter().flat_map(|v| v.iter()))
+        //     .copied()
+        //     .collect::<Vec<_>>();
+        //
+        // for m in reexports {
+        //     self.update_recursive(m, resolutions, visibility, ImportType::Glob, depth + 1);
+        // }
     }
 }
 
@@ -377,13 +455,17 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         } else {
                             let (res, _) = def_map.resolve_import(self.def_collector.db, self.module_id, &path);
 
-                            if let Some((ModuleDefId::ModuleId(m), _)) = res.modules {
-                                def_map.modules[self.module_id].exports.add_module(m);
+                            if let Some((ModuleDefId::ModuleId(m), vis)) = res.modules {
+                                if vis.is_visible_from_def_map(def_map, self.module_id) {
+                                    def_map.modules[self.module_id].exports.add_module(m);
 
-                                if m.lib == def_map.lib {
-                                    let entry = self.def_collector.reexports.entry(m.local_id).or_default();
+                                    if m.lib == def_map.lib {
+                                        let entry = self.def_collector.reexports.entry(m.local_id).or_default();
 
-                                    entry.insert(self.module_id);
+                                        entry.insert(self.module_id);
+                                    }
+                                } else {
+                                    todo!();
                                 }
                             } else if let Some(name) = path.as_ident() {
                                 let module_id = def_map.add_module(name.clone());
@@ -393,8 +475,17 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                                 def_map.modules[module_id].exports.export_all = true;
                                 def_map.modules[module_id].origin =
                                     super::ModuleOrigin::Virtual { parent: self.module_id };
+                                def_map.modules[self.module_id].children.insert(name.clone(), module_id);
 
                                 let module_id = def_map.module_id(module_id);
+                                let parent = def_map.module_id(self.module_id);
+
+                                def_map.modules[self.module_id].scope.push_res_with_import(
+                                    &mut self.def_collector.all_imports,
+                                    (self.module_id, name.clone()),
+                                    PerNs::modules((ModuleDefId::ModuleId(module_id), Visibility::Module(parent))),
+                                    ImportType::Named,
+                                );
 
                                 def_map.modules[self.module_id].exports.add_module(module_id);
                             } else {
@@ -407,26 +498,23 @@ impl<'a, 'b> ModCollector<'a, 'b> {
 
                         def_map.modules[self.module_id].exports.add_name(name, ExportNs::Any);
                     },
+                    | ast::Export::Group(group) => {
+                        let name = group.name_ref().unwrap().as_name();
+                        let group = match group.kind().unwrap() {
+                            | ast::ExportGroupKind::All(_) => ExportGroup::All,
+                            | ast::ExportGroupKind::Named(g) => {
+                                ExportGroup::Named(g.names().map(|n| n.as_name()).collect())
+                            },
+                        };
+
+                        def_map.modules[self.module_id].exports.add_group(name, group);
+                    },
                 }
             }
         } else {
             self.export_all = true;
         }
     }
-
-    // fn collect_module_exports(def_map: &mut DefMap, module_id: LocalModuleId) {
-    //     for (name, res) in def_map[module_id].scope.resolutions().collect::<Vec<_>>() {
-    //         if let Some((ModuleDefId::ModuleId(m), _)) = res.modules {
-    //             // at this point imports are not yet resolved and thus the module must be from
-    //             // this lib.
-    //             if def_map[m.local_id].origin.is_virtual() {
-    //                 continue;
-    //             }
-    //         }
-    //
-    //         def_map.modules[module_id].exports.add_name(name);
-    //     }
-    // }
 
     fn resolve_visibility(&self, name: &Name, ns: ExportNs) -> Visibility {
         if self.export_all {
@@ -484,6 +572,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                             });
 
                         self.def_collector.unresolved_imports.push(ImportDirective {
+                            resolve_in: self.module_id,
                             module_id,
                             status: PartialResolvedImport::Unresolved,
                             import: Import {
@@ -496,6 +585,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         });
                     } else {
                         self.def_collector.unresolved_imports.push(ImportDirective {
+                            resolve_in: self.module_id,
                             module_id: self.module_id,
                             status: PartialResolvedImport::Unresolved,
                             import: Import {
@@ -593,6 +683,19 @@ impl<'a, 'b> ModCollector<'a, 'b> {
 
                     let data = self.def_collector.db.type_ctor_data(new_id);
                     let visibility = self.resolve_visibility(&it.name, ExportNs::Types);
+                    let group = self.def_collector.def_map[self.module_id]
+                        .exports
+                        .get_group(&it.name)
+                        .cloned();
+
+                    let export_all = self.export_all;
+                    let item_vis = |name| match &group {
+                        | Some(ExportGroup::All) => Visibility::Public,
+                        | Some(ExportGroup::Named(n)) if n.contains(name) => Visibility::Public,
+                        | Some(ExportGroup::Named(_)) => Visibility::Module(module),
+                        | None if export_all => Visibility::Public,
+                        | None => Visibility::Module(module),
+                    };
 
                     for (local_id, data) in data.ctors.iter() {
                         let id = CtorId {
@@ -601,12 +704,13 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         };
 
                         let id = ModuleDefId::CtorId(id);
+                        let vis = item_vis(&data.name);
 
                         self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
                         self.def_collector.update(
                             self.module_id,
                             &[(data.name.clone(), PerNs::from(id))],
-                            visibility,
+                            vis,
                             ImportType::Named,
                         );
                     }

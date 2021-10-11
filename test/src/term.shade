@@ -1,8 +1,9 @@
 module term (
-    Term, new, drop, print, eval,
+    Term(..), new, drop, print, eval,
 ) =
 
 import core
+import core/io as io
 
 type Term =
     | Abs *Term
@@ -53,6 +54,7 @@ fun eval t = do
             _ -> t
         _ -> t
 
+fun apply :: *Term -> *Term -> Int32 -> *Term
 fun apply base arg i = do
     let base' = intrinsics/ptr_read base
 

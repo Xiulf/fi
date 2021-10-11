@@ -2,7 +2,6 @@ module main =
 
 import core
 import term (Term, Var, Abs, App)
-import core/ops/add/intrinsics as i
 
 fun main = do
     let t = term/new $ Var 0

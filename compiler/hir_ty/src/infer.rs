@@ -439,6 +439,9 @@ pub(crate) mod diagnostics {
         PrivateType {
             id: LocalTypeRefId,
         },
+        PrivateOperator {
+            id: ExprOrPatId,
+        },
         MismatchedKind {
             id: LocalTypeRefId,
             expected: Ty,
@@ -541,6 +544,19 @@ pub(crate) mod diagnostics {
 
                         sink.push(PrivateType { file, src });
                     });
+                },
+                | InferenceDiagnostic::PrivateOperator { id } => {
+                    let soure_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = match *id {
+                        | ExprOrPatId::ExprId(e) => soure_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
+                        | ExprOrPatId::PatId(e) => soure_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
+                    };
+
+                    sink.push(PrivateOperator { file, src });
                 },
                 | InferenceDiagnostic::MismatchedKind { id, expected, found } => {
                     let src = owner.with_type_source_map(db.upcast(), |source_map| source_map.type_ref_syntax(*id));

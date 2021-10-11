@@ -26,7 +26,9 @@ impl BodyInferenceContext<'_> {
             | Expr::Hole => self.fresh_type(),
             | Expr::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
                 | Some((value, vis)) => 't: {
-                    if !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
+                    if path.segments().len() > 1
+                        && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
+                    {
                         self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
                     }
 
@@ -83,15 +85,17 @@ impl BodyInferenceContext<'_> {
                 | Literal::String(_) => self.lang_type("str-type"),
             },
             | Expr::Infix { op, lhs, rhs } => match self.resolver.resolve_value_fully(self.db.upcast(), op) {
-                | Some((ValueNs::Fixity(id), Visibility::Public)) => {
+                | Some((ValueNs::Fixity(id), vis)) => {
+                    if op.segments().len() > 1
+                        && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
+                    {
+                        self.report(InferenceDiagnostic::PrivateOperator { id: expr.into() });
+                    }
+
                     let ty = self.infer_infix(id, expr.into());
                     let mid = self.check_app(ty, *lhs, expr);
 
                     self.check_app(mid, *rhs, expr)
-                },
-                | Some((_, Visibility::Module(_))) => {
-                    self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
-                    self.error()
                 },
                 | _ => {
                     self.report(InferenceDiagnostic::UnresolvedOperator { id: expr.into() });
@@ -353,11 +357,21 @@ impl BodyInferenceContext<'_> {
         let data = self.db.fixity_data(id);
         let resolver = id.resolver(self.db.upcast());
         let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
-            | Some((ValueNs::Func(id), Visibility::Public)) => id.into(),
-            | Some((ValueNs::Ctor(id), Visibility::Public)) => id.into(),
-            | Some((_, Visibility::Module(_))) => {
-                self.report(InferenceDiagnostic::PrivateValue { id: origin });
-                return self.error();
+            | Some((ValueNs::Func(id), vis)) => {
+                if data.func.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), resolver.module().unwrap())
+                {
+                    self.report(InferenceDiagnostic::PrivateValue { id: origin });
+                }
+
+                id.into()
+            },
+            | Some((ValueNs::Ctor(id), vis)) => {
+                if data.func.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), resolver.module().unwrap())
+                {
+                    self.report(InferenceDiagnostic::PrivateValue { id: origin });
+                }
+
+                id.into()
             },
             | _ => return self.error(),
         };
@@ -464,12 +478,14 @@ impl BodyInferenceContext<'_> {
                 self.check_expr(*inner, ty_);
             }),
             | (Expr::Path { path }, _) => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
-                | Some(res) => {
-                    if let Visibility::Module(_) = res.1 {
+                | Some((res, vis)) => {
+                    if path.segments().len() > 1
+                        && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
+                    {
                         self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
                     }
 
-                    let ty = match res.0 {
+                    let ty = match res {
                         | ValueNs::Local(pat) => self.result.type_of_pat[pat],
                         | ValueNs::Fixity(_) => unimplemented!(),
                         | ValueNs::Func(id) => {

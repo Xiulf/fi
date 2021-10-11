@@ -11,9 +11,41 @@ pub struct PerNs<T = (ModuleDefId, Visibility)> {
 
 impl<T> PerNs<T> {
     pub const fn none() -> Self {
-        PerNs {
+        Self {
             types: None,
             values: None,
+            modules: None,
+        }
+    }
+
+    pub fn values(t: T) -> Self {
+        Self {
+            values: Some(t),
+            ..Self::none()
+        }
+    }
+
+    pub fn types(t: T) -> Self {
+        Self {
+            types: Some(t),
+            ..Self::none()
+        }
+    }
+
+    pub fn modules(t: T) -> Self {
+        Self {
+            modules: Some(t),
+            ..Self::none()
+        }
+    }
+
+    pub fn both(t: T) -> Self
+    where
+        T: Clone,
+    {
+        Self {
+            values: Some(t.clone()),
+            types: Some(t),
             modules: None,
         }
     }
@@ -23,49 +55,47 @@ impl<T> PerNs<T> {
     }
 
     pub fn or(self, other: Self) -> Self {
-        PerNs {
+        Self {
             types: self.types.or(other.types),
             values: self.values.or(other.values),
             modules: self.modules.or(other.modules),
         }
     }
+
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> PerNs<U> {
+        PerNs {
+            types: self.types.map(&mut f),
+            values: self.values.map(&mut f),
+            modules: self.modules.map(f),
+        }
+    }
+
+    pub fn and_then<U>(self, mut f: impl FnMut(T) -> Option<U>) -> PerNs<U> {
+        PerNs {
+            types: self.types.and_then(&mut f),
+            values: self.values.and_then(&mut f),
+            modules: self.modules.and_then(f),
+        }
+    }
+
+    pub fn as_ref(&self) -> PerNs<&T> {
+        PerNs {
+            types: self.types.as_ref(),
+            values: self.values.as_ref(),
+            modules: self.modules.as_ref(),
+        }
+    }
 }
 
 impl<T> PerNs<(T, Visibility)> {
-    pub fn values(id: T, v: Visibility) -> Self {
-        PerNs {
-            values: Some((id, v)),
-            ..Self::none()
-        }
-    }
+    pub fn visibility(self) -> Option<Visibility> {
+        let v = self.map(|(_, v)| v);
 
-    pub fn types(id: T, v: Visibility) -> Self {
-        PerNs {
-            types: Some((id, v)),
-            ..Self::none()
-        }
-    }
-
-    pub fn modules(id: T, v: Visibility) -> Self {
-        PerNs {
-            modules: Some((id, v)),
-            ..Self::none()
-        }
-    }
-
-    pub fn both(id: T, v: Visibility) -> Self
-    where
-        T: Clone,
-    {
-        PerNs {
-            values: Some((id.clone(), v)),
-            types: Some((id, v)),
-            modules: None,
-        }
+        v.types.or(v.values).or(v.modules)
     }
 
     pub fn filter_vis(self, mut f: impl FnMut(Visibility) -> bool) -> Self {
-        PerNs {
+        Self {
             types: self.types.filter(|&(_, v)| f(v)),
             values: self.values.filter(|&(_, v)| f(v)),
             modules: self.modules.filter(|&(_, v)| f(v)),
@@ -73,11 +103,14 @@ impl<T> PerNs<(T, Visibility)> {
     }
 
     pub fn with_vis(self, v: Visibility) -> Self {
-        Self {
-            values: self.values.map(|it| (it.0, v)),
-            types: self.types.map(|it| (it.0, v)),
-            modules: self.modules.map(|it| (it.0, v)),
-        }
+        self.map(|(t, _)| (t, v))
+    }
+
+    pub fn with_lower_vis(self, v: Visibility) -> Self {
+        self.map(|(t, v2)| match v2 {
+            | Visibility::Public => (t, v),
+            | Visibility::Module(_) => (t, v2),
+        })
     }
 }
 
@@ -91,18 +124,18 @@ impl PerNs<(ModuleDefId, Visibility)> {
     }
 }
 
-impl From<ModuleDefId> for PerNs<(ModuleDefId, Visibility)> {
+impl From<ModuleDefId> for PerNs<ModuleDefId> {
     fn from(def: ModuleDefId) -> Self {
         match def {
-            | ModuleDefId::ModuleId(_) => PerNs::modules(def, Visibility::Public),
-            | ModuleDefId::FixityId(_) => PerNs::values(def, Visibility::Public),
-            | ModuleDefId::FuncId(_) => PerNs::values(def, Visibility::Public),
-            | ModuleDefId::StaticId(_) => PerNs::values(def, Visibility::Public),
-            | ModuleDefId::ConstId(_) => PerNs::values(def, Visibility::Public),
-            | ModuleDefId::TypeAliasId(_) => PerNs::types(def, Visibility::Public),
-            | ModuleDefId::TypeCtorId(_) => PerNs::types(def, Visibility::Public),
-            | ModuleDefId::CtorId(_) => PerNs::values(def, Visibility::Public),
-            | ModuleDefId::ClassId(_) => PerNs::types(def, Visibility::Public),
+            | ModuleDefId::ModuleId(_) => PerNs::modules(def),
+            | ModuleDefId::FixityId(_) => PerNs::values(def),
+            | ModuleDefId::FuncId(_) => PerNs::values(def),
+            | ModuleDefId::StaticId(_) => PerNs::values(def),
+            | ModuleDefId::ConstId(_) => PerNs::values(def),
+            | ModuleDefId::TypeAliasId(_) => PerNs::types(def),
+            | ModuleDefId::TypeCtorId(_) => PerNs::types(def),
+            | ModuleDefId::CtorId(_) => PerNs::values(def),
+            | ModuleDefId::ClassId(_) => PerNs::types(def),
         }
     }
 }

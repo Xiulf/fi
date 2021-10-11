@@ -115,6 +115,22 @@ impl ExportModule {
     }
 }
 
+impl ExportGroup {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        support::child(&self.0)
+    }
+
+    pub fn kind(&self) -> Option<ExportGroupKind> {
+        support::child(&self.0)
+    }
+}
+
+impl ExportGroupNamed {
+    pub fn names(&self) -> AstChildren<NameRef> {
+        support::children(&self.0)
+    }
+}
+
 impl Attr {
     pub fn name(&self) -> Option<smol_str::SmolStr> {
         support::token(&self.0, IDENT).map(|t| t.text().into())

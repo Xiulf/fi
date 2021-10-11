@@ -4,6 +4,8 @@ use crate::{
     id::{LocalModuleId, ModuleId},
 };
 
+use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Visibility {
     Module(ModuleId),
@@ -43,6 +45,18 @@ impl Visibility {
                 },
                 | None => return false,
             }
+        }
+    }
+}
+
+impl fmt::Display for Visibility {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            | Self::Public => write!(f, "public"),
+            | Self::Module(id) => {
+                let local: u32 = id.local_id.into_raw().into();
+                write!(f, "{}:{}", id.lib.0, local)
+            },
         }
     }
 }
