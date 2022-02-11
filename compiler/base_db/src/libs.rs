@@ -27,7 +27,7 @@ impl Default for LibKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LibId(pub u32);
 
 #[derive(Default, Debug, Clone)]

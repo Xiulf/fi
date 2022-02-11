@@ -8,7 +8,8 @@ use std::sync::Arc;
     hir::db::InternDatabaseStorage,
     hir::db::DefDatabaseStorage,
     hir::db::HirDatabaseStorage,
-    mir::db::MirDatabaseStorage,
+    ir::db::IrDatabaseStorage,
+    lower::db::LowerDatabaseStorage,
     codegen::db::CodegenDatabaseStorage,
     docs::db::DocDatabaseStorage
 )]
@@ -64,8 +65,8 @@ impl Upcast<dyn hir::db::HirDatabase + 'static> for RootDatabase {
     }
 }
 
-impl Upcast<dyn mir::db::MirDatabase + 'static> for RootDatabase {
-    fn upcast(&self) -> &(dyn mir::db::MirDatabase + 'static) {
+impl Upcast<dyn ir::db::IrDatabase + 'static> for RootDatabase {
+    fn upcast(&self) -> &(dyn ir::db::IrDatabase + 'static) {
         self
     }
 }

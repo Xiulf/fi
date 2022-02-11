@@ -67,18 +67,18 @@ impl Assembly {
 
     fn extension(&self, db: &dyn CodegenDatabase) -> &'static str {
         match db.libs()[self.lib.into()].kind {
-            | LibKind::Dynamic => match db.target_triple().operating_system {
+            | LibKind::Dynamic => match db.triple().operating_system {
                 | target_lexicon::OperatingSystem::Windows => "dll",
                 | target_lexicon::OperatingSystem::MacOSX { .. } => "dylib",
                 | target_lexicon::OperatingSystem::Wasi => "wasm",
                 | _ => "so",
             },
-            | LibKind::Static => match db.target_triple().operating_system {
+            | LibKind::Static => match db.triple().operating_system {
                 | target_lexicon::OperatingSystem::Windows => "lib",
                 | target_lexicon::OperatingSystem::Wasi => "wasm",
                 | _ => "a",
             },
-            | LibKind::Executable => match db.target_triple().operating_system {
+            | LibKind::Executable => match db.triple().operating_system {
                 | target_lexicon::OperatingSystem::Windows => "exe",
                 | target_lexicon::OperatingSystem::Wasi => "wasm",
                 | _ => "",
@@ -88,7 +88,7 @@ impl Assembly {
 
     fn prefix(&self, db: &dyn CodegenDatabase) -> &'static str {
         match db.libs()[self.lib.into()].kind {
-            | LibKind::Dynamic | LibKind::Static => match db.target_triple().operating_system {
+            | LibKind::Dynamic | LibKind::Static => match db.triple().operating_system {
                 | target_lexicon::OperatingSystem::Wasi => "",
                 | _ => "lib",
             },
@@ -98,10 +98,10 @@ impl Assembly {
 }
 
 pub(crate) fn build_assembly(db: &dyn CodegenDatabase, lib: hir::Lib) -> Arc<Assembly> {
-    let object = crate::ModuleCtx::with_mcx(db, |mcx| mcx.build(lib));
-    let mut file = NamedTempFile::new().unwrap();
-
-    file.write(object.emit().unwrap().as_slice()).unwrap();
+    //    let object = crate::ModuleCtx::with_mcx(db, |mcx| mcx.build(lib));
+    //    let mut file = NamedTempFile::new().unwrap();
+    //
+    //    file.write(object.emit().unwrap().as_slice()).unwrap();
 
     // let mut linker = crate::linker::create();
     // let file = NamedTempFile::new().unwrap();
@@ -130,5 +130,6 @@ pub(crate) fn build_assembly(db: &dyn CodegenDatabase, lib: hir::Lib) -> Arc<Ass
     //
     // linker.run();
 
-    Arc::new(Assembly { lib, file })
+    //    Arc::new(Assembly { lib, file })
+    todo!()
 }

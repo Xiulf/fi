@@ -2,10 +2,12 @@
 
 pub mod input;
 pub mod libs;
+pub mod metadata;
 
 use input::{FileId, FileTree, LineIndex, SourceRoot, SourceRootId};
 use std::fmt;
 use std::panic;
+use std::path::PathBuf;
 use std::sync::Arc;
 use syntax::{ast, Parsed};
 
@@ -38,10 +40,16 @@ pub trait SourceDatabaseExt: SourceDatabase {
     #[salsa::input]
     fn source_root(&self, id: SourceRootId) -> Arc<SourceRoot>;
 
+    #[salsa::input]
+    fn target_dir(&self, lib: libs::LibId) -> PathBuf;
+
     #[salsa::invoke(FileTree::file_tree_query)]
     fn file_tree(&self, lib: libs::LibId) -> Arc<FileTree>;
 
     fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
+
+    #[salsa::invoke(metadata::read_metadata)]
+    fn metadata(&self, lib: libs::LibId) -> Arc<metadata::Metadata>;
 }
 
 fn parse(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Module> {

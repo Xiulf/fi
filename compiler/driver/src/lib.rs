@@ -7,9 +7,8 @@ use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::SourceDatabase;
 use base_db::SourceDatabaseExt;
 use codegen::db::CodegenDatabase;
-use mir::db::MirDatabase;
+use ir::db::IrDatabase;
 use rustc_hash::FxHashSet;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Default)]
@@ -22,7 +21,7 @@ pub struct Opts<'a> {
 #[derive(Default)]
 pub struct Driver {
     pub db: db::RootDatabase,
-    target_dir: PathBuf,
+    lib: LibId,
     libs: LibSet,
     lib_count: u32,
     file_count: u32,
@@ -33,10 +32,10 @@ impl Driver {
         let mut driver = Driver::default();
         let lib = driver.load(opts.input)?;
 
-        driver.target_dir = PathBuf::from(opts.input).join("target");
-        driver.db.set_target_triple(match opts.target {
+        driver.lib = lib;
+        driver.db.set_triple(match opts.target {
             | Some(target) => Arc::new(target.parse().unwrap()),
-            | None => Arc::new(mir::target_lexicon::HOST),
+            | None => Arc::new(target_lexicon::Triple::host()),
         });
 
         Some((driver, lib))
@@ -55,10 +54,11 @@ impl Driver {
         )
         .ok()?;
 
-        driver.target_dir = path.parent().unwrap().join("target");
-        driver.db.set_target_triple(match opts.target {
+        driver.lib = lib;
+        driver.db.set_target_dir(lib, path.parent().unwrap().join("target"));
+        driver.db.set_triple(match opts.target {
             | Some(target) => Arc::new(target.parse().unwrap()),
-            | None => Arc::new(mir::target_lexicon::HOST),
+            | None => Arc::new(target_lexicon::Triple::host()),
         });
 
         driver.db.set_libs(driver.libs.clone().into());
@@ -77,7 +77,8 @@ impl Driver {
 
         root.insert_file(root_file, "<interactive>");
 
-        driver.db.set_target_triple(mir::target_lexicon::HOST.into());
+        driver.lib = lib;
+        driver.db.set_triple(Arc::new(target_lexicon::Triple::host()));
         driver.db.set_libs(driver.libs.clone().into());
         driver.db.set_source_root(root_id, root.into());
         driver.db.set_file_source_root(root_file, root_id);
@@ -102,6 +103,7 @@ impl Driver {
             &path,
         ) {
             | Ok(lib) => {
+                self.db.set_target_dir(lib, path.join("target"));
                 self.db.set_libs(self.libs.clone().into());
 
                 Some(lib)
@@ -153,7 +155,7 @@ impl Driver {
             eprintln!("\x1B[1;31mAborting due to {} previous errors\x1B[0m", errors);
             return false;
         } else {
-            std::fs::create_dir_all(&self.target_dir).unwrap();
+            std::fs::create_dir_all(self.db.target_dir(self.lib)).unwrap();
 
             let mut done = FxHashSet::default();
 
@@ -172,7 +174,7 @@ impl Driver {
     pub fn run<'a>(&self, lib: LibId, args: impl Iterator<Item = &'a std::ffi::OsStr>) -> bool {
         if self.build() {
             let asm = self.db.lib_assembly(lib.into());
-            let path = asm.path(&self.db, &self.target_dir);
+            let path = asm.path(&self.db, &self.db.target_dir(lib));
             let mut cmd = std::process::Command::new(path);
 
             cmd.args(args);
@@ -184,7 +186,7 @@ impl Driver {
     }
 
     pub fn docs(&self, lib: LibId) {
-        docs::generate(&self.db, lib.into(), &self.target_dir).unwrap();
+        docs::generate(&self.db, lib.into(), &self.db.target_dir(lib)).unwrap();
     }
 
     fn write_assembly(&self, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> std::io::Result<bool> {
@@ -199,7 +201,7 @@ impl Driver {
 
         let asm = self.db.lib_assembly(lib);
 
-        asm.link(&self.db, deps, &self.target_dir);
+        asm.link(&self.db, deps, &self.db.target_dir(lib.into()));
         done.insert(lib);
 
         Ok(true)
