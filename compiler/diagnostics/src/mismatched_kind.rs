@@ -10,7 +10,7 @@ pub struct MismatchedKind<'db, 'd, DB: hir::db::HirDatabase> {
 impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedKind<'db, 'd, DB> {
     fn title(&self) -> String {
         format!(
-            "expected `{}`, found `{}`",
+            "expected kind `{}`, found `{}`",
             self.diag.expected.display(self.db),
             self.diag.found.display(self.db)
         )

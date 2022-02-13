@@ -145,9 +145,9 @@ impl Module {
             diag.add_to(db.upcast(), &item_tree, sink);
         }
 
-        def_map.diagnostics().for_each(|d| {
-            d.add_to(db.upcast(), self.id.local_id, sink);
-        });
+        for diag in def_map.diagnostics() {
+            diag.add_to(db.upcast(), self.id.local_id, sink);
+        }
 
         for decl in self.declarations(db) {
             decl.diagnostics(db, sink);

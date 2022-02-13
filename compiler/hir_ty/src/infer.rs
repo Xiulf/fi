@@ -85,7 +85,9 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
 
         let self_type = icx.result.self_type;
 
-        assert!(icx.unify_types(self_type, ann));
+        if !icx.unify_types(self_type, ann) {
+            icx.report_mismatch(ann, self_type, body.body_expr().into());
+        }
     }
 
     Arc::new(icx.finish())

@@ -176,7 +176,7 @@ impl ItemScope {
 
                         entry.insert(f_id);
                         $changed = true;
-                    }
+                    },
                     | _ => {},
                 }
             }};
@@ -268,6 +268,10 @@ impl ItemExports {
         } else {
             Visibility::Module(in_module)
         }
+    }
+
+    pub fn modules(&self) -> impl Iterator<Item = ModuleId> + '_ {
+        self.modules.iter().copied()
     }
 }
 

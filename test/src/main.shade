@@ -18,3 +18,8 @@ fun main = do
     term/print t
     print "\n"
     term/drop t
+
+
+fun other :: Int32
+fun other x = do
+    "test"

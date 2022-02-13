@@ -318,7 +318,6 @@ impl HirDisplay for Ty {
                 write!(f, ". ")?;
                 ty.hir_fmt(f)
             },
-            | _ => unimplemented!(),
         }
     }
 }

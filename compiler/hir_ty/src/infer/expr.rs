@@ -5,7 +5,6 @@ use crate::ty::*;
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::{FixityId, TypeVarOwner};
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
-use hir_def::visibility::Visibility;
 use std::sync::Arc;
 
 impl BodyInferenceContext<'_> {

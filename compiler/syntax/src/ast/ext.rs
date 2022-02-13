@@ -641,6 +641,12 @@ impl PatTyped {
     }
 }
 
+impl PatLit {
+    pub fn literal(&self) -> Option<Literal> {
+        support::child(&self.0)
+    }
+}
+
 impl PatBind {
     pub fn name(&self) -> Option<Name> {
         support::child(&self.0)

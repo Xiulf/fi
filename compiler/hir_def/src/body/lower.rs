@@ -452,6 +452,10 @@ impl<'a> ExprCollector<'a> {
     }
 
     fn collect_pat(&mut self, pat: ast::Pat) -> PatId {
+        self.maybe_collect_pat(pat).unwrap_or_else(|| self.missing_pat())
+    }
+
+    fn maybe_collect_pat(&mut self, pat: ast::Pat) -> Option<PatId> {
         let ptr = AstPtr::new(&pat);
         let pattern = match pat {
             | ast::Pat::Typed(p) => {
@@ -459,6 +463,16 @@ impl<'a> ExprCollector<'a> {
                 let ty = self.type_builder.alloc_type_ref_opt(p.ty());
 
                 Pat::Typed { pat, ty }
+            },
+            | ast::Pat::Lit(p) => {
+                let lit = match p.literal()? {
+                    | ast::Literal::Int(l) => Literal::Int(l.value()?),
+                    | ast::Literal::Float(l) => Literal::Float(l.value()?.to_bits()),
+                    | ast::Literal::Char(l) => Literal::Char(l.value()?),
+                    | ast::Literal::String(l) => Literal::String(l.value()?),
+                };
+
+                Pat::Lit { lit }
             },
             | ast::Pat::Wildcard(_) => Pat::Wildcard,
             | ast::Pat::Bind(pat) => {
@@ -490,7 +504,7 @@ impl<'a> ExprCollector<'a> {
 
                 self.source_map.pat_map.insert(src, inner);
 
-                return inner;
+                return Some(inner);
             },
             | ast::Pat::Tuple(p) => {
                 let pats = p.pats().map(|p| self.collect_pat(p)).collect();
@@ -529,7 +543,7 @@ impl<'a> ExprCollector<'a> {
             | _ => unimplemented!("{:?}", pat),
         };
 
-        self.alloc_pat(pattern, ptr)
+        Some(self.alloc_pat(pattern, ptr))
     }
 
     fn collect_pat_opt(&mut self, pat: Option<ast::Pat>) -> PatId {

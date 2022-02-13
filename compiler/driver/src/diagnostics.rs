@@ -54,9 +54,11 @@ fn emit_syntax_error(
     cache: impl Cache<FileId>,
     mut writer: impl io::Write,
 ) -> io::Result<()> {
+    let span = (file_id, usize::from(err.range.start())..usize::from(err.range.end()));
+
     Report::build(ReportKind::Error, file_id, 0)
         .with_message("syntax error")
-        .with_label(Label::new((file_id, 0..4)).with_message(&err.msg))
+        .with_label(Label::new(span).with_message(&err.msg).with_color(Color::Red))
         .with_config(config)
         .finish()
         .write(cache, &mut writer)?;

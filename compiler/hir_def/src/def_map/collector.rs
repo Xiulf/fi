@@ -247,13 +247,8 @@ impl<'a> DefCollector<'a> {
         }
 
         if import.is_glob {
-            if let Some(alias) = &import.alias {
-                self.update(
-                    module_id,
-                    &[(alias.clone(), def.map(|(id, _)| id))],
-                    visibility,
-                    ImportType::Named,
-                );
+            if let Some(_) = &import.alias {
+                unreachable!()
             } else {
                 match def.modules {
                     | Some((ModuleDefId::ModuleId(m), _)) => {
@@ -284,6 +279,14 @@ impl<'a> DefCollector<'a> {
                             let glob = self.glob_imports.entry(m.local_id).or_default();
 
                             glob.insert(module_id);
+
+                            for m in self.def_map[m.local_id].exports.modules() {
+                                if m.lib == self.def_map.lib {
+                                    let glob = self.glob_imports.entry(m.local_id).or_default();
+
+                                    glob.insert(module_id);
+                                }
+                            }
                         }
                     },
                     | Some(_) => unreachable!("invalid type stored in module namespace"),

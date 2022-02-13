@@ -301,7 +301,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
             Some(m.complete(p, EXPR_RECORD))
         },
         | _ => {
-            p.error("expred an expression");
+            p.error("expected an expression");
             p.bump_any();
             m.abandon(p);
             None

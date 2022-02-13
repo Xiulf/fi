@@ -8,7 +8,7 @@ pub struct DuplicateDeclaration<'db, 'd, DB: hir::db::HirDatabase> {
 
 impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for DuplicateDeclaration<'db, 'd, DB> {
     fn title(&self) -> String {
-        format!("the name `{}` is defined multiple times", self.diag.name)
+        format!("`{}` is defined multiple times", self.diag.name)
     }
 
     fn range(&self) -> TextRange {
