@@ -3,7 +3,6 @@ use crate::{
     def_map::DefMap,
     id::{LocalModuleId, ModuleId},
 };
-
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -28,23 +27,10 @@ impl Visibility {
         self.is_visible_from_def_map(&def_map, from.local_id)
     }
 
-    pub(crate) fn is_visible_from_def_map(self, def_map: &DefMap, mut from: LocalModuleId) -> bool {
-        let to = match self {
-            | Visibility::Module(m) => m,
-            | Visibility::Public => return true,
-        };
-
-        loop {
-            if def_map.module_id(from) == to {
-                return true;
-            }
-
-            match def_map[from].parent {
-                | Some(parent) => {
-                    from = parent;
-                },
-                | None => return false,
-            }
+    pub(crate) fn is_visible_from_def_map(self, def_map: &DefMap, from: LocalModuleId) -> bool {
+        match self {
+            | Visibility::Module(m) => m == def_map.module_id(from),
+            | Visibility::Public => true,
         }
     }
 }

@@ -5,7 +5,7 @@ use crate::arena::Arena;
 use crate::ast_id::{AstId, FileAstId};
 use crate::db::DefDatabase;
 use crate::diagnostics::DefDiagnostic;
-use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
+use crate::id::{LocalModuleId, ModuleId};
 use crate::in_file::InFile;
 use crate::item_scope::{ItemExports, ItemScope};
 use crate::name::Name;
@@ -20,9 +20,8 @@ use syntax::ast;
 #[derive(Debug, PartialEq, Eq)]
 pub struct DefMap {
     lib: LibId,
-    root: LocalModuleId,
     modules: Arena<ModuleData>,
-    extern_prelude: FxHashMap<Name, ModuleDefId>,
+    module_names: FxHashMap<Name, ModuleId>,
     diagnostics: Vec<DefDiagnostic>,
 }
 
@@ -32,8 +31,6 @@ pub struct ModuleData {
     pub scope: ItemScope,
     pub exports: ItemExports,
     pub origin: ModuleOrigin,
-    pub parent: Option<LocalModuleId>,
-    pub children: FxHashMap<Name, LocalModuleId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -53,18 +50,24 @@ impl DefMap {
     fn empty(lib: LibId) -> Self {
         DefMap {
             lib,
-            root: LocalModuleId::DUMMY,
             modules: Arena::default(),
-            extern_prelude: FxHashMap::default(),
+            module_names: FxHashMap::default(),
             diagnostics: Vec::new(),
         }
     }
 
     pub(crate) fn add_module(&mut self, name: Name) -> LocalModuleId {
-        self.modules.alloc(ModuleData {
-            name,
+        let local_id = self.modules.alloc(ModuleData {
+            name: name.clone(),
             ..ModuleData::default()
-        })
+        });
+
+        self.module_names.insert(name, ModuleId {
+            lib: self.lib,
+            local_id,
+        });
+
+        local_id
     }
 
     pub fn modules_for_file(&self, file_id: FileId) -> impl Iterator<Item = LocalModuleId> + '_ {
@@ -86,10 +89,6 @@ impl DefMap {
         self.lib
     }
 
-    pub fn root(&self) -> LocalModuleId {
-        self.root
-    }
-
     pub fn module_id(&self, local_id: LocalModuleId) -> ModuleId {
         ModuleId {
             lib: self.lib,
@@ -98,22 +97,13 @@ impl DefMap {
     }
 
     pub fn dump(&self, writer: &mut dyn io::Write) -> io::Result<()> {
-        return go(self, self.root, "/", writer);
-
-        fn go(map: &DefMap, module: LocalModuleId, path: &str, writer: &mut dyn io::Write) -> io::Result<()> {
-            write!(writer, "{}\n", path)?;
-
-            map.modules[module].scope.dump(writer)?;
-
-            for (name, child) in &map.modules[module].children {
-                let path = format!("{}/{}", path, name);
-
-                write!(writer, "\n")?;
-                go(map, *child, &path, writer)?;
-            }
-
-            Ok(())
+        for (module_id, module) in self.modules.iter() {
+            writeln!(writer, "{}", module.name)?;
+            module.scope.dump(writer)?;
+            writeln!(writer)?;
         }
+
+        Ok(())
     }
 }
 

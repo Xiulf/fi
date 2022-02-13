@@ -23,6 +23,7 @@ pub(super) struct Ctx {
     ast_id_map: Arc<AstIdMap>,
 }
 
+#[derive(Debug)]
 struct Items(Vec<Item>);
 
 impl<T: Into<Item>> From<T> for Items {
@@ -40,18 +41,23 @@ impl Ctx {
         }
     }
 
-    pub fn lower_items(mut self, module: &ast::Module) -> ItemTree {
-        self.tree.top_level = module
+    pub fn lower_modules(mut self, source_file: &ast::SourceFile) -> ItemTree {
+        self.tree.top_level = source_file.modules().map(|module| self.lower_items(&module)).collect();
+        self.tree
+    }
+
+    pub fn lower_items(&mut self, module: &ast::Module) -> Vec<Item> {
+        let items = module
             .item_groups()
             .flat_map(|(item, rest)| self.lower_item(&item, &rest))
             .flat_map(|item| item.0)
-            .collect();
+            .collect::<Vec<_>>();
 
         let mut values = FxHashMap::<Name, Item>::default();
         let mut types = FxHashMap::<Name, Item>::default();
         let mut diagnostics = Vec::new();
 
-        for &item in &self.tree.top_level {
+        for &item in &items {
             let (name, is_type) = match item {
                 | Item::Fixity(it) => (Some(&self.tree[it].name), false),
                 | Item::Func(it) => (Some(&self.tree[it].name), false),
@@ -78,8 +84,8 @@ impl Ctx {
             }
         }
 
-        self.tree.diagnostics = diagnostics;
-        self.tree
+        self.tree.diagnostics.append(&mut diagnostics);
+        items
     }
 
     fn lower_item(&mut self, item: &ast::Item, rest: &[ast::Item]) -> Option<Items> {

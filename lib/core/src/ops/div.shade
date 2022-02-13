@@ -1,6 +1,6 @@
-module div =
+module core/ops/div =
 
-import prim (intrinsics, Int32)
+import prim (Int32)
 
 infixl 7 div as (/)
 

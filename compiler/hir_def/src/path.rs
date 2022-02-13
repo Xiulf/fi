@@ -52,7 +52,7 @@ impl Path {
         import: InFile<ast::ItemImport>,
         mut cb: impl FnMut(Path, Option<ast::NameRef>, bool, Option<Name>, Option<Name>),
     ) {
-        if let Some(path) = convert_path(import.value.path()) {
+        if let Some(path) = import.value.module().map(|n| Path::from(n.as_name())) {
             if let Some(items) = import.value.items() {
                 for item in items {
                     let mut path = path.clone();

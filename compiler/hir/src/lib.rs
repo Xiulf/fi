@@ -49,18 +49,6 @@ impl Lib {
             .collect()
     }
 
-    pub fn root_module(self, db: &dyn HirDatabase) -> Module {
-        let def_map = db.def_map(self.id);
-
-        Module {
-            id: def_map.module_id(def_map.root()),
-        }
-    }
-
-    pub fn root_file(self, db: &dyn HirDatabase) -> FileId {
-        db.libs()[self.id].root_file
-    }
-
     pub fn modules(self, db: &dyn HirDatabase) -> Vec<Module> {
         let def_map = db.def_map(self.id);
 
@@ -109,49 +97,12 @@ impl Module {
         def_map[self.id.local_id].origin.is_virtual()
     }
 
-    pub fn children(self, db: &dyn HirDatabase) -> Vec<Module> {
-        let def_map = db.def_map(self.id.lib);
-
-        def_map[self.id.local_id]
-            .children
-            .iter()
-            .map(|(_, mid)| Module {
-                id: def_map.module_id(*mid),
-            })
-            .collect::<Vec<_>>()
-    }
-
-    pub fn parent(self, db: &dyn HirDatabase) -> Option<Module> {
-        let def_map = db.def_map(self.id.lib);
-        let parent_id = def_map[self.id.local_id].parent?;
-
-        Some(Module {
-            id: def_map.module_id(parent_id),
-        })
-    }
-
-    pub fn path_to_root(self, db: &dyn HirDatabase) -> Vec<Module> {
-        let mut res = vec![self];
-        let mut curr = self;
-
-        while let Some(next) = curr.parent(db) {
-            res.push(next);
-            curr = next;
-        }
-
-        res
-    }
-
-    pub fn path(&self, db: &dyn HirDatabase) -> Path {
-        self.path_to_root(db).into_iter().map(|m| m.name(db)).rev().collect()
-    }
-
     pub fn path_to_name(self, db: &dyn HirDatabase, name: Name) -> Path {
-        let to_root = self.path_to_root(db);
-
-        std::iter::once(name)
-            .chain(to_root.into_iter().map(|m| m.name(db)))
-            .rev()
+        self.name(db)
+            .to_string()
+            .split('/')
+            .map(|s| s.as_name())
+            .chain(std::iter::once(name))
             .collect()
     }
 
@@ -231,7 +182,7 @@ pub enum ModuleDef {
 impl ModuleDef {
     pub fn module(self, db: &dyn HirDatabase) -> Option<Module> {
         match self {
-            | ModuleDef::Module(it) => it.parent(db),
+            | ModuleDef::Module(_) => None,
             | ModuleDef::Fixity(it) => Some(it.module(db)),
             | ModuleDef::Func(it) => Some(it.module(db)),
             | ModuleDef::Static(it) => Some(it.module(db)),

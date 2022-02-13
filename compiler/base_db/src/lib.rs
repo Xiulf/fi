@@ -17,7 +17,7 @@ pub trait Upcast<T: ?Sized> {
 
 #[salsa::query_group(SourceDatabaseStorage)]
 pub trait SourceDatabase: CheckCanceled + FileLoader {
-    fn parse(&self, file_id: FileId) -> Parsed<ast::Module>;
+    fn parse(&self, file_id: FileId) -> Parsed<ast::SourceFile>;
 
     fn parse_path(&self, file_id: FileId) -> Parsed<ast::Path>;
     fn parse_type(&self, file_id: FileId) -> Parsed<ast::Type>;
@@ -38,6 +38,9 @@ pub trait SourceDatabaseExt: SourceDatabase {
     fn file_lib(&self, file_id: FileId) -> libs::LibId;
 
     #[salsa::input]
+    fn lib_source_root(&self, lib: libs::LibId) -> SourceRootId;
+
+    #[salsa::input]
     fn source_root(&self, id: SourceRootId) -> Arc<SourceRoot>;
 
     #[salsa::input]
@@ -52,10 +55,10 @@ pub trait SourceDatabaseExt: SourceDatabase {
     fn metadata(&self, lib: libs::LibId) -> Arc<metadata::Metadata>;
 }
 
-fn parse(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Module> {
+fn parse(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::SourceFile> {
     let text = db.file_text(file_id);
 
-    ast::Module::parse(&*text)
+    ast::SourceFile::parse(&*text)
 }
 
 fn parse_path(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Path> {

@@ -1,7 +1,7 @@
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::id::{LocalModuleId, ModuleDefId};
-use crate::name::Name;
+use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::visibility::Visibility;
@@ -67,7 +67,42 @@ impl DefMap {
         original: LocalModuleId,
         path: &Path,
     ) -> ResolveResult {
-        let mut segments = path.segments().iter().enumerate();
+        let (name, module) = match path.segments().split_last() {
+            | Some((name, rest)) if rest.is_empty() => (name, None),
+            | Some((name, rest)) => (name, Some(Path::from_segments(rest.to_vec()).to_string().as_name())),
+            | None => return ResolveResult::empty(FixPoint::Yes),
+        };
+
+        let (module_id, or_module) = match module {
+            | Some(module) => match self.module_names.get(&module) {
+                | Some(&module_id) => (module_id, None),
+                | None => {
+                    let module = path.to_string().as_name();
+
+                    match self.module_names.get(&module) {
+                        | Some(&module_id) => (module_id, None),
+                        | None => return ResolveResult::empty(FixPoint::Yes),
+                    }
+                },
+            },
+            | None => (self.module_id(original), self.module_names.get(name)),
+        };
+
+        let mut def = if module_id.lib != self.lib {
+            let def_map = db.def_map(module_id.lib);
+
+            def_map.resolve_name_in_module(db, module_id.local_id, name, mode)
+        } else {
+            self.resolve_name_in_module(db, module_id.local_id, name, mode)
+        };
+
+        if let Some(id) = or_module {
+            def = def.or(PerNs::modules((ModuleDefId::ModuleId(*id), Visibility::Public)));
+        }
+
+        ResolveResult::with(def, FixPoint::Yes, None, Some(module_id.lib))
+
+        /*let mut segments = path.segments().iter().enumerate();
         let mut curr_per_ns = {
             let (_, segment) = match segments.next() {
                 | Some((idx, segment)) => (idx, segment),
@@ -144,7 +179,7 @@ impl DefMap {
             | _ => curr_per_ns.with_lower_vis(visibility),
         };
 
-        ResolveResult::with(def, FixPoint::Yes, None, Some(self.lib))
+        ResolveResult::with(def, FixPoint::Yes, None, Some(self.lib))*/
     }
 
     pub(crate) fn resolve_name_in_module(
@@ -159,13 +194,7 @@ impl DefMap {
             | ResolveMode::Import => self[module].scope.get_reexport(name).or(in_scope),
             | ResolveMode::Other => in_scope,
         };
-        // let from_scope = in_scope;
 
-        let from_extern = self
-            .extern_prelude
-            .get(name)
-            .map_or(PerNs::none(), |&it| PerNs::modules((it, Visibility::Public)));
-
-        from_scope.or(from_extern)
+        from_scope
     }
 }

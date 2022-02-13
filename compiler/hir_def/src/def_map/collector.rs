@@ -10,9 +10,9 @@ use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::visibility::Visibility;
-use base_db::input::{FileId, FileTree};
+use base_db::input::FileId;
 use rustc_hash::{FxHashMap, FxHashSet};
-use syntax::ast;
+use syntax::{ast, NameOwner};
 
 // const FIXED_POINT_LIMIT: usize = 8192;
 const GLOBAL_RECURSION_LIMIT: usize = 100;
@@ -30,11 +30,12 @@ pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
 
     for &dep in &db.libs()[collector.def_map.lib].deps {
         let dep_def_map = db.def_map(dep);
-        let name = db.libs()[dep].name.as_str().as_name();
-        let root = dep_def_map.module_id(dep_def_map.root);
-        let root = ModuleDefId::ModuleId(root);
 
-        collector.def_map.extern_prelude.insert(name, root);
+        for (local_id, module) in dep_def_map.modules() {
+            let id = dep_def_map.module_id(local_id);
+
+            collector.def_map.module_names.insert(module.name.clone(), id);
+        }
     }
 
     collector.seed_with_items();
@@ -102,70 +103,17 @@ impl PartialResolvedImport {
 
 impl<'a> DefCollector<'a> {
     fn seed_with_items(&mut self) {
-        let file_tree = self.db.file_tree(self.def_map.lib);
-        let mut modules = FxHashMap::default();
+        let source_root = self.db.lib_source_root(self.def_map.lib);
+        let source_root = self.db.source_root(source_root);
+        let mut modules = Vec::new();
 
-        if let None = go(self, &mut modules, &file_tree, file_tree.root()) {
-            let module_id = self.def_map.add_module(Name::default());
-
-            self.def_map.root = module_id;
-        }
-
-        go2(self, &modules, &file_tree, file_tree.root());
-
-        fn go(
-            this: &mut DefCollector,
-            modules: &mut FxHashMap<FileId, (LocalModuleId, bool)>,
-            file_tree: &FileTree,
-            file_id: FileId,
-        ) -> Option<(Name, LocalModuleId)> {
-            use syntax::ast::NameOwner;
-            let module = this.db.parse(file_id).tree();
+        let mut seed = |this: &mut DefCollector, file_id, module: ast::Module, index: usize| -> Option<()> {
             let name = module.name()?.as_name();
             let exports = module.exports();
             let item_tree = this.db.item_tree(file_id);
             let ast_id_map = this.db.ast_id_map(file_id);
             let module_id = this.def_map.add_module(name.clone());
             let declaration = ast_id_map.ast_id(&module).with_file_id(file_id);
-
-            if file_id == file_tree.root() {
-                let id = this.def_map.module_id(module_id);
-                let id = ModuleDefId::ModuleId(id);
-
-                this.def_map.root = module_id;
-                this.def_map.extern_prelude.insert(name.clone(), id);
-            }
-
-            let is_exported = |name: &Name| match exports.clone() {
-                | Some(e) => e.into_iter().any(|e| match e {
-                    | ast::Export::Name(n) => match n.name_ref() {
-                        | Some(n) => n.as_name() == *name,
-                        | None => false,
-                    },
-                    | _ => false,
-                }),
-                | None => false,
-            };
-
-            for child in file_tree.children(file_id) {
-                if let Some((name, child)) = go(this, modules, file_tree, child) {
-                    let module = this.def_map.module_id(child);
-                    let parent = this.def_map.module_id(module_id);
-                    let def = ModuleDefId::ModuleId(module);
-
-                    this.def_map.modules[module_id].children.insert(name.clone(), child);
-                    this.def_map.modules[module_id].scope.define_def(def);
-                    this.def_map.modules[child].parent = Some(module_id);
-
-                    let vis = if is_exported(&name) {
-                        Visibility::Public
-                    } else {
-                        Visibility::Module(parent)
-                    };
-
-                    this.update(module_id, &[(name, PerNs::modules(def))], vis, ImportType::Named);
-                }
-            }
 
             this.def_map.modules[module_id].origin = super::ModuleOrigin::Normal { declaration };
 
@@ -177,33 +125,31 @@ impl<'a> DefCollector<'a> {
                 export_all: false,
             };
 
-            mcoll.collect_exports(module.exports());
-            modules.insert(file_id, (module_id, mcoll.export_all));
+            mcoll.collect_exports(exports);
+            modules.push((file_id, module_id, index, mcoll.export_all));
 
-            Some((name, module_id))
+            Some(())
+        };
+
+        for file in source_root.files() {
+            let source_file = self.db.parse(file).tree();
+
+            for (i, module) in source_file.modules().enumerate() {
+                let _ = seed(self, file, module, i);
+            }
         }
 
-        fn go2(
-            this: &mut DefCollector,
-            modules: &FxHashMap<FileId, (LocalModuleId, bool)>,
-            file_tree: &FileTree,
-            file_id: FileId,
-        ) {
-            for child in file_tree.children(file_id) {
-                go2(this, modules, file_tree, child);
-            }
-
-            let (module_id, export_all) = modules[&file_id];
-            let item_tree = this.db.item_tree(file_id);
+        for (file_id, module_id, index, export_all) in modules {
+            let item_tree = self.db.item_tree(file_id);
             let mut mcoll = ModCollector {
-                def_collector: this,
+                def_collector: self,
                 item_tree: &item_tree,
                 module_id,
                 file_id,
                 export_all,
             };
 
-            mcoll.collect(item_tree.top_level());
+            mcoll.collect(item_tree.top_level(index));
         }
     }
 
@@ -475,7 +421,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                                 def_map.modules[module_id].exports.export_all = true;
                                 def_map.modules[module_id].origin =
                                     super::ModuleOrigin::Virtual { parent: self.module_id };
-                                def_map.modules[self.module_id].children.insert(name.clone(), module_id);
+                                // def_map.modules[self.module_id].children.insert(name.clone(), module_id);
 
                                 let module_id = def_map.module_id(module_id);
                                 let parent = def_map.module_id(self.module_id);

@@ -37,7 +37,7 @@ impl<'db, DB: HirDatabase> Semantics<'db, DB> {
         Semantics { db, imp }
     }
 
-    pub fn parse(&self, file_id: FileId) -> ast::Module {
+    pub fn parse(&self, file_id: FileId) -> ast::SourceFile {
         self.imp.parse(file_id)
     }
 
@@ -71,7 +71,7 @@ impl<'db> SemanticsImpl<'db> {
         }
     }
 
-    fn parse(&self, file_id: FileId) -> ast::Module {
+    fn parse(&self, file_id: FileId) -> ast::SourceFile {
         let tree = self.db.parse(file_id).tree();
 
         self.cache(tree.syntax().clone(), file_id);

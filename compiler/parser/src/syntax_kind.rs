@@ -76,6 +76,7 @@ pub enum SyntaxKind {
     FOR_KW,
 
     // Syntax tree
+    SOURCE_FILE,
     MODULE,
     EXPORTS,
     EXPORT_NAME,

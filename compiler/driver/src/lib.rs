@@ -81,6 +81,7 @@ impl Driver {
         driver.db.set_triple(Arc::new(target_lexicon::Triple::host()));
         driver.db.set_libs(driver.libs.clone().into());
         driver.db.set_source_root(root_id, root.into());
+        driver.db.set_lib_source_root(lib, root_id);
         driver.db.set_file_source_root(root_file, root_id);
         driver
             .db

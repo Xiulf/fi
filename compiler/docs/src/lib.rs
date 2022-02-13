@@ -134,7 +134,7 @@ impl<'a> Generator<'a> {
             *id
         } else {
             let name = module.name(self.hdb);
-            let mut page = Page::new(module.path(self.hdb), format!("Module {}", name));
+            let mut page = Page::new(Default::default(), format!("Module {}", name));
             let mut sec = Section::new("Definitions");
             let mut entry = Entry::new();
             let mut modules = Vec::new();

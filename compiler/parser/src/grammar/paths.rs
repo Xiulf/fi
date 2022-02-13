@@ -6,12 +6,46 @@ crate fn path(p: &mut Parser) {
 
     path_segment(p);
 
-    while p.at(PATH_SEP) && (p.nth_at(1, IDENT) || p.nth_at(1, SYMBOL)) {
-        p.bump(PATH_SEP);
-        path_segment(p);
+    while p.at(PATH_SEP) {
+        if p.nth_at(1, IDENT) {
+            p.bump(PATH_SEP);
+            path_segment(p);
+        } else if p.nth_at(1, SYMBOL) {
+            p.bump(PATH_SEP);
+            path_segment(p);
+            break;
+        } else {
+            break;
+        }
     }
 
     path.complete(p, PATH);
+}
+
+crate fn module_name(p: &mut Parser) {
+    let name = p.start();
+
+    p.expect(IDENT);
+
+    while p.at(PATH_SEP) && p.nth_at(1, IDENT) {
+        p.bump(PATH_SEP);
+        p.bump(IDENT);
+    }
+
+    name.complete(p, NAME);
+}
+
+crate fn module_name_ref(p: &mut Parser) {
+    let name = p.start();
+
+    p.expect(IDENT);
+
+    while p.at(PATH_SEP) && p.nth_at(1, IDENT) {
+        p.bump(PATH_SEP);
+        p.bump(IDENT);
+    }
+
+    name.complete(p, NAME_REF);
 }
 
 fn path_segment(p: &mut Parser) {

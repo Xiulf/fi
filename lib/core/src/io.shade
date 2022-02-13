@@ -1,7 +1,7 @@
-module io =
+module core/io =
 
 import prim
-import prim/intrinsics (unsafe, transmute, ($))
+import intrinsics (unsafe, transmute, ($))
 import core/ops
 
 class Write w =

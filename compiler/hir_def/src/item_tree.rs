@@ -20,7 +20,7 @@ use syntax::ast::{self, AstNode};
 #[derive(Debug, PartialEq, Eq)]
 pub struct ItemTree {
     pub(crate) file: FileId,
-    top_level: Vec<Item>,
+    top_level: Vec<Vec<Item>>,
     data: ItemTreeData,
     attrs: FxHashMap<AttrOwner, RawAttrs>,
     pub diagnostics: Vec<ItemTreeDiagnostic>,
@@ -73,13 +73,13 @@ impl ItemTree {
     pub fn item_tree_query(db: &dyn DefDatabase, file_id: FileId) -> Arc<ItemTree> {
         let syntax = db.parse(file_id);
         let ctx = lower::Ctx::new(db, file_id);
-        let item_tree = ctx.lower_items(&syntax.tree());
+        let item_tree = ctx.lower_modules(&syntax.tree());
 
         Arc::new(item_tree)
     }
 
-    pub fn top_level(&self) -> &[Item] {
-        &self.top_level
+    pub fn top_level(&self, module: usize) -> &[Item] {
+        &self.top_level[module]
     }
 
     pub(crate) fn raw_attrs(&self, of: AttrOwner) -> &RawAttrs {

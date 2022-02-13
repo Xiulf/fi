@@ -69,7 +69,7 @@ impl DefDiagnostic {
                 } else {
                     sink.push(UnresolvedImport {
                         file: ast.file_id,
-                        node: AstPtr::new(&item.path().unwrap().segments().last().unwrap().name_ref().unwrap()),
+                        node: AstPtr::new(&item.module().unwrap()),
                     });
                 }
             },
@@ -94,7 +94,7 @@ impl DefDiagnostic {
                 } else {
                     sink.push(PrivateImport {
                         file: ast.file_id,
-                        node: AstPtr::new(&item.path().unwrap().segments().last().unwrap().name_ref().unwrap()),
+                        node: AstPtr::new(&item.module().unwrap()),
                     });
                 }
             },

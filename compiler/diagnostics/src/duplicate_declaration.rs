@@ -43,7 +43,7 @@ impl<'db, 'd, DB: hir::db::HirDatabase> DuplicateDeclaration<'db, 'd, DB> {
     }
 }
 
-fn syntax_node_range(ptr: SyntaxNodePtr, parse: &Parsed<ast::Module>) -> TextRange {
+fn syntax_node_range(ptr: SyntaxNodePtr, parse: &Parsed<ast::SourceFile>) -> TextRange {
     match ptr.kind() {
         | SyntaxKind::ITEM_FUN => ast::ItemFun::cast(ptr.to_node(parse.tree().syntax()))
             .and_then(|i| Some(i.name()?.syntax().text_range()))

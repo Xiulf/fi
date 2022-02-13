@@ -86,7 +86,7 @@ impl<T: AstNode> Parsed<T> {
     }
 }
 
-impl ast::Module {
+impl ast::SourceFile {
     pub fn parse(text: &str) -> Parsed<Self> {
         let (green, errors) = parsing::parse_text(text);
 

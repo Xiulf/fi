@@ -1,4 +1,4 @@
-module char (
+module core/data/char (
     -- encode_utf8, len_utf8
 ) =
 

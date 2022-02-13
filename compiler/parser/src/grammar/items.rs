@@ -49,7 +49,7 @@ crate fn any_item(p: &mut Parser) {
 
 crate fn import(p: &mut Parser, m: Marker) {
     p.expect(IMPORT_KW);
-    paths::path(p);
+    paths::module_name_ref(p);
 
     if p.eat(L_PAREN) {
         let items = p.start();

@@ -1,4 +1,4 @@
-module prim (module prim, intrinsics) =
+module prim =
 
 @lang = "kind-kind"   foreign type Kind   :: Kind
 @lang = "type-kind"   foreign type Type   :: Kind

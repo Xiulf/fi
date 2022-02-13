@@ -105,6 +105,7 @@ pub fn load_project(
         libs.add_dep(lib, dep)?;
     }
 
+    rdb.set_lib_source_root(lib, root_id);
     rdb.set_source_root(root_id, root.into());
 
     Ok(lib)
@@ -138,6 +139,7 @@ pub fn load_normal(
         true,
     )?;
 
+    rdb.set_lib_source_root(lib, root_id);
     rdb.set_source_root(root_id, root.into());
 
     Ok(lib)

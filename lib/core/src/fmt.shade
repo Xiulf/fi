@@ -1,8 +1,8 @@
-module fmt =
+module core/fmt =
 
 import core/io (Write, write)
 import prim (Str)
-import prim/intrinsics (transmute, unsafe, ($))
+import intrinsics (transmute, unsafe, ($))
 
 class Fmt f =
     fun fmt :: for w. Write w => w -> f -> w

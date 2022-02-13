@@ -65,6 +65,12 @@ impl Iterator for CommentIter {
     }
 }
 
+impl SourceFile {
+    pub fn modules(&self) -> AstChildren<Module> {
+        support::children(&self.0)
+    }
+}
+
 impl AttrsOwner for Module {
 }
 
@@ -181,7 +187,7 @@ impl AttrsOwner for ItemImport {
 }
 
 impl ItemImport {
-    pub fn path(&self) -> Option<Path> {
+    pub fn module(&self) -> Option<NameRef> {
         support::child(&self.0)
     }
 
@@ -1089,14 +1095,8 @@ impl Name {
         support::token(&self.0, IDENT)
     }
 
-    pub fn text(&self) -> &str {
-        self.0
-            .green()
-            .children()
-            .next()
-            .and_then(|it| it.into_token())
-            .unwrap()
-            .text()
+    pub fn text(&self) -> String {
+        self.0.text().to_string()
     }
 }
 
@@ -1105,14 +1105,8 @@ impl NameRef {
         support::token(&self.0, IDENT)
     }
 
-    pub fn text(&self) -> &str {
-        self.0
-            .green()
-            .children()
-            .next()
-            .and_then(|it| it.into_token())
-            .unwrap()
-            .text()
+    pub fn text(&self) -> String {
+        self.0.text().to_string()
     }
 
     pub fn as_tuple_field(&self) -> Option<usize> {

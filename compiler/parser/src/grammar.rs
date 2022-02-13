@@ -11,15 +11,18 @@ use crate::syntax_kind::*;
 crate fn root(p: &mut Parser) {
     let m = p.start();
 
-    p.eat(LYT_SEP);
+    while !p.at(EOF) {
+        let m = p.start();
 
-    while !p.at(EOF) && p.at(AT) {
-        attributes::attr(p);
         p.eat(LYT_SEP);
-    }
 
-    if p.eat(MODULE_KW) {
-        paths::name(p);
+        while !p.at(EOF) && p.at(AT) {
+            attributes::attr(p);
+            p.eat(LYT_SEP);
+        }
+
+        p.expect(MODULE_KW);
+        paths::module_name(p);
 
         if p.at(L_PAREN) {
             exports(p);
@@ -40,10 +43,9 @@ crate fn root(p: &mut Parser) {
         p.eat(LYT_END);
         p.expect(EOF);
         m.complete(p, MODULE);
-    } else {
-        p.error("expected 'module'");
-        m.complete(p, MODULE);
     }
+
+    m.complete(p, SOURCE_FILE);
 }
 
 fn exports(p: &mut Parser) {

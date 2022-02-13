@@ -69,7 +69,9 @@ impl AstIdMap {
         res.alloc(node);
 
         bfs(node, |it| {
-            if let Some(item) = ast::Item::cast(it.clone()) {
+            if let Some(module) = ast::Module::cast(it.clone()) {
+                res.alloc(module.syntax());
+            } else if let Some(item) = ast::Item::cast(it.clone()) {
                 res.alloc(item.syntax());
             } else if let Some(item) = ast::Ctor::cast(it) {
                 res.alloc(item.syntax());

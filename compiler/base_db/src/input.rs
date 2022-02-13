@@ -156,3 +156,9 @@ impl LineIndex {
         self.newlines[line as usize].into()
     }
 }
+
+impl std::fmt::Display for FileId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "file{}", self.0)
+    }
+}
