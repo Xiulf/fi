@@ -9,17 +9,16 @@ mod unify;
 use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
 use crate::lower::LowerCtx;
-use crate::ty::{Constraint, Ty, TyKind};
+use crate::ty::{Constraint, List, Ty, TyKind};
 use diagnostics::InferenceDiagnostic;
 use hir_def::arena::ArenaMap;
 use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
-use hir_def::id::{
-    AssocItemId, ClassId, ContainerId, DefWithBodyId, HasModule, InstanceId, Lookup, TypeVarOwner, ValueTyDefId,
-};
+use hir_def::id::{ClassId, ContainerId, DefWithBodyId, HasModule, InstanceId, Lookup, TypeVarOwner};
 use hir_def::pat::PatId;
 use hir_def::resolver::Resolver;
+use hir_def::type_ref::LocalTypeRefId;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -27,68 +26,28 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
     let body = db.body(def);
     let resolver = Resolver::for_expr(db.upcast(), def, body.body_expr());
     let mut icx = BodyInferenceContext::new(db, resolver, def);
+    let ty = match def {
+        | DefWithBodyId::FuncId(id) => {
+            let data = db.func_data(id);
+            let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
 
-    if let DefWithBodyId::FuncId(id) = def {
-        let data = db.func_data(id);
-        let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
-        let diags = lcx.result.diagnostics.len();
-        let var_kinds = data
-            .vars
-            .iter()
-            .rev()
-            .map(|&v| {
-                let var = &data.type_map()[v];
-                let kind = var.kind.map(|k| lcx.lower_ty(k)).unwrap_or(lcx.fresh_kind());
+            data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type())
+        },
+        | DefWithBodyId::StaticId(id) => {
+            let data = db.static_data(id);
+            let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
 
-                lcx.push_var_kind(kind);
-                kind
-            })
-            .collect::<Vec<_>>();
+            data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type())
+        },
+        | DefWithBodyId::ConstId(id) => {
+            let data = db.const_data(id);
+            let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
 
-        let ctnts = data
-            .constraints
-            .iter()
-            .filter_map(|c| lcx.lower_constraint(c))
-            .collect::<Vec<_>>();
-
-        icx.result.diagnostics.truncate(diags);
-
-        for ctnt in &ctnts {
-            icx.class_env.push(ctnt.clone(), true);
-        }
-
-        icx.infer_body();
-
-        for ctnt in ctnts {
-            icx.result.self_type = TyKind::Ctnt(ctnt, icx.result.self_type).intern(db);
-        }
-
-        for kind in var_kinds {
-            icx.result.self_type = TyKind::ForAll(kind, icx.result.self_type).intern(db);
-        }
-    } else {
-        icx.infer_body();
-    }
-
-    let has_ann = match def {
-        | DefWithBodyId::FuncId(id) => db.func_data(id).ty.is_some(),
-        | DefWithBodyId::StaticId(id) => db.static_data(id).ty.is_some(),
-        | DefWithBodyId::ConstId(id) => db.const_data(id).ty.is_some(),
+            data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type())
+        },
     };
 
-    if has_ann {
-        let ann = db.value_ty(match def {
-            | DefWithBodyId::FuncId(id) => ValueTyDefId::FuncId(id),
-            | DefWithBodyId::StaticId(id) => ValueTyDefId::StaticId(id),
-            | DefWithBodyId::ConstId(id) => ValueTyDefId::ConstId(id),
-        });
-
-        let self_type = icx.result.self_type;
-
-        if !icx.unify_types(self_type, ann) {
-            icx.report_mismatch(ann, self_type, body.body_expr().into());
-        }
-    }
+    icx.check_body(ty);
 
     Arc::new(icx.finish())
 }
@@ -115,6 +74,7 @@ pub struct InferenceContext<'a> {
     pub(crate) owner: TypeVarOwner,
     pub(crate) result: InferenceResult,
     subst: unify::Substitution,
+    origin: FxHashMap<Ty, TypeOrigin>,
     pub(crate) var_kinds: Vec<Ty>,
     class_env: ClassEnv,
     instance_records: usize,
@@ -144,15 +104,40 @@ pub enum ExprOrPatId {
     PatId(PatId),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypeOrigin {
+    ExprId(ExprId),
+    PatId(PatId),
+    TypeRefId(LocalTypeRefId),
+}
+
 impl From<ExprId> for ExprOrPatId {
     fn from(id: ExprId) -> Self {
-        ExprOrPatId::ExprId(id)
+        Self::ExprId(id)
     }
 }
 
 impl From<PatId> for ExprOrPatId {
     fn from(id: PatId) -> Self {
-        ExprOrPatId::PatId(id)
+        Self::PatId(id)
+    }
+}
+
+impl From<ExprId> for TypeOrigin {
+    fn from(id: ExprId) -> Self {
+        Self::ExprId(id)
+    }
+}
+
+impl From<PatId> for TypeOrigin {
+    fn from(id: PatId) -> Self {
+        Self::PatId(id)
+    }
+}
+
+impl From<LocalTypeRefId> for TypeOrigin {
+    fn from(id: LocalTypeRefId) -> Self {
+        Self::TypeRefId(id)
     }
 }
 
@@ -171,6 +156,7 @@ impl<'a> InferenceContext<'a> {
                 diagnostics: Vec::new(),
             },
             subst: unify::Substitution::default(),
+            origin: FxHashMap::default(),
             var_kinds: Vec::default(),
             class_env: ClassEnv::default(),
             instance_records: 0,
@@ -228,13 +214,6 @@ impl<'a> InferenceContext<'a> {
         TyKind::Ctor(ty).intern(self.db)
     }
 
-    pub(crate) fn fn_type_id(&self) -> hir_def::id::TypeCtorId {
-        let module = self.owner.module(self.db.upcast());
-        let ty = self.db.lang_item(module.lib, "fn-type".into()).unwrap();
-
-        ty.as_type_ctor().unwrap()
-    }
-
     pub(crate) fn lang_class(&self, name: &'static str) -> ClassId {
         let module = self.owner.module(self.db.upcast());
         let id = self.db.lang_item(module.lib, name.into()).unwrap();
@@ -242,25 +221,8 @@ impl<'a> InferenceContext<'a> {
         id.as_class().unwrap()
     }
 
-    pub(crate) fn fn_type(&self, arg: Ty, ret: Ty) -> Ty {
-        let fn_type = self.lang_type("fn-type");
-        let base = TyKind::App(fn_type, arg).intern(self.db);
-
-        TyKind::App(base, ret).intern(self.db)
-    }
-
-    pub(crate) fn ptr_type(&self, to: Ty) -> Ty {
-        let ptr_type = self.lang_type("ptr-type");
-
-        TyKind::App(ptr_type, to).intern(self.db)
-    }
-
-    pub(crate) fn array_type(&self, of: Ty, len: i128) -> Ty {
-        let array_type = self.lang_type("array-type");
-        let base = TyKind::App(array_type, of).intern(self.db);
-        let len = TyKind::Figure(len).intern(self.db);
-
-        TyKind::App(base, len).intern(self.db)
+    pub(crate) fn fn_type(&self, args: List<Ty>, ret: Ty) -> Ty {
+        TyKind::Func(args, ret).intern(self.db)
     }
 
     pub(crate) fn push_var_kind(&mut self, kind: Ty) {
@@ -271,12 +233,29 @@ impl<'a> InferenceContext<'a> {
         self.var_kinds.pop().unwrap();
     }
 
+    pub(crate) fn set_origin(&mut self, ty: Ty, origin: impl Into<TypeOrigin>) {
+        self.origin.insert(ty, origin.into());
+    }
+
+    pub(crate) fn get_origin(&self, ty: Ty) -> Option<TypeOrigin> {
+        self.origin.get(&ty).copied()
+    }
+
     pub(crate) fn report(&mut self, diag: InferenceDiagnostic) {
         self.result.diagnostics.push(diag);
     }
 
-    pub(crate) fn report_mismatch(&mut self, expected: Ty, found: Ty, id: ExprOrPatId) {
-        self.report(InferenceDiagnostic::MismatchedType { id, expected, found });
+    pub(crate) fn report_mismatch(&mut self, expected: Ty, found: Ty, id: impl Into<ExprOrPatId>) {
+        let expected_origin = self.get_origin(expected);
+        let found_origin = self.get_origin(found);
+
+        self.report(InferenceDiagnostic::MismatchedType {
+            id: id.into(),
+            expected,
+            found,
+            expected_origin,
+            found_origin,
+        });
     }
 
     pub(crate) fn constrain(&mut self, id: ExprOrPatId, ctnt: Constraint) {
@@ -288,7 +267,7 @@ impl<'a> InferenceContext<'a> {
     }
 
     pub(crate) fn unit(&self) -> Ty {
-        TyKind::Tuple(Arc::new([])).intern(self.db)
+        TyKind::Tuple([].into()).intern(self.db)
     }
 }
 
@@ -312,84 +291,85 @@ impl<'a> BodyInferenceContext<'a> {
         self.icx.finish()
     }
 
-    fn infer_body(&mut self) {
+    fn check_body(&mut self, ann: Ty) {
         if let TypeVarOwner::DefWithBodyId(DefWithBodyId::FuncId(id)) = self.owner {
             let loc = id.lookup(self.db.upcast());
 
-            if let ContainerId::Instance(inst) = loc.container {
-                let data = self.db.func_data(id);
-                let lower = self.db.lower_instance(inst);
-                let class = self.db.class_data(lower.instance.class);
-                let item = class.item(&data.name).unwrap();
-                let mut item_ty = match item {
-                    | AssocItemId::FuncId(id) => self.db.value_ty(id.into()),
-                    | AssocItemId::StaticId(id) => self.db.value_ty(id.into()),
-                };
+            if let ContainerId::Instance(_inst) = loc.container {
+                // let data = self.db.func_data(id);
+                // let lower = self.db.lower_instance(inst);
+                // let class = self.db.class_data(lower.instance.class);
+                // let item = class.item(&data.name).unwrap();
+                // let mut item_ty = match item {
+                //     | AssocItemId::FuncId(id) => self.db.value_ty(id.into()),
+                //     | AssocItemId::StaticId(id) => self.db.value_ty(id.into()),
+                // };
 
-                for &ty in lower.instance.types.iter() {
-                    if let TyKind::ForAll(_, t) = item_ty.lookup(self.db) {
-                        item_ty = t.replace_var(self.db, ty);
-                    }
-                }
+                // for &ty in lower.instance.types.iter() {
+                //     if let TyKind::ForAll(_, t) = item_ty.lookup(self.db) {
+                //         item_ty = t.replace_var(self.db, ty);
+                //     }
+                // }
 
-                if let TyKind::Ctnt(_, ty) = item_ty.lookup(self.db) {
-                    item_ty = ty;
-                }
+                // if let TyKind::Ctnt(_, ty) = item_ty.lookup(self.db) {
+                //     item_ty = ty;
+                // }
 
-                self.result.self_type = item_ty;
+                // self.result.self_type = item_ty;
 
-                while let TyKind::ForAll(kind, ty) = item_ty.lookup(self.db) {
-                    item_ty = self.skolemize(kind, ty);
-                }
+                // while let TyKind::ForAll(kind, ty) = item_ty.lookup(self.db) {
+                //     item_ty = self.skolemize(kind, ty);
+                // }
 
-                while let TyKind::Ctnt(ctnt, ty) = item_ty.lookup(self.db) {
-                    self.class_env.push(ctnt, true);
-                    item_ty = ty;
-                }
+                // while let TyKind::Ctnt(ctnt, ty) = item_ty.lookup(self.db) {
+                //     self.class_env.push(ctnt, true);
+                //     item_ty = ty;
+                // }
 
-                let fn_type_id = self.fn_type_id();
+                // let fn_type_id = self.fn_type_id();
 
-                for pat in self.body.params().to_vec() {
-                    if let Some([arg, ret]) = item_ty.match_ctor(self.db, fn_type_id) {
-                        self.check_pat(pat, arg);
-                        item_ty = ret;
-                    }
-                }
+                // for pat in self.body.params().to_vec() {
+                //     if let Some([arg, ret]) = item_ty.match_ctor(self.db, fn_type_id) {
+                //         self.check_pat(pat, arg);
+                //         item_ty = ret;
+                //     }
+                // }
 
-                self.ret_type = item_ty;
-                self.check_expr(self.body.body_expr(), item_ty);
+                // self.ret_type = item_ty;
+                // self.check_expr(self.body.body_expr(), item_ty);
 
-                return;
+                // return;
             }
         }
 
-        let ret = self.fresh_type();
-        let mut ty = ret;
+        let (ret, args) = match ann.lookup(self.db) {
+            | TyKind::Func(args, ret) => (ret, args),
+            | _ => (ann, [].into()),
+        };
 
-        for pat in self.body.params().to_vec().into_iter().rev() {
-            let arg = self.infer_pat(pat);
-
-            ty = self.fn_type(arg, ty);
+        for (pat, &arg) in self.body.params().to_vec().into_iter().zip(args.iter()) {
+            self.check_pat(pat, arg);
         }
 
-        self.result.self_type = ty;
+        self.result.self_type = ann;
         self.ret_type = ret;
         self.check_expr(self.body.body_expr(), ret);
 
-        if let Some(yield_type) = self.yield_type {
-            let block_type = self.lang_type("block-type");
-            let yield_type = TyKind::App(block_type, yield_type).intern(self.db);
-            let yield_type = TyKind::App(yield_type, ret).intern(self.db);
+        if let Some(_yield_type) = self.yield_type {
+            todo!();
+            // let block_type = self.lang_type("block-type");
+            // let yield_type = TyKind::App(block_type, yield_type).intern(self.db);
+            // let yield_type = TyKind::App(yield_type, ret).intern(self.db);
 
-            ty = self.fn_type(yield_type, ret);
+            // ty = self.fn_type(yield_type, ret);
 
-            for &pat in self.body.params().iter().rev() {
-                let arg = self.result.type_of_pat[pat];
+            // for &pat in self.body.params().iter().rev() {
+            //     let arg = self.result.type_of_pat[pat];
 
-                ty = self.fn_type(arg, ty);
-            }
+            //     ty = self.fn_type(arg, ty);
+            // }
 
-            self.result.self_type = ty;
+            // self.result.self_type = ty;
         }
     }
 }
@@ -415,10 +395,11 @@ impl InferenceResult {
 }
 
 pub(crate) mod diagnostics {
-    use super::{ExprOrPatId, InferenceContext};
+    use super::{ExprOrPatId, InferenceContext, TypeOrigin};
     use crate::db::HirDatabase;
     use crate::diagnostics::*;
     use crate::ty::{Constraint, Ty};
+    use hir_def::body::BodySourceMap;
     use hir_def::diagnostic::DiagnosticSink;
     use hir_def::expr::ExprId;
     use hir_def::id::{HasSource, TypeVarOwner};
@@ -453,6 +434,8 @@ pub(crate) mod diagnostics {
             id: ExprOrPatId,
             expected: Ty,
             found: Ty,
+            expected_origin: Option<TypeOrigin>,
+            found_origin: Option<TypeOrigin>,
         },
         UnsolvedConstraint {
             id: ExprOrPatId,
@@ -480,10 +463,18 @@ pub(crate) mod diagnostics {
                     expected: icx.subst_type(expected),
                     found: icx.subst_type(found),
                 },
-                | InferenceDiagnostic::MismatchedType { id, expected, found } => InferenceDiagnostic::MismatchedType {
+                | InferenceDiagnostic::MismatchedType {
+                    id,
+                    expected,
+                    found,
+                    expected_origin,
+                    found_origin,
+                } => InferenceDiagnostic::MismatchedType {
                     id,
                     expected: icx.subst_type(expected),
                     found: icx.subst_type(found),
+                    expected_origin,
+                    found_origin,
                 },
                 | InferenceDiagnostic::UnsolvedConstraint { id, ctnt } => InferenceDiagnostic::UnsolvedConstraint {
                     id,
@@ -495,6 +486,13 @@ pub(crate) mod diagnostics {
 
         pub fn add_to(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
             let file = owner.source(db.upcast()).file_id;
+            let ty_src = |source_map: &BodySourceMap, origin| match origin {
+                | TypeOrigin::ExprId(o) => source_map.expr_syntax(o).unwrap().value.syntax_node_ptr(),
+                | TypeOrigin::PatId(o) => source_map.pat_syntax(o).unwrap().value.syntax_node_ptr(),
+                | TypeOrigin::TypeRefId(o) => {
+                    owner.with_type_source_map(db.upcast(), |m| m.type_ref_syntax(o).unwrap().syntax_node_ptr())
+                },
+            };
 
             match self {
                 | InferenceDiagnostic::UnresolvedType { id } => {
@@ -571,22 +569,33 @@ pub(crate) mod diagnostics {
                         expected: *expected,
                     });
                 },
-                | InferenceDiagnostic::MismatchedType { id, expected, found } => {
-                    let soure_map = match owner {
+                | InferenceDiagnostic::MismatchedType {
+                    id,
+                    expected,
+                    found,
+                    expected_origin,
+                    found_origin,
+                } => {
+                    let source_map = match owner {
                         | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
                         | _ => return,
                     };
 
                     let src = match *id {
-                        | ExprOrPatId::ExprId(e) => soure_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
-                        | ExprOrPatId::PatId(e) => soure_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
+                        | ExprOrPatId::ExprId(e) => source_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
+                        | ExprOrPatId::PatId(e) => source_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
                     };
+
+                    let expected_src = expected_origin.map(|o| ty_src(&source_map, o));
+                    let found_src = found_origin.map(|o| ty_src(&source_map, o));
 
                     sink.push(MismatchedType {
                         file,
                         src,
                         expected: *expected,
                         found: *found,
+                        expected_src,
+                        found_src,
                     });
                 },
                 | InferenceDiagnostic::UnsolvedConstraint { id, ctnt } => {

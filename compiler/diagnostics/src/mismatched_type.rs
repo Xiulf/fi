@@ -26,6 +26,29 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedType<'db, 'd, D
             ),
         })
     }
+
+    fn secondary_annotations(&self) -> Vec<SecondaryAnnotation> {
+        let mut annotations = Vec::new();
+
+        if let Some(expected) = self.diag.expected_src {
+            annotations.push(SecondaryAnnotation {
+                range: self.diag.display_source().with_value(expected.range()),
+                message: format!(
+                    "expected type `{}` because of this",
+                    self.diag.expected.display(self.db)
+                ),
+            });
+        }
+
+        if let Some(found) = self.diag.found_src {
+            annotations.push(SecondaryAnnotation {
+                range: self.diag.display_source().with_value(found.range()),
+                message: format!("type `{}` found here", self.diag.found.display(self.db)),
+            });
+        }
+
+        annotations
+    }
 }
 
 impl<'db, 'd, DB: hir::db::HirDatabase> MismatchedType<'db, 'd, DB> {

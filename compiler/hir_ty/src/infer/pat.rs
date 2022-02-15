@@ -23,11 +23,8 @@ impl BodyInferenceContext<'_> {
             }),
             | Pat::App { base, args } => {
                 let ret = self.fresh_type();
-                let ty = args.iter().rev().fold(ret, |ty, &arg| {
-                    let arg = self.infer_pat(arg);
-
-                    self.fn_type(arg, ty)
-                });
+                let args = args.iter().map(|&a| self.infer_pat(a)).collect();
+                let ty = self.fn_type(args, ret);
 
                 self.check_pat(*base, ty);
                 ret
@@ -74,7 +71,7 @@ impl BodyInferenceContext<'_> {
                 let tail = if *has_rest {
                     let row_kind = self.lang_type("row-kind");
                     let type_kind = self.lang_type("type-kind");
-                    let kind = TyKind::App(row_kind, type_kind).intern(self.db);
+                    let kind = TyKind::App(row_kind, [type_kind].into()).intern(self.db);
 
                     Some(self.fresh_type_with_kind(kind))
                 } else {
@@ -92,7 +89,7 @@ impl BodyInferenceContext<'_> {
 
                 let row = TyKind::Row(fields, tail).intern(self.db);
 
-                TyKind::App(record_type, row).intern(self.db)
+                TyKind::App(record_type, [row].into()).intern(self.db)
             },
             | Pat::Lit { lit } => match lit {
                 | Literal::Int(_) => {
@@ -144,11 +141,7 @@ impl BodyInferenceContext<'_> {
                 let infer = self.infer_pat(pat);
 
                 if !self.unify_types(infer, expected) {
-                    self.report(InferenceDiagnostic::MismatchedType {
-                        id: pat.into(),
-                        expected,
-                        found: infer,
-                    });
+                    self.report_mismatch(expected, infer, pat);
                 }
             },
         }

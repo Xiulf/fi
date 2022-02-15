@@ -153,6 +153,8 @@ pub struct MismatchedType {
     pub src: SyntaxNodePtr,
     pub expected: Ty,
     pub found: Ty,
+    pub expected_src: Option<SyntaxNodePtr>,
+    pub found_src: Option<SyntaxNodePtr>,
 }
 
 impl Diagnostic for MismatchedType {

@@ -15,7 +15,7 @@ impl InferenceContext<'_> {
             },
             | TyKind::Skolem(_, kind) => kind,
             | TyKind::TypeVar(var) => {
-                let idx = self.var_kinds.len() - var.debruijn().depth() as usize - 1;
+                let idx = self.var_kinds.len() - var.debruijn().depth() as usize;
 
                 self.var_kinds[idx]
             },
@@ -24,7 +24,7 @@ impl InferenceContext<'_> {
             | TyKind::Row(fields, tail) => {
                 let elem_kind = self.fresh_kind();
                 let row_kind = self.lang_type("row-kind");
-                let kind = TyKind::App(row_kind, elem_kind).intern(self.db);
+                let kind = TyKind::App(row_kind, [elem_kind].into()).intern(self.db);
 
                 for field in fields.iter() {
                     self.check_kind(field.ty, elem_kind, origin);
@@ -43,6 +43,7 @@ impl InferenceContext<'_> {
                     self.db.kind_for_ctor(id)
                 }
             },
+            | TyKind::App(base, args) => self.check_kind_for_app(base, &args, origin),
             | TyKind::Tuple(tys) => {
                 let type_kind = self.lang_type("type-kind");
 
@@ -52,15 +53,26 @@ impl InferenceContext<'_> {
 
                 type_kind
             },
-            | TyKind::App(base, arg) => self.check_kind_for_app(base, arg, origin),
+            | TyKind::Func(args, ret) => {
+                let type_kind = self.lang_type("type-kind");
+
+                for &ty in args.iter() {
+                    self.check_kind(ty, type_kind, origin);
+                }
+
+                self.check_kind(ret, type_kind, origin);
+                type_kind
+            },
             | TyKind::Ctnt(_, ty) => self.infer_kind(ty, origin),
-            | TyKind::ForAll(kind, inner) => {
-                self.push_var_kind(kind);
+            | TyKind::ForAll(kinds, inner) => {
+                for &kind in kinds.iter() {
+                    self.push_var_kind(kind);
+                }
 
                 let inner_kind = self.infer_kind(inner, origin);
 
                 self.pop_var_kind();
-                self.fn_type(kind, inner_kind)
+                self.fn_type(kinds, inner_kind)
             },
         }
     }
@@ -86,11 +98,11 @@ impl InferenceContext<'_> {
     }
 
     /// Check that base has kind `kind_of(arg) -> ?`
-    pub fn check_kind_for_app(&mut self, base: Ty, arg: Ty, origin: LocalTypeRefId) -> Ty {
+    pub fn check_kind_for_app(&mut self, base: Ty, args: &[Ty], origin: LocalTypeRefId) -> Ty {
         let base_kind = self.infer_kind(base, origin);
-        let arg_kind = self.infer_kind(arg, origin);
+        let arg_kinds = args.iter().map(|&a| self.infer_kind(a, origin)).collect();
         let ret_kind = self.fresh_kind();
-        let fun_kind = self.fn_type(arg_kind, ret_kind);
+        let fun_kind = self.fn_type(arg_kinds, ret_kind);
 
         if !self.unify_types(base_kind, fun_kind) {
             self.report(InferenceDiagnostic::MismatchedKind {

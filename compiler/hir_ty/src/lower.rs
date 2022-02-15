@@ -128,54 +128,54 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                         let ptr_ty = ptr_ty.as_type_ctor().unwrap();
                         let ptr_ty = self.db.type_for_ctor(ptr_ty).ty;
 
-                        TyKind::App(ptr_ty, to_).intern(self.db)
+                        TyKind::App(ptr_ty, vec![to_].into()).intern(self.db)
                     },
                     | PtrLen::Multiple(None) => {
                         let ptr_ty = self.db.lang_item(lib, "ptrb-type".into()).unwrap();
                         let ptr_ty = ptr_ty.as_type_ctor().unwrap();
                         let ptr_ty = self.db.type_for_ctor(ptr_ty).ty;
 
-                        TyKind::App(ptr_ty, to_).intern(self.db)
+                        TyKind::App(ptr_ty, vec![to_].into()).intern(self.db)
                     },
                     | PtrLen::Multiple(Some(sentinel)) => {
                         let ptr_ty = self.db.lang_item(lib, "ptrbs-type".into()).unwrap();
                         let ptr_ty = ptr_ty.as_type_ctor().unwrap();
                         let ptr_ty = self.db.type_for_ctor(ptr_ty).ty;
-                        let base = TyKind::App(ptr_ty, to_).intern(self.db);
                         let sentinel = TyKind::Figure(sentinel.0).intern(self.db);
 
-                        TyKind::App(base, sentinel).intern(self.db)
+                        TyKind::App(ptr_ty, vec![to_, sentinel].into()).intern(self.db)
                     },
                 }
             },
-            | TypeRef::App(base, arg) => {
+            | TypeRef::App(base, args) => {
                 let base = self.lower_ty(*base);
-                let arg = self.lower_ty(*arg);
+                let args = args.iter().map(|a| self.lower_ty(*a)).collect::<List<_>>();
 
-                self.check_kind_for_app(base, arg, ty);
+                self.check_kind_for_app(base, &args, ty);
 
-                if let TyKind::ForAll(_, inner) = base.lookup(self.db) {
-                    inner.replace_var(self.db, arg)
-                } else {
-                    TyKind::App(base, arg).intern(self.db)
-                }
+                TyKind::App(base, args).intern(self.db)
             },
-            | TypeRef::Func(arg, ret) => {
-                let arg = self.lower_ty(*arg);
-                let ret = self.lower_ty(*ret);
+            | TypeRef::Func(args, ret) => {
+                let args_ = args.iter().map(|arg| self.lower_ty(*arg)).collect::<List<_>>();
+                let ret_ = self.lower_ty(*ret);
 
-                self.fn_type(arg, ret)
+                for (arg_, arg) in args_.iter().zip(args.iter()) {
+                    self.check_kind_type(*arg_, *arg);
+                }
+
+                self.check_kind_type(ret_, *ret);
+                self.fn_type(args_, ret_)
             },
             | TypeRef::Record(fields, tail) => {
                 let row = self.lower_row(fields, *tail);
                 let record_ty = self.lang_type("record-type");
-                let type_kind = self.lang_type("type-kind");
+                let type_kind = self.type_kind();
                 let row_kind = self.lang_type("row-kind");
-                let row_kind = TyKind::App(row_kind, type_kind).intern(self.db);
+                let row_kind = TyKind::App(row_kind, [type_kind].into()).intern(self.db);
 
                 self.check_kind(row, row_kind, ty);
 
-                TyKind::App(record_ty, row).intern(self.db)
+                TyKind::App(record_ty, [row].into()).intern(self.db)
             },
             | TypeRef::Slice(of) => {
                 let slice_ty = self.lang_type("slice-type");
@@ -183,7 +183,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
 
                 self.check_kind_type(of_, *of);
 
-                TyKind::App(slice_ty, of_).intern(self.db)
+                TyKind::App(slice_ty, [of_].into()).intern(self.db)
             },
             | TypeRef::Row(fields, tail) => self.lower_row(fields, *tail),
             | TypeRef::Forall(vars, inner) => {
@@ -204,24 +204,27 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                     .collect::<Vec<_>>();
 
                 let inner = self.lower_ty(*inner);
-                let type_kind = std::lazy::OnceCell::new();
+                let type_kind = self.type_kind();
 
                 self.resolver = old_resolver;
 
-                vars.into_iter().fold(inner, |inner, kind| {
-                    let kind = self.subst_type(kind);
+                let kinds = vars
+                    .into_iter()
+                    .map(|kind| {
+                        let kind = self.subst_type(kind);
 
-                    self.pop_var_kind();
+                        self.pop_var_kind();
 
-                    if let TyKind::Unknown(u) = kind.lookup(self.db) {
-                        let kind = *type_kind.get_or_init(|| self.lang_type("type-kind"));
+                        if let TyKind::Unknown(u) = kind.lookup(self.db) {
+                            self.solve_type(u, type_kind);
+                            type_kind
+                        } else {
+                            kind
+                        }
+                    })
+                    .collect();
 
-                        self.solve_type(u, kind);
-                        TyKind::ForAll(kind, inner).intern(self.db)
-                    } else {
-                        TyKind::ForAll(kind, inner).intern(self.db)
-                    }
-                })
+                TyKind::ForAll(kinds, inner).intern(self.db)
             },
             | TypeRef::Constraint(ctnt, inner) => {
                 if let Some(class) = self.lower_class_path(&ctnt.class) {
@@ -262,7 +265,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             .collect();
 
         let row_kind = self.lang_type("row-kind");
-        let row_kind = TyKind::App(row_kind, elem_kind).intern(self.db);
+        let row_kind = TyKind::App(row_kind, [elem_kind].into()).intern(self.db);
         let tail = tail.map(|t| {
             let ty = self.lower_ty(t);
 
@@ -297,13 +300,13 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
     ) -> (Ty, Option<TypeNs>) {
         let ty = match resolution {
             | TypeNs::Class(_) => {
-                // @TODO: resport error
+                // @TODO: report error
                 TyKind::Error.intern(self.db)
             },
             | TypeNs::TypeVar(id) => {
-                let depth = self.resolver.type_var_index(id).unwrap();
+                let (idx, depth) = self.resolver.type_var_index(id).unwrap();
                 let debruijn = DebruijnIndex::new(depth as u32);
-                let type_var = TypeVar::new(debruijn);
+                let type_var = TypeVar::new(idx as u32, debruijn);
 
                 type_var.to_ty(self.db)
             },
@@ -388,7 +391,7 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
             let ctnt = Constraint {
                 class,
                 types: (0..lower.class.vars.len() as u32)
-                    .map(|i| TypeVar::new(DebruijnIndex::new(i)).to_ty(db))
+                    .map(|i| TypeVar::new(i, DebruijnIndex::INNER).to_ty(db))
                     .collect(),
             };
 
@@ -399,11 +402,7 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
             let mut ty = ctx.lower_ty(ty);
 
             ty = TyKind::Ctnt(ctnt, ty).intern(db);
-
-            for &var in lower.class.vars.iter().rev() {
-                ty = TyKind::ForAll(var, ty).intern(db);
-            }
-
+            ty = TyKind::ForAll(lower.class.vars.clone(), ty).intern(db);
             ty
         } else {
             ctx.lower_ty(ty)
@@ -470,24 +469,34 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult> {
     let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
     let mut ctx = LowerCtx::new(ty_data.type_map(), &mut icx);
     let mut ret = db.type_for_ctor(id.parent).ty;
-    let mut vars = Vec::with_capacity(ty_data.vars.len());
+    let mut vars = None;
 
-    while let TyKind::ForAll(var, t) = ret.lookup(db) {
-        ctx.push_var_kind(var);
-        vars.push(var);
+    if let TyKind::ForAll(vars_, t) = ret.lookup(db) {
+        for var in vars_.iter() {
+            ctx.push_var_kind(*var);
+        }
+
+        vars = Some(vars_);
         ret = t;
     }
 
-    for &ty in ctor_data.types.iter().rev() {
-        let ty_ = ctx.lower_ty(ty);
+    let args = ctor_data
+        .types
+        .iter()
+        .map(|&ty| {
+            let ty_ = ctx.lower_ty(ty);
 
-        ctx.check_kind_type(ty_, ty);
-        ret = ctx.fn_type(ty_, ret);
-    }
+            ctx.check_kind_type(ty_, ty);
+            ty_
+        })
+        .collect();
 
-    let ty = vars
-        .into_iter()
-        .fold(ret, |ret, var| TyKind::ForAll(var, ret).intern(db));
+    let ty = ctx.fn_type(args, ret);
+    let ty = if let Some(vars) = vars {
+        TyKind::ForAll(vars, ty).intern(db)
+    } else {
+        ty
+    };
 
     ctx.finish(ty)
 }
@@ -511,24 +520,25 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
         })
         .collect::<Vec<_>>();
 
-    let mut ty = ctx.lower_ty(data.alias);
-    let type_kind = std::lazy::OnceCell::new();
+    let ty = ctx.lower_ty(data.alias);
+    let type_kind = ctx.type_kind();
+    let kinds = var_kinds
+        .into_iter()
+        .map(|kind| {
+            let kind = ctx.subst_type(kind);
 
-    for kind in var_kinds {
-        let kind = ctx.subst_type(kind);
+            ctx.pop_var_kind();
 
-        if let TyKind::Unknown(u) = kind.lookup(db) {
-            let kind = *type_kind.get_or_init(|| ctx.lang_type("type-kind"));
+            if let TyKind::Unknown(u) = kind.lookup(db) {
+                ctx.solve_type(u, type_kind);
+                type_kind
+            } else {
+                kind
+            }
+        })
+        .collect();
 
-            ctx.solve_type(u, kind);
-            ty = TyKind::ForAll(kind, ty).intern(db);
-        } else {
-            ty = TyKind::ForAll(kind, ty).intern(db);
-        }
-
-        ctx.pop_var_kind();
-    }
-
+    let ty = TyKind::ForAll(kinds, ty).intern(db);
     let ty = ctx.subst_type(ty);
 
     ctx.finish(ty)
@@ -543,7 +553,8 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
     let resolver = id.resolver(db.upcast());
     let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
-    let mut ty = TyKind::Ctor(id).intern(db);
+    let mut args = Vec::with_capacity(data.vars.len());
+    let ty = TyKind::Ctor(id).intern(db);
     let var_kinds = data
         .vars
         .iter()
@@ -552,20 +563,20 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         .map(|(i, &var)| {
             let data = &data.type_map()[var];
             let kind = data.kind.map(|k| ctx.lower_ty(k)).unwrap_or_else(|| ctx.fresh_kind());
-            let var = TypeVar::new(DebruijnIndex::new(i as u32));
-            let arg = var.to_ty(db);
+            let var = TypeVar::new(i as u32, DebruijnIndex::INNER);
 
-            ty = TyKind::App(ty, arg).intern(db);
+            args.push(var.to_ty(db));
             ctx.push_var_kind(kind);
             kind
         })
         .collect::<Vec<_>>();
 
-    let mut ty_kind = ctx.type_kind();
-
-    for &kind in &var_kinds {
-        ty_kind = ctx.fn_type(kind, ty_kind);
-    }
+    let ty = TyKind::App(ty, args.into()).intern(db);
+    let ty_kind = if var_kinds.is_empty() {
+        ctx.type_kind()
+    } else {
+        TyKind::Func(var_kinds.clone().into(), ctx.type_kind()).intern(db)
+    };
 
     ctx.icx.result.self_type = ty_kind;
 
@@ -577,23 +588,24 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         }
     }
 
-    let type_kind = std::lazy::OnceCell::new();
+    let type_kind = ctx.type_kind();
+    let kinds = var_kinds
+        .into_iter()
+        .map(|kind| {
+            let kind = ctx.subst_type(kind);
 
-    for kind in var_kinds {
-        let kind = ctx.subst_type(kind);
+            ctx.pop_var_kind();
 
-        if let TyKind::Unknown(u) = kind.lookup(db) {
-            let kind = *type_kind.get_or_init(|| ctx.type_kind());
+            if let TyKind::Unknown(u) = kind.lookup(db) {
+                ctx.solve_type(u, type_kind);
+                type_kind
+            } else {
+                kind
+            }
+        })
+        .collect();
 
-            ctx.solve_type(u, kind);
-            ty = TyKind::ForAll(kind, ty).intern(db);
-        } else {
-            ty = TyKind::ForAll(kind, ty).intern(db);
-        }
-
-        ctx.pop_var_kind();
-    }
-
+    let ty = TyKind::ForAll(kinds, ty).intern(db);
     let ty = ctx.subst_type(ty);
 
     ctx.finish(ty)
@@ -621,7 +633,7 @@ pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Ty {
             ty = inner;
         }
 
-        let ty_kind = ctx.lang_type("type-kind");
+        let ty_kind = ctx.type_kind();
 
         vars.into_iter().rev().fold(ty_kind, |ty, var| ctx.fn_type(var, ty))
     }
@@ -645,8 +657,7 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
         .enumerate()
         .rev()
         .map(|(i, &var)| {
-            let debruijn = DebruijnIndex::new(i as u32);
-            let type_var = TypeVar::new(debruijn);
+            let type_var = TypeVar::new(i as u32, DebruijnIndex::INNER);
             let kind = type_map[var]
                 .kind
                 .map(|k| ctx.lower_ty(k))
@@ -772,7 +783,7 @@ fn var_kinds(ctx: &mut LowerCtx, vars: Vec<Ty>) -> Box<[Ty]> {
     vars.into_iter()
         .map(|kind| {
             let kind = ctx.subst_type(kind);
-            let type_kind = *type_kind.get_or_init(|| ctx.lang_type("type-kind"));
+            let type_kind = *type_kind.get_or_init(|| ctx.type_kind());
 
             ctx.pop_var_kind();
 

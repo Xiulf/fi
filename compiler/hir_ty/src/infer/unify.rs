@@ -1,5 +1,4 @@
 use super::{ExprOrPatId, InferenceContext};
-use crate::display::HirDisplay;
 use crate::ty::*;
 use rustc_hash::FxHashMap;
 
@@ -85,15 +84,15 @@ impl InferenceContext<'_> {
 
     pub fn instantiate(&mut self, ty: Ty, id: ExprOrPatId) -> Ty {
         match ty.lookup(self.db) {
-            | TyKind::ForAll(kind, inner) => {
-                let u = self.fresh_type_with_kind(kind);
-                let ty = inner.replace_var(self.db, u);
+            | TyKind::ForAll(kinds, inner) => {
+                let us = kinds.iter().map(|&k| self.fresh_type_with_kind(k)).collect::<Vec<_>>();
+                let ty = inner.replace_vars(self.db, &us);
 
                 if let ExprOrPatId::ExprId(e) = id {
-                    self.result.instances.entry(e).or_default().push(u);
+                    *self.result.instances.entry(e).or_default() = us;
                 }
 
-                self.instantiate(ty, id)
+                ty
             },
             | TyKind::Ctnt(ctnt, inner) => {
                 self.constrain(id, ctnt);
@@ -106,7 +105,7 @@ impl InferenceContext<'_> {
     pub fn monomorphize(&mut self, ty: Ty) -> Ty {
         ty.everywhere(self.db, &mut |ty| match ty.lookup(self.db) {
             | TyKind::App(a, b) => match a.lookup(self.db) {
-                | TyKind::ForAll(_, a) => a.replace_var(self.db, b),
+                | TyKind::ForAll(_, a) => a.replace_vars(self.db, &b),
                 | _ => ty,
             },
             | _ => ty,
@@ -132,16 +131,15 @@ impl InferenceContext<'_> {
         }
 
         for (i, (&u, _)) in unknowns.iter().enumerate() {
-            self.solve_type(u, TypeVar::new(DebruijnIndex::new(i as u32)).to_ty(self.db));
+            self.solve_type(u, TypeVar::new(i as u32, DebruijnIndex::INNER).to_ty(self.db));
         }
 
         for (ctnt, _, _) in &self.constraints {
             ty = TyKind::Ctnt(self.subst_ctnt(&ctnt), ty).intern(self.db);
         }
 
-        for (_, kind) in unknowns.into_iter() {
-            ty = TyKind::ForAll(kind, ty).intern(self.db);
-        }
+        let kinds = unknowns.into_values().collect();
+        let ty = TyKind::ForAll(kinds, ty).intern(self.db);
 
         self.subst_type(ty)
     }
@@ -161,7 +159,7 @@ impl InferenceContext<'_> {
                 self.solve_type(u, t1);
                 true
             },
-            | (TyKind::Skolem(c1, _), TyKind::Skolem(c2, _)) => c1 == c2,
+            | (TyKind::Skolem(c1, k1), TyKind::Skolem(c2, k2)) => c1 == c2 && self.unify_types(k1, k2),
             | (TyKind::TypeVar(c1), TyKind::TypeVar(c2)) => c1 == c2,
             | (TyKind::Figure(c1), TyKind::Figure(c2)) => c1 == c2,
             | (TyKind::Symbol(c1), TyKind::Symbol(c2)) => c1 == c2,
@@ -171,15 +169,20 @@ impl InferenceContext<'_> {
             | (TyKind::Tuple(t1), TyKind::Tuple(t2)) if t1.len() == t2.len() => {
                 t1.iter().zip(t2.iter()).all(|(t1, t2)| self.unify_types(*t1, *t2))
             },
-            | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => self.unify_types(a1, b1) && self.unify_types(a2, b2),
+            | (TyKind::App(a1, a2), TyKind::App(b1, b2)) if a2.len() == b2.len() => {
+                self.unify_types(a1, b1) && a2.iter().zip(b2.iter()).all(|(&a2, &b2)| self.unify_types(a2, b2))
+            },
+            | (TyKind::Func(a1, a2), TyKind::Func(b1, b2)) if a1.len() == b1.len() => {
+                a1.iter().zip(b1.iter()).all(|(&a1, &b1)| self.unify_types(a1, b1)) && self.unify_types(a2, b2)
+            },
             | (TyKind::ForAll(k1, t1), TyKind::ForAll(k2, t2)) => {
-                let sk1 = self.skolemize(k1, t1);
-                let sk2 = self.skolemize(k2, t2);
+                let sk1 = self.skolemize(&k1, t1);
+                let sk2 = self.skolemize(&k2, t2);
 
                 self.unify_types(sk1, sk2)
             },
-            | (TyKind::ForAll(kind, ty), _) => {
-                let sk = self.skolemize(kind, ty);
+            | (TyKind::ForAll(kinds, ty), _) => {
+                let sk = self.skolemize(&kinds, ty);
 
                 self.unify_types(sk, t2)
             },

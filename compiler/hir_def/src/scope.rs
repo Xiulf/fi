@@ -303,9 +303,12 @@ fn compute_type_scopes(ty: LocalTypeRefId, map: &TypeMap, scopes: &mut TypeScope
             compute_type_scopes(*ty, map, scopes, scope);
             compute_type_scopes(*kind, map, scopes, scope);
         },
-        | TypeRef::App(base, arg) => {
+        | TypeRef::App(base, args) => {
             compute_type_scopes(*base, map, scopes, scope);
-            compute_type_scopes(*arg, map, scopes, scope);
+
+            for arg in args.iter() {
+                compute_type_scopes(*arg, map, scopes, scope);
+            }
         },
         | TypeRef::Tuple(tys) => {
             for ty in tys.iter() {
@@ -315,8 +318,11 @@ fn compute_type_scopes(ty: LocalTypeRefId, map: &TypeMap, scopes: &mut TypeScope
         | TypeRef::Ptr(ty, _) | TypeRef::Slice(ty) | TypeRef::Array(ty, _) => {
             compute_type_scopes(*ty, map, scopes, scope)
         },
-        | TypeRef::Func(arg, ret) => {
-            compute_type_scopes(*arg, map, scopes, scope);
+        | TypeRef::Func(args, ret) => {
+            for arg in args.iter() {
+                compute_type_scopes(*arg, map, scopes, scope);
+            }
+
             compute_type_scopes(*ret, map, scopes, scope);
         },
         | TypeRef::Constraint(ctnt, ty) => {

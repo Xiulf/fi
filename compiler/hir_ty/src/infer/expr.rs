@@ -92,9 +92,8 @@ impl BodyInferenceContext<'_> {
                     }
 
                     let ty = self.infer_infix(id, expr.into());
-                    let mid = self.check_app(ty, *lhs, expr);
 
-                    self.check_app(mid, *rhs, expr)
+                    self.check_app(ty, &[*lhs, *rhs], expr)
                 },
                 | _ => {
                     self.report(InferenceDiagnostic::UnresolvedOperator { id: expr.into() });
@@ -104,7 +103,7 @@ impl BodyInferenceContext<'_> {
             | Expr::App { base, arg } => {
                 let base_ty = self.infer_expr(*base);
 
-                self.check_app(base_ty, *arg, expr)
+                self.check_app(base_ty, &[*arg], expr)
             },
             | Expr::Field { base, field } => {
                 if let Some(idx) = field.as_tuple_index() {
@@ -120,7 +119,7 @@ impl BodyInferenceContext<'_> {
                     let row_kind = self.lang_type("row-kind");
                     let type_kind = self.lang_type("type-kind");
                     let record_type = self.lang_type("record-type");
-                    let kind = TyKind::App(row_kind, type_kind).intern(self.db);
+                    let kind = TyKind::App(row_kind, [type_kind].into()).intern(self.db);
                     let tail = self.fresh_type_with_kind(kind);
                     let res = self.fresh_type();
                     let fields = vec![Field {
@@ -130,7 +129,7 @@ impl BodyInferenceContext<'_> {
                     .into();
 
                     let row = TyKind::Row(fields, Some(tail)).intern(self.db);
-                    let record = TyKind::App(record_type, row).intern(self.db);
+                    let record = TyKind::App(record_type, [row].into()).intern(self.db);
 
                     self.check_expr(*base, record);
                     res
@@ -153,7 +152,7 @@ impl BodyInferenceContext<'_> {
 
                 let row = TyKind::Row(fields, None).intern(self.db);
 
-                TyKind::App(record_type, row).intern(self.db)
+                TyKind::App(record_type, [row].into()).intern(self.db)
             },
             | Expr::Array { exprs } => {
                 let array_type = self.lang_type("array-type");
@@ -164,25 +163,17 @@ impl BodyInferenceContext<'_> {
                     self.check_expr(expr, elem_ty);
                 }
 
-                let base = TyKind::App(array_type, elem_ty).intern(self.db);
-
-                TyKind::App(base, len).intern(self.db)
+                TyKind::App(array_type, [elem_ty, len].into()).intern(self.db)
             },
             | Expr::Do { stmts } => self.infer_block(stmts, expr),
             | Expr::Clos { pats, stmts } => {
                 let ret = self.fresh_type();
-                let mut ty = ret;
                 let params = pats.iter().map(|&p| self.infer_pat(p)).collect::<Vec<_>>();
 
                 self.clos_ret_type = Some(ret);
                 self.check_block(stmts, ret, expr.into());
                 self.clos_ret_type = None;
-
-                for param in params.into_iter().rev() {
-                    ty = self.fn_type(param, ty);
-                }
-
-                ty
+                self.fn_type(params.into(), ret)
             },
             | Expr::If { cond, then, else_, .. } => {
                 self.check_expr(*cond, self.lang_type("bool-type"));
@@ -199,7 +190,7 @@ impl BodyInferenceContext<'_> {
                         then_ty
                     } else {
                         if !self.unify_types(then_ty, else_ty) {
-                            self.report_mismatch(then_ty, else_ty, (*else_).into());
+                            self.report_mismatch(then_ty, else_ty, *else_);
                         }
 
                         then_ty
@@ -291,7 +282,7 @@ impl BodyInferenceContext<'_> {
                         if ty == self.lang_type("never-type") {
                             *self.breakable.last_mut().unwrap() = Breakable::Loop(unit);
                         } else if !self.unify_types(ty, unit) {
-                            self.report_mismatch(unit, ty, expr.into());
+                            self.report_mismatch(unit, ty, expr);
                         }
                     }
                 } else {
@@ -302,21 +293,12 @@ impl BodyInferenceContext<'_> {
             },
             | Expr::Yield { exprs } => {
                 let ret = self.fresh_type();
-                let mut ty = ret;
-
-                for &expr in exprs.iter().rev() {
-                    let infer = self.infer_expr(expr);
-
-                    ty = self.fn_type(infer, ty);
-                }
+                let args = exprs.iter().map(|&e| self.infer_expr(e)).collect();
+                let ty = self.fn_type(args, ret);
 
                 if let Some(yield_ty) = self.yield_type {
                     if !self.unify_types(yield_ty, ty) {
-                        self.report(InferenceDiagnostic::MismatchedType {
-                            id: expr.into(),
-                            expected: yield_ty,
-                            found: ty,
-                        });
+                        self.report_mismatch(yield_ty, ty, expr);
                     }
                 } else {
                     self.yield_type = Some(ty);
@@ -333,11 +315,7 @@ impl BodyInferenceContext<'_> {
                     let unit = self.unit();
 
                     if !self.unify_types(ret, unit) {
-                        self.report(InferenceDiagnostic::MismatchedType {
-                            id: expr.into(),
-                            expected: ret,
-                            found: unit,
-                        });
+                        self.report_mismatch(ret, unit, expr);
                     }
                 }
 
@@ -436,8 +414,8 @@ impl BodyInferenceContext<'_> {
         self.result.type_of_expr.insert(expr, expected);
 
         match (&body[expr], expected.lookup(self.db)) {
-            | (_, TyKind::ForAll(kind, inner)) => {
-                let sk = self.skolemize(kind, inner);
+            | (_, TyKind::ForAll(kinds, inner)) => {
+                let sk = self.skolemize(&kinds, inner);
 
                 self.check_expr(expr, sk);
             },
@@ -456,7 +434,7 @@ impl BodyInferenceContext<'_> {
                 let infer = self.instantiate(infer, expr.into());
 
                 if !self.unify_types(infer, expected) {
-                    self.report_mismatch(expected, infer, expr.into());
+                    self.report_mismatch(expected, infer, expr);
                 }
             },
             | (Expr::Typed { expr: inner, ty }, _) => self.owner.with_type_map(self.db.upcast(), |type_map| {
@@ -467,11 +445,7 @@ impl BodyInferenceContext<'_> {
                 self.check_kind(ty_, kind, *ty);
 
                 if !self.subsume_types(ty_, expected, expr.into()) {
-                    self.report(InferenceDiagnostic::MismatchedType {
-                        id: expr.into(),
-                        expected,
-                        found: ty_,
-                    });
+                    self.report_mismatch(expected, ty_, expr);
                 }
 
                 self.check_expr(*inner, ty_);
@@ -500,7 +474,7 @@ impl BodyInferenceContext<'_> {
                     };
 
                     if !self.subsume_types(ty, expected, expr.into()) {
-                        self.report_mismatch(expected, ty, expr.into());
+                        self.report_mismatch(expected, ty, expr);
                     }
                 },
                 | None => {
@@ -528,10 +502,10 @@ impl BodyInferenceContext<'_> {
             },
             | (Expr::App { base, arg }, _) => {
                 let base_ty = self.infer_expr(*base);
-                let ret = self.check_app(base_ty, *arg, expr);
+                let ret = self.check_app(base_ty, &[*arg], expr);
 
                 if !self.subsume_types(ret, expected, expr.into()) {
-                    self.report_mismatch(expected, ret, expr.into());
+                    self.report_mismatch(expected, ret, expr);
                 }
             },
             | (Expr::Tuple { exprs }, TyKind::Tuple(tys)) if exprs.len() == tys.len() => {
@@ -546,35 +520,25 @@ impl BodyInferenceContext<'_> {
                 let block_ty = self.db.lang_item(module.lib, "block-type".into()).unwrap();
                 let block_ty = block_ty.as_type_ctor().unwrap();
 
-                if let Some([f_ty, r_ty]) = expected.match_ctor(self.db, block_ty) {
+                if let Some([f_ty, r_ty]) = expected.match_ctor(self.db, block_ty).as_deref() {
                     let ret = self.fresh_type();
-                    let mut ty = ret;
+                    let args = pats.iter().map(|&p| self.infer_pat(p)).collect();
+                    let ty = self.fn_type(args, ret);
 
                     self.block_ret_type = Some(ret);
-                    self.block_break_type = Some(r_ty);
-
-                    for &pat in pats.iter().rev() {
-                        let arg = self.infer_pat(pat);
-
-                        ty = self.fn_type(arg, ty);
-                    }
-
+                    self.block_break_type = Some(*r_ty);
                     self.check_block(stmts, ret, expr.into());
                     self.block_ret_type = None;
                     self.block_break_type = None;
 
-                    if !self.unify_types(f_ty, ty) {
-                        self.report_mismatch(f_ty, ty, expr.into());
+                    if !self.unify_types(*f_ty, ty) {
+                        self.report_mismatch(*f_ty, ty, expr);
                     }
                 } else {
                     let infer = self.infer_expr(expr);
 
                     if !self.subsume_types(infer, expected, expr.into()) {
-                        self.report(InferenceDiagnostic::MismatchedType {
-                            id: expr.into(),
-                            expected,
-                            found: infer,
-                        });
+                        self.report_mismatch(expected, infer, expr);
                     }
                 }
             },
@@ -582,60 +546,44 @@ impl BodyInferenceContext<'_> {
                 let infer = self.infer_expr(expr);
 
                 if !self.subsume_types(infer, expected, expr.into()) {
-                    self.report(InferenceDiagnostic::MismatchedType {
-                        id: expr.into(),
-                        expected,
-                        found: infer,
-                    });
+                    self.report_mismatch(expected, infer, expr);
                 }
             },
         }
     }
 
-    pub fn check_app(&mut self, base_ty: Ty, arg: ExprId, expr: ExprId) -> Ty {
+    pub fn check_app(&mut self, base_ty: Ty, args: &[ExprId], expr: ExprId) -> Ty {
         let base_ty = self.subst_type(base_ty);
 
         match base_ty.lookup(self.db) {
-            | TyKind::App(b, r) => match b.lookup(self.db) {
-                | TyKind::App(f, a) => {
-                    let func_ty = self.lang_type("fn-type");
+            | TyKind::Func(params, ret) => {
+                if params.len() != args.len() {
+                    todo!("report error");
+                }
 
-                    if !self.unify_types(f, func_ty) {
-                        self.report_mismatch(func_ty, f, expr.into());
-                    }
+                for (&param, &arg) in params.iter().zip(args) {
+                    self.check_expr(arg, param);
+                }
 
-                    self.check_expr(arg, a);
-                    r
-                },
-                | _ => {
-                    let param = self.infer_expr(arg);
-                    let ret = self.fresh_type();
-                    let func_ty = self.fn_type(param, ret);
-
-                    if !self.unify_types(base_ty, func_ty) {
-                        self.report_mismatch(base_ty, func_ty, expr.into());
-                    }
-
-                    ret
-                },
+                ret
             },
-            | TyKind::ForAll(kind, ty) => {
-                let repl = self.fresh_type_with_kind(kind);
-                let ty = ty.replace_var(self.db, repl);
+            | TyKind::ForAll(kinds, ty) => {
+                let repl = kinds.iter().map(|&k| self.fresh_type_with_kind(k)).collect::<Vec<_>>();
+                let ty = ty.replace_vars(self.db, &repl);
 
-                self.check_app(ty, arg, expr)
+                self.check_app(ty, args, expr)
             },
             | TyKind::Ctnt(ctnt, ty) => {
                 self.constrain(expr.into(), ctnt);
-                self.check_app(ty, arg, expr)
+                self.check_app(ty, args, expr)
             },
             | _ => {
-                let arg = self.infer_expr(arg);
                 let ret = self.fresh_type();
-                let func_ty = self.fn_type(arg, ret);
+                let args = args.iter().map(|&a| self.infer_expr(a)).collect();
+                let func_ty = self.fn_type(args, ret);
 
                 if !self.unify_types(base_ty, func_ty) {
-                    self.report_mismatch(base_ty, func_ty, expr.into());
+                    self.report_mismatch(base_ty, func_ty, expr);
                 }
 
                 ret
@@ -680,7 +628,7 @@ impl BodyInferenceContext<'_> {
             let unit = self.unit();
 
             if !self.unify_types(expected, unit) {
-                self.report_mismatch(expected, unit, expr.into());
+                self.report_mismatch(expected, unit, expr);
             }
 
             self.resolver = old_resolver;

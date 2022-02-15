@@ -324,9 +324,18 @@ fn match_type(
             .zip(t2.iter())
             .map(|(t1, t2)| match_type(db, *t1, *t2, subst, vars))
             .fold(Matched::Match(()), Matched::then),
-        | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => {
-            match_type(db, a1, b1, subst, vars).then(match_type(db, a2, b2, subst, vars))
-        },
+        | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => match_type(db, a1, b1, subst, vars).then(
+            a2.iter()
+                .zip(b2.iter())
+                .map(|(a2, b2)| match_type(db, *a2, *b2, subst, vars))
+                .fold(Matched::Match(()), Matched::then),
+        ),
+        | (TyKind::Func(a1, a2), TyKind::Func(b1, b2)) => a1
+            .iter()
+            .zip(b1.iter())
+            .map(|(a1, b1)| match_type(db, *a1, *b1, subst, vars))
+            .fold(Matched::Match(()), Matched::then)
+            .then(match_type(db, a2, b2, subst, vars)),
         | (_, _) => Matched::Apart,
     }
 }
@@ -349,9 +358,9 @@ fn type_score(db: &dyn HirDatabase, ty: Ty) -> isize {
             score
         },
         | TyKind::Tuple(tys) => tys.iter().map(|&ty| type_score(db, ty)).sum(),
-        | TyKind::App(a, b) => type_score(db, a) + type_score(db, b),
+        | TyKind::App(a, b) => type_score(db, a) + b.iter().map(|&b| type_score(db, b)).sum::<isize>(),
         | TyKind::Ctnt(ctnt, ty) => ctnt.types.iter().map(|&t| type_score(db, t)).sum::<isize>() + type_score(db, ty),
-        | TyKind::ForAll(k, t) => type_score(db, k) + type_score(db, t),
+        | TyKind::ForAll(k, t) => k.iter().map(|&k| type_score(db, k)).sum::<isize>() + type_score(db, t),
         | _ => -5,
     }
 }

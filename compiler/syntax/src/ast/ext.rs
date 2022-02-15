@@ -1,6 +1,6 @@
 use super::*;
 use parser::syntax_kind::*;
-use std::iter::Peekable;
+use std::iter::{Peekable, Skip};
 
 pub trait AttrsOwner: AstNode {
     fn attrs(&self) -> AstChildren<Attr> {
@@ -487,8 +487,8 @@ impl TypeApp {
         support::children(&self.0).nth(0)
     }
 
-    pub fn arg(&self) -> Option<Type> {
-        support::children(&self.0).nth(1)
+    pub fn args(&self) -> Skip<AstChildren<Type>> {
+        support::children(&self.0).skip(1)
     }
 }
 

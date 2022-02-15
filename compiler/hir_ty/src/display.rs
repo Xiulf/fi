@@ -206,13 +206,10 @@ impl HirDisplay for Ty {
             return write!(f, "...");
         }
 
-        let mut args = Vec::new();
-        let mut ty = *self;
-
-        while let TyKind::App(a, b) = ty.lookup(f.db) {
-            args.push(b);
-            ty = a;
-        }
+        let (ty, args) = match self.lookup(f.db) {
+            | TyKind::App(ty, args) => (ty, args),
+            | _ => (*self, [].into()),
+        };
 
         macro_rules! match_lang {
             (match $id:ident, $args:ident, $lib:ident, $f:ident { $($name:literal($arity:literal) => $code:block),* $(,)? }) => {
@@ -230,15 +227,8 @@ impl HirDisplay for Ty {
             let loc = id.lookup(f.db.upcast());
             let lib = loc.module.lib;
 
-            args.reverse();
-
             match_lang! {
                 match id, args, lib, f {
-                    "fn-type"(2) => {
-                        TyParens(args[0]).hir_fmt(f)?;
-                        write!(f, " -> ")?;
-                        args[1].hir_fmt(f)
-                    },
                     "array-type"(2) => {
                         write!(f, "[")?;
                         args[1].hir_fmt(f)?;
@@ -278,7 +268,7 @@ impl HirDisplay for Ty {
             | TyKind::Error => write!(f, "{{error}}"),
             | TyKind::Unknown(u) => write!(f, "{}", u),
             | TyKind::Skolem(p, kind) => {
-                write!(f, "({} :: ", p)?;
+                write!(f, "(sk{} :: ", p.debruijn().depth())?;
                 kind.hir_fmt(f)?;
                 write!(f, ")")
             },
@@ -302,19 +292,32 @@ impl HirDisplay for Ty {
                 f.write_joined(tys.iter(), ", ")?;
                 write!(f, ")")
             },
-            | TyKind::App(base, arg) => {
+            | TyKind::App(base, args) => {
                 TyParens(base).hir_fmt(f)?;
-                write!(f, " ")?;
-                TyParens(arg).hir_fmt(f)
+
+                for &arg in args.iter() {
+                    write!(f, " ")?;
+                    TyParens(arg).hir_fmt(f)?;
+                }
+
+                Ok(())
+            },
+            | TyKind::Func(args, ret) => {
+                for arg in args.iter() {
+                    arg.hir_fmt(f)?;
+                    write!(f, " -> ")?;
+                }
+
+                ret.hir_fmt(f)
             },
             | TyKind::Ctnt(ctnt, ty) => {
                 ctnt.hir_fmt(f)?;
                 write!(f, " => ")?;
                 ty.hir_fmt(f)
             },
-            | TyKind::ForAll(kind, ty) => {
+            | TyKind::ForAll(kinds, ty) => {
                 write!(f, "for ")?;
-                kind.hir_fmt(f)?;
+                f.write_joined(kinds.iter(), " ")?;
                 write!(f, ". ")?;
                 ty.hir_fmt(f)
             },

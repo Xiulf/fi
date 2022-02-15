@@ -22,14 +22,14 @@ impl InferenceContext<'_> {
 
     fn subsume_types_impl(&mut self, t1: Ty, t2: Ty, origin: ExprOrPatId, mode: SubsumeMode) -> bool {
         match (t1.lookup(self.db), t2.lookup(self.db)) {
-            | (TyKind::ForAll(kind, inner), _) => {
-                let var = self.fresh_type_with_kind(kind);
-                let repl = inner.replace_var(self.db, var);
+            | (TyKind::ForAll(kinds, inner), _) => {
+                let vars = kinds.iter().map(|&k| self.fresh_type_with_kind(k)).collect::<Vec<_>>();
+                let repl = inner.replace_vars(self.db, &vars);
 
                 self.subsume_types_impl(repl, t2, origin, mode)
             },
-            | (_, TyKind::ForAll(kind, inner)) => {
-                let sk = self.skolemize(kind, inner);
+            | (_, TyKind::ForAll(kinds, inner)) => {
+                let sk = self.skolemize(&kinds, inner);
 
                 self.subsume_types_impl(t1, sk, origin, mode)
             },
@@ -37,29 +37,28 @@ impl InferenceContext<'_> {
                 self.constrain(origin, ctnt);
                 self.subsume_types_impl(inner, t2, origin, mode)
             },
+            | (TyKind::Func(a1, r1), TyKind::Func(a2, r2)) => {
+                a2.iter()
+                    .zip(a1.iter())
+                    .all(|(&a2, &a1)| self.subsume_types_impl(a2, a1, origin, SubsumeMode::NoCtnt))
+                    && self.subsume_types_impl(r1, r2, origin, SubsumeMode::NoCtnt)
+            },
             | (_, _) => {
                 use hir_def::id::HasModule;
                 let module = self.owner.module(self.db.upcast());
-                let func_id = self.db.lang_item(module.lib, "fn-type".into()).unwrap();
-                let func_id = func_id.as_type_ctor().unwrap();
                 let record_id = self.db.lang_item(module.lib, "record-type".into()).unwrap();
                 let record_id = record_id.as_type_ctor().unwrap();
 
-                match (t1.match_ctor(self.db, func_id), t2.match_ctor(self.db, func_id)) {
-                    | (Some([a1, r1]), Some([a2, r2])) => {
-                        return self.subsume_types_impl(a2, a1, origin, SubsumeMode::NoCtnt)
-                            && self.subsume_types_impl(r1, r2, origin, SubsumeMode::NoCtnt);
-                    },
-                    | (_, _) => {},
-                }
-
-                match (t1.match_ctor(self.db, record_id), t2.match_ctor(self.db, record_id)) {
+                match (
+                    t1.match_ctor(self.db, record_id).as_deref(),
+                    t2.match_ctor(self.db, record_id).as_deref(),
+                ) {
                     | (Some([r1]), Some([r2])) => {
                         let (common, ((ts1, r1), (ts2, r2))) = Ty::align_rows_with(
                             self.db,
                             |a, b| self.subsume_types_impl(a, b, origin, SubsumeMode::NoCtnt),
-                            r1,
-                            r2,
+                            *r1,
+                            *r2,
                         );
 
                         if let None = r1 {

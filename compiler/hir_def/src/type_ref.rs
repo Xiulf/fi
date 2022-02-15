@@ -16,7 +16,7 @@ pub enum TypeRef {
     Figure(i128),
     Symbol(String),
     Kinded(LocalTypeRefId, LocalTypeRefId),
-    App(LocalTypeRefId, LocalTypeRefId),
+    App(LocalTypeRefId, Box<[LocalTypeRefId]>),
     Tuple(Box<[LocalTypeRefId]>),
     Path(Path),
     Ptr(LocalTypeRefId, PtrLen),
@@ -24,7 +24,7 @@ pub enum TypeRef {
     Array(LocalTypeRefId, usize),
     Record(Box<[Field]>, Option<LocalTypeRefId>),
     Row(Box<[Field]>, Option<LocalTypeRefId>),
-    Func(LocalTypeRefId, LocalTypeRefId),
+    Func(Box<[LocalTypeRefId]>, LocalTypeRefId),
     Forall(Box<[LocalTypeVarId]>, LocalTypeRefId),
     Constraint(Constraint, LocalTypeRefId),
 }
@@ -106,7 +106,7 @@ impl TypeRef {
             },
             | ast::Type::App(inner) => TypeRef::App(
                 map.alloc_type_ref_opt(inner.base()),
-                map.alloc_type_ref_opt(inner.arg()),
+                inner.args().map(|a| map.alloc_type_ref(a)).collect(),
             ),
             | ast::Type::Path(inner) => convert_path(inner.path()).map(TypeRef::Path).unwrap_or(TypeRef::Error),
             | ast::Type::Array(inner) => inner
@@ -122,10 +122,17 @@ impl TypeRef {
                     PtrLen::Single
                 },
             ),
-            | ast::Type::Fn(inner) => TypeRef::Func(
-                map.alloc_type_ref_opt(inner.param()),
-                map.alloc_type_ref_opt(inner.ret()),
-            ),
+            | ast::Type::Fn(inner) => {
+                let mut args = vec![map.alloc_type_ref_opt(inner.param())];
+                let mut ret = inner.ret();
+
+                while let Some(ast::Type::Fn(inner)) = ret {
+                    args.push(map.alloc_type_ref_opt(inner.param()));
+                    ret = inner.ret();
+                }
+
+                TypeRef::Func(args.into(), map.alloc_type_ref_opt(ret))
+            },
             | ast::Type::Rec(inner) => {
                 let fields = inner
                     .fields()

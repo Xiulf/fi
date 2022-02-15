@@ -176,7 +176,7 @@ impl Resolver {
         Some(def_map.module_id(local_id))
     }
 
-    pub fn type_var_index(&self, tv: TypeVarId) -> Option<usize> {
+    pub fn type_var_index(&self, tv: TypeVarId) -> Option<(usize, usize)> {
         let scopes = self.scopes.iter().rev().filter_map(|scope| match scope {
             | Scope::TypeScope(it) => Some(it),
             | _ => None,
@@ -191,10 +191,10 @@ impl Resolver {
                 .iter()
                 .position(|e| e.type_var() == tv)
             {
-                return Some(depth + idx);
+                return Some((idx, depth));
             }
 
-            depth += scope.type_scopes.entries(scope.scope_id).len();
+            depth += 1;
         }
 
         None
@@ -332,13 +332,12 @@ impl HasResolver for FixityId {
 
 impl HasResolver for FuncId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let data = db.func_data(self);
-
-        self.lookup(db).container.resolver(db).with_type_vars(
-            data.type_map(),
-            TypedDefId::FuncId(self).into(),
-            data.vars.iter().copied(),
-        )
+        self.lookup(db).container.resolver(db)
+        // self.lookup(db).container.resolver(db).with_type_vars(
+        //     data.type_map(),
+        //     TypedDefId::FuncId(self).into(),
+        //     data.vars.iter().copied(),
+        // )
     }
 }
 

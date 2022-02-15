@@ -719,8 +719,10 @@ fn ty_link_name(
         | TypeRef::App(a, b) => {
             write!(out, "(")?;
             ty_link_name(map, a, out)?;
-            write!(out, " ")?;
-            ty_link_name(map, b, out)?;
+            for b in b.iter() {
+                write!(out, " ")?;
+                ty_link_name(map, b, out)?;
+            }
             write!(out, ")")
         },
         | TypeRef::Tuple(ts) => {

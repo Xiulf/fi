@@ -2,8 +2,8 @@ use super::InferenceContext;
 use crate::ty::*;
 
 impl InferenceContext<'_> {
-    pub fn skolemize(&mut self, kind: Ty, inner: Ty) -> Ty {
-        self.skolemize_impl(kind, inner, DebruijnIndex::INNER)
+    pub fn skolemize(&mut self, kinds: &[Ty], inner: Ty) -> Ty {
+        self.skolemize_impl(kinds, inner, DebruijnIndex::INNER)
     }
 
     pub fn unskolemize(&mut self, ty: Ty) -> Ty {
@@ -13,11 +13,13 @@ impl InferenceContext<'_> {
         })
     }
 
-    fn skolemize_impl(&mut self, kind: Ty, inner: Ty, debruijn: DebruijnIndex) -> Ty {
+    fn skolemize_impl(&mut self, kinds: &[Ty], inner: Ty, debruijn: DebruijnIndex) -> Ty {
         match inner.lookup(self.db) {
-            | TyKind::TypeVar(var) if var.debruijn() == debruijn => TyKind::Skolem(var, kind).intern(self.db),
+            | TyKind::TypeVar(var) if var.debruijn() == debruijn => {
+                TyKind::Skolem(var, kinds[var.idx() as usize]).intern(self.db)
+            },
             | TyKind::Skolem(sk, k) => {
-                let k = self.skolemize_impl(kind, k, debruijn);
+                let k = self.skolemize_impl(kinds, k, debruijn);
 
                 TyKind::Skolem(sk, k).intern(self.db)
             },
@@ -26,24 +28,30 @@ impl InferenceContext<'_> {
                     .iter()
                     .map(|f| Field {
                         name: f.name.clone(),
-                        ty: self.skolemize_impl(kind, f.ty, debruijn),
+                        ty: self.skolemize_impl(kinds, f.ty, debruijn),
                     })
                     .collect();
 
-                let tail = tail.map(|t| self.skolemize_impl(kind, t, debruijn));
+                let tail = tail.map(|t| self.skolemize_impl(kinds, t, debruijn));
 
                 TyKind::Row(fields, tail).intern(self.db)
             },
             | TyKind::Tuple(tys) => {
-                let tys = tys.iter().map(|&t| self.skolemize_impl(kind, t, debruijn)).collect();
+                let tys = tys.iter().map(|&t| self.skolemize_impl(kinds, t, debruijn)).collect();
 
                 TyKind::Tuple(tys).intern(self.db)
             },
             | TyKind::App(a, b) => {
-                let a = self.skolemize_impl(kind, a, debruijn);
-                let b = self.skolemize_impl(kind, b, debruijn);
+                let a = self.skolemize_impl(kinds, a, debruijn);
+                let b = b.iter().map(|&b| self.skolemize_impl(kinds, b, debruijn)).collect();
 
                 TyKind::App(a, b).intern(self.db)
+            },
+            | TyKind::Func(a, b) => {
+                let a = a.iter().map(|&a| self.skolemize_impl(kinds, a, debruijn)).collect();
+                let b = self.skolemize_impl(kinds, b, debruijn);
+
+                TyKind::Func(a, b).intern(self.db)
             },
             | TyKind::Ctnt(ctnt, ty) => {
                 let ctnt = Constraint {
@@ -51,17 +59,17 @@ impl InferenceContext<'_> {
                     types: ctnt
                         .types
                         .iter()
-                        .map(|&t| self.skolemize_impl(kind, t, debruijn))
+                        .map(|&t| self.skolemize_impl(kinds, t, debruijn))
                         .collect(),
                 };
 
-                let ty = self.skolemize_impl(kind, ty, debruijn);
+                let ty = self.skolemize_impl(kinds, ty, debruijn);
 
                 TyKind::Ctnt(ctnt, ty).intern(self.db)
             },
             | TyKind::ForAll(k, inner) => {
-                let k = self.skolemize_impl(kind, k, debruijn);
-                let inner = self.skolemize_impl(kind, inner, debruijn.shifted_in());
+                let k = k.iter().map(|&k| self.skolemize_impl(kinds, k, debruijn)).collect();
+                let inner = self.skolemize_impl(kinds, inner, debruijn.shifted_in());
 
                 TyKind::ForAll(k, inner).intern(self.db)
             },
