@@ -662,7 +662,7 @@ impl PatApp {
         support::child(&self.0)
     }
 
-    pub fn args(&self) -> impl Iterator<Item = Pat> {
+    pub fn args(&self) -> Skip<AstChildren<Pat>> {
         support::children(&self.0).skip(1)
     }
 }
@@ -750,8 +750,8 @@ impl ExprApp {
         support::child(&self.0)
     }
 
-    pub fn arg(&self) -> Option<Expr> {
-        support::children(&self.0).nth(1)
+    pub fn args(&self) -> Skip<AstChildren<Expr>> {
+        support::children(&self.0).skip(1)
     }
 }
 

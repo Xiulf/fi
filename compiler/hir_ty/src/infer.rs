@@ -26,25 +26,32 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
     let body = db.body(def);
     let resolver = Resolver::for_expr(db.upcast(), def, body.body_expr());
     let mut icx = BodyInferenceContext::new(db, resolver, def);
+
+    match def.container(db.upcast()) {
+        | ContainerId::Class(id) => icx.class_owner(id),
+        | ContainerId::Instance(id) => icx.instance_owner(id),
+        | ContainerId::Module(_) => {},
+    }
+
     let ty = match def {
-        | DefWithBodyId::FuncId(id) => {
+        | DefWithBodyId::FuncId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.func_data(id);
-            let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+            let mut lcx = LowerCtx::new(data.type_map(), icx);
 
             data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type())
-        },
-        | DefWithBodyId::StaticId(id) => {
+        }),
+        | DefWithBodyId::StaticId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.static_data(id);
-            let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+            let mut lcx = LowerCtx::new(data.type_map(), icx);
 
             data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type())
-        },
-        | DefWithBodyId::ConstId(id) => {
+        }),
+        | DefWithBodyId::ConstId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.const_data(id);
-            let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+            let mut lcx = LowerCtx::new(data.type_map(), icx);
 
             data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type())
-        },
+        }),
     };
 
     icx.check_body(ty);
@@ -75,7 +82,7 @@ pub struct InferenceContext<'a> {
     pub(crate) result: InferenceResult,
     subst: unify::Substitution,
     origin: FxHashMap<Ty, TypeOrigin>,
-    pub(crate) var_kinds: Vec<Ty>,
+    pub(crate) var_kinds: Vec<List<Ty>>,
     class_env: ClassEnv,
     instance_records: usize,
     constraints: Vec<(Constraint, ExprOrPatId, Option<ClassEnvScope>)>,
@@ -225,7 +232,7 @@ impl<'a> InferenceContext<'a> {
         TyKind::Func(args, ret).intern(self.db)
     }
 
-    pub(crate) fn push_var_kind(&mut self, kind: Ty) {
+    pub(crate) fn push_var_kind(&mut self, kind: List<Ty>) {
         self.var_kinds.push(kind);
     }
 
@@ -268,6 +275,26 @@ impl<'a> InferenceContext<'a> {
 
     pub(crate) fn unit(&self) -> Ty {
         TyKind::Tuple([].into()).intern(self.db)
+    }
+
+    fn with_owner<T>(&mut self, id: TypeVarOwner, f: impl FnOnce(&mut Self) -> T) -> T {
+        let owner = std::mem::replace(&mut self.owner, id);
+        let res = f(self);
+
+        self.owner = owner;
+        res
+    }
+
+    fn class_owner(&mut self, id: ClassId) {
+        let lower = self.db.lower_class(id);
+
+        self.push_var_kind(lower.class.vars.clone());
+    }
+
+    fn instance_owner(&mut self, id: InstanceId) {
+        let lower = self.db.lower_instance(id);
+
+        self.push_var_kind(lower.instance.vars.clone());
     }
 }
 
@@ -343,15 +370,26 @@ impl<'a> BodyInferenceContext<'a> {
         }
 
         let (ret, args) = match ann.lookup(self.db) {
-            | TyKind::Func(args, ret) => (ret, args),
-            | _ => (ann, [].into()),
+            | TyKind::Func(args, ret) => (ret, Some(args)),
+            | _ => (ann, None),
         };
 
-        for (pat, &arg) in self.body.params().to_vec().into_iter().zip(args.iter()) {
-            self.check_pat(pat, arg);
-        }
+        let body = self.body.clone();
+        let ty = if let Some(args) = args {
+            for (&pat, &arg) in body.params().iter().zip(args.iter()) {
+                self.check_pat(pat, arg);
+            }
 
-        self.result.self_type = ann;
+            ann
+        } else if !body.params().is_empty() {
+            let args = body.params().iter().map(|&p| self.infer_pat(p)).collect();
+
+            self.fn_type(args, ret)
+        } else {
+            ann
+        };
+
+        self.result.self_type = ty;
         self.ret_type = ret;
         self.check_expr(self.body.body_expr(), ret);
 

@@ -60,12 +60,13 @@ crate fn app(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = postfix(p, allow_do)?;
 
     if peek(p, allow_do) {
-        while peek(p, allow_do) {
-            let expr = m.precede(p);
-            let _ = postfix(p, allow_do);
+        let expr = m.precede(p);
 
-            m = expr.complete(p, EXPR_APP);
+        while peek(p, allow_do) {
+            let _ = postfix(p, allow_do);
         }
+
+        m = expr.complete(p, EXPR_APP);
     }
 
     Some(m)

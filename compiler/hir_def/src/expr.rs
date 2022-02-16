@@ -27,7 +27,7 @@ pub enum Expr {
     },
     App {
         base: ExprId,
-        arg: ExprId,
+        args: Box<[ExprId]>,
     },
     Field {
         base: ExprId,
@@ -38,20 +38,20 @@ pub enum Expr {
         index: ExprId,
     },
     Tuple {
-        exprs: Vec<ExprId>,
+        exprs: Box<[ExprId]>,
     },
     Record {
-        fields: Vec<RecordField<ExprId>>,
+        fields: Box<[RecordField<ExprId>]>,
     },
     Array {
-        exprs: Vec<ExprId>,
+        exprs: Box<[ExprId]>,
     },
     Do {
-        stmts: Vec<Stmt>,
+        stmts: Box<[Stmt]>,
     },
     Clos {
-        pats: Vec<PatId>,
-        stmts: Vec<Stmt>,
+        pats: Box<[PatId]>,
+        stmts: Box<[Stmt]>,
     },
     If {
         cond: ExprId,
@@ -61,7 +61,7 @@ pub enum Expr {
     },
     Case {
         pred: ExprId,
-        arms: Vec<CaseArm>,
+        arms: Box<[CaseArm]>,
     },
     While {
         cond: ExprId,
@@ -78,7 +78,7 @@ pub enum Expr {
         expr: Option<ExprId>,
     },
     Yield {
-        exprs: Vec<ExprId>,
+        exprs: Box<[ExprId]>,
     },
     Return {
         expr: Option<ExprId>,
@@ -122,9 +122,9 @@ impl Expr {
                 f(*lhs);
                 f(*rhs);
             },
-            | Expr::App { base, arg } => {
+            | Expr::App { base, args } => {
                 f(*base);
-                f(*arg);
+                args.iter().copied().for_each(f);
             },
             | Expr::Field { base, .. } => f(*base),
             | Expr::Index { base, index } => {

@@ -86,7 +86,7 @@ impl Resolver {
 
         for scope in self.scopes.iter().rev() {
             match scope {
-                | Scope::TypeScope(scope) if n_segments <= 1 => {
+                | Scope::TypeScope(scope) if n_segments == 1 => {
                     let entry = scope
                         .type_scopes
                         .entries(scope.scope_id)

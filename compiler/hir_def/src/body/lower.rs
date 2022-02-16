@@ -92,9 +92,10 @@ impl<'a> ExprCollector<'a> {
                         self.body.params.push(pat);
                         expr
                     })
-                    .collect::<Vec<_>>();
+                    .collect();
 
                 let pred = self.alloc_expr_desugared(Expr::Tuple { exprs });
+                let arms = arms.into();
 
                 self.body.body_expr = self.alloc_expr_desugared(Expr::Case { pred, arms });
             },
@@ -178,9 +179,9 @@ impl<'a> ExprCollector<'a> {
             | ast::Expr::Hole(_) => self.alloc_expr(Expr::Hole, syntax_ptr),
             | ast::Expr::App(e) => {
                 let base = self.collect_expr_opt(e.base());
-                let arg = self.collect_expr_opt(e.arg());
+                let args = e.args().map(|a| self.collect_expr(a)).collect();
 
-                self.alloc_expr(Expr::App { base, arg }, syntax_ptr)
+                self.alloc_expr(Expr::App { base, args }, syntax_ptr)
             },
             | ast::Expr::Field(e) => {
                 let base = self.collect_expr_opt(e.base());
@@ -217,9 +218,9 @@ impl<'a> ExprCollector<'a> {
                     let lhs = self.collect_expr_opt(e.lhs());
                     let rhs = self.collect_expr_opt(e.rhs());
                     let base = self.alloc_expr(Expr::Path { path }, syntax_ptr.clone());
-                    let base = self.alloc_expr(Expr::App { base, arg: lhs }, syntax_ptr.clone());
+                    let args = [lhs, rhs].into();
 
-                    self.alloc_expr(Expr::App { base, arg: rhs }, syntax_ptr)
+                    self.alloc_expr(Expr::App { base, args }, syntax_ptr)
                 } else {
                     let exprs = e.exprs().map(|e| self.collect_expr(e)).collect::<Vec<_>>();
                     let ops = e.ops().map(|op| Path::from(op.as_name())).collect::<Vec<_>>();

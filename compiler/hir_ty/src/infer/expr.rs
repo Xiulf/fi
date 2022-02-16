@@ -100,10 +100,10 @@ impl BodyInferenceContext<'_> {
                     self.error()
                 },
             },
-            | Expr::App { base, arg } => {
+            | Expr::App { base, args } => {
                 let base_ty = self.infer_expr(*base);
 
-                self.check_app(base_ty, &[*arg], expr)
+                self.check_app(base_ty, args, expr)
             },
             | Expr::Field { base, field } => {
                 if let Some(idx) = field.as_tuple_index() {
@@ -159,7 +159,7 @@ impl BodyInferenceContext<'_> {
                 let len = TyKind::Figure(exprs.len() as i128).intern(self.db);
                 let elem_ty = self.fresh_type();
 
-                for &expr in exprs {
+                for &expr in exprs.iter() {
                     self.check_expr(expr, elem_ty);
                 }
 
@@ -206,7 +206,7 @@ impl BodyInferenceContext<'_> {
                     let bool_ty = self.lang_type("bool-type");
                     let res = self.fresh_type();
 
-                    for arm in arms {
+                    for arm in arms.iter() {
                         self.check_pat(arm.pat, pred_ty);
 
                         let new_resolver = Resolver::for_expr(self.db.upcast(), def, arm.expr);
@@ -500,9 +500,9 @@ impl BodyInferenceContext<'_> {
                     types: vec![expected].into(),
                 });
             },
-            | (Expr::App { base, arg }, _) => {
+            | (Expr::App { base, args }, _) => {
                 let base_ty = self.infer_expr(*base);
-                let ret = self.check_app(base_ty, &[*arg], expr);
+                let ret = self.check_app(base_ty, args, expr);
 
                 if !self.subsume_types(ret, expected, expr.into()) {
                     self.report_mismatch(expected, ret, expr);

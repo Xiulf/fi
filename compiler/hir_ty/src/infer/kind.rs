@@ -15,9 +15,9 @@ impl InferenceContext<'_> {
             },
             | TyKind::Skolem(_, kind) => kind,
             | TyKind::TypeVar(var) => {
-                let idx = self.var_kinds.len() - var.debruijn().depth() as usize;
+                let idx = self.var_kinds.len() - var.debruijn().depth() as usize - 1;
 
-                self.var_kinds[idx]
+                self.var_kinds[idx][var.idx() as usize]
             },
             | TyKind::Figure(_) => self.lang_type("figure-kind"),
             | TyKind::Symbol(_) => self.lang_type("symbol-kind"),
@@ -65,9 +65,7 @@ impl InferenceContext<'_> {
             },
             | TyKind::Ctnt(_, ty) => self.infer_kind(ty, origin),
             | TyKind::ForAll(kinds, inner) => {
-                for &kind in kinds.iter() {
-                    self.push_var_kind(kind);
-                }
+                self.push_var_kind(kinds.clone());
 
                 let inner_kind = self.infer_kind(inner, origin);
 

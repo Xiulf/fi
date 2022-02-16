@@ -159,7 +159,7 @@ impl TypeScopes {
 
         for (ty, _) in map.iter() {
             if !scopes.scopes_by_type.contains_key(&ty) {
-                compute_type_scopes(ty, map, &mut scopes, root);
+                compute_type_scopes(ty, map, &mut scopes, root, true);
             }
         }
 
@@ -241,7 +241,7 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
         | Expr::Clos { pats, stmts } => {
             let scope = scopes.new_scope(scope);
 
-            for &pat in pats {
+            for &pat in pats.iter() {
                 scopes.add_bindings(body, scope, pat);
             }
 
@@ -250,7 +250,7 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
         | Expr::Case { pred, arms } => {
             compute_expr_scopes(*pred, body, scopes, scope);
 
-            for arm in arms {
+            for arm in arms.iter() {
                 let scope = scopes.new_scope(scope);
 
                 scopes.add_bindings(body, scope, arm.pat);
@@ -281,56 +281,65 @@ fn compute_block_scopes(stmts: &[Stmt], body: &Body, scopes: &mut ExprScopes, mu
     }
 }
 
-fn compute_type_scopes(ty: LocalTypeRefId, map: &TypeMap, scopes: &mut TypeScopes, mut scope: TypeScopeId) {
+fn compute_type_scopes(
+    ty: LocalTypeRefId,
+    map: &TypeMap,
+    scopes: &mut TypeScopes,
+    mut scope: TypeScopeId,
+    is_root: bool,
+) {
     scopes.set_scope(ty, scope);
 
     match &map[ty] {
         | TypeRef::Forall(vars, inner) => {
+            if !is_root {
+                scope = scopes.new_scope(scope);
+            }
+
             for &var in vars.iter() {
                 let data = &map[var];
 
                 if let Some(kind) = data.kind {
-                    compute_type_scopes(kind, map, scopes, scope);
+                    compute_type_scopes(kind, map, scopes, scope, false);
                 }
 
                 scopes.add_binding(&data.name, var, scope);
             }
 
-            scope = scopes.new_scope(scope);
-            compute_type_scopes(*inner, map, scopes, scope);
+            compute_type_scopes(*inner, map, scopes, scope, false);
         },
         | TypeRef::Kinded(ty, kind) => {
-            compute_type_scopes(*ty, map, scopes, scope);
-            compute_type_scopes(*kind, map, scopes, scope);
+            compute_type_scopes(*ty, map, scopes, scope, false);
+            compute_type_scopes(*kind, map, scopes, scope, false);
         },
         | TypeRef::App(base, args) => {
-            compute_type_scopes(*base, map, scopes, scope);
+            compute_type_scopes(*base, map, scopes, scope, false);
 
             for arg in args.iter() {
-                compute_type_scopes(*arg, map, scopes, scope);
+                compute_type_scopes(*arg, map, scopes, scope, false);
             }
         },
         | TypeRef::Tuple(tys) => {
             for ty in tys.iter() {
-                compute_type_scopes(*ty, map, scopes, scope);
+                compute_type_scopes(*ty, map, scopes, scope, false);
             }
         },
         | TypeRef::Ptr(ty, _) | TypeRef::Slice(ty) | TypeRef::Array(ty, _) => {
-            compute_type_scopes(*ty, map, scopes, scope)
+            compute_type_scopes(*ty, map, scopes, scope, false)
         },
         | TypeRef::Func(args, ret) => {
             for arg in args.iter() {
-                compute_type_scopes(*arg, map, scopes, scope);
+                compute_type_scopes(*arg, map, scopes, scope, false);
             }
 
-            compute_type_scopes(*ret, map, scopes, scope);
+            compute_type_scopes(*ret, map, scopes, scope, false);
         },
         | TypeRef::Constraint(ctnt, ty) => {
             for ty in ctnt.types.iter() {
-                compute_type_scopes(*ty, map, scopes, scope);
+                compute_type_scopes(*ty, map, scopes, scope, false);
             }
 
-            compute_type_scopes(*ty, map, scopes, scope);
+            compute_type_scopes(*ty, map, scopes, scope, false);
         },
         | _ => {},
     }

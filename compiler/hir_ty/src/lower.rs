@@ -159,11 +159,11 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 let args_ = args.iter().map(|arg| self.lower_ty(*arg)).collect::<List<_>>();
                 let ret_ = self.lower_ty(*ret);
 
-                for (arg_, arg) in args_.iter().zip(args.iter()) {
-                    self.check_kind_type(*arg_, *arg);
-                }
+                // for (arg_, arg) in args_.iter().zip(args.iter()) {
+                //     self.check_kind_type(*arg_, *arg);
+                // }
 
-                self.check_kind_type(ret_, *ret);
+                // self.check_kind_type(ret_, *ret);
                 self.fn_type(args_, ret_)
             },
             | TypeRef::Record(fields, tail) => {
@@ -187,21 +187,18 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
             | TypeRef::Row(fields, tail) => self.lower_row(fields, *tail),
             | TypeRef::Forall(vars, inner) => {
-                let new_resolver = Resolver::for_type(self.db.upcast(), self.owner.into(), *inner);
+                let new_resolver = Resolver::for_type(self.db.upcast(), self.owner, *inner);
                 let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
-
                 let vars = vars
                     .iter()
-                    .rev()
                     .map(|&var| {
                         let data = &self.type_map[var];
-                        let kind = data.kind.map(|k| self.lower_ty(k)).unwrap_or_else(|| self.fresh_kind());
 
-                        self.push_var_kind(kind);
-                        kind
+                        data.kind.map(|k| self.lower_ty(k)).unwrap_or_else(|| self.fresh_kind())
                     })
-                    .rev()
                     .collect::<Vec<_>>();
+
+                self.push_var_kind(vars.clone().into());
 
                 let inner = self.lower_ty(*inner);
                 let type_kind = self.type_kind();
@@ -213,8 +210,6 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                     .map(|kind| {
                         let kind = self.subst_type(kind);
 
-                        self.pop_var_kind();
-
                         if let TyKind::Unknown(u) = kind.lookup(self.db) {
                             self.solve_type(u, type_kind);
                             type_kind
@@ -223,6 +218,8 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                         }
                     })
                     .collect();
+
+                self.pop_var_kind();
 
                 TyKind::ForAll(kinds, inner).intern(self.db)
             },
@@ -395,14 +392,16 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult> {
                     .collect(),
             };
 
-            for &kind in lower.class.vars.iter() {
-                ctx.push_var_kind(kind);
-            }
+            ctx.push_var_kind(lower.class.vars.clone());
 
             let mut ty = ctx.lower_ty(ty);
 
             ty = TyKind::Ctnt(ctnt, ty).intern(db);
-            ty = TyKind::ForAll(lower.class.vars.clone(), ty).intern(db);
+
+            if !lower.class.vars.is_empty() {
+                ty = TyKind::ForAll(lower.class.vars.clone(), ty).intern(db);
+            }
+
             ty
         } else {
             ctx.lower_ty(ty)
@@ -472,10 +471,7 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult> {
     let mut vars = None;
 
     if let TyKind::ForAll(vars_, t) = ret.lookup(db) {
-        for var in vars_.iter() {
-            ctx.push_var_kind(*var);
-        }
-
+        ctx.push_var_kind(vars_.clone());
         vars = Some(vars_);
         ret = t;
     }
@@ -489,9 +485,9 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult> {
             ctx.check_kind_type(ty_, ty);
             ty_
         })
-        .collect();
+        .collect::<List<_>>();
 
-    let ty = ctx.fn_type(args, ret);
+    let ty = if !args.is_empty() { ctx.fn_type(args, ret) } else { ret };
     let ty = if let Some(vars) = vars {
         TyKind::ForAll(vars, ty).intern(db)
     } else {
@@ -510,15 +506,14 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
         .vars
         .iter()
         .enumerate()
-        .rev()
         .map(|(_i, &var)| {
             let data = &data.type_map()[var];
-            let kind = data.kind.map(|k| ctx.lower_ty(k)).unwrap_or_else(|| ctx.fresh_kind());
 
-            ctx.push_var_kind(kind);
-            kind
+            data.kind.map(|k| ctx.lower_ty(k)).unwrap_or_else(|| ctx.fresh_kind())
         })
         .collect::<Vec<_>>();
+
+    ctx.push_var_kind(var_kinds.clone().into());
 
     let ty = ctx.lower_ty(data.alias);
     let type_kind = ctx.type_kind();
@@ -527,8 +522,6 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
         .map(|kind| {
             let kind = ctx.subst_type(kind);
 
-            ctx.pop_var_kind();
-
             if let TyKind::Unknown(u) = kind.lookup(db) {
                 ctx.solve_type(u, type_kind);
                 type_kind
@@ -536,9 +529,16 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
                 kind
             }
         })
-        .collect();
+        .collect::<List<_>>();
 
-    let ty = TyKind::ForAll(kinds, ty).intern(db);
+    ctx.pop_var_kind();
+
+    let ty = if !kinds.is_empty() {
+        TyKind::ForAll(kinds, ty).intern(db)
+    } else {
+        ty
+    };
+
     let ty = ctx.subst_type(ty);
 
     ctx.finish(ty)
@@ -559,19 +559,24 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         .vars
         .iter()
         .enumerate()
-        .rev()
         .map(|(i, &var)| {
             let data = &data.type_map()[var];
             let kind = data.kind.map(|k| ctx.lower_ty(k)).unwrap_or_else(|| ctx.fresh_kind());
             let var = TypeVar::new(i as u32, DebruijnIndex::INNER);
 
             args.push(var.to_ty(db));
-            ctx.push_var_kind(kind);
             kind
         })
         .collect::<Vec<_>>();
 
-    let ty = TyKind::App(ty, args.into()).intern(db);
+    ctx.push_var_kind(var_kinds.clone().into());
+
+    let ty = if !args.is_empty() {
+        TyKind::App(ty, args.into()).intern(db)
+    } else {
+        ty
+    };
+
     let ty_kind = if var_kinds.is_empty() {
         ctx.type_kind()
     } else {
@@ -594,8 +599,6 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         .map(|kind| {
             let kind = ctx.subst_type(kind);
 
-            ctx.pop_var_kind();
-
             if let TyKind::Unknown(u) = kind.lookup(db) {
                 ctx.solve_type(u, type_kind);
                 type_kind
@@ -603,9 +606,16 @@ pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
                 kind
             }
         })
-        .collect();
+        .collect::<List<_>>();
 
-    let ty = TyKind::ForAll(kinds, ty).intern(db);
+    ctx.pop_var_kind();
+
+    let ty = if !kinds.is_empty() {
+        TyKind::ForAll(kinds, ty).intern(db)
+    } else {
+        ty
+    };
+
     let ty = ctx.subst_type(ty);
 
     ctx.finish(ty)
@@ -625,17 +635,14 @@ pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Ty {
     if let Some(kind) = data.kind {
         ctx.lower_ty(kind)
     } else {
-        let mut ty = db.type_for_ctor(id).ty;
-        let mut vars = Vec::with_capacity(data.vars.len());
-
-        while let TyKind::ForAll(var, inner) = ty.lookup(db) {
-            vars.push(var);
-            ty = inner;
-        }
-
+        let ty = db.type_for_ctor(id).ty;
         let ty_kind = ctx.type_kind();
 
-        vars.into_iter().rev().fold(ty_kind, |ty, var| ctx.fn_type(var, ty))
+        if let TyKind::ForAll(vars, _) = ty.lookup(db) {
+            ctx.fn_type(vars, ty_kind)
+        } else {
+            ty_kind
+        }
     }
 }
 
@@ -655,7 +662,6 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
         .vars
         .iter()
         .enumerate()
-        .rev()
         .map(|(i, &var)| {
             let type_var = TypeVar::new(i as u32, DebruijnIndex::INNER);
             let kind = type_map[var]
@@ -664,11 +670,12 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
                 .unwrap_or_else(|| ctx.fresh_kind());
 
             var_kinds_.push(kind);
-            ctx.push_var_kind(kind);
 
             (&type_map[var].name, type_var)
         })
         .collect::<FxHashMap<_, _>>();
+
+    ctx.push_var_kind(var_kinds_.clone().into());
 
     let fundeps = data
         .fundeps
@@ -727,15 +734,10 @@ pub(crate) fn lower_instance_query(db: &dyn HirDatabase, id: InstanceId) -> Arc<
         .vars
         .iter()
         .enumerate()
-        .rev()
-        .map(|(_i, &_var)| {
-            let kind = ctx.fresh_kind();
-
-            ctx.push_var_kind(kind);
-            kind
-        })
-        .rev()
+        .map(|(_i, &_var)| ctx.fresh_kind())
         .collect::<Vec<_>>();
+
+    ctx.push_var_kind(vars.clone().into());
 
     let (class, types) = if let Some(class) = ctx.lower_class_path(&data.class) {
         let lower = db.lower_class(class);
@@ -779,13 +781,11 @@ pub(crate) fn lower_instance_query(db: &dyn HirDatabase, id: InstanceId) -> Arc<
 
 fn var_kinds(ctx: &mut LowerCtx, vars: Vec<Ty>) -> Box<[Ty]> {
     let type_kind = std::lazy::OnceCell::new();
-
-    vars.into_iter()
+    let vars = vars
+        .into_iter()
         .map(|kind| {
             let kind = ctx.subst_type(kind);
             let type_kind = *type_kind.get_or_init(|| ctx.type_kind());
-
-            ctx.pop_var_kind();
 
             if let TyKind::Unknown(u) = kind.lookup(ctx.db) {
                 ctx.solve_type(u, type_kind);
@@ -794,7 +794,10 @@ fn var_kinds(ctx: &mut LowerCtx, vars: Vec<Ty>) -> Box<[Ty]> {
                 ctx.replace_unknowns(kind, type_kind)
             }
         })
-        .collect()
+        .collect();
+
+    ctx.pop_var_kind();
+    vars
 }
 
 impl LowerResult {

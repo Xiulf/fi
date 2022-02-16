@@ -92,7 +92,7 @@ impl InferenceContext<'_> {
                     *self.result.instances.entry(e).or_default() = us;
                 }
 
-                ty
+                self.instantiate(ty, id)
             },
             | TyKind::Ctnt(ctnt, inner) => {
                 self.constrain(id, ctnt);
@@ -102,7 +102,7 @@ impl InferenceContext<'_> {
         }
     }
 
-    pub fn monomorphize(&mut self, ty: Ty) -> Ty {
+    pub fn normalize(&mut self, ty: Ty) -> Ty {
         ty.everywhere(self.db, &mut |ty| match ty.lookup(self.db) {
             | TyKind::App(a, b) => match a.lookup(self.db) {
                 | TyKind::ForAll(_, a) => a.replace_vars(self.db, &b),
