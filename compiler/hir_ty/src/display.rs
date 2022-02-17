@@ -152,7 +152,7 @@ impl<'a, W: fmt::Write> fmt::Write for Indent<'a, W> {
 
 impl fmt::Display for TypeVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.debruijn().fmt(f)
+        write!(f, "{}{}", self.debruijn(), self.idx())
     }
 }
 

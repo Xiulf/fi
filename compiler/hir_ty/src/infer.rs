@@ -369,6 +369,21 @@ impl<'a> BodyInferenceContext<'a> {
             }
         }
 
+        match ann.lookup(self.db) {
+            | TyKind::ForAll(vars, ty) => {
+                self.push_var_kind(vars);
+                self.check_body(ty);
+                return;
+            },
+            | TyKind::Ctnt(ctnt, ty) => {
+                let expr = self.body.body_expr();
+                self.constrain(expr.into(), ctnt);
+                self.check_body(ty);
+                return;
+            },
+            | _ => {},
+        }
+
         let (ret, args) = match ann.lookup(self.db) {
             | TyKind::Func(args, ret) => (ret, Some(args)),
             | _ => (ann, None),
