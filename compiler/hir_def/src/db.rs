@@ -37,7 +37,7 @@ pub trait InternDatabase: SourceDatabaseExt {
     fn intern_class(&self, loc: ClassLoc) -> ClassId;
 
     #[salsa::interned]
-    fn intern_instance(&self, loc: InstanceLoc) -> InstanceId;
+    fn intern_member(&self, loc: MemberLoc) -> MemberId;
 }
 
 #[salsa::query_group(DefDatabaseStorage)]
@@ -84,8 +84,8 @@ pub trait DefDatabase: InternDatabase + Upcast<dyn SourceDatabase> {
     #[salsa::invoke(data::ClassData::query)]
     fn class_data(&self, id: ClassId) -> Arc<data::ClassData>;
 
-    #[salsa::invoke(data::InstanceData::query)]
-    fn instance_data(&self, id: InstanceId) -> Arc<data::InstanceData>;
+    #[salsa::invoke(data::MemberData::query)]
+    fn member_data(&self, id: MemberId) -> Arc<data::MemberData>;
 
     #[salsa::invoke(AttrsWithOwner::attrs_query)]
     fn attrs(&self, def: AttrDefId) -> AttrsWithOwner;

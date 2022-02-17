@@ -1,4 +1,4 @@
-use crate::class::{Class, FunDep, Instance};
+use crate::class::{Class, FunDep, Member};
 use crate::db::HirDatabase;
 use crate::infer::diagnostics::InferenceDiagnostic;
 use crate::infer::InferenceContext;
@@ -33,8 +33,8 @@ pub struct ClassLowerResult {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct InstanceLowerResult {
-    pub instance: Instance,
+pub struct MemberLowerResult {
+    pub member: Member,
     pub diagnostics: Vec<InferenceDiagnostic>,
 }
 
@@ -66,11 +66,11 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         })
     }
 
-    fn finish_instance(self, instance: Instance) -> Arc<InstanceLowerResult> {
+    fn finish_instance(self, instance: Member) -> Arc<MemberLowerResult> {
         let icx_res = self.icx.finish_mut();
 
-        Arc::new(InstanceLowerResult {
-            instance,
+        Arc::new(MemberLowerResult {
+            member: instance,
             diagnostics: icx_res.diagnostics,
         })
     }
@@ -118,29 +118,22 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
             | TypeRef::Ptr(to, len) => {
                 let to_ = self.lower_ty(*to);
-                let lib = self.resolver.lib().unwrap();
 
                 self.check_kind_type(to_, *to);
 
                 match len {
                     | PtrLen::Single => {
-                        let ptr_ty = self.db.lang_item(lib, "ptr-type".into()).unwrap();
-                        let ptr_ty = ptr_ty.as_type_ctor().unwrap();
-                        let ptr_ty = self.db.type_for_ctor(ptr_ty).ty;
+                        let ptr_ty = self.lang_type("ptr-type");
 
                         TyKind::App(ptr_ty, vec![to_].into()).intern(self.db)
                     },
                     | PtrLen::Multiple(None) => {
-                        let ptr_ty = self.db.lang_item(lib, "ptrb-type".into()).unwrap();
-                        let ptr_ty = ptr_ty.as_type_ctor().unwrap();
-                        let ptr_ty = self.db.type_for_ctor(ptr_ty).ty;
+                        let ptr_ty = self.lang_type("ptrb-typ");
 
                         TyKind::App(ptr_ty, vec![to_].into()).intern(self.db)
                     },
                     | PtrLen::Multiple(Some(sentinel)) => {
-                        let ptr_ty = self.db.lang_item(lib, "ptrbs-type".into()).unwrap();
-                        let ptr_ty = ptr_ty.as_type_ctor().unwrap();
-                        let ptr_ty = self.db.type_for_ctor(ptr_ty).ty;
+                        let ptr_ty = self.lang_type("ptrbs-typ");
                         let sentinel = TyKind::Figure(sentinel.0).intern(self.db);
 
                         TyKind::App(ptr_ty, vec![to_, sentinel].into()).intern(self.db)
@@ -308,13 +301,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 type_var.to_ty(self.db)
             },
             | TypeNs::TypeAlias(id) => self.db.type_for_alias(id).ty,
-            | TypeNs::TypeCtor(id) => {
-                if TypeVarOwner::TypedDefId(id.into()) == self.owner {
-                    TyKind::Ctor(id).intern(self.db)
-                } else {
-                    self.db.type_for_ctor(id).ty
-                }
-            },
+            | TypeNs::TypeCtor(id) => TyKind::Ctor(id).intern(self.db),
         };
 
         if remaining > 0 {
@@ -467,13 +454,22 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult> {
     let resolver = id.resolver(db.upcast());
     let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
     let mut ctx = LowerCtx::new(ty_data.type_map(), &mut icx);
-    let mut ret = db.type_for_ctor(id.parent).ty;
-    let mut vars = None;
+    let mut ret = TyKind::Ctor(id.parent).intern(db);
+    let kind = db.kind_for_ctor(id.parent).ty;
+    let vars = match kind.lookup(db) {
+        | TyKind::Func(vars, _) => {
+            ctx.push_var_kind(vars.clone());
+            Some(vars)
+        },
+        | _ => None,
+    };
 
-    if let TyKind::ForAll(vars_, t) = ret.lookup(db) {
-        ctx.push_var_kind(vars_.clone());
-        vars = Some(vars_);
-        ret = t;
+    if let Some(vars) = &vars {
+        let args = (0..vars.len())
+            .map(|i| TypeVar::new(i as u32, DebruijnIndex::INNER).to_ty(db))
+            .collect();
+
+        ret = TyKind::App(ret, args).intern(db);
     }
 
     let args = ctor_data
@@ -548,105 +544,64 @@ pub(crate) fn type_for_alias_recover(_db: &dyn HirDatabase, _cycle: &[String], _
     unimplemented!();
 }
 
-pub(crate) fn type_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerResult> {
-    let data = db.type_ctor_data(id);
-    let resolver = id.resolver(db.upcast());
-    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
-    let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
-    let mut args = Vec::with_capacity(data.vars.len());
-    let ty = TyKind::Ctor(id).intern(db);
-    let var_kinds = data
-        .vars
-        .iter()
-        .enumerate()
-        .map(|(i, &var)| {
-            let data = &data.type_map()[var];
-            let kind = data.kind.map(|k| ctx.lower_ty(k)).unwrap_or_else(|| ctx.fresh_kind());
-            let var = TypeVar::new(i as u32, DebruijnIndex::INNER);
-
-            args.push(var.to_ty(db));
-            kind
-        })
-        .collect::<Vec<_>>();
-
-    ctx.push_var_kind(var_kinds.clone().into());
-
-    let ty = if !args.is_empty() {
-        TyKind::App(ty, args.into()).intern(db)
-    } else {
-        ty
-    };
-
-    let ty_kind = if var_kinds.is_empty() {
-        ctx.type_kind()
-    } else {
-        TyKind::Func(var_kinds.clone().into(), ctx.type_kind()).intern(db)
-    };
-
-    ctx.icx.result.self_type = ty_kind;
-
-    for (_, ctor) in data.ctors.iter() {
-        for &ty in ctor.types.iter() {
-            let ty_ = ctx.lower_ty(ty);
-
-            ctx.check_kind_type(ty_, ty);
-        }
-    }
-
-    let type_kind = ctx.type_kind();
-    let kinds = var_kinds
-        .into_iter()
-        .map(|kind| {
-            let kind = ctx.subst_type(kind);
-
-            if let TyKind::Unknown(u) = kind.lookup(db) {
-                ctx.solve_type(u, type_kind);
-                type_kind
-            } else {
-                kind
-            }
-        })
-        .collect::<List<_>>();
-
-    ctx.pop_var_kind();
-
-    let ty = if !kinds.is_empty() {
-        TyKind::ForAll(kinds, ty).intern(db)
-    } else {
-        ty
-    };
-
-    let ty = ctx.subst_type(ty);
-
-    ctx.finish(ty)
-}
-
-pub(crate) fn type_for_ctor_recover(_db: &dyn HirDatabase, _cycle: &[String], _id: &TypeCtorId) -> Arc<LowerResult> {
-    dbg!(_cycle);
-    unimplemented!();
-}
-
-pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Ty {
+pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerResult> {
     let data = db.type_ctor_data(id);
     let resolver = id.resolver(db.upcast());
     let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
 
     if let Some(kind) = data.kind {
-        ctx.lower_ty(kind)
-    } else {
-        let ty = db.type_for_ctor(id).ty;
-        let ty_kind = ctx.type_kind();
+        let ty = ctx.lower_ty(kind);
 
-        if let TyKind::ForAll(vars, _) = ty.lookup(db) {
-            ctx.fn_type(vars, ty_kind)
+        ctx.finish(ty)
+    } else {
+        let var_kinds = data
+            .vars
+            .iter()
+            .map(|&var| {
+                let data = &data.type_map()[var];
+
+                data.kind.map(|k| ctx.lower_ty(k)).unwrap_or_else(|| ctx.fresh_kind())
+            })
+            .collect::<Vec<_>>();
+
+        ctx.push_var_kind(var_kinds.clone().into());
+
+        let ty_kind = if var_kinds.is_empty() {
+            ctx.type_kind()
         } else {
-            ty_kind
+            TyKind::Func(var_kinds.clone().into(), ctx.type_kind()).intern(db)
+        };
+
+        ctx.icx.result.self_type = ty_kind;
+
+        for (_, ctor) in data.ctors.iter() {
+            for &ty in ctor.types.iter() {
+                let ty_ = ctx.lower_ty(ty);
+
+                ctx.check_kind_type(ty_, ty);
+            }
         }
+
+        let type_kind = ctx.type_kind();
+
+        for kind in var_kinds {
+            let kind = ctx.subst_type(kind);
+
+            if let TyKind::Unknown(u) = kind.lookup(db) {
+                ctx.solve_type(u, type_kind);
+            }
+        }
+
+        ctx.pop_var_kind();
+
+        let ty = ctx.subst_type(ty_kind);
+
+        ctx.finish(ty)
     }
 }
 
-pub(crate) fn kind_for_ctor_recover(db: &dyn HirDatabase, _cycle: &[String], id: &TypeCtorId) -> Ty {
+pub(crate) fn kind_for_ctor_recover(db: &dyn HirDatabase, _cycle: &[String], id: &TypeCtorId) -> Arc<LowerResult> {
     let data = db.type_ctor_data(*id);
     unimplemented!("{}", data.name);
 }
@@ -724,8 +679,8 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
     ctx.finish_class(Class { id, vars, fundeps })
 }
 
-pub(crate) fn lower_instance_query(db: &dyn HirDatabase, id: InstanceId) -> Arc<InstanceLowerResult> {
-    let data = db.instance_data(id);
+pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<MemberLowerResult> {
+    let data = db.member_data(id);
     let _type_map = data.type_map();
     let resolver = id.resolver(db.upcast());
     let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
@@ -770,7 +725,7 @@ pub(crate) fn lower_instance_query(db: &dyn HirDatabase, id: InstanceId) -> Arc<
 
     let vars = var_kinds(&mut ctx, vars);
 
-    ctx.finish_instance(Instance {
+    ctx.finish_instance(Member {
         id,
         class,
         vars,
@@ -812,7 +767,7 @@ impl ClassLowerResult {
     }
 }
 
-impl InstanceLowerResult {
+impl MemberLowerResult {
     pub fn add_diagnostics(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
         self.diagnostics.iter().for_each(|it| it.add_to(db, owner, sink));
     }

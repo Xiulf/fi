@@ -143,7 +143,7 @@ fn n_attached_trivias<'t>(kind: SyntaxKind, trivias: impl Iterator<Item = (Synta
         | SyntaxKind::ITEM_CONST
         | SyntaxKind::ITEM_TYPE
         | SyntaxKind::ITEM_CLASS
-        | SyntaxKind::ITEM_INSTANCE => {
+        | SyntaxKind::ITEM_MEMBER => {
             let mut res = 0;
             let mut trivias = trivias.enumerate().peekable();
 

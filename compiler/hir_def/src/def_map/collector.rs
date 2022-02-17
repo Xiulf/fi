@@ -702,8 +702,8 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         visibility,
                     });
                 },
-                | Item::Instance(id) => {
-                    let inst_id = InstanceLoc {
+                | Item::Member(id) => {
+                    let inst_id = MemberLoc {
                         id: ItemTreeId::new(self.file_id, id),
                         module,
                     }
@@ -711,7 +711,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
 
                     self.def_collector.def_map.modules[self.module_id]
                         .scope
-                        .define_instance(inst_id);
+                        .define_member(inst_id);
                 },
             }
 

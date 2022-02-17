@@ -405,13 +405,13 @@ impl HasResolver for ClassId {
     }
 }
 
-impl HasResolver for InstanceId {
+impl HasResolver for MemberId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let data = db.instance_data(self);
+        let data = db.member_data(self);
 
         self.lookup(db).module.resolver(db).with_type_vars(
             data.type_map(),
-            TypedDefId::InstanceId(self).into(),
+            TypedDefId::MemberId(self).into(),
             data.vars.iter().copied(),
         )
     }
@@ -422,7 +422,7 @@ impl HasResolver for ContainerId {
         match self {
             | ContainerId::Module(id) => id.resolver(db),
             | ContainerId::Class(id) => id.resolver(db),
-            | ContainerId::Instance(id) => id.resolver(db),
+            | ContainerId::Member(id) => id.resolver(db),
         }
     }
 }
@@ -446,7 +446,7 @@ impl HasResolver for TypedDefId {
             | TypedDefId::TypeCtorId(id) => id.resolver(db),
             | TypedDefId::CtorId(id) => id.resolver(db),
             | TypedDefId::ClassId(id) => id.resolver(db),
-            | TypedDefId::InstanceId(id) => id.resolver(db),
+            | TypedDefId::MemberId(id) => id.resolver(db),
         }
     }
 }

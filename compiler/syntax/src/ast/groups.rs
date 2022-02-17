@@ -22,7 +22,7 @@ enum ItemGroupKind {
     Static(bool),
     Type(bool),
     Class,
-    Instance,
+    Member,
 }
 
 impl Iterator for ItemGroups {
@@ -89,7 +89,7 @@ impl PartialEq for ItemGroupKind {
             | (Type(true), Type(false)) => true,
             | (Type(false), Type(false)) => true,
             | (Class, Class) => true,
-            | (Instance, Instance) => true,
+            | (Member, Member) => true,
             | _ => false,
         }
     }
@@ -121,7 +121,7 @@ impl Item {
             | Item::Type(it) if it.kind().is_some() => ItemGroupKind::Type(true),
             | Item::Type(_) => ItemGroupKind::Type(false),
             | Item::Class(_) => ItemGroupKind::Class,
-            | Item::Instance(_) => ItemGroupKind::Instance,
+            | Item::Member(_) => ItemGroupKind::Member,
         }
     }
 }

@@ -40,7 +40,7 @@ impl InferenceContext<'_> {
                 if TypeVarOwner::TypedDefId(id.into()) == self.owner {
                     self.result.self_type
                 } else {
-                    self.db.kind_for_ctor(id)
+                    self.db.kind_for_ctor(id).ty
                 }
             },
             | TyKind::App(base, args) => self.check_kind_for_app(base, &args, origin),

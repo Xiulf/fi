@@ -106,7 +106,7 @@ impl Ctx {
             | ast::Item::Const(ast) => self.lower_const(ast).map(Into::into),
             | ast::Item::Type(ast) => self.lower_type(ast),
             | ast::Item::Class(ast) => self.lower_class(ast).map(Into::into),
-            | ast::Item::Instance(ast) => self.lower_instance(ast).map(Into::into),
+            | ast::Item::Member(ast) => self.lower_member(ast).map(Into::into),
         };
 
         if !attrs.is_empty() {
@@ -251,12 +251,12 @@ impl Ctx {
         })
     }
 
-    fn lower_instance(&mut self, item: &ast::ItemInstance) -> Option<LocalItemTreeId<Instance>> {
+    fn lower_member(&mut self, item: &ast::ItemMember) -> Option<LocalItemTreeId<Member>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let class = Path::lower(item.class()?);
         let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
 
-        Some(id(self.tree.data.instances.alloc(Instance { ast_id, class, items })))
+        Some(id(self.tree.data.members.alloc(Member { ast_id, class, items })))
     }
 
     fn lower_assoc_item(&mut self, item: ast::AssocItem) -> Option<AssocItem> {

@@ -10,7 +10,7 @@ class PartialEq lhs rhs =
 
 class Eq t : PartialEq t t
 
-instance PartialEq Int32 Int32 =
+member Int32 Int32 of PartialEq =
     fun eq lhs rhs = intrinsics/eq_i32 lhs rhs
 
-instance Eq Int32
+member Int32 of Eq

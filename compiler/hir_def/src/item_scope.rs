@@ -1,5 +1,5 @@
 use crate::db::DefDatabase;
-use crate::id::{ClassId, HasModule, InstanceId, LocalModuleId, Lookup, ModuleDefId, ModuleId};
+use crate::id::{ClassId, HasModule, LocalModuleId, Lookup, MemberId, ModuleDefId, ModuleId};
 use crate::name::Name;
 use crate::per_ns::PerNs;
 use crate::visibility::Visibility;
@@ -29,7 +29,7 @@ pub struct ItemScope {
     reexports: FxHashMap<Name, PerNs<ModuleDefId>>,
     unresolved: FxHashSet<Name>,
     defs: Vec<ModuleDefId>,
-    instances: Vec<InstanceId>,
+    members: Vec<MemberId>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -77,8 +77,8 @@ impl ItemScope {
         self.defs.iter().copied()
     }
 
-    pub fn instances(&self) -> impl Iterator<Item = InstanceId> + ExactSizeIterator + '_ {
-        self.instances.iter().copied()
+    pub fn members(&self) -> impl Iterator<Item = MemberId> + ExactSizeIterator + '_ {
+        self.members.iter().copied()
     }
 
     pub fn values(&self) -> impl Iterator<Item = (ModuleDefId, Visibility)> + ExactSizeIterator + '_ {
@@ -122,8 +122,8 @@ impl ItemScope {
         self.defs.push(def);
     }
 
-    pub fn define_instance(&mut self, instance: InstanceId) {
-        self.instances.push(instance);
+    pub fn define_member(&mut self, member: MemberId) {
+        self.members.push(member);
     }
 
     pub fn push_reexport(&mut self, name: Name, def: PerNs<ModuleDefId>) {

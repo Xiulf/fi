@@ -28,7 +28,7 @@ from_id! {
     TypeAliasId: crate::TypeAlias,
     TypeCtorId: crate::TypeCtor,
     ClassId: crate::Class,
-    InstanceId: crate::Instance,
+    MemberId: crate::Member,
     TypeVarId: crate::TypeVar,
 }
 

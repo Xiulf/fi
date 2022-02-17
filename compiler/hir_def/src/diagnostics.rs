@@ -123,7 +123,7 @@ impl ItemTreeDiagnostic {
                 | Item::TypeCtor(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
                 | Item::TypeAlias(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
                 | Item::Class(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::Instance(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
+                | Item::Member(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
             }
         }
     }

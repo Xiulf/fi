@@ -1,6 +1,6 @@
 use crate::{
     dyn_map::Policy,
-    id::{FuncId, InstanceId},
+    id::{FuncId, MemberId},
     in_file::InFile,
 };
 use rustc_hash::FxHashMap;
@@ -10,7 +10,7 @@ use syntax::{ast, AstNode, AstPtr};
 pub type Key<K, V> = crate::dyn_map::Key<InFile<K>, V, AstPtrPolicy<K, V>>;
 
 pub const FUNC: Key<ast::ItemFun, FuncId> = Key::new();
-pub const INST: Key<ast::ItemInstance, InstanceId> = Key::new();
+pub const INST: Key<ast::ItemMember, MemberId> = Key::new();
 
 pub struct AstPtrPolicy<AST, ID> {
     _marker: PhantomData<(AST, ID)>,

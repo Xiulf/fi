@@ -94,27 +94,27 @@ type Proxy a =
 @lang = "pointer-class" class Pointer t to | t -> to
 
 @default
-instance Integer Int
-instance Integer Uint
+member Int of Integer
+member Uint of Integer
 
-instance Integer Int8
-instance Integer Int16
-instance Integer Int32
-instance Integer Int64
-instance Integer Int128
-instance Integer Uint8
-instance Integer Uint16
-instance Integer Uint32
-instance Integer Uint64
-instance Integer Uint128
+member Int8 of Integer 
+member Int16 of Integer
+member Int32 of Integer
+member Int64 of Integer
+member Int128 of Integer
+member Uint8 of Integer
+member Uint16 of Integer
+member Uint32 of Integer
+member Uint64 of Integer
+member Uint128 of Integer
 
 @default
-instance Decimal Float32
-instance Decimal Float64
+member Float32 of Decimal
+member Float64 of Decimal
 
-instance Pointer (Ptr t) t
-instance Pointer (BufPtr t) t
-instance Pointer (BufPtrSentinel t s) t
+for t. member (Ptr t) t of Pointer
+for t. member (BufPtr t) t of Pointer
+for t s. member (BufPtrSentinel t s) t of Pointer
 
 class Unsafe
 class Partial
@@ -123,5 +123,5 @@ class Partial
 class Termination t =
     fun report :: t -> Int32
 
-instance Termination Unit =
+member Unit of Termination =
     fun report _ = 0

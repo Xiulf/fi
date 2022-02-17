@@ -53,7 +53,7 @@ pub enum SyntaxKind {
     STATIC_KW,
     CONST_KW,
     CLASS_KW,
-    INSTANCE_KW,
+    MEMBER_KW,
     INFIX_KW,
     INFIXL_KW,
     INFIXR_KW,
@@ -100,7 +100,7 @@ pub enum SyntaxKind {
     ITEM_STATIC,
     ITEM_CONST,
     ITEM_CLASS,
-    ITEM_INSTANCE,
+    ITEM_MEMBER,
     ITEM_TYPE,
     ITEM_CTOR,
 

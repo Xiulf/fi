@@ -1,7 +1,7 @@
 use crate::{
     db::DefDatabase,
     dyn_map::DynMap,
-    id::{HasSource, InstanceId, Lookup, ModuleDefId, ModuleId},
+    id::{HasSource, Lookup, MemberId, ModuleDefId, ModuleId},
     item_scope::ItemScope,
     keys,
 };
@@ -32,7 +32,7 @@ impl ChildBySource for ItemScope {
         self.declarations()
             .for_each(|item| add_module_def(db, file_id, map, item));
 
-        self.instances().for_each(|inst| add_instance(db, file_id, map, inst));
+        self.members().for_each(|member| add_member(db, file_id, map, member));
 
         fn add_module_def(db: &dyn DefDatabase, file_id: FileId, map: &mut DynMap, item: ModuleDefId) {
             match item {
@@ -50,7 +50,7 @@ impl ChildBySource for ItemScope {
             }
         }
 
-        fn add_instance(db: &dyn DefDatabase, file_id: FileId, map: &mut DynMap, inst: InstanceId) {
+        fn add_member(db: &dyn DefDatabase, file_id: FileId, map: &mut DynMap, inst: MemberId) {
             let loc = inst.lookup(db);
 
             if loc.id.file_id == file_id {

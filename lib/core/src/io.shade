@@ -29,13 +29,13 @@ fun eprintln (s :: Str) = do
     eprint s
     eprint "\n"
 
-instance Write Stdout =
+member Stdout of Write =
     fun write s bytes = do
         let (ptr, len) = unsafe $ transmute bytes
         libc/write libc/STDOUT_FILENO ptr len
         s
 
-instance Write Stderr =
+member Stderr of Write =
     fun write s bytes = do
         let (ptr, len) = unsafe $ transmute bytes
         libc/write libc/STDERR_FILENO ptr len

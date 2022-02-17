@@ -431,15 +431,19 @@ impl FunDep {
     }
 }
 
-impl AttrsOwner for ItemInstance {
+impl AttrsOwner for ItemMember {
 }
 
-impl ItemInstance {
+impl ItemMember {
     pub fn class(&self) -> Option<Path> {
         support::child(&self.0)
     }
 
     pub fn types(&self) -> AstChildren<Type> {
+        support::children(&self.0)
+    }
+
+    pub fn vars(&self) -> AstChildren<TypeVar> {
         support::children(&self.0)
     }
 
@@ -532,12 +536,24 @@ impl TypePtr {
 }
 
 impl TypeFn {
-    pub fn param(&self) -> Option<Type> {
-        support::children(&self.0).nth(0)
+    pub fn params(&self) -> impl Iterator<Item = Type> {
+        return Params(support::children(&self.0).peekable());
+        struct Params(Peekable<AstChildren<Type>>);
+        impl Iterator for Params {
+            type Item = Type;
+            fn next(&mut self) -> Option<Self::Item> {
+                let it = self.0.next()?;
+                if self.0.peek().is_some() {
+                    Some(it)
+                } else {
+                    None
+                }
+            }
+        }
     }
 
     pub fn ret(&self) -> Option<Type> {
-        support::children(&self.0).nth(1)
+        support::children(&self.0).last()
     }
 }
 

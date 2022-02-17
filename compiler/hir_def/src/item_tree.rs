@@ -37,7 +37,7 @@ pub struct ItemTreeData {
     type_ctors: Arena<TypeCtor>,
     ctors: Arena<Ctor>,
     classes: Arena<Class>,
-    instances: Arena<Instance>,
+    members: Arena<Member>,
 }
 
 pub trait ItemTreeNode: Clone {
@@ -176,7 +176,7 @@ items! {
     TypeAlias in type_aliases -> ast::ItemType,
     TypeCtor in type_ctors -> ast::ItemType,
     Class in classes -> ast::ItemClass,
-    Instance in instances -> ast::ItemInstance,
+    Member in members -> ast::ItemMember,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -255,8 +255,8 @@ pub struct FunDep {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Instance {
-    pub ast_id: FileAstId<ast::ItemInstance>,
+pub struct Member {
+    pub ast_id: FileAstId<ast::ItemMember>,
     pub class: Path,
     pub items: Box<[AssocItem]>,
 }

@@ -49,6 +49,15 @@ pub struct AstChildren<N> {
     _marker: PhantomData<N>,
 }
 
+impl<N> Clone for AstChildren<N> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<N> AstChildren<N> {
     fn new(parent: &SyntaxNode) -> Self {
         AstChildren {

@@ -43,9 +43,12 @@ crate fn ctnt(p: &mut Parser) -> Option<CompletedMarker> {
 crate fn func(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = app(p)?;
 
-    if p.eat(ARROW) {
+    if p.at(ARROW) {
         let ty = m.precede(p);
-        let _ = func(p);
+
+        while p.eat(ARROW) {
+            let _ = app(p);
+        }
 
         m = ty.complete(p, TYPE_FN);
     }
@@ -203,7 +206,7 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
         | FOR_KW => {
             p.bump(FOR_KW);
 
-            while p.at_ts(TokenSet::new(&[L_PAREN, IDENT])) {
+            while !p.at(DOT) {
                 type_var(p);
             }
 

@@ -95,7 +95,7 @@ impl AttrsWithOwner {
             | AttrDefId::TypeAliasId(id) => attrs_from_item_tree(id.lookup(db).id, db),
             | AttrDefId::TypeCtorId(id) => attrs_from_item_tree(id.lookup(db).id, db),
             | AttrDefId::ClassId(id) => attrs_from_item_tree(id.lookup(db).id, db),
-            | AttrDefId::InstanceId(id) => attrs_from_item_tree(id.lookup(db).id, db),
+            | AttrDefId::MemberId(id) => attrs_from_item_tree(id.lookup(db).id, db),
         };
 
         let attrs = Attrs(raw_attrs);

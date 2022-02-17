@@ -7,5 +7,5 @@ infixl 7 div as (/)
 class Div lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
     fun div :: lhs -> rhs -> out
 
-instance Div Int32 Int32 Int32 =
+member Int32 Int32 Int32 of Div =
     fun div lhs rhs = intrinsics/div_i32 lhs rhs

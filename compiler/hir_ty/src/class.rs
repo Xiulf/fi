@@ -1,9 +1,9 @@
 use crate::db::HirDatabase;
 use crate::infer::InferenceContext;
-use crate::lower::InstanceLowerResult;
+use crate::lower::MemberLowerResult;
 use crate::ty::{Constraint, Ty, TyKind, TypeVar, Unknown};
 use hir_def::arena::{Arena, Idx};
-use hir_def::id::{ClassId, InstanceId, Lookup};
+use hir_def::id::{ClassId, Lookup, MemberId};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -22,8 +22,8 @@ pub struct FunDep {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Instance {
-    pub id: InstanceId,
+pub struct Member {
+    pub id: MemberId,
     pub class: ClassId,
     pub vars: Box<[Ty]>,
     pub types: Box<[Ty]>,
@@ -31,14 +31,14 @@ pub struct Instance {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Instances {
-    pub(crate) matchers: Box<[Arc<InstanceLowerResult>]>,
+pub struct Members {
+    pub(crate) matchers: Box<[Arc<MemberLowerResult>]>,
     deps: Box<[FunDep]>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct InstanceMatchResult {
-    pub instance: InstanceId,
+pub struct MemberMatchResult {
+    pub member: MemberId,
     pub subst: FxHashMap<Unknown, Ty>,
 }
 
@@ -70,30 +70,30 @@ enum Matched<T> {
     Unknown,
 }
 
-impl Instances {
-    pub(crate) fn instances_query(db: &dyn HirDatabase, class: ClassId) -> Arc<Instances> {
+impl Members {
+    pub(crate) fn members_query(db: &dyn HirDatabase, class: ClassId) -> Arc<Members> {
         let loc = class.lookup(db.upcast());
         let lower = db.lower_class(class);
-        let mut instances = Vec::new();
+        let mut members = Vec::new();
         let mut priority = FxHashMap::default();
 
         for lib in db.libs().dependant(loc.module.lib) {
             for (_, module) in db.def_map(lib).modules() {
-                for inst in module.scope.instances() {
-                    let lower = db.lower_instance(inst);
+                for inst in module.scope.members() {
+                    let lower = db.lower_member(inst);
 
-                    if lower.instance.class == class {
-                        priority.insert(lower.instance.id, lower.instance.priority(db));
-                        instances.push(lower);
+                    if lower.member.class == class {
+                        priority.insert(lower.member.id, lower.member.priority(db));
+                        members.push(lower);
                     }
                 }
             }
         }
 
-        instances.sort_by_key(|i| priority[&i.instance.id]);
+        members.sort_by_key(|i| priority[&i.member.id]);
 
-        Arc::new(Instances {
-            matchers: instances.into(),
+        Arc::new(Members {
+            matchers: members.into(),
             deps: lower.class.fundeps.clone(),
         })
     }
@@ -101,20 +101,20 @@ impl Instances {
     pub(crate) fn solve_constraint_query(
         db: &dyn HirDatabase,
         constraint: Constraint,
-    ) -> Option<Arc<InstanceMatchResult>> {
-        let instances = db.instances(constraint.class);
+    ) -> Option<Arc<MemberMatchResult>> {
+        let instances = db.members(constraint.class);
 
         instances.matches(db, constraint).map(Arc::new)
     }
 
-    pub(crate) fn matches(&self, db: &dyn HirDatabase, ctnt: Constraint) -> Option<InstanceMatchResult> {
+    pub(crate) fn matches(&self, db: &dyn HirDatabase, ctnt: Constraint) -> Option<MemberMatchResult> {
         self.matchers
             .iter()
-            .find_map(|m| m.instance.matches(db, &ctnt, &self.deps))
+            .find_map(|m| m.member.matches(db, &ctnt, &self.deps))
     }
 }
 
-impl InstanceMatchResult {
+impl MemberMatchResult {
     pub(crate) fn apply(&self, icx: &mut InferenceContext) {
         for (&u, &ty) in self.subst.iter() {
             icx.solve_type(u, ty);
@@ -122,8 +122,8 @@ impl InstanceMatchResult {
     }
 }
 
-impl Instance {
-    fn matches(&self, db: &dyn HirDatabase, ctnt: &Constraint, deps: &[FunDep]) -> Option<InstanceMatchResult> {
+impl Member {
+    fn matches(&self, db: &dyn HirDatabase, ctnt: &Constraint, deps: &[FunDep]) -> Option<MemberMatchResult> {
         let mut subst = FxHashMap::default();
         let mut vars = BTreeMap::default();
         let matches = ctnt
@@ -154,10 +154,7 @@ impl Instance {
             });
         }
 
-        Some(InstanceMatchResult {
-            instance: self.id,
-            subst,
-        })
+        Some(MemberMatchResult { member: self.id, subst })
     }
 
     fn priority(&self, db: &dyn HirDatabase) -> isize {

@@ -7,5 +7,5 @@ infixl 6 sub as (-)
 class Sub lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
     fun sub :: lhs -> rhs -> out
 
-instance Sub Int32 Int32 Int32 =
+member Int32 Int32 Int32 of Sub =
     fun sub lhs rhs = intrinsics/sub_i32 lhs rhs

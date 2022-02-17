@@ -15,7 +15,7 @@ use hir_def::arena::ArenaMap;
 use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
-use hir_def::id::{ClassId, ContainerId, DefWithBodyId, HasModule, InstanceId, Lookup, TypeVarOwner};
+use hir_def::id::{ClassId, ContainerId, DefWithBodyId, HasModule, Lookup, MemberId, TypeVarOwner};
 use hir_def::pat::PatId;
 use hir_def::resolver::Resolver;
 use hir_def::type_ref::LocalTypeRefId;
@@ -29,7 +29,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
 
     match def.container(db.upcast()) {
         | ContainerId::Class(id) => icx.class_owner(id),
-        | ContainerId::Instance(id) => icx.instance_owner(id),
+        | ContainerId::Member(id) => icx.member_owner(id),
         | ContainerId::Module(_) => {},
     }
 
@@ -71,7 +71,7 @@ pub struct InferenceResult {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MethodSource {
-    Instance(InstanceId),
+    Member(MemberId),
     Record(usize),
 }
 
@@ -84,7 +84,7 @@ pub struct InferenceContext<'a> {
     origin: FxHashMap<Ty, TypeOrigin>,
     pub(crate) var_kinds: Vec<List<Ty>>,
     class_env: ClassEnv,
-    instance_records: usize,
+    member_records: usize,
     constraints: Vec<(Constraint, ExprOrPatId, Option<ClassEnvScope>)>,
 }
 
@@ -166,7 +166,7 @@ impl<'a> InferenceContext<'a> {
             origin: FxHashMap::default(),
             var_kinds: Vec::default(),
             class_env: ClassEnv::default(),
-            instance_records: 0,
+            member_records: 0,
             constraints: Vec::default(),
         }
     }
@@ -210,7 +210,7 @@ impl<'a> InferenceContext<'a> {
         let ty = self.db.lang_item(module.lib, name.into()).unwrap();
         let ty = ty.as_type_ctor().unwrap();
 
-        self.db.type_for_ctor(ty).ty
+        TyKind::Ctor(ty).intern(self.db)
     }
 
     pub(crate) fn type_kind(&self) -> Ty {
@@ -291,10 +291,10 @@ impl<'a> InferenceContext<'a> {
         self.push_var_kind(lower.class.vars.clone());
     }
 
-    fn instance_owner(&mut self, id: InstanceId) {
-        let lower = self.db.lower_instance(id);
+    fn member_owner(&mut self, id: MemberId) {
+        let lower = self.db.lower_member(id);
 
-        self.push_var_kind(lower.instance.vars.clone());
+        self.push_var_kind(lower.member.vars.clone());
     }
 }
 
@@ -322,7 +322,7 @@ impl<'a> BodyInferenceContext<'a> {
         if let TypeVarOwner::DefWithBodyId(DefWithBodyId::FuncId(id)) = self.owner {
             let loc = id.lookup(self.db.upcast());
 
-            if let ContainerId::Instance(_inst) = loc.container {
+            if let ContainerId::Member(_inst) = loc.container {
                 // let data = self.db.func_data(id);
                 // let lower = self.db.lower_instance(inst);
                 // let class = self.db.class_data(lower.instance.class);
@@ -376,8 +376,7 @@ impl<'a> BodyInferenceContext<'a> {
                 return;
             },
             | TyKind::Ctnt(ctnt, ty) => {
-                let expr = self.body.body_expr();
-                self.constrain(expr.into(), ctnt);
+                self.class_env.push(ctnt, false);
                 self.check_body(ty);
                 return;
             },

@@ -5,7 +5,7 @@ pub use crate::item_tree::{Assoc, FunDep, Prec};
 use crate::item_tree::{AssocItem, ItemTreeId};
 use crate::name::Name;
 use crate::path::Path;
-use crate::type_ref::{Constraint, LocalTypeRefId, LocalTypeVarId, TypeMap, TypeRef, TypeSourceMap};
+use crate::type_ref::{Constraint, LocalTypeRefId, LocalTypeVarId, TypeMap, TypeSourceMap};
 use base_db::input::FileId;
 use std::sync::Arc;
 use syntax::ast;
@@ -84,7 +84,7 @@ pub struct ClassData {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct InstanceData {
+pub struct MemberData {
     pub class: Path,
     pub vars: Box<[LocalTypeVarId]>,
     pub types: Box<[LocalTypeRefId]>,
@@ -355,32 +355,18 @@ impl ClassData {
     }
 }
 
-impl InstanceData {
-    pub fn query(db: &dyn DefDatabase, id: InstanceId) -> Arc<Self> {
-        use crate::resolver::HasResolver;
+impl MemberData {
+    pub fn query(db: &dyn DefDatabase, id: MemberId) -> Arc<Self> {
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let types = src.value.types().map(|t| type_builder.alloc_type_ref(t)).collect();
-        let resolver = loc.module.resolver(db);
-        let vars = type_builder
-            .iter()
-            .map(|(id, ty)| (id, ty.clone()))
-            .collect::<Vec<_>>()
-            .into_iter()
-            .filter_map(|(id, ty)| {
-                if let TypeRef::Path(path) = ty {
-                    if let None = resolver.resolve_type(db, &path) {
-                        type_builder.alloc_type_var_from_ty(id, &path)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
+        let vars = src
+            .value
+            .vars()
+            .filter_map(|t| type_builder.alloc_type_var(t))
             .collect();
 
         let constraints = src
@@ -389,11 +375,11 @@ impl InstanceData {
             .filter_map(|c| type_builder.lower_constraint(c))
             .collect();
 
-        let container = ContainerId::Instance(id);
+        let container = ContainerId::Member(id);
         let items = collect_assoc_items(db, loc.id.file_id, it.items.iter().copied(), container);
         let (type_map, type_source_map) = type_builder.finish();
 
-        Arc::new(InstanceData {
+        Arc::new(MemberData {
             class: it.class.clone(),
             items: items.into(),
             types,

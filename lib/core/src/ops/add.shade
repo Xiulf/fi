@@ -7,5 +7,5 @@ infixl 6 add as (+)
 class Add lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
     fun add :: lhs -> rhs -> out
 
-instance Add Int32 Int32 Int32 =
+member Int32 Int32 Int32 of Add =
     fun add lhs rhs = intrinsics/add_i32 lhs rhs

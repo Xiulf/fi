@@ -36,8 +36,11 @@ crate fn any_item(p: &mut Parser) {
         | CLASS_KW => {
             class(p, m);
         },
-        | INSTANCE_KW => {
-            instance(p, m);
+        | MEMBER_KW => {
+            member(p, m);
+        },
+        | FOR_KW => {
+            for_member(p, m);
         },
         | _ => {
             m.abandon(p);
@@ -246,11 +249,11 @@ crate fn fun_dep(p: &mut Parser) {
     m.complete(p, FUN_DEP);
 }
 
-crate fn instance(p: &mut Parser, m: Marker) {
-    p.expect(INSTANCE_KW);
-    paths::path(p);
+crate fn member(p: &mut Parser, m: Marker) {
+    p.expect(MEMBER_KW);
+    types::atom(p);
 
-    while types::peek(p) {
+    while !p.at(COLON) && !p.at(OF_KW) {
         types::atom(p);
     }
 
@@ -261,6 +264,9 @@ crate fn instance(p: &mut Parser, m: Marker) {
             types::constraint(p);
         }
     }
+
+    p.expect(OF_KW);
+    paths::path(p);
 
     if p.eat(EQUALS) {
         p.expect(LYT_START);
@@ -276,7 +282,18 @@ crate fn instance(p: &mut Parser, m: Marker) {
         p.expect(LYT_END);
     }
 
-    m.complete(p, ITEM_INSTANCE);
+    m.complete(p, ITEM_MEMBER);
+}
+
+crate fn for_member(p: &mut Parser, m: Marker) {
+    p.expect(FOR_KW);
+
+    while !p.at(DOT) {
+        types::type_var(p);
+    }
+
+    p.expect(DOT);
+    member(p, m);
 }
 
 crate fn assoc_item(p: &mut Parser) {

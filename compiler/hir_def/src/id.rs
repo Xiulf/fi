@@ -83,7 +83,7 @@ pub struct AssocItemLoc<N: ItemTreeNode> {
 pub enum ContainerId {
     Module(ModuleId),
     Class(ClassId),
-    Instance(InstanceId),
+    Member(MemberId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -138,9 +138,9 @@ impl ClassId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InstanceId(salsa::InternId);
-pub type InstanceLoc = ItemLoc<Instance>;
-impl_intern!(InstanceId, InstanceLoc, intern_instance, lookup_intern_instance);
+pub struct MemberId(salsa::InternId);
+pub type MemberLoc = ItemLoc<Member>;
+impl_intern!(MemberId, MemberLoc, intern_member, lookup_intern_member);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeVarId {
@@ -164,7 +164,7 @@ pub enum AttrDefId {
     TypeAliasId(TypeAliasId),
     TypeCtorId(TypeCtorId),
     ClassId(ClassId),
-    InstanceId(InstanceId),
+    MemberId(MemberId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -189,7 +189,7 @@ pub enum TypedDefId {
     TypeCtorId(TypeCtorId),
     CtorId(CtorId),
     ClassId(ClassId),
-    InstanceId(InstanceId),
+    MemberId(MemberId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -218,7 +218,7 @@ impl HasModule for ContainerId {
         match *self {
             | ContainerId::Module(id) => id,
             | ContainerId::Class(id) => id.lookup(db).module,
-            | ContainerId::Instance(id) => id.lookup(db).module,
+            | ContainerId::Member(id) => id.lookup(db).module,
         }
     }
 }
@@ -249,7 +249,7 @@ impl HasModule for TypedDefId {
             | TypedDefId::TypeCtorId(id) => id.lookup(db).module,
             | TypedDefId::CtorId(id) => id.parent.lookup(db).module(db),
             | TypedDefId::ClassId(id) => id.lookup(db).module,
-            | TypedDefId::InstanceId(id) => id.lookup(db).module,
+            | TypedDefId::MemberId(id) => id.lookup(db).module,
         }
     }
 }
@@ -294,7 +294,7 @@ impl TypeVarOwner {
                 | TypedDefId::TypeCtorId(id) => f(db.type_ctor_data(id).type_map()),
                 | TypedDefId::CtorId(id) => f(db.type_ctor_data(id.parent).type_map()),
                 | TypedDefId::ClassId(id) => f(db.class_data(id).type_map()),
-                | TypedDefId::InstanceId(id) => f(db.instance_data(id).type_map()),
+                | TypedDefId::MemberId(id) => f(db.member_data(id).type_map()),
             },
         }
     }
@@ -310,7 +310,7 @@ impl TypeVarOwner {
                 | TypedDefId::TypeCtorId(id) => f(db.type_ctor_data(id).type_source_map()),
                 | TypedDefId::CtorId(id) => f(db.type_ctor_data(id.parent).type_source_map()),
                 | TypedDefId::ClassId(id) => f(db.class_data(id).type_source_map()),
-                | TypedDefId::InstanceId(id) => f(db.instance_data(id).type_source_map()),
+                | TypedDefId::MemberId(id) => f(db.member_data(id).type_source_map()),
             },
         }
     }
@@ -351,7 +351,7 @@ impl TypedDefId {
             | TypedDefId::TypeCtorId(id) => ContainerId::Module(id.lookup(db).module),
             | TypedDefId::CtorId(id) => ContainerId::Module(id.parent.lookup(db).module),
             | TypedDefId::ClassId(id) => ContainerId::Module(id.lookup(db).module),
-            | TypedDefId::InstanceId(id) => ContainerId::Module(id.lookup(db).module),
+            | TypedDefId::MemberId(id) => ContainerId::Module(id.lookup(db).module),
         }
     }
 }
@@ -415,7 +415,7 @@ impl HasSource for TypedDefId {
             | TypedDefId::TypeCtorId(id) => id.lookup(db).source(db).map(Into::into),
             | TypedDefId::CtorId(id) => id.parent.lookup(db).source(db).map(Into::into),
             | TypedDefId::ClassId(id) => id.lookup(db).source(db).map(Into::into),
-            | TypedDefId::InstanceId(id) => id.lookup(db).source(db).map(Into::into),
+            | TypedDefId::MemberId(id) => id.lookup(db).source(db).map(Into::into),
         }
     }
 }
@@ -503,9 +503,9 @@ macro_rules! impl_from {
     };
 }
 
-impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, ClassId, InstanceId for AttrDefId);
+impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, ClassId, MemberId for AttrDefId);
 impl_from!(ModuleId, FixityId, FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId for ModuleDefId);
-impl_from!(FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId, InstanceId for TypedDefId);
+impl_from!(FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId, MemberId for TypedDefId);
 impl_from!(FuncId, StaticId, ConstId, CtorId for ValueTyDefId);
 impl_from!(FuncId, StaticId, ConstId for DefWithBodyId);
 impl_from!(DefWithBodyId, TypedDefId for TypeVarOwner);

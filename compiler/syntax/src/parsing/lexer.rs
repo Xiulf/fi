@@ -60,7 +60,6 @@ enum LayoutDelim {
     Square,
     If,
     Then,
-    Else,
     Of,
     Do,
     Loop,
@@ -245,9 +244,14 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 self.insert_default(start, DBL_DOT);
             },
-            | '.' => {
-                self.insert_default(start, DOT);
-                self.stack.push((start, LayoutDelim::Prop));
+            | '.' => match self.stack[..] {
+                | [.., (_, LayoutDelim::TopDeclHead)] => {
+                    self.insert_default(start, DOT);
+                },
+                | _ => {
+                    self.insert_default(start, DOT);
+                    self.stack.push((start, LayoutDelim::Prop));
+                },
             },
             | ':' if self.peek() == ':' => {
                 self.advance();
@@ -606,18 +610,13 @@ impl<'src> Lexer<'src> {
                     }
                 }
             },
-            | "instance" => match self.stack[..] {
+            | "member" => match self.stack[..] {
                 | [.., (_, LayoutDelim::Prop)] => {
                     self.emit(IDENT);
                     self.stack.pop().unwrap();
                 },
-                | [.., (_, LayoutDelim::Else)] => {
-                    self.emit(INSTANCE_KW);
-                    self.stack.pop().unwrap();
-                    self.stack.push((start, LayoutDelim::TopDeclHead));
-                },
                 | _ => {
-                    self.insert_default(start, INSTANCE_KW);
+                    self.insert_default(start, MEMBER_KW);
 
                     if self.is_top_decl(start) {
                         self.stack.push((start, LayoutDelim::TopDeclHead));
@@ -721,28 +720,12 @@ impl<'src> Lexer<'src> {
                     },
                     | _ => {
                         c.restore(&mut self.stack, &mut self.tokens);
-                        Collapse::new(self.tokens.len()).collapse(
-                            start,
-                            |tok, pos, lyt| match lyt {
-                                | LayoutDelim::TopDeclHead => true,
-                                | _ => offside_p(tok, pos, lyt),
-                            },
-                            &mut self.stack,
-                            &mut self.tokens,
-                        );
 
-                        if self.is_top_decl(start) {
-                            self.emit(ELSE_KW);
-                            self.stack.push((start, LayoutDelim::Else));
+                        if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                            self.emit(IDENT);
+                            self.stack.pop().unwrap();
                         } else {
-                            self.insert_sep(start);
-
-                            if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                                self.emit(IDENT);
-                                self.stack.pop().unwrap();
-                            } else {
-                                self.emit(ELSE_KW);
-                            }
+                            self.emit(ELSE_KW);
                         }
                     },
                 }
@@ -827,6 +810,9 @@ impl<'src> Lexer<'src> {
                         self.insert_start(LayoutDelim::Of);
                         self.insert_start(LayoutDelim::CaseBinders);
                     },
+                    | [.., (_, LayoutDelim::TopDeclHead)] => {
+                        self.emit(OF_KW);
+                    },
                     | _ => {
                         self.insert_default(start, OF_KW);
                     },
@@ -846,6 +832,10 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                 } else {
                     self.insert_default(start, FOR_KW);
+
+                    if self.is_top_decl(start) {
+                        self.stack.push((start, LayoutDelim::TopDeclHead));
+                    }
                 }
             },
             | _ => {

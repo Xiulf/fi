@@ -27,8 +27,8 @@ impl InferenceContext<'_> {
                 if let ExprOrPatId::ExprId(expr) = id {
                     self.result
                         .methods
-                        .insert(expr, MethodSource::Record(self.instance_records));
-                    self.instance_records += 1;
+                        .insert(expr, MethodSource::Record(self.member_records));
+                    self.member_records += 1;
                 }
             } else {
                 self.report(InferenceDiagnostic::UnsolvedConstraint { id, ctnt });
@@ -50,8 +50,8 @@ impl InferenceContext<'_> {
                 if let ExprOrPatId::ExprId(expr) = id {
                     self.result
                         .methods
-                        .insert(expr, MethodSource::Record(self.instance_records));
-                    self.instance_records += 1;
+                        .insert(expr, MethodSource::Record(self.member_records));
+                    self.member_records += 1;
                 }
             }
 
@@ -60,7 +60,7 @@ impl InferenceContext<'_> {
             res.apply(self);
 
             if let ExprOrPatId::ExprId(expr) = id {
-                self.result.methods.insert(expr, MethodSource::Instance(res.instance));
+                self.result.methods.insert(expr, MethodSource::Member(res.member));
             }
 
             true

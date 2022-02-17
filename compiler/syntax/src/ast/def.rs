@@ -34,7 +34,7 @@ ast_node!(Item {
     Const(ItemConst, ITEM_CONST),
     Type(ItemType, ITEM_TYPE),
     Class(ItemClass, ITEM_CLASS),
-    Instance(ItemInstance, ITEM_INSTANCE),
+    Member(ItemMember, ITEM_MEMBER),
 });
 
 ast_node!(ImportItems, IMPORT_ITEMS);

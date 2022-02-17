@@ -1,4 +1,4 @@
-use crate::class::{Class, FunDep, Instance, Instances};
+use crate::class::{Class, FunDep, Member, Members};
 use crate::db::HirDatabase;
 use crate::ty::*;
 pub use fmt::{Result, Write};
@@ -338,9 +338,9 @@ impl HirDisplay for Constraint {
 
         write!(f, "{}", class_name)?;
 
-        for ty in self.types.iter() {
+        for &ty in self.types.iter() {
             write!(f, " ")?;
-            ty.hir_fmt(f)?;
+            TyParens(ty).hir_fmt(f)?;
         }
 
         Ok(())
@@ -383,7 +383,7 @@ impl HirDisplay for FunDep {
     }
 }
 
-impl HirDisplay for Instance {
+impl HirDisplay for Member {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         write!(f, "instance {}", f.db.class_data(self.class).name)?;
 
@@ -401,8 +401,8 @@ impl HirDisplay for Instance {
     }
 }
 
-impl HirDisplay for Instances {
+impl HirDisplay for Members {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
-        f.write_joined(self.matchers.iter().map(|m| &m.instance), "\n")
+        f.write_joined(self.matchers.iter().map(|m| &m.member), "\n")
     }
 }

@@ -123,15 +123,10 @@ impl TypeRef {
                 },
             ),
             | ast::Type::Fn(inner) => {
-                let mut args = vec![map.alloc_type_ref_opt(inner.param())];
-                let mut ret = inner.ret();
+                let args = inner.params().map(|p| map.alloc_type_ref(p)).collect();
+                let ret = map.alloc_type_ref_opt(inner.ret());
 
-                while let Some(ast::Type::Fn(inner)) = ret {
-                    args.push(map.alloc_type_ref_opt(inner.param()));
-                    ret = inner.ret();
-                }
-
-                TypeRef::Func(args.into(), map.alloc_type_ref_opt(ret))
+                TypeRef::Func(args, ret)
             },
             | ast::Type::Rec(inner) => {
                 let fields = inner

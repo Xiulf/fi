@@ -126,14 +126,10 @@ impl Module {
             .collect()
     }
 
-    pub fn instances(self, db: &dyn HirDatabase) -> Vec<Instance> {
+    pub fn members(self, db: &dyn HirDatabase) -> Vec<Member> {
         let def_map = db.def_map(self.id.lib);
 
-        def_map[self.id.local_id]
-            .scope
-            .instances()
-            .map(Instance::from)
-            .collect()
+        def_map[self.id.local_id].scope.members().map(Member::from).collect()
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
@@ -153,7 +149,7 @@ impl Module {
             decl.diagnostics(db, sink);
         }
 
-        for inst in self.instances(db) {
+        for inst in self.members(db) {
             inst.diagnostics(db, sink);
         }
     }
@@ -322,7 +318,7 @@ impl Func {
             let mut path = self.path(db);
 
             if let Some(it) = self.as_assoc_item(db) {
-                if let AssocItemContainer::Instance(inst) = it.container(db) {
+                if let AssocItemContainer::Member(inst) = it.container(db) {
                     let name = inst.link_name(db);
 
                     path.to_instance(name);
@@ -335,14 +331,14 @@ impl Func {
 
     pub fn as_assoc_item(self, db: &dyn HirDatabase) -> Option<AssocItem> {
         match self.id.lookup(db.upcast()).container {
-            | ContainerId::Class(_) | ContainerId::Instance(_) => Some(AssocItem::Func(self)),
+            | ContainerId::Class(_) | ContainerId::Member(_) => Some(AssocItem::Func(self)),
             | ContainerId::Module(_) => None,
         }
     }
 
     pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
         if let Some(assoc) = self.as_assoc_item(db) {
-            matches!(assoc.container(db), AssocItemContainer::Instance(_))
+            matches!(assoc.container(db), AssocItemContainer::Member(_))
         } else {
             self.module(db).is_exported(db, self.name(db))
         }
@@ -406,7 +402,7 @@ impl Static {
             let mut path = self.path(db);
 
             if let Some(it) = self.as_assoc_item(db) {
-                if let AssocItemContainer::Instance(inst) = it.container(db) {
+                if let AssocItemContainer::Member(inst) = it.container(db) {
                     let name = inst.link_name(db);
 
                     path.to_instance(name);
@@ -419,7 +415,7 @@ impl Static {
 
     pub fn as_assoc_item(self, db: &dyn HirDatabase) -> Option<AssocItem> {
         match self.id.lookup(db.upcast()).container {
-            | ContainerId::Class(_) | ContainerId::Instance(_) => Some(AssocItem::Static(self)),
+            | ContainerId::Class(_) | ContainerId::Member(_) => Some(AssocItem::Static(self)),
             | ContainerId::Module(_) => None,
         }
     }
@@ -430,7 +426,7 @@ impl Static {
 
     pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
         if let Some(assoc) = self.as_assoc_item(db) {
-            matches!(assoc.container(db), AssocItemContainer::Instance(_))
+            matches!(assoc.container(db), AssocItemContainer::Member(_))
         } else {
             self.module(db).is_exported(db, self.name(db))
         }
@@ -542,7 +538,7 @@ impl TypeCtor {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
-        let lower = db.type_for_ctor(self.id);
+        let lower = db.kind_for_ctor(self.id);
 
         lower.add_diagnostics(db, TypeVarOwner::TypedDefId(self.id.into()), sink);
     }
@@ -639,11 +635,11 @@ impl Class {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Instance {
-    pub(crate) id: InstanceId,
+pub struct Member {
+    pub(crate) id: MemberId,
 }
 
-impl Instance {
+impl Member {
     pub fn module(self, db: &dyn HirDatabase) -> Module {
         Module {
             id: self.id.lookup(db.upcast()).module,
@@ -659,7 +655,7 @@ impl Instance {
     }
 
     pub fn link_name(self, db: &dyn HirDatabase) -> Name {
-        let data = db.instance_data(self.id);
+        let data = db.member_data(self.id);
         let type_map = data.type_map();
         let mut name = data.class.segments().last().unwrap().to_string();
 
@@ -672,13 +668,13 @@ impl Instance {
     }
 
     pub fn class(self, db: &dyn HirDatabase) -> Class {
-        let lower = db.lower_instance(self.id);
+        let lower = db.lower_member(self.id);
 
-        lower.instance.class.into()
+        lower.member.class.into()
     }
 
     pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {
-        db.instance_data(self.id)
+        db.member_data(self.id)
             .items
             .iter()
             .map(|(_, id)| (*id).into())
@@ -686,7 +682,7 @@ impl Instance {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
-        let lower = db.lower_instance(self.id);
+        let lower = db.lower_member(self.id);
 
         lower.add_diagnostics(db, TypeVarOwner::TypedDefId(self.id.into()), sink);
 
@@ -772,7 +768,7 @@ pub enum AssocItem {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AssocItemContainer {
     Class(Class),
-    Instance(Instance),
+    Member(Member),
 }
 
 impl AssocItem {
@@ -809,7 +805,7 @@ impl AssocItem {
 
         match id {
             | ContainerId::Class(id) => AssocItemContainer::Class(id.into()),
-            | ContainerId::Instance(id) => AssocItemContainer::Instance(id.into()),
+            | ContainerId::Member(id) => AssocItemContainer::Member(id.into()),
             | ContainerId::Module(_) => unreachable!(),
         }
     }
@@ -865,7 +861,7 @@ impl TypeVar {
                 | TypedDefId::TypeCtorId(id) => db.type_ctor_data(id).type_map()[self.id.local_id].name.clone(),
                 | TypedDefId::CtorId(id) => db.type_ctor_data(id.parent).type_map()[self.id.local_id].name.clone(),
                 | TypedDefId::ClassId(id) => db.class_data(id).type_map()[self.id.local_id].name.clone(),
-                | TypedDefId::InstanceId(id) => db.instance_data(id).type_map()[self.id.local_id].name.clone(),
+                | TypedDefId::MemberId(id) => db.member_data(id).type_map()[self.id.local_id].name.clone(),
             },
         }
     }
