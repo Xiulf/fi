@@ -1,6 +1,6 @@
 use super::{ExprOrPatId, InferenceContext, InferenceDiagnostic, MethodSource};
-use crate::class::ClassEnvScope;
-use crate::ty::*;
+use crate::class::{ClassEnvScope, Members};
+use crate::info::CtntInfo;
 
 impl InferenceContext<'_> {
     pub fn solve_constraints(&mut self) {
@@ -21,7 +21,7 @@ impl InferenceContext<'_> {
         }
 
         for (ctnt, id, scope) in unsolved {
-            if ctnt.can_be_generalized(self.db) {
+            if ctnt.can_be_generalized(&self.types) {
                 self.constraints.push((ctnt, id, scope));
 
                 if let ExprOrPatId::ExprId(expr) = id {
@@ -36,10 +36,11 @@ impl InferenceContext<'_> {
         }
     }
 
-    fn solve_constraint(&mut self, ctnt: Constraint, id: ExprOrPatId, scope: Option<ClassEnvScope>) -> bool {
+    fn solve_constraint(&mut self, ctnt: CtntInfo, id: ExprOrPatId, scope: Option<ClassEnvScope>) -> bool {
         let ctnt = self.subst_ctnt(&ctnt);
+        let src = self.source(id);
 
-        if let Some(res) = self.class_env.solve(self.db, ctnt.clone(), scope) {
+        if let Some(res) = self.class_env.solve(self.db, &self.types, ctnt.clone(), scope) {
             for (&u, &ty) in res.subst.iter() {
                 self.solve_type(u, ty);
             }
@@ -56,7 +57,7 @@ impl InferenceContext<'_> {
             }
 
             true
-        } else if let Some(res) = self.db.solve_constraint(ctnt.clone()) {
+        } else if let Some(res) = Members::solve_constraint(self.db, &mut self.types, &ctnt, src) {
             res.apply(self);
 
             if let ExprOrPatId::ExprId(expr) = id {

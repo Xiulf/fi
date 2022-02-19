@@ -1,5 +1,6 @@
 use crate::class::{Class, FunDep, Member, Members};
 use crate::db::HirDatabase;
+use crate::info::Unknown;
 use crate::ty::*;
 pub use fmt::{Result, Write};
 use hir_def::id::Lookup;
@@ -269,12 +270,6 @@ impl HirDisplay for Ty {
 
         match self.lookup(f.db) {
             | TyKind::Error => write!(f, "{{error}}"),
-            | TyKind::Unknown(u) => write!(f, "{}", u),
-            | TyKind::Skolem(p, kind) => {
-                write!(f, "(sk{} :: ", p.debruijn().depth())?;
-                kind.hir_fmt(f)?;
-                write!(f, ")")
-            },
             | TyKind::TypeVar(t) => write!(f, "{}", t),
             | TyKind::Figure(i) => write!(f, "{}", i),
             | TyKind::Symbol(s) => write!(f, "{}", s),
@@ -350,7 +345,7 @@ impl HirDisplay for Constraint {
     }
 }
 
-impl HirDisplay for Class {
+impl HirDisplay for Class<Ty> {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         let data = f.db.class_data(self.id);
 
@@ -386,7 +381,7 @@ impl HirDisplay for FunDep {
     }
 }
 
-impl HirDisplay for Member {
+impl HirDisplay for Member<Ty, Constraint> {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         write!(f, "member")?;
 
@@ -395,12 +390,14 @@ impl HirDisplay for Member {
             TyParens(ty, true).hir_fmt(f)?;
         }
 
+        write!(f, " of {}", f.db.class_data(self.class).name)?;
+
         if !self.constraints.is_empty() {
-            write!(f, " : ")?;
+            write!(f, " where ")?;
             f.write_joined(self.constraints.iter(), ", ")?;
         }
 
-        write!(f, " of {}", f.db.class_data(self.class).name)
+        Ok(())
     }
 }
 

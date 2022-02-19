@@ -1,5 +1,5 @@
 use super::{ExprOrPatId, InferenceContext};
-use crate::ty::*;
+use crate::info::{TyId, TyInfo};
 
 #[derive(PartialEq)]
 enum SubsumeMode {
@@ -8,10 +8,11 @@ enum SubsumeMode {
 }
 
 impl InferenceContext<'_> {
-    pub fn subsume_types(&mut self, t1: Ty, t2: Ty, origin: ExprOrPatId) -> bool {
+    pub fn subsume_types(&mut self, t1: TyId, t2: TyId, origin: ExprOrPatId) -> bool {
         let t1 = self.subst_type(t1);
         let t2 = self.subst_type(t2);
-        let never = self.lang_type("never-type");
+        let src = self.source(origin);
+        let never = self.lang_type("never-type", src);
 
         if t1 == never {
             return true;
@@ -20,24 +21,28 @@ impl InferenceContext<'_> {
         self.subsume_types_impl(t1, t2, origin, SubsumeMode::Ctnt)
     }
 
-    fn subsume_types_impl(&mut self, t1: Ty, t2: Ty, origin: ExprOrPatId, mode: SubsumeMode) -> bool {
-        match (t1.lookup(self.db), t2.lookup(self.db)) {
-            | (TyKind::ForAll(kinds, inner), _) => {
-                let vars = kinds.iter().map(|&k| self.fresh_type_with_kind(k)).collect::<Vec<_>>();
-                let repl = inner.replace_vars(self.db, &vars);
+    fn subsume_types_impl(&mut self, t1: TyId, t2: TyId, origin: ExprOrPatId, mode: SubsumeMode) -> bool {
+        match (self.types[t1].clone(), self.types[t2].clone()) {
+            | (TyInfo::ForAll(kinds, inner), _) => {
+                let src = self.source(origin);
+                let vars = kinds
+                    .iter()
+                    .map(|&k| self.fresh_type_with_kind(k, src))
+                    .collect::<Vec<_>>();
+                let repl = inner.replace_vars(&mut self.types, &vars);
 
                 self.subsume_types_impl(repl, t2, origin, mode)
             },
-            | (_, TyKind::ForAll(kinds, inner)) => {
+            | (_, TyInfo::ForAll(kinds, inner)) => {
                 let sk = self.skolemize(&kinds, inner);
 
                 self.subsume_types_impl(t1, sk, origin, mode)
             },
-            | (TyKind::Ctnt(ctnt, inner), _) if mode == SubsumeMode::Ctnt => {
+            | (TyInfo::Ctnt(ctnt, inner), _) if mode == SubsumeMode::Ctnt => {
                 self.constrain(origin, ctnt);
                 self.subsume_types_impl(inner, t2, origin, mode)
             },
-            | (TyKind::Func(a1, r1), TyKind::Func(a2, r2)) => {
+            | (TyInfo::Func(a1, r1), TyInfo::Func(a2, r2)) => {
                 a2.iter()
                     .zip(a1.iter())
                     .all(|(&a2, &a1)| self.subsume_types_impl(a2, a1, origin, SubsumeMode::NoCtnt))
@@ -50,12 +55,13 @@ impl InferenceContext<'_> {
                 let record_id = record_id.as_type_ctor().unwrap();
 
                 match (
-                    t1.match_ctor(self.db, record_id).as_deref(),
-                    t2.match_ctor(self.db, record_id).as_deref(),
+                    t1.match_ctor(&self.types, record_id).as_deref(),
+                    t2.match_ctor(&self.types, record_id).as_deref(),
                 ) {
                     | (Some([r1]), Some([r2])) => {
-                        let (common, ((ts1, r1), (ts2, r2))) = Ty::align_rows_with(
-                            self.db,
+                        let safe = unsafe { &*(&self.types as *const _) };
+                        let (common, ((ts1, r1), (ts2, r2))) = TyId::align_rows_with(
+                            safe,
                             |a, b| self.subsume_types_impl(a, b, origin, SubsumeMode::NoCtnt),
                             *r1,
                             *r2,
@@ -81,8 +87,9 @@ impl InferenceContext<'_> {
                             return false;
                         }
 
-                        let r1 = TyKind::Row(ts1, r1).intern(self.db);
-                        let r2 = TyKind::Row(ts2, r2).intern(self.db);
+                        let src = self.source(origin);
+                        let r1 = self.types.insert(TyInfo::Row(ts1, r1), src);
+                        let r2 = self.types.insert(TyInfo::Row(ts2, r2), src);
 
                         return self.unify_types(r1, r2);
                     },

@@ -55,12 +55,7 @@ pub fn lower_type(db: &dyn LowerDatabase, mut ty: hir::ty::Ty) -> ir::ty::Ty {
 
     match ty.lookup(db.upcast()) {
         | TyKind::Error => ir::ty::Ty::unit(db.upcast()),
-        | TyKind::Unknown(_)
-        | TyKind::Skolem(_, _)
-        | TyKind::Row(_, _)
-        | TyKind::Figure(_)
-        | TyKind::Symbol(_)
-        | TyKind::App(_, _) => unreachable!(),
+        | TyKind::Row(_, _) | TyKind::Figure(_) | TyKind::Symbol(_) | TyKind::App(_, _) => unreachable!(),
         | TyKind::Ctor(id) => {
             let ir = db.type_ir(id.into());
             let boxed = db.is_boxed(id);

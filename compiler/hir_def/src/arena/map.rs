@@ -1,5 +1,5 @@
 use super::Idx;
-use std::marker::PhantomData;
+use std::{iter::FromIterator, marker::PhantomData};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ArenaMap<IDX, V> {
@@ -67,5 +67,24 @@ impl<T, V> std::ops::Index<Idx<T>> for ArenaMap<Idx<T>, V> {
 impl<T, V> std::ops::IndexMut<Idx<T>> for ArenaMap<Idx<T>, V> {
     fn index_mut(&mut self, idx: Idx<T>) -> &mut V {
         self.v[Self::to_idx(idx)].as_mut().unwrap()
+    }
+}
+
+impl<T, V> FromIterator<(Idx<T>, V)> for ArenaMap<Idx<T>, V> {
+    fn from_iter<I: IntoIterator<Item = (Idx<T>, V)>>(iter: I) -> Self {
+        let mut iter = iter.into_iter();
+        let mut vec = Vec::with_capacity(iter.size_hint().0);
+
+        while let Some((idx, value)) = iter.next() {
+            let idx = Self::to_idx(idx);
+
+            vec.resize_with(idx + 1, || None);
+            vec[idx] = Some(value);
+        }
+
+        Self {
+            v: vec,
+            _marker: PhantomData,
+        }
     }
 }

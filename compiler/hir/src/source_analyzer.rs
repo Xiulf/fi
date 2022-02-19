@@ -11,7 +11,7 @@ use hir_def::resolver::{Resolver, TypeNs, ValueNs};
 use hir_def::scope::{ExprScopeId, ExprScopes};
 use hir_def::type_ref::LocalTypeRefId;
 use hir_ty::infer::InferenceResult;
-use hir_ty::ty::Ty;
+use hir_ty::ty::{Constraint, Ty};
 use std::sync::Arc;
 use syntax::{ast, SyntaxNode, TextSize};
 use syntax::{AstNode, TextRange};
@@ -23,7 +23,7 @@ pub(crate) struct SourceAnalyzer {
     body: Option<Arc<Body>>,
     body_source_map: Option<Arc<BodySourceMap>>,
     body_owner: Option<DefWithBodyId>,
-    infer: Option<Arc<InferenceResult>>,
+    infer: Option<Arc<InferenceResult<Ty, Constraint>>>,
     scopes: Option<Arc<ExprScopes>>,
 }
 
@@ -105,6 +105,7 @@ impl SourceAnalyzer {
         let ty = lower_ctx.lower_ty(type_id);
         let kind = infer_ctx.infer_kind(ty, type_id);
         let kind = infer_ctx.generalize(kind);
+        let kind = infer_ctx.convert_ty(kind);
 
         Some(kind)
     }

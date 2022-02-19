@@ -1,32 +1,35 @@
 use super::InferenceContext;
-use crate::ty::*;
+use crate::{
+    info::{CtntInfo, FieldInfo, TyId, TyInfo},
+    ty::DebruijnIndex,
+};
 
 impl InferenceContext<'_> {
-    pub fn skolemize(&mut self, kinds: &[Ty], inner: Ty) -> Ty {
+    pub fn skolemize(&mut self, kinds: &[TyId], inner: TyId) -> TyId {
         self.skolemize_impl(kinds, inner, DebruijnIndex::INNER)
     }
 
-    pub fn unskolemize(&mut self, ty: Ty) -> Ty {
-        ty.everywhere(self.db, &mut |ty| match ty.lookup(self.db) {
-            | TyKind::Skolem(sk, _) => sk.to_ty(self.db),
+    pub fn unskolemize(&mut self, ty: TyId) -> TyId {
+        ty.everywhere(&mut self.types, &mut |types, ty| match types[ty] {
+            | TyInfo::Skolem(sk, _) => types.update(ty, TyInfo::TypeVar(sk)),
             | _ => ty,
         })
     }
 
-    fn skolemize_impl(&mut self, kinds: &[Ty], inner: Ty, debruijn: DebruijnIndex) -> Ty {
-        match inner.lookup(self.db) {
-            | TyKind::TypeVar(var) if var.debruijn() == debruijn => {
-                TyKind::Skolem(var, kinds[var.idx() as usize]).intern(self.db)
+    fn skolemize_impl(&mut self, kinds: &[TyId], inner: TyId, debruijn: DebruijnIndex) -> TyId {
+        match self.types[inner].clone() {
+            | TyInfo::TypeVar(var) if var.debruijn() == debruijn => {
+                self.types.update(inner, TyInfo::Skolem(var, kinds[var.idx() as usize]))
             },
-            | TyKind::Skolem(sk, k) => {
+            | TyInfo::Skolem(sk, k) => {
                 let k = self.skolemize_impl(kinds, k, debruijn);
 
-                TyKind::Skolem(sk, k).intern(self.db)
+                self.types.update(inner, TyInfo::Skolem(sk, k))
             },
-            | TyKind::Row(fields, tail) => {
+            | TyInfo::Row(fields, tail) => {
                 let fields = fields
                     .iter()
-                    .map(|f| Field {
+                    .map(|f| FieldInfo {
                         name: f.name.clone(),
                         ty: self.skolemize_impl(kinds, f.ty, debruijn),
                     })
@@ -34,27 +37,27 @@ impl InferenceContext<'_> {
 
                 let tail = tail.map(|t| self.skolemize_impl(kinds, t, debruijn));
 
-                TyKind::Row(fields, tail).intern(self.db)
+                self.types.update(inner, TyInfo::Row(fields, tail))
             },
-            | TyKind::Tuple(tys) => {
+            | TyInfo::Tuple(tys) => {
                 let tys = tys.iter().map(|&t| self.skolemize_impl(kinds, t, debruijn)).collect();
 
-                TyKind::Tuple(tys).intern(self.db)
+                self.types.update(inner, TyInfo::Tuple(tys))
             },
-            | TyKind::App(a, b) => {
+            | TyInfo::App(a, b) => {
                 let a = self.skolemize_impl(kinds, a, debruijn);
                 let b = b.iter().map(|&b| self.skolemize_impl(kinds, b, debruijn)).collect();
 
-                TyKind::App(a, b).intern(self.db)
+                self.types.update(inner, TyInfo::App(a, b))
             },
-            | TyKind::Func(a, b) => {
+            | TyInfo::Func(a, b) => {
                 let a = a.iter().map(|&a| self.skolemize_impl(kinds, a, debruijn)).collect();
                 let b = self.skolemize_impl(kinds, b, debruijn);
 
-                TyKind::Func(a, b).intern(self.db)
+                self.types.update(inner, TyInfo::Func(a, b))
             },
-            | TyKind::Ctnt(ctnt, ty) => {
-                let ctnt = Constraint {
+            | TyInfo::Ctnt(ctnt, ty) => {
+                let ctnt = CtntInfo {
                     class: ctnt.class,
                     types: ctnt
                         .types
@@ -65,13 +68,13 @@ impl InferenceContext<'_> {
 
                 let ty = self.skolemize_impl(kinds, ty, debruijn);
 
-                TyKind::Ctnt(ctnt, ty).intern(self.db)
+                self.types.update(inner, TyInfo::Ctnt(ctnt, ty))
             },
-            | TyKind::ForAll(k, inner) => {
+            | TyInfo::ForAll(k, ty) => {
                 let k = k.iter().map(|&k| self.skolemize_impl(kinds, k, debruijn)).collect();
-                let inner = self.skolemize_impl(kinds, inner, debruijn.shifted_in());
+                let ty = self.skolemize_impl(kinds, ty, debruijn.shifted_in());
 
-                TyKind::ForAll(k, inner).intern(self.db)
+                self.types.update(inner, TyInfo::ForAll(k, ty))
             },
             | _ => inner,
         }

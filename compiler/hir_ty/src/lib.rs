@@ -2,6 +2,7 @@
 #![feature(label_break_value)]
 
 pub mod class;
+mod convert;
 pub mod db;
 pub mod diagnostics;
 pub mod display;

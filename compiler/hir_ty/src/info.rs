@@ -1,14 +1,16 @@
 use crate::{
     db::HirDatabase,
+    infer::ExprOrPatId,
     ty::{DebruijnIndex, List, TypeVar},
 };
 use hir_def::{
     arena::{Arena, ArenaMap, Idx},
-    id::{ClassId, TypeCtorId},
-    in_file::InFile,
+    expr::ExprId,
+    id::{ClassId, TypeCtorId, TypeVarOwner},
     name::Name,
+    pat::PatId,
+    type_ref::LocalTypeRefId,
 };
-use syntax::TextRange;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TyId(Idx<TyInfo>);
@@ -50,18 +52,26 @@ pub struct CtntInfo {
     pub types: List<TyId>,
 }
 
-pub type Span = InFile<TextRange>;
+pub type TySource = (TypeVarOwner, TypeOrigin);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypeOrigin {
+    ExprId(ExprId),
+    PatId(PatId),
+    TypeRefId(LocalTypeRefId),
+    Synthetic,
+}
 
 #[derive(Default)]
 pub struct Types {
     types: Arena<TyInfo>,
-    spans: ArenaMap<Idx<TyInfo>, Span>,
+    sources: ArenaMap<Idx<TyInfo>, TySource>,
 }
 
 pub trait ToInfo {
     type Output;
 
-    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, span: Span) -> Self::Output;
+    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, src: TySource) -> Self::Output;
 }
 
 pub trait FromInfo {
@@ -71,9 +81,9 @@ pub trait FromInfo {
 }
 
 impl Types {
-    pub fn insert(&mut self, ty: TyInfo, span: Span) -> TyId {
+    pub fn insert(&mut self, ty: TyInfo, src: TySource) -> TyId {
         let id = self.types.alloc(ty);
-        self.spans.insert(id, span);
+        self.sources.insert(id, src);
         TyId(id)
     }
 
@@ -81,13 +91,13 @@ impl Types {
         if self[id] == ty {
             id
         } else {
-            let span = self.span(id);
+            let span = self.source(id);
             self.insert(ty, span)
         }
     }
 
-    pub fn span(&self, id: TyId) -> Span {
-        self.spans[id.0]
+    pub fn source(&self, id: TyId) -> TySource {
+        self.sources[id.0]
     }
 }
 
@@ -108,12 +118,24 @@ impl Unknown {
         self.0
     }
 
-    pub fn to_ty(self, types: &mut Types, span: Span) -> TyId {
+    pub fn to_ty(self, types: &mut Types, span: TySource) -> TyId {
         types.insert(TyInfo::Unknown(self), span)
     }
 }
 
 impl TyId {
+    pub fn match_ctor(self, types: &Types, id: TypeCtorId) -> Option<List<TyId>> {
+        if let TyInfo::App(ctor, ref args) = types[self] {
+            if types[ctor] == TyInfo::Ctor(id) {
+                Some(args.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn everywhere<F>(self, types: &mut Types, f: &mut F) -> TyId
     where
         F: FnMut(&mut Types, TyId) -> TyId,
@@ -383,6 +405,33 @@ impl TyId {
                     }
                 },
             }
+        }
+    }
+}
+
+impl From<ExprId> for TypeOrigin {
+    fn from(id: ExprId) -> Self {
+        Self::ExprId(id)
+    }
+}
+
+impl From<PatId> for TypeOrigin {
+    fn from(id: PatId) -> Self {
+        Self::PatId(id)
+    }
+}
+
+impl From<LocalTypeRefId> for TypeOrigin {
+    fn from(id: LocalTypeRefId) -> Self {
+        Self::TypeRefId(id)
+    }
+}
+
+impl From<ExprOrPatId> for TypeOrigin {
+    fn from(id: ExprOrPatId) -> Self {
+        match id {
+            | ExprOrPatId::ExprId(id) => Self::ExprId(id),
+            | ExprOrPatId::PatId(id) => Self::PatId(id),
         }
     }
 }

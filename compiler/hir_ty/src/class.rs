@@ -1,7 +1,8 @@
 use crate::db::HirDatabase;
 use crate::infer::InferenceContext;
+use crate::info::{CtntInfo, ToInfo, TyId, TyInfo, TySource, Types, Unknown};
 use crate::lower::MemberLowerResult;
-use crate::ty::{Constraint, Ty, TyKind, TypeVar, Unknown};
+use crate::ty::{Constraint, Ty, TyKind, TypeVar};
 use hir_def::arena::{Arena, Idx};
 use hir_def::id::{ClassId, Lookup, MemberId};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -9,9 +10,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Class {
+pub struct Class<T> {
     pub id: ClassId,
-    pub vars: Box<[Ty]>,
+    pub vars: Box<[T]>,
     pub fundeps: Box<[FunDep]>,
 }
 
@@ -22,24 +23,24 @@ pub struct FunDep {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Member {
+pub struct Member<T, C> {
     pub id: MemberId,
     pub class: ClassId,
-    pub vars: Box<[Ty]>,
-    pub types: Box<[Ty]>,
-    pub constraints: Box<[Constraint]>,
+    pub vars: Box<[T]>,
+    pub types: Box<[T]>,
+    pub constraints: Box<[C]>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Members {
-    pub(crate) matchers: Box<[Arc<MemberLowerResult>]>,
+    pub(crate) matchers: Box<[Arc<MemberLowerResult<Ty, Constraint>>]>,
     deps: Box<[FunDep]>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MemberMatchResult {
     pub member: MemberId,
-    pub subst: FxHashMap<Unknown, Ty>,
+    pub subst: FxHashMap<Unknown, TyId>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -51,7 +52,7 @@ pub struct ClassEnv {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClassEnvEntry {
     parent: Option<ClassEnvScope>,
-    ctnt: Constraint,
+    ctnt: CtntInfo,
     is_method: bool,
 }
 
@@ -60,7 +61,7 @@ pub type ClassEnvScope = Idx<ClassEnvEntry>;
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClassEnvMatchResult {
     pub scope: ClassEnvScope,
-    pub subst: FxHashMap<Unknown, Ty>,
+    pub subst: FxHashMap<Unknown, TyId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,19 +99,27 @@ impl Members {
         })
     }
 
-    pub(crate) fn solve_constraint_query(
+    pub(crate) fn solve_constraint(
         db: &dyn HirDatabase,
-        constraint: Constraint,
+        types: &mut Types,
+        constraint: &CtntInfo,
+        src: TySource,
     ) -> Option<Arc<MemberMatchResult>> {
-        let instances = db.members(constraint.class);
+        let members = db.members(constraint.class);
 
-        instances.matches(db, constraint).map(Arc::new)
+        members.matches(db, types, constraint, src).map(Arc::new)
     }
 
-    pub(crate) fn matches(&self, db: &dyn HirDatabase, ctnt: Constraint) -> Option<MemberMatchResult> {
+    pub(crate) fn matches(
+        &self,
+        db: &dyn HirDatabase,
+        types: &mut Types,
+        ctnt: &CtntInfo,
+        src: TySource,
+    ) -> Option<MemberMatchResult> {
         self.matchers
             .iter()
-            .find_map(|m| m.member.matches(db, &ctnt, &self.deps))
+            .find_map(|m| m.member.matches(db, types, &ctnt, &self.deps, src))
     }
 }
 
@@ -122,15 +131,25 @@ impl MemberMatchResult {
     }
 }
 
-impl Member {
-    fn matches(&self, db: &dyn HirDatabase, ctnt: &Constraint, deps: &[FunDep]) -> Option<MemberMatchResult> {
+impl Member<Ty, Constraint> {
+    fn matches(
+        &self,
+        db: &dyn HirDatabase,
+        types: &mut Types,
+        ctnt: &CtntInfo,
+        deps: &[FunDep],
+        src: TySource,
+    ) -> Option<MemberMatchResult> {
         let mut subst = FxHashMap::default();
         let mut vars = BTreeMap::default();
         let matches = ctnt
             .types
             .iter()
             .zip(self.types.iter())
-            .map(|(&ty, &with)| match_type(db, ty, with, &mut subst, &mut vars))
+            .map(|(&ty, with)| {
+                let with = with.to_info(db, types, src);
+                match_type(types, ty, with, &mut subst, &mut vars)
+            })
             .collect::<Vec<_>>();
 
         if !verify(&matches, deps) {
@@ -138,15 +157,17 @@ impl Member {
         }
 
         for ctnt in self.constraints.iter().cloned() {
-            if let None = db.solve_constraint(ctnt) {
+            let ctnt = ctnt.to_info(db, types, src);
+
+            if let None = Members::solve_constraint(db, types, &ctnt, src) {
                 return None;
             }
         }
 
         // @TODO: check if this is always the right thing to do
         for ty in subst.values_mut() {
-            *ty = ty.everywhere(db, &mut |t| match t.lookup(db) {
-                | TyKind::TypeVar(v) => match vars.get(&v) {
+            *ty = ty.everywhere(types, &mut |types, t| match types[t] {
+                | TyInfo::TypeVar(v) => match vars.get(&v) {
                     | Some(ty) => *ty,
                     | None => t,
                 },
@@ -176,7 +197,7 @@ impl Member {
 }
 
 impl ClassEnv {
-    pub fn push(&mut self, ctnt: Constraint, is_method: bool) {
+    pub fn push(&mut self, ctnt: CtntInfo, is_method: bool) {
         let scope = self.entries.alloc(ClassEnvEntry {
             ctnt,
             is_method,
@@ -203,7 +224,8 @@ impl ClassEnv {
     pub fn solve(
         &self,
         db: &dyn HirDatabase,
-        ctnt: Constraint,
+        types: &Types,
+        ctnt: CtntInfo,
         scope: Option<ClassEnvScope>,
     ) -> Option<ClassEnvMatchResult> {
         self.in_socpe(scope).find_map(|scope| {
@@ -212,7 +234,7 @@ impl ClassEnv {
             let mut vars = BTreeMap::new();
 
             for (&ty, &with) in ctnt.types.iter().zip(entry.ctnt.types.iter()) {
-                if match_type(db, ty, with, &mut subst, &mut vars) != Matched::Match(()) {
+                if match_type(types, ty, with, &mut subst, &mut vars) != Matched::Match(()) {
                     return None;
                 }
             }
@@ -236,16 +258,16 @@ impl ClassEnvEntry {
     }
 }
 
-impl Constraint {
-    pub fn can_be_generalized(&self, db: &dyn HirDatabase) -> bool {
-        self.types.iter().any(|t| t.can_be_generalized(db))
+impl CtntInfo {
+    pub fn can_be_generalized(&self, types: &Types) -> bool {
+        self.types.iter().any(|t| t.can_be_generalized(types))
     }
 }
 
-impl Ty {
-    pub fn can_be_generalized(self, db: &dyn HirDatabase) -> bool {
-        match self.lookup(db) {
-            | TyKind::Unknown(_) => true,
+impl TyId {
+    pub fn can_be_generalized(self, types: &Types) -> bool {
+        match types[self] {
+            | TyInfo::Unknown(_) => true,
             | _ => false,
         }
     }
@@ -292,48 +314,49 @@ fn verify(matches: &[Matched<()>], deps: &[FunDep]) -> bool {
 }
 
 fn match_type(
-    db: &dyn HirDatabase,
-    ty: Ty,
-    with: Ty,
-    subst: &mut FxHashMap<Unknown, Ty>,
-    vars: &mut BTreeMap<TypeVar, Ty>,
+    types: &Types,
+    ty: TyId,
+    with: TyId,
+    subst: &mut FxHashMap<Unknown, TyId>,
+    vars: &mut BTreeMap<TypeVar, TyId>,
 ) -> Matched<()> {
-    match (ty.lookup(db), with.lookup(db)) {
-        | (_, TyKind::Unknown(_)) => {
+    match (&types[ty], &types[with]) {
+        | (_, TyInfo::Unknown(_)) => {
             unreachable!()
         },
-        | (TyKind::Error, _) | (_, TyKind::Error) => Matched::Match(()),
-        | (TyKind::Unknown(u), _) => {
+        | (TyInfo::Error, _) | (_, TyInfo::Error) => Matched::Match(()),
+        | (&TyInfo::Unknown(u), _) => {
             subst.insert(u, with);
             Matched::Unknown
         },
-        | (TyKind::Skolem(s1, _), TyKind::Skolem(s2, _)) if s1 == s2 => Matched::Match(()),
-        | (TyKind::Skolem(_, _), _) | (_, TyKind::Skolem(_, _)) => Matched::Unknown,
-        | (_, TyKind::TypeVar(tv)) => {
+        | (&TyInfo::Skolem(s1, _), &TyInfo::Skolem(s2, _)) if s1 == s2 => Matched::Match(()),
+        | (TyInfo::Skolem(_, _), _) | (_, TyInfo::Skolem(_, _)) => Matched::Unknown,
+        | (_, &TyInfo::TypeVar(tv)) => {
             vars.insert(tv, ty);
             Matched::Match(())
         },
-        | (TyKind::Figure(c1), TyKind::Figure(c2)) if c1 == c2 => Matched::Match(()),
-        | (TyKind::Symbol(c1), TyKind::Symbol(c2)) if c1 == c2 => Matched::Match(()),
-        | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => Matched::Match(()),
-        | (TyKind::Tuple(t1), TyKind::Tuple(t2)) if t1.len() == t2.len() => t1
+        | (&TyInfo::Figure(c1), &TyInfo::Figure(c2)) if c1 == c2 => Matched::Match(()),
+        | (&TyInfo::Symbol(ref c1), &TyInfo::Symbol(ref c2)) if c1 == c2 => Matched::Match(()),
+        | (&TyInfo::Ctor(c1), &TyInfo::Ctor(c2)) if c1 == c2 => Matched::Match(()),
+        | (&TyInfo::Tuple(ref t1), &TyInfo::Tuple(ref t2)) if t1.len() == t2.len() => t1
             .iter()
             .zip(t2.iter())
-            .map(|(t1, t2)| match_type(db, *t1, *t2, subst, vars))
+            .map(|(t1, t2)| match_type(types, *t1, *t2, subst, vars))
             .fold(Matched::Match(()), Matched::then),
-        | (TyKind::App(a1, a2), TyKind::App(b1, b2)) if a2.len() == b2.len() => match_type(db, a1, b1, subst, vars)
-            .then(
+        | (&TyInfo::App(a1, ref a2), &TyInfo::App(b1, ref b2)) if a2.len() == b2.len() => {
+            match_type(types, a1, b1, subst, vars).then(
                 a2.iter()
                     .zip(b2.iter())
-                    .map(|(a2, b2)| match_type(db, *a2, *b2, subst, vars))
+                    .map(|(a2, b2)| match_type(types, *a2, *b2, subst, vars))
                     .fold(Matched::Match(()), Matched::then),
-            ),
-        | (TyKind::Func(a1, a2), TyKind::Func(b1, b2)) if a1.len() == b1.len() => a1
+            )
+        },
+        | (&TyInfo::Func(ref a1, a2), &TyInfo::Func(ref b1, b2)) if a1.len() == b1.len() => a1
             .iter()
             .zip(b1.iter())
-            .map(|(a1, b1)| match_type(db, *a1, *b1, subst, vars))
+            .map(|(a1, b1)| match_type(types, *a1, *b1, subst, vars))
             .fold(Matched::Match(()), Matched::then)
-            .then(match_type(db, a2, b2, subst, vars)),
+            .then(match_type(types, a2, b2, subst, vars)),
         | (_, _) => Matched::Apart,
     }
 }
@@ -341,7 +364,6 @@ fn match_type(
 fn type_score(db: &dyn HirDatabase, ty: Ty) -> isize {
     match ty.lookup(db) {
         | TyKind::TypeVar(_) => 5,
-        | TyKind::Skolem(_, t) => type_score(db, t),
         | TyKind::Row(fields, tail) => {
             let mut score = 0;
 

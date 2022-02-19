@@ -9,7 +9,15 @@ pub struct MismatchedType<'db, 'd, DB: hir::db::HirDatabase> {
 
 impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedType<'db, 'd, DB> {
     fn title(&self) -> String {
-        "mismatched types".into()
+        if self.diag.found_src.is_some() {
+            format!(
+                "expected type `{}`, found `{}`",
+                self.diag.expected.display(self.db),
+                self.diag.found.display(self.db)
+            )
+        } else {
+            "mismatched types".into()
+        }
     }
 
     fn range(&self) -> TextRange {
@@ -17,6 +25,15 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedType<'db, 'd, D
     }
 
     fn primary_annotation(&self) -> Option<SourceAnnotation> {
+        if let Some(found_src) = self.diag.found_src {
+            if found_src.range() == self.diag.display_source().value.range() {
+                return Some(SourceAnnotation {
+                    range: found_src.range(),
+                    message: format!("type `{}` found here", self.diag.found.display(self.db)),
+                });
+            }
+        }
+
         Some(SourceAnnotation {
             range: self.diag.display_source().value.range(),
             message: format!(
@@ -37,13 +54,6 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedType<'db, 'd, D
                     "expected type `{}` because of this",
                     self.diag.expected.display(self.db)
                 ),
-            });
-        }
-
-        if let Some(found) = self.diag.found_src {
-            annotations.push(SecondaryAnnotation {
-                range: self.diag.display_source().with_value(found.range()),
-                message: format!("type `{}` found here", self.diag.found.display(self.db)),
             });
         }
 
