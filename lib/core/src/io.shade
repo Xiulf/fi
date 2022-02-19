@@ -45,8 +45,8 @@ fun print_i32 i = do
     if intrinsics/ge_i32 i 10
     do print_i32 $ i / 10
 
-    let ch = i % 10 :: Int32
-    let ch = 48 + ch :: Int32
+    let ch = i % 10
+    let ch = ch + 48
     let addr = intrinsics/addr_of ch :: *Int32
     let bytes = unsafe $ transmute (addr, 4 :: Uint)
     print bytes

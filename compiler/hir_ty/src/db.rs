@@ -10,7 +10,7 @@ use std::sync::Arc;
 #[salsa::query_group(HirDatabaseStorage)]
 pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     #[salsa::invoke(crate::infer::infer_query)]
-    fn infer(&self, id: DefWithBodyId) -> Arc<InferenceResult>;
+    fn infer(&self, id: DefWithBodyId) -> Arc<InferenceResult<Ty>>;
 
     #[salsa::invoke(crate::lower::value_ty)]
     fn value_ty(&self, id: ValueTyDefId) -> Ty;

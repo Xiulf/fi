@@ -1,11 +1,11 @@
 module core/ops/sub =
 
-import prim (Int32)
+import prim (Integer)
 
 infixl 6 sub as (-)
 
-class Sub lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
+class Sub lhs rhs out | lhs rhs -> out, lhs -> rhs =
     fun sub :: lhs -> rhs -> out
 
-member Int32 Int32 Int32 of Sub =
-    fun sub lhs rhs = intrinsics/sub_i32 lhs rhs
+for i. member i i i of Sub where Integer i =
+    fun sub lhs rhs = intrinsics/isub lhs rhs

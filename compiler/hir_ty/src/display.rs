@@ -172,19 +172,20 @@ impl fmt::Display for DebruijnIndex {
 }
 
 impl Ty {
-    fn needs_paren(self, db: &dyn HirDatabase) -> bool {
+    fn needs_paren(self, db: &dyn HirDatabase, app: bool) -> bool {
         match self.lookup(db) {
-            | TyKind::App(..) | TyKind::ForAll(..) | TyKind::Ctnt(..) => true,
+            | TyKind::App(..) => app,
+            | TyKind::Func(..) | TyKind::ForAll(..) | TyKind::Ctnt(..) => true,
             | _ => false,
         }
     }
 }
 
-struct TyParens(Ty);
+struct TyParens(Ty, bool);
 
 impl HirDisplay for TyParens {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
-        let needs_paren = self.0.needs_paren(f.db);
+        let needs_paren = self.0.needs_paren(f.db, self.1);
 
         if needs_paren {
             write!(f, "(")?;
@@ -223,43 +224,45 @@ impl HirDisplay for Ty {
             };
         }
 
-        if let TyKind::Ctor(id) = ty.lookup(f.db) {
-            let loc = id.lookup(f.db.upcast());
-            let lib = loc.module.lib;
+        if let DisplayTarget::Diagnostics = f.display_target {
+            if let TyKind::Ctor(id) = ty.lookup(f.db) {
+                let loc = id.lookup(f.db.upcast());
+                let lib = loc.module.lib;
 
-            match_lang! {
-                match id, args, lib, f {
-                    "array-type"(2) => {
-                        write!(f, "[")?;
-                        args[1].hir_fmt(f)?;
-                        write!(f, "]")?;
-                        TyParens(args[0]).hir_fmt(f)
-                    },
-                    "slice-type"(1) => {
-                        write!(f, "[]")?;
-                        TyParens(args[0]).hir_fmt(f)
-                    },
-                    "record-type"(1) => {
-                        write!(f, "{{")?;
+                match_lang! {
+                    match id, args, lib, f {
+                        "array-type"(2) => {
+                            write!(f, "[")?;
+                            args[1].hir_fmt(f)?;
+                            write!(f, "]")?;
+                            TyParens(args[0], true).hir_fmt(f)
+                        },
+                        "slice-type"(1) => {
+                            write!(f, "[]")?;
+                            TyParens(args[0], true).hir_fmt(f)
+                        },
+                        "record-type"(1) => {
+                            write!(f, "{{")?;
 
-                        if let TyKind::Row(fields, tail) = args[0].lookup(f.db) {
-                            if !fields.is_empty() {
-                                write!(f, " ")?;
+                            if let TyKind::Row(fields, tail) = args[0].lookup(f.db) {
+                                if !fields.is_empty() {
+                                    write!(f, " ")?;
+                                }
+
+                                f.write_joined(fields.iter(), ", ")?;
+
+                                if let Some(tail) = tail {
+                                    write!(f, " | ")?;
+                                    tail.hir_fmt(f)?;
+                                    write!(f, " ")?;
+                                } else if !fields.is_empty() {
+                                    write!(f, " ")?;
+                                }
                             }
 
-                            f.write_joined(fields.iter(), ", ")?;
-
-                            if let Some(tail) = tail {
-                                write!(f, " | ")?;
-                                tail.hir_fmt(f)?;
-                                write!(f, " ")?;
-                            } else if !fields.is_empty() {
-                                write!(f, " ")?;
-                            }
-                        }
-
-                        write!(f, "}}")
-                    },
+                            write!(f, "}}")
+                        },
+                    }
                 }
             }
         }
@@ -293,18 +296,18 @@ impl HirDisplay for Ty {
                 write!(f, ")")
             },
             | TyKind::App(base, args) => {
-                TyParens(base).hir_fmt(f)?;
+                TyParens(base, true).hir_fmt(f)?;
 
                 for &arg in args.iter() {
                     write!(f, " ")?;
-                    TyParens(arg).hir_fmt(f)?;
+                    TyParens(arg, true).hir_fmt(f)?;
                 }
 
                 Ok(())
             },
             | TyKind::Func(args, ret) => {
-                for arg in args.iter() {
-                    arg.hir_fmt(f)?;
+                for &arg in args.iter() {
+                    TyParens(arg, false).hir_fmt(f)?;
                     write!(f, " -> ")?;
                 }
 
@@ -340,7 +343,7 @@ impl HirDisplay for Constraint {
 
         for &ty in self.types.iter() {
             write!(f, " ")?;
-            TyParens(ty).hir_fmt(f)?;
+            TyParens(ty, true).hir_fmt(f)?;
         }
 
         Ok(())
@@ -385,11 +388,11 @@ impl HirDisplay for FunDep {
 
 impl HirDisplay for Member {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
-        write!(f, "instance {}", f.db.class_data(self.class).name)?;
+        write!(f, "member")?;
 
-        for ty in self.types.iter() {
+        for &ty in self.types.iter() {
             write!(f, " ")?;
-            ty.hir_fmt(f)?;
+            TyParens(ty, true).hir_fmt(f)?;
         }
 
         if !self.constraints.is_empty() {
@@ -397,7 +400,7 @@ impl HirDisplay for Member {
             f.write_joined(self.constraints.iter(), ", ")?;
         }
 
-        Ok(())
+        write!(f, " of {}", f.db.class_data(self.class).name)
     }
 }
 

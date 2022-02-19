@@ -269,6 +269,22 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                     self.emit(EQUALS);
                 },
+                | [.., (_, LayoutDelim::TopDeclHead), (_, LayoutDelim::Where)] => {
+                    Collapse::new(self.tokens.len()).collapse(
+                        start,
+                        |s, p, lyt| match lyt {
+                            | LayoutDelim::Where => true,
+                            | _ => offside_end_p(s, p, lyt),
+                        },
+                        &mut self.stack,
+                        &mut self.tokens,
+                    );
+
+                    self.stack.pop().unwrap();
+                    self.stack.pop().unwrap();
+                    self.emit(EQUALS);
+                    self.insert_start(LayoutDelim::Where);
+                },
                 | [.., (_, LayoutDelim::TopDeclHead)] => {
                     self.stack.pop().unwrap();
                     self.emit(EQUALS);
@@ -646,6 +662,21 @@ impl<'src> Lexer<'src> {
                 } else {
                     self.insert_default(start, INFIXR_KW);
                 }
+            },
+            | "where" => match self.stack[..] {
+                | [.., (_, LayoutDelim::TopDeclHead)] => {
+                    self.emit(WHERE_KW);
+                    self.insert_start(LayoutDelim::Where);
+                },
+                | [.., (_, LayoutDelim::Prop)] => {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                },
+                | _ => {
+                    Collapse::new(self.tokens.len()).collapse(start, offside_end_p, &mut self.stack, &mut self.tokens);
+                    self.emit(WHERE_KW);
+                    self.insert_start(LayoutDelim::Where);
+                },
             },
             | "as" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {

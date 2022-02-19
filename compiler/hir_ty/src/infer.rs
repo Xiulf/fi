@@ -8,6 +8,7 @@ mod unify;
 
 use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
+use crate::info::{TyId, Types};
 use crate::lower::LowerCtx;
 use crate::ty::{Constraint, List, Ty, TyKind};
 use diagnostics::InferenceDiagnostic;
@@ -22,7 +23,7 @@ use hir_def::type_ref::LocalTypeRefId;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<InferenceResult> {
+pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<InferenceResult<Ty>> {
     let body = db.body(def);
     let resolver = Resolver::for_expr(db.upcast(), def, body.body_expr());
     let mut icx = BodyInferenceContext::new(db, resolver, def);
@@ -60,11 +61,11 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct InferenceResult {
-    pub self_type: Ty,
-    pub type_of_expr: ArenaMap<ExprId, Ty>,
-    pub type_of_pat: ArenaMap<PatId, Ty>,
-    pub instances: FxHashMap<ExprId, Vec<Ty>>,
+pub struct InferenceResult<T> {
+    pub self_type: T,
+    pub type_of_expr: ArenaMap<ExprId, T>,
+    pub type_of_pat: ArenaMap<PatId, T>,
+    pub instances: FxHashMap<ExprId, Vec<T>>,
     pub methods: FxHashMap<ExprId, MethodSource>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic>,
 }
@@ -79,10 +80,10 @@ pub struct InferenceContext<'a> {
     pub(crate) db: &'a dyn HirDatabase,
     pub(crate) resolver: Resolver,
     pub(crate) owner: TypeVarOwner,
-    pub(crate) result: InferenceResult,
+    pub(crate) result: InferenceResult<TyId>,
+    pub(crate) var_kinds: Vec<List<TyId>>,
+    types: Types,
     subst: unify::Substitution,
-    origin: FxHashMap<Ty, TypeOrigin>,
-    pub(crate) var_kinds: Vec<List<Ty>>,
     class_env: ClassEnv,
     member_records: usize,
     constraints: Vec<(Constraint, ExprOrPatId, Option<ClassEnvScope>)>,
@@ -91,17 +92,17 @@ pub struct InferenceContext<'a> {
 struct BodyInferenceContext<'a> {
     icx: InferenceContext<'a>,
     body: Arc<Body>,
-    ret_type: Ty,
-    yield_type: Option<Ty>,
-    clos_ret_type: Option<Ty>,
-    block_ret_type: Option<Ty>,
-    block_break_type: Option<Ty>,
+    ret_type: TyId,
+    yield_type: Option<TyId>,
+    clos_ret_type: Option<TyId>,
+    block_ret_type: Option<TyId>,
+    block_break_type: Option<TyId>,
     breakable: Vec<Breakable>,
 }
 
 #[derive(Clone, Copy)]
 enum Breakable {
-    Loop(Ty),
+    Loop(TyId),
     While,
 }
 
@@ -162,8 +163,8 @@ impl<'a> InferenceContext<'a> {
                 methods: FxHashMap::default(),
                 diagnostics: Vec::new(),
             },
+            types: Types::default(),
             subst: unify::Substitution::default(),
-            origin: FxHashMap::default(),
             var_kinds: Vec::default(),
             class_env: ClassEnv::default(),
             member_records: 0,
@@ -171,11 +172,11 @@ impl<'a> InferenceContext<'a> {
         }
     }
 
-    pub fn finish(mut self) -> InferenceResult {
+    pub fn finish(mut self) -> InferenceResult<Ty> {
         self.finish_mut()
     }
 
-    pub fn finish_mut(&mut self) -> InferenceResult {
+    pub fn finish_mut(&mut self) -> InferenceResult<Ty> {
         self.solve_constraints();
 
         let mut res = std::mem::replace(&mut self.result, InferenceResult {
@@ -202,10 +203,10 @@ impl<'a> InferenceContext<'a> {
             .values_mut()
             .for_each(|v| v.iter_mut().for_each(&mut finalize));
 
-        res
+        InferenceResult::from_info(res)
     }
 
-    pub(crate) fn lang_type(&self, name: &'static str) -> Ty {
+    pub(crate) fn lang_type(&self, name: &'static str) -> TyId {
         let module = self.owner.module(self.db.upcast());
         let ty = self.db.lang_item(module.lib, name.into()).unwrap();
         let ty = ty.as_type_ctor().unwrap();
@@ -314,7 +315,7 @@ impl<'a> BodyInferenceContext<'a> {
         }
     }
 
-    fn finish(self) -> InferenceResult {
+    fn finish(self) -> InferenceResult<Ty> {
         self.icx.finish()
     }
 
@@ -440,7 +441,7 @@ impl<'a> std::ops::DerefMut for BodyInferenceContext<'a> {
     }
 }
 
-impl InferenceResult {
+impl<T> InferenceResult<T> {
     pub fn add_diagnostics(&self, db: &dyn HirDatabase, owner: DefWithBodyId, sink: &mut DiagnosticSink) {
         self.diagnostics.iter().for_each(|d| d.add_to(db, owner.into(), sink));
     }
@@ -454,16 +455,27 @@ pub(crate) mod diagnostics {
     use hir_def::body::BodySourceMap;
     use hir_def::diagnostic::DiagnosticSink;
     use hir_def::expr::ExprId;
-    use hir_def::id::{HasSource, TypeVarOwner};
+    use hir_def::id::{ClassId, HasSource, MemberId, TypeVarOwner};
     use hir_def::type_ref::LocalTypeRefId;
 
     #[derive(Debug, PartialEq, Eq)]
+    pub enum ClassSource {
+        TyCtnt(LocalTypeRefId),
+        MemberCtnt(MemberId, usize),
+        ClassCtnt(ClassId, usize),
+        Member(MemberId),
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
     pub enum InferenceDiagnostic {
+        UnresolvedValue {
+            id: ExprOrPatId,
+        },
         UnresolvedType {
             id: LocalTypeRefId,
         },
-        UnresolvedValue {
-            id: ExprOrPatId,
+        UnresolvedClass {
+            src: ClassSource,
         },
         UnresolvedOperator {
             id: ExprId,
@@ -473,6 +485,9 @@ pub(crate) mod diagnostics {
         },
         PrivateType {
             id: LocalTypeRefId,
+        },
+        PrivateClass {
+            src: ClassSource,
         },
         PrivateOperator {
             id: ExprOrPatId,
@@ -547,13 +562,6 @@ pub(crate) mod diagnostics {
             };
 
             match self {
-                | InferenceDiagnostic::UnresolvedType { id } => {
-                    owner.with_type_source_map(db.upcast(), |source_map| {
-                        let src = source_map.type_ref_syntax(*id).unwrap();
-
-                        sink.push(UnresolvedType { file, ty: src });
-                    });
-                },
                 | InferenceDiagnostic::UnresolvedValue { id } => {
                     let soure_map = match owner {
                         | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
@@ -566,6 +574,31 @@ pub(crate) mod diagnostics {
                     };
 
                     sink.push(UnresolvedValue { file, src });
+                },
+                | InferenceDiagnostic::UnresolvedType { id } => {
+                    owner.with_type_source_map(db.upcast(), |source_map| {
+                        let src = source_map.type_ref_syntax(*id).unwrap();
+
+                        sink.push(UnresolvedType { file, ty: src });
+                    });
+                },
+                | InferenceDiagnostic::UnresolvedClass { src } => {
+                    let root = db.parse(file).syntax_node();
+                    let node = match src {
+                        | ClassSource::TyCtnt(id) => {
+                            owner.with_type_source_map(db.upcast(), |source_map| {
+                                let src = source_map.type_ref_syntax(*id).unwrap();
+                                src.syntax_node_ptr().to_node(&root)
+                            });
+                        },
+                        | ClassSource::ClassCtnt(id, idx) => {},
+                        | ClassSource::MemberCtnt(id, idx) => {},
+                        | ClassSource::Member(id) => {},
+                    };
+
+                    let src = todo!();
+
+                    sink.push(UnresolvedClass { file, src });
                 },
                 | InferenceDiagnostic::UnresolvedOperator { id } => {
                     let soure_map = match owner {
@@ -596,6 +629,24 @@ pub(crate) mod diagnostics {
 
                         sink.push(PrivateType { file, src });
                     });
+                },
+                | InferenceDiagnostic::PrivateClass { src } => {
+                    let root = db.parse(file).syntax_node();
+                    let node = match src {
+                        | ClassSource::TyCtnt(id) => {
+                            owner.with_type_source_map(db.upcast(), |source_map| {
+                                let src = source_map.type_ref_syntax(*id).unwrap();
+                                src.syntax_node_ptr().to_node(&root)
+                            });
+                        },
+                        | ClassSource::ClassCtnt(id, idx) => {},
+                        | ClassSource::MemberCtnt(id, idx) => {},
+                        | ClassSource::Member(id) => {},
+                    };
+
+                    let src = todo!();
+
+                    sink.push(PrivateClass { file, src });
                 },
                 | InferenceDiagnostic::PrivateOperator { id } => {
                     let soure_map = match owner {

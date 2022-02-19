@@ -253,20 +253,23 @@ crate fn member(p: &mut Parser, m: Marker) {
     p.expect(MEMBER_KW);
     types::atom(p);
 
-    while !p.at(COLON) && !p.at(OF_KW) {
+    while !p.at(OF_KW) {
         types::atom(p);
     }
 
-    if p.eat(COLON) {
+    p.expect(OF_KW);
+    paths::path(p);
+
+    if p.eat(WHERE_KW) {
+        p.expect(LYT_START);
         types::constraint(p);
 
         while p.eat(COMMA) {
             types::constraint(p);
         }
-    }
 
-    p.expect(OF_KW);
-    paths::path(p);
+        p.expect(LYT_END);
+    }
 
     if p.eat(EQUALS) {
         p.expect(LYT_START);

@@ -1,5 +1,5 @@
 use super::{ExprOrPatId, InferenceContext};
-use crate::ty::*;
+use crate::info::{Span, TyId, Unknown};
 use rustc_hash::FxHashMap;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -8,18 +8,18 @@ pub(crate) struct UnkLevel(Vec<Unknown>);
 #[derive(Default, Debug, Clone)]
 pub(super) struct Substitution {
     next_unknown: u32,
-    tys: FxHashMap<Unknown, Ty>,
-    unsolved: FxHashMap<Unknown, (UnkLevel, Ty)>,
+    tys: FxHashMap<Unknown, TyId>,
+    unsolved: FxHashMap<Unknown, (UnkLevel, TyId)>,
 }
 
 impl Substitution {
-    pub fn unsolved(&self, u: Unknown) -> &(UnkLevel, Ty) {
+    pub fn unsolved(&self, u: Unknown) -> &(UnkLevel, TyId) {
         &self.unsolved[&u]
     }
 }
 
 impl InferenceContext<'_> {
-    pub fn fresh_type_without_kind(&mut self) -> Ty {
+    pub fn fresh_type_without_kind(&mut self, span: Span) -> TyId {
         let t1 = Unknown::from_raw(self.subst.next_unknown + 0);
         let t2 = Unknown::from_raw(self.subst.next_unknown + 1);
         let kind_type = self.lang_type("kind-kind");
@@ -28,7 +28,7 @@ impl InferenceContext<'_> {
         self.subst.unsolved.insert(t1, (UnkLevel::from(t1), kind_type));
         self.subst.unsolved.insert(t2, (UnkLevel::from(t2), t1.to_ty(self.db)));
 
-        t2.to_ty(self.db)
+        t2.to_ty(&mut self.types, span)
     }
 
     pub fn fresh_type_with_kind(&mut self, kind: Ty) -> Ty {

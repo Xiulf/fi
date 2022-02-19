@@ -275,12 +275,12 @@ fn verify(matches: &[Matched<()>], deps: &[FunDep]) -> bool {
             if dep
                 .determiners
                 .iter()
-                .map(|d| d.debruijn().depth() as usize)
+                .map(|d| d.idx() as usize)
                 .collect::<FxHashSet<_>>()
                 .is_subset(&s)
             {
                 s.into_iter()
-                    .chain(dep.determined.iter().map(|d| d.debruijn().depth() as usize))
+                    .chain(dep.determined.iter().map(|d| d.idx() as usize))
                     .collect()
             } else {
                 s
@@ -321,13 +321,14 @@ fn match_type(
             .zip(t2.iter())
             .map(|(t1, t2)| match_type(db, *t1, *t2, subst, vars))
             .fold(Matched::Match(()), Matched::then),
-        | (TyKind::App(a1, a2), TyKind::App(b1, b2)) => match_type(db, a1, b1, subst, vars).then(
-            a2.iter()
-                .zip(b2.iter())
-                .map(|(a2, b2)| match_type(db, *a2, *b2, subst, vars))
-                .fold(Matched::Match(()), Matched::then),
-        ),
-        | (TyKind::Func(a1, a2), TyKind::Func(b1, b2)) => a1
+        | (TyKind::App(a1, a2), TyKind::App(b1, b2)) if a2.len() == b2.len() => match_type(db, a1, b1, subst, vars)
+            .then(
+                a2.iter()
+                    .zip(b2.iter())
+                    .map(|(a2, b2)| match_type(db, *a2, *b2, subst, vars))
+                    .fold(Matched::Match(()), Matched::then),
+            ),
+        | (TyKind::Func(a1, a2), TyKind::Func(b1, b2)) if a1.len() == b1.len() => a1
             .iter()
             .zip(b1.iter())
             .map(|(a1, b1)| match_type(db, *a1, *b1, subst, vars))

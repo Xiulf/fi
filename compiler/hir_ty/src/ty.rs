@@ -1,5 +1,5 @@
 use crate::db::HirDatabase;
-use crate::display::HirDisplay;
+use crate::info::{CtntInfo, FieldInfo, FromInfo, Span, ToInfo, TyId, TyInfo, Types};
 use hir_def::id::{ClassId, TypeCtorId};
 use hir_def::name::Name;
 
@@ -12,12 +12,8 @@ pub type List<T> = Box<[T]>;
 pub enum TyKind {
     Error,
 
-    Unknown(Unknown),
-    Skolem(TypeVar, Ty),
-    TypeVar(TypeVar),
-
     Figure(i128),
-    Symbol(String),
+    Symbol(Box<str>),
     Row(List<Field>, Option<Ty>),
 
     Ctor(TypeCtorId),
@@ -28,6 +24,7 @@ pub enum TyKind {
 
     Ctnt(Constraint, Ty),
     ForAll(List<Ty>, Ty),
+    TypeVar(TypeVar),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -43,9 +40,6 @@ pub struct Constraint {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Unknown(u32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeVar(u32, DebruijnIndex);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -56,7 +50,7 @@ impl Ty {
         db.lookup_intern_ty(self)
     }
 
-    pub fn match_ctor(mut self, db: &dyn HirDatabase, id: TypeCtorId) -> Option<List<Ty>> {
+    pub fn match_ctor(self, db: &dyn HirDatabase, id: TypeCtorId) -> Option<List<Ty>> {
         if let TyKind::App(ctor, args) = self.lookup(db) {
             if ctor.lookup(db) == TyKind::Ctor(id) {
                 Some(args)
@@ -67,265 +61,129 @@ impl Ty {
             None
         }
     }
+}
 
-    pub fn everywhere<F>(self, db: &dyn HirDatabase, f: &mut F) -> Ty
-    where
-        F: FnMut(Ty) -> Ty,
-    {
-        match self.lookup(db) {
-            | TyKind::Skolem(sk, k) => {
-                let k = k.everywhere(db, f);
+impl ToInfo for Ty {
+    type Output = TyId;
 
-                f(TyKind::Skolem(sk, k).intern(db))
-            },
+    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, span: Span) -> Self::Output {
+        let info = match self.lookup(db) {
+            | TyKind::Error => TyInfo::Error,
+            | TyKind::Figure(f) => TyInfo::Figure(f),
+            | TyKind::Symbol(s) => TyInfo::Symbol(s),
             | TyKind::Row(fields, tail) => {
                 let fields = fields
                     .iter()
-                    .map(|field| Field {
-                        name: field.name.clone(),
-                        ty: field.ty.everywhere(db, f),
+                    .map(|f| FieldInfo {
+                        name: f.name.clone(),
+                        ty: f.ty.to_info(db, types, span),
                     })
                     .collect();
 
-                let tail = tail.map(|t| t.everywhere(db, f));
+                let tail = tail.map(|t| t.to_info(db, types, span));
 
-                f(TyKind::Row(fields, tail).intern(db))
+                TyInfo::Row(fields, tail)
             },
+            | TyKind::Ctor(id) => TyInfo::Ctor(id),
             | TyKind::App(base, args) => {
-                let base = base.everywhere(db, f);
-                let args = args.iter().map(|t| t.everywhere(db, f)).collect();
+                let base = base.to_info(db, types, span);
+                let args = args.iter().map(|a| a.to_info(db, types, span)).collect();
 
-                f(TyKind::App(base, args).intern(db))
+                TyInfo::App(base, args)
             },
             | TyKind::Tuple(tys) => {
-                let tys = tys.iter().map(|t| t.everywhere(db, f)).collect();
+                let tys = tys.iter().map(|t| t.to_info(db, types, span)).collect();
 
-                f(TyKind::Tuple(tys).intern(db))
+                TyInfo::Tuple(tys)
             },
             | TyKind::Func(args, ret) => {
-                let args = args.iter().map(|t| t.everywhere(db, f)).collect();
-                let ret = ret.everywhere(db, f);
+                let args = args.iter().map(|a| a.to_info(db, types, span)).collect();
+                let ret = ret.to_info(db, types, span);
 
-                f(TyKind::Func(args, ret).intern(db))
+                TyInfo::Func(args, ret)
             },
-            | TyKind::Ctnt(ctnt, ty) => {
-                let ctnt = Constraint {
+            | TyKind::Ctnt(ctnt, inner) => {
+                let ctnt = CtntInfo {
                     class: ctnt.class,
-                    types: ctnt.types.iter().map(|t| t.everywhere(db, f)).collect(),
+                    types: ctnt.types.iter().map(|t| t.to_info(db, types, span)).collect(),
                 };
 
-                let ty = ty.everywhere(db, f);
+                let inner = inner.to_info(db, types, span);
 
-                f(TyKind::Ctnt(ctnt, ty).intern(db))
+                TyInfo::Ctnt(ctnt, inner)
             },
-            | TyKind::ForAll(k, t) => {
-                let k = k.iter().map(|k| k.everywhere(db, f)).collect();
-                let t = t.everywhere(db, f);
+            | TyKind::ForAll(vars, ret) => {
+                let vars = vars.iter().map(|v| v.to_info(db, types, span)).collect();
+                let ret = ret.to_info(db, types, span);
 
-                f(TyKind::ForAll(k, t).intern(db))
+                TyInfo::ForAll(vars, ret)
             },
-            | _ => f(self),
-        }
+            | TyKind::TypeVar(tv) => TyInfo::TypeVar(tv),
+        };
+
+        types.insert(info, span)
     }
+}
 
-    pub fn everything<F>(self, db: &dyn HirDatabase, f: &mut F)
-    where
-        F: FnMut(Ty),
-    {
-        match self.lookup(db) {
-            | TyKind::Skolem(_, k) => k.everything(db, f),
-            | TyKind::Row(fields, tail) => {
-                for field in fields.iter() {
-                    field.ty.everything(db, f);
-                }
+impl FromInfo for Ty {
+    type Input = TyId;
 
-                if let Some(tail) = tail {
-                    tail.everything(db, f);
-                }
-            },
-            | TyKind::App(base, args) => {
-                base.everything(db, f);
-
-                for ty in args.iter() {
-                    ty.everything(db, f);
-                }
-            },
-            | TyKind::Tuple(tys) => {
-                for ty in tys.iter() {
-                    ty.everything(db, f);
-                }
-            },
-            | TyKind::Func(args, ret) => {
-                for ty in args.iter() {
-                    ty.everything(db, f);
-                }
-
-                ret.everything(db, f);
-            },
-            | TyKind::Ctnt(ctnt, ty) => {
-                for ty in ctnt.types.iter() {
-                    ty.everything(db, f);
-                }
-
-                ty.everything(db, f);
-            },
-            | TyKind::ForAll(k, t) => {
-                for ty in k.iter() {
-                    ty.everything(db, f);
-                }
-
-                t.everything(db, f);
-            },
-            | _ => {},
-        }
-
-        f(self)
-    }
-
-    pub fn normalize(self, db: &dyn HirDatabase) -> Ty {
-        self.everywhere(db, &mut |ty| match ty.lookup(db) {
-            // | TyKind::App(a, b) => match a.lookup(db) {
-            //     | TyKind::ForAll(_, a) => a.replace_var(db, b),
-            //     | _ => ty,
-            // },
-            | TyKind::Row(f1, Some(tail)) => match tail.lookup(db) {
-                | TyKind::Row(f2, None) => {
-                    let fields = f1.iter().cloned().chain(f2.iter().cloned()).collect();
-
-                    TyKind::Row(fields, None).intern(db)
-                },
-                | TyKind::TypeVar(_) | TyKind::Unknown(_) | TyKind::Error => ty,
-                | _ => unreachable!("{}", tail.display(db)),
-            },
-            | _ => ty,
-        })
-    }
-
-    pub fn replace_vars(self, db: &dyn HirDatabase, with: &[Ty]) -> Ty {
-        Self::replace_vars_impl(db, self, with, DebruijnIndex::INNER)
-    }
-
-    fn replace_vars_impl(db: &dyn HirDatabase, ty: Ty, with: &[Ty], depth: DebruijnIndex) -> Ty {
-        match ty.lookup(db) {
-            | TyKind::TypeVar(var) if var.debruijn() == depth => with[var.idx() as usize],
-            | TyKind::Skolem(sk, k) => {
-                let k = Self::replace_vars_impl(db, k, with, depth);
-
-                TyKind::Skolem(sk, k).intern(db)
-            },
-            | TyKind::Row(fields, tail) => {
+    fn from_info(db: &dyn HirDatabase, types: &Types, id: TyId) -> Self {
+        let kind = match types[id] {
+            | TyInfo::Error | TyInfo::Unknown(_) | TyInfo::Skolem(_, _) => TyKind::Error,
+            | TyInfo::TypeVar(tv) => TyKind::TypeVar(tv),
+            | TyInfo::Figure(f) => TyKind::Figure(f),
+            | TyInfo::Symbol(ref s) => TyKind::Symbol(s.clone()),
+            | TyInfo::Row(ref fields, tail) => {
                 let fields = fields
                     .iter()
                     .map(|f| Field {
                         name: f.name.clone(),
-                        ty: Self::replace_vars_impl(db, f.ty, with, depth),
+                        ty: Self::from_info(db, types, f.ty),
                     })
                     .collect();
 
-                let tail = tail.map(|t| Self::replace_vars_impl(db, t, with, depth));
+                let tail = tail.map(|t| Self::from_info(db, types, t));
 
-                TyKind::Row(fields, tail).intern(db)
+                TyKind::Row(fields, tail)
             },
-            | TyKind::App(base, args) => {
-                let base = Self::replace_vars_impl(db, base, with, depth);
-                let args = args
-                    .iter()
-                    .map(|&t| Self::replace_vars_impl(db, t, with, depth))
-                    .collect();
+            | TyInfo::Ctor(id) => TyKind::Ctor(id),
+            | TyInfo::App(base, ref args) => {
+                let base = Self::from_info(db, types, base);
+                let args = args.iter().map(|&a| Self::from_info(db, types, a)).collect();
 
-                TyKind::App(base, args).intern(db)
+                TyKind::App(base, args)
             },
-            | TyKind::Tuple(tys) => {
-                let tys = tys
-                    .iter()
-                    .map(|&t| Self::replace_vars_impl(db, t, with, depth))
-                    .collect();
+            | TyInfo::Tuple(ref tys) => {
+                let tys = tys.iter().map(|&t| Self::from_info(db, types, t)).collect();
 
-                TyKind::Tuple(tys).intern(db)
+                TyKind::Tuple(tys)
             },
-            | TyKind::Func(args, ret) => {
-                let args = args
-                    .iter()
-                    .map(|&t| Self::replace_vars_impl(db, t, with, depth))
-                    .collect();
+            | TyInfo::Func(ref args, ret) => {
+                let args = args.iter().map(|&a| Self::from_info(db, types, a)).collect();
+                let ret = Self::from_info(db, types, ret);
 
-                let ret = Self::replace_vars_impl(db, ret, with, depth);
-
-                TyKind::Func(args, ret).intern(db)
+                TyKind::Func(args, ret)
             },
-            | TyKind::Ctnt(ctnt, ty) => {
+            | TyInfo::Ctnt(ref ctnt, inner) => {
                 let ctnt = Constraint {
                     class: ctnt.class,
-                    types: ctnt
-                        .types
-                        .iter()
-                        .map(|&t| Self::replace_vars_impl(db, t, with, depth))
-                        .collect(),
+                    types: ctnt.types.iter().map(|&t| Self::from_info(db, types, t)).collect(),
                 };
 
-                let ty = Self::replace_vars_impl(db, ty, with, depth);
+                let inner = Self::from_info(db, types, inner);
 
-                TyKind::Ctnt(ctnt, ty).intern(db)
+                TyKind::Ctnt(ctnt, inner)
             },
-            | TyKind::ForAll(k, inner) => {
-                let k = k.iter().map(|&k| Self::replace_vars_impl(db, k, with, depth)).collect();
-                let inner = Self::replace_vars_impl(db, inner, with, depth.shifted_in());
+            | TyInfo::ForAll(ref vars, inner) => {
+                let vars = vars.iter().map(|&v| Self::from_info(db, types, v)).collect();
+                let inner = Self::from_info(db, types, inner);
 
-                TyKind::ForAll(k, inner).intern(db)
+                TyKind::ForAll(vars, inner)
             },
-            | _ => ty,
-        }
-    }
+        };
 
-    pub fn to_row_list(self, db: &dyn HirDatabase) -> (List<Field>, Option<Ty>) {
-        match self.lookup(db) {
-            | TyKind::Row(fields, tail) => (fields.clone(), tail),
-            | _ => (vec![].into(), None),
-        }
-    }
-
-    pub fn align_rows_with<R>(
-        db: &dyn HirDatabase,
-        mut f: impl FnMut(Ty, Ty) -> R,
-        t1: Ty,
-        t2: Ty,
-    ) -> (Vec<R>, ((List<Field>, Option<Ty>), (List<Field>, Option<Ty>))) {
-        let (s1, tail1) = t1.to_row_list(db);
-        let (s2, tail2) = t2.to_row_list(db);
-
-        return go((db, &mut f, tail1, tail2), s1.iter().cloned(), s2.iter().cloned());
-
-        fn go<R>(
-            (db, f, t1, t2): (&dyn HirDatabase, &mut impl FnMut(Ty, Ty) -> R, Option<Ty>, Option<Ty>),
-            mut s1: impl Iterator<Item = Field> + Clone,
-            mut s2: impl Iterator<Item = Field> + Clone,
-        ) -> (Vec<R>, ((List<Field>, Option<Ty>), (List<Field>, Option<Ty>))) {
-            let lhs = s1.clone();
-            let rhs = s2.clone();
-
-            match (s1.next(), s2.next()) {
-                | (None, _) => (Vec::new(), ((vec![].into(), t1), (rhs.collect(), t2))),
-                | (_, None) => (Vec::new(), ((lhs.collect(), t1), (vec![].into(), t2))),
-                | (Some(f1), Some(f2)) => {
-                    if f1.name < f2.name {
-                        let (vals, (mut lhs, rhs)) = go((db, f, t1, t2), s1, rhs);
-
-                        lhs.0 = std::iter::once(f1).chain(lhs.0.iter().cloned()).collect();
-                        (vals, (lhs, rhs))
-                    } else if f2.name < f1.name {
-                        let (vals, (lhs, mut rhs)) = go((db, f, t1, t2), lhs, s2);
-
-                        rhs.0 = std::iter::once(f2).chain(rhs.0.iter().cloned()).collect();
-                        (vals, (lhs, rhs))
-                    } else {
-                        let (mut vals, rest) = go((db, f, t1, t2), s1, s2);
-
-                        vals.insert(0, f(f1.ty, f2.ty));
-                        (vals, rest)
-                    }
-                },
-            }
-        }
+        kind.intern(db)
     }
 }
 
@@ -349,20 +207,6 @@ impl Constraint {
             class,
             types: tys.into_iter().collect(),
         }
-    }
-}
-
-impl Unknown {
-    pub const fn from_raw(id: u32) -> Self {
-        Unknown(id)
-    }
-
-    pub const fn raw(self) -> u32 {
-        self.0
-    }
-
-    pub fn to_ty(self, db: &dyn HirDatabase) -> Ty {
-        TyKind::Unknown(self).intern(db)
     }
 }
 

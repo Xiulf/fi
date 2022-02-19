@@ -57,6 +57,7 @@ pub enum SyntaxKind {
     INFIX_KW,
     INFIXL_KW,
     INFIXR_KW,
+    WHERE_KW,
     AS_KW,
     DO_KW,
     IF_KW,

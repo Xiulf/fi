@@ -1,6 +1,6 @@
 use crate::class::{Class, FunDep, Member};
 use crate::db::HirDatabase;
-use crate::infer::diagnostics::InferenceDiagnostic;
+use crate::infer::diagnostics::{ClassSource, InferenceDiagnostic};
 use crate::infer::InferenceContext;
 use crate::ty::*;
 use hir_def::arena::ArenaMap;
@@ -217,12 +217,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 TyKind::ForAll(kinds, inner).intern(self.db)
             },
             | TypeRef::Constraint(ctnt, inner) => {
-                if let Some(class) = self.lower_class_path(&ctnt.class) {
-                    let ctnt = Constraint {
-                        class,
-                        types: ctnt.types.iter().map(|&t| self.lower_ty(t)).collect(),
-                    };
-
+                if let Some(ctnt) = self.lower_constraint(ctnt, ClassSource::TyCtnt(ty)) {
                     let inner = self.lower_ty(*inner);
 
                     TyKind::Ctnt(ctnt, inner).intern(self.db)
@@ -311,23 +306,29 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         }
     }
 
-    pub(crate) fn lower_constraint(&mut self, ctnt: &hir_def::type_ref::Constraint) -> Option<Constraint> {
-        let class = self.lower_class_path(&ctnt.class)?;
+    pub(crate) fn lower_constraint(
+        &mut self,
+        ctnt: &hir_def::type_ref::Constraint,
+        src: ClassSource,
+    ) -> Option<Constraint> {
+        let class = self.lower_class_path(&ctnt.class, src)?;
         let types = ctnt.types.iter().map(|&t| self.lower_ty(t)).collect();
 
         Some(Constraint { class, types })
     }
 
-    fn lower_class_path(&mut self, path: &Path) -> Option<ClassId> {
+    fn lower_class_path(&mut self, path: &Path, src: ClassSource) -> Option<ClassId> {
         let (resolution, vis, _) = match self.resolver.resolve_type(self.db.upcast(), path) {
             | Some(it) => it,
             | None => {
-                todo!("report error: unresolved class");
+                self.report(InferenceDiagnostic::UnresolvedClass { src });
+                return None;
             },
         };
 
         if path.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
-            todo!("report error: private class");
+            self.report(InferenceDiagnostic::PrivateClass { src });
+            return None;
         }
 
         match resolution {
@@ -694,7 +695,7 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
 
     ctx.push_var_kind(vars.clone().into());
 
-    let (class, types) = if let Some(class) = ctx.lower_class_path(&data.class) {
+    let (class, types) = if let Some(class) = ctx.lower_class_path(&data.class, ClassSource::Member(id)) {
         let lower = db.lower_class(class);
 
         (
@@ -720,7 +721,8 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
     let constraints = data
         .constraints
         .iter()
-        .filter_map(|c| ctx.lower_constraint(c))
+        .enumerate()
+        .filter_map(|(i, c)| ctx.lower_constraint(c, ClassSource::MemberCtnt(id, i)))
         .collect();
 
     let vars = var_kinds(&mut ctx, vars);

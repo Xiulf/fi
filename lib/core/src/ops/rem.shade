@@ -1,11 +1,11 @@
 module core/ops/rem =
 
-import prim (Int32)
+import prim (Integer)
 
 infixl 7 rem as (%)
 
-class Rem lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
+class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
     fun rem :: lhs -> rhs -> out
 
-member Int32 Int32 Int32 of Rem =
-    fun rem lhs rhs = intrinsics/rem_i32 lhs rhs
+for i. member i i i of Rem where Integer i =
+    fun rem lhs rhs = intrinsics/irem lhs rhs

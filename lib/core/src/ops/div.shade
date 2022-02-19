@@ -1,11 +1,11 @@
 module core/ops/div =
 
-import prim (Int32)
+import prim (Integer)
 
 infixl 7 div as (/)
 
-class Div lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
+class Div lhs rhs out | lhs rhs -> out, lhs -> rhs =
     fun div :: lhs -> rhs -> out
 
-member Int32 Int32 Int32 of Div =
-    fun div lhs rhs = intrinsics/div_i32 lhs rhs
+for i. member i i i of Div where Integer i =
+    fun div lhs rhs = intrinsics/idiv lhs rhs

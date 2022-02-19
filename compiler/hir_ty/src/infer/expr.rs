@@ -410,6 +410,7 @@ impl BodyInferenceContext<'_> {
 
     pub fn check_expr(&mut self, expr: ExprId, expected: Ty) {
         let body = Arc::clone(&self.body);
+        let expected = self.subst_type(expected);
 
         self.result.type_of_expr.insert(expr, expected);
 

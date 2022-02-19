@@ -1,11 +1,11 @@
 module core/ops/add =
 
-import prim (Int32)
+import prim (Integer)
 
 infixl 6 add as (+)
 
-class Add lhs rhs out | lhs rhs -> out, lhs out -> rhs, rhs out -> lhs =
+class Add lhs rhs out | lhs rhs -> out, lhs -> rhs =
     fun add :: lhs -> rhs -> out
 
-member Int32 Int32 Int32 of Add =
-    fun add lhs rhs = intrinsics/add_i32 lhs rhs
+for i. member i i i of Add where Integer i =
+    fun add lhs rhs = intrinsics/iadd lhs rhs

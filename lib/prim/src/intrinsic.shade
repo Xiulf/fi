@@ -4,11 +4,12 @@ import prim
 
 infixr 0 apply as ($)
 
-@intrinsic foreign fun add_i32 :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun sub_i32 :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun mul_i32 :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun div_i32 :: Int32 -> Int32 -> Int32
-@intrinsic foreign fun rem_i32 :: Int32 -> Int32 -> Int32
+@intrinsic foreign fun iadd :: for i. Integer i => i -> i -> i
+@intrinsic foreign fun isub :: for i. Integer i => i -> i -> i
+@intrinsic foreign fun imul :: for i. Integer i => i -> i -> i
+@intrinsic foreign fun idiv :: for i. Integer i => i -> i -> i
+@intrinsic foreign fun irem :: for i. Integer i => i -> i -> i
+
 @intrinsic foreign fun eq_i32  :: Int32 -> Int32 -> Bool
 @intrinsic foreign fun ge_i32  :: Int32 -> Int32 -> Bool
 

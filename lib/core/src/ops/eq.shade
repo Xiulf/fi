@@ -5,7 +5,7 @@ import prim (Bool, Int32)
 infix 4 eq as (==)
 infix 4 ne as (!=)
 
-class PartialEq lhs rhs =
+class PartialEq lhs rhs | lhs -> rhs =
     fun eq :: lhs -> rhs -> Bool
 
 class Eq t : PartialEq t t

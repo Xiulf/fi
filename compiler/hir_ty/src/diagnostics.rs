@@ -46,6 +46,26 @@ impl Diagnostic for UnresolvedType {
 }
 
 #[derive(Debug)]
+pub struct UnresolvedClass {
+    pub file: FileId,
+    pub src: AstPtr<ast::Path>,
+}
+
+impl Diagnostic for UnresolvedClass {
+    fn message(&self) -> String {
+        "unknown class".into()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src.syntax_node_ptr())
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
 pub struct UnresolvedOperator {
     pub file: FileId,
     pub src: SyntaxNodePtr,
@@ -94,6 +114,26 @@ pub struct PrivateType {
 impl Diagnostic for PrivateType {
     fn message(&self) -> String {
         "type is not exported".to_string()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src.syntax_node_ptr())
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct PrivateClass {
+    pub file: FileId,
+    pub src: AstPtr<ast::Path>,
+}
+
+impl Diagnostic for PrivateClass {
+    fn message(&self) -> String {
+        "class is not exported".to_string()
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {
@@ -160,26 +200,6 @@ pub struct MismatchedType {
 impl Diagnostic for MismatchedType {
     fn message(&self) -> String {
         "mismatched types".into()
-    }
-
-    fn display_source(&self) -> InFile<SyntaxNodePtr> {
-        InFile::new(self.file, self.src)
-    }
-
-    fn as_any(&self) -> &(dyn Any + Send + 'static) {
-        self
-    }
-}
-
-#[derive(Debug)]
-pub struct UnresolvedClass {
-    pub file: FileId,
-    pub src: SyntaxNodePtr,
-}
-
-impl Diagnostic for UnresolvedClass {
-    fn message(&self) -> String {
-        "unknown class".into()
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {
