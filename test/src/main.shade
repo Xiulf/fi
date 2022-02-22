@@ -20,6 +20,6 @@ fun main = do
     term/drop t
 
 
-fun other :: for a. a -> Int32
-fun other x = do
+fun other :: for a. a -> Str
+fun other x y = do
     "test"

@@ -18,7 +18,7 @@ impl BodyInferenceContext<'_> {
                 let mut lcx = LowerCtx::new(type_map, self);
                 let ty_ = lcx.lower_ty(*ty);
 
-                self.check_kind_type(ty_, *ty);
+                self.check_kind_type(ty_);
                 self.check_expr(*expr, ty_);
                 ty_
             }),
@@ -437,8 +437,8 @@ impl BodyInferenceContext<'_> {
         self.result.type_of_expr.insert(expr, expected);
 
         match (&body[expr], self.types[expected].clone()) {
-            | (_, TyInfo::ForAll(kinds, inner)) => {
-                let sk = self.skolemize(&kinds, inner);
+            | (_, TyInfo::ForAll(kinds, inner, scope)) => {
+                let sk = self.skolemize(&kinds, inner, scope);
 
                 self.check_expr(expr, sk);
             },
@@ -463,9 +463,9 @@ impl BodyInferenceContext<'_> {
             | (Expr::Typed { expr: inner, ty }, _) => self.owner.with_type_map(self.db.upcast(), |type_map| {
                 let mut lcx = LowerCtx::new(type_map, self);
                 let ty_ = lcx.lower_ty(*ty);
-                let kind = lcx.infer_kind(expected, *ty);
+                let kind = lcx.infer_kind(expected);
 
-                self.check_kind(ty_, kind, *ty);
+                self.check_kind(ty_, kind);
 
                 if !self.subsume_types(ty_, expected, expr.into()) {
                     self.report_mismatch(expected, ty_, expr);
@@ -593,12 +593,12 @@ impl BodyInferenceContext<'_> {
 
                 ret
             },
-            | TyInfo::ForAll(kinds, ty) => {
+            | TyInfo::ForAll(kinds, ty, scope) => {
                 let repl = kinds
                     .iter()
                     .map(|&k| self.fresh_type_with_kind(k, src))
                     .collect::<Vec<_>>();
-                let ty = ty.replace_vars(&mut self.types, &repl);
+                let ty = ty.replace_vars(&mut self.types, &repl, scope);
 
                 self.check_app(ty, args, expr)
             },

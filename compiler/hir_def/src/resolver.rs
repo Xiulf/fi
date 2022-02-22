@@ -177,14 +177,14 @@ impl Resolver {
     }
 
     pub fn type_var_index(&self, tv: TypeVarId) -> Option<(usize, usize)> {
-        let scopes = self.scopes.iter().rev().filter_map(|scope| match scope {
+        let mut scopes = self.scopes.iter().rev().filter_map(|scope| match scope {
             | Scope::TypeScope(it) => Some(it),
             | _ => None,
         });
 
         let mut depth = 0;
 
-        for scope in scopes {
+        while let Some(scope) = scopes.next() {
             if let Some(idx) = scope
                 .type_scopes
                 .entries(scope.scope_id)

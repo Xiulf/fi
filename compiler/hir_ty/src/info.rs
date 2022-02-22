@@ -1,7 +1,7 @@
 use crate::{
     db::HirDatabase,
     infer::ExprOrPatId,
-    ty::{DebruijnIndex, List, TypeVar},
+    ty::{List, TypeVar},
 };
 use hir_def::{
     arena::{Arena, ArenaMap, Idx},
@@ -9,7 +9,7 @@ use hir_def::{
     id::{ClassId, TypeCtorId, TypeVarOwner},
     name::Name,
     pat::PatId,
-    type_ref::LocalTypeRefId,
+    type_ref::{LocalTypeRefId, LocalTypeVarId},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,7 +34,7 @@ pub enum TyInfo {
     Func(List<TyId>, TyId),
 
     Ctnt(CtntInfo, TyId),
-    ForAll(List<TyId>, TyId),
+    ForAll(List<TyId>, TyId, TypeVarScopeId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -59,8 +59,21 @@ pub enum TypeOrigin {
     ExprId(ExprId),
     PatId(PatId),
     TypeRefId(LocalTypeRefId),
+    TypeVarId(LocalTypeVarId),
     Synthetic,
 }
+
+#[derive(Default)]
+pub struct TypeVars {
+    scopes: Arena<TypeVarScope>,
+    current: Vec<TypeVarScopeId>,
+}
+
+pub struct TypeVarScope {
+    var_kinds: List<TyId>,
+}
+
+pub type TypeVarScopeId = Idx<TypeVarScope>;
 
 #[derive(Default)]
 pub struct Types {
@@ -80,6 +93,35 @@ pub trait FromInfo {
     fn from_info(db: &dyn HirDatabase, types: &Types, input: Self::Input) -> Self;
 }
 
+pub struct TyDisplay<'a> {
+    db: &'a dyn crate::db::HirDatabase,
+    types: &'a Types,
+    ty: TyId,
+    lhs_exposed: bool,
+}
+
+impl TypeVars {
+    pub fn alloc_scope(&mut self, var_kinds: List<TyId>) -> TypeVarScopeId {
+        self.scopes.alloc(TypeVarScope { var_kinds })
+    }
+
+    pub fn push_scope(&mut self, id: TypeVarScopeId) {
+        self.current.push(id);
+    }
+
+    pub fn pop_scope(&mut self) {
+        self.current.pop().unwrap();
+    }
+
+    pub fn scope_at(&self, depth: usize) -> TypeVarScopeId {
+        self.current[depth]
+    }
+
+    pub fn var_kinds(&self, id: TypeVarScopeId) -> &List<TyId> {
+        &self.scopes[id].var_kinds
+    }
+}
+
 impl Types {
     pub fn insert(&mut self, ty: TyInfo, src: TySource) -> TyId {
         let id = self.types.alloc(ty);
@@ -94,6 +136,11 @@ impl Types {
             let span = self.source(id);
             self.insert(ty, span)
         }
+    }
+
+    pub fn override_(&mut self, id: TyId, ty: TyInfo) -> TyId {
+        self.types[id.0] = ty;
+        id
     }
 
     pub fn source(&self, id: TyId) -> TySource {
@@ -124,6 +171,15 @@ impl Unknown {
 }
 
 impl TyId {
+    pub fn display<'a>(self, db: &'a dyn crate::db::HirDatabase, types: &'a Types) -> TyDisplay<'a> {
+        TyDisplay {
+            db,
+            types,
+            ty: self,
+            lhs_exposed: false,
+        }
+    }
+
     pub fn match_ctor(self, types: &Types, id: TypeCtorId) -> Option<List<TyId>> {
         if let TyInfo::App(ctor, ref args) = types[self] {
             if types[ctor] == TyInfo::Ctor(id) {
@@ -192,10 +248,77 @@ impl TyId {
 
                 f(types, ty)
             },
-            | TyInfo::ForAll(k, t) => {
+            | TyInfo::ForAll(k, t, s) => {
                 let k = k.iter().map(|k| k.everywhere(types, f)).collect();
                 let t = t.everywhere(types, f);
-                let ty = types.update(self, TyInfo::ForAll(k, t));
+                let ty = types.update(self, TyInfo::ForAll(k, t, s));
+
+                f(types, ty)
+            },
+            | _ => f(types, self),
+        }
+    }
+
+    pub fn everywhere_override<F>(self, types: &mut Types, f: &mut F) -> TyId
+    where
+        F: FnMut(&mut Types, TyId) -> TyId,
+    {
+        match types[self].clone() {
+            | TyInfo::Skolem(sk, k) => {
+                let k = k.everywhere(types, f);
+                let ty = types.override_(self, TyInfo::Skolem(sk, k));
+
+                f(types, ty)
+            },
+            | TyInfo::Row(fields, tail) => {
+                let fields = fields
+                    .iter()
+                    .map(|field| FieldInfo {
+                        name: field.name.clone(),
+                        ty: field.ty.everywhere(types, f),
+                    })
+                    .collect();
+
+                let tail = tail.map(|t| t.everywhere(types, f));
+                let ty = types.override_(self, TyInfo::Row(fields, tail));
+
+                f(types, ty)
+            },
+            | TyInfo::App(base, args) => {
+                let base = base.everywhere(types, f);
+                let args = args.iter().map(|t| t.everywhere(types, f)).collect();
+                let ty = types.override_(self, TyInfo::App(base, args));
+
+                f(types, ty)
+            },
+            | TyInfo::Tuple(tys) => {
+                let tys = tys.iter().map(|t| t.everywhere(types, f)).collect();
+                let ty = types.override_(self, TyInfo::Tuple(tys));
+
+                f(types, ty)
+            },
+            | TyInfo::Func(args, ret) => {
+                let args = args.iter().map(|t| t.everywhere(types, f)).collect();
+                let ret = ret.everywhere(types, f);
+                let ty = types.override_(self, TyInfo::Func(args, ret));
+
+                f(types, ty)
+            },
+            | TyInfo::Ctnt(ctnt, inner) => {
+                let ctnt = CtntInfo {
+                    class: ctnt.class,
+                    types: ctnt.types.iter().map(|t| t.everywhere(types, f)).collect(),
+                };
+
+                let inner = inner.everywhere(types, f);
+                let ty = types.override_(self, TyInfo::Ctnt(ctnt, inner));
+
+                f(types, ty)
+            },
+            | TyInfo::ForAll(k, t, s) => {
+                let k = k.iter().map(|k| k.everywhere(types, f)).collect();
+                let t = t.everywhere(types, f);
+                let ty = types.override_(self, TyInfo::ForAll(k, t, s));
 
                 f(types, ty)
             },
@@ -244,7 +367,7 @@ impl TyId {
 
                 ty.everything(types, f);
             },
-            | TyInfo::ForAll(ref k, t) => {
+            | TyInfo::ForAll(ref k, t, _) => {
                 for ty in k.iter() {
                     ty.everything(types, f);
                 }
@@ -272,82 +395,61 @@ impl TyId {
         })
     }
 
-    pub fn replace_vars(self, types: &mut Types, with: &[TyId]) -> TyId {
-        Self::replace_vars_impl(types, self, with, DebruijnIndex::INNER)
-    }
-
-    fn replace_vars_impl(types: &mut Types, ty: TyId, with: &[TyId], depth: DebruijnIndex) -> TyId {
-        match types[ty].clone() {
-            | TyInfo::TypeVar(var) if var.debruijn() == depth => with[var.idx() as usize],
+    pub fn replace_vars(self, types: &mut Types, with: &[TyId], scope: TypeVarScopeId) -> TyId {
+        match types[self].clone() {
+            | TyInfo::TypeVar(var) if var.scope() == scope => with[var.idx() as usize],
             | TyInfo::Skolem(sk, k) => {
-                let k = Self::replace_vars_impl(types, k, with, depth);
+                let k = self.replace_vars(types, with, scope);
 
-                types.update(ty, TyInfo::Skolem(sk, k))
+                types.update(self, TyInfo::Skolem(sk, k))
             },
             | TyInfo::Row(fields, tail) => {
                 let fields = fields
                     .iter()
                     .map(|f| FieldInfo {
                         name: f.name.clone(),
-                        ty: Self::replace_vars_impl(types, f.ty, with, depth),
+                        ty: f.ty.replace_vars(types, with, scope),
                     })
                     .collect();
 
-                let tail = tail.map(|t| Self::replace_vars_impl(types, t, with, depth));
+                let tail = tail.map(|t| t.replace_vars(types, with, scope));
 
-                types.update(ty, TyInfo::Row(fields, tail))
+                types.update(self, TyInfo::Row(fields, tail))
             },
             | TyInfo::App(base, args) => {
-                let base = Self::replace_vars_impl(types, base, with, depth);
-                let args = args
-                    .iter()
-                    .map(|&t| Self::replace_vars_impl(types, t, with, depth))
-                    .collect();
+                let base = base.replace_vars(types, with, scope);
+                let args = args.iter().map(|t| t.replace_vars(types, with, scope)).collect();
 
-                types.update(ty, TyInfo::App(base, args))
+                types.update(self, TyInfo::App(base, args))
             },
             | TyInfo::Tuple(tys) => {
-                let tys = tys
-                    .iter()
-                    .map(|&t| Self::replace_vars_impl(types, t, with, depth))
-                    .collect();
+                let tys = tys.iter().map(|t| t.replace_vars(types, with, scope)).collect();
 
-                types.update(ty, TyInfo::Tuple(tys))
+                types.update(self, TyInfo::Tuple(tys))
             },
             | TyInfo::Func(args, ret) => {
-                let args = args
-                    .iter()
-                    .map(|&t| Self::replace_vars_impl(types, t, with, depth))
-                    .collect();
+                let args = args.iter().map(|t| t.replace_vars(types, with, scope)).collect();
+                let ret = ret.replace_vars(types, with, scope);
 
-                let ret = Self::replace_vars_impl(types, ret, with, depth);
-
-                types.update(ty, TyInfo::Func(args, ret))
+                types.update(self, TyInfo::Func(args, ret))
             },
             | TyInfo::Ctnt(ctnt, inner) => {
                 let ctnt = CtntInfo {
                     class: ctnt.class,
-                    types: ctnt
-                        .types
-                        .iter()
-                        .map(|&t| Self::replace_vars_impl(types, t, with, depth))
-                        .collect(),
+                    types: ctnt.types.iter().map(|t| t.replace_vars(types, with, scope)).collect(),
                 };
 
-                let inner = Self::replace_vars_impl(types, inner, with, depth);
+                let inner = inner.replace_vars(types, with, scope);
 
-                types.update(ty, TyInfo::Ctnt(ctnt, inner))
+                types.update(self, TyInfo::Ctnt(ctnt, inner))
             },
-            | TyInfo::ForAll(k, inner) => {
-                let k = k
-                    .iter()
-                    .map(|&k| Self::replace_vars_impl(types, k, with, depth))
-                    .collect();
-                let inner = Self::replace_vars_impl(types, inner, with, depth.shifted_in());
+            | TyInfo::ForAll(k, inner, s) => {
+                let k = k.iter().map(|k| k.replace_vars(types, with, scope)).collect();
+                let inner = inner.replace_vars(types, with, scope);
 
-                types.update(ty, TyInfo::ForAll(k, inner))
+                types.update(self, TyInfo::ForAll(k, inner, s))
             },
-            | _ => ty,
+            | _ => self,
         }
     }
 
@@ -427,11 +529,152 @@ impl From<LocalTypeRefId> for TypeOrigin {
     }
 }
 
+impl From<LocalTypeVarId> for TypeOrigin {
+    fn from(id: LocalTypeVarId) -> Self {
+        Self::TypeVarId(id)
+    }
+}
+
 impl From<ExprOrPatId> for TypeOrigin {
     fn from(id: ExprOrPatId) -> Self {
         match id {
             | ExprOrPatId::ExprId(id) => Self::ExprId(id),
             | ExprOrPatId::PatId(id) => Self::PatId(id),
+        }
+    }
+}
+
+impl TyDisplay<'_> {
+    fn with_ty(&self, ty: TyId, lhs_exposed: bool) -> Self {
+        Self {
+            ty,
+            lhs_exposed,
+            db: self.db,
+            types: self.types,
+        }
+    }
+}
+
+impl std::fmt::Display for TyDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.types[self.ty] {
+            | TyInfo::Error => f.write_str("{error}"),
+            | TyInfo::Unknown(u) => u.fmt(f),
+            | TyInfo::Skolem(tv, k) => write!(f, "({} :: {})", tv, self.with_ty(k, false)),
+            | TyInfo::TypeVar(tv) => tv.fmt(f),
+            | TyInfo::Figure(i) => i.fmt(f),
+            | TyInfo::Symbol(ref s) => s.fmt(f),
+            | TyInfo::Row(ref fields, Some(tail)) => {
+                write!(
+                    f,
+                    "#({} | {})",
+                    fields
+                        .iter()
+                        .map(|f| format!("{} :: {}", f.name, self.with_ty(f.ty, false)))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    self.with_ty(tail, false)
+                )
+            },
+            | TyInfo::Row(ref fields, None) => {
+                write!(
+                    f,
+                    "#({})",
+                    fields
+                        .iter()
+                        .map(|f| format!("{} :: {}", f.name, self.with_ty(f.ty, false)))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+            },
+            | TyInfo::Ctor(id) => self.db.type_ctor_data(id).name.fmt(f),
+            | TyInfo::App(base, ref args) if self.lhs_exposed => write!(
+                f,
+                "({} {})",
+                self.with_ty(base, false),
+                args.iter()
+                    .map(|&a| format!("{}", self.with_ty(a, true)))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            | TyInfo::App(base, ref args) => write!(
+                f,
+                "{} {}",
+                self.with_ty(base, false),
+                args.iter()
+                    .map(|&a| format!("{}", self.with_ty(a, true)))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            | TyInfo::Tuple(ref tys) => write!(
+                f,
+                "({}{})",
+                tys.iter()
+                    .map(|&t| format!("{}", self.with_ty(t, false)))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                if tys.len() == 1 { "," } else { "" }
+            ),
+            | TyInfo::Func(ref args, ret) if self.lhs_exposed => write!(
+                f,
+                "({} -> {})",
+                args.iter()
+                    .map(|&a| format!("{}", self.with_ty(a, true)))
+                    .collect::<Vec<_>>()
+                    .join(" -> "),
+                self.with_ty(ret, true),
+            ),
+            | TyInfo::Func(ref args, ret) => write!(
+                f,
+                "{} -> {}",
+                args.iter()
+                    .map(|&a| format!("{}", self.with_ty(a, true)))
+                    .collect::<Vec<_>>()
+                    .join(" -> "),
+                self.with_ty(ret, true),
+            ),
+            | TyInfo::Ctnt(ref ctnt, ty) if self.lhs_exposed => write!(
+                f,
+                "({}{} => {})",
+                self.db.class_data(ctnt.class).name,
+                ctnt.types
+                    .iter()
+                    .map(|&t| format!(" {}", self.with_ty(t, true)))
+                    .collect::<Vec<_>>()
+                    .join(""),
+                self.with_ty(ty, false)
+            ),
+            | TyInfo::Ctnt(ref ctnt, ty) => write!(
+                f,
+                "{}{} => {}",
+                self.db.class_data(ctnt.class).name,
+                ctnt.types
+                    .iter()
+                    .map(|&t| format!(" {}", self.with_ty(t, true)))
+                    .collect::<Vec<_>>()
+                    .join(""),
+                self.with_ty(ty, false)
+            ),
+            | TyInfo::ForAll(ref kinds, ty, _) if self.lhs_exposed => write!(
+                f,
+                "(for{}. {})",
+                kinds
+                    .iter()
+                    .map(|&t| format!(" {}", self.with_ty(t, true)))
+                    .collect::<Vec<_>>()
+                    .join(""),
+                self.with_ty(ty, false),
+            ),
+            | TyInfo::ForAll(ref kinds, ty, _) => write!(
+                f,
+                "for{}. {}",
+                kinds
+                    .iter()
+                    .map(|&t| format!(" {}", self.with_ty(t, true)))
+                    .collect::<Vec<_>>()
+                    .join(""),
+                self.with_ty(ty, false),
+            ),
         }
     }
 }

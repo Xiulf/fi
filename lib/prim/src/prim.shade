@@ -1,10 +1,9 @@
 module prim =
 
-@lang = "kind-kind"   foreign type Kind   :: Kind
-@lang = "type-kind"   foreign type Type   :: Kind
-@lang = "figure-kind" foreign type Figure :: Kind
-@lang = "symbol-kind" foreign type Symbol :: Kind
-@lang = "row-kind"    foreign type Row    :: Kind -> Kind
+@lang = "type-kind"   foreign type Type   :: Type
+@lang = "figure-kind" foreign type Figure :: Type
+@lang = "symbol-kind" foreign type Symbol :: Type
+@lang = "row-kind"    foreign type Row    :: Type -> Type
 
 @lang = "never-type"
 @repr(uninhabited)

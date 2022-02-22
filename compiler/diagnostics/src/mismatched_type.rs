@@ -26,12 +26,10 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedType<'db, 'd, D
 
     fn primary_annotation(&self) -> Option<SourceAnnotation> {
         if let Some(found_src) = self.diag.found_src {
-            if found_src.range() == self.diag.display_source().value.range() {
-                return Some(SourceAnnotation {
-                    range: found_src.range(),
-                    message: format!("type `{}` found here", self.diag.found.display(self.db)),
-                });
-            }
+            return Some(SourceAnnotation {
+                range: found_src.value.range(),
+                message: format!("type `{}` found here", self.diag.found.display(self.db)),
+            });
         }
 
         Some(SourceAnnotation {
@@ -49,11 +47,8 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedType<'db, 'd, D
 
         if let Some(expected) = self.diag.expected_src {
             annotations.push(SecondaryAnnotation {
-                range: self.diag.display_source().with_value(expected.range()),
-                message: format!(
-                    "expected type `{}` because of this",
-                    self.diag.expected.display(self.db)
-                ),
+                range: expected.map(|s| s.range()),
+                message: format!("type `{}` specified here", self.diag.expected.display(self.db)),
             });
         }
 

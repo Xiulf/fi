@@ -4,14 +4,14 @@ use crate::infer::diagnostics::InferenceDiagnostic;
 use crate::infer::InferenceResult;
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, Types};
 use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult};
-use crate::ty::{Constraint, Field, Ty, TyKind};
+use crate::ty::{Constraint, Field, Reason, Ty, TyKind};
 
 impl ToInfo for Ty {
     type Output = TyId;
 
     fn to_info(self, db: &dyn HirDatabase, types: &mut Types, span: TySource) -> Self::Output {
         let info = match self.lookup(db) {
-            | TyKind::Error => TyInfo::Error,
+            | TyKind::Error(_) => TyInfo::Error,
             | TyKind::Figure(f) => TyInfo::Figure(f),
             | TyKind::Symbol(s) => TyInfo::Symbol(s),
             | TyKind::Row(fields, tail) => {
@@ -55,11 +55,11 @@ impl ToInfo for Ty {
 
                 TyInfo::Ctnt(ctnt, inner)
             },
-            | TyKind::ForAll(vars, ret) => {
+            | TyKind::ForAll(vars, ret, scope) => {
                 let vars = vars.iter().map(|v| v.to_info(db, types, span)).collect();
                 let ret = ret.to_info(db, types, span);
 
-                TyInfo::ForAll(vars, ret)
+                TyInfo::ForAll(vars, ret, scope)
             },
             | TyKind::TypeVar(tv) => TyInfo::TypeVar(tv),
         };
@@ -73,7 +73,8 @@ impl FromInfo for Ty {
 
     fn from_info(db: &dyn HirDatabase, types: &Types, id: TyId) -> Self {
         let kind = match types[id] {
-            | TyInfo::Error | TyInfo::Unknown(_) | TyInfo::Skolem(_, _) => TyKind::Error,
+            | TyInfo::Error | TyInfo::Skolem(_, _) => TyKind::Error(Reason::Error),
+            | TyInfo::Unknown(_) => TyKind::Error(Reason::Unknown),
             | TyInfo::TypeVar(tv) => TyKind::TypeVar(tv),
             | TyInfo::Figure(f) => TyKind::Figure(f),
             | TyInfo::Symbol(ref s) => TyKind::Symbol(s.clone()),
@@ -118,11 +119,11 @@ impl FromInfo for Ty {
 
                 TyKind::Ctnt(ctnt, inner)
             },
-            | TyInfo::ForAll(ref vars, inner) => {
+            | TyInfo::ForAll(ref vars, inner, scope) => {
                 let vars = vars.iter().map(|&v| Self::from_info(db, types, v)).collect();
                 let inner = Self::from_info(db, types, inner);
 
-                TyKind::ForAll(vars, inner)
+                TyKind::ForAll(vars, inner, scope)
             },
         };
 
@@ -199,6 +200,11 @@ impl FromInfo for InferenceResult<Ty, Constraint> {
                 .iter()
                 .map(|(id, &t)| (id, Ty::from_info(db, types, t)))
                 .collect(),
+            kind_of_ty: input
+                .kind_of_ty
+                .iter()
+                .map(|(id, &t)| (id, Ty::from_info(db, types, t)))
+                .collect(),
             instances: input
                 .instances
                 .into_iter()
@@ -265,10 +271,16 @@ impl FromInfo for InferenceDiagnostic<Ty, Constraint> {
             | InferenceDiagnostic::PrivateType { id } => Self::PrivateType { id },
             | InferenceDiagnostic::PrivateClass { src } => Self::PrivateClass { src },
             | InferenceDiagnostic::PrivateOperator { id } => Self::PrivateOperator { id },
-            | InferenceDiagnostic::MismatchedKind { id, expected, found } => Self::MismatchedKind {
-                id,
+            | InferenceDiagnostic::MismatchedKind {
+                expected,
+                found,
+                expected_src,
+                found_src,
+            } => Self::MismatchedKind {
                 expected: Ty::from_info(db, types, expected),
                 found: Ty::from_info(db, types, found),
+                expected_src,
+                found_src,
             },
             | InferenceDiagnostic::MismatchedType {
                 id,

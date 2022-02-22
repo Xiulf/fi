@@ -19,6 +19,26 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedKind<'db, 'd, D
     fn range(&self) -> TextRange {
         self.diag.display_source().value.range()
     }
+
+    fn primary_annotation(&self) -> Option<SourceAnnotation> {
+        Some(SourceAnnotation {
+            range: self.diag.found_src.value.range(),
+            message: format!("kind `{}` found here", self.diag.found.display(self.db)),
+        })
+    }
+
+    fn secondary_annotations(&self) -> Vec<SecondaryAnnotation> {
+        let mut annotations = Vec::new();
+
+        if let Some(expected) = self.diag.expected_src {
+            annotations.push(SecondaryAnnotation {
+                range: expected.map(|s| s.range()),
+                message: format!("expected kind `{}`", self.diag.expected.display(self.db)),
+            });
+        }
+
+        annotations
+    }
 }
 
 impl<'db, 'd, DB: hir::db::HirDatabase> MismatchedKind<'db, 'd, DB> {

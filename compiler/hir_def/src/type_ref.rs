@@ -1,7 +1,6 @@
 use crate::arena::{Arena, ArenaMap, Idx};
 use crate::name::{AsName, Name};
 use crate::path::{convert_path, Path};
-use either::Either;
 use rustc_hash::FxHashMap;
 use syntax::ast::{self, NameOwner};
 use syntax::AstPtr;
@@ -67,11 +66,9 @@ pub struct TypeSourceMap {
     type_ref_map: FxHashMap<AstPtr<ast::Type>, LocalTypeRefId>,
     type_ref_map_back: ArenaMap<LocalTypeRefId, AstPtr<ast::Type>>,
 
-    type_var_map: FxHashMap<TypeVarPtr, LocalTypeVarId>,
-    type_var_map_back: ArenaMap<LocalTypeVarId, TypeVarPtr>,
+    type_var_map: FxHashMap<AstPtr<ast::TypeVar>, LocalTypeVarId>,
+    type_var_map_back: ArenaMap<LocalTypeVarId, AstPtr<ast::TypeVar>>,
 }
-
-type TypeVarPtr = Either<AstPtr<ast::TypeVar>, AstPtr<ast::Type>>;
 
 #[derive(Default)]
 pub(crate) struct TypeMapBuilder {
@@ -223,11 +220,11 @@ impl TypeSourceMap {
         self.type_ref_map.get(&ptr).copied()
     }
 
-    pub fn type_var_syntax(&self, id: LocalTypeVarId) -> Option<TypeVarPtr> {
+    pub fn type_var_syntax(&self, id: LocalTypeVarId) -> Option<AstPtr<ast::TypeVar>> {
         self.type_var_map_back.get(id).cloned()
     }
 
-    pub fn syntax_type_var(&self, ptr: TypeVarPtr) -> Option<LocalTypeVarId> {
+    pub fn syntax_type_var(&self, ptr: AstPtr<ast::TypeVar>) -> Option<LocalTypeVarId> {
         self.type_var_map.get(&ptr).copied()
     }
 }
@@ -255,17 +252,7 @@ impl TypeMapBuilder {
             kind: node.kind().map(|t| self.alloc_type_ref(t)),
         };
 
-        Some(self.alloc_type_var_impl(type_var, Either::Left(ptr)))
-    }
-
-    pub fn alloc_type_var_from_ty(&mut self, id: LocalTypeRefId, path: &Path) -> Option<LocalTypeVarId> {
-        let ptr = self.source_map.type_ref_syntax(id)?;
-        let type_var = TypeVar {
-            name: path.segments().first()?.clone(),
-            kind: None,
-        };
-
-        Some(self.alloc_type_var_impl(type_var, Either::Right(ptr)))
+        Some(self.alloc_type_var_impl(type_var, ptr))
     }
 
     pub fn lower_constraint(&mut self, ctnt: ast::Constraint) -> Option<Constraint> {
@@ -284,7 +271,7 @@ impl TypeMapBuilder {
         id
     }
 
-    fn alloc_type_var_impl(&mut self, type_var: TypeVar, ptr: TypeVarPtr) -> LocalTypeVarId {
+    fn alloc_type_var_impl(&mut self, type_var: TypeVar, ptr: AstPtr<ast::TypeVar>) -> LocalTypeVarId {
         let id = self.map.type_vars.alloc(type_var);
 
         self.source_map.type_var_map.insert(ptr.clone(), id);

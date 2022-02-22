@@ -6,7 +6,6 @@ use crate::ty::{Constraint, Ty, TyKind, TypeVar};
 use hir_def::arena::{Arena, Idx};
 use hir_def::id::{ClassId, Lookup, MemberId};
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -141,7 +140,7 @@ impl Member<Ty, Constraint> {
         src: TySource,
     ) -> Option<MemberMatchResult> {
         let mut subst = FxHashMap::default();
-        let mut vars = BTreeMap::default();
+        let mut vars = FxHashMap::default();
         let matches = ctnt
             .types
             .iter()
@@ -231,7 +230,7 @@ impl ClassEnv {
         self.in_socpe(scope).find_map(|scope| {
             let entry = &self.entries[scope];
             let mut subst = FxHashMap::default();
-            let mut vars = BTreeMap::new();
+            let mut vars = FxHashMap::default();
 
             for (&ty, &with) in ctnt.types.iter().zip(entry.ctnt.types.iter()) {
                 if match_type(types, ty, with, &mut subst, &mut vars) != Matched::Match(()) {
@@ -318,7 +317,7 @@ fn match_type(
     ty: TyId,
     with: TyId,
     subst: &mut FxHashMap<Unknown, TyId>,
-    vars: &mut BTreeMap<TypeVar, TyId>,
+    vars: &mut FxHashMap<TypeVar, TyId>,
 ) -> Matched<()> {
     match (&types[ty], &types[with]) {
         | (_, TyInfo::Unknown(_)) => {
@@ -380,7 +379,7 @@ fn type_score(db: &dyn HirDatabase, ty: Ty) -> isize {
         | TyKind::Tuple(tys) => tys.iter().map(|&ty| type_score(db, ty)).sum(),
         | TyKind::App(a, b) => type_score(db, a) + b.iter().map(|&b| type_score(db, b)).sum::<isize>(),
         | TyKind::Ctnt(ctnt, ty) => ctnt.types.iter().map(|&t| type_score(db, t)).sum::<isize>() + type_score(db, ty),
-        | TyKind::ForAll(k, t) => k.iter().map(|&k| type_score(db, k)).sum::<isize>() + type_score(db, t),
+        | TyKind::ForAll(k, t, _) => k.iter().map(|&k| type_score(db, k)).sum::<isize>() + type_score(db, t),
         | _ => -5,
     }
 }

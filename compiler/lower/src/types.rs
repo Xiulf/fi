@@ -54,7 +54,7 @@ pub fn lower_type(db: &dyn LowerDatabase, mut ty: hir::ty::Ty) -> ir::ty::Ty {
     args.reverse();
 
     match ty.lookup(db.upcast()) {
-        | TyKind::Error => ir::ty::Ty::unit(db.upcast()),
+        | TyKind::Error(_) => ir::ty::Ty::unit(db.upcast()),
         | TyKind::Row(_, _) | TyKind::Figure(_) | TyKind::Symbol(_) | TyKind::App(_, _) => unreachable!(),
         | TyKind::Ctor(id) => {
             let ir = db.type_ir(id.into());

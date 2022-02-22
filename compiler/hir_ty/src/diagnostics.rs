@@ -167,10 +167,10 @@ impl Diagnostic for PrivateOperator {
 
 #[derive(Debug)]
 pub struct MismatchedKind {
-    pub file: FileId,
-    pub src: SyntaxNodePtr,
     pub expected: Ty,
     pub found: Ty,
+    pub expected_src: Option<InFile<SyntaxNodePtr>>,
+    pub found_src: InFile<SyntaxNodePtr>,
 }
 
 impl Diagnostic for MismatchedKind {
@@ -179,7 +179,7 @@ impl Diagnostic for MismatchedKind {
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {
-        InFile::new(self.file, self.src)
+        self.found_src
     }
 
     fn as_any(&self) -> &(dyn Any + Send + 'static) {
@@ -193,8 +193,8 @@ pub struct MismatchedType {
     pub src: SyntaxNodePtr,
     pub expected: Ty,
     pub found: Ty,
-    pub expected_src: Option<SyntaxNodePtr>,
-    pub found_src: Option<SyntaxNodePtr>,
+    pub expected_src: Option<InFile<SyntaxNodePtr>>,
+    pub found_src: Option<InFile<SyntaxNodePtr>>,
 }
 
 impl Diagnostic for MismatchedType {

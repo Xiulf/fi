@@ -103,7 +103,7 @@ impl SourceAnalyzer {
         let mut infer_ctx = hir_ty::infer::InferenceContext::new(db, resolver, owner);
         let mut lower_ctx = hir_ty::lower::LowerCtx::new(body.type_map(), &mut infer_ctx);
         let ty = lower_ctx.lower_ty(type_id);
-        let kind = infer_ctx.infer_kind(ty, type_id);
+        let kind = infer_ctx.infer_kind(ty);
         let kind = infer_ctx.generalize(kind);
         let kind = infer_ctx.convert_ty(kind);
 

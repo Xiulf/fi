@@ -153,22 +153,16 @@ impl<'a, W: fmt::Write> fmt::Write for Indent<'a, W> {
 
 impl fmt::Display for TypeVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.debruijn(), self.idx())
+        let scope: u32 = self.scope().into_raw().into();
+        let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+
+        write!(f, "{}{}", scope, self.idx())
     }
 }
 
 impl fmt::Display for Unknown {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "?{}", self.raw())
-    }
-}
-
-impl fmt::Display for DebruijnIndex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let depth = self.depth();
-        let depth = unsafe { std::char::from_u32_unchecked('a' as u32 + depth) };
-
-        write!(f, "{}", depth)
     }
 }
 
@@ -269,7 +263,8 @@ impl HirDisplay for Ty {
         }
 
         match self.lookup(f.db) {
-            | TyKind::Error => write!(f, "{{error}}"),
+            | TyKind::Error(Reason::Error) => write!(f, "{{error}}"),
+            | TyKind::Error(Reason::Unknown) => write!(f, "{{unknown}}"),
             | TyKind::TypeVar(t) => write!(f, "{}", t),
             | TyKind::Figure(i) => write!(f, "{}", i),
             | TyKind::Symbol(s) => write!(f, "{}", s),
@@ -313,7 +308,7 @@ impl HirDisplay for Ty {
                 write!(f, " => ")?;
                 ty.hir_fmt(f)
             },
-            | TyKind::ForAll(kinds, ty) => {
+            | TyKind::ForAll(kinds, ty, _) => {
                 write!(f, "for ")?;
                 f.write_joined(kinds.iter(), " ")?;
                 write!(f, ". ")?;

@@ -23,18 +23,18 @@ impl InferenceContext<'_> {
 
     fn subsume_types_impl(&mut self, t1: TyId, t2: TyId, origin: ExprOrPatId, mode: SubsumeMode) -> bool {
         match (self.types[t1].clone(), self.types[t2].clone()) {
-            | (TyInfo::ForAll(kinds, inner), _) => {
+            | (TyInfo::ForAll(kinds, inner, scope), _) => {
                 let src = self.source(origin);
                 let vars = kinds
                     .iter()
                     .map(|&k| self.fresh_type_with_kind(k, src))
                     .collect::<Vec<_>>();
-                let repl = inner.replace_vars(&mut self.types, &vars);
+                let repl = inner.replace_vars(&mut self.types, &vars, scope);
 
                 self.subsume_types_impl(repl, t2, origin, mode)
             },
-            | (_, TyInfo::ForAll(kinds, inner)) => {
-                let sk = self.skolemize(&kinds, inner);
+            | (_, TyInfo::ForAll(kinds, inner, scope)) => {
+                let sk = self.skolemize(&kinds, inner, scope);
 
                 self.subsume_types_impl(t1, sk, origin, mode)
             },

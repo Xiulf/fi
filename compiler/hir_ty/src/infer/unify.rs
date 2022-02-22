@@ -1,7 +1,7 @@
 use super::{ExprOrPatId, InferenceContext};
 use crate::{
     info::{CtntInfo, FieldInfo, TyId, TyInfo, TySource, TypeOrigin, Types, Unknown},
-    ty::{DebruijnIndex, List, TypeVar},
+    ty::{List, TypeVar},
 };
 use rustc_hash::FxHashMap;
 
@@ -23,7 +23,7 @@ impl Substitution {
 
 impl Substitution {
     pub fn subst_type(&self, types: &mut Types, ty: TyId) -> TyId {
-        ty.everywhere(types, &mut |types, ty| match types[ty] {
+        ty.everywhere_override(types, &mut |types, ty| match types[ty] {
             | TyInfo::Unknown(u) => match self.tys.get(&u) {
                 | None => ty,
                 | Some(&t2) => match types[t2] {
@@ -47,10 +47,10 @@ impl InferenceContext<'_> {
     pub fn fresh_type_without_kind(&mut self, src: TySource) -> TyId {
         let t1 = Unknown::from_raw(self.subst.next_unknown + 0);
         let t2 = Unknown::from_raw(self.subst.next_unknown + 1);
-        let kind_type = self.lang_type("kind-kind", src);
+        let ty_kind = self.type_kind(src);
 
         self.subst.next_unknown += 2;
-        self.subst.unsolved.insert(t1, (UnkLevel::from(t1), kind_type));
+        self.subst.unsolved.insert(t1, (UnkLevel::from(t1), ty_kind));
         self.subst
             .unsolved
             .insert(t2, (UnkLevel::from(t2), t1.to_ty(&mut self.types, src)));
@@ -68,18 +68,15 @@ impl InferenceContext<'_> {
     }
 
     pub fn fresh_type(&mut self, src: TySource) -> TyId {
-        let ty_kind = self.lang_type("type-kind", src);
+        let ty_kind = self.type_kind(src);
 
         self.fresh_type_with_kind(ty_kind, src)
     }
 
-    pub fn fresh_kind(&mut self, src: TySource) -> TyId {
-        let kind_kind = self.lang_type("kind-kind", src);
-
-        self.fresh_type_with_kind(kind_kind, src)
-    }
-
     pub fn solve_type(&mut self, u: Unknown, ty: TyId) {
+        let &(_, kind) = self.subst.unsolved(u);
+
+        self.check_kind(ty, kind);
         self.subst.tys.insert(u, ty);
     }
 
@@ -97,7 +94,7 @@ impl InferenceContext<'_> {
 
     pub fn instantiate(&mut self, ty: TyId, id: ExprOrPatId) -> TyId {
         match self.types[ty].clone() {
-            | TyInfo::ForAll(kinds, inner) => {
+            | TyInfo::ForAll(kinds, inner, scope) => {
                 let us = kinds
                     .iter()
                     .map(|&k| {
@@ -106,7 +103,7 @@ impl InferenceContext<'_> {
                     })
                     .collect::<Vec<_>>();
 
-                let ty = inner.replace_vars(&mut self.types, &us);
+                let ty = inner.replace_vars(&mut self.types, &us, scope);
 
                 if let ExprOrPatId::ExprId(e) = id {
                     *self.result.instances.entry(e).or_default() = us;
@@ -125,7 +122,7 @@ impl InferenceContext<'_> {
     pub fn normalize(&mut self, ty: TyId) -> TyId {
         ty.everywhere(&mut self.types, &mut |types, ty| match types[ty].clone() {
             | TyInfo::App(a, b) => match types[a] {
-                | TyInfo::ForAll(_, a) => a.replace_vars(types, &b),
+                | TyInfo::ForAll(_, a, scope) => a.replace_vars(types, &b, scope),
                 | _ => ty,
             },
             | _ => ty,
@@ -138,6 +135,17 @@ impl InferenceContext<'_> {
 
     pub fn subst_ctnt(&mut self, ctnt: &CtntInfo) -> CtntInfo {
         self.subst.subst_ctnt(&mut self.types, ctnt)
+    }
+
+    pub fn occurs(&self, u: Unknown, ty: TyId) -> bool {
+        let mut occurs = false;
+
+        ty.everything(&self.types, &mut |ty| match self.types[ty] {
+            | TyInfo::Unknown(u2) => occurs |= u == u2,
+            | _ => {},
+        });
+
+        occurs
     }
 
     pub fn generalize(&mut self, ty: TyId) -> TyId {
@@ -159,8 +167,10 @@ impl InferenceContext<'_> {
             }
         }
 
+        let scope = self.type_vars.alloc_scope(unknowns.values().copied().collect());
+
         for (i, (&u, _)) in unknowns.iter().enumerate() {
-            let tv = TypeVar::new(i as u32, DebruijnIndex::INNER);
+            let tv = TypeVar::new(i as u32, scope);
             let ty = self.types.insert(TyInfo::TypeVar(tv), src);
 
             self.solve_type(u, ty);
@@ -173,7 +183,7 @@ impl InferenceContext<'_> {
         }
 
         let kinds = unknowns.into_values().collect();
-        let ty = self.types.insert(TyInfo::ForAll(kinds, ty), src);
+        let ty = self.types.insert(TyInfo::ForAll(kinds, ty, scope), src);
 
         self.subst_type(ty)
     }
@@ -185,11 +195,11 @@ impl InferenceContext<'_> {
         match (self.types[t1].clone(), self.types[t2].clone()) {
             | (TyInfo::Error, _) | (_, TyInfo::Error) => true,
             | (TyInfo::Unknown(u1), TyInfo::Unknown(u2)) if u1 == u2 => true,
-            | (TyInfo::Unknown(u), _) => {
+            | (TyInfo::Unknown(u), _) if !self.occurs(u, t2) => {
                 self.solve_type(u, t2);
                 true
             },
-            | (_, TyInfo::Unknown(u)) => {
+            | (_, TyInfo::Unknown(u)) if !self.occurs(u, t1) => {
                 self.solve_type(u, t1);
                 true
             },
@@ -209,18 +219,18 @@ impl InferenceContext<'_> {
             | (TyInfo::Func(a1, a2), TyInfo::Func(b1, b2)) if a1.len() == b1.len() => {
                 a1.iter().zip(b1.iter()).all(|(&a1, &b1)| self.unify_types(a1, b1)) && self.unify_types(a2, b2)
             },
-            | (TyInfo::ForAll(k1, t1), TyInfo::ForAll(k2, t2)) => {
-                let sk1 = self.skolemize(&k1, t1);
-                let sk2 = self.skolemize(&k2, t2);
+            | (TyInfo::ForAll(k1, t1, s1), TyInfo::ForAll(k2, t2, s2)) => {
+                let sk1 = self.skolemize(&k1, t1, s1);
+                let sk2 = self.skolemize(&k2, t2, s2);
 
                 self.unify_types(sk1, sk2)
             },
-            | (TyInfo::ForAll(kinds, ty), _) => {
-                let sk = self.skolemize(&kinds, ty);
+            | (TyInfo::ForAll(kinds, ty, scope), _) => {
+                let sk = self.skolemize(&kinds, ty, scope);
 
                 self.unify_types(sk, t2)
             },
-            | (_, TyInfo::ForAll(_, _)) => self.unify_types(t2, t1),
+            | (_, TyInfo::ForAll(_, _, _)) => self.unify_types(t2, t1),
             | (TyInfo::Ctnt(c1, t1), TyInfo::Ctnt(c2, t2)) if c1.class == c2.class => {
                 c1.types
                     .iter()
