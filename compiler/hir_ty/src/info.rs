@@ -399,7 +399,7 @@ impl TyId {
         match types[self].clone() {
             | TyInfo::TypeVar(var) if var.scope() == scope => with[var.idx() as usize],
             | TyInfo::Skolem(sk, k) => {
-                let k = self.replace_vars(types, with, scope);
+                let k = k.replace_vars(types, with, scope);
 
                 types.update(self, TyInfo::Skolem(sk, k))
             },
@@ -655,26 +655,38 @@ impl std::fmt::Display for TyDisplay<'_> {
                     .join(""),
                 self.with_ty(ty, false)
             ),
-            | TyInfo::ForAll(ref kinds, ty, _) if self.lhs_exposed => write!(
-                f,
-                "(for{}. {})",
-                kinds
-                    .iter()
-                    .map(|&t| format!(" {}", self.with_ty(t, true)))
-                    .collect::<Vec<_>>()
-                    .join(""),
-                self.with_ty(ty, false),
-            ),
-            | TyInfo::ForAll(ref kinds, ty, _) => write!(
-                f,
-                "for{}. {}",
-                kinds
-                    .iter()
-                    .map(|&t| format!(" {}", self.with_ty(t, true)))
-                    .collect::<Vec<_>>()
-                    .join(""),
-                self.with_ty(ty, false),
-            ),
+            | TyInfo::ForAll(ref kinds, ty, scope) if self.lhs_exposed => {
+                let scope: u32 = scope.into_raw().into();
+                let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+
+                write!(
+                    f,
+                    "(for{}. {})",
+                    kinds
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &t)| format!(" ({}{} :: {})", scope, i, self.with_ty(t, true)))
+                        .collect::<Vec<_>>()
+                        .join(""),
+                    self.with_ty(ty, false),
+                )
+            },
+            | TyInfo::ForAll(ref kinds, ty, scope) => {
+                let scope: u32 = scope.into_raw().into();
+                let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+
+                write!(
+                    f,
+                    "for{}. {}",
+                    kinds
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &t)| format!(" ({}{} :: {})", scope, i, self.with_ty(t, true)))
+                        .collect::<Vec<_>>()
+                        .join(""),
+                    self.with_ty(ty, false),
+                )
+            },
         }
     }
 }

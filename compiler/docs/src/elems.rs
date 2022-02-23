@@ -1,5 +1,4 @@
 use crate::db::DocDatabase;
-use markup::MarkupRenderer;
 pub use markup::{Markup, Styles};
 use relative_path::{RelativePath, RelativePathBuf};
 use std::io::{self, Write};
@@ -198,9 +197,7 @@ impl EntryElem {
                 write!(
                     w,
                     r#"<aside class="source">Defined in <a href="{}">{}:{}</a></aside>"#,
-                    "",
-                    src.file.display(),
-                    src.line
+                    "", src.file, src.line
                 )
             },
             | EntryElem::List(links) => {
@@ -215,7 +212,7 @@ impl EntryElem {
                 write!(w, "</ul>")
             },
             | EntryElem::Code(code) => code.render(w),
-            | EntryElem::Markup(markup) => {
+            | EntryElem::Markup(_markup) => {
                 write!(w, r#"<div class="comment">{}</div>"#, "")
             },
         }
@@ -235,7 +232,7 @@ impl Link {
         let page_path = rcx.target_dir.join(page.path.to_string());
         let page_path = rcx.path.parent().unwrap().relative(page_path).with_extension("html");
 
-        write!(w, r#"<a href="{}">{}</a>"#, page_path.display(), self.name)
+        write!(w, r#"<a href="{}">{}</a>"#, page_path, self.name)
     }
 }
 

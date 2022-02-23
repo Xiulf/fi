@@ -209,7 +209,13 @@ impl Ctx {
 
             let end = self.next_ctor_idx();
             let ctors = IdRange::new(start..end);
-            let tctor = TypeCtor { ast_id, name, ctors };
+            let is_foreign = item.is_foreign();
+            let tctor = TypeCtor {
+                ast_id,
+                name,
+                ctors,
+                is_foreign,
+            };
 
             Some(id(self.tree.data.type_ctors.alloc(tctor)).into())
         }

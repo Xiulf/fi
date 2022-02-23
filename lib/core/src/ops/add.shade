@@ -7,5 +7,5 @@ infixl 6 add as (+)
 class Add lhs rhs out | lhs rhs -> out, lhs -> rhs =
     fun add :: lhs -> rhs -> out
 
-for i. member i i i of Add where Integer i =
+for i member i i i of Add where Integer i =
     fun add lhs rhs = intrinsics/iadd lhs rhs

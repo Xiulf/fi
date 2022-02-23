@@ -5,7 +5,7 @@ import intrinsics (unsafe, transmute, ($))
 import core/ops
 
 class Write w =
-    fun write :: w -> []Byte -> w
+    fun write :: w -> Slice Byte -> w
 
 type Stdout =
     | Stdout

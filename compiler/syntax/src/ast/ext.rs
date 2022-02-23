@@ -359,6 +359,10 @@ impl ItemType {
     pub fn ctors(&self) -> AstChildren<Ctor> {
         support::children(&self.0)
     }
+
+    pub fn is_foreign(&self) -> bool {
+        support::token(&self.0, FOREIGN_KW).is_some()
+    }
 }
 
 impl AttrsOwner for Ctor {

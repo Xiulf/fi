@@ -20,7 +20,4 @@ pub trait LowerDatabase:
 
     #[salsa::invoke(crate::types::lower_type)]
     fn lower_type(&self, ty: hir::ty::Ty) -> ir::ty::Ty;
-
-    #[salsa::invoke(crate::types::is_boxed)]
-    fn is_boxed(&self, ty: TypeCtorId) -> bool;
 }

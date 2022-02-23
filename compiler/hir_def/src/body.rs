@@ -113,6 +113,10 @@ impl Body {
         lower::lower(db, params, body, file_id, module)
     }
 
+    pub fn has_body(&self) -> bool {
+        self[self.body_expr] != Expr::Missing
+    }
+
     pub fn params(&self) -> &[PatId] {
         &self.params
     }

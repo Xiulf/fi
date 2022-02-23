@@ -1,25 +1,6 @@
 module main =
 
-import core
-import term (Term, Var, Abs, App)
+import core/io
 
 fun main = do
-    let t = term/new $ Var 0
-    let t = term/new $ Abs t
-    let s = term/new $ Var 0
-    let s = term/new $ Abs s
-    let t = term/new $ App t s
-
-    term/print t
-    print "\n"
-
-    let t = term/eval t
-
-    term/print t
-    print "\n"
-    term/drop t
-
-
-fun other :: for a. a -> Str
-fun other x y = do
-    "test"
+    println "test"

@@ -308,10 +308,20 @@ impl HirDisplay for Ty {
                 write!(f, " => ")?;
                 ty.hir_fmt(f)
             },
-            | TyKind::ForAll(kinds, ty, _) => {
-                write!(f, "for ")?;
-                f.write_joined(kinds.iter(), " ")?;
-                write!(f, ". ")?;
+            | TyKind::ForAll(kinds, ty, scope) => {
+                let scope: u32 = scope.into_raw().into();
+                let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+
+                write!(
+                    f,
+                    "for{}. ",
+                    kinds
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &t)| format!(" ({}{} :: {})", scope, i, t.display(f.db)))
+                        .collect::<Vec<_>>()
+                        .join("")
+                )?;
                 ty.hir_fmt(f)
             },
         }

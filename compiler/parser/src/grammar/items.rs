@@ -40,7 +40,7 @@ crate fn any_item(p: &mut Parser) {
             member(p, m);
         },
         | FOR_KW => {
-            for_member(p, m);
+            for_item(p, m);
         },
         | _ => {
             m.abandon(p);
@@ -208,12 +208,8 @@ crate fn class(p: &mut Parser, m: Marker) {
         }
     }
 
-    if p.eat(COLON) {
-        types::constraint(p);
-
-        while p.eat(COMMA) {
-            types::constraint(p);
-        }
+    if p.eat(WHERE_KW) {
+        where_clause(p);
     }
 
     if p.eat(EQUALS) {
@@ -231,6 +227,17 @@ crate fn class(p: &mut Parser, m: Marker) {
     }
 
     m.complete(p, ITEM_CLASS);
+}
+
+crate fn where_clause(p: &mut Parser) {
+    p.expect(LYT_START);
+    types::constraint(p);
+
+    while p.eat(COMMA) {
+        types::constraint(p);
+    }
+
+    p.expect(LYT_END);
 }
 
 crate fn fun_dep(p: &mut Parser) {
@@ -261,14 +268,7 @@ crate fn member(p: &mut Parser, m: Marker) {
     paths::path(p);
 
     if p.eat(WHERE_KW) {
-        p.expect(LYT_START);
-        types::constraint(p);
-
-        while p.eat(COMMA) {
-            types::constraint(p);
-        }
-
-        p.expect(LYT_END);
+        where_clause(p);
     }
 
     if p.eat(EQUALS) {
@@ -288,15 +288,19 @@ crate fn member(p: &mut Parser, m: Marker) {
     m.complete(p, ITEM_MEMBER);
 }
 
-crate fn for_member(p: &mut Parser, m: Marker) {
+crate fn for_item(p: &mut Parser, m: Marker) {
     p.expect(FOR_KW);
 
-    while !p.at(DOT) {
+    while !p.at_ts(TokenSet::new(&[EOF, MEMBER_KW])) {
         types::type_var(p);
     }
 
-    p.expect(DOT);
-    member(p, m);
+    if p.at(MEMBER_KW) {
+        member(p, m);
+    } else {
+        p.error("expected a member");
+        m.abandon(p);
+    }
 }
 
 crate fn assoc_item(p: &mut Parser) {

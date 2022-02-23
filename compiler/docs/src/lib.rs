@@ -19,7 +19,7 @@ pub fn generate(db: &dyn DocDatabase, lib: hir::Lib, target_dir: &Path) -> io::R
     let target_dir = RelativePathBuf::from_path(target_dir).unwrap();
     let mut gen = Generator::new(db);
 
-    gen.lib_docs(lib, &&target_dir);
+    let _ = gen.lib_docs(lib, &&target_dir);
 
     let style_dir = target_dir.join("style.css");
 
@@ -324,7 +324,7 @@ impl<'a> Generator<'a> {
             let name = static_.name(self.hdb);
             let mut page = Page::new(static_.path(self.hdb), format!("Static {}", name));
             let mut sec = Section::new("Static");
-            let mut entry = Entry::new();
+            let entry = Entry::new();
 
             sec.entries.push(entry);
             page.sections.push(sec);
@@ -343,7 +343,7 @@ impl<'a> Generator<'a> {
             let name = const_.name(self.hdb);
             let mut page = Page::new(const_.path(self.hdb), format!("Const {}", name));
             let mut sec = Section::new("Constant");
-            let mut entry = Entry::new();
+            let entry = Entry::new();
 
             sec.entries.push(entry);
             page.sections.push(sec);
@@ -362,7 +362,7 @@ impl<'a> Generator<'a> {
             let name = type_alias.name(self.hdb);
             let mut page = Page::new(type_alias.path(self.hdb), format!("Type Alias {}", name));
             let mut sec = Section::new("Type Alias");
-            let mut entry = Entry::new();
+            let entry = Entry::new();
 
             sec.entries.push(entry);
             page.sections.push(sec);
@@ -381,7 +381,7 @@ impl<'a> Generator<'a> {
             let name = type_ctor.name(self.hdb);
             let mut page = Page::new(type_ctor.path(self.hdb), format!("Type {}", name));
             let mut sec = Section::new("Type");
-            let mut entry = Entry::new();
+            let entry = Entry::new();
 
             sec.entries.push(entry);
             page.sections.push(sec);
@@ -400,7 +400,7 @@ impl<'a> Generator<'a> {
             let name = class.name(self.hdb);
             let mut page = Page::new(class.path(self.hdb), format!("Type Class {}", name));
             let mut sec = Section::new("Type Class");
-            let mut entry = Entry::new();
+            let entry = Entry::new();
 
             sec.entries.push(entry);
             page.sections.push(sec);

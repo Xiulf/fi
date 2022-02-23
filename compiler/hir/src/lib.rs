@@ -311,6 +311,10 @@ impl Func {
         db.func_data(self.id).is_foreign
     }
 
+    pub fn is_intrinsic(self, db: &dyn HirDatabase) -> bool {
+        db.attrs(self.id.into()).by_key("intrinsic").exists()
+    }
+
     pub fn link_name(self, db: &dyn HirDatabase) -> Name {
         if self.is_foreign(db) {
             self.name(db)
@@ -529,12 +533,20 @@ impl TypeCtor {
         self.id.lookup(db.upcast()).id.file_id
     }
 
+    pub fn is_foreign(self, db: &dyn HirDatabase) -> bool {
+        db.type_ctor_data(self.id).is_foreign
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         db.type_ctor_data(self.id).name.clone()
     }
 
     pub fn path(self, db: &dyn HirDatabase) -> Path {
         self.module(db).path_to_name(db, self.name(db))
+    }
+
+    pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
+        self.module(db).is_exported(db, self.name(db))
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {

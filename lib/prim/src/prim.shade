@@ -21,9 +21,9 @@ foreign type Char :: Type
 )
 foreign type Str :: Type
 
-@lang = "fn-type"
-@repr(func(arg = 0, ret = 1))
-foreign type Fn :: Type -> Type -> Type
+-- @lang = "fn-type"
+-- @repr(func(arg = 0, ret = 1))
+-- foreign type Fn :: Type -> Type -> Type
 
 @lang = "ptr-type"
 @repr(ptr(elem = 0))
@@ -111,9 +111,9 @@ member Uint128 of Integer
 member Float32 of Decimal
 member Float64 of Decimal
 
-for t. member (Ptr t) t of Pointer
-for t. member (BufPtr t) t of Pointer
-for t s. member (BufPtrSentinel t s) t of Pointer
+for t member (Ptr t) t of Pointer
+for t member (BufPtr t) t of Pointer
+for t s member (BufPtrSentinel t s) t of Pointer
 
 class Unsafe
 class Partial

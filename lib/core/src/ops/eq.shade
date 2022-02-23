@@ -8,7 +8,7 @@ infix 4 ne as (!=)
 class PartialEq lhs rhs | lhs -> rhs =
     fun eq :: lhs -> rhs -> Bool
 
-class Eq t : PartialEq t t
+class Eq t where PartialEq t t
 
 member Int32 Int32 of PartialEq =
     fun eq lhs rhs = intrinsics/eq_i32 lhs rhs

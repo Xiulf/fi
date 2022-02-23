@@ -1,5 +1,5 @@
 use crate::db::HirDatabase;
-use crate::info::TypeVarScopeId;
+pub use crate::info::TypeVarScopeId;
 use hir_def::id::{ClassId, TypeCtorId};
 use hir_def::name::Name;
 

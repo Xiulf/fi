@@ -91,7 +91,7 @@ impl ChildContainer {
 
         match self {
             | ChildContainer::ModuleId(it) => it.child_by_source(db, file_id),
-            | ChildContainer::DefwithBodyId(it) => DynMap::default(),
+            | ChildContainer::DefwithBodyId(_it) => DynMap::default(),
         }
     }
 }

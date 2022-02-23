@@ -62,6 +62,7 @@ pub struct TypeCtorData {
     pub kind: Option<LocalTypeRefId>,
     pub vars: Box<[LocalTypeVarId]>,
     pub ctors: Arena<CtorData>,
+    pub is_foreign: bool,
     type_map: TypeMap,
     type_source_map: TypeSourceMap,
 }
@@ -284,6 +285,7 @@ impl TypeCtorData {
 
         Arc::new(TypeCtorData {
             name: it.name.clone(),
+            is_foreign: it.is_foreign,
             kind,
             vars,
             ctors,

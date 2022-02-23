@@ -1,12 +1,10 @@
 use super::*;
 use hir::diagnostic::Diagnostic as _;
-use hir::display::HirDisplay;
-use syntax::ast::{self, AstNode};
 use syntax::TextRange;
 
 pub struct UnresolvedOperator<'db, 'd, DB: hir::db::HirDatabase> {
-    db: &'db DB,
-    diag: &'d hir::diagnostic::UnresolvedOperator,
+    _db: &'db DB,
+    _diag: &'d hir::diagnostic::UnresolvedOperator,
     location: TextRange,
 }
 
@@ -31,6 +29,10 @@ impl<'db, 'd, DB: hir::db::HirDatabase> UnresolvedOperator<'db, 'd, DB> {
             .map(|n| n.text_range())
             .unwrap_or_else(|| diag.display_source().value.range());
 
-        Self { db, diag, location }
+        Self {
+            _db: db,
+            _diag: diag,
+            location,
+        }
     }
 }

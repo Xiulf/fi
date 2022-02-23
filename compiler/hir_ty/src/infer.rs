@@ -337,26 +337,33 @@ impl<'a> BodyInferenceContext<'a> {
             | _ => {},
         }
 
-        let (ret, args) = match self.types[ann] {
-            | TyInfo::Func(ref args, ret) => (ret, Some(args.clone())),
-            | _ => (ann, None),
+        let body = self.body.clone();
+        let ret = match self.types[ann] {
+            | TyInfo::Func(_, ret) => ret,
+            | _ => {
+                let src = self.source(body.body_expr());
+
+                self.fresh_type(src)
+            },
         };
 
-        let body = self.body.clone();
-        let ty = if let Some(args) = args {
-            for (&pat, &arg) in body.params().iter().zip(args.iter()) {
-                self.check_pat(pat, arg);
-            }
+        let args = body
+            .params()
+            .iter()
+            .map(|&pat| self.infer_pat(pat))
+            .collect::<List<_>>();
 
-            ann
-        } else if !body.params().is_empty() {
-            let args = body.params().iter().map(|&p| self.infer_pat(p)).collect();
-            let src = self.source(TypeOrigin::Synthetic);
+        let ty = if !args.is_empty() {
+            let src = self.types.source(ann);
 
             self.fn_type(args, ret, src)
         } else {
             ann
         };
+
+        if !self.unify_types(ann, ty) {
+            self.report_mismatch(ann, ty, body.body_expr());
+        }
 
         self.result.self_type = ty;
         self.ret_type = ret;
