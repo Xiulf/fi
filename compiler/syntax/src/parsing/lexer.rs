@@ -586,12 +586,12 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, FOREIGN_KW);
                 }
             },
-            | "fun" => {
+            | "fn" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                     self.emit(IDENT);
                     self.stack.pop().unwrap();
                 } else {
-                    self.insert_default(start, FUN_KW);
+                    self.insert_default(start, FN_KW);
 
                     if self.is_def_start(start) {
                         self.stack.push((start, LayoutDelim::TopDecl));

@@ -5,7 +5,7 @@ import prim (Integer)
 infixl 7 div as (/)
 
 class Div lhs rhs out | lhs rhs -> out, lhs -> rhs =
-    fun div :: lhs -> rhs -> out
+    fn div :: lhs, rhs -> out
 
-for i member i i i of Div where Integer i =
-    fun div lhs rhs = intrinsics/idiv lhs rhs
+member i i i of Div where Integer i =
+    fn div lhs rhs = intrinsics/idiv lhs rhs

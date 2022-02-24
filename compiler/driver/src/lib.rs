@@ -104,7 +104,12 @@ impl Driver {
             &path,
         ) {
             | Ok(lib) => {
-                self.db.set_target_dir(lib, path.join("target"));
+                let target_dir = path.join("target");
+
+                for lib in self.libs.iter() {
+                    self.db.set_target_dir(lib, target_dir.clone());
+                }
+
                 self.db.set_libs(self.libs.clone().into());
 
                 Some(lib)

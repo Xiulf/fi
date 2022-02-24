@@ -17,7 +17,7 @@ foreign type Char :: Type
 @repr(
     fields = 2,
     f0(ptr(elem(scalar = "u8")), valid_range_start = 1),
-    f1(scalar = "ptr_sized_uint")
+    f1(scalar = "usize")
 )
 foreign type Str :: Type
 
@@ -35,17 +35,17 @@ foreign type BufPtr :: Type -> Type
 
 @lang = "ptrbs-type"
 @repr(ptr(elem = 0))
-foreign type BufPtrSentinel :: Type -> Figure -> Type
+foreign type BufPtrSentinel :: Type, Figure -> Type
 
 @lang = "array-type"
 @repr(array(elem = 0, len = 1))
-foreign type Array :: Type -> Figure -> Type
+foreign type Array :: Type, Figure -> Type
 
 @lang = "slice-type"
 @repr(
     fields = 2,
     f0(ptr(elem = 0), valid_range_start = 1),
-    f1(scalar = "ptr_sized_uint")
+    f1(scalar = "usize")
 )
 foreign type Slice :: Type -> Type
 
@@ -54,10 +54,10 @@ foreign type Slice :: Type -> Type
 foreign type Record :: Row Type -> Type
 
 @lang = "block-type"
-foreign type Block :: Type -> Type -> Type
+foreign type Block :: Type, Type -> Type
 
-@repr(scalar = "ptr_sized_int" ) foreign type Int  :: Type
-@repr(scalar = "ptr_sized_uint") foreign type Uint :: Type
+@repr(scalar = "isize") foreign type Int  :: Type
+@repr(scalar = "usize") foreign type Uint :: Type
 
 @repr(scalar = "i8"  ) foreign type Int8    :: Type
 @repr(scalar = "i16" ) foreign type Int16   :: Type
@@ -111,16 +111,16 @@ member Uint128 of Integer
 member Float32 of Decimal
 member Float64 of Decimal
 
-for t member (Ptr t) t of Pointer
-for t member (BufPtr t) t of Pointer
-for t s member (BufPtrSentinel t s) t of Pointer
+member (Ptr t) t of Pointer
+member (BufPtr t) t of Pointer
+member (BufPtrSentinel t s) t of Pointer
 
 class Unsafe
 class Partial
 
 @lang = "termination-class"
 class Termination t =
-    fun report :: t -> Int32
+    fn report :: t -> Int32
 
 member Unit of Termination =
-    fun report _ = 0
+    fn report _ = 0

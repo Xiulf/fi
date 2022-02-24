@@ -5,7 +5,7 @@ import prim (Integer)
 infixl 6 sub as (-)
 
 class Sub lhs rhs out | lhs rhs -> out, lhs -> rhs =
-    fun sub :: lhs -> rhs -> out
+    fn sub :: lhs, rhs -> out
 
-for i member i i i of Sub where Integer i =
-    fun sub lhs rhs = intrinsics/isub lhs rhs
+member i i i of Sub where Integer i =
+    fn sub lhs rhs = intrinsics/isub lhs rhs

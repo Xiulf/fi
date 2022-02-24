@@ -5,7 +5,7 @@ import prim (Integer)
 infixl 7 rem as (%)
 
 class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
-    fun rem :: lhs -> rhs -> out
+    fn rem :: lhs, rhs -> out
 
-for i member i i i of Rem where Integer i =
-    fun rem lhs rhs = intrinsics/irem lhs rhs
+member i i i of Rem where Integer i =
+    fn rem lhs rhs = intrinsics/irem lhs rhs

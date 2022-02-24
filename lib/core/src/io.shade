@@ -5,7 +5,7 @@ import intrinsics (unsafe, transmute, ($))
 import core/ops
 
 class Write w =
-    fun write :: w -> Slice Byte -> w
+    fn write :: w, Slice Byte -> w
 
 type Stdout =
     | Stdout
@@ -13,35 +13,35 @@ type Stdout =
 type Stderr =
     | Stderr
 
-fun print (s :: Str) = do
+fn print (s :: Str) = do
     let s = unsafe $ transmute s
     let _ = write Stdout s
 
-fun println (s :: Str) = do
+fn println (s :: Str) = do
     print s
     print "\n"
 
-fun eprint (s :: Str) = do
+fn eprint (s :: Str) = do
     let s = unsafe $ transmute s
     let _ = write Stderr s
 
-fun eprintln (s :: Str) = do
+fn eprintln (s :: Str) = do
     eprint s
     eprint "\n"
 
 member Stdout of Write =
-    fun write s bytes = do
+    fn write s bytes = do
         let (ptr, len) = unsafe $ transmute bytes
         libc/write libc/STDOUT_FILENO ptr len
         s
 
 member Stderr of Write =
-    fun write s bytes = do
+    fn write s bytes = do
         let (ptr, len) = unsafe $ transmute bytes
         libc/write libc/STDERR_FILENO ptr len
         s
 
-fun print_i32 i = do
+fn print_i32 i = do
     if intrinsics/ge_i32 i 10
     do print_i32 $ i / 10
 

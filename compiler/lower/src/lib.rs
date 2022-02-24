@@ -55,10 +55,8 @@ pub fn module_ir(db: &dyn db::LowerDatabase, module: hir::Module) -> Arc<ir::Mod
 }
 
 pub fn func_ir(db: &dyn db::LowerDatabase, func: hir::Func) -> ir::FuncId {
-    let name = func.link_name(db.upcast()).to_string();
+    let name = func.name(db.upcast()).to_string();
     let ty = db.lower_type(func.ty(db.upcast()));
-
-    println!("{} : ${}", name, ty.display(db.upcast()));
 
     ir::Func {
         name,

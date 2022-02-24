@@ -8,6 +8,10 @@ pub(crate) fn build_assembly(db: &dyn db::CodegenDatabase, lib: hir::Lib) -> Arc
     let mut objects = Vec::new();
 
     for module in lib.modules(db.upcast()) {
+        if module.is_virtual(db.upcast()) {
+            continue;
+        }
+
         objects.push(db.codegen_module(module));
     }
 

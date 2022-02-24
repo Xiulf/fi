@@ -340,11 +340,7 @@ impl<'a> BodyInferenceContext<'a> {
         let body = self.body.clone();
         let ret = match self.types[ann] {
             | TyInfo::Func(_, ret) => ret,
-            | _ => {
-                let src = self.source(body.body_expr());
-
-                self.fresh_type(src)
-            },
+            | _ => ann,
         };
 
         let args = body
@@ -358,12 +354,12 @@ impl<'a> BodyInferenceContext<'a> {
 
             self.fn_type(args, ret, src)
         } else {
-            ann
+            ret
         };
 
-        if !self.unify_types(ann, ty) {
-            self.report_mismatch(ann, ty, body.body_expr());
-        }
+        // if !self.unify_types(ann, ty) {
+        //     self.report_mismatch(ann, ty, body.body_expr());
+        // }
 
         self.result.self_type = ty;
         self.ret_type = ret;

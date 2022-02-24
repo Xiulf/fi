@@ -49,7 +49,7 @@ pub enum SyntaxKind {
     IMPORT_KW,
     TYPE_KW,
     FOREIGN_KW,
-    FUN_KW,
+    FN_KW,
     STATIC_KW,
     CONST_KW,
     CLASS_KW,

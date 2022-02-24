@@ -182,10 +182,14 @@ impl InferenceContext<'_> {
             ty = self.types.insert(t, src);
         }
 
-        let kinds = unknowns.into_values().collect();
-        let ty = self.types.insert(TyInfo::ForAll(kinds, ty, scope), src);
+        if unknowns.is_empty() {
+            ty
+        } else {
+            let kinds = unknowns.into_values().collect();
+            let ty = self.types.insert(TyInfo::ForAll(kinds, ty, scope), src);
 
-        self.subst_type(ty)
+            self.subst_type(ty)
+        }
     }
 
     pub fn unify_types(&mut self, t1: TyId, t2: TyId) -> bool {

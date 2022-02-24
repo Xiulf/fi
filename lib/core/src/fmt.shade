@@ -5,7 +5,7 @@ import prim (Str)
 import intrinsics (transmute, unsafe, ($))
 
 class Fmt f =
-    fun fmt :: for w. Write w => w -> f -> w
+    fn fmt :: w, f -> w where Write w
 
 -- instance Fmt Str =
 --     fun fmt w self = do

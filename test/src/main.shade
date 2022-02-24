@@ -2,5 +2,5 @@ module main =
 
 import core/io
 
-fun main = do
+fn main = do
     println "test"

@@ -1,5 +1,4 @@
 use base_db::Upcast;
-use hir::id::TypeCtorId;
 use std::sync::Arc;
 
 #[salsa::query_group(LowerDatabaseStorage)]

@@ -21,7 +21,7 @@ crate fn any_item(p: &mut Parser) {
         | FOREIGN_KW => {
             foreign(p, m);
         },
-        | FUN_KW => {
+        | FN_KW => {
             fun(p, m);
         },
         | STATIC_KW => {
@@ -94,7 +94,7 @@ crate fn foreign(p: &mut Parser, m: Marker) {
     p.expect(FOREIGN_KW);
 
     match p.current() {
-        | FUN_KW => fun(p, m),
+        | FN_KW => fun(p, m),
         | STATIC_KW => static_(p, m),
         | TYPE_KW => type_(p, m),
         | _ => {
@@ -106,7 +106,7 @@ crate fn foreign(p: &mut Parser, m: Marker) {
 }
 
 crate fn fun(p: &mut Parser, m: Marker) {
-    p.expect(FUN_KW);
+    p.expect(FN_KW);
     paths::name(p);
 
     if p.eat(DBL_COLON) {
@@ -312,7 +312,7 @@ crate fn assoc_item(p: &mut Parser) {
     }
 
     match p.current() {
-        | FUN_KW => fun(p, m),
+        | FN_KW => fun(p, m),
         | STATIC_KW => static_(p, m),
         | _ => {
             p.error("expected an associated item");
