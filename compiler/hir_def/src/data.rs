@@ -1,4 +1,3 @@
-use crate::arena::Arena;
 use crate::db::DefDatabase;
 use crate::id::*;
 pub use crate::item_tree::{Assoc, FunDep, Prec};
@@ -6,6 +5,7 @@ use crate::item_tree::{AssocItem, ItemTreeId};
 use crate::name::Name;
 use crate::path::Path;
 use crate::type_ref::{Constraint, LocalTypeRefId, LocalTypeVarId, TypeMap, TypeSourceMap};
+use arena::Arena;
 use base_db::input::FileId;
 use std::sync::Arc;
 use syntax::ast;

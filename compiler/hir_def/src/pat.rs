@@ -1,8 +1,8 @@
-use crate::arena::Idx;
 use crate::expr::{Literal, RecordField};
 use crate::name::Name;
 use crate::path::Path;
 use crate::type_ref::LocalTypeRefId;
+use arena::Idx;
 
 pub type PatId = Idx<Pat>;
 

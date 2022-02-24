@@ -1,9 +1,9 @@
-use crate::arena::Idx;
 use crate::db::DefDatabase;
 use crate::def_map::ModuleData;
 use crate::in_file::InFile;
 use crate::item_tree::*;
 use crate::type_ref::{LocalTypeVarId, TypeMap, TypeSourceMap};
+use arena::Idx;
 use base_db::libs::LibId;
 use std::hash::{Hash, Hasher};
 

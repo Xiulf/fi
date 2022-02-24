@@ -1,4 +1,3 @@
-use crate::arena::Arena;
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
 use crate::data::FixityData;
 use crate::db::DefDatabase;
@@ -11,6 +10,7 @@ use crate::name::{AsName, Name};
 use crate::pat::{Pat, PatId};
 use crate::path::Path;
 use crate::type_ref::{TypeMap, TypeMapBuilder};
+use arena::Arena;
 use base_db::input::FileId;
 use std::sync::Arc;
 use syntax::{ast, AstPtr};

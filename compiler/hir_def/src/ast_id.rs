@@ -1,6 +1,6 @@
-use crate::arena::{Arena, Idx};
 use crate::db::DefDatabase;
 use crate::in_file::InFile;
+use arena::{Arena, Idx};
 use base_db::input::FileId;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;

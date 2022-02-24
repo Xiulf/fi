@@ -3,7 +3,7 @@ use crate::infer::InferenceContext;
 use crate::info::{CtntInfo, ToInfo, TyId, TyInfo, TySource, Types, Unknown};
 use crate::lower::MemberLowerResult;
 use crate::ty::{Constraint, Ty, TyKind, TypeVar};
-use hir_def::arena::{Arena, Idx};
+use arena::{Arena, Idx};
 use hir_def::id::{ClassId, Lookup, MemberId};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;

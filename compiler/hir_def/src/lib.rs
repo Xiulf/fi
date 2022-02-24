@@ -1,4 +1,3 @@
-pub mod arena;
 pub mod ast_id;
 pub mod attrs;
 pub mod body;

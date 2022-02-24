@@ -1,4 +1,3 @@
-use crate::arena::{Arena, Idx};
 use crate::body::Body;
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId, Stmt};
@@ -6,6 +5,7 @@ use crate::id::{DefWithBodyId, TypeVarId, TypeVarOwner};
 use crate::name::Name;
 use crate::pat::{Pat, PatId};
 use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap, TypeRef};
+use arena::{Arena, Idx};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 

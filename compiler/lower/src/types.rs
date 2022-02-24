@@ -1,5 +1,5 @@
 use crate::db::LowerDatabase;
-use hir::arena::ArenaMap;
+use arena::ArenaMap;
 use hir::id::{TypeCtorId, TypeVarId};
 use hir::ty::{TyKind, TypeVarScopeId};
 use ir::ty::GenericVar;

@@ -5,6 +5,7 @@ edition = "2018"
 
 [dependencies]
 base_db = { path = "../base_db" }
+arena = { path = "../arena" }
 hir = { path = "../hir" }
 ir = { git = "https://github.com/Xiulf/lowlang.git", branch = "v4" }
 salsa = "0.16.0"

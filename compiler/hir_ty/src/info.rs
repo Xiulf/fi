@@ -3,8 +3,8 @@ use crate::{
     infer::ExprOrPatId,
     ty::{List, TypeVar},
 };
+use arena::{Arena, ArenaMap, Idx};
 use hir_def::{
-    arena::{Arena, ArenaMap, Idx},
     expr::ExprId,
     id::{ClassId, TypeCtorId, TypeVarOwner},
     name::Name,

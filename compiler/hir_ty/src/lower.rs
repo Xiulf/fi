@@ -4,7 +4,7 @@ use crate::infer::diagnostics::{ClassSource, InferenceDiagnostic};
 use crate::infer::InferenceContext;
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin};
 use crate::ty::{Constraint, List, Ty, TypeVar};
-use hir_def::arena::ArenaMap;
+use arena::ArenaMap;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::id::*;
 use hir_def::path::Path;

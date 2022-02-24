@@ -1,8 +1,8 @@
-use crate::arena::Idx;
 use crate::name::Name;
 use crate::pat::PatId;
 use crate::path::Path;
 use crate::type_ref::LocalTypeRefId;
+use arena::Idx;
 
 pub type ExprId = Idx<Expr>;
 

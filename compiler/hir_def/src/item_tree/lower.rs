@@ -1,10 +1,10 @@
-use crate::arena::{Idx, RawIdx};
 use crate::ast_id::AstIdMap;
 use crate::db::DefDatabase;
 use crate::in_file::InFile;
 use crate::item_tree::*;
 use crate::name::AsName;
 use crate::path::Path;
+use arena::{Idx, RawIdx};
 use base_db::input::FileId;
 use std::marker::PhantomData;
 use std::sync::Arc;

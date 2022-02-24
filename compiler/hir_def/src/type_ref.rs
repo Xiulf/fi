@@ -1,6 +1,6 @@
-use crate::arena::{Arena, ArenaMap, Idx};
 use crate::name::{AsName, Name};
 use crate::path::{convert_path, Path};
+use arena::{Arena, ArenaMap, Idx};
 use rustc_hash::FxHashMap;
 use syntax::ast::{self, NameOwner};
 use syntax::AstPtr;

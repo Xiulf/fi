@@ -5,6 +5,7 @@ authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+arena = { path = "../arena" }
 syntax = { path = "../syntax" }
 base_db = { path = "../base_db" }
 rustc-hash = "1.1.0"

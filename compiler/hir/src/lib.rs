@@ -16,7 +16,7 @@ pub use hir_def::item_tree::{Assoc, Prec};
 pub use hir_def::name::{AsName, Name};
 pub use hir_def::pat::{Pat, PatId};
 pub use hir_def::path::Path;
-pub use hir_def::{arena, attrs, id};
+pub use hir_def::{attrs, id};
 use hir_ty::db::HirDatabase;
 pub use hir_ty::display::HirDisplay;
 pub use hir_ty::infer::{InferenceResult, MethodSource};

@@ -1,6 +1,5 @@
 mod lower;
 
-use crate::arena::{Arena, Idx};
 use crate::ast_id::FileAstId;
 use crate::attrs::{Attrs, RawAttrs};
 use crate::db::DefDatabase;
@@ -8,6 +7,7 @@ use crate::diagnostics::ItemTreeDiagnostic;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::Path;
+use arena::{Arena, Idx};
 use base_db::input::FileId;
 use rustc_hash::FxHashMap;
 use std::fmt;
