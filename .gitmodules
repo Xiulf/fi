@@ -1,0 +1,3 @@
+[submodule "compiler/arena"]
+	path = compiler/arena
+	url = git@github.com:Xiulf/arena.git
