@@ -1,3 +1,0 @@
-[submodule "compiler/lowlang"]
-	path = compiler/lowlang
-	url = git@github.com:Xiulf/lowlang.git
