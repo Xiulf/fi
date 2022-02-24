@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
+ir_codegen = { package = "codegen", git = "https://github.com/Xiulf/lowlang.git", branch = "v4" }
+ir = { git = "https://github.com/Xiulf/lowlang.git", branch = "v4" }
 lower = { path = "../lower" }
 hir = { path = "../hir" }
 base_db = { path = "../base_db" }

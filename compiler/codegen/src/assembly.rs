@@ -1,26 +1,44 @@
 use crate::db::CodegenDatabase;
 use base_db::libs::LibKind;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tempfile::NamedTempFile;
 
 #[derive(Debug)]
-pub struct Assembly {
-    lib: hir::Lib,
+pub struct ObjectFile {
     file: NamedTempFile,
 }
 
-impl PartialEq for Assembly {
+#[derive(Debug, PartialEq, Eq)]
+pub struct Assembly {
+    lib: hir::Lib,
+    objects: Vec<Arc<ObjectFile>>,
+}
+
+impl PartialEq for ObjectFile {
     fn eq(&self, other: &Self) -> bool {
-        self.tmp_path().eq(other.tmp_path())
+        self.file.path().eq(other.file.path())
     }
 }
 
-impl Eq for Assembly {
+impl Eq for ObjectFile {
+}
+
+impl ObjectFile {
+    pub fn new(file: NamedTempFile) -> Self {
+        Self { file }
+    }
+
+    pub fn tmp_path(&self) -> &Path {
+        self.file.path()
+    }
 }
 
 impl Assembly {
-    pub fn tmp_path(&self) -> &Path {
-        self.file.path()
+    pub fn new(lib: hir::Lib, objects: Vec<Arc<ObjectFile>>) -> Self {
+        Self { lib, objects }
     }
 
     pub fn path(&self, db: &dyn CodegenDatabase, target_dir: &Path) -> PathBuf {
@@ -29,11 +47,19 @@ impl Assembly {
             .with_extension(self.extension(db))
     }
 
-    pub fn link(&self, db: &dyn CodegenDatabase, deps: impl Iterator<Item = hir::Lib>, target_dir: &Path) {
+    pub fn link<'a>(
+        &self,
+        db: &dyn CodegenDatabase,
+        deps: impl Iterator<Item = hir::Lib>,
+        target_dir: &Path,
+    ) -> PathBuf {
         let mut linker = crate::linker::create();
         let out = self.path(db, target_dir);
 
-        linker.add_object(self.tmp_path());
+        for obj in self.objects.iter() {
+            linker.add_object(obj.tmp_path());
+        }
+
         linker.rpath(target_dir);
         linker.arg("-L");
         linker.arg(target_dir);
@@ -61,6 +87,7 @@ impl Assembly {
         }
 
         linker.run();
+        out
     }
 
     fn extension(&self, db: &dyn CodegenDatabase) -> &'static str {
