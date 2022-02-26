@@ -18,7 +18,6 @@ pub enum SyntaxKind {
     R_BRACKET,
     PATH_SEP,
     ARROW,
-    FAT_ARROW,
     LEFT_ARROW,
     DBL_COLON,
     DBL_DOT,
@@ -74,7 +73,6 @@ pub enum SyntaxKind {
     CASE_KW,
     OF_KW,
     LET_KW,
-    FOR_KW,
 
     // Syntax tree
     SOURCE_FILE,
@@ -105,7 +103,12 @@ pub enum SyntaxKind {
     ITEM_TYPE,
     ITEM_CTOR,
 
+    TYPE_VARS,
     FUN_DEP,
+
+    WHERE_CLAUSE,
+    CONSTRAINT,
+    TYPE_VAR_KIND,
 
     PAT_TYPED,
     PAT_APP,
@@ -120,7 +123,6 @@ pub enum SyntaxKind {
     FIELD_NORMAL,
     FIELD_PUN,
 
-    TYPE_KINDED,
     TYPE_HOLE,
     TYPE_FIGURE,
     TYPE_SYMBOL,
@@ -134,15 +136,12 @@ pub enum SyntaxKind {
     TYPE_ROW,
     TYPE_TUPLE,
     TYPE_PARENS,
-    TYPE_FOR,
-    TYPE_CTNT,
+    TYPE_WHERE,
 
     ROW_FIELD,
     ROW_TAIL,
 
     SENTINEL,
-    TYPE_VAR,
-    CONSTRAINT,
 
     STMT_LET,
     STMT_BIND,

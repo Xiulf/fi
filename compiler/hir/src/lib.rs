@@ -717,13 +717,6 @@ fn ty_link_name(
         | TypeRef::Placeholder => write!(out, "_"),
         | TypeRef::Figure(i) => write!(out, "{}", i),
         | TypeRef::Symbol(s) => write!(out, "{:?}", s),
-        | TypeRef::Kinded(t, k) => {
-            write!(out, "(")?;
-            ty_link_name(map, t, out)?;
-            write!(out, " :: ")?;
-            ty_link_name(map, k, out)?;
-            write!(out, ")")
-        },
         | TypeRef::App(a, b) => {
             write!(out, "(")?;
             ty_link_name(map, a, out)?;

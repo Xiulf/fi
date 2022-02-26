@@ -1,7 +1,7 @@
 use crate::{
     db::HirDatabase,
     infer::ExprOrPatId,
-    ty::{List, TypeVar},
+    ty::{List, TypeVar, WhereClause},
 };
 use arena::{Arena, ArenaMap, Idx};
 use hir_def::{
@@ -33,7 +33,7 @@ pub enum TyInfo {
     Tuple(List<TyId>),
     Func(List<TyId>, TyId),
 
-    Ctnt(CtntInfo, TyId),
+    Where(WhereClause<CtntInfo>, TyId),
     ForAll(List<TyId>, TyId, TypeVarScopeId),
 }
 
@@ -63,12 +63,13 @@ pub enum TypeOrigin {
     Synthetic,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TypeVars {
     scopes: Arena<TypeVarScope>,
     current: Vec<TypeVarScopeId>,
 }
 
+#[derive(Debug)]
 pub struct TypeVarScope {
     var_kinds: List<TyId>,
 }
@@ -237,14 +238,20 @@ impl TyId {
 
                 f(types, ty)
             },
-            | TyInfo::Ctnt(ctnt, inner) => {
-                let ctnt = CtntInfo {
-                    class: ctnt.class,
-                    types: ctnt.types.iter().map(|t| t.everywhere(types, f)).collect(),
+            | TyInfo::Where(where_, inner) => {
+                let where_ = WhereClause {
+                    constraints: where_
+                        .constraints
+                        .iter()
+                        .map(|c| CtntInfo {
+                            class: c.class,
+                            types: c.types.iter().map(|t| t.everywhere(types, f)).collect(),
+                        })
+                        .collect(),
                 };
 
                 let inner = inner.everywhere(types, f);
-                let ty = types.update(self, TyInfo::Ctnt(ctnt, inner));
+                let ty = types.update(self, TyInfo::Where(where_, inner));
 
                 f(types, ty)
             },
@@ -304,14 +311,20 @@ impl TyId {
 
                 f(types, ty)
             },
-            | TyInfo::Ctnt(ctnt, inner) => {
-                let ctnt = CtntInfo {
-                    class: ctnt.class,
-                    types: ctnt.types.iter().map(|t| t.everywhere(types, f)).collect(),
+            | TyInfo::Where(where_, inner) => {
+                let where_ = WhereClause {
+                    constraints: where_
+                        .constraints
+                        .iter()
+                        .map(|c| CtntInfo {
+                            class: c.class,
+                            types: c.types.iter().map(|t| t.everywhere(types, f)).collect(),
+                        })
+                        .collect(),
                 };
 
                 let inner = inner.everywhere(types, f);
-                let ty = types.override_(self, TyInfo::Ctnt(ctnt, inner));
+                let ty = types.override_(self, TyInfo::Where(where_, inner));
 
                 f(types, ty)
             },
@@ -360,9 +373,11 @@ impl TyId {
 
                 ret.everything(types, f);
             },
-            | TyInfo::Ctnt(ref ctnt, ty) => {
-                for ty in ctnt.types.iter() {
-                    ty.everything(types, f);
+            | TyInfo::Where(ref where_, ty) => {
+                for ctnt in where_.constraints.iter() {
+                    for ty in ctnt.types.iter() {
+                        ty.everything(types, f);
+                    }
                 }
 
                 ty.everything(types, f);
@@ -433,15 +448,21 @@ impl TyId {
 
                 types.update(self, TyInfo::Func(args, ret))
             },
-            | TyInfo::Ctnt(ctnt, inner) => {
-                let ctnt = CtntInfo {
-                    class: ctnt.class,
-                    types: ctnt.types.iter().map(|t| t.replace_vars(types, with, scope)).collect(),
+            | TyInfo::Where(where_, inner) => {
+                let where_ = WhereClause {
+                    constraints: where_
+                        .constraints
+                        .iter()
+                        .map(|c| CtntInfo {
+                            class: c.class,
+                            types: c.types.iter().map(|t| t.replace_vars(types, with, scope)).collect(),
+                        })
+                        .collect(),
                 };
 
                 let inner = inner.replace_vars(types, with, scope);
 
-                types.update(self, TyInfo::Ctnt(ctnt, inner))
+                types.update(self, TyInfo::Where(where_, inner))
             },
             | TyInfo::ForAll(k, inner, s) => {
                 let k = k.iter().map(|k| k.replace_vars(types, with, scope)).collect();
@@ -633,24 +654,40 @@ impl std::fmt::Display for TyDisplay<'_> {
                     .join(" -> "),
                 self.with_ty(ret, true),
             ),
-            | TyInfo::Ctnt(ref ctnt, ty) if self.lhs_exposed => write!(
+            | TyInfo::Where(ref where_, ty) if self.lhs_exposed => write!(
                 f,
-                "({}{} => {})",
-                self.db.class_data(ctnt.class).name,
-                ctnt.types
+                "({} where{})",
+                where_
+                    .constraints
                     .iter()
-                    .map(|&t| format!(" {}", self.with_ty(t, true)))
+                    .map(|c| format!(
+                        " {}{}",
+                        self.db.class_data(c.class).name,
+                        c.types
+                            .iter()
+                            .map(|&t| format!(" {}", self.with_ty(t, true)))
+                            .collect::<Vec<_>>()
+                            .join(""),
+                    ))
                     .collect::<Vec<_>>()
                     .join(""),
                 self.with_ty(ty, false)
             ),
-            | TyInfo::Ctnt(ref ctnt, ty) => write!(
+            | TyInfo::Where(ref where_, ty) => write!(
                 f,
-                "{}{} => {}",
-                self.db.class_data(ctnt.class).name,
-                ctnt.types
+                "{} where{}",
+                where_
+                    .constraints
                     .iter()
-                    .map(|&t| format!(" {}", self.with_ty(t, true)))
+                    .map(|c| format!(
+                        " {}{}",
+                        self.db.class_data(c.class).name,
+                        c.types
+                            .iter()
+                            .map(|&t| format!(" {}", self.with_ty(t, true)))
+                            .collect::<Vec<_>>()
+                            .join(""),
+                    ))
                     .collect::<Vec<_>>()
                     .join(""),
                 self.with_ty(ty, false)

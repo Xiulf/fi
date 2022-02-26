@@ -6,54 +6,43 @@ use crate::token_set::TokenSet;
 const TYPE_RECOVERY_SET: TokenSet = TokenSet::new(&[R_PAREN, COMMA]);
 
 crate fn ty(p: &mut Parser) {
-    if let Some(m) = ctnt(p) {
-        if p.eat(DBL_COLON) {
+    if let Some(m) = func(p) {
+        if p.at(WHERE_KW) {
             let m = m.precede(p);
-            let _ = ctnt(p);
 
-            m.complete(p, TYPE_KINDED);
+            items::where_clause(p);
+            m.complete(p, TYPE_WHERE);
         }
     }
-}
-
-crate fn ctnt(p: &mut Parser) -> Option<CompletedMarker> {
-    if p.at(IDENT) {
-        for i in 1..100 {
-            if p.nth_at(i, FAT_ARROW) {
-                let m = p.start();
-
-                constraint(p);
-                p.expect(FAT_ARROW);
-
-                let _ = ctnt(p);
-
-                return Some(m.complete(p, TYPE_CTNT));
-            } else if p.nth_at_ts(
-                i,
-                TokenSet::new(&[LYT_START, LYT_SEP, LYT_END, COMMA, R_PAREN, R_BRACE]),
-            ) {
-                break;
-            }
-        }
-    }
-
-    func(p)
 }
 
 crate fn func(p: &mut Parser) -> Option<CompletedMarker> {
-    let mut m = app(p)?;
+    let mut m = list(p)?;
 
-    if p.at(ARROW) {
+    if p.eat(ARROW) {
         let ty = m.precede(p);
-
-        while p.eat(ARROW) {
-            let _ = app(p);
-        }
+        let _ = func(p);
 
         m = ty.complete(p, TYPE_FN);
     }
 
     Some(m)
+}
+
+crate fn list(p: &mut Parser) -> Option<CompletedMarker> {
+    let ty = app(p)?;
+
+    if p.at(COMMA) {
+        let list = ty.precede(p);
+
+        while p.eat(COMMA) {
+            let _ = app(p);
+        }
+
+        Some(list.complete(p, TYPE_TUPLE))
+    } else {
+        Some(ty)
+    }
 }
 
 crate fn app(p: &mut Parser) -> Option<CompletedMarker> {
@@ -154,27 +143,10 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
             if p.eat(R_PAREN) {
                 Some(m.complete(p, TYPE_TUPLE))
             } else {
-                let mut is_tuple = false;
-
-                ty(p);
-
-                while p.eat(COMMA) {
-                    is_tuple = true;
-
-                    if p.at(R_PAREN) {
-                        break;
-                    } else {
-                        ty(p);
-                    }
-                }
-
+                let _ = ty(p);
                 p.expect(R_PAREN);
 
-                if is_tuple {
-                    Some(m.complete(p, TYPE_TUPLE))
-                } else {
-                    Some(m.complete(p, TYPE_PARENS))
-                }
+                Some(m.complete(p, TYPE_PARENS))
             }
         },
         | L_BRACE => {
@@ -203,17 +175,6 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
             p.expect(R_BRACE);
             Some(m.complete(p, TYPE_REC))
         },
-        | FOR_KW => {
-            p.bump(FOR_KW);
-
-            while !p.at(DOT) {
-                type_var(p);
-            }
-
-            p.expect(DOT);
-            ctnt(p);
-            Some(m.complete(p, TYPE_FOR))
-        },
         | _ => {
             p.err_recover("expected a type", TYPE_RECOVERY_SET);
             m.abandon(p);
@@ -222,36 +183,9 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     }
 }
 
-crate fn constraint(p: &mut Parser) {
-    let m = p.start();
-
-    paths::path(p);
-
-    while peek(p) {
-        atom(p);
-    }
-
-    m.complete(p, CONSTRAINT);
-}
-
-crate fn type_var(p: &mut Parser) {
-    let m = p.start();
-
-    if p.eat(L_PAREN) {
-        paths::name(p);
-        p.expect(DBL_COLON);
-        func(p);
-        p.expect(R_PAREN);
-        m.complete(p, TYPE_VAR);
-    } else {
-        paths::name(p);
-        m.complete(p, TYPE_VAR);
-    }
-}
-
 crate fn peek(p: &Parser) -> bool {
     match p.current() {
-        | IDENT | STAR | HASH | L_PAREN | L_BRACKET | L_BRACE | FOR_KW | INT | STRING => true,
+        | IDENT | STAR | HASH | L_PAREN | L_BRACKET | L_BRACE | INT | STRING => true,
         | _ => false,
     }
 }

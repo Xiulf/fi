@@ -4,9 +4,11 @@ pub use crate::item_tree::{Assoc, FunDep, Prec};
 use crate::item_tree::{AssocItem, ItemTreeId};
 use crate::name::Name;
 use crate::path::Path;
-use crate::type_ref::{Constraint, LocalTypeRefId, LocalTypeVarId, TypeMap, TypeSourceMap};
+use crate::resolver::HasResolver;
+use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap, TypeMapBuilder, TypeRef, TypeSourceMap, WhereClause};
 use arena::Arena;
 use base_db::input::FileId;
+use rustc_hash::FxHashSet;
 use std::sync::Arc;
 use syntax::ast;
 
@@ -22,8 +24,7 @@ pub struct FixityData {
 pub struct FuncData {
     pub name: Name,
     pub ty: Option<LocalTypeRefId>,
-    pub vars: Box<[LocalTypeVarId]>,
-    pub constraints: Box<[Constraint]>,
+    pub type_vars: Box<[LocalTypeVarId]>,
     pub has_body: bool,
     pub is_foreign: bool,
     type_map: TypeMap,
@@ -50,7 +51,7 @@ pub struct ConstData {
 #[derive(Debug, PartialEq, Eq)]
 pub struct TypeAliasData {
     pub name: Name,
-    pub vars: Box<[LocalTypeVarId]>,
+    pub type_vars: Box<[LocalTypeVarId]>,
     pub alias: LocalTypeRefId,
     type_map: TypeMap,
     type_source_map: TypeSourceMap,
@@ -60,7 +61,7 @@ pub struct TypeAliasData {
 pub struct TypeCtorData {
     pub name: Name,
     pub kind: Option<LocalTypeRefId>,
-    pub vars: Box<[LocalTypeVarId]>,
+    pub type_vars: Box<[LocalTypeVarId]>,
     pub ctors: Arena<CtorData>,
     pub is_foreign: bool,
     type_map: TypeMap,
@@ -76,9 +77,9 @@ pub struct CtorData {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClassData {
     pub name: Name,
-    pub vars: Box<[LocalTypeVarId]>,
+    pub type_vars: Box<[LocalTypeVarId]>,
     pub fundeps: Box<[FunDep]>,
-    pub constraints: Box<[Constraint]>,
+    pub where_clause: WhereClause,
     pub items: Box<[(Name, AssocItemId)]>,
     type_map: TypeMap,
     type_source_map: TypeSourceMap,
@@ -87,9 +88,9 @@ pub struct ClassData {
 #[derive(Debug, PartialEq, Eq)]
 pub struct MemberData {
     pub class: Path,
-    pub vars: Box<[LocalTypeVarId]>,
+    pub type_vars: Box<[LocalTypeVarId]>,
     pub types: Box<[LocalTypeRefId]>,
-    pub constraints: Box<[Constraint]>,
+    pub where_clause: WhereClause,
     pub items: Box<[(Name, AssocItemId)]>,
     type_map: TypeMap,
     type_source_map: TypeSourceMap,
@@ -110,6 +111,35 @@ impl FixityData {
     }
 }
 
+fn register_type_vars(
+    db: &dyn DefDatabase,
+    module: ModuleId,
+    type_builder: &mut TypeMapBuilder,
+) -> Box<[LocalTypeVarId]> {
+    let resolver = module.resolver(db);
+    let types = type_builder.iter().map(|(id, t)| (id, t.clone())).collect::<Vec<_>>();
+    let mut defined = FxHashSet::default();
+    let mut vars = Vec::new();
+
+    for &(id, ref ty) in &types {
+        match ty {
+            | TypeRef::Path(path) if path.segments().len() == 1 => {
+                let name = path.as_ident().unwrap();
+
+                if name.is_lowercase() && !defined.contains(name) && resolver.resolve_type(db, path).is_none() {
+                    let var = type_builder.alloc_type_var_from_ty(name.clone(), id);
+
+                    vars.push(var);
+                    defined.insert(name);
+                }
+            },
+            | _ => {},
+        }
+    }
+
+    vars.into_boxed_slice()
+}
+
 impl FuncData {
     pub fn query(db: &dyn DefDatabase, id: FuncId) -> Arc<Self> {
         let loc = id.lookup(db);
@@ -118,33 +148,7 @@ impl FuncData {
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
-        // let (vars, constraints) = if let Some(mut ty) = ty {
-        //     let mut vars = Vec::new();
-        //     let mut constraints = Vec::new();
-
-        //     if it.has_body {
-        //         loop {
-        //             match type_builder.map()[ty] {
-        //                 | TypeRef::Forall(ref vs, t) => {
-        //                     vars.extend_from_slice(vs);
-        //                     ty = t;
-        //                 },
-        //                 | TypeRef::Constraint(ref ctnt, t) => {
-        //                     constraints.push(ctnt.clone());
-        //                     ty = t;
-        //                 },
-        //                 | _ => break,
-        //             }
-        //         }
-        //     }
-
-        //     (vars.into_boxed_slice(), constraints.into_boxed_slice())
-        // } else {
-        //     (Box::new([]) as Box<[_]>, Box::new([]) as Box<[_]>)
-        // };
-
-        let vars = Box::new([]);
-        let constraints = Box::new([]);
+        let type_vars = register_type_vars(db, loc.module(db), &mut type_builder);
         let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(FuncData {
@@ -152,8 +156,7 @@ impl FuncData {
             has_body: it.has_body,
             is_foreign: it.is_foreign,
             ty,
-            vars,
-            constraints,
+            type_vars,
             type_map,
             type_source_map,
         })
@@ -230,18 +233,20 @@ impl TypeAliasData {
         let it = &item_tree[loc.id.value];
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
-        let vars = src
-            .value
-            .vars()
-            .filter_map(|t| type_builder.alloc_type_var(t))
-            .collect();
+        let type_vars = match src.value.vars() {
+            | Some(vars) => vars
+                .type_vars()
+                .map(|t| type_builder.alloc_type_var(t))
+                .collect::<Box<[LocalTypeVarId]>>(),
+            | None => Box::new([]),
+        };
 
         let alias = type_builder.alloc_type_ref_opt(src.value.alias());
         let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(TypeAliasData {
             name: it.name.clone(),
-            vars,
+            type_vars,
             alias,
             type_map,
             type_source_map,
@@ -268,11 +273,13 @@ impl TypeCtorData {
         let mut type_builder = TypeMap::builder();
         let mut ctors = Arena::new();
         let kind = src.value.kind().map(|t| type_builder.alloc_type_ref(t));
-        let vars = src
-            .value
-            .vars()
-            .filter_map(|t| type_builder.alloc_type_var(t))
-            .collect();
+        let type_vars = match src.value.vars() {
+            | Some(vars) => vars
+                .type_vars()
+                .map(|t| type_builder.alloc_type_var(t))
+                .collect::<Box<[LocalTypeVarId]>>(),
+            | None => Box::new([]),
+        };
 
         for ctor in src.value.ctors() {
             ctors.alloc(CtorData {
@@ -287,7 +294,7 @@ impl TypeCtorData {
             name: it.name.clone(),
             is_foreign: it.is_foreign,
             kind,
-            vars,
+            type_vars,
             ctors,
             type_map,
             type_source_map,
@@ -315,18 +322,15 @@ impl ClassData {
         let it = &item_tree[loc.id.value];
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
-        let vars = src
-            .value
-            .vars()
-            .filter_map(|t| type_builder.alloc_type_var(t))
-            .collect();
+        let type_vars = match src.value.vars() {
+            | Some(vars) => vars
+                .type_vars()
+                .map(|t| type_builder.alloc_type_var(t))
+                .collect::<Box<[LocalTypeVarId]>>(),
+            | None => Box::new([]),
+        };
 
-        let constraints = src
-            .value
-            .constraints()
-            .filter_map(|c| type_builder.lower_constraint(c))
-            .collect();
-
+        let where_clause = type_builder.lower_where_clause(src.value.where_clause());
         let container = ContainerId::Class(id);
         let items = collect_assoc_items(db, loc.id.file_id, it.items.iter().copied(), container);
         let (type_map, type_source_map) = type_builder.finish();
@@ -335,8 +339,8 @@ impl ClassData {
             name: it.name.clone(),
             fundeps: it.fundeps.clone(),
             items: items.into(),
-            vars,
-            constraints,
+            where_clause,
+            type_vars,
             type_map,
             type_source_map,
         })
@@ -365,18 +369,8 @@ impl MemberData {
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let types = src.value.types().map(|t| type_builder.alloc_type_ref(t)).collect();
-        let vars = src
-            .value
-            .vars()
-            .filter_map(|t| type_builder.alloc_type_var(t))
-            .collect();
-
-        let constraints = src
-            .value
-            .constraints()
-            .filter_map(|c| type_builder.lower_constraint(c))
-            .collect();
-
+        let type_vars = register_type_vars(db, loc.module, &mut type_builder);
+        let where_clause = type_builder.lower_where_clause(src.value.where_clause());
         let container = ContainerId::Member(id);
         let items = collect_assoc_items(db, loc.id.file_id, it.items.iter().copied(), container);
         let (type_map, type_source_map) = type_builder.finish();
@@ -384,9 +378,9 @@ impl MemberData {
         Arc::new(MemberData {
             class: it.class.clone(),
             items: items.into(),
+            where_clause,
             types,
-            vars,
-            constraints,
+            type_vars,
             type_map,
             type_source_map,
         })

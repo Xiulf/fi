@@ -31,7 +31,7 @@ impl Comment {
 
         match kind {
             | CommentKind::Doc => {
-                let text = &self.text()[3..];
+                let text = &self.text()[2..];
                 let ws = text.chars().next().filter(|c| c.is_whitespace());
                 let text = ws.map_or(text, |ws| &text[ws.len_utf8()..]);
 
@@ -44,7 +44,7 @@ impl Comment {
 
 impl CommentKind {
     pub fn from_text(text: &str) -> Self {
-        if text.starts_with("--|") {
+        if text.starts_with(";;") {
             CommentKind::Doc
         } else {
             CommentKind::Normal

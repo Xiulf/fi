@@ -1,9 +1,10 @@
 module prim =
 
-@lang = "type-kind"   foreign type Type   :: Type
-@lang = "figure-kind" foreign type Figure :: Type
-@lang = "symbol-kind" foreign type Symbol :: Type
-@lang = "row-kind"    foreign type Row    :: Type -> Type
+@lang = "type-kind"   foreign type Type     :: Type
+@lang = "figure-kind" foreign type Figure   :: Type
+@lang = "symbol-kind" foreign type Symbol   :: Type
+@lang = "tuple-kind"  foreign type Tuple    :: Type
+@lang = "row-kind"    foreign type Row      :: Type -> Type
 
 @lang = "never-type"
 @repr(uninhabited)
@@ -21,9 +22,9 @@ foreign type Char :: Type
 )
 foreign type Str :: Type
 
--- @lang = "fn-type"
--- @repr(func(arg = 0, ret = 1))
--- foreign type Fn :: Type -> Type -> Type
+@lang = "fn-type"
+@repr(func(args = 0, ret = 1))
+foreign type Fn :: Tuple, Type -> Type
 
 @lang = "ptr-type"
 @repr(ptr(elem = 0))

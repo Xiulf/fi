@@ -61,7 +61,7 @@ impl InferenceContext<'_> {
                 self.check_kind(ret, type_kind);
                 type_kind
             },
-            | TyInfo::Ctnt(_, ty) => self.infer_kind(ty),
+            | TyInfo::Where(_, ty) => self.infer_kind(ty),
             | TyInfo::ForAll(kinds, inner, scope) => {
                 self.type_vars.push_scope(scope);
 

@@ -39,8 +39,13 @@ ast_node!(Item {
 
 ast_node!(ImportItems, IMPORT_ITEMS);
 ast_node!(Ctor, ITEM_CTOR);
-ast_node!(Instance, ITEM_INSTANCE);
+
+ast_node!(TypeVars, TYPE_VARS);
 ast_node!(FunDep, FUN_DEP);
+
+ast_node!(WhereClause, WHERE_CLAUSE);
+ast_node!(Constraint, CONSTRAINT);
+ast_node!(TypeVarKind, TYPE_VAR_KIND);
 
 ast_node!(@ AssocItem {
     Fun(ItemFun, ITEM_FUN),
@@ -60,7 +65,6 @@ ast_node!(Pat {
 });
 
 ast_node!(Type {
-    Kinded(TypeKinded, TYPE_KINDED),
     Hole(TypeHole, TYPE_HOLE),
     Figure(TypeFigure, TYPE_FIGURE),
     Symbol(TypeSymbol, TYPE_SYMBOL),
@@ -74,16 +78,13 @@ ast_node!(Type {
     Row(TypeRow, TYPE_ROW),
     Tuple(TypeTuple, TYPE_TUPLE),
     Parens(TypeParens, TYPE_PARENS),
-    For(TypeFor, TYPE_FOR),
-    Ctnt(TypeCtnt, TYPE_CTNT),
+    Where(TypeWhere, TYPE_WHERE),
 });
 
 ast_node!(RowField, ROW_FIELD);
 ast_node!(RowTail, ROW_TAIL);
 
 ast_node!(Sentinel, SENTINEL);
-ast_node!(TypeVar, TYPE_VAR);
-ast_node!(Constraint, CONSTRAINT);
 
 ast_node!(Stmt {
     Let(StmtLet, STMT_LET),

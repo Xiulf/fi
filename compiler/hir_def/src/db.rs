@@ -6,7 +6,7 @@ use crate::def_map::DefMap;
 use crate::id::*;
 use crate::item_tree::ItemTree;
 use crate::lang_item::{LangItem, LangItems};
-use crate::scope::{ExprScopes, TypeScopes};
+use crate::scope::ExprScopes;
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use base_db::{SourceDatabase, SourceDatabaseExt, Upcast};
@@ -59,9 +59,6 @@ pub trait DefDatabase: InternDatabase + Upcast<dyn SourceDatabase> {
 
     #[salsa::invoke(ExprScopes::expr_scopes_query)]
     fn expr_scopes(&self, def: DefWithBodyId) -> Arc<ExprScopes>;
-
-    #[salsa::invoke(TypeScopes::type_scopes_query)]
-    fn type_scopes(&self, owner: TypeVarOwner) -> Arc<TypeScopes>;
 
     #[salsa::invoke(data::FixityData::query)]
     fn fixity_data(&self, id: FixityId) -> Arc<data::FixityData>;

@@ -1,5 +1,8 @@
 use super::InferenceContext;
-use crate::info::{CtntInfo, FieldInfo, TyId, TyInfo, TypeVarScopeId};
+use crate::{
+    info::{CtntInfo, FieldInfo, TyId, TyInfo, TypeVarScopeId},
+    ty::WhereClause,
+};
 
 impl InferenceContext<'_> {
     pub fn unskolemize(&mut self, ty: TyId) -> TyId {
@@ -49,15 +52,21 @@ impl InferenceContext<'_> {
 
                 self.types.update(inner, TyInfo::Func(a, b))
             },
-            | TyInfo::Ctnt(ctnt, ty) => {
-                let ctnt = CtntInfo {
-                    class: ctnt.class,
-                    types: ctnt.types.iter().map(|&t| self.skolemize(kinds, t, scope)).collect(),
+            | TyInfo::Where(where_, ty) => {
+                let where_ = WhereClause {
+                    constraints: where_
+                        .constraints
+                        .iter()
+                        .map(|ctnt| CtntInfo {
+                            class: ctnt.class,
+                            types: ctnt.types.iter().map(|&t| self.skolemize(kinds, t, scope)).collect(),
+                        })
+                        .collect(),
                 };
 
                 let ty = self.skolemize(kinds, ty, scope);
 
-                self.types.update(inner, TyInfo::Ctnt(ctnt, ty))
+                self.types.update(inner, TyInfo::Where(where_, ty))
             },
             | TyInfo::ForAll(k, ty, s) => {
                 let k = k.iter().map(|&k| self.skolemize(kinds, k, scope)).collect();

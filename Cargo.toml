@@ -14,3 +14,9 @@ members = [
     "compiler/parser",
     "compiler/arena",
 ]
+
+[profile.dev]
+debug = false
+
+[profile.release]
+lto = true

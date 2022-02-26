@@ -22,7 +22,7 @@ pub enum TyKind {
     Tuple(List<Ty>),
     Func(List<Ty>, Ty),
 
-    Ctnt(Constraint, Ty),
+    Where(WhereClause<Constraint>, Ty),
     ForAll(List<Ty>, Ty, TypeVarScopeId),
     TypeVar(TypeVar),
 }
@@ -37,6 +37,11 @@ pub enum Reason {
 pub struct Field {
     pub name: Name,
     pub ty: Ty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WhereClause<C> {
+    pub constraints: List<C>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

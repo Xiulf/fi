@@ -136,12 +136,11 @@ impl<'src> Lexer<'src> {
                     self.emit(WHITESPACE);
                 }
             },
-            | '-' if self.peek() == '-' => {
+            | ';' => {
                 while self.peek() != '\n' {
                     self.advance();
                 }
 
-                // self.insert_default(start, COMMENT);
                 self.emit(COMMENT)
             },
             | '-' if self.peek().is_digit(10) => self.number(ch, start),
@@ -244,14 +243,9 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 self.insert_default(start, DBL_DOT);
             },
-            | '.' => match self.stack[..] {
-                | [.., (_, LayoutDelim::TopDeclHead)] => {
-                    self.insert_default(start, DOT);
-                },
-                | _ => {
-                    self.insert_default(start, DOT);
-                    self.stack.push((start, LayoutDelim::Prop));
-                },
+            | '.' => {
+                self.insert_default(start, DOT);
+                self.stack.push((start, LayoutDelim::Prop));
             },
             | ':' if self.peek() == ':' => {
                 self.advance();
@@ -259,10 +253,6 @@ impl<'src> Lexer<'src> {
             },
             | ':' => {
                 self.insert_default(start, COLON);
-            },
-            | '=' if self.peek() == '>' => {
-                self.advance();
-                self.insert_default(start, FAT_ARROW);
             },
             | '=' => match self.stack[..] {
                 | [.., (_, LayoutDelim::TopDecl)] => {
@@ -357,7 +347,7 @@ impl<'src> Lexer<'src> {
                 self.emit(OPERATOR);
             },
             | ',' => {
-                Collapse::new(self.tokens.len()).collapse(start, indented_p, &mut self.stack, &mut self.tokens);
+                Collapse::new(self.tokens.len()).collapse(start, offside_end_p, &mut self.stack, &mut self.tokens);
                 self.emit(COMMA);
 
                 if let [.., (_, LayoutDelim::Brace)] = self.stack[..] {
@@ -855,18 +845,6 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                 } else {
                     self.insert_default(start, LET_KW);
-                }
-            },
-            | "for" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, FOR_KW);
-
-                    if self.is_top_decl(start) {
-                        self.stack.push((start, LayoutDelim::TopDeclHead));
-                    }
                 }
             },
             | _ => {

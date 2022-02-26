@@ -1,16 +1,14 @@
 use crate::body::Body;
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId, Stmt};
-use crate::id::{DefWithBodyId, TypeVarId, TypeVarOwner};
+use crate::id::DefWithBodyId;
 use crate::name::Name;
 use crate::pat::{Pat, PatId};
-use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap, TypeRef};
 use arena::{Arena, Idx};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 pub type ExprScopeId = Idx<ExprScopeData>;
-pub type TypeScopeId = Idx<TypeScopeData>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ExprScopes {
@@ -30,25 +28,6 @@ pub struct ExprScopeEntry {
     pat: PatId,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct TypeScopes {
-    owner: TypeVarOwner,
-    scopes: Arena<TypeScopeData>,
-    scopes_by_type: FxHashMap<LocalTypeRefId, TypeScopeId>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct TypeScopeData {
-    parent: Option<TypeScopeId>,
-    entries: Vec<TypeScopeEntry>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct TypeScopeEntry {
-    name: Name,
-    type_var: TypeVarId,
-}
-
 impl ExprScopeEntry {
     pub fn name(&self) -> &Name {
         &self.name
@@ -56,16 +35,6 @@ impl ExprScopeEntry {
 
     pub fn pat(&self) -> PatId {
         self.pat
-    }
-}
-
-impl TypeScopeEntry {
-    pub fn name(&self) -> &Name {
-        &self.name
-    }
-
-    pub fn type_var(&self) -> TypeVarId {
-        self.type_var
     }
 }
 
@@ -143,94 +112,6 @@ impl ExprScopes {
     }
 }
 
-impl TypeScopes {
-    pub(crate) fn type_scopes_query(db: &dyn DefDatabase, owner: TypeVarOwner) -> Arc<Self> {
-        owner.with_type_map(db, |map| Arc::new(Self::new(map, owner)))
-    }
-
-    fn new(map: &TypeMap, owner: TypeVarOwner) -> Self {
-        let mut scopes = TypeScopes {
-            owner,
-            scopes: Arena::default(),
-            scopes_by_type: FxHashMap::default(),
-        };
-
-        let root = scopes.root_scope();
-
-        for (ty, _) in map.iter() {
-            if !scopes.scopes_by_type.contains_key(&ty) {
-                compute_type_scopes(ty, map, &mut scopes, root, true);
-            }
-        }
-
-        scopes
-    }
-
-    pub fn from_type_vars(
-        map: &TypeMap,
-        owner: TypeVarOwner,
-        vars: impl Iterator<Item = LocalTypeVarId>,
-    ) -> (Self, TypeScopeId) {
-        let mut scopes = TypeScopes {
-            owner,
-            scopes: Arena::default(),
-            scopes_by_type: FxHashMap::default(),
-        };
-
-        let root = scopes.root_scope();
-
-        for var in vars {
-            let data = &map[var];
-
-            scopes.add_binding(&data.name, var, root);
-        }
-
-        (scopes, root)
-    }
-
-    pub fn entries(&self, id: TypeScopeId) -> &[TypeScopeEntry] {
-        &self.scopes[id].entries
-    }
-
-    pub fn scope_chain(&self, scope: Option<TypeScopeId>) -> impl Iterator<Item = TypeScopeId> + '_ {
-        std::iter::successors(scope, move |&scope| self.scopes[scope].parent)
-    }
-
-    pub fn scope_for(&self, id: LocalTypeRefId) -> Option<TypeScopeId> {
-        self.scopes_by_type.get(&id).copied()
-    }
-
-    fn root_scope(&mut self) -> TypeScopeId {
-        self.scopes.alloc(TypeScopeData {
-            parent: None,
-            entries: Vec::new(),
-        })
-    }
-
-    fn new_scope(&mut self, parent: TypeScopeId) -> TypeScopeId {
-        self.scopes.alloc(TypeScopeData {
-            parent: Some(parent),
-            entries: Vec::new(),
-        })
-    }
-
-    fn add_binding(&mut self, name: &Name, type_var: LocalTypeVarId, scope: TypeScopeId) {
-        let entry = TypeScopeEntry {
-            name: name.clone(),
-            type_var: TypeVarId {
-                owner: self.owner,
-                local_id: type_var,
-            },
-        };
-
-        self.scopes[scope].entries.push(entry);
-    }
-
-    fn set_scope(&mut self, ty: LocalTypeRefId, scope: TypeScopeId) {
-        self.scopes_by_type.insert(ty, scope);
-    }
-}
-
 fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope: ExprScopeId) {
     scopes.set_scope(expr, scope);
 
@@ -278,69 +159,5 @@ fn compute_block_scopes(stmts: &[Stmt], body: &Body, scopes: &mut ExprScopes, mu
                 compute_expr_scopes(*expr, body, scopes, scope);
             },
         }
-    }
-}
-
-fn compute_type_scopes(
-    ty: LocalTypeRefId,
-    map: &TypeMap,
-    scopes: &mut TypeScopes,
-    mut scope: TypeScopeId,
-    is_root: bool,
-) {
-    scopes.set_scope(ty, scope);
-
-    match &map[ty] {
-        | TypeRef::Forall(vars, inner) => {
-            if !is_root {
-                scope = scopes.new_scope(scope);
-            }
-
-            for &var in vars.iter() {
-                let data = &map[var];
-
-                if let Some(kind) = data.kind {
-                    compute_type_scopes(kind, map, scopes, scope, false);
-                }
-
-                scopes.add_binding(&data.name, var, scope);
-            }
-
-            compute_type_scopes(*inner, map, scopes, scope, false);
-        },
-        | TypeRef::Kinded(ty, kind) => {
-            compute_type_scopes(*ty, map, scopes, scope, false);
-            compute_type_scopes(*kind, map, scopes, scope, false);
-        },
-        | TypeRef::App(base, args) => {
-            compute_type_scopes(*base, map, scopes, scope, false);
-
-            for arg in args.iter() {
-                compute_type_scopes(*arg, map, scopes, scope, false);
-            }
-        },
-        | TypeRef::Tuple(tys) => {
-            for ty in tys.iter() {
-                compute_type_scopes(*ty, map, scopes, scope, false);
-            }
-        },
-        | TypeRef::Ptr(ty, _) | TypeRef::Slice(ty) | TypeRef::Array(ty, _) => {
-            compute_type_scopes(*ty, map, scopes, scope, false)
-        },
-        | TypeRef::Func(args, ret) => {
-            for arg in args.iter() {
-                compute_type_scopes(*arg, map, scopes, scope, false);
-            }
-
-            compute_type_scopes(*ret, map, scopes, scope, false);
-        },
-        | TypeRef::Constraint(ctnt, ty) => {
-            for ty in ctnt.types.iter() {
-                compute_type_scopes(*ty, map, scopes, scope, false);
-            }
-
-            compute_type_scopes(*ty, map, scopes, scope, false);
-        },
-        | _ => {},
     }
 }

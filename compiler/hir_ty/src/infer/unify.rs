@@ -1,7 +1,7 @@
 use super::{ExprOrPatId, InferenceContext};
 use crate::{
     info::{CtntInfo, FieldInfo, TyId, TyInfo, TySource, TypeOrigin, Types, Unknown},
-    ty::{List, TypeVar},
+    ty::{List, TypeVar, WhereClause},
 };
 use rustc_hash::FxHashMap;
 
@@ -111,8 +111,11 @@ impl InferenceContext<'_> {
 
                 self.instantiate(ty, id)
             },
-            | TyInfo::Ctnt(ref ctnt, inner) => {
-                self.constrain(id, ctnt.clone());
+            | TyInfo::Where(ref where_, inner) => {
+                for ctnt in where_.constraints.iter() {
+                    self.constrain(id, ctnt.clone());
+                }
+
                 self.instantiate(inner, id)
             },
             | _ => ty,
@@ -176,10 +179,18 @@ impl InferenceContext<'_> {
             self.solve_type(u, ty);
         }
 
-        for (ctnt, _, _) in &self.constraints {
-            let t = TyInfo::Ctnt(self.subst.subst_ctnt(&mut self.types, &ctnt), ty);
+        if !self.constraints.is_empty() {
+            let subst = &self.subst;
+            let types = &mut self.types;
+            let where_ = WhereClause {
+                constraints: self
+                    .constraints
+                    .iter()
+                    .map(|(ctnt, _, _)| subst.subst_ctnt(types, ctnt))
+                    .collect(),
+            };
 
-            ty = self.types.insert(t, src);
+            ty = self.types.insert(TyInfo::Where(where_, ty), src);
         }
 
         if unknowns.is_empty() {
@@ -235,13 +246,13 @@ impl InferenceContext<'_> {
                 self.unify_types(sk, t2)
             },
             | (_, TyInfo::ForAll(_, _, _)) => self.unify_types(t2, t1),
-            | (TyInfo::Ctnt(c1, t1), TyInfo::Ctnt(c2, t2)) if c1.class == c2.class => {
-                c1.types
-                    .iter()
-                    .zip(c2.types.iter())
-                    .all(|(&t1, &t2)| self.unify_types(t1, t2))
-                    && self.unify_types(t1, t2)
-            },
+            // | (TyInfo::Where(c1, t1), TyInfo::Where(c2, t2)) if c1.class == c2.class => {
+            //     c1.types
+            //         .iter()
+            //         .zip(c2.types.iter())
+            //         .all(|(&t1, &t2)| self.unify_types(t1, t2))
+            //         && self.unify_types(t1, t2)
+            // },
             | (_, _) => false,
         }
     }

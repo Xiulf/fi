@@ -442,15 +442,27 @@ impl BodyInferenceContext<'_> {
 
                 self.check_expr(expr, sk);
             },
-            | (Expr::Path { .. }, TyInfo::Ctnt(ctnt, inner)) => {
-                self.class_env.push(ctnt, true);
+            | (Expr::Path { .. }, TyInfo::Where(where_, inner)) => {
+                for ctnt in where_.constraints.iter() {
+                    self.class_env.push(ctnt.clone(), true);
+                }
+
                 self.check_expr(expr, inner);
-                self.class_env.pop();
+
+                for _ in 0..where_.constraints.len() {
+                    self.class_env.pop();
+                }
             },
-            | (_, TyInfo::Ctnt(ctnt, inner)) => {
-                self.class_env.push(ctnt, false);
+            | (_, TyInfo::Where(where_, inner)) => {
+                for ctnt in where_.constraints.iter() {
+                    self.class_env.push(ctnt.clone(), false);
+                }
+
                 self.check_expr(expr, inner);
-                self.class_env.pop();
+
+                for _ in 0..where_.constraints.len() {
+                    self.class_env.pop();
+                }
             },
             | (_, TyInfo::Unknown(_)) => {
                 let infer = self.infer_expr(expr);
@@ -602,8 +614,11 @@ impl BodyInferenceContext<'_> {
 
                 self.check_app(ty, args, expr)
             },
-            | TyInfo::Ctnt(ctnt, ty) => {
-                self.constrain(expr.into(), ctnt);
+            | TyInfo::Where(where_, ty) => {
+                for ctnt in where_.constraints.iter() {
+                    self.constrain(expr.into(), ctnt.clone());
+                }
+
                 self.check_app(ty, args, expr)
             },
             | _ => {

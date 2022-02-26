@@ -100,15 +100,6 @@ impl IntoIterator for Exports {
     }
 }
 
-impl Export {
-    // pub fn name_ref(&self) -> Option<NameRef> {
-    //     match self {
-    //         | Export::Name(e) => e.name_ref(),
-    //         | Export::Module(e) => e.name_ref(),
-    //     }
-    // }
-}
-
 impl ExportName {
     pub fn name_ref(&self) -> Option<NameRef> {
         support::child(&self.0)
@@ -342,8 +333,8 @@ impl NameOwner for ItemType {
 }
 
 impl ItemType {
-    pub fn vars(&self) -> AstChildren<TypeVar> {
-        support::children(&self.0)
+    pub fn vars(&self) -> Option<TypeVars> {
+        support::child(&self.0)
     }
 
     pub fn kind(&self) -> Option<Type> {
@@ -384,16 +375,16 @@ impl NameOwner for ItemClass {
 }
 
 impl ItemClass {
-    pub fn vars(&self) -> AstChildren<TypeVar> {
-        support::children(&self.0)
+    pub fn vars(&self) -> Option<TypeVars> {
+        support::child(&self.0)
     }
 
     pub fn fundeps(&self) -> AstChildren<FunDep> {
         support::children(&self.0)
     }
 
-    pub fn constraints(&self) -> AstChildren<Constraint> {
-        support::children(&self.0)
+    pub fn where_clause(&self) -> Option<WhereClause> {
+        support::child(&self.0)
     }
 
     pub fn items(&self) -> AstChildren<AssocItem> {
@@ -447,16 +438,48 @@ impl ItemMember {
         support::children(&self.0)
     }
 
-    pub fn vars(&self) -> AstChildren<TypeVar> {
-        support::children(&self.0)
-    }
-
-    pub fn constraints(&self) -> AstChildren<Constraint> {
-        support::children(&self.0)
+    pub fn where_clause(&self) -> Option<WhereClause> {
+        support::child(&self.0)
     }
 
     pub fn items(&self) -> AstChildren<AssocItem> {
         support::children(&self.0)
+    }
+}
+
+impl TypeVars {
+    pub fn type_vars(&self) -> AstChildren<NameRef> {
+        support::children(&self.0)
+    }
+}
+
+impl WhereClause {
+    pub fn constraints(&self) -> AstChildren<Constraint> {
+        support::children(&self.0)
+    }
+
+    pub fn type_var_kinds(&self) -> AstChildren<TypeVarKind> {
+        support::children(&self.0)
+    }
+}
+
+impl Constraint {
+    pub fn class(&self) -> Option<Path> {
+        support::child(&self.0)
+    }
+
+    pub fn types(&self) -> AstChildren<Type> {
+        support::children(&self.0)
+    }
+}
+
+impl TypeVarKind {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        support::child(&self.0)
+    }
+
+    pub fn kind(&self) -> Option<Type> {
+        support::child(&self.0)
     }
 }
 
@@ -465,16 +488,6 @@ impl Type {
         let node = self.syntax().parent()?;
 
         Self::cast(node)
-    }
-}
-
-impl TypeKinded {
-    pub fn ty(&self) -> Option<Type> {
-        support::children(&self.0).nth(0)
-    }
-
-    pub fn kind(&self) -> Option<Type> {
-        support::children(&self.0).nth(1)
     }
 }
 
@@ -540,24 +553,12 @@ impl TypePtr {
 }
 
 impl TypeFn {
-    pub fn params(&self) -> impl Iterator<Item = Type> {
-        return Params(support::children(&self.0).peekable());
-        struct Params(Peekable<AstChildren<Type>>);
-        impl Iterator for Params {
-            type Item = Type;
-            fn next(&mut self) -> Option<Self::Item> {
-                let it = self.0.next()?;
-                if self.0.peek().is_some() {
-                    Some(it)
-                } else {
-                    None
-                }
-            }
-        }
+    pub fn param(&self) -> Option<Type> {
+        support::children(&self.0).next()
     }
 
     pub fn ret(&self) -> Option<Type> {
-        support::children(&self.0).last()
+        support::children(&self.0).nth(1)
     }
 }
 
@@ -593,18 +594,8 @@ impl TypeParens {
     }
 }
 
-impl TypeFor {
-    pub fn ty(&self) -> Option<Type> {
-        support::child(&self.0)
-    }
-
-    pub fn vars(&self) -> AstChildren<TypeVar> {
-        support::children(&self.0)
-    }
-}
-
-impl TypeCtnt {
-    pub fn ctnt(&self) -> Option<Constraint> {
+impl TypeWhere {
+    pub fn where_clause(&self) -> Option<WhereClause> {
         support::child(&self.0)
     }
 
@@ -629,25 +620,6 @@ impl Sentinel {
         let text = int.text();
 
         text.parse().unwrap()
-    }
-}
-
-impl NameOwner for TypeVar {
-}
-
-impl TypeVar {
-    pub fn kind(&self) -> Option<Type> {
-        support::child(&self.0)
-    }
-}
-
-impl Constraint {
-    pub fn class(&self) -> Option<Path> {
-        support::child(&self.0)
-    }
-
-    pub fn types(&self) -> AstChildren<Type> {
-        support::children(&self.0)
     }
 }
 

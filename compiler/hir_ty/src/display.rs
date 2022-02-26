@@ -170,7 +170,7 @@ impl Ty {
     fn needs_paren(self, db: &dyn HirDatabase, app: bool) -> bool {
         match self.lookup(db) {
             | TyKind::App(..) => app,
-            | TyKind::Func(..) | TyKind::ForAll(..) | TyKind::Ctnt(..) => true,
+            | TyKind::Func(..) | TyKind::Tuple(..) | TyKind::ForAll(..) | TyKind::Where(..) => true,
             | _ => false,
         }
     }
@@ -280,11 +280,7 @@ impl HirDisplay for Ty {
                 write!(f, ")")
             },
             | TyKind::Ctor(id) => write!(f, "{}", f.db.type_ctor_data(id).name),
-            | TyKind::Tuple(tys) => {
-                write!(f, "(")?;
-                f.write_joined(tys.iter(), ", ")?;
-                write!(f, ")")
-            },
+            | TyKind::Tuple(tys) => f.write_joined(tys.iter(), ", "),
             | TyKind::App(base, args) => {
                 TyParens(base, true).hir_fmt(f)?;
 
@@ -296,17 +292,19 @@ impl HirDisplay for Ty {
                 Ok(())
             },
             | TyKind::Func(args, ret) => {
-                for &arg in args.iter() {
-                    TyParens(arg, false).hir_fmt(f)?;
-                    write!(f, " -> ")?;
+                if args.is_empty() {
+                    write!(f, "()")?;
+                } else {
+                    f.write_joined(args.iter().map(|&a| TyParens(a, false)), ", ")?;
                 }
 
+                write!(f, " -> ")?;
                 ret.hir_fmt(f)
             },
-            | TyKind::Ctnt(ctnt, ty) => {
-                ctnt.hir_fmt(f)?;
-                write!(f, " => ")?;
-                ty.hir_fmt(f)
+            | TyKind::Where(where_, ty) => {
+                ty.hir_fmt(f)?;
+                write!(f, " ")?;
+                where_.hir_fmt(f)
             },
             | TyKind::ForAll(kinds, ty, scope) => {
                 let scope: u32 = scope.into_raw().into();
@@ -332,6 +330,13 @@ impl HirDisplay for Field {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         write!(f, "{} :: ", self.name)?;
         self.ty.hir_fmt(f)
+    }
+}
+
+impl HirDisplay for WhereClause<Constraint> {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        write!(f, "where ")?;
+        f.write_joined(self.constraints.iter(), ", ")
     }
 }
 

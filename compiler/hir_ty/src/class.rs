@@ -378,7 +378,7 @@ fn type_score(db: &dyn HirDatabase, ty: Ty) -> isize {
         },
         | TyKind::Tuple(tys) => tys.iter().map(|&ty| type_score(db, ty)).sum(),
         | TyKind::App(a, b) => type_score(db, a) + b.iter().map(|&b| type_score(db, b)).sum::<isize>(),
-        | TyKind::Ctnt(ctnt, ty) => ctnt.types.iter().map(|&t| type_score(db, t)).sum::<isize>() + type_score(db, ty),
+        // | TyKind::Where(ctnt, ty) => ctnt.types.iter().map(|&t| type_score(db, t)).sum::<isize>() + type_score(db, ty),
         | TyKind::ForAll(k, t, _) => k.iter().map(|&k| type_score(db, k)).sum::<isize>() + type_score(db, t),
         | _ => -5,
     }

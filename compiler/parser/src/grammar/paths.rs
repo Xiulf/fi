@@ -48,7 +48,7 @@ crate fn module_name_ref(p: &mut Parser) {
     name.complete(p, NAME_REF);
 }
 
-fn path_segment(p: &mut Parser) {
+crate fn path_segment(p: &mut Parser) {
     let m = p.start();
 
     match p.current() {

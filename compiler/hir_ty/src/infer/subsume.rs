@@ -38,8 +38,11 @@ impl InferenceContext<'_> {
 
                 self.subsume_types_impl(t1, sk, origin, mode)
             },
-            | (TyInfo::Ctnt(ctnt, inner), _) if mode == SubsumeMode::Ctnt => {
-                self.constrain(origin, ctnt);
+            | (TyInfo::Where(where_, inner), _) if mode == SubsumeMode::Ctnt => {
+                for ctnt in where_.constraints.iter() {
+                    self.constrain(origin, ctnt.clone());
+                }
+
                 self.subsume_types_impl(inner, t2, origin, mode)
             },
             | (TyInfo::Func(a1, r1), TyInfo::Func(a2, r2)) => {

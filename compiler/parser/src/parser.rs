@@ -2,7 +2,6 @@ use crate::event::Event;
 use crate::token_set::TokenSet;
 use crate::SyntaxKind;
 use crate::{ParseError, TokenSource};
-use std::cell::Cell;
 
 crate struct Parser<'t> {
     token_source: &'t mut dyn TokenSource,
@@ -39,10 +38,6 @@ impl<'t> Parser<'t> {
 
     crate fn at_ts(&self, kinds: TokenSet) -> bool {
         kinds.contains(self.current())
-    }
-
-    crate fn nth_at_ts(&self, n: usize, kinds: TokenSet) -> bool {
-        kinds.contains(self.nth(n))
     }
 
     crate fn eat(&mut self, kind: SyntaxKind) -> bool {
@@ -160,12 +155,14 @@ impl Drop for Marker {
     }
 }
 
+#[allow(dead_code)]
 crate struct CompletedMarker {
     start: u32,
     end: u32,
     kind: SyntaxKind,
 }
 
+#[allow(dead_code)]
 impl CompletedMarker {
     fn new(start: u32, end: u32, kind: SyntaxKind) -> Self {
         CompletedMarker { start, end, kind }

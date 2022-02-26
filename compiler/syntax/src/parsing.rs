@@ -9,7 +9,7 @@ use rowan::GreenNode;
 pub fn parse_text(text: &str) -> (GreenNode, Vec<SyntaxError>) {
     let (tokens, errors) = lexer::tokenize(text);
     // let mut pos = rowan::TextSize::from(0);
-    //
+
     // for token in &tokens {
     //     println!("{:?}: {:?}", &text[rowan::TextRange::at(pos, token.len)], token);
     //     pos += token.len;

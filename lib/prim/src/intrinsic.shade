@@ -13,7 +13,7 @@ infixr 0 apply as ($)
 @intrinsic foreign fn eq_i32  :: Int32, Int32 -> Bool
 @intrinsic foreign fn ge_i32  :: Int32, Int32 -> Bool
 
---@intrinsic foreign fun iconvert :: for a b. Integer a => Integer b => a -> b
+; @intrinsic foreign fun iconvert :: for a b. Integer a => Integer b => a -> b
 @intrinsic foreign fn u32_to_u8 :: Uint32 -> Uint8
 
 @intrinsic foreign fn alloc   :: Uint -> ptr where Pointer ptr to

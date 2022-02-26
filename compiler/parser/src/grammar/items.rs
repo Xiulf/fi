@@ -39,9 +39,6 @@ crate fn any_item(p: &mut Parser) {
         | MEMBER_KW => {
             member(p, m);
         },
-        | FOR_KW => {
-            for_item(p, m);
-        },
         | _ => {
             m.abandon(p);
             p.error("expected an item");
@@ -98,7 +95,7 @@ crate fn foreign(p: &mut Parser, m: Marker) {
         | STATIC_KW => static_(p, m),
         | TYPE_KW => type_(p, m),
         | _ => {
-            p.error("expected 'fun', 'static' or 'type'");
+            p.error("expected 'fn', 'static' or 'type'");
             m.abandon(p);
             return;
         },
@@ -110,7 +107,7 @@ crate fn fun(p: &mut Parser, m: Marker) {
     paths::name(p);
 
     if p.eat(DBL_COLON) {
-        types::func(p);
+        types::ty(p);
         m.complete(p, ITEM_FUN);
     } else {
         while !p.at_ts(TokenSet::new(&[EOF, LYT_SEP, LYT_END, EQUALS])) {
@@ -128,7 +125,7 @@ crate fn static_(p: &mut Parser, m: Marker) {
     paths::name(p);
 
     if p.eat(DBL_COLON) {
-        types::func(p);
+        types::ty(p);
         m.complete(p, ITEM_STATIC);
     } else {
         p.expect(EQUALS);
@@ -142,7 +139,7 @@ crate fn const_(p: &mut Parser, m: Marker) {
     paths::name(p);
 
     if p.eat(DBL_COLON) {
-        types::func(p);
+        types::ty(p);
         m.complete(p, ITEM_CONST);
     } else {
         p.expect(EQUALS);
@@ -156,12 +153,9 @@ crate fn type_(p: &mut Parser, m: Marker) {
     paths::name(p);
 
     if p.eat(DBL_COLON) {
-        types::func(p);
+        types::ty(p);
     } else {
-        while p.at(L_PAREN) || p.at(IDENT) {
-            types::type_var(p);
-        }
-
+        type_vars(p);
         p.expect(EQUALS);
 
         if p.at(PIPE) {
@@ -195,10 +189,7 @@ crate fn ctor(p: &mut Parser, m: Marker) {
 crate fn class(p: &mut Parser, m: Marker) {
     p.expect(CLASS_KW);
     paths::name(p);
-
-    while p.at(L_PAREN) || p.at(IDENT) {
-        types::type_var(p);
-    }
+    type_vars(p);
 
     if p.eat(PIPE) {
         fun_dep(p);
@@ -208,14 +199,14 @@ crate fn class(p: &mut Parser, m: Marker) {
         }
     }
 
-    if p.eat(WHERE_KW) {
+    if p.at(WHERE_KW) {
         where_clause(p);
     }
 
     if p.eat(EQUALS) {
         p.expect(LYT_START);
 
-        while !p.at(EOF) && !p.at(LYT_END) {
+        while !p.at_ts(TokenSet::new(&[EOF, LYT_END])) {
             assoc_item(p);
 
             if !p.at(LYT_END) {
@@ -230,14 +221,47 @@ crate fn class(p: &mut Parser, m: Marker) {
 }
 
 crate fn where_clause(p: &mut Parser) {
-    p.expect(LYT_START);
-    types::constraint(p);
+    let m = p.start();
 
-    while p.eat(COMMA) {
-        types::constraint(p);
+    p.expect(WHERE_KW);
+    p.expect(LYT_START);
+    where_clause_item(p);
+
+    while p.eat(COMMA) || p.eat(LYT_SEP) {
+        where_clause_item(p);
     }
 
     p.expect(LYT_END);
+    m.complete(p, WHERE_CLAUSE);
+}
+
+crate fn where_clause_item(p: &mut Parser) {
+    let m = p.start();
+
+    if p.at(IDENT) && p.nth_at(1, DBL_COLON) {
+        paths::name_ref(p);
+        p.bump(DBL_COLON);
+        types::func(p);
+        m.complete(p, TYPE_VAR_KIND);
+    } else {
+        paths::path(p);
+
+        while types::peek(p) {
+            types::atom(p);
+        }
+
+        m.complete(p, CONSTRAINT);
+    }
+}
+
+crate fn type_vars(p: &mut Parser) {
+    let m = p.start();
+
+    while p.at(IDENT) {
+        paths::name_ref(p);
+    }
+
+    m.complete(p, TYPE_VARS);
 }
 
 crate fn fun_dep(p: &mut Parser) {
@@ -267,7 +291,7 @@ crate fn member(p: &mut Parser, m: Marker) {
     p.expect(OF_KW);
     paths::path(p);
 
-    if p.eat(WHERE_KW) {
+    if p.at(WHERE_KW) {
         where_clause(p);
     }
 
@@ -286,21 +310,6 @@ crate fn member(p: &mut Parser, m: Marker) {
     }
 
     m.complete(p, ITEM_MEMBER);
-}
-
-crate fn for_item(p: &mut Parser, m: Marker) {
-    p.expect(FOR_KW);
-
-    while !p.at_ts(TokenSet::new(&[EOF, MEMBER_KW])) {
-        types::type_var(p);
-    }
-
-    if p.at(MEMBER_KW) {
-        member(p, m);
-    } else {
-        p.error("expected a member");
-        m.abandon(p);
-    }
 }
 
 crate fn assoc_item(p: &mut Parser) {

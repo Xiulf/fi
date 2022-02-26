@@ -26,10 +26,6 @@ impl Name {
         Name(Repr::TupleField(idx))
     }
 
-    const fn new_inline(text: &str) -> Self {
-        Name(Repr::Text(SmolStr::new_inline(text)))
-    }
-
     pub fn missing() -> Self {
         Self::new_text("[missing name]".into())
     }
@@ -38,6 +34,13 @@ impl Name {
         match self.0 {
             | Repr::TupleField(idx) => Some(idx),
             | _ => None,
+        }
+    }
+
+    pub fn is_lowercase(&self) -> bool {
+        match &self.0 {
+            | Repr::Text(text) => text.chars().all(char::is_lowercase),
+            | Repr::TupleField(_) => false,
         }
     }
 }

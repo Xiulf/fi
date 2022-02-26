@@ -136,7 +136,7 @@ fn lower_type_inner(
                 }
             }
         },
-        | TyKind::Ctnt(_, inner) => {
+        | TyKind::Where(_, inner) => {
             // TODO: handle constraint
             lower_type_inner(db, inner, type_vars)
         },

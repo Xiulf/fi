@@ -7,7 +7,7 @@ import intrinsics (transmute, unsafe, ($))
 class Fmt f =
     fn fmt :: w, f -> w where Write w
 
--- instance Fmt Str =
---     fun fmt w self = do
---         let bytes = unsafe $ transmute self
---         write w bytes
+; instance Fmt Str =
+;     fun fmt w self = do
+;         let bytes = unsafe $ transmute self
+;         write w bytes

@@ -39,7 +39,10 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let data = db.func_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Synthetic);
+            let var_kinds = data.type_vars.iter().map(|_| lcx.fresh_type(src)).collect();
+            let scope = lcx.type_vars.alloc_scope(var_kinds);
 
+            lcx.type_vars.push_scope(scope);
             data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src))
         }),
         | DefWithBodyId::StaticId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
@@ -329,8 +332,11 @@ impl<'a> BodyInferenceContext<'a> {
                 self.check_body(ty);
                 return;
             },
-            | TyInfo::Ctnt(ctnt, ty) => {
-                self.class_env.push(ctnt, false);
+            | TyInfo::Where(where_, ty) => {
+                for ctnt in where_.constraints.iter() {
+                    self.class_env.push(ctnt.clone(), false);
+                }
+
                 self.check_body(ty);
                 return;
             },
@@ -413,7 +419,7 @@ pub(crate) mod diagnostics {
     use hir_def::diagnostic::DiagnosticSink;
     use hir_def::expr::ExprId;
     use hir_def::id::{ClassId, HasSource, MemberId, TypeVarOwner};
-    use hir_def::type_ref::LocalTypeRefId;
+    use hir_def::type_ref::{LocalTypeRefId, TypeVarSource};
 
     #[derive(Debug, PartialEq, Eq)]
     pub enum ClassSource {
@@ -546,9 +552,10 @@ pub(crate) mod diagnostics {
                 | TypeOrigin::TypeVarId(id) => src.0.with_type_source_map(db.upcast(), |source_map| {
                     let file = src.0.source(db.upcast());
 
-                    source_map
-                        .type_var_syntax(id)
-                        .map(|s| file.with_value(s.syntax_node_ptr()))
+                    source_map.type_var_syntax(id).map(|s| match s {
+                        | TypeVarSource::Type(s) => file.with_value(s.syntax_node_ptr()),
+                        | TypeVarSource::NameRef(s) => file.with_value(s.syntax_node_ptr()),
+                    })
                 }),
                 | TypeOrigin::Synthetic => None,
             };
