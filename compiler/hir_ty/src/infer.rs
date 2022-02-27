@@ -39,32 +39,38 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
         | DefWithBodyId::FuncId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.func_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
-            let src = lcx.source(TypeOrigin::Synthetic);
+            let src = lcx.source(TypeOrigin::Def(id.into()));
 
             lcx.push_type_vars(&data.type_vars);
 
             (
-                data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src)),
+                data.ty
+                    .map(|t| lcx.lower_ty(t))
+                    .unwrap_or(lcx.fresh_type_without_kind(src)),
                 data.name.clone(),
             )
         }),
         | DefWithBodyId::StaticId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.static_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
-            let src = lcx.source(TypeOrigin::Synthetic);
+            let src = lcx.source(TypeOrigin::Def(id.into()));
 
             (
-                data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src)),
+                data.ty
+                    .map(|t| lcx.lower_ty(t))
+                    .unwrap_or(lcx.fresh_type_without_kind(src)),
                 data.name.clone(),
             )
         }),
         | DefWithBodyId::ConstId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.const_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
-            let src = lcx.source(TypeOrigin::Synthetic);
+            let src = lcx.source(TypeOrigin::Def(id.into()));
 
             (
-                data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src)),
+                data.ty
+                    .map(|t| lcx.lower_ty(t))
+                    .unwrap_or(lcx.fresh_type_without_kind(src)),
                 data.name.clone(),
             )
         }),
@@ -83,9 +89,9 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
     };
 
     if icx.result.diagnostics.is_empty() {
-        icx.check_body(ty);
-    } else {
-        icx.result.diagnostics.clear();
+        icx.check_body(ty, matches!(def, DefWithBodyId::FuncId(_)));
+        // } else {
+        //     icx.result.diagnostics.clear();
     }
 
     Arc::new(icx.finish())
@@ -367,18 +373,24 @@ impl<'a> InferenceContext<'a> {
             .collect::<List<_>>();
 
         let item_ty = item_ty.to_info(self.db, &mut self.types, src);
-        let item_ty = match self.types[item_ty].clone() {
+        let mut item_ty = match self.types[item_ty].clone() {
             | TyInfo::ForAll(_, inner, scope) => inner.replace_vars(&mut self.types, &types, scope),
             | _ => item_ty,
         };
 
+        if !lower.member.where_clause.constraints.is_empty() {
+            let where_clause = lower.member.where_clause.clone().to_info(self.db, &mut self.types, src);
+
+            item_ty = self.types.insert(TyInfo::Where(where_clause, item_ty), src);
+        }
+
         if !kinds.is_empty() {
             let scope = self.type_vars.scope_at(1);
 
-            self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
-        } else {
-            item_ty
+            item_ty = self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
         }
+
+        item_ty
     }
 }
 
@@ -404,11 +416,11 @@ impl<'a> BodyInferenceContext<'a> {
         self.icx.finish()
     }
 
-    fn check_body(&mut self, ann: TyId) {
+    fn check_body(&mut self, ann: TyId, is_func: bool) {
         match self.types[ann].clone() {
             | TyInfo::ForAll(_, ty, scope) => {
                 self.type_vars.push_scope(scope);
-                self.check_body(ty);
+                self.check_body(ty, is_func);
                 return;
             },
             | TyInfo::Where(where_, ty) => {
@@ -416,7 +428,7 @@ impl<'a> BodyInferenceContext<'a> {
                     self.class_env.push(ctnt.clone(), false);
                 }
 
-                self.check_body(ty);
+                self.check_body(ty, is_func);
                 return;
             },
             | _ => {},
@@ -425,7 +437,11 @@ impl<'a> BodyInferenceContext<'a> {
         let body = self.body.clone();
         let ret = match self.types[ann] {
             | TyInfo::Func(_, ret) => ret,
-            | _ => ann,
+            | _ => {
+                let src = self.source(body.body_expr());
+
+                self.fresh_type(src)
+            },
         };
 
         let args = body
@@ -434,22 +450,15 @@ impl<'a> BodyInferenceContext<'a> {
             .map(|&pat| self.infer_pat(pat))
             .collect::<List<_>>();
 
-        let ty = if !args.is_empty() {
+        let ty = if !args.is_empty() || is_func {
             let src = self.types.source(ann);
 
             self.fn_type(args, ret, src)
         } else {
-            ret
+            ann
         };
 
-        println!(
-            "{} == {}",
-            ty.display(self.db, &self.types),
-            ann.display(self.db, &self.types)
-        );
-        println!("{:?}", body[body.body_expr()]);
-
-        if !self.unify_types(ann, ty) {
+        if body.has_body() && !self.unify_types(ann, ty) {
             self.report_mismatch(ann, ty, body.body_expr());
         }
 
@@ -506,6 +515,7 @@ pub(crate) mod diagnostics {
     use hir_def::expr::ExprId;
     use hir_def::id::{ClassId, HasSource, MemberId, TypeVarOwner};
     use hir_def::type_ref::{LocalTypeRefId, TypeVarSource};
+    use syntax::{AstNode, SyntaxNodePtr};
 
     #[derive(Debug, PartialEq, Eq)]
     pub enum ClassSource {
@@ -643,6 +653,7 @@ pub(crate) mod diagnostics {
                         | TypeVarSource::NameRef(s) => file.with_value(s.syntax_node_ptr()),
                     })
                 }),
+                | TypeOrigin::Def(id) => Some(id.source(db.upcast()).map(|v| SyntaxNodePtr::new(v.syntax()))),
                 | TypeOrigin::Synthetic => None,
             };
 
@@ -753,7 +764,7 @@ pub(crate) mod diagnostics {
                     found_src,
                 } => {
                     let expected_src = ty_src(*expected_src);
-                    let found_src = ty_src(*found_src).unwrap();
+                    let found_src = ty_src(*found_src).or(expected_src).unwrap();
 
                     sink.push(MismatchedKind {
                         found: *found,

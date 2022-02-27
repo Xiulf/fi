@@ -6,7 +6,7 @@ use crate::{
 use arena::{Arena, ArenaMap, Idx};
 use hir_def::{
     expr::ExprId,
-    id::{ClassId, TypeCtorId, TypeVarOwner},
+    id::{ClassId, TypeCtorId, TypeVarOwner, TypedDefId},
     name::Name,
     pat::PatId,
     type_ref::{LocalTypeRefId, LocalTypeVarId},
@@ -60,6 +60,7 @@ pub enum TypeOrigin {
     PatId(PatId),
     TypeRefId(LocalTypeRefId),
     TypeVarId(LocalTypeVarId),
+    Def(TypedDefId),
     Synthetic,
 }
 
@@ -660,7 +661,7 @@ impl std::fmt::Display for TyDisplay<'_> {
             | TyInfo::Where(ref where_, ty) if self.lhs_exposed => write!(
                 f,
                 "({} where{})",
-                self.with_ty(ty, false),
+                self.with_ty(ty, true),
                 where_
                     .constraints
                     .iter()
@@ -679,7 +680,7 @@ impl std::fmt::Display for TyDisplay<'_> {
             | TyInfo::Where(ref where_, ty) => write!(
                 f,
                 "{} where{}",
-                self.with_ty(ty, false),
+                self.with_ty(ty, true),
                 where_
                     .constraints
                     .iter()

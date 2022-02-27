@@ -354,8 +354,9 @@ impl Func {
         let lower = hir_ty::lower::func_ty(db, self.id);
         let body = db.body(self.id.into());
 
-        eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
-
+        // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
+        // eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
+        //
         // for (expr, ty) in infer.type_of_expr.iter() {
         //     eprintln!("{:?} :: {}", body[expr], ty.display(db));
         // }

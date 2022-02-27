@@ -194,12 +194,7 @@ impl FromInfo for Member<Ty, Constraint> {
             class: input.class,
             vars: input.vars.iter().map(|&v| Ty::from_info(db, types, v)).collect(),
             types: input.types.iter().map(|&t| Ty::from_info(db, types, t)).collect(),
-            constraints: input
-                .constraints
-                .iter()
-                .cloned()
-                .map(|c| Constraint::from_info(db, types, c))
-                .collect(),
+            where_clause: WhereClause::from_info(db, types, input.where_clause),
         }
     }
 }

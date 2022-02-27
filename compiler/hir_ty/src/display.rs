@@ -167,16 +167,27 @@ impl fmt::Display for Unknown {
 }
 
 impl Ty {
-    fn needs_paren(self, db: &dyn HirDatabase, app: bool) -> bool {
-        match self.lookup(db) {
-            | TyKind::App(..) => app,
-            | TyKind::Func(..) | TyKind::Tuple(..) | TyKind::ForAll(..) | TyKind::Where(..) => true,
+    fn needs_paren(self, db: &dyn HirDatabase, mode: ParenMode) -> bool {
+        match (self.lookup(db), mode) {
+            | (TyKind::App(..), ParenMode::App) => true,
+            | (
+                TyKind::Func(..) | TyKind::Tuple(..) | TyKind::ForAll(..) | TyKind::Where(..),
+                ParenMode::Arg | ParenMode::App,
+            ) => true,
+            | (TyKind::ForAll(..) | TyKind::Where(..), ParenMode::Where) => true,
             | _ => false,
         }
     }
 }
 
-struct TyParens(Ty, bool);
+#[derive(Clone, Copy, PartialEq)]
+enum ParenMode {
+    Arg,
+    App,
+    Where,
+}
+
+struct TyParens(Ty, ParenMode);
 
 impl HirDisplay for TyParens {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
@@ -230,11 +241,11 @@ impl HirDisplay for Ty {
                             write!(f, "[")?;
                             args[1].hir_fmt(f)?;
                             write!(f, "]")?;
-                            TyParens(args[0], true).hir_fmt(f)
+                            TyParens(args[0], ParenMode::App).hir_fmt(f)
                         },
                         "slice-type"(1) => {
                             write!(f, "[]")?;
-                            TyParens(args[0], true).hir_fmt(f)
+                            TyParens(args[0], ParenMode::App).hir_fmt(f)
                         },
                         "record-type"(1) => {
                             write!(f, "{{")?;
@@ -283,11 +294,11 @@ impl HirDisplay for Ty {
             | TyKind::Tuple(tys) if tys.is_empty() => f.write_str("()"),
             | TyKind::Tuple(tys) => f.write_joined(tys.iter(), ", "),
             | TyKind::App(base, args) => {
-                TyParens(base, true).hir_fmt(f)?;
+                TyParens(base, ParenMode::App).hir_fmt(f)?;
 
                 for &arg in args.iter() {
                     write!(f, " ")?;
-                    TyParens(arg, true).hir_fmt(f)?;
+                    TyParens(arg, ParenMode::App).hir_fmt(f)?;
                 }
 
                 Ok(())
@@ -296,14 +307,14 @@ impl HirDisplay for Ty {
                 if args.is_empty() {
                     write!(f, "()")?;
                 } else {
-                    f.write_joined(args.iter().map(|&a| TyParens(a, false)), ", ")?;
+                    f.write_joined(args.iter().map(|&a| TyParens(a, ParenMode::Arg)), ", ")?;
                 }
 
                 write!(f, " -> ")?;
                 ret.hir_fmt(f)
             },
             | TyKind::Where(where_, ty) => {
-                ty.hir_fmt(f)?;
+                TyParens(ty, ParenMode::Where).hir_fmt(f)?;
                 write!(f, " ")?;
                 where_.hir_fmt(f)
             },
@@ -349,7 +360,7 @@ impl HirDisplay for Constraint {
 
         for &ty in self.types.iter() {
             write!(f, " ")?;
-            TyParens(ty, true).hir_fmt(f)?;
+            TyParens(ty, ParenMode::App).hir_fmt(f)?;
         }
 
         Ok(())
@@ -398,14 +409,14 @@ impl HirDisplay for Member<Ty, Constraint> {
 
         for &ty in self.types.iter() {
             write!(f, " ")?;
-            TyParens(ty, true).hir_fmt(f)?;
+            TyParens(ty, ParenMode::App).hir_fmt(f)?;
         }
 
         write!(f, " of {}", f.db.class_data(self.class).name)?;
 
-        if !self.constraints.is_empty() {
-            write!(f, " where ")?;
-            f.write_joined(self.constraints.iter(), ", ")?;
+        if !self.where_clause.constraints.is_empty() {
+            write!(f, " ")?;
+            self.where_clause.hir_fmt(f)?;
         }
 
         Ok(())

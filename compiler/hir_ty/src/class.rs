@@ -2,7 +2,7 @@ use crate::db::HirDatabase;
 use crate::infer::InferenceContext;
 use crate::info::{CtntInfo, ToInfo, TyId, TyInfo, TySource, Types, Unknown};
 use crate::lower::MemberLowerResult;
-use crate::ty::{Constraint, Ty, TyKind, TypeVar};
+use crate::ty::{Constraint, Ty, TyKind, TypeVar, WhereClause};
 use arena::{Arena, Idx};
 use hir_def::id::{ClassId, Lookup, MemberId};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -27,7 +27,7 @@ pub struct Member<T, C> {
     pub class: ClassId,
     pub vars: Box<[T]>,
     pub types: Box<[T]>,
-    pub constraints: Box<[C]>,
+    pub where_clause: WhereClause<C>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -155,7 +155,7 @@ impl Member<Ty, Constraint> {
             return None;
         }
 
-        for ctnt in self.constraints.iter().cloned() {
+        for ctnt in self.where_clause.constraints.iter().cloned() {
             let ctnt = ctnt.to_info(db, types, src);
 
             if let None = Members::solve_constraint(db, types, &ctnt, src) {
@@ -189,7 +189,7 @@ impl Member<Ty, Constraint> {
                 score += type_score(db, ty);
             }
 
-            score -= self.constraints.len() as isize;
+            score -= self.where_clause.constraints.len() as isize;
             score
         }
     }

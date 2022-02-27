@@ -715,14 +715,16 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
         )
     };
 
-    // let constraints = data
-    //     .constraints
-    //     .iter()
-    //     .enumerate()
-    //     .filter_map(|(i, c)| ctx.lower_constraint(c, ClassSource::MemberCtnt(id, i)))
-    //     .collect();
+    let where_clause = WhereClause {
+        constraints: data
+            .where_clause
+            .constraints
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| ctx.lower_constraint(c, ClassSource::MemberCtnt(id, i)))
+            .collect(),
+    };
 
-    let constraints = Box::new([]);
     let vars = var_kinds(&mut ctx, vars, src);
 
     ctx.finish_instance(Member {
@@ -730,7 +732,7 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
         class,
         vars,
         types,
-        constraints,
+        where_clause,
     })
 }
 
