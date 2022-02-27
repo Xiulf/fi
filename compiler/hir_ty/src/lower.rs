@@ -99,23 +99,13 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
     }
 
     pub fn lower_ty(&mut self, ty: LocalTypeRefId) -> TyId {
-        self.lower_ty_ext(ty).0
-    }
-
-    pub fn lower_ty_ext(&mut self, ty: LocalTypeRefId) -> (TyId, Option<TypeNs>) {
-        let mut res = None;
         let src = self.source(ty);
         let lowered = match &self.type_map[ty] {
             | TypeRef::Error => self.error(src),
             | TypeRef::Placeholder => self.fresh_type_without_kind(src),
             | TypeRef::Figure(i) => self.icx.types.insert(TyInfo::Figure(*i), src),
             | TypeRef::Symbol(s) => self.icx.types.insert(TyInfo::Symbol(s.clone().into()), src),
-            | TypeRef::Path(path) => {
-                let r = self.lower_path(&path, ty);
-
-                res = r.1;
-                r.0
-            },
+            | TypeRef::Path(path) => self.lower_path(&path, ty),
             | TypeRef::Tuple(tys) => {
                 let tys = tys.iter().map(|&t| self.lower_ty(t)).collect();
 
@@ -190,8 +180,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         };
 
         self.types.insert(ty, lowered);
-
-        (lowered, res)
+        lowered
     }
 
     pub(crate) fn lower_where_clause(
@@ -200,7 +189,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         type_ref: LocalTypeRefId,
     ) -> WhereClause<CtntInfo> {
         for tv_kind in where_clause.type_var_kinds.iter() {
-            let (var, _) = self.lower_path(&tv_kind.type_var, type_ref);
+            let var = self.lower_path(&tv_kind.type_var, type_ref);
             let kind = self.lower_ty(tv_kind.kind);
 
             self.check_kind(var, kind);
@@ -249,31 +238,30 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         self.icx.types.insert(TyInfo::Row(fields, tail), src)
     }
 
-    pub(crate) fn lower_path(&mut self, path: &Path, type_ref: LocalTypeRefId) -> (TyId, Option<TypeNs>) {
+    pub(crate) fn lower_path(&mut self, path: &Path, type_ref: LocalTypeRefId) -> TyId {
         let src = self.source(type_ref);
+        let owner = self.owner;
         let (resolution, vis, remaining) = match self.resolver.resolve_type(self.db.upcast(), path) {
             | Some(it) => it,
             | None => {
-                self.report(InferenceDiagnostic::UnresolvedType { id: type_ref });
-                return (self.icx.types.insert(TyInfo::Error, src), None);
+                self.report(InferenceDiagnostic::UnresolvedType { owner, id: type_ref });
+                return self.icx.types.insert(TyInfo::Error, src);
             },
         };
 
         if path.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap()) {
-            self.report(InferenceDiagnostic::PrivateType { id: type_ref });
+            self.report(InferenceDiagnostic::PrivateType { owner, id: type_ref });
         }
 
-        self.lower_partly_resolved_path(resolution, remaining.unwrap_or(0), type_ref)
+        assert_eq!(remaining, None);
+
+        self.lower_resolved_path(resolution, type_ref)
     }
 
-    pub(crate) fn lower_partly_resolved_path(
-        &mut self,
-        resolution: TypeNs,
-        remaining: usize,
-        type_ref: LocalTypeRefId,
-    ) -> (TyId, Option<TypeNs>) {
+    pub(crate) fn lower_resolved_path(&mut self, resolution: TypeNs, type_ref: LocalTypeRefId) -> TyId {
         let src = self.source(type_ref);
-        let ty = match resolution {
+
+        match resolution {
             | TypeNs::Class(_) => {
                 // @TODO: report error
                 self.icx.types.insert(TyInfo::Error, src)
@@ -287,12 +275,6 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
             | TypeNs::TypeAlias(id) => self.db.type_for_alias(id).ty.to_info(self.db, &mut self.icx.types, src),
             | TypeNs::TypeCtor(id) => self.icx.types.insert(TyInfo::Ctor(id), src),
-        };
-
-        if remaining > 0 {
-            (self.icx.types.insert(TyInfo::Error, src), None)
-        } else {
-            (ty, Some(resolution))
         }
     }
 
@@ -354,63 +336,15 @@ pub(crate) fn value_ty(db: &dyn HirDatabase, id: ValueTyDefId) -> Ty {
 }
 
 pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult<Ty>> {
-    let data = db.func_data(id);
-    let loc = id.lookup(db.upcast());
+    let def = id.into();
+    let infer = db.infer(def);
+    let ty = infer.self_type;
 
-    if let Some(ty) = data.ty {
-        let resolver = id.resolver(db.upcast());
-        let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
-        let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
-        let src = ctx.source(ty);
-        let ty = if let ContainerId::Class(class) = loc.container {
-            let lower = db.lower_class(class);
-            let vars = lower
-                .class
-                .vars
-                .iter()
-                .map(|&v| v.to_info(db, &mut ctx.icx.types, src))
-                .collect::<List<_>>();
-
-            let class_scope = ctx.type_vars.alloc_scope(vars.clone());
-            let ctnt = CtntInfo {
-                class,
-                types: (0..lower.class.vars.len() as u32)
-                    .map(|i| ctx.icx.types.insert(TyInfo::TypeVar(TypeVar::new(i, class_scope)), src))
-                    .collect(),
-            };
-
-            let where_ = WhereClause {
-                constraints: Box::new([ctnt]),
-            };
-
-            let scope = ctx.push_type_vars(&data.type_vars);
-            let mut ty = ctx.lower_ty(ty);
-
-            ty = ctx.icx.types.insert(TyInfo::Where(where_, ty), src);
-            ty = ctx.wrap_type_vars(ty, scope, src);
-            ty = ctx.wrap_type_vars(ty, class_scope, src);
-            ty
-        } else {
-            let scope = ctx.push_type_vars(&data.type_vars);
-            let ty = ctx.lower_ty(ty);
-
-            ctx.wrap_type_vars(ty, scope, src)
-        };
-
-        let ty = ctx.subst_type(ty);
-
-        ctx.finish(ty)
-    } else {
-        let def = id.into();
-        let infer = db.infer(def);
-        let ty = infer.self_type;
-
-        Arc::new(LowerResult {
-            ty,
-            types: ArenaMap::default(),
-            diagnostics: Vec::new(),
-        })
-    }
+    Arc::new(LowerResult {
+        ty,
+        types: ArenaMap::default(),
+        diagnostics: infer.diagnostics.clone(),
+    })
 }
 
 pub(crate) fn static_ty(db: &dyn HirDatabase, id: StaticId) -> Ty {

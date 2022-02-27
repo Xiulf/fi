@@ -351,12 +351,11 @@ impl Func {
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let data = db.func_data(self.id);
         let infer = db.infer(self.id.into());
-        let lower = hir_ty::lower::func_ty(db, self.id);
         let body = db.body(self.id.into());
 
         // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-        // eprintln!("fun {} :: {}", data.name, lower.ty.display(db));
-        //
+        eprintln!("fn {} :: {}", data.name, infer.self_type.display(db));
+
         // for (expr, ty) in infer.type_of_expr.iter() {
         //     eprintln!("{:?} :: {}", body[expr], ty.display(db));
         // }
@@ -368,7 +367,6 @@ impl Func {
         // eprintln!();
 
         infer.add_diagnostics(db, self.id.into(), sink);
-        lower.add_diagnostics(db, TypeVarOwner::TypedDefId(self.id.into()), sink);
     }
 }
 

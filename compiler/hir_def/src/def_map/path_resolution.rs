@@ -91,9 +91,18 @@ impl DefMap {
         let mut def = if module_id.lib != self.lib {
             let def_map = db.def_map(module_id.lib);
 
-            def_map.resolve_name_in_module(db, module_id.local_id, name, mode)
+            def_map.resolve_name_in_module(db, module_id.local_id, name, ResolveMode::Import)
         } else {
-            self.resolve_name_in_module(db, module_id.local_id, name, mode)
+            self.resolve_name_in_module(
+                db,
+                module_id.local_id,
+                name,
+                if module_id.local_id != original {
+                    ResolveMode::Import
+                } else {
+                    mode
+                },
+            )
         };
 
         if let Some(id) = or_module {
@@ -184,7 +193,7 @@ impl DefMap {
 
     pub(crate) fn resolve_name_in_module(
         &self,
-        db: &dyn DefDatabase,
+        _db: &dyn DefDatabase,
         module: LocalModuleId,
         name: &Name,
         mode: ResolveMode,

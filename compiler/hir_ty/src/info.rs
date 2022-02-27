@@ -642,20 +642,22 @@ impl std::fmt::Display for TyDisplay<'_> {
             ),
             | TyInfo::Func(ref args, ret) if self.lhs_exposed => write!(
                 f,
-                "({} -> {})",
+                "({}{}-> {})",
                 args.iter()
                     .map(|&a| format!("{}", self.with_ty(a, true)))
                     .collect::<Vec<_>>()
                     .join(", "),
+                if args.is_empty() { "" } else { " " },
                 self.with_ty(ret, true),
             ),
             | TyInfo::Func(ref args, ret) => write!(
                 f,
-                "{} -> {}",
+                "{}{}-> {}",
                 args.iter()
                     .map(|&a| format!("{}", self.with_ty(a, true)))
                     .collect::<Vec<_>>()
                     .join(", "),
+                if args.is_empty() { "" } else { " " },
                 self.with_ty(ret, true),
             ),
             | TyInfo::Where(ref where_, ty) if self.lhs_exposed => write!(

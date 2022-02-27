@@ -304,13 +304,12 @@ impl HirDisplay for Ty {
                 Ok(())
             },
             | TyKind::Func(args, ret) => {
-                if args.is_empty() {
-                    write!(f, "()")?;
-                } else {
+                if !args.is_empty() {
                     f.write_joined(args.iter().map(|&a| TyParens(a, ParenMode::Arg)), ", ")?;
+                    f.write_str(" ")?;
                 }
 
-                write!(f, " -> ")?;
+                write!(f, "-> ")?;
                 ret.hir_fmt(f)
             },
             | TyKind::Where(where_, ty) => {

@@ -1,12 +1,28 @@
 module main =
 
 import core/io
-import core
+
 
 fn main =
-    println "test"
+    a <- "test"
+    println a
 
 
+class Functor f =
+    fn map :: (a -> b), f a -> f b
 
-fn other :: a -> Str
-fn other x = "test"
+class Apply f where Functor f =
+    fn apply :: f (a -> b), f a -> f b
+
+class Applicative f where Apply f =
+    fn pure :: a -> f a
+
+class Bind m where Apply m =
+    fn bind :: m a, (a -> m b) -> m b
+
+class Monad m where Bind m, Applicative m
+
+
+infixl 4 map as (<$>)
+infixl 4 apply as (<*>)
+infixl 1 bind as (>>=)

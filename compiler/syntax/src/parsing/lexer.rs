@@ -45,7 +45,6 @@ struct Lexer<'src> {
 enum LayoutDelim {
     Root,
     TypeDecl,
-    TopDecl,
     TopDeclHead,
     ClassHead,
     ClassBody,
@@ -255,10 +254,6 @@ impl<'src> Lexer<'src> {
                 self.insert_default(start, COLON);
             },
             | '=' => match self.stack[..] {
-                | [.., (_, LayoutDelim::TopDecl)] => {
-                    self.stack.pop().unwrap();
-                    self.emit(EQUALS);
-                },
                 | [.., (_, LayoutDelim::TopDeclHead), (_, LayoutDelim::Where)] => {
                     Collapse::new(self.tokens.len()).collapse(
                         start,
@@ -271,9 +266,23 @@ impl<'src> Lexer<'src> {
                     );
 
                     self.stack.pop().unwrap();
-                    self.stack.pop().unwrap();
                     self.emit(EQUALS);
                     self.insert_start(LayoutDelim::Where);
+                },
+                | [.., (_, LayoutDelim::ClassHead), (_, LayoutDelim::Where)] => {
+                    Collapse::new(self.tokens.len()).collapse(
+                        start,
+                        |s, p, lyt| match lyt {
+                            | LayoutDelim::Where => true,
+                            | _ => offside_end_p(s, p, lyt),
+                        },
+                        &mut self.stack,
+                        &mut self.tokens,
+                    );
+
+                    self.stack.pop().unwrap();
+                    self.emit(EQUALS);
+                    self.insert_start(LayoutDelim::ClassBody);
                 },
                 | [.., (_, LayoutDelim::TopDeclHead)] => {
                     self.stack.pop().unwrap();
@@ -928,10 +937,9 @@ impl<'src> Lexer<'src> {
 
     fn insert_sep(&mut self, start: (usize, usize)) {
         match self.stack[..] {
-            | [.., (
-                pos,
-                LayoutDelim::TypeDecl | LayoutDelim::TopDecl | LayoutDelim::TopDeclHead | LayoutDelim::ClassHead,
-            )] if sep_p(start, pos) => {
+            | [.., (pos, LayoutDelim::TypeDecl | LayoutDelim::TopDeclHead | LayoutDelim::ClassHead)]
+                if sep_p(start, pos) =>
+            {
                 self.stack.pop().unwrap();
 
                 if let Some(idx) = self.last_ws() {

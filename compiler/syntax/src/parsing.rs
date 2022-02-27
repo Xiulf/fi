@@ -8,12 +8,12 @@ use rowan::GreenNode;
 
 pub fn parse_text(text: &str) -> (GreenNode, Vec<SyntaxError>) {
     let (tokens, errors) = lexer::tokenize(text);
-    // let mut pos = rowan::TextSize::from(0);
-
-    // for token in &tokens {
-    //     println!("{:?}: {:?}", &text[rowan::TextRange::at(pos, token.len)], token);
-    //     pos += token.len;
-    // }
+    //     let mut pos = rowan::TextSize::from(0);
+    //
+    //     for token in &tokens {
+    //         println!("{:?}: {:?}", &text[rowan::TextRange::at(pos, token.len)], token);
+    //         pos += token.len;
+    //     }
 
     let mut token_source = token_source::TextTokenSource::new(text, &tokens);
     let mut tree_sink = tree_sink::TextTreeSink::new(text, &tokens);

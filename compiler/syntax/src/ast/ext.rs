@@ -558,7 +558,7 @@ impl TypeFn {
     }
 
     pub fn ret(&self) -> Option<Type> {
-        support::children(&self.0).nth(1)
+        support::children(&self.0).last()
     }
 }
 

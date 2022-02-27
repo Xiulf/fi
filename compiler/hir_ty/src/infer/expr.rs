@@ -595,7 +595,7 @@ impl BodyInferenceContext<'_> {
         match self.types[base_ty].clone() {
             | TyInfo::Func(params, ret) => {
                 if params.len() != args.len() {
-                    todo!("report error");
+                    // todo!("report error");
                 }
 
                 for (&param, &arg) in params.iter().zip(args) {

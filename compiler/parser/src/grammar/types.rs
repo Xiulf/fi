@@ -92,6 +92,13 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
             atom(p);
             Some(m.complete(p, TYPE_PTR))
         },
+        | ARROW => {
+            let arg = p.start();
+            arg.complete(p, TYPE_TUPLE);
+            p.bump(ARROW);
+            func(p);
+            Some(m.complete(p, TYPE_FN))
+        },
         | HASH => {
             p.bump(HASH);
             p.expect(L_PAREN);

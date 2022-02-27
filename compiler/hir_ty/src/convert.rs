@@ -279,11 +279,11 @@ impl FromInfo for InferenceDiagnostic<Ty, Constraint> {
     fn from_info(db: &dyn HirDatabase, types: &Types, input: Self::Input) -> Self {
         match input {
             | InferenceDiagnostic::UnresolvedValue { id } => Self::UnresolvedValue { id },
-            | InferenceDiagnostic::UnresolvedType { id } => Self::UnresolvedType { id },
+            | InferenceDiagnostic::UnresolvedType { owner, id } => Self::UnresolvedType { owner, id },
             | InferenceDiagnostic::UnresolvedClass { src } => Self::UnresolvedClass { src },
             | InferenceDiagnostic::UnresolvedOperator { id } => Self::UnresolvedOperator { id },
             | InferenceDiagnostic::PrivateValue { id } => Self::PrivateValue { id },
-            | InferenceDiagnostic::PrivateType { id } => Self::PrivateType { id },
+            | InferenceDiagnostic::PrivateType { owner, id } => Self::PrivateType { owner, id },
             | InferenceDiagnostic::PrivateClass { src } => Self::PrivateClass { src },
             | InferenceDiagnostic::PrivateOperator { id } => Self::PrivateOperator { id },
             | InferenceDiagnostic::MismatchedKind {

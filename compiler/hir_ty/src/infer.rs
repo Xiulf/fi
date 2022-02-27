@@ -10,7 +10,7 @@ use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
 use crate::info::{CtntInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVarScopeId, TypeVars, Types};
 use crate::lower::LowerCtx;
-use crate::ty::{Constraint, List, Ty};
+use crate::ty::{Constraint, List, Ty, TypeVar, WhereClause};
 use arena::ArenaMap;
 use diagnostics::InferenceDiagnostic;
 use hir_def::body::Body;
@@ -40,15 +40,13 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let data = db.func_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
+            let scope = lcx.push_type_vars(&data.type_vars);
+            let ty = data
+                .ty
+                .map(|t| lcx.lower_ty(t))
+                .unwrap_or(lcx.fresh_type_without_kind(src));
 
-            lcx.push_type_vars(&data.type_vars);
-
-            (
-                data.ty
-                    .map(|t| lcx.lower_ty(t))
-                    .unwrap_or(lcx.fresh_type_without_kind(src)),
-                data.name.clone(),
-            )
+            (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
         }),
         | DefWithBodyId::StaticId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.static_data(id);
@@ -76,22 +74,16 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
         }),
     };
 
-    let ty = if let ContainerId::Member(id) = def.container(db.upcast()) {
-        let item_ty = icx.member_item(id, &item);
-
-        if !icx.unify_types(item_ty, ty) {
-            icx.report_mismatch(item_ty, ty, body.body_expr());
-        }
-
-        item_ty
-    } else {
-        ty
+    let ty = match def.container(db.upcast()) {
+        | ContainerId::Class(id) => icx.class_item(id, ty),
+        | ContainerId::Member(id) => icx.member_item(id, ty, &item, &body),
+        | _ => ty,
     };
+
+    icx.result.self_type = ty;
 
     if icx.result.diagnostics.is_empty() {
         icx.check_body(ty, matches!(def, DefWithBodyId::FuncId(_)));
-        // } else {
-        //     icx.result.diagnostics.clear();
     }
 
     Arc::new(icx.finish())
@@ -348,7 +340,31 @@ impl<'a> InferenceContext<'a> {
         self.type_vars.alloc_scope(vars);
     }
 
-    fn member_item(&mut self, member: MemberId, item: &Name) -> TyId {
+    fn class_item(&mut self, class: ClassId, ann: TyId) -> TyId {
+        let src = self.source(TypeOrigin::Def(class.into()));
+        let lower = self.db.lower_class(class);
+        let scope = self.type_vars.scope_at(1);
+        let types = (0..lower.class.vars.len() as u32)
+            .map(|i| self.types.insert(TyInfo::TypeVar(TypeVar::new(i, scope)), src))
+            .collect::<List<_>>();
+
+        let kinds = lower
+            .class
+            .vars
+            .iter()
+            .map(|t| t.to_info(self.db, &mut self.types, src))
+            .collect::<List<_>>();
+
+        let where_clause = WhereClause {
+            constraints: [CtntInfo { class, types }].into(),
+        };
+
+        let item_ty = self.types.insert(TyInfo::Where(where_clause, ann), src);
+
+        self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
+    }
+
+    fn member_item(&mut self, member: MemberId, ann: TyId, item: &Name, body: &Body) -> TyId {
         let src = self.source(TypeOrigin::Synthetic);
         let lower = self.db.lower_member(member);
         let class = self.db.class_data(lower.member.class);
@@ -388,6 +404,10 @@ impl<'a> InferenceContext<'a> {
             let scope = self.type_vars.scope_at(1);
 
             item_ty = self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
+        }
+
+        if !self.unify_types(item_ty, ann) {
+            self.report_mismatch(item_ty, ann, body.body_expr());
         }
 
         item_ty
@@ -462,7 +482,6 @@ impl<'a> BodyInferenceContext<'a> {
             self.report_mismatch(ann, ty, body.body_expr());
         }
 
-        self.result.self_type = ty;
         self.ret_type = ret;
         self.check_expr(self.body.body_expr(), ret);
 
@@ -517,7 +536,7 @@ pub(crate) mod diagnostics {
     use hir_def::type_ref::{LocalTypeRefId, TypeVarSource};
     use syntax::{AstNode, SyntaxNodePtr};
 
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum ClassSource {
         TyCtnt(LocalTypeRefId),
         MemberCtnt(MemberId, usize),
@@ -525,12 +544,13 @@ pub(crate) mod diagnostics {
         Member(MemberId),
     }
 
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum InferenceDiagnostic<T, C> {
         UnresolvedValue {
             id: ExprOrPatId,
         },
         UnresolvedType {
+            owner: TypeVarOwner,
             id: LocalTypeRefId,
         },
         UnresolvedClass {
@@ -543,6 +563,7 @@ pub(crate) mod diagnostics {
             id: ExprOrPatId,
         },
         PrivateType {
+            owner: TypeVarOwner,
             id: LocalTypeRefId,
         },
         PrivateClass {
@@ -671,7 +692,7 @@ pub(crate) mod diagnostics {
 
                     sink.push(UnresolvedValue { file, src });
                 },
-                | InferenceDiagnostic::UnresolvedType { id } => {
+                | InferenceDiagnostic::UnresolvedType { owner, id } => {
                     owner.with_type_source_map(db.upcast(), |source_map| {
                         let src = source_map.type_ref_syntax(*id).unwrap();
 
@@ -719,7 +740,7 @@ pub(crate) mod diagnostics {
 
                     sink.push(PrivateValue { file, src });
                 },
-                | InferenceDiagnostic::PrivateType { id } => {
+                | InferenceDiagnostic::PrivateType { owner, id } => {
                     owner.with_type_source_map(db.upcast(), |source_map| {
                         let src = source_map.type_ref_syntax(*id).unwrap();
 
