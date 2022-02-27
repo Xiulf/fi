@@ -8,7 +8,7 @@ mod unify;
 
 use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
-use crate::info::{CtntInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVars, Types};
+use crate::info::{CtntInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVarScopeId, TypeVars, Types};
 use crate::lower::LowerCtx;
 use crate::ty::{Constraint, List, Ty};
 use arena::ArenaMap;
@@ -16,10 +16,11 @@ use diagnostics::InferenceDiagnostic;
 use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
-use hir_def::id::{ClassId, ContainerId, DefWithBodyId, HasModule, MemberId, TypeVarOwner};
+use hir_def::id::{AssocItemId, ClassId, ContainerId, DefWithBodyId, HasModule, MemberId, TypeVarOwner};
+use hir_def::name::Name;
 use hir_def::pat::PatId;
 use hir_def::resolver::Resolver;
-use hir_def::type_ref::LocalTypeRefId;
+use hir_def::type_ref::{LocalTypeRefId, LocalTypeVarId};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -34,31 +35,51 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
         | ContainerId::Module(_) => {},
     }
 
-    let ty = match def {
+    let (ty, item) = match def {
         | DefWithBodyId::FuncId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.func_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Synthetic);
-            let var_kinds = data.type_vars.iter().map(|_| lcx.fresh_type(src)).collect();
-            let scope = lcx.type_vars.alloc_scope(var_kinds);
 
-            lcx.type_vars.push_scope(scope);
-            data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src))
+            lcx.push_type_vars(&data.type_vars);
+
+            (
+                data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src)),
+                data.name.clone(),
+            )
         }),
         | DefWithBodyId::StaticId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.static_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Synthetic);
 
-            data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src))
+            (
+                data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src)),
+                data.name.clone(),
+            )
         }),
         | DefWithBodyId::ConstId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.const_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Synthetic);
 
-            data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src))
+            (
+                data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src)),
+                data.name.clone(),
+            )
         }),
+    };
+
+    let ty = if let ContainerId::Member(id) = def.container(db.upcast()) {
+        let item_ty = icx.member_item(id, &item);
+
+        if !icx.unify_types(item_ty, ty) {
+            icx.report_mismatch(item_ty, ty, body.body_expr());
+        }
+
+        item_ty
+    } else {
+        ty
     };
 
     if icx.result.diagnostics.is_empty() {
@@ -264,6 +285,29 @@ impl<'a> InferenceContext<'a> {
         (self.owner, origin.into())
     }
 
+    pub(crate) fn push_type_vars(&mut self, vars: &[LocalTypeVarId]) -> TypeVarScopeId {
+        let kinds = vars
+            .iter()
+            .map(|&var| {
+                let src = self.source(var);
+
+                self.fresh_type(src)
+            })
+            .collect();
+
+        self.type_vars.alloc_scope(kinds)
+    }
+
+    pub(crate) fn wrap_type_vars(&mut self, inner: TyId, scope: TypeVarScopeId, src: TySource) -> TyId {
+        if !self.type_vars.var_kinds(scope).is_empty() {
+            let kinds = self.type_vars.var_kinds(scope).clone();
+
+            self.types.insert(TyInfo::ForAll(kinds, inner, scope), src)
+        } else {
+            inner
+        }
+    }
+
     fn with_owner<T>(&mut self, id: TypeVarOwner, f: impl FnOnce(&mut Self) -> T) -> T {
         let owner = std::mem::replace(&mut self.owner, id);
         let res = f(self);
@@ -282,9 +326,7 @@ impl<'a> InferenceContext<'a> {
             .map(|&v| v.to_info(self.db, &mut self.types, src))
             .collect();
 
-        let scope = self.type_vars.alloc_scope(vars);
-
-        self.type_vars.push_scope(scope);
+        self.type_vars.alloc_scope(vars);
     }
 
     fn member_owner(&mut self, id: MemberId) {
@@ -297,9 +339,46 @@ impl<'a> InferenceContext<'a> {
             .map(|&v| v.to_info(self.db, &mut self.types, src))
             .collect();
 
-        let scope = self.type_vars.alloc_scope(vars);
+        self.type_vars.alloc_scope(vars);
+    }
 
-        self.type_vars.push_scope(scope);
+    fn member_item(&mut self, member: MemberId, item: &Name) -> TyId {
+        let src = self.source(TypeOrigin::Synthetic);
+        let lower = self.db.lower_member(member);
+        let class = self.db.class_data(lower.member.class);
+        let item = class.item(item).unwrap();
+        let item_ty = match item {
+            | AssocItemId::FuncId(id) => self.db.value_ty(id.into()),
+            | AssocItemId::StaticId(id) => self.db.value_ty(id.into()),
+        };
+
+        let types = lower
+            .member
+            .types
+            .iter()
+            .map(|t| t.to_info(self.db, &mut self.types, src))
+            .collect::<Vec<_>>();
+
+        let kinds = lower
+            .member
+            .vars
+            .iter()
+            .map(|t| t.to_info(self.db, &mut self.types, src))
+            .collect::<List<_>>();
+
+        let item_ty = item_ty.to_info(self.db, &mut self.types, src);
+        let item_ty = match self.types[item_ty].clone() {
+            | TyInfo::ForAll(_, inner, scope) => inner.replace_vars(&mut self.types, &types, scope),
+            | _ => item_ty,
+        };
+
+        if !kinds.is_empty() {
+            let scope = self.type_vars.scope_at(1);
+
+            self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
+        } else {
+            item_ty
+        }
     }
 }
 
@@ -363,9 +442,16 @@ impl<'a> BodyInferenceContext<'a> {
             ret
         };
 
-        // if !self.unify_types(ann, ty) {
-        //     self.report_mismatch(ann, ty, body.body_expr());
-        // }
+        println!(
+            "{} == {}",
+            ty.display(self.db, &self.types),
+            ann.display(self.db, &self.types)
+        );
+        println!("{:?}", body[body.body_expr()]);
+
+        if !self.unify_types(ann, ty) {
+            self.report_mismatch(ann, ty, body.body_expr());
+        }
 
         self.result.self_type = ty;
         self.ret_type = ret;

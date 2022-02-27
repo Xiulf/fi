@@ -42,7 +42,10 @@ crate fn any_item(p: &mut Parser) {
         | _ => {
             m.abandon(p);
             p.error("expected an item");
-            p.bump_any();
+
+            while !p.at_ts(TokenSet::new(&[EOF, LYT_SEP, LYT_END])) {
+                p.bump_any();
+            }
         },
     }
 }
@@ -115,7 +118,11 @@ crate fn fun(p: &mut Parser, m: Marker) {
         }
 
         p.expect(EQUALS);
-        exprs::expr(p);
+
+        let body = p.start();
+
+        exprs::block(p);
+        body.complete(p, EXPR_DO);
         m.complete(p, ITEM_FUN);
     }
 }

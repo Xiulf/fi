@@ -280,6 +280,7 @@ impl HirDisplay for Ty {
                 write!(f, ")")
             },
             | TyKind::Ctor(id) => write!(f, "{}", f.db.type_ctor_data(id).name),
+            | TyKind::Tuple(tys) if tys.is_empty() => f.write_str("()"),
             | TyKind::Tuple(tys) => f.write_joined(tys.iter(), ", "),
             | TyKind::App(base, args) => {
                 TyParens(base, true).hir_fmt(f)?;

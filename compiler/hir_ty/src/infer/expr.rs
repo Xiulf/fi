@@ -466,7 +466,6 @@ impl BodyInferenceContext<'_> {
             },
             | (_, TyInfo::Unknown(_)) => {
                 let infer = self.infer_expr(expr);
-                let infer = self.instantiate(infer, expr.into());
 
                 if !self.unify_types(infer, expected) {
                     self.report_mismatch(expected, infer, expr);

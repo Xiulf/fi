@@ -280,7 +280,6 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
             | TypeNs::TypeVar(id) => {
                 let (idx, depth) = self.resolver.type_var_index(id).unwrap();
-                dbg!(idx, depth, &self.type_vars);
                 let scope = self.type_vars.scope_at(depth);
                 let type_var = TypeVar::new(idx as u32, scope);
 
@@ -384,28 +383,18 @@ pub fn func_ty(db: &dyn HirDatabase, id: FuncId) -> Arc<LowerResult<Ty>> {
                 constraints: Box::new([ctnt]),
             };
 
-            ctx.type_vars.push_scope(class_scope);
-
-            let var_kinds = data.type_vars.iter().map(|_| ctx.fresh_type(src)).collect::<List<_>>();
-            let scope = ctx.type_vars.alloc_scope(var_kinds.clone());
-
-            ctx.type_vars.push_scope(scope);
-
+            let scope = ctx.push_type_vars(&data.type_vars);
             let mut ty = ctx.lower_ty(ty);
 
             ty = ctx.icx.types.insert(TyInfo::Where(where_, ty), src);
-
-            if !data.type_vars.is_empty() {
-                ty = ctx.icx.types.insert(TyInfo::ForAll(var_kinds, ty, scope), src);
-            }
-
-            if !lower.class.vars.is_empty() {
-                ty = ctx.icx.types.insert(TyInfo::ForAll(vars, ty, class_scope), src);
-            }
-
+            ty = ctx.wrap_type_vars(ty, scope, src);
+            ty = ctx.wrap_type_vars(ty, class_scope, src);
             ty
         } else {
-            ctx.lower_ty(ty)
+            let scope = ctx.push_type_vars(&data.type_vars);
+            let ty = ctx.lower_ty(ty);
+
+            ctx.wrap_type_vars(ty, scope, src)
         };
 
         let ty = ctx.subst_type(ty);
@@ -474,7 +463,6 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
     let vars = match ctx.icx.types[kind].clone() {
         | TyInfo::Func(vars, _) => {
             let scope = ctx.type_vars.alloc_scope(vars.clone());
-            ctx.type_vars.push_scope(scope);
             Some((vars, scope))
         },
         | _ => None,
@@ -526,9 +514,6 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
     let src = ctx.source(TypeOrigin::Synthetic);
     let var_kinds = data.type_vars.iter().map(|_| ctx.fresh_type(src)).collect::<Vec<_>>();
     let scope = ctx.type_vars.alloc_scope(var_kinds.clone().into());
-
-    ctx.type_vars.push_scope(scope);
-
     let ty = ctx.lower_ty(data.alias);
     let type_kind = ctx.type_kind(src);
     let kinds = var_kinds
@@ -579,10 +564,7 @@ pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         ctx.finish(ty)
     } else {
         let var_kinds = data.type_vars.iter().map(|_| ctx.fresh_type(src)).collect::<Vec<_>>();
-        let scope = ctx.type_vars.alloc_scope(var_kinds.clone().into());
-
-        ctx.type_vars.push_scope(scope);
-
+        let _scope = ctx.type_vars.alloc_scope(var_kinds.clone().into());
         let ty_kind = if var_kinds.is_empty() {
             ctx.type_kind(src)
         } else {
@@ -646,8 +628,6 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
         })
         .collect::<FxHashMap<_, _>>();
 
-    ctx.type_vars.push_scope(scope);
-
     let fundeps = data
         .fundeps
         .iter()
@@ -660,12 +640,13 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
     let diag_count = ctx.result.diagnostics.len();
 
     for &(_, id) in data.items.iter() {
-        let (ty, origin) = match id {
+        let (ty, _origin) = match id {
             | AssocItemId::FuncId(id) => {
                 let data = db.func_data(id);
 
                 if let Some(ty) = data.ty {
                     ctx.for_assoc_item(TypeVarOwner::TypedDefId(id.into()), data.type_map(), |ctx| {
+                        ctx.push_type_vars(&data.type_vars);
                         (ctx.lower_ty(ty), ty)
                     })
                 } else {
@@ -709,10 +690,7 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
         .map(|(_i, &_var)| ctx.fresh_type(src))
         .collect::<Vec<_>>();
 
-    let scope = ctx.type_vars.alloc_scope(vars.clone().into());
-
-    ctx.type_vars.push_scope(scope);
-
+    let _scope = ctx.type_vars.alloc_scope(vars.clone().into());
     let (class, types) = if let Some(class) = ctx.lower_class_path(&data.class, ClassSource::Member(id)) {
         let lower = db.lower_class(class);
 

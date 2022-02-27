@@ -13,35 +13,35 @@ type Stdout =
 type Stderr =
     | Stderr
 
-fn print (s :: Str) = do
+fn print (s :: Str) =
     let s = unsafe $ transmute s
     let _ = write Stdout s
 
-fn println (s :: Str) = do
+fn println (s :: Str) =
     print s
     print "\n"
 
-fn eprint (s :: Str) = do
+fn eprint (s :: Str) =
     let s = unsafe $ transmute s
     let _ = write Stderr s
 
-fn eprintln (s :: Str) = do
+fn eprintln (s :: Str) =
     eprint s
     eprint "\n"
 
 member Stdout of Write =
-    fn write s bytes = do
+    fn write s bytes =
         let (ptr, len) = unsafe $ transmute bytes
         libc/write libc/STDOUT_FILENO ptr len
         s
 
 member Stderr of Write =
-    fn write s bytes = do
+    fn write s bytes =
         let (ptr, len) = unsafe $ transmute bytes
         libc/write libc/STDERR_FILENO ptr len
         s
 
-fn print_i32 i = do
+fn print_i32 i =
     if intrinsics/ge_i32 i 10
     do print_i32 $ i / 10
 

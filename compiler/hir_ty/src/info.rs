@@ -103,7 +103,10 @@ pub struct TyDisplay<'a> {
 
 impl TypeVars {
     pub fn alloc_scope(&mut self, var_kinds: List<TyId>) -> TypeVarScopeId {
-        self.scopes.alloc(TypeVarScope { var_kinds })
+        let id = self.scopes.alloc(TypeVarScope { var_kinds });
+
+        self.push_scope(id);
+        id
     }
 
     pub fn push_scope(&mut self, id: TypeVarScopeId) {
@@ -115,7 +118,7 @@ impl TypeVars {
     }
 
     pub fn scope_at(&self, depth: usize) -> TypeVarScopeId {
-        self.current[depth]
+        self.current[self.current.len() - depth - 1]
     }
 
     pub fn var_kinds(&self, id: TypeVarScopeId) -> &List<TyId> {
@@ -642,7 +645,7 @@ impl std::fmt::Display for TyDisplay<'_> {
                 args.iter()
                     .map(|&a| format!("{}", self.with_ty(a, true)))
                     .collect::<Vec<_>>()
-                    .join(" -> "),
+                    .join(", "),
                 self.with_ty(ret, true),
             ),
             | TyInfo::Func(ref args, ret) => write!(
@@ -651,12 +654,13 @@ impl std::fmt::Display for TyDisplay<'_> {
                 args.iter()
                     .map(|&a| format!("{}", self.with_ty(a, true)))
                     .collect::<Vec<_>>()
-                    .join(" -> "),
+                    .join(", "),
                 self.with_ty(ret, true),
             ),
             | TyInfo::Where(ref where_, ty) if self.lhs_exposed => write!(
                 f,
                 "({} where{})",
+                self.with_ty(ty, false),
                 where_
                     .constraints
                     .iter()
@@ -671,11 +675,11 @@ impl std::fmt::Display for TyDisplay<'_> {
                     ))
                     .collect::<Vec<_>>()
                     .join(""),
-                self.with_ty(ty, false)
             ),
             | TyInfo::Where(ref where_, ty) => write!(
                 f,
                 "{} where{}",
+                self.with_ty(ty, false),
                 where_
                     .constraints
                     .iter()
@@ -690,7 +694,6 @@ impl std::fmt::Display for TyDisplay<'_> {
                     ))
                     .collect::<Vec<_>>()
                     .join(""),
-                self.with_ty(ty, false)
             ),
             | TyInfo::ForAll(ref kinds, ty, scope) if self.lhs_exposed => {
                 let scope: u32 = scope.into_raw().into();

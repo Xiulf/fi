@@ -584,7 +584,7 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, FN_KW);
 
                     if self.is_def_start(start) {
-                        self.stack.push((start, LayoutDelim::TopDecl));
+                        self.stack.push((start, LayoutDelim::TopDeclHead));
                     }
                 }
             },

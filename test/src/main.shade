@@ -1,6 +1,12 @@
 module main =
 
 import core/io
+import core
 
-fn main = do
+fn main =
     println "test"
+
+
+
+fn other :: a -> Str
+fn other x = "test"

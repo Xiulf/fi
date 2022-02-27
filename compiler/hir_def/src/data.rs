@@ -4,7 +4,7 @@ pub use crate::item_tree::{Assoc, FunDep, Prec};
 use crate::item_tree::{AssocItem, ItemTreeId};
 use crate::name::Name;
 use crate::path::Path;
-use crate::resolver::HasResolver;
+use crate::resolver::{HasResolver, Resolver};
 use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap, TypeMapBuilder, TypeRef, TypeSourceMap, WhereClause};
 use arena::Arena;
 use base_db::input::FileId;
@@ -113,10 +113,9 @@ impl FixityData {
 
 fn register_type_vars(
     db: &dyn DefDatabase,
-    module: ModuleId,
+    resolver: Resolver,
     type_builder: &mut TypeMapBuilder,
 ) -> Box<[LocalTypeVarId]> {
-    let resolver = module.resolver(db);
     let types = type_builder.iter().map(|(id, t)| (id, t.clone())).collect::<Vec<_>>();
     let mut defined = FxHashSet::default();
     let mut vars = Vec::new();
@@ -148,7 +147,7 @@ impl FuncData {
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
-        let type_vars = register_type_vars(db, loc.module(db), &mut type_builder);
+        let type_vars = register_type_vars(db, loc.container.resolver(db), &mut type_builder);
         let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(FuncData {
@@ -369,7 +368,7 @@ impl MemberData {
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let types = src.value.types().map(|t| type_builder.alloc_type_ref(t)).collect();
-        let type_vars = register_type_vars(db, loc.module, &mut type_builder);
+        let type_vars = register_type_vars(db, loc.module.resolver(db), &mut type_builder);
         let where_clause = type_builder.lower_where_clause(src.value.where_clause());
         let container = ContainerId::Member(id);
         let items = collect_assoc_items(db, loc.id.file_id, it.items.iter().copied(), container);
