@@ -201,6 +201,7 @@ impl<'a> InferenceContext<'a> {
         });
 
         res.self_type = self.generalize(res.self_type);
+        res.self_type = res.self_type.normalize(&mut self.types);
         res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(self)).collect();
 
         let mut finalize = |v: &mut TyId| {

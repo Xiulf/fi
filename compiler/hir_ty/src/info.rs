@@ -77,6 +77,9 @@ pub struct TypeVarScope {
 
 pub type TypeVarScopeId = Idx<TypeVarScope>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeScopeSet(u32);
+
 #[derive(Default)]
 pub struct Types {
     types: Arena<TyInfo>,
@@ -409,6 +412,23 @@ impl TyId {
                 },
                 | TyInfo::TypeVar(_) | TyInfo::Unknown(_) | TyInfo::Error => ty,
                 | _ => unreachable!("{:?}", tail),
+            },
+            | TyInfo::Where(ref w1, t1) => match types[t1] {
+                | TyInfo::Where(ref w2, t2) => {
+                    let where_clause = WhereClause {
+                        constraints: w2.constraints.iter().chain(w1.constraints.iter()).cloned().collect(),
+                    };
+
+                    types.update(ty, TyInfo::Where(where_clause, t2))
+                },
+                | TyInfo::ForAll(ref kinds, inner, scope) => {
+                    let w1 = w1.clone();
+                    let kinds = kinds.clone();
+                    let inner = types.update(inner, TyInfo::Where(w1, inner));
+
+                    types.update(ty, TyInfo::ForAll(kinds, inner, scope))
+                },
+                | _ => ty,
             },
             | _ => ty,
         })
