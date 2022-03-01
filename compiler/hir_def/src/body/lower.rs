@@ -346,9 +346,9 @@ impl<'a> ExprCollector<'a> {
             },
             | ast::Expr::Clos(e) => {
                 let pats = e.params().map(|p| self.collect_pat(p)).collect();
-                let stmts = e.block()?.statements().map(|s| self.collect_stmt(s)).collect();
+                let body = self.collect_expr_opt(e.body());
 
-                self.alloc_expr(Expr::Clos { pats, stmts }, syntax_ptr)
+                self.alloc_expr(Expr::Clos { pats, body }, syntax_ptr)
             },
             | ast::Expr::If(e) => {
                 let cond = self.collect_expr_opt(e.cond());

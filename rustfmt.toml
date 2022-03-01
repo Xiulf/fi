@@ -6,3 +6,6 @@ overflow_delimited_expr = true
 format_macro_matchers = true
 match_block_trailing_comma = true
 match_arm_leading_pipes = "Always"
+reorder_imports = true
+group_imports = "One"
+use_field_init_shorthand = true

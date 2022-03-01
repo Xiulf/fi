@@ -51,7 +51,7 @@ pub enum Expr {
     },
     Clos {
         pats: Box<[PatId]>,
-        stmts: Box<[Stmt]>,
+        body: ExprId,
     },
     If {
         cond: ExprId,
@@ -144,13 +144,7 @@ impl Expr {
                     | Stmt::Expr { expr } => f(*expr),
                 });
             },
-            | Expr::Clos { pats: _, stmts } => {
-                stmts.iter().for_each(|stmt| match stmt {
-                    | Stmt::Let { val, .. } => f(*val),
-                    | Stmt::Bind { val, .. } => f(*val),
-                    | Stmt::Expr { expr } => f(*expr),
-                });
-            },
+            | Expr::Clos { pats: _, body } => f(*body),
             | Expr::If { cond, then, else_, .. } => {
                 f(*cond);
                 f(*then);

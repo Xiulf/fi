@@ -119,14 +119,14 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
         | Expr::Do { stmts } => {
             compute_block_scopes(stmts, body, scopes, scope);
         },
-        | Expr::Clos { pats, stmts } => {
+        | Expr::Clos { pats, body: b } => {
             let scope = scopes.new_scope(scope);
 
             for &pat in pats.iter() {
                 scopes.add_bindings(body, scope, pat);
             }
 
-            compute_block_scopes(stmts, body, scopes, scope);
+            compute_expr_scopes(*b, body, scopes, scope);
         },
         | Expr::Case { pred, arms } => {
             compute_expr_scopes(*pred, body, scopes, scope);

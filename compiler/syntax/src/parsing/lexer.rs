@@ -38,19 +38,19 @@ struct Lexer<'src> {
     errors: Vec<SyntaxError>,
     start_lyt: Option<Vec<LayoutDelim>>,
     stack: Vec<((usize, usize), LayoutDelim)>,
-    is_do: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LayoutDelim {
     Root,
+    Where,
     TypeDecl,
-    TopDeclHead,
     ClassHead,
     ClassBody,
-    Where,
+    MemberHead,
+    DeclHead,
+    ClosHead,
     Prop,
-    ClosureHead,
     Case,
     CaseBinders,
     CaseGuard,
@@ -90,7 +90,6 @@ impl<'src> Lexer<'src> {
             errors: Vec::new(),
             start_lyt: None,
             stack: vec![((0, 0), LayoutDelim::Root)],
-            is_do: false,
         }
     }
 
@@ -123,10 +122,7 @@ impl<'src> Lexer<'src> {
 
                     let first = lyt.swap_remove(0);
 
-                    if first == LayoutDelim::Do && self.peek() == '|' {
-                        self.emit(WHITESPACE);
-                        self.is_do = true;
-                    } else if first.is_indented() {
+                    if first.is_indented() {
                         self.emit(LYT_START);
                     } else {
                         self.emit(WHITESPACE);
@@ -226,13 +222,16 @@ impl<'src> Lexer<'src> {
                     |s, p, lyt| match lyt {
                         | LayoutDelim::Do => true,
                         | LayoutDelim::Of => false,
+                        | LayoutDelim::ClosHead => false,
                         | _ => offside_end_p(s, p, lyt),
                     },
                     &mut self.stack,
                     &mut self.tokens,
                 );
 
-                if let [.., (_, LayoutDelim::CaseBinders | LayoutDelim::CaseGuard)] = self.stack[..] {
+                if let [.., (_, LayoutDelim::CaseBinders | LayoutDelim::CaseGuard | LayoutDelim::ClosHead)] =
+                    self.stack[..]
+                {
                     self.stack.pop().unwrap();
                 }
 
@@ -254,21 +253,6 @@ impl<'src> Lexer<'src> {
                 self.insert_default(start, COLON);
             },
             | '=' => match self.stack[..] {
-                | [.., (_, LayoutDelim::TopDeclHead), (_, LayoutDelim::Where)] => {
-                    Collapse::new(self.tokens.len()).collapse(
-                        start,
-                        |s, p, lyt| match lyt {
-                            | LayoutDelim::Where => true,
-                            | _ => offside_end_p(s, p, lyt),
-                        },
-                        &mut self.stack,
-                        &mut self.tokens,
-                    );
-
-                    self.stack.pop().unwrap();
-                    self.emit(EQUALS);
-                    self.insert_start(LayoutDelim::Where);
-                },
                 | [.., (_, LayoutDelim::ClassHead), (_, LayoutDelim::Where)] => {
                     Collapse::new(self.tokens.len()).collapse(
                         start,
@@ -284,7 +268,17 @@ impl<'src> Lexer<'src> {
                     self.emit(EQUALS);
                     self.insert_start(LayoutDelim::ClassBody);
                 },
-                | [.., (_, LayoutDelim::TopDeclHead)] => {
+                | [.., (_, LayoutDelim::MemberHead), (_, LayoutDelim::Where)] => {
+                    Collapse::new(self.tokens.len()).collapse(
+                        start,
+                        |s, p, lyt| match lyt {
+                            | LayoutDelim::Where => true,
+                            | _ => offside_end_p(s, p, lyt),
+                        },
+                        &mut self.stack,
+                        &mut self.tokens,
+                    );
+
                     self.stack.pop().unwrap();
                     self.emit(EQUALS);
                     self.insert_start(LayoutDelim::Where);
@@ -293,6 +287,16 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                     self.emit(EQUALS);
                     self.insert_start(LayoutDelim::ClassBody);
+                },
+                | [.., (_, LayoutDelim::MemberHead)] => {
+                    self.stack.pop().unwrap();
+                    self.emit(EQUALS);
+                    self.insert_start(LayoutDelim::Where);
+                },
+                | [.., (_, LayoutDelim::DeclHead)] => {
+                    self.stack.pop().unwrap();
+                    self.emit(EQUALS);
+                    self.insert_start(LayoutDelim::Do);
                 },
                 | _ => {
                     self.insert_default(start, EQUALS);
@@ -316,16 +320,6 @@ impl<'src> Lexer<'src> {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                     self.stack.pop().unwrap();
                 }
-            },
-            | '|' if self.is_do => {
-                self.emit(PIPE);
-                self.stack.pop().unwrap();
-                self.stack.push((start, LayoutDelim::ClosureHead));
-            },
-            | '|' if self.is_closure() => {
-                self.stack.pop().unwrap();
-                self.emit(PIPE);
-                self.insert_start(LayoutDelim::Do);
             },
             | '|' if !is_op_char(self.peek()) => {
                 let mut c = Collapse::new(self.tokens.len());
@@ -554,7 +548,7 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, MODULE_KW);
 
                     if self.is_def_start(start) {
-                        self.stack.push((start, LayoutDelim::TopDeclHead));
+                        self.stack.push((start, LayoutDelim::MemberHead));
                     }
                 }
             },
@@ -593,7 +587,9 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, FN_KW);
 
                     if self.is_def_start(start) {
-                        self.stack.push((start, LayoutDelim::TopDeclHead));
+                        self.stack.push((start, LayoutDelim::DeclHead));
+                    } else {
+                        self.stack.push((start, LayoutDelim::ClosHead));
                     }
                 }
             },
@@ -634,7 +630,7 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, MEMBER_KW);
 
                     if self.is_top_decl(start) {
-                        self.stack.push((start, LayoutDelim::TopDeclHead));
+                        self.stack.push((start, LayoutDelim::MemberHead));
                     }
                 },
             },
@@ -663,7 +659,7 @@ impl<'src> Lexer<'src> {
                 }
             },
             | "where" => match self.stack[..] {
-                | [.., (_, LayoutDelim::TopDeclHead)] => {
+                | [.., (_, LayoutDelim::MemberHead)] => {
                     self.emit(WHERE_KW);
                     self.insert_start(LayoutDelim::Where);
                 },
@@ -840,7 +836,7 @@ impl<'src> Lexer<'src> {
                         self.insert_start(LayoutDelim::Of);
                         self.insert_start(LayoutDelim::CaseBinders);
                     },
-                    | [.., (_, LayoutDelim::TopDeclHead)] => {
+                    | [.., (_, LayoutDelim::MemberHead)] => {
                         self.emit(OF_KW);
                     },
                     | _ => {
@@ -906,10 +902,6 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    fn is_closure(&self) -> bool {
-        matches!(self.stack[..], [.., (_, LayoutDelim::ClosureHead)])
-    }
-
     fn is_path_sep(&mut self) -> bool {
         let next = self.peek();
 
@@ -937,7 +929,7 @@ impl<'src> Lexer<'src> {
 
     fn insert_sep(&mut self, start: (usize, usize)) {
         match self.stack[..] {
-            | [.., (pos, LayoutDelim::TypeDecl | LayoutDelim::TopDeclHead | LayoutDelim::ClassHead)]
+            | [.., (pos, LayoutDelim::TypeDecl | LayoutDelim::MemberHead | LayoutDelim::ClassHead)]
                 if sep_p(start, pos) =>
             {
                 self.stack.pop().unwrap();
@@ -1016,7 +1008,6 @@ impl<'src> Lexer<'src> {
         });
 
         self.start = self.pos;
-        self.is_do = false;
     }
 
     fn peek(&mut self) -> char {

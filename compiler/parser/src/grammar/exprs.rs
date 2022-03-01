@@ -123,29 +123,25 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         },
         | DO_KW if allow_do => {
             p.bump(DO_KW);
-
-            if p.eat(PIPE) {
-                while !p.at(EOF) && !p.at(PIPE) {
-                    patterns::atom(p);
-
-                    if !p.at(PIPE) {
-                        p.expect(COMMA);
-                    }
-                }
-
-                p.expect(PIPE);
-                block(p);
-                Some(m.complete(p, EXPR_CLOS))
-            } else {
-                block(p);
-                Some(m.complete(p, EXPR_DO))
-            }
+            block(p);
+            Some(m.complete(p, EXPR_DO))
         },
         | DO_KW => {
             p.error("do blocks are not allowed in this position");
             p.bump_any();
             m.abandon(p);
             None
+        },
+        | FN_KW => {
+            p.bump(FN_KW);
+
+            while !p.at(EOF) && !p.at(ARROW) {
+                patterns::atom(p);
+            }
+
+            p.expect(ARROW);
+            expr(p);
+            Some(m.complete(p, EXPR_CLOS))
         },
         | IF_KW | UNLESS_KW => {
             p.bump_any();

@@ -170,13 +170,14 @@ impl BodyInferenceContext<'_> {
                 self.types.insert(TyInfo::App(array_type, [elem_ty, len].into()), src)
             },
             | Expr::Do { stmts } => self.infer_block(stmts, expr),
-            | Expr::Clos { pats, stmts } => {
-                let ret = self.fresh_type(src);
+            | Expr::Clos { pats, body } => {
+                let body_src = self.source(*body);
+                let ret = self.fresh_type(body_src);
                 let params = pats.iter().map(|&p| self.infer_pat(p)).collect::<Vec<_>>();
+                let old_ret_type = std::mem::replace(&mut self.ret_type, ret);
 
-                self.clos_ret_type = Some(ret);
-                self.check_block(stmts, ret, expr.into());
-                self.clos_ret_type = None;
+                self.check_expr(*body, ret);
+                self.ret_type = old_ret_type;
                 self.fn_type(params.into(), ret, src)
             },
             | Expr::If { cond, then, else_, .. } => {
@@ -323,7 +324,7 @@ impl BodyInferenceContext<'_> {
                 ret
             },
             | Expr::Return { expr: inner } => {
-                let ret = self.clos_ret_type.unwrap_or(self.ret_type);
+                let ret = self.ret_type;
 
                 if let Some(inner) = inner {
                     self.check_expr(*inner, ret);
@@ -464,6 +465,7 @@ impl BodyInferenceContext<'_> {
                     self.class_env.pop();
                 }
             },
+            | (Expr::Do { stmts }, _) => self.check_block(stmts, expected, expr),
             | (_, TyInfo::Unknown(_)) => {
                 let infer = self.infer_expr(expr);
 
@@ -549,35 +551,34 @@ impl BodyInferenceContext<'_> {
                     self.check_expr(expr, exp);
                 }
             },
-            | (Expr::Do { stmts }, _) => self.check_block(stmts, expected, expr),
-            | (Expr::Clos { pats, stmts }, _) => {
-                use hir_def::id::HasModule;
-                let module = self.owner.module(self.db.upcast());
-                let block_ty = self.db.lang_item(module.lib, "block-type".into()).unwrap();
-                let block_ty = block_ty.as_type_ctor().unwrap();
-
-                if let Some([f_ty, r_ty]) = expected.match_ctor(&self.types, block_ty).as_deref() {
-                    let ret = self.fresh_type(src);
-                    let args = pats.iter().map(|&p| self.infer_pat(p)).collect();
-                    let ty = self.fn_type(args, ret, src);
-
-                    self.block_ret_type = Some(ret);
-                    self.block_break_type = Some(*r_ty);
-                    self.check_block(stmts, ret, expr.into());
-                    self.block_ret_type = None;
-                    self.block_break_type = None;
-
-                    if !self.unify_types(*f_ty, ty) {
-                        self.report_mismatch(*f_ty, ty, expr);
-                    }
-                } else {
-                    let infer = self.infer_expr(expr);
-
-                    if !self.subsume_types(infer, expected, expr.into()) {
-                        self.report_mismatch(expected, infer, expr);
-                    }
-                }
-            },
+            //             | (Expr::Clos { pats, stmts }, _) => {
+            //                 use hir_def::id::HasModule;
+            //                 let module = self.owner.module(self.db.upcast());
+            //                 let block_ty = self.db.lang_item(module.lib, "block-type".into()).unwrap();
+            //                 let block_ty = block_ty.as_type_ctor().unwrap();
+            //
+            //                 if let Some([f_ty, r_ty]) = expected.match_ctor(&self.types, block_ty).as_deref() {
+            //                     let ret = self.fresh_type(src);
+            //                     let args = pats.iter().map(|&p| self.infer_pat(p)).collect();
+            //                     let ty = self.fn_type(args, ret, src);
+            //
+            //                     self.block_ret_type = Some(ret);
+            //                     self.block_break_type = Some(*r_ty);
+            //                     self.check_block(stmts, ret, expr.into());
+            //                     self.block_ret_type = None;
+            //                     self.block_break_type = None;
+            //
+            //                     if !self.unify_types(*f_ty, ty) {
+            //                         self.report_mismatch(*f_ty, ty, expr);
+            //                     }
+            //                 } else {
+            //                     let infer = self.infer_expr(expr);
+            //
+            //                     if !self.subsume_types(infer, expected, expr.into()) {
+            //                         self.report_mismatch(expected, infer, expr);
+            //                     }
+            //                 }
+            //             },
             | (_, _) => {
                 let infer = self.infer_expr(expr);
 
@@ -636,47 +637,45 @@ impl BodyInferenceContext<'_> {
 
     pub fn check_block(&mut self, stmts: &[Stmt], expected: TyId, expr: ExprId) {
         let src = self.source(expr);
+        let def = self.resolver.body_owner().unwrap();
+        let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+        let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
+        let last = stmts.len() - 1;
 
-        if let TypeVarOwner::DefWithBodyId(def) = self.owner {
-            let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
-            let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
-            let last = stmts.len() - 1;
+        for (i, stmt) in stmts.iter().enumerate() {
+            match *stmt {
+                | Stmt::Expr { expr } => {
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
 
-            for (i, stmt) in stmts.iter().enumerate() {
-                match *stmt {
-                    | Stmt::Expr { expr } => {
-                        self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+                    if i == last {
+                        self.check_expr(expr, expected);
+                        self.resolver = old_resolver;
+                        return;
+                    } else {
+                        self.infer_expr(expr);
+                    }
+                },
+                | Stmt::Bind { pat, val } => {
+                    let ty = self.infer_pat(pat);
 
-                        if i == last {
-                            self.check_expr(expr, expected);
-                            self.resolver = old_resolver;
-                            return;
-                        } else {
-                            self.infer_expr(expr);
-                        }
-                    },
-                    | Stmt::Bind { pat, val } => {
-                        let ty = self.infer_pat(pat);
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
+                    self.check_expr(val, ty);
+                },
+                | Stmt::Let { pat, val } => {
+                    let ty = self.infer_pat(pat);
 
-                        self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-                        self.check_expr(val, ty);
-                    },
-                    | Stmt::Let { pat, val } => {
-                        let ty = self.infer_pat(pat);
-
-                        self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-                        self.check_expr(val, ty);
-                    },
-                }
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
+                    self.check_expr(val, ty);
+                },
             }
-
-            let unit = self.unit(src);
-
-            if !self.unify_types(expected, unit) {
-                self.report_mismatch(expected, unit, expr);
-            }
-
-            self.resolver = old_resolver;
         }
+
+        let unit = self.unit(src);
+
+        if !self.unify_types(expected, unit) {
+            self.report_mismatch(expected, unit, expr);
+        }
+
+        self.resolver = old_resolver;
     }
 }

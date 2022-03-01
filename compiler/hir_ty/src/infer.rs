@@ -124,7 +124,6 @@ struct BodyInferenceContext<'a> {
     body: Arc<Body>,
     ret_type: TyId,
     yield_type: Option<TyId>,
-    clos_ret_type: Option<TyId>,
     block_ret_type: Option<TyId>,
     block_break_type: Option<TyId>,
     breakable: Vec<Breakable>,
@@ -407,6 +406,13 @@ impl<'a> InferenceContext<'a> {
             item_ty = self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
         }
 
+        println!(
+            "{} == {}",
+            item_ty.display(self.db, &self.types),
+            ann.display(self.db, &self.types)
+        );
+        dbg!(&self.type_vars);
+
         if !self.unify_types(item_ty, ann) {
             self.report_mismatch(item_ty, ann, body.body_expr());
         }
@@ -426,7 +432,6 @@ impl<'a> BodyInferenceContext<'a> {
             body: db.body(owner),
             ret_type: error,
             yield_type: None,
-            clos_ret_type: None,
             block_ret_type: None,
             block_break_type: None,
             breakable: Vec::new(),
@@ -484,7 +489,7 @@ impl<'a> BodyInferenceContext<'a> {
         }
 
         self.ret_type = ret;
-        self.check_expr(self.body.body_expr(), ret);
+        self.check_expr(body.body_expr(), ret);
 
         if let Some(_yield_type) = self.yield_type {
             todo!();

@@ -809,7 +809,7 @@ impl ExprClos {
         support::children(&self.0)
     }
 
-    pub fn block(&self) -> Option<Block> {
+    pub fn body(&self) -> Option<Expr> {
         support::child(&self.0)
     }
 }

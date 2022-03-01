@@ -7,6 +7,21 @@ fn main =
     a <- "test"
     println a
 
+fn test = fn a b -> "test"
+
+
+type Option t =
+    | None
+    | Some t
+
+member Option of Applicative =
+    fn pure a = Some a
+
+; member Option of Functor =
+;     fn map f a = case a of
+;         None -> None
+;         Some a -> Some $ f a
+
 
 class Functor f =
     fn map :: (a -> b), f a -> f b

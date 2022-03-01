@@ -73,6 +73,7 @@ impl InferenceContext<'_> {
         self.fresh_type_with_kind(ty_kind, src)
     }
 
+    #[track_caller]
     pub fn solve_type(&mut self, u: Unknown, ty: TyId) {
         let &(_, kind) = self.subst.unsolved(u);
 
@@ -203,6 +204,7 @@ impl InferenceContext<'_> {
         }
     }
 
+    #[track_caller]
     pub fn unify_types(&mut self, t1: TyId, t2: TyId) -> bool {
         let t1 = self.subst_type(t1);
         let t2 = self.subst_type(t2);
