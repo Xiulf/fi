@@ -10,7 +10,7 @@ use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
 use crate::info::{CtntInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVarScopeId, TypeVars, Types};
 use crate::lower::LowerCtx;
-use crate::ty::{Constraint, List, Ty, TypeVar, WhereClause};
+use crate::ty::{Constraint, List, Ty, TyAndSrc, TypeVar, WhereClause};
 use arena::ArenaMap;
 use diagnostics::InferenceDiagnostic;
 use hir_def::body::Body;
@@ -80,7 +80,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
         | _ => ty,
     };
 
-    icx.result.self_type = ty;
+    icx.result.self_type.ty = ty;
 
     if icx.result.diagnostics.is_empty() {
         icx.check_body(ty, matches!(def, DefWithBodyId::FuncId(_)));
@@ -91,7 +91,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct InferenceResult<T, C> {
-    pub self_type: T,
+    pub self_type: TyAndSrc<T>,
     pub type_of_expr: ArenaMap<ExprId, T>,
     pub type_of_pat: ArenaMap<PatId, T>,
     pub kind_of_ty: ArenaMap<LocalTypeRefId, T>,
@@ -156,7 +156,7 @@ impl From<PatId> for ExprOrPatId {
 impl<'a> InferenceContext<'a> {
     pub fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: TypeVarOwner) -> Self {
         let mut types = Types::default();
-        let src = (owner, TypeOrigin::Synthetic);
+        let src = (owner, TypeOrigin::Def(owner.into()));
         let self_type = types.insert(TyInfo::Error, src);
 
         InferenceContext {
@@ -165,7 +165,7 @@ impl<'a> InferenceContext<'a> {
             resolver,
             types,
             result: InferenceResult {
-                self_type,
+                self_type: TyAndSrc { ty: self_type, src },
                 type_of_expr: ArenaMap::default(),
                 type_of_pat: ArenaMap::default(),
                 kind_of_ty: ArenaMap::default(),
@@ -190,7 +190,10 @@ impl<'a> InferenceContext<'a> {
 
         let self_type = self.types.insert(TyInfo::Error, (self.owner, TypeOrigin::Synthetic));
         let mut res = std::mem::replace(&mut self.result, InferenceResult {
-            self_type,
+            self_type: TyAndSrc {
+                ty: self_type,
+                src: (self.owner, TypeOrigin::Synthetic),
+            },
             type_of_expr: ArenaMap::default(),
             type_of_pat: ArenaMap::default(),
             kind_of_ty: ArenaMap::default(),
@@ -199,8 +202,8 @@ impl<'a> InferenceContext<'a> {
             diagnostics: Vec::new(),
         });
 
-        res.self_type = self.generalize(res.self_type);
-        res.self_type = res.self_type.normalize(&mut self.types);
+        res.self_type.ty = self.generalize(res.self_type.ty);
+        res.self_type.ty = res.self_type.ty.normalize(&mut self.types);
         res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(self)).collect();
 
         let mut finalize = |v: &mut TyId| {
@@ -316,7 +319,7 @@ impl<'a> InferenceContext<'a> {
 
     fn class_owner(&mut self, id: ClassId) {
         let lower = self.db.lower_class(id);
-        let src = self.source(TypeOrigin::Synthetic);
+        let src = self.source(TypeOrigin::Def(id.into()));
         let vars = lower
             .class
             .vars
@@ -329,7 +332,7 @@ impl<'a> InferenceContext<'a> {
 
     fn member_owner(&mut self, id: MemberId) {
         let lower = self.db.lower_member(id);
-        let src = self.source(TypeOrigin::Synthetic);
+        let src = self.source(TypeOrigin::Def(id.into()));
         let vars = lower
             .member
             .vars
@@ -365,7 +368,8 @@ impl<'a> InferenceContext<'a> {
     }
 
     fn member_item(&mut self, member: MemberId, ann: TyId, item: &Name, body: &Body) -> TyId {
-        let src = self.source(TypeOrigin::Synthetic);
+        let src = self.source(TypeOrigin::Def(member.into()));
+        let data = self.db.member_data(member);
         let lower = self.db.lower_member(member);
         let class = self.db.class_data(lower.member.class);
         let item = class.item(item).unwrap();
@@ -378,7 +382,12 @@ impl<'a> InferenceContext<'a> {
             .member
             .types
             .iter()
-            .map(|t| t.to_info(self.db, &mut self.types, &mut self.type_vars, src))
+            .zip(data.types.iter())
+            .map(|(t, &ty)| {
+                let src = self.source(ty);
+
+                t.to_info(self.db, &mut self.types, &mut self.type_vars, src)
+            })
             .collect::<Vec<_>>();
 
         let kinds = lower
@@ -388,7 +397,10 @@ impl<'a> InferenceContext<'a> {
             .map(|t| t.to_info(self.db, &mut self.types, &mut self.type_vars, src))
             .collect::<List<_>>();
 
-        let item_ty = item_ty.to_info(self.db, &mut self.types, &mut self.type_vars, src);
+        let item_ty = item_ty
+            .ty
+            .to_info(self.db, &mut self.types, &mut self.type_vars, item_ty.src);
+
         let mut item_ty = match self.types[item_ty].clone() {
             | TyInfo::ForAll(_, inner, scope) => inner.replace_vars(&mut self.types, &types, scope),
             | _ => item_ty,
@@ -414,6 +426,8 @@ impl<'a> InferenceContext<'a> {
 
             item_ty = self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
         }
+
+        let item_ty = item_ty.normalize(&mut self.types);
 
         if !self.unify_types(item_ty, ann) {
             self.report_mismatch(item_ty, ann, body.body_expr());
@@ -544,11 +558,16 @@ pub(crate) mod diagnostics {
     use hir_def::type_ref::{LocalTypeRefId, TypeVarSource};
     use syntax::{AstNode, SyntaxNodePtr};
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum WhereSource {
+        TypeRef(LocalTypeRefId),
+        Class(ClassId),
+        Member(MemberId),
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ClassSource {
-        TyCtnt(LocalTypeRefId),
-        MemberCtnt(MemberId, usize),
-        ClassCtnt(ClassId, usize),
+        WhereClause(WhereSource, usize),
         Member(MemberId),
     }
 
@@ -708,19 +727,6 @@ pub(crate) mod diagnostics {
                     });
                 },
                 | InferenceDiagnostic::UnresolvedClass { src } => {
-                    let root = db.parse(file).syntax_node();
-                    let node = match src {
-                        | ClassSource::TyCtnt(id) => {
-                            owner.with_type_source_map(db.upcast(), |source_map| {
-                                let src = source_map.type_ref_syntax(*id).unwrap();
-                                src.syntax_node_ptr().to_node(&root)
-                            });
-                        },
-                        | ClassSource::ClassCtnt(id, idx) => {},
-                        | ClassSource::MemberCtnt(id, idx) => {},
-                        | ClassSource::Member(id) => {},
-                    };
-
                     let src = todo!();
 
                     sink.push(UnresolvedClass { file, src });
@@ -756,19 +762,6 @@ pub(crate) mod diagnostics {
                     });
                 },
                 | InferenceDiagnostic::PrivateClass { src } => {
-                    let root = db.parse(file).syntax_node();
-                    let node = match src {
-                        | ClassSource::TyCtnt(id) => {
-                            owner.with_type_source_map(db.upcast(), |source_map| {
-                                let src = source_map.type_ref_syntax(*id).unwrap();
-                                src.syntax_node_ptr().to_node(&root)
-                            });
-                        },
-                        | ClassSource::ClassCtnt(id, idx) => {},
-                        | ClassSource::MemberCtnt(id, idx) => {},
-                        | ClassSource::Member(id) => {},
-                    };
-
                     let src = todo!();
 
                     sink.push(PrivateClass { file, src });

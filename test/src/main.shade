@@ -14,11 +14,10 @@ type Option t =
     | None
     | Some t
 
-member (Option t) (Option Infallible) t of Try =
+type OptionTry t e = Option t
+
+member OptionTry Infallible of Try =
     fn from_output o = Some o
-    fn branch self = case self of
-        Some t -> Next t
-        None -> Break None
 
 ; member Option of Functor =
 ;     fn map f a = case a of
@@ -68,9 +67,9 @@ type ControlFlow b n =
     | Next n
     | Break b
 
-class Try self residual output | self -> residual, self -> output where FromResidual self residual =
-    fn from_output :: output -> self
-    fn branch :: self -> ControlFlow residual output
+class Try self residual where FromResidual self residual =
+    fn from_output :: output -> self output residual
+    fn branch :: self output residual -> ControlFlow residual output
 
-class FromResidual self residual | self -> residual =
-    fn from_residual :: residual -> self
+class FromResidual self residual =
+    fn from_residual :: residual -> self output residual

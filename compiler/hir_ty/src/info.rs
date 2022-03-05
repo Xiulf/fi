@@ -416,6 +416,14 @@ impl TyId {
                 | TyInfo::TypeVar(_) | TyInfo::Unknown(_) | TyInfo::Error => ty,
                 | _ => unreachable!("{:?}", tail),
             },
+            | TyInfo::App(base, ref args) => match types[base] {
+                | TyInfo::ForAll(_, inner, scope) => {
+                    let args = args.clone();
+
+                    inner.replace_vars(types, &args, scope)
+                },
+                | _ => ty,
+            },
             //             | TyInfo::Where(ref w1, t1) => match types[t1] {
             //                 | TyInfo::Where(ref w2, t2) => {
             //                     let where_clause = WhereClause {

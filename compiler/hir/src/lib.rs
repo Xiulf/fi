@@ -300,7 +300,7 @@ impl Func {
     }
 
     pub fn ty(self, db: &dyn HirDatabase) -> ty::Ty {
-        db.value_ty(self.id.into())
+        db.value_ty(self.id.into()).ty
     }
 
     pub fn has_body(self, db: &dyn HirDatabase) -> bool {
@@ -354,7 +354,7 @@ impl Func {
         let body = db.body(self.id.into());
 
         // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-        eprintln!("fn {} :: {}", data.name, infer.self_type.display(db));
+        eprintln!("fn {} :: {}", data.name, infer.self_type.ty.display(db));
 
         // for (expr, ty) in infer.type_of_expr.iter() {
         //     eprintln!("{:?} :: {}", body[expr], ty.display(db));

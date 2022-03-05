@@ -366,7 +366,7 @@ impl HirDisplay for Constraint {
     }
 }
 
-impl HirDisplay for Class<Ty> {
+impl HirDisplay for Class<Ty, Constraint> {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         let data = f.db.class_data(self.id);
 
@@ -380,6 +380,11 @@ impl HirDisplay for Class<Ty> {
         if !self.fundeps.is_empty() {
             write!(f, " | ")?;
             f.write_joined(self.fundeps.iter(), ", ")?;
+        }
+
+        if !self.where_clause.constraints.is_empty() {
+            write!(f, " ")?;
+            self.where_clause.hir_fmt(f)?;
         }
 
         Ok(())

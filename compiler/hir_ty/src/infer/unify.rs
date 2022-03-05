@@ -142,7 +142,7 @@ impl InferenceContext<'_> {
     }
 
     pub fn generalize(&mut self, ty: TyId) -> TyId {
-        let src = self.source(TypeOrigin::Synthetic);
+        let src = self.types.source(ty);
         let mut ty = self.subst_type(ty);
         let mut unknowns = FxHashMap::default();
         let mut find_unknown = |ty: TyId| match self.types[ty] {

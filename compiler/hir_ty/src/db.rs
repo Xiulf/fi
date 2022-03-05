@@ -1,7 +1,7 @@
 use crate::class::Members;
 use crate::infer::InferenceResult;
 use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult};
-use crate::ty::{Constraint, Ty, TyKind};
+use crate::ty::{Constraint, Ty, TyAndSrc, TyKind};
 use base_db::Upcast;
 use hir_def::db::DefDatabase;
 use hir_def::id::{ClassId, CtorId, DefWithBodyId, MemberId, TypeAliasId, TypeCtorId, ValueTyDefId};
@@ -13,7 +13,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     fn infer(&self, id: DefWithBodyId) -> Arc<InferenceResult<Ty, Constraint>>;
 
     #[salsa::invoke(crate::lower::value_ty)]
-    fn value_ty(&self, id: ValueTyDefId) -> Ty;
+    fn value_ty(&self, id: ValueTyDefId) -> TyAndSrc<Ty>;
 
     #[salsa::invoke(crate::lower::ctor_ty)]
     fn ctor_ty(&self, id: CtorId) -> Arc<LowerResult<Ty>>;
@@ -30,7 +30,7 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     fn kind_for_ctor(&self, id: TypeCtorId) -> Arc<LowerResult<Ty>>;
 
     #[salsa::invoke(crate::lower::lower_class_query)]
-    fn lower_class(&self, id: ClassId) -> Arc<ClassLowerResult<Ty>>;
+    fn lower_class(&self, id: ClassId) -> Arc<ClassLowerResult<Ty, Constraint>>;
 
     #[salsa::invoke(crate::lower::lower_member_query)]
     fn lower_member(&self, id: MemberId) -> Arc<MemberLowerResult<Ty, Constraint>>;

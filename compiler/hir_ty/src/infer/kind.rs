@@ -36,10 +36,11 @@ impl InferenceContext<'_> {
             },
             | TyInfo::Ctor(id) => {
                 if TypeVarOwner::TypedDefId(id.into()) == self.owner {
-                    self.result.self_type
+                    self.result.self_type.ty
                 } else {
                     self.db
                         .kind_for_ctor(id)
+                        .ty
                         .ty
                         .to_info(self.db, &mut self.types, &mut self.type_vars, src)
                 }

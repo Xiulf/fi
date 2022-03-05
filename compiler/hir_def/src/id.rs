@@ -509,3 +509,16 @@ impl_from!(FuncId, StaticId, ConstId, TypeAliasId, TypeCtorId, CtorId, ClassId, 
 impl_from!(FuncId, StaticId, ConstId, CtorId for ValueTyDefId);
 impl_from!(FuncId, StaticId, ConstId for DefWithBodyId);
 impl_from!(DefWithBodyId, TypedDefId for TypeVarOwner);
+
+impl From<TypeVarOwner> for TypedDefId {
+    fn from(id: TypeVarOwner) -> Self {
+        match id {
+            | TypeVarOwner::DefWithBodyId(id) => match id {
+                | DefWithBodyId::FuncId(id) => TypedDefId::FuncId(id),
+                | DefWithBodyId::StaticId(id) => TypedDefId::StaticId(id),
+                | DefWithBodyId::ConstId(id) => TypedDefId::ConstId(id),
+            },
+            | TypeVarOwner::TypedDefId(id) => id,
+        }
+    }
+}

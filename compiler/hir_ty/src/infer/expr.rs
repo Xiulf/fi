@@ -39,7 +39,7 @@ impl BodyInferenceContext<'_> {
                                 break 't self
                                     .icx
                                     .subst
-                                    .subst_type(&mut self.icx.types, self.icx.result.self_type);
+                                    .subst_type(&mut self.icx.types, self.icx.result.self_type.ty);
                             } else {
                                 id.into()
                             }
@@ -52,6 +52,7 @@ impl BodyInferenceContext<'_> {
                     let ty =
                         self.db
                             .value_ty(id)
+                            .ty
                             .to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
 
                     self.result.type_of_expr.insert(expr, ty);
@@ -376,6 +377,7 @@ impl BodyInferenceContext<'_> {
         let ty = self
             .db
             .value_ty(id)
+            .ty
             .to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
 
         self.instantiate(ty, origin)
@@ -505,9 +507,9 @@ impl BodyInferenceContext<'_> {
                             if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
                                 self.icx
                                     .subst
-                                    .subst_type(&mut self.icx.types, self.icx.result.self_type)
+                                    .subst_type(&mut self.icx.types, self.icx.result.self_type.ty)
                             } else {
-                                self.db.value_ty(id.into()).to_info(
+                                self.db.value_ty(id.into()).ty.to_info(
                                     self.icx.db,
                                     &mut self.icx.types,
                                     &mut self.icx.type_vars,
@@ -515,19 +517,19 @@ impl BodyInferenceContext<'_> {
                                 )
                             }
                         },
-                        | ValueNs::Static(id) => self.db.value_ty(id.into()).to_info(
+                        | ValueNs::Static(id) => self.db.value_ty(id.into()).ty.to_info(
                             self.icx.db,
                             &mut self.icx.types,
                             &mut self.icx.type_vars,
                             src,
                         ),
-                        | ValueNs::Const(id) => self.db.value_ty(id.into()).to_info(
+                        | ValueNs::Const(id) => self.db.value_ty(id.into()).ty.to_info(
                             self.icx.db,
                             &mut self.icx.types,
                             &mut self.icx.type_vars,
                             src,
                         ),
-                        | ValueNs::Ctor(id) => self.db.value_ty(id.into()).to_info(
+                        | ValueNs::Ctor(id) => self.db.value_ty(id.into()).ty.to_info(
                             self.icx.db,
                             &mut self.icx.types,
                             &mut self.icx.type_vars,

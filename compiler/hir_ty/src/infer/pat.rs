@@ -45,7 +45,9 @@ impl BodyInferenceContext<'_> {
                         | _ => todo!(),
                     };
 
-                    let ty = ty.to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
+                    let ty = ty
+                        .to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src)
+                        .ty;
 
                     self.instantiate(ty, pat.into())
                 },

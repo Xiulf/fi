@@ -4,7 +4,29 @@ use crate::infer::diagnostics::InferenceDiagnostic;
 use crate::infer::InferenceResult;
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeVars, Types};
 use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult};
-use crate::ty::{Constraint, Field, List, Reason, Ty, TyKind, WhereClause};
+use crate::ty::{Constraint, Field, List, Reason, Ty, TyAndSrc, TyKind, WhereClause};
+
+impl ToInfo for TyAndSrc<Ty> {
+    type Output = TyAndSrc<TyId>;
+
+    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, type_vars: &mut TypeVars, src: TySource) -> Self::Output {
+        TyAndSrc {
+            ty: self.ty.to_info(db, types, type_vars, src),
+            src,
+        }
+    }
+}
+
+impl FromInfo for TyAndSrc<Ty> {
+    type Input = TyAndSrc<TyId>;
+
+    fn from_info(db: &dyn HirDatabase, types: &Types, input: Self::Input) -> Self {
+        TyAndSrc {
+            ty: Ty::from_info(db, types, input.ty),
+            src: input.src,
+        }
+    }
+}
 
 impl ToInfo for Ty {
     type Output = TyId;
@@ -203,14 +225,15 @@ impl FromInfo for Constraint {
     }
 }
 
-impl FromInfo for Class<Ty> {
-    type Input = Class<TyId>;
+impl FromInfo for Class<Ty, Constraint> {
+    type Input = Class<TyId, CtntInfo>;
 
     fn from_info(db: &dyn HirDatabase, types: &Types, input: Self::Input) -> Self {
         Self {
             id: input.id,
             fundeps: input.fundeps,
             vars: input.vars.iter().map(|&v| Ty::from_info(db, types, v)).collect(),
+            where_clause: WhereClause::from_info(db, types, input.where_clause),
         }
     }
 }
@@ -234,7 +257,7 @@ impl FromInfo for InferenceResult<Ty, Constraint> {
 
     fn from_info(db: &dyn HirDatabase, types: &Types, input: Self::Input) -> Self {
         Self {
-            self_type: Ty::from_info(db, types, input.self_type),
+            self_type: TyAndSrc::from_info(db, types, input.self_type),
             type_of_expr: input
                 .type_of_expr
                 .iter()
@@ -270,7 +293,7 @@ impl FromInfo for LowerResult<Ty> {
 
     fn from_info(db: &dyn HirDatabase, types: &Types, input: Self::Input) -> Self {
         Self {
-            ty: Ty::from_info(db, types, input.ty),
+            ty: TyAndSrc::from_info(db, types, input.ty),
             types: input
                 .types
                 .iter()
@@ -281,8 +304,8 @@ impl FromInfo for LowerResult<Ty> {
     }
 }
 
-impl FromInfo for ClassLowerResult<Ty> {
-    type Input = ClassLowerResult<TyId>;
+impl FromInfo for ClassLowerResult<Ty, Constraint> {
+    type Input = ClassLowerResult<TyId, CtntInfo>;
 
     fn from_info(db: &dyn HirDatabase, types: &Types, input: Self::Input) -> Self {
         Self {

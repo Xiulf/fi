@@ -1,7 +1,14 @@
 use crate::db::HirDatabase;
+use crate::info::TySource;
 pub use crate::info::TypeVarScopeId;
 use hir_def::id::{ClassId, TypeCtorId};
 use hir_def::name::Name;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TyAndSrc<T> {
+    pub ty: T,
+    pub src: TySource,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ty(salsa::InternId);

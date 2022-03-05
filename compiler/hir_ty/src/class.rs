@@ -9,10 +9,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Class<T> {
+pub struct Class<T, C> {
     pub id: ClassId,
     pub vars: Box<[T]>,
     pub fundeps: Box<[FunDep]>,
+    pub where_clause: WhereClause<C>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
