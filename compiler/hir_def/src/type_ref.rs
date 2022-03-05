@@ -327,10 +327,6 @@ impl TypeMapBuilder {
         self.map.iter()
     }
 
-    pub fn map(&self) -> &TypeMap {
-        &self.map
-    }
-
     pub fn finish(self) -> (TypeMap, TypeSourceMap) {
         (self.map, self.source_map)
     }

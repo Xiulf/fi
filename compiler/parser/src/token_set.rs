@@ -4,8 +4,6 @@ use crate::syntax_kind::SyntaxKind;
 crate struct TokenSet(u128);
 
 impl TokenSet {
-    crate const EMPTY: Self = TokenSet(0);
-
     crate const fn new(kinds: &[SyntaxKind]) -> Self {
         let mut res = 0u128;
         let mut i = 0;
@@ -16,10 +14,6 @@ impl TokenSet {
         }
 
         TokenSet(res)
-    }
-
-    crate const fn union(self, other: Self) -> Self {
-        TokenSet(self.0 | other.0)
     }
 
     crate const fn contains(&self, kind: SyntaxKind) -> bool {

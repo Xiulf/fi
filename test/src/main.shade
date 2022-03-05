@@ -14,30 +14,63 @@ type Option t =
     | None
     | Some t
 
-member Option of Applicative =
-    fn pure a = Some a
+member (Option t) (Option Infallible) t of Try =
+    fn from_output o = Some o
+    fn branch self = case self of
+        Some t -> Next t
+        None -> Break None
 
 ; member Option of Functor =
 ;     fn map f a = case a of
 ;         None -> None
-;         Some a -> Some $ f a
+;         Some a -> Some (f a)
+; 
+; member Option of Apply =
+;     fn apply f a = case f of
+;         None -> None
+;         Some f -> case a of
+;             None -> None
+;             Some a -> Some (f a)
+; 
+; member Option of Applicative =
+;     fn pure a = Some a
+; 
+; member Option of Bind =
+;     fn bind m f = case m of
+;         None -> None
+;         Some a -> f a
+; 
+; member Option of Monad
+; 
+; 
+; class Functor f =
+;     fn map :: (a -> b), f a -> f b
+; 
+; class Apply f where Functor f =
+;     fn apply :: f (a -> b), f a -> f b
+; 
+; class Applicative f where Apply f =
+;     fn pure :: a -> f a
+; 
+; class Bind m where Apply m =
+;     fn bind :: m a, (a -> m b) -> m b
+; 
+; class Monad m where Bind m, Applicative m
+; 
+; 
+; infixl 4 map as (<$>)
+; infixl 4 apply as (<*>)
+; infixl 1 bind as (>>=)
 
+foreign type Infallible :: core/Type
 
-class Functor f =
-    fn map :: (a -> b), f a -> f b
+type ControlFlow b n =
+    | Next n
+    | Break b
 
-class Apply f where Functor f =
-    fn apply :: f (a -> b), f a -> f b
+class Try self residual output | self -> residual, self -> output where FromResidual self residual =
+    fn from_output :: output -> self
+    fn branch :: self -> ControlFlow residual output
 
-class Applicative f where Apply f =
-    fn pure :: a -> f a
-
-class Bind m where Apply m =
-    fn bind :: m a, (a -> m b) -> m b
-
-class Monad m where Bind m, Applicative m
-
-
-infixl 4 map as (<$>)
-infixl 4 apply as (<*>)
-infixl 1 bind as (>>=)
+class FromResidual self residual | self -> residual =
+    fn from_residual :: residual -> self

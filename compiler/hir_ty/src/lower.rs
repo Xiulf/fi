@@ -273,7 +273,12 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
 
                 self.icx.types.insert(TyInfo::TypeVar(type_var), src)
             },
-            | TypeNs::TypeAlias(id) => self.db.type_for_alias(id).ty.to_info(self.db, &mut self.icx.types, src),
+            | TypeNs::TypeAlias(id) => {
+                self.db
+                    .type_for_alias(id)
+                    .ty
+                    .to_info(self.db, &mut self.icx.types, &mut self.icx.type_vars, src)
+            },
             | TypeNs::TypeCtor(id) => self.icx.types.insert(TyInfo::Ctor(id), src),
         }
     }
@@ -393,10 +398,14 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
     let mut ctx = LowerCtx::new(ty_data.type_map(), &mut icx);
     let src = ctx.source(TypeOrigin::Synthetic);
     let mut ret = ctx.icx.types.insert(TyInfo::Ctor(id.parent), src);
-    let kind = db.kind_for_ctor(id.parent).ty.to_info(db, &mut ctx.icx.types, src);
+    let kind = db
+        .kind_for_ctor(id.parent)
+        .ty
+        .to_info(db, &mut ctx.icx.types, &mut ctx.icx.type_vars, src);
+
     let vars = match ctx.icx.types[kind].clone() {
         | TyInfo::Func(vars, _) => {
-            let scope = ctx.type_vars.alloc_scope(vars.clone());
+            let scope = ctx.type_vars.add_scope(vars.clone());
             Some((vars, scope))
         },
         | _ => None,
@@ -447,7 +456,7 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
     let src = ctx.source(TypeOrigin::Synthetic);
     let var_kinds = data.type_vars.iter().map(|_| ctx.fresh_type(src)).collect::<Vec<_>>();
-    let scope = ctx.type_vars.alloc_scope(var_kinds.clone().into());
+    let scope = ctx.type_vars.add_scope(var_kinds.clone().into());
     let ty = ctx.lower_ty(data.alias);
     let type_kind = ctx.type_kind(src);
     let kinds = var_kinds
@@ -498,7 +507,7 @@ pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         ctx.finish(ty)
     } else {
         let var_kinds = data.type_vars.iter().map(|_| ctx.fresh_type(src)).collect::<Vec<_>>();
-        let _scope = ctx.type_vars.alloc_scope(var_kinds.clone().into());
+        let _scope = ctx.type_vars.add_scope(var_kinds.clone().into());
         let ty_kind = if var_kinds.is_empty() {
             ctx.type_kind(src)
         } else {
@@ -550,7 +559,7 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
     let src = ctx.source(TypeOrigin::Synthetic);
     let var_kinds_ = data.type_vars.iter().map(|_| ctx.fresh_type(src)).collect::<List<_>>();
-    let scope = ctx.type_vars.alloc_scope(var_kinds_.clone());
+    let scope = ctx.type_vars.add_scope(var_kinds_.clone());
     let vars = data
         .type_vars
         .iter()
@@ -574,14 +583,17 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
     let diag_count = ctx.result.diagnostics.len();
 
     for &(_, id) in data.items.iter() {
-        let (ty, _origin) = match id {
+        let ty = match id {
             | AssocItemId::FuncId(id) => {
                 let data = db.func_data(id);
 
                 if let Some(ty) = data.ty {
                     ctx.for_assoc_item(TypeVarOwner::TypedDefId(id.into()), data.type_map(), |ctx| {
-                        ctx.push_type_vars(&data.type_vars);
-                        (ctx.lower_ty(ty), ty)
+                        let _ = ctx.push_type_vars(&data.type_vars);
+                        let ty = ctx.lower_ty(ty);
+
+                        ctx.type_vars.pop_scope();
+                        ty
                     })
                 } else {
                     continue;
@@ -592,7 +604,7 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
 
                 if let Some(ty) = data.ty {
                     ctx.for_assoc_item(TypeVarOwner::TypedDefId(id.into()), data.type_map(), |ctx| {
-                        (ctx.lower_ty(ty), ty)
+                        ctx.lower_ty(ty)
                     })
                 } else {
                     continue;
@@ -624,7 +636,7 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
         .map(|(_i, &_var)| ctx.fresh_type(src))
         .collect::<Vec<_>>();
 
-    let _scope = ctx.type_vars.alloc_scope(vars.clone().into());
+    let _scope = ctx.type_vars.add_scope(vars.clone().into());
     let (class, types) = if let Some(class) = ctx.lower_class_path(&data.class, ClassSource::Member(id)) {
         let lower = db.lower_class(class);
 
@@ -634,7 +646,7 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
                 .iter()
                 .zip(lower.class.vars.iter())
                 .map(|(&ty, kind)| {
-                    let kind = kind.to_info(db, &mut ctx.icx.types, src);
+                    let kind = kind.to_info(db, &mut ctx.icx.types, &mut ctx.icx.type_vars, src);
                     let ty_ = ctx.lower_ty(ty);
 
                     ctx.check_kind(ty_, kind);

@@ -49,8 +49,10 @@ impl BodyInferenceContext<'_> {
                         | ValueNs::Ctor(id) => id.into(),
                     };
 
-                    let ty = self.db.value_ty(id);
-                    let ty = ty.to_info(self.db, &mut self.types, src);
+                    let ty =
+                        self.db
+                            .value_ty(id)
+                            .to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
 
                     self.result.type_of_expr.insert(expr, ty);
 
@@ -371,8 +373,10 @@ impl BodyInferenceContext<'_> {
             | _ => return self.error(src),
         };
 
-        let ty = self.db.value_ty(id);
-        let ty = ty.to_info(self.db, &mut self.types, src);
+        let ty = self
+            .db
+            .value_ty(id)
+            .to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
 
         self.instantiate(ty, origin)
     }
@@ -503,12 +507,32 @@ impl BodyInferenceContext<'_> {
                                     .subst
                                     .subst_type(&mut self.icx.types, self.icx.result.self_type)
                             } else {
-                                self.db.value_ty(id.into()).to_info(self.db, &mut self.types, src)
+                                self.db.value_ty(id.into()).to_info(
+                                    self.icx.db,
+                                    &mut self.icx.types,
+                                    &mut self.icx.type_vars,
+                                    src,
+                                )
                             }
                         },
-                        | ValueNs::Static(id) => self.db.value_ty(id.into()).to_info(self.db, &mut self.types, src),
-                        | ValueNs::Const(id) => self.db.value_ty(id.into()).to_info(self.db, &mut self.types, src),
-                        | ValueNs::Ctor(id) => self.db.value_ty(id.into()).to_info(self.db, &mut self.types, src),
+                        | ValueNs::Static(id) => self.db.value_ty(id.into()).to_info(
+                            self.icx.db,
+                            &mut self.icx.types,
+                            &mut self.icx.type_vars,
+                            src,
+                        ),
+                        | ValueNs::Const(id) => self.db.value_ty(id.into()).to_info(
+                            self.icx.db,
+                            &mut self.icx.types,
+                            &mut self.icx.type_vars,
+                            src,
+                        ),
+                        | ValueNs::Ctor(id) => self.db.value_ty(id.into()).to_info(
+                            self.icx.db,
+                            &mut self.icx.types,
+                            &mut self.icx.type_vars,
+                            src,
+                        ),
                     };
 
                     if !self.subsume_types(ty, expected, expr.into()) {

@@ -2,65 +2,85 @@ use crate::class::{Class, Member};
 use crate::db::HirDatabase;
 use crate::infer::diagnostics::InferenceDiagnostic;
 use crate::infer::InferenceResult;
-use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, Types};
+use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeVars, Types};
 use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult};
-use crate::ty::{Constraint, Field, Reason, Ty, TyKind, WhereClause};
+use crate::ty::{Constraint, Field, List, Reason, Ty, TyKind, WhereClause};
 
 impl ToInfo for Ty {
     type Output = TyId;
 
-    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, src: TySource) -> Self::Output {
-        let info = match self.lookup(db) {
-            | TyKind::Error(_) => TyInfo::Error,
-            | TyKind::Figure(f) => TyInfo::Figure(f),
-            | TyKind::Symbol(s) => TyInfo::Symbol(s),
-            | TyKind::Row(fields, tail) => {
-                let fields = fields
-                    .iter()
-                    .map(|f| FieldInfo {
-                        name: f.name.clone(),
-                        ty: f.ty.to_info(db, types, src),
-                    })
-                    .collect();
+    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, type_vars: &mut TypeVars, src: TySource) -> Self::Output {
+        let ty = rec(self, db, types, type_vars, src);
 
-                let tail = tail.map(|t| t.to_info(db, types, src));
+        return ty.everywhere_reverse(false, types, &mut |types, t| match types[t].clone() {
+            | TyInfo::ForAll(kinds, inner, scope) => {
+                let new_scope = type_vars.alloc_scope(kinds.clone());
+                let inner = inner.rescope(types, scope, new_scope);
 
-                TyInfo::Row(fields, tail)
+                types.update(t, TyInfo::ForAll(kinds, inner, new_scope), true)
             },
-            | TyKind::Ctor(id) => TyInfo::Ctor(id),
-            | TyKind::App(base, args) => {
-                let base = base.to_info(db, types, src);
-                let args = args.iter().map(|a| a.to_info(db, types, src)).collect();
+            | _ => t,
+        });
 
-                TyInfo::App(base, args)
-            },
-            | TyKind::Tuple(tys) => {
-                let tys = tys.iter().map(|t| t.to_info(db, types, src)).collect();
+        fn rec(this: Ty, db: &dyn HirDatabase, types: &mut Types, type_vars: &mut TypeVars, src: TySource) -> TyId {
+            let info = match this.lookup(db) {
+                | TyKind::Error(_) => TyInfo::Error,
+                | TyKind::Figure(f) => TyInfo::Figure(f),
+                | TyKind::Symbol(s) => TyInfo::Symbol(s),
+                | TyKind::Row(fields, tail) => {
+                    let fields = fields
+                        .iter()
+                        .map(|f| FieldInfo {
+                            name: f.name.clone(),
+                            ty: rec(f.ty, db, types, type_vars, src),
+                        })
+                        .collect();
 
-                TyInfo::Tuple(tys)
-            },
-            | TyKind::Func(args, ret) => {
-                let args = args.iter().map(|a| a.to_info(db, types, src)).collect();
-                let ret = ret.to_info(db, types, src);
+                    let tail = tail.map(|t| rec(t, db, types, type_vars, src));
 
-                TyInfo::Func(args, ret)
-            },
-            | TyKind::Where(where_, inner) => {
-                let where_ = where_.to_info(db, types, src);
-                let inner = inner.to_info(db, types, src);
+                    TyInfo::Row(fields, tail)
+                },
+                | TyKind::Ctor(id) => TyInfo::Ctor(id),
+                | TyKind::App(base, args) => {
+                    let base = rec(base, db, types, type_vars, src);
+                    let args = args.iter().map(|&a| rec(a, db, types, type_vars, src)).collect();
 
-                TyInfo::Where(where_, inner)
-            },
-            | TyKind::ForAll(vars, ret, scope) => {
-                let vars = vars.iter().map(|v| v.to_info(db, types, src)).collect();
-                let ret = ret.to_info(db, types, src);
+                    TyInfo::App(base, args)
+                },
+                | TyKind::Tuple(tys) => {
+                    let tys = tys.iter().map(|&t| rec(t, db, types, type_vars, src)).collect();
 
-                TyInfo::ForAll(vars, ret, scope)
-            },
-            | TyKind::TypeVar(tv) => TyInfo::TypeVar(tv),
-        };
+                    TyInfo::Tuple(tys)
+                },
+                | TyKind::Func(args, ret) => {
+                    let args = args.iter().map(|&a| rec(a, db, types, type_vars, src)).collect();
+                    let ret = rec(ret, db, types, type_vars, src);
 
-        types.insert(info, src)
+                    TyInfo::Func(args, ret)
+                },
+                | TyKind::Where(where_, inner) => {
+                    let where_ = where_.to_info(db, types, type_vars, src);
+                    let inner = rec(inner, db, types, type_vars, src);
+
+                    TyInfo::Where(where_, inner)
+                },
+                | TyKind::ForAll(vars, ret, scope) => {
+                    let vars = vars
+                        .iter()
+                        .map(|&v| rec(v, db, types, type_vars, src))
+                        .collect::<List<_>>();
+
+                    let ret = rec(ret, db, types, type_vars, src);
+                    // let new_scope = type_vars.alloc_scope(vars.clone());
+                    // let ret = ret.rescope(types, scope, new_scope);
+
+                    TyInfo::ForAll(vars, ret, scope)
+                },
+                | TyKind::TypeVar(tv) => TyInfo::TypeVar(tv),
+            };
+
+            types.insert(info, src)
+        }
     }
 }
 
@@ -126,12 +146,12 @@ impl FromInfo for Ty {
 impl ToInfo for WhereClause<Constraint> {
     type Output = WhereClause<CtntInfo>;
 
-    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, src: TySource) -> Self::Output {
+    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, type_vars: &mut TypeVars, src: TySource) -> Self::Output {
         WhereClause {
             constraints: self
                 .constraints
                 .iter()
-                .map(|c| c.clone().to_info(db, types, src))
+                .map(|c| c.clone().to_info(db, types, type_vars, src))
                 .collect(),
         }
     }
@@ -154,10 +174,20 @@ impl FromInfo for WhereClause<Constraint> {
 impl ToInfo for Constraint {
     type Output = CtntInfo;
 
-    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, span: TySource) -> Self::Output {
+    fn to_info(
+        self,
+        db: &dyn HirDatabase,
+        types: &mut Types,
+        type_vars: &mut TypeVars,
+        span: TySource,
+    ) -> Self::Output {
         CtntInfo {
             class: self.class,
-            types: self.types.iter().map(|t| t.to_info(db, types, span)).collect(),
+            types: self
+                .types
+                .iter()
+                .map(|t| t.to_info(db, types, type_vars, span))
+                .collect(),
         }
     }
 }

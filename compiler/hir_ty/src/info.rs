@@ -89,7 +89,7 @@ pub struct Types {
 pub trait ToInfo {
     type Output;
 
-    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, src: TySource) -> Self::Output;
+    fn to_info(self, db: &dyn HirDatabase, types: &mut Types, type_vars: &mut TypeVars, src: TySource) -> Self::Output;
 }
 
 pub trait FromInfo {
@@ -107,6 +107,10 @@ pub struct TyDisplay<'a> {
 
 impl TypeVars {
     pub fn alloc_scope(&mut self, var_kinds: List<TyId>) -> TypeVarScopeId {
+        self.scopes.alloc(TypeVarScope { var_kinds })
+    }
+
+    pub fn add_scope(&mut self, var_kinds: List<TyId>) -> TypeVarScopeId {
         let id = self.scopes.alloc(TypeVarScope { var_kinds });
 
         self.push_scope(id);
@@ -137,18 +141,18 @@ impl Types {
         TyId(id)
     }
 
-    pub fn update(&mut self, id: TyId, ty: TyInfo) -> TyId {
+    pub fn update(&mut self, id: TyId, ty: TyInfo, override_: bool) -> TyId {
+        if override_ {
+            self.types[id.0] = ty;
+            return id;
+        }
+
         if self[id] == ty {
             id
         } else {
             let span = self.source(id);
             self.insert(ty, span)
         }
-    }
-
-    pub fn override_(&mut self, id: TyId, ty: TyInfo) -> TyId {
-        self.types[id.0] = ty;
-        id
     }
 
     pub fn source(&self, id: TyId) -> TySource {
@@ -200,14 +204,14 @@ impl TyId {
         }
     }
 
-    pub fn everywhere<F>(self, types: &mut Types, f: &mut F) -> TyId
+    pub fn everywhere<F>(self, override_: bool, types: &mut Types, f: &mut F) -> TyId
     where
         F: FnMut(&mut Types, TyId) -> TyId,
     {
         match types[self].clone() {
             | TyInfo::Skolem(sk, k) => {
-                let k = k.everywhere(types, f);
-                let ty = types.update(self, TyInfo::Skolem(sk, k));
+                let k = k.everywhere(override_, types, f);
+                let ty = types.update(self, TyInfo::Skolem(sk, k), override_);
 
                 f(types, ty)
             },
@@ -216,32 +220,32 @@ impl TyId {
                     .iter()
                     .map(|field| FieldInfo {
                         name: field.name.clone(),
-                        ty: field.ty.everywhere(types, f),
+                        ty: field.ty.everywhere(override_, types, f),
                     })
                     .collect();
 
-                let tail = tail.map(|t| t.everywhere(types, f));
-                let ty = types.update(self, TyInfo::Row(fields, tail));
+                let tail = tail.map(|t| t.everywhere(override_, types, f));
+                let ty = types.update(self, TyInfo::Row(fields, tail), override_);
 
                 f(types, ty)
             },
             | TyInfo::App(base, args) => {
-                let base = base.everywhere(types, f);
-                let args = args.iter().map(|t| t.everywhere(types, f)).collect();
-                let ty = types.update(self, TyInfo::App(base, args));
+                let base = base.everywhere(override_, types, f);
+                let args = args.iter().map(|t| t.everywhere(override_, types, f)).collect();
+                let ty = types.update(self, TyInfo::App(base, args), override_);
 
                 f(types, ty)
             },
             | TyInfo::Tuple(tys) => {
-                let tys = tys.iter().map(|t| t.everywhere(types, f)).collect();
-                let ty = types.update(self, TyInfo::Tuple(tys));
+                let tys = tys.iter().map(|t| t.everywhere(override_, types, f)).collect();
+                let ty = types.update(self, TyInfo::Tuple(tys), override_);
 
                 f(types, ty)
             },
             | TyInfo::Func(args, ret) => {
-                let args = args.iter().map(|t| t.everywhere(types, f)).collect();
-                let ret = ret.everywhere(types, f);
-                let ty = types.update(self, TyInfo::Func(args, ret));
+                let args = args.iter().map(|t| t.everywhere(override_, types, f)).collect();
+                let ret = ret.everywhere(override_, types, f);
+                let ty = types.update(self, TyInfo::Func(args, ret), override_);
 
                 f(types, ty)
             },
@@ -252,20 +256,20 @@ impl TyId {
                         .iter()
                         .map(|c| CtntInfo {
                             class: c.class,
-                            types: c.types.iter().map(|t| t.everywhere(types, f)).collect(),
+                            types: c.types.iter().map(|t| t.everywhere(override_, types, f)).collect(),
                         })
                         .collect(),
                 };
 
-                let inner = inner.everywhere(types, f);
-                let ty = types.update(self, TyInfo::Where(where_, inner));
+                let inner = inner.everywhere(override_, types, f);
+                let ty = types.update(self, TyInfo::Where(where_, inner), override_);
 
                 f(types, ty)
             },
             | TyInfo::ForAll(k, t, s) => {
-                let k = k.iter().map(|k| k.everywhere(types, f)).collect();
-                let t = t.everywhere(types, f);
-                let ty = types.update(self, TyInfo::ForAll(k, t, s));
+                let k = k.iter().map(|k| k.everywhere(override_, types, f)).collect();
+                let t = t.everywhere(override_, types, f);
+                let ty = types.update(self, TyInfo::ForAll(k, t, s), override_);
 
                 f(types, ty)
             },
@@ -273,50 +277,47 @@ impl TyId {
         }
     }
 
-    pub fn everywhere_override<F>(self, types: &mut Types, f: &mut F) -> TyId
+    pub fn everywhere_reverse<F>(self, override_: bool, types: &mut Types, f: &mut F) -> TyId
     where
         F: FnMut(&mut Types, TyId) -> TyId,
     {
-        match types[self].clone() {
-            | TyInfo::Skolem(sk, k) => {
-                let k = k.everywhere(types, f);
-                let ty = types.override_(self, TyInfo::Skolem(sk, k));
+        let t = f(types, self);
 
-                f(types, ty)
+        match types[t].clone() {
+            | TyInfo::Skolem(sk, k) => {
+                let k = k.everywhere_reverse(override_, types, f);
+
+                types.update(t, TyInfo::Skolem(sk, k), override_)
             },
             | TyInfo::Row(fields, tail) => {
                 let fields = fields
                     .iter()
                     .map(|field| FieldInfo {
                         name: field.name.clone(),
-                        ty: field.ty.everywhere(types, f),
+                        ty: field.ty.everywhere_reverse(override_, types, f),
                     })
                     .collect();
 
-                let tail = tail.map(|t| t.everywhere(types, f));
-                let ty = types.override_(self, TyInfo::Row(fields, tail));
+                let tail = tail.map(|t| t.everywhere_reverse(override_, types, f));
 
-                f(types, ty)
+                types.update(t, TyInfo::Row(fields, tail), override_)
             },
             | TyInfo::App(base, args) => {
-                let base = base.everywhere(types, f);
-                let args = args.iter().map(|t| t.everywhere(types, f)).collect();
-                let ty = types.override_(self, TyInfo::App(base, args));
+                let base = base.everywhere_reverse(override_, types, f);
+                let args = args.iter().map(|t| t.everywhere_reverse(override_, types, f)).collect();
 
-                f(types, ty)
+                types.update(t, TyInfo::App(base, args), override_)
             },
             | TyInfo::Tuple(tys) => {
-                let tys = tys.iter().map(|t| t.everywhere(types, f)).collect();
-                let ty = types.override_(self, TyInfo::Tuple(tys));
+                let tys = tys.iter().map(|t| t.everywhere_reverse(override_, types, f)).collect();
 
-                f(types, ty)
+                types.update(t, TyInfo::Tuple(tys), override_)
             },
             | TyInfo::Func(args, ret) => {
-                let args = args.iter().map(|t| t.everywhere(types, f)).collect();
-                let ret = ret.everywhere(types, f);
-                let ty = types.override_(self, TyInfo::Func(args, ret));
+                let args = args.iter().map(|t| t.everywhere_reverse(override_, types, f)).collect();
+                let ret = ret.everywhere_reverse(override_, types, f);
 
-                f(types, ty)
+                types.update(t, TyInfo::Func(args, ret), override_)
             },
             | TyInfo::Where(where_, inner) => {
                 let where_ = WhereClause {
@@ -325,24 +326,26 @@ impl TyId {
                         .iter()
                         .map(|c| CtntInfo {
                             class: c.class,
-                            types: c.types.iter().map(|t| t.everywhere(types, f)).collect(),
+                            types: c
+                                .types
+                                .iter()
+                                .map(|t| t.everywhere_reverse(override_, types, f))
+                                .collect(),
                         })
                         .collect(),
                 };
 
-                let inner = inner.everywhere(types, f);
-                let ty = types.override_(self, TyInfo::Where(where_, inner));
+                let inner = inner.everywhere_reverse(override_, types, f);
 
-                f(types, ty)
+                types.update(t, TyInfo::Where(where_, inner), override_)
             },
             | TyInfo::ForAll(k, t, s) => {
-                let k = k.iter().map(|k| k.everywhere(types, f)).collect();
-                let t = t.everywhere(types, f);
-                let ty = types.override_(self, TyInfo::ForAll(k, t, s));
+                let k = k.iter().map(|k| k.everywhere_reverse(override_, types, f)).collect();
+                let t = t.everywhere_reverse(override_, types, f);
 
-                f(types, ty)
+                types.update(t, TyInfo::ForAll(k, t, s), override_)
             },
-            | _ => f(types, self),
+            | _ => t,
         }
     }
 
@@ -403,34 +406,43 @@ impl TyId {
     }
 
     pub fn normalize(self, types: &mut Types) -> TyId {
-        self.everywhere(types, &mut |types, ty| match types[ty] {
+        self.everywhere(false, types, &mut |types, ty| match types[ty] {
             | TyInfo::Row(ref f1, Some(tail)) => match types[tail] {
                 | TyInfo::Row(ref f2, None) => {
                     let fields = f1.iter().cloned().chain(f2.iter().cloned()).collect();
 
-                    types.update(ty, TyInfo::Row(fields, None))
+                    types.update(ty, TyInfo::Row(fields, None), false)
                 },
                 | TyInfo::TypeVar(_) | TyInfo::Unknown(_) | TyInfo::Error => ty,
                 | _ => unreachable!("{:?}", tail),
             },
-            | TyInfo::Where(ref w1, t1) => match types[t1] {
-                | TyInfo::Where(ref w2, t2) => {
-                    let where_clause = WhereClause {
-                        constraints: w2.constraints.iter().chain(w1.constraints.iter()).cloned().collect(),
-                    };
-
-                    types.update(ty, TyInfo::Where(where_clause, t2))
-                },
-                | TyInfo::ForAll(ref kinds, inner, scope) => {
-                    let w1 = w1.clone();
-                    let kinds = kinds.clone();
-                    let inner = types.update(inner, TyInfo::Where(w1, inner));
-
-                    types.update(ty, TyInfo::ForAll(kinds, inner, scope))
-                },
-                | _ => ty,
-            },
+            //             | TyInfo::Where(ref w1, t1) => match types[t1] {
+            //                 | TyInfo::Where(ref w2, t2) => {
+            //                     let where_clause = WhereClause {
+            //                         constraints: w2.constraints.iter().chain(w1.constraints.iter()).cloned().collect(),
+            //                     };
+            //
+            //                     types.update(ty, TyInfo::Where(where_clause, t2), false)
+            //                 },
+            //                 | TyInfo::ForAll(ref kinds, inner, scope) => {
+            //                     let w1 = w1.clone();
+            //                     let kinds = kinds.clone();
+            //                     let inner = types.update(inner, TyInfo::Where(w1, inner), false);
+            //
+            //                     types.update(ty, TyInfo::ForAll(kinds, inner, scope), false)
+            //                 },
+            //                 | _ => ty,
+            //             },
             | _ => ty,
+        })
+    }
+
+    pub fn rescope(self, types: &mut Types, scope: TypeVarScopeId, new: TypeVarScopeId) -> TyId {
+        self.everywhere(true, types, &mut |types, t| match types[t] {
+            | TyInfo::TypeVar(tv) if tv.scope() == scope => {
+                types.update(t, TyInfo::TypeVar(TypeVar::new(tv.idx(), new)), true)
+            },
+            | _ => t,
         })
     }
 
@@ -440,7 +452,7 @@ impl TyId {
             | TyInfo::Skolem(sk, k) => {
                 let k = k.replace_vars(types, with, scope);
 
-                types.update(self, TyInfo::Skolem(sk, k))
+                types.update(self, TyInfo::Skolem(sk, k), false)
             },
             | TyInfo::Row(fields, tail) => {
                 let fields = fields
@@ -453,24 +465,24 @@ impl TyId {
 
                 let tail = tail.map(|t| t.replace_vars(types, with, scope));
 
-                types.update(self, TyInfo::Row(fields, tail))
+                types.update(self, TyInfo::Row(fields, tail), false)
             },
             | TyInfo::App(base, args) => {
                 let base = base.replace_vars(types, with, scope);
                 let args = args.iter().map(|t| t.replace_vars(types, with, scope)).collect();
 
-                types.update(self, TyInfo::App(base, args))
+                types.update(self, TyInfo::App(base, args), false)
             },
             | TyInfo::Tuple(tys) => {
                 let tys = tys.iter().map(|t| t.replace_vars(types, with, scope)).collect();
 
-                types.update(self, TyInfo::Tuple(tys))
+                types.update(self, TyInfo::Tuple(tys), false)
             },
             | TyInfo::Func(args, ret) => {
                 let args = args.iter().map(|t| t.replace_vars(types, with, scope)).collect();
                 let ret = ret.replace_vars(types, with, scope);
 
-                types.update(self, TyInfo::Func(args, ret))
+                types.update(self, TyInfo::Func(args, ret), false)
             },
             | TyInfo::Where(where_, inner) => {
                 let where_ = WhereClause {
@@ -486,13 +498,13 @@ impl TyId {
 
                 let inner = inner.replace_vars(types, with, scope);
 
-                types.update(self, TyInfo::Where(where_, inner))
+                types.update(self, TyInfo::Where(where_, inner), false)
             },
             | TyInfo::ForAll(k, inner, s) => {
                 let k = k.iter().map(|k| k.replace_vars(types, with, scope)).collect();
                 let inner = inner.replace_vars(types, with, scope);
 
-                types.update(self, TyInfo::ForAll(k, inner, s))
+                types.update(self, TyInfo::ForAll(k, inner, s), false)
             },
             | _ => self,
         }

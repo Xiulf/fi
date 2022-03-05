@@ -49,7 +49,6 @@ enum LayoutDelim {
     ClassBody,
     MemberHead,
     DeclHead,
-    ClosHead,
     Prop,
     Case,
     CaseBinders,
@@ -222,14 +221,14 @@ impl<'src> Lexer<'src> {
                     |s, p, lyt| match lyt {
                         | LayoutDelim::Do => true,
                         | LayoutDelim::Of => false,
-                        | LayoutDelim::ClosHead => false,
+                        | LayoutDelim::DeclHead => false,
                         | _ => offside_end_p(s, p, lyt),
                     },
                     &mut self.stack,
                     &mut self.tokens,
                 );
 
-                if let [.., (_, LayoutDelim::CaseBinders | LayoutDelim::CaseGuard | LayoutDelim::ClosHead)] =
+                if let [.., (_, LayoutDelim::CaseBinders | LayoutDelim::CaseGuard | LayoutDelim::DeclHead)] =
                     self.stack[..]
                 {
                     self.stack.pop().unwrap();
@@ -248,6 +247,10 @@ impl<'src> Lexer<'src> {
             | ':' if self.peek() == ':' => {
                 self.advance();
                 self.insert_default(start, DBL_COLON);
+
+                if let [.., (_, LayoutDelim::DeclHead)] = self.stack[..] {
+                    self.stack.pop().unwrap();
+                }
             },
             | ':' => {
                 self.insert_default(start, COLON);
@@ -585,12 +588,7 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                 } else {
                     self.insert_default(start, FN_KW);
-
-                    if self.is_def_start(start) {
-                        self.stack.push((start, LayoutDelim::DeclHead));
-                    } else {
-                        self.stack.push((start, LayoutDelim::ClosHead));
-                    }
+                    self.stack.push((start, LayoutDelim::DeclHead));
                 }
             },
             | "static" => {
@@ -659,7 +657,7 @@ impl<'src> Lexer<'src> {
                 }
             },
             | "where" => match self.stack[..] {
-                | [.., (_, LayoutDelim::MemberHead)] => {
+                | [.., (_, LayoutDelim::ClassHead | LayoutDelim::MemberHead)] => {
                     self.emit(WHERE_KW);
                     self.insert_start(LayoutDelim::Where);
                 },

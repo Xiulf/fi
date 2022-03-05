@@ -97,7 +97,7 @@ impl DefMap {
     }
 
     pub fn dump(&self, writer: &mut dyn io::Write) -> io::Result<()> {
-        for (module_id, module) in self.modules.iter() {
+        for (_module_id, module) in self.modules.iter() {
             writeln!(writer, "{}", module.name)?;
             module.scope.dump(writer)?;
             writeln!(writer)?;

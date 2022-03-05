@@ -23,7 +23,7 @@ impl Substitution {
 
 impl Substitution {
     pub fn subst_type(&self, types: &mut Types, ty: TyId) -> TyId {
-        ty.everywhere_override(types, &mut |types, ty| match types[ty] {
+        ty.everywhere(true, types, &mut |types, ty| match types[ty] {
             | TyInfo::Unknown(u) => match self.tys.get(&u) {
                 | None => ty,
                 | Some(&t2) => match types[t2] {
@@ -73,7 +73,6 @@ impl InferenceContext<'_> {
         self.fresh_type_with_kind(ty_kind, src)
     }
 
-    #[track_caller]
     pub fn solve_type(&mut self, u: Unknown, ty: TyId) {
         let &(_, kind) = self.subst.unsolved(u);
 
@@ -84,7 +83,7 @@ impl InferenceContext<'_> {
     pub fn replace_unknowns(&mut self, ty: TyId, with: TyId) -> TyId {
         let subst = &mut self.subst;
 
-        ty.everywhere(&mut self.types, &mut |types, ty| match types[ty] {
+        ty.everywhere(false, &mut self.types, &mut |types, ty| match types[ty] {
             | TyInfo::Unknown(u) => {
                 subst.tys.insert(u, with);
                 with
@@ -121,16 +120,6 @@ impl InferenceContext<'_> {
             },
             | _ => ty,
         }
-    }
-
-    pub fn normalize(&mut self, ty: TyId) -> TyId {
-        ty.everywhere(&mut self.types, &mut |types, ty| match types[ty].clone() {
-            | TyInfo::App(a, b) => match types[a] {
-                | TyInfo::ForAll(_, a, scope) => a.replace_vars(types, &b, scope),
-                | _ => ty,
-            },
-            | _ => ty,
-        })
     }
 
     pub fn subst_type(&mut self, ty: TyId) -> TyId {
@@ -171,7 +160,7 @@ impl InferenceContext<'_> {
             }
         }
 
-        let scope = self.type_vars.alloc_scope(unknowns.values().copied().collect());
+        let scope = self.type_vars.add_scope(unknowns.values().copied().collect());
 
         for (i, (&u, _)) in unknowns.iter().enumerate() {
             let tv = TypeVar::new(i as u32, scope);
@@ -204,7 +193,6 @@ impl InferenceContext<'_> {
         }
     }
 
-    #[track_caller]
     pub fn unify_types(&mut self, t1: TyId, t2: TyId) -> bool {
         let t1 = self.subst_type(t1);
         let t2 = self.subst_type(t2);

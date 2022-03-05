@@ -4,7 +4,6 @@ use hir_def::id::TypeVarOwner;
 
 impl InferenceContext<'_> {
     /// Infer the kind of the type
-    #[track_caller]
     pub fn infer_kind(&mut self, ty: TyId) -> TyId {
         let ty = self.subst_type(ty);
         let src = self.types.source(ty);
@@ -39,7 +38,10 @@ impl InferenceContext<'_> {
                 if TypeVarOwner::TypedDefId(id.into()) == self.owner {
                     self.result.self_type
                 } else {
-                    self.db.kind_for_ctor(id).ty.to_info(self.db, &mut self.types, src)
+                    self.db
+                        .kind_for_ctor(id)
+                        .ty
+                        .to_info(self.db, &mut self.types, &mut self.type_vars, src)
                 }
             },
             | TyInfo::App(base, args) => self.check_kind_for_app(base, &args, src),
@@ -77,7 +79,6 @@ impl InferenceContext<'_> {
     }
 
     /// Check that `ty` has kind `kind`
-    #[track_caller]
     pub fn check_kind(&mut self, ty: TyId, kind: TyId) {
         let ty_kind = self.infer_kind(ty);
 

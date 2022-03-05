@@ -293,7 +293,7 @@ impl<'a> InferenceContext<'a> {
             })
             .collect();
 
-        self.type_vars.alloc_scope(kinds)
+        self.type_vars.add_scope(kinds)
     }
 
     pub(crate) fn wrap_type_vars(&mut self, inner: TyId, scope: TypeVarScopeId, src: TySource) -> TyId {
@@ -321,10 +321,10 @@ impl<'a> InferenceContext<'a> {
             .class
             .vars
             .iter()
-            .map(|&v| v.to_info(self.db, &mut self.types, src))
+            .map(|&v| v.to_info(self.db, &mut self.types, &mut self.type_vars, src))
             .collect();
 
-        self.type_vars.alloc_scope(vars);
+        self.type_vars.add_scope(vars);
     }
 
     fn member_owner(&mut self, id: MemberId) {
@@ -334,10 +334,10 @@ impl<'a> InferenceContext<'a> {
             .member
             .vars
             .iter()
-            .map(|&v| v.to_info(self.db, &mut self.types, src))
+            .map(|&v| v.to_info(self.db, &mut self.types, &mut self.type_vars, src))
             .collect();
 
-        self.type_vars.alloc_scope(vars);
+        self.type_vars.add_scope(vars);
     }
 
     fn class_item(&mut self, class: ClassId, ann: TyId) -> TyId {
@@ -352,7 +352,7 @@ impl<'a> InferenceContext<'a> {
             .class
             .vars
             .iter()
-            .map(|t| t.to_info(self.db, &mut self.types, src))
+            .map(|t| t.to_info(self.db, &mut self.types, &mut self.type_vars, src))
             .collect::<List<_>>();
 
         let where_clause = WhereClause {
@@ -378,24 +378,33 @@ impl<'a> InferenceContext<'a> {
             .member
             .types
             .iter()
-            .map(|t| t.to_info(self.db, &mut self.types, src))
+            .map(|t| t.to_info(self.db, &mut self.types, &mut self.type_vars, src))
             .collect::<Vec<_>>();
 
         let kinds = lower
             .member
             .vars
             .iter()
-            .map(|t| t.to_info(self.db, &mut self.types, src))
+            .map(|t| t.to_info(self.db, &mut self.types, &mut self.type_vars, src))
             .collect::<List<_>>();
 
-        let item_ty = item_ty.to_info(self.db, &mut self.types, src);
+        let item_ty = item_ty.to_info(self.db, &mut self.types, &mut self.type_vars, src);
         let mut item_ty = match self.types[item_ty].clone() {
             | TyInfo::ForAll(_, inner, scope) => inner.replace_vars(&mut self.types, &types, scope),
             | _ => item_ty,
         };
 
+        if let TyInfo::Where(_, inner) = self.types[item_ty] {
+            item_ty = inner;
+        }
+
         if !lower.member.where_clause.constraints.is_empty() {
-            let where_clause = lower.member.where_clause.clone().to_info(self.db, &mut self.types, src);
+            let where_clause =
+                lower
+                    .member
+                    .where_clause
+                    .clone()
+                    .to_info(self.db, &mut self.types, &mut self.type_vars, src);
 
             item_ty = self.types.insert(TyInfo::Where(where_clause, item_ty), src);
         }
@@ -405,13 +414,6 @@ impl<'a> InferenceContext<'a> {
 
             item_ty = self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
         }
-
-        println!(
-            "{} == {}",
-            item_ty.display(self.db, &self.types),
-            ann.display(self.db, &self.types)
-        );
-        dbg!(&self.type_vars);
 
         if !self.unify_types(item_ty, ann) {
             self.report_mismatch(item_ty, ann, body.body_expr());

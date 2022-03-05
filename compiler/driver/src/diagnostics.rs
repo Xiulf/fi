@@ -56,7 +56,7 @@ fn emit_syntax_error(
 ) -> io::Result<()> {
     let span = (file_id, usize::from(err.range.start())..usize::from(err.range.end()));
 
-    Report::build(ReportKind::Error, file_id, 0)
+    Report::build(ReportKind::Error, file_id, err.range.start().into())
         .with_message("syntax error")
         .with_label(Label::new(span).with_message(&err.msg).with_color(Color::Red))
         .with_config(config)

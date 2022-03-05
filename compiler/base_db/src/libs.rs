@@ -118,7 +118,7 @@ impl LibSet {
         }
     }
 
-    pub fn dependant(&self, lib: LibId) -> Vec<LibId> {
+    pub fn dependant(&self, _lib: LibId) -> Vec<LibId> {
         let mut res = Vec::new();
         let mut visited = FxHashSet::default();
 

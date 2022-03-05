@@ -1,6 +1,6 @@
 use crate::db::HirDatabase;
 use crate::infer::InferenceContext;
-use crate::info::{CtntInfo, ToInfo, TyId, TyInfo, TySource, Types, Unknown};
+use crate::info::{CtntInfo, ToInfo, TyId, TyInfo, TySource, TypeVars, Types, Unknown};
 use crate::lower::MemberLowerResult;
 use crate::ty::{Constraint, Ty, TyKind, TypeVar, WhereClause};
 use arena::{Arena, Idx};
@@ -101,24 +101,26 @@ impl Members {
     pub(crate) fn solve_constraint(
         db: &dyn HirDatabase,
         types: &mut Types,
+        type_vars: &mut TypeVars,
         constraint: &CtntInfo,
         src: TySource,
     ) -> Option<Arc<MemberMatchResult>> {
         let members = db.members(constraint.class);
 
-        members.matches(db, types, constraint, src).map(Arc::new)
+        members.matches(db, types, type_vars, constraint, src).map(Arc::new)
     }
 
     pub(crate) fn matches(
         &self,
         db: &dyn HirDatabase,
         types: &mut Types,
+        type_vars: &mut TypeVars,
         ctnt: &CtntInfo,
         src: TySource,
     ) -> Option<MemberMatchResult> {
         self.matchers
             .iter()
-            .find_map(|m| m.member.matches(db, types, &ctnt, &self.deps, src))
+            .find_map(|m| m.member.matches(db, types, type_vars, &ctnt, &self.deps, src))
     }
 }
 
@@ -135,6 +137,7 @@ impl Member<Ty, Constraint> {
         &self,
         db: &dyn HirDatabase,
         types: &mut Types,
+        type_vars: &mut TypeVars,
         ctnt: &CtntInfo,
         deps: &[FunDep],
         src: TySource,
@@ -146,7 +149,7 @@ impl Member<Ty, Constraint> {
             .iter()
             .zip(self.types.iter())
             .map(|(&ty, with)| {
-                let with = with.to_info(db, types, src);
+                let with = with.to_info(db, types, type_vars, src);
                 match_type(types, ty, with, &mut subst, &mut vars)
             })
             .collect::<Vec<_>>();
@@ -156,16 +159,16 @@ impl Member<Ty, Constraint> {
         }
 
         for ctnt in self.where_clause.constraints.iter().cloned() {
-            let ctnt = ctnt.to_info(db, types, src);
+            let ctnt = ctnt.to_info(db, types, type_vars, src);
 
-            if let None = Members::solve_constraint(db, types, &ctnt, src) {
+            if let None = Members::solve_constraint(db, types, type_vars, &ctnt, src) {
                 return None;
             }
         }
 
         // @TODO: check if this is always the right thing to do
         for ty in subst.values_mut() {
-            *ty = ty.everywhere(types, &mut |types, t| match types[t] {
+            *ty = ty.everywhere(false, types, &mut |types, t| match types[t] {
                 | TyInfo::TypeVar(v) => match vars.get(&v) {
                     | Some(ty) => *ty,
                     | None => t,

@@ -57,7 +57,7 @@ impl InferenceContext<'_> {
             }
 
             true
-        } else if let Some(res) = Members::solve_constraint(self.db, &mut self.types, &ctnt, src) {
+        } else if let Some(res) = Members::solve_constraint(self.db, &mut self.types, &mut self.type_vars, &ctnt, src) {
             res.apply(self);
 
             if let ExprOrPatId::ExprId(expr) = id {
