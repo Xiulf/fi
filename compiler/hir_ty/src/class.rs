@@ -1,4 +1,5 @@
 use crate::db::HirDatabase;
+use crate::display::HirDisplay;
 use crate::infer::InferenceContext;
 use crate::info::{CtntInfo, ToInfo, TyId, TyInfo, TySource, TypeVars, Types, Unknown};
 use crate::lower::MemberLowerResult;
@@ -108,6 +109,17 @@ impl Members {
     ) -> Option<Arc<MemberMatchResult>> {
         let members = db.members(constraint.class);
 
+        // println!(
+        //     "\n{} {}",
+        //     db.class_data(constraint.class).name,
+        //     constraint
+        //         .types
+        //         .iter()
+        //         .map(|t| format!("{}", t.display(db, types)))
+        //         .collect::<Vec<_>>()
+        //         .join(" ")
+        // );
+
         members.matches(db, types, type_vars, constraint, src).map(Arc::new)
     }
 
@@ -159,8 +171,21 @@ impl Member<Ty, Constraint> {
             return None;
         }
 
-        for ctnt in self.where_clause.constraints.iter().cloned() {
-            let ctnt = ctnt.to_info(db, types, type_vars, src);
+        for ctnt in self.where_clause.constraints.iter() {
+            let ctnt = CtntInfo {
+                class: ctnt.class,
+                types: ctnt
+                    .types
+                    .iter()
+                    .map(|t| match t.lookup(db) {
+                        | TyKind::TypeVar(tv) => match vars.get(&tv) {
+                            | Some(ty) => *ty,
+                            | None => types.insert(TyInfo::TypeVar(tv), src),
+                        },
+                        | _ => t.to_info(db, types, type_vars, src),
+                    })
+                    .collect(),
+            };
 
             if let None = Members::solve_constraint(db, types, type_vars, &ctnt, src) {
                 return None;
@@ -277,6 +302,10 @@ impl TyId {
 }
 
 fn verify(matches: &[Matched<()>], deps: &[FunDep]) -> bool {
+    if matches.iter().any(|m| matches!(m, Matched::Apart)) {
+        return false;
+    }
+
     let expected = (0..matches.len()).collect::<FxHashSet<_>>();
     let initial_set = matches
         .iter()
@@ -324,16 +353,14 @@ fn match_type(
     vars: &mut FxHashMap<TypeVar, TyId>,
 ) -> Matched<()> {
     match (&types[ty], &types[with]) {
-        | (_, TyInfo::Unknown(_)) => {
-            unreachable!()
-        },
+        | (_, TyInfo::Unknown(_) | TyInfo::Skolem(..)) => unreachable!(),
         | (TyInfo::Error, _) | (_, TyInfo::Error) => Matched::Match(()),
         | (&TyInfo::Unknown(u), _) => {
             subst.insert(u, with);
             Matched::Unknown
         },
         | (&TyInfo::Skolem(s1, _), &TyInfo::Skolem(s2, _)) if s1 == s2 => Matched::Match(()),
-        | (TyInfo::Skolem(_, _), _) | (_, TyInfo::Skolem(_, _)) => Matched::Unknown,
+        | (TyInfo::Skolem(_, _), _) => Matched::Unknown,
         | (_, &TyInfo::TypeVar(tv)) => {
             vars.insert(tv, ty);
             Matched::Match(())
@@ -394,24 +421,6 @@ impl Matched<()> {
             | (Matched::Match(_), Matched::Match(_)) => Matched::Match(()),
             | (Matched::Apart, _) | (_, Matched::Apart) => Matched::Apart,
             | (_, _) => Matched::Unknown,
-        }
-    }
-
-    fn cast<U>(self) -> Matched<U> {
-        match self {
-            | Matched::Match(_) => unreachable!(),
-            | Matched::Apart => Matched::Apart,
-            | Matched::Unknown => Matched::Unknown,
-        }
-    }
-}
-
-impl<T> Matched<T> {
-    fn map<U>(self, f: impl FnOnce(T) -> U) -> Matched<U> {
-        match self {
-            | Matched::Match(t) => Matched::Match(f(t)),
-            | Matched::Apart => Matched::Apart,
-            | Matched::Unknown => Matched::Unknown,
         }
     }
 }

@@ -559,6 +559,12 @@ pub(crate) mod diagnostics {
     use syntax::{AstNode, SyntaxNodePtr};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CtntSource {
+        ExprOrPat(ExprOrPatId),
+        Where(WhereSource),
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum WhereSource {
         TypeRef(LocalTypeRefId),
         Class(ClassId),

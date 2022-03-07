@@ -1,5 +1,6 @@
 module main =
 
+import core
 import core/io
 
 
@@ -9,6 +10,7 @@ fn main =
 
 fn test = fn a b -> "test"
 
+fn fsdfdsfs = 0 :: Str
 
 type Option t =
     | None
