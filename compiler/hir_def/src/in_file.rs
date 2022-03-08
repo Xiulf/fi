@@ -35,3 +35,12 @@ impl<T: Clone> InFile<&T> {
         self.with_value(self.value.clone())
     }
 }
+
+impl<T> InFile<Option<T>> {
+    pub fn transpose(self) -> Option<InFile<T>> {
+        Some(InFile {
+            file_id: self.file_id,
+            value: self.value?,
+        })
+    }
+}

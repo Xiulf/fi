@@ -181,13 +181,13 @@ impl Ty {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum ParenMode {
+pub enum ParenMode {
     Arg,
     App,
     Where,
 }
 
-struct TyParens(Ty, ParenMode);
+pub struct TyParens(pub Ty, pub ParenMode);
 
 impl HirDisplay for TyParens {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
@@ -327,7 +327,7 @@ impl HirDisplay for Ty {
                     kinds
                         .iter()
                         .enumerate()
-                        .map(|(i, &t)| format!(" ({}{} :: {})", scope, i, t.display(f.db)))
+                        .map(|(i, _)| format!(" {}{}", scope, i))
                         .collect::<Vec<_>>()
                         .join("")
                 )?;
@@ -416,7 +416,9 @@ impl HirDisplay for Member<Ty, Constraint> {
             TyParens(ty, ParenMode::App).hir_fmt(f)?;
         }
 
-        write!(f, " of {}", f.db.class_data(self.class).name)?;
+        if self.class != hir_def::id::ClassId::dummy() {
+            write!(f, " of {}", f.db.class_data(self.class).name)?;
+        }
 
         if !self.where_clause.constraints.is_empty() {
             write!(f, " ")?;

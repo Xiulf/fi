@@ -1,4 +1,7 @@
-use super::{ExprOrPatId, InferenceContext};
+use super::{
+    diagnostics::{CtntExpected, CtntFound},
+    ExprOrPatId, InferenceContext,
+};
 use crate::{
     info::{CtntInfo, FieldInfo, TyId, TyInfo, TySource, TypeOrigin, Types, Unknown},
     ty::{List, TypeVar, WhereClause},
@@ -103,17 +106,18 @@ impl InferenceContext<'_> {
                     })
                     .collect::<Vec<_>>();
 
+                println!("{}", inner.display(self.db, &self.types));
                 let ty = inner.replace_vars(&mut self.types, &us, scope);
 
                 if let ExprOrPatId::ExprId(e) = id {
-                    *self.result.instances.entry(e).or_default() = us;
+                    self.result.instances.insert(e, us);
                 }
 
                 self.instantiate(ty, id)
             },
             | TyInfo::Where(ref where_, inner) => {
                 for ctnt in where_.constraints.iter() {
-                    self.constrain(id, ctnt.clone());
+                    self.constrain(CtntExpected::ExprOrPat(id), CtntFound::ExprOrPat(id), ctnt.clone());
                 }
 
                 self.instantiate(inner, id)
@@ -154,7 +158,7 @@ impl InferenceContext<'_> {
 
         ty.everything(&self.types, &mut find_unknown);
 
-        for (ctnt, _, _) in &self.constraints {
+        for (ctnt, _, _, _) in &self.constraints {
             for &ty in ctnt.types.iter() {
                 ty.everything(&self.types, &mut find_unknown);
             }
@@ -176,7 +180,7 @@ impl InferenceContext<'_> {
                 constraints: self
                     .constraints
                     .iter()
-                    .map(|(ctnt, _, _)| subst.subst_ctnt(types, ctnt))
+                    .map(|(ctnt, _, _, _)| subst.subst_ctnt(types, ctnt))
                     .collect(),
             };
 

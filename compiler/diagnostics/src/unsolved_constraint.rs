@@ -1,6 +1,6 @@
 use super::*;
 use hir::diagnostic::Diagnostic as _;
-use hir::display::HirDisplay;
+use hir::display::{HirDisplay, ParenMode, TyParens};
 
 pub struct UnsolvedConstraint<'db, 'd, DB: hir::db::HirDatabase> {
     db: &'db DB,
@@ -35,7 +35,7 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for UnsolvedConstraint<'db, '
                         .ctnt
                         .types
                         .iter()
-                        .map(|t| format!("{}", t.display(self.db)))
+                        .map(|&t| format!("{}", TyParens(t, ParenMode::App).display(self.db)))
                         .collect::<Vec<_>>()
                         .join(" "),
                     self.db.class_data(self.diag.ctnt.class).name
@@ -45,7 +45,18 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for UnsolvedConstraint<'db, '
     }
 
     fn secondary_annotations(&self) -> Vec<SecondaryAnnotation> {
-        vec![]
+        if let Some(exp) = self.diag.expected {
+            if exp.file_id == self.diag.file && exp.value == self.diag.src {
+                return Vec::new();
+            }
+
+            vec![SecondaryAnnotation {
+                range: exp.map(|s| s.range()),
+                message: format!("constraint originates here"),
+            }]
+        } else {
+            Vec::new()
+        }
     }
 }
 

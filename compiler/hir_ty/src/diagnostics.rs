@@ -215,6 +215,7 @@ impl Diagnostic for MismatchedType {
 pub struct UnsolvedConstraint {
     pub file: FileId,
     pub src: SyntaxNodePtr,
+    pub expected: Option<InFile<SyntaxNodePtr>>,
     pub ctnt: Constraint,
 }
 

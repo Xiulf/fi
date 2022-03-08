@@ -352,6 +352,26 @@ fn match_type(
     subst: &mut FxHashMap<Unknown, TyId>,
     vars: &mut FxHashMap<TypeVar, TyId>,
 ) -> Matched<()> {
+    match_type_inner(
+        types,
+        ty,
+        with,
+        &mut FxHashSet::default(),
+        &mut FxHashSet::default(),
+        subst,
+        vars,
+    )
+}
+
+fn match_type_inner(
+    types: &Types,
+    ty: TyId,
+    with: TyId,
+    ty_skolems: &mut FxHashSet<TypeVar>,
+    with_skolems: &mut FxHashSet<TypeVar>,
+    subst: &mut FxHashMap<Unknown, TyId>,
+    vars: &mut FxHashMap<TypeVar, TyId>,
+) -> Matched<()> {
     match (&types[ty], &types[with]) {
         | (_, TyInfo::Unknown(_) | TyInfo::Skolem(..)) => unreachable!(),
         | (TyInfo::Error, _) | (_, TyInfo::Error) => Matched::Match(()),
@@ -359,8 +379,12 @@ fn match_type(
             subst.insert(u, with);
             Matched::Unknown
         },
-        | (&TyInfo::Skolem(s1, _), &TyInfo::Skolem(s2, _)) if s1 == s2 => Matched::Match(()),
         | (TyInfo::Skolem(_, _), _) => Matched::Unknown,
+        | (TyInfo::TypeVar(a), TyInfo::TypeVar(b))
+            if ty_skolems.contains(a) && with_skolems.contains(b) && a.idx() == b.idx() =>
+        {
+            Matched::Match(())
+        },
         | (_, &TyInfo::TypeVar(tv)) => {
             vars.insert(tv, ty);
             Matched::Match(())
@@ -371,22 +395,40 @@ fn match_type(
         | (&TyInfo::Tuple(ref t1), &TyInfo::Tuple(ref t2)) if t1.len() == t2.len() => t1
             .iter()
             .zip(t2.iter())
-            .map(|(t1, t2)| match_type(types, *t1, *t2, subst, vars))
+            .map(|(t1, t2)| match_type_inner(types, *t1, *t2, ty_skolems, with_skolems, subst, vars))
             .fold(Matched::Match(()), Matched::then),
         | (&TyInfo::App(a1, ref a2), &TyInfo::App(b1, ref b2)) if a2.len() == b2.len() => {
-            match_type(types, a1, b1, subst, vars).then(
+            match_type_inner(types, a1, b1, ty_skolems, with_skolems, subst, vars).then(
                 a2.iter()
                     .zip(b2.iter())
-                    .map(|(a2, b2)| match_type(types, *a2, *b2, subst, vars))
+                    .map(|(a2, b2)| match_type_inner(types, *a2, *b2, ty_skolems, with_skolems, subst, vars))
                     .fold(Matched::Match(()), Matched::then),
             )
         },
         | (&TyInfo::Func(ref a1, a2), &TyInfo::Func(ref b1, b2)) if a1.len() == b1.len() => a1
             .iter()
             .zip(b1.iter())
-            .map(|(a1, b1)| match_type(types, *a1, *b1, subst, vars))
+            .map(|(a1, b1)| match_type_inner(types, *a1, *b1, ty_skolems, with_skolems, subst, vars))
             .fold(Matched::Match(()), Matched::then)
-            .then(match_type(types, a2, b2, subst, vars)),
+            .then(match_type_inner(types, a2, b2, ty_skolems, with_skolems, subst, vars)),
+        | (&TyInfo::ForAll(ref v1, a1, s1), &TyInfo::ForAll(ref v2, a2, s2)) if v1.len() == v2.len() => {
+            let mut matched = Matched::Match(());
+
+            for (i, (k1, k2)) in v1.iter().zip(v2.iter()).enumerate() {
+                ty_skolems.insert(TypeVar::new(i as u32, s1));
+                with_skolems.insert(TypeVar::new(i as u32, s2));
+                matched = matched.then(match_type(types, *k1, *k2, subst, vars));
+            }
+
+            matched = matched.then(match_type_inner(types, a1, a2, ty_skolems, with_skolems, subst, vars));
+
+            for i in 0..v1.len() as u32 {
+                ty_skolems.remove(&TypeVar::new(i, s1));
+                with_skolems.remove(&TypeVar::new(i, s2));
+            }
+
+            matched
+        },
         | (_, _) => Matched::Apart,
     }
 }

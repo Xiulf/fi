@@ -1,5 +1,8 @@
 use super::{InferenceContext, InferenceDiagnostic};
-use crate::info::{ToInfo, TyId, TyInfo, TySource};
+use crate::{
+    info::{ToInfo, TyId, TyInfo, TySource},
+    ty::List,
+};
 use hir_def::id::TypeVarOwner;
 
 impl InferenceContext<'_> {
@@ -107,11 +110,45 @@ impl InferenceContext<'_> {
     /// Check that base has kind `kind_of(arg) -> ?`
     pub fn check_kind_for_app(&mut self, base: TyId, args: &[TyId], src: TySource) -> TyId {
         let base_src = self.types.source(base);
-        let arg_kinds = args.iter().map(|&a| self.infer_kind(a)).collect();
-        let ret_kind = self.fresh_type(src);
-        let fun_kind = self.fn_type(arg_kinds, ret_kind, base_src);
+        let base_kind = self.infer_kind(base);
+        let base_kind = self.subst_type(base_kind);
+        let arg_kinds = args.iter().map(|&a| self.infer_kind(a)).collect::<List<_>>();
 
-        self.check_kind(base, fun_kind);
-        ret_kind
+        match self.types[base_kind].clone() {
+            | TyInfo::Func(params, ret) if params.len() > args.len() => {
+                let ret_kind = self.fn_type(params[args.len()..].into(), ret, src);
+
+                for (&param, &arg) in params.iter().zip(arg_kinds.iter()) {
+                    if !self.unify_types(param, arg) {
+                        let expected_src = self.types.source(param);
+                        let found_src = self.types.source(arg);
+
+                        self.report(InferenceDiagnostic::MismatchedKind {
+                            expected: param,
+                            found: arg,
+                            expected_src,
+                            found_src,
+                        });
+                    }
+                }
+
+                ret_kind
+            },
+            | _ => {
+                let ret_kind = self.fresh_type(src);
+                let fun_kind = self.fn_type(arg_kinds, ret_kind, base_src);
+
+                if !self.unify_types(base_kind, fun_kind) {
+                    self.report(InferenceDiagnostic::MismatchedKind {
+                        expected: fun_kind,
+                        found: base_kind,
+                        expected_src: base_src,
+                        found_src: base_src,
+                    });
+                }
+
+                ret_kind
+            },
+        }
     }
 }

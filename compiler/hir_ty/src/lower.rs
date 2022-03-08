@@ -1,6 +1,7 @@
 use crate::class::{Class, FunDep, Member, Members};
 use crate::db::HirDatabase;
-use crate::infer::diagnostics::{ClassSource, InferenceDiagnostic, WhereSource};
+use crate::display::HirDisplay;
+use crate::infer::diagnostics::{ClassSource, CtntExpected, CtntFound, InferenceDiagnostic, WhereSource};
 use crate::infer::InferenceContext;
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin};
 use crate::ty::{Constraint, List, Ty, TyAndSrc, TypeVar, WhereClause};
@@ -72,7 +73,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         Arc::new(ClassLowerResult::from_info(self.db, &self.icx.types, res))
     }
 
-    fn finish_instance(self, instance: Member<TyId, CtntInfo>) -> Arc<MemberLowerResult<Ty, Constraint>> {
+    fn finish_member(self, instance: Member<TyId, CtntInfo>) -> Arc<MemberLowerResult<Ty, Constraint>> {
         let icx_res = self.icx.finish_mut();
         let res = MemberLowerResult {
             member: instance,
@@ -625,31 +626,24 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
         })
         .collect::<Vec<_>>();
 
-    let _scope = ctx.type_vars.add_scope(vars.clone().into());
+    let scope = ctx.type_vars.add_scope(vars.clone().into());
     let (class, types) = if let Some(class) = ctx.lower_class_path(&data.class, ClassSource::Member(id)) {
         let lower = db.lower_class(class);
+        let types = data
+            .types
+            .iter()
+            .zip(lower.class.vars.iter())
+            .map(|(&ty, kind)| {
+                let src = ctx.source(ty);
+                let kind = kind.to_info(db, &mut ctx.icx.types, &mut ctx.icx.type_vars, src);
+                let ty_ = ctx.lower_ty(ty);
 
-        // for ctnt in lower.class.where_clause.constraints.iter() {
-        //     if let None = Members::solve_constraint(db, &mut ctx.icx.types, &mut ctx.icx.type_vars, ctnt, src) {
-        //         println!("unsolved constraint");
-        //     }
-        // }
+                ctx.check_kind(ty_, kind);
+                ty_
+            })
+            .collect::<List<_>>();
 
-        (
-            lower.class.id,
-            data.types
-                .iter()
-                .zip(lower.class.vars.iter())
-                .map(|(&ty, kind)| {
-                    let src = ctx.source(ty);
-                    let kind = kind.to_info(db, &mut ctx.icx.types, &mut ctx.icx.type_vars, src);
-                    let ty_ = ctx.lower_ty(ty);
-
-                    ctx.check_kind(ty_, kind);
-                    ty_
-                })
-                .collect(),
-        )
+        (lower.class.id, types)
     } else {
         (
             ClassId::dummy(),
@@ -661,13 +655,75 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
     let src = ctx.source(TypeOrigin::Def(id.into()));
     let vars = var_kinds(&mut ctx, vars, src);
 
-    ctx.finish_instance(Member {
+    ctx.finish_member(Member {
         id,
         class,
         vars,
         types,
         where_clause,
     })
+}
+
+pub fn verify_member(db: &dyn HirDatabase, id: MemberId) -> Vec<InferenceDiagnostic<Ty, Constraint>> {
+    let lower = db.lower_member(id);
+
+    if lower.member.class == ClassId::dummy() {
+        return Vec::new();
+    }
+
+    let class = db.lower_class(lower.member.class);
+    let data = db.member_data(id);
+    let resolver = id.resolver(db.upcast());
+    let mut ctx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+    let vars = lower
+        .member
+        .vars
+        .iter()
+        .zip(data.type_vars.iter())
+        .map(|(t, tv)| {
+            let src = ctx.source(*tv);
+
+            t.to_info(db, &mut ctx.types, &mut ctx.type_vars, src)
+        })
+        .collect();
+
+    let scope = ctx.type_vars.add_scope(vars);
+    let src = ctx.source(TypeOrigin::Def(lower.member.class.into()));
+    let types = lower
+        .member
+        .types
+        .iter()
+        .zip(data.types.iter())
+        .map(|(t, tr)| {
+            let src = ctx.source(*tr);
+
+            t.to_info(db, &mut ctx.types, &mut ctx.type_vars, src)
+        })
+        .collect::<List<_>>();
+
+    for (i, ctnt) in class.class.where_clause.constraints.iter().enumerate() {
+        let ctnt = CtntInfo {
+            class: ctnt.class,
+            types: ctnt
+                .types
+                .iter()
+                .map(|t| {
+                    t.to_info(db, &mut ctx.types, &mut ctx.type_vars, src)
+                        .replace_vars(&mut ctx.types, &types, scope)
+                        .normalize(&mut ctx.types)
+                })
+                .collect(),
+        };
+
+        ctx.constrain(
+            CtntExpected::Where(WhereSource::Class(lower.member.class), i),
+            CtntFound::Member(id),
+            ctnt,
+        );
+    }
+
+    ctx.solve_constraints();
+    ctx.finish().diagnostics
 }
 
 fn var_kinds(ctx: &mut LowerCtx, vars: Vec<TyId>, src: TySource) -> Box<[TyId]> {

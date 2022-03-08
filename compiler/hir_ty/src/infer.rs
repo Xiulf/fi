@@ -6,6 +6,7 @@ mod skolem;
 mod subsume;
 mod unify;
 
+use self::diagnostics::{CtntExpected, CtntFound};
 use crate::class::{ClassEnv, ClassEnvScope};
 use crate::db::HirDatabase;
 use crate::info::{CtntInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVarScopeId, TypeVars, Types};
@@ -116,7 +117,7 @@ pub struct InferenceContext<'a> {
     subst: unify::Substitution,
     class_env: ClassEnv,
     member_records: usize,
-    constraints: Vec<(CtntInfo, ExprOrPatId, Option<ClassEnvScope>)>,
+    constraints: Vec<(CtntInfo, CtntExpected, CtntFound, Option<ClassEnvScope>)>,
 }
 
 struct BodyInferenceContext<'a> {
@@ -270,8 +271,8 @@ impl<'a> InferenceContext<'a> {
         });
     }
 
-    pub(crate) fn constrain(&mut self, id: ExprOrPatId, ctnt: CtntInfo) {
-        self.constraints.push((ctnt, id, self.class_env.current()));
+    pub(crate) fn constrain(&mut self, expected: CtntExpected, found: CtntFound, ctnt: CtntInfo) {
+        self.constraints.push((ctnt, expected, found, self.class_env.current()));
     }
 
     pub(crate) fn error(&mut self, src: TySource) -> TyId {
@@ -368,9 +369,14 @@ impl<'a> InferenceContext<'a> {
     }
 
     fn member_item(&mut self, member: MemberId, ann: TyId, item: &Name, body: &Body) -> TyId {
+        let lower = self.db.lower_member(member);
+
+        if lower.member.class == ClassId::dummy() {
+            return ann;
+        }
+
         let src = self.source(TypeOrigin::Def(member.into()));
         let data = self.db.member_data(member);
-        let lower = self.db.lower_member(member);
         let class = self.db.class_data(lower.member.class);
         let item = class.item(item).unwrap();
         let item_ty = match item {
@@ -547,21 +553,28 @@ impl InferenceResult<Ty, Constraint> {
 }
 
 pub(crate) mod diagnostics {
-    use super::{ExprOrPatId, InferenceContext};
+    use super::{expr, ExprOrPatId, InferenceContext};
     use crate::db::HirDatabase;
     use crate::diagnostics::*;
     use crate::info::{CtntInfo, TyId, TySource, TypeOrigin};
     use crate::ty::{Constraint, Ty};
     use hir_def::diagnostic::DiagnosticSink;
     use hir_def::expr::ExprId;
-    use hir_def::id::{ClassId, HasSource, MemberId, TypeVarOwner};
+    use hir_def::id::{ClassId, HasSource, Lookup, MemberId, TypeVarOwner};
+    use hir_def::in_file::InFile;
     use hir_def::type_ref::{LocalTypeRefId, TypeVarSource};
-    use syntax::{AstNode, SyntaxNodePtr};
+    use syntax::{ast, AstNode, AstPtr, SyntaxNodePtr};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum CtntSource {
+    pub enum CtntExpected {
         ExprOrPat(ExprOrPatId),
-        Where(WhereSource),
+        Where(WhereSource, usize),
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CtntFound {
+        ExprOrPat(ExprOrPatId),
+        Member(MemberId),
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -619,7 +632,8 @@ pub(crate) mod diagnostics {
             found_src: TySource,
         },
         UnsolvedConstraint {
-            id: ExprOrPatId,
+            expected: CtntExpected,
+            found: CtntFound,
             ctnt: C,
         },
         BreakOutsideLoop {
@@ -663,9 +677,12 @@ pub(crate) mod diagnostics {
                     expected_src,
                     found_src,
                 },
-                | InferenceDiagnostic::UnsolvedConstraint { id, ctnt } => InferenceDiagnostic::UnsolvedConstraint {
-                    id,
-                    ctnt: icx.subst_ctnt(&ctnt),
+                | InferenceDiagnostic::UnsolvedConstraint { expected, found, ctnt } => {
+                    InferenceDiagnostic::UnsolvedConstraint {
+                        expected,
+                        found,
+                        ctnt: icx.subst_ctnt(&ctnt),
+                    }
                 },
                 | _ => self,
             }
@@ -675,6 +692,44 @@ pub(crate) mod diagnostics {
     impl InferenceDiagnostic<Ty, Constraint> {
         pub fn add_to(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
             let file = owner.source(db.upcast()).file_id;
+            let expr_or_pat = |owner, id| match owner {
+                | TypeVarOwner::DefWithBodyId(owner) => {
+                    let source_map = db.body_source_map(owner).1;
+
+                    match id {
+                        | ExprOrPatId::ExprId(id) => {
+                            source_map.expr_syntax(id).ok().map(|s| s.map(|v| v.syntax_node_ptr()))
+                        },
+                        | ExprOrPatId::PatId(id) => {
+                            source_map.pat_syntax(id).ok().map(|s| s.map(|v| v.syntax_node_ptr()))
+                        },
+                    }
+                },
+                | _ => None,
+            };
+
+            let where_src = |src| match src {
+                | WhereSource::TypeRef(tr) => owner.with_type_source_map(db.upcast(), |source_map| {
+                    let root = db.parse(file).syntax_node();
+
+                    source_map
+                        .type_ref_syntax(tr)
+                        .and_then(AstPtr::cast::<ast::TypeWhere>)
+                        .and_then(|a| a.to_node(&root).where_clause())
+                        .map(|a| InFile::new(file, a))
+                }),
+                | WhereSource::Class(id) => id
+                    .lookup(db.upcast())
+                    .source(db.upcast())
+                    .map(|c| c.where_clause())
+                    .transpose(),
+                | WhereSource::Member(id) => id
+                    .lookup(db.upcast())
+                    .source(db.upcast())
+                    .map(|c| c.where_clause())
+                    .transpose(),
+            };
+
             let ty_src = |src: TySource| match src.1 {
                 | TypeOrigin::ExprId(id) => match src.0 {
                     | TypeVarOwner::DefWithBodyId(owner) => {
@@ -713,15 +768,7 @@ pub(crate) mod diagnostics {
 
             match self {
                 | InferenceDiagnostic::UnresolvedValue { id } => {
-                    let soure_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
-                        | _ => return,
-                    };
-
-                    let src = match *id {
-                        | ExprOrPatId::ExprId(e) => soure_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
-                        | ExprOrPatId::PatId(e) => soure_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
-                    };
+                    let src = expr_or_pat(owner, *id).unwrap().value;
 
                     sink.push(UnresolvedValue { file, src });
                 },
@@ -733,9 +780,22 @@ pub(crate) mod diagnostics {
                     });
                 },
                 | InferenceDiagnostic::UnresolvedClass { src } => {
-                    let src = todo!();
+                    let src = match *src {
+                        | ClassSource::WhereClause(w, i) => where_src(w)
+                            .and_then(|w| w.map(|w| w.constraints().nth(i).and_then(|c| c.class())).transpose()),
+                        | ClassSource::Member(id) => id
+                            .lookup(db.upcast())
+                            .source(db.upcast())
+                            .map(|m| m.class())
+                            .transpose(),
+                    };
 
-                    sink.push(UnresolvedClass { file, src });
+                    let src = src.map(|s| s.map(|s| AstPtr::new(&s))).unwrap();
+
+                    sink.push(UnresolvedClass {
+                        file: src.file_id,
+                        src: src.value,
+                    });
                 },
                 | InferenceDiagnostic::UnresolvedOperator { id } => {
                     let soure_map = match owner {
@@ -748,15 +808,7 @@ pub(crate) mod diagnostics {
                     sink.push(UnresolvedOperator { file, src });
                 },
                 | InferenceDiagnostic::PrivateValue { id } => {
-                    let soure_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
-                        | _ => return,
-                    };
-
-                    let src = match *id {
-                        | ExprOrPatId::ExprId(e) => soure_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
-                        | ExprOrPatId::PatId(e) => soure_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
-                    };
+                    let src = expr_or_pat(owner, *id).unwrap().value;
 
                     sink.push(PrivateValue { file, src });
                 },
@@ -768,9 +820,22 @@ pub(crate) mod diagnostics {
                     });
                 },
                 | InferenceDiagnostic::PrivateClass { src } => {
-                    let src = todo!();
+                    let src = match *src {
+                        | ClassSource::WhereClause(w, i) => where_src(w)
+                            .and_then(|w| w.map(|w| w.constraints().nth(i).and_then(|c| c.class())).transpose()),
+                        | ClassSource::Member(id) => id
+                            .lookup(db.upcast())
+                            .source(db.upcast())
+                            .map(|m| m.class())
+                            .transpose(),
+                    };
 
-                    sink.push(PrivateClass { file, src });
+                    let src = src.map(|s| s.map(|s| AstPtr::new(&s))).unwrap();
+
+                    sink.push(PrivateClass {
+                        file: src.file_id,
+                        src: src.value,
+                    });
                 },
                 | InferenceDiagnostic::PrivateOperator { id } => {
                     let soure_map = match owner {
@@ -808,16 +873,7 @@ pub(crate) mod diagnostics {
                     expected_src,
                     found_src,
                 } => {
-                    let source_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
-                        | _ => return,
-                    };
-
-                    let src = match *id {
-                        | ExprOrPatId::ExprId(e) => source_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
-                        | ExprOrPatId::PatId(e) => source_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
-                    };
-
+                    let src = expr_or_pat(owner, *id).unwrap().value;
                     let expected_src = ty_src(*expected_src);
                     let found_src = ty_src(*found_src);
 
@@ -830,20 +886,26 @@ pub(crate) mod diagnostics {
                         found_src,
                     });
                 },
-                | InferenceDiagnostic::UnsolvedConstraint { id, ctnt } => {
-                    let soure_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
-                        | _ => return,
+                | InferenceDiagnostic::UnsolvedConstraint { expected, found, ctnt } => {
+                    let expected = match *expected {
+                        | CtntExpected::ExprOrPat(id) => expr_or_pat(owner, id),
+                        | CtntExpected::Where(w, i) => where_src(w)
+                            .and_then(|w| w.map(|w| w.constraints().nth(i)).transpose())
+                            .map(|c| c.map(|c| SyntaxNodePtr::new(c.syntax()))),
                     };
 
-                    let src = match *id {
-                        | ExprOrPatId::ExprId(e) => soure_map.expr_syntax(e).unwrap().value.syntax_node_ptr(),
-                        | ExprOrPatId::PatId(e) => soure_map.pat_syntax(e).unwrap().value.syntax_node_ptr(),
+                    let src = match *found {
+                        | CtntFound::ExprOrPat(id) => expr_or_pat(owner, id).unwrap(),
+                        | CtntFound::Member(id) => id
+                            .lookup(db.upcast())
+                            .source(db.upcast())
+                            .map(|i| SyntaxNodePtr::new(i.class().unwrap().syntax())),
                     };
 
                     sink.push(UnsolvedConstraint {
-                        file,
-                        src,
+                        file: src.file_id,
+                        src: src.value,
+                        expected,
                         ctnt: ctnt.clone(),
                     });
                 },

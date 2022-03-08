@@ -363,8 +363,9 @@ impl FromInfo for InferenceDiagnostic<Ty, Constraint> {
                 expected_src,
                 found_src,
             },
-            | InferenceDiagnostic::UnsolvedConstraint { id, ctnt } => Self::UnsolvedConstraint {
-                id,
+            | InferenceDiagnostic::UnsolvedConstraint { expected, found, ctnt } => Self::UnsolvedConstraint {
+                expected,
+                found,
                 ctnt: Constraint::from_info(db, types, ctnt),
             },
             | InferenceDiagnostic::BreakOutsideLoop { id } => Self::BreakOutsideLoop { id },

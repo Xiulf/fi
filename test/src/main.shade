@@ -5,73 +5,50 @@ import core/io
 
 
 fn main =
-    a <- "test"
-    println a
+    let a = case branch (Ok "test") of
+        Next x -> x
+        Break e -> return from_residual e
+    pure (println a)
 
-fn test = fn a b -> "test"
-
-fn fsdfdsfs = 0 :: Str
 
 type Option t =
     | None
     | Some t
 
-type OptionTry t e = Option t
+type Result e t =
+    | Err e
+    | Ok t
 
-member OptionTry Infallible of Try =
-    fn from_output o = Some o
 
-; member Option of Functor =
-;     fn map f a = case a of
-;         None -> None
-;         Some a -> Some (f a)
-; 
-; member Option of Apply =
-;     fn apply f a = case f of
-;         None -> None
-;         Some f -> case a of
-;             None -> None
-;             Some a -> Some (f a)
-; 
-; member Option of Applicative =
-;     fn pure a = Some a
-; 
-; member Option of Bind =
-;     fn bind m f = case m of
-;         None -> None
-;         Some a -> f a
-; 
-; member Option of Monad
-; 
-; 
-; class Functor f =
-;     fn map :: (a -> b), f a -> f b
-; 
-; class Apply f where Functor f =
-;     fn apply :: f (a -> b), f a -> f b
-; 
-; class Applicative f where Apply f =
-;     fn pure :: a -> f a
-; 
-; class Bind m where Apply m =
-;     fn bind :: m a, (a -> m b) -> m b
-; 
-; class Monad m where Bind m, Applicative m
-; 
-; 
-; infixl 4 map as (<$>)
-; infixl 4 apply as (<*>)
-; infixl 1 bind as (>>=)
+class Try self err where FromResidual self err =
+    fn pure :: val -> self val
+    fn branch :: self val -> ControlFlow err val
 
-foreign type Infallible :: core/Type
+class FromResidual self err =
+    fn from_residual :: err -> self
 
 type ControlFlow b n =
-    | Next n
     | Break b
+    | Next n
 
-class Try self residual where FromResidual self residual =
-    fn from_output :: output -> self output residual
-    fn branch :: self output residual -> ControlFlow residual output
 
-class FromResidual self residual =
-    fn from_residual :: residual -> self output residual
+member Option () of Try =
+    fn pure x = Some x
+
+    fn branch self = case self of
+        Some x -> Next x
+        None -> Break ()
+
+; member Option () of FromResidual =
+;     fn from_residual _ = None
+
+
+member (Result e) e of Try =
+    fn pure x = Ok x
+
+    fn branch self = case self of
+        Ok x -> Next x
+        Err e -> Break e
+
+; member (Result e) e of FromResidual =
+;     fn from_residual e = Err e

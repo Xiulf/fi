@@ -1,3 +1,4 @@
+use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, InferenceDiagnostic};
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
 use crate::lower::LowerCtx;
@@ -94,10 +95,14 @@ impl BodyInferenceContext<'_> {
                     let integer = self.lang_class("integer-class");
                     let ty = self.fresh_type(src);
 
-                    self.constrain(pat.into(), CtntInfo {
-                        class: integer,
-                        types: vec![ty].into(),
-                    });
+                    self.constrain(
+                        CtntExpected::ExprOrPat(pat.into()),
+                        CtntFound::ExprOrPat(pat.into()),
+                        CtntInfo {
+                            class: integer,
+                            types: vec![ty].into(),
+                        },
+                    );
 
                     ty
                 },
@@ -105,10 +110,14 @@ impl BodyInferenceContext<'_> {
                     let decimal = self.lang_class("decimal-class");
                     let ty = self.fresh_type(src);
 
-                    self.constrain(pat.into(), CtntInfo {
-                        class: decimal,
-                        types: vec![ty].into(),
-                    });
+                    self.constrain(
+                        CtntExpected::ExprOrPat(pat.into()),
+                        CtntFound::ExprOrPat(pat.into()),
+                        CtntInfo {
+                            class: decimal,
+                            types: vec![ty].into(),
+                        },
+                    );
 
                     ty
                 },

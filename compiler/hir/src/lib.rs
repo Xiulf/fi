@@ -694,8 +694,11 @@ impl Member {
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let lower = db.lower_member(self.id);
+        let diags = hir_ty::lower::verify_member(db, self.id);
+        let owner = TypeVarOwner::TypedDefId(self.id.into());
 
-        lower.add_diagnostics(db, TypeVarOwner::TypedDefId(self.id.into()), sink);
+        lower.add_diagnostics(db, owner, sink);
+        diags.iter().for_each(|d| d.add_to(db, owner, sink));
 
         for item in self.items(db) {
             item.diagnostics(db, sink);

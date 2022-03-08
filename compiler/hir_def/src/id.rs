@@ -131,7 +131,7 @@ impl_intern!(ClassId, ClassLoc, intern_class, lookup_intern_class);
 
 impl ClassId {
     pub fn dummy() -> Self {
-        let id = salsa::InternId::from(salsa::InternId::MAX);
+        let id = salsa::InternId::from(salsa::InternId::MAX - 1);
 
         Self(id)
     }

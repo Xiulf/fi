@@ -1,3 +1,4 @@
+use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, Breakable, ExprOrPatId, InferenceDiagnostic};
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
 use crate::lower::LowerCtx;
@@ -69,10 +70,14 @@ impl BodyInferenceContext<'_> {
                     let integer = self.lang_class("integer-class");
                     let ty = self.fresh_type(src);
 
-                    self.constrain(expr.into(), CtntInfo {
-                        class: integer,
-                        types: vec![ty].into(),
-                    });
+                    self.constrain(
+                        CtntExpected::ExprOrPat(expr.into()),
+                        CtntFound::ExprOrPat(expr.into()),
+                        CtntInfo {
+                            class: integer,
+                            types: vec![ty].into(),
+                        },
+                    );
 
                     ty
                 },
@@ -80,10 +85,14 @@ impl BodyInferenceContext<'_> {
                     let decimal = self.lang_class("decimal-class");
                     let ty = self.fresh_type(src);
 
-                    self.constrain(expr.into(), CtntInfo {
-                        class: decimal,
-                        types: vec![ty].into(),
-                    });
+                    self.constrain(
+                        CtntExpected::ExprOrPat(expr.into()),
+                        CtntFound::ExprOrPat(expr.into()),
+                        CtntInfo {
+                            class: decimal,
+                            types: vec![ty].into(),
+                        },
+                    );
 
                     ty
                 },
@@ -551,18 +560,26 @@ impl BodyInferenceContext<'_> {
             | (Expr::Lit { lit: Literal::Int(_) }, _) => {
                 let integer = self.lang_class("integer-class");
 
-                self.constrain(expr.into(), CtntInfo {
-                    class: integer,
-                    types: vec![expected].into(),
-                });
+                self.constrain(
+                    CtntExpected::ExprOrPat(expr.into()),
+                    CtntFound::ExprOrPat(expr.into()),
+                    CtntInfo {
+                        class: integer,
+                        types: vec![expected].into(),
+                    },
+                );
             },
             | (Expr::Lit { lit: Literal::Float(_) }, _) => {
                 let decimal = self.lang_class("decimal-class");
 
-                self.constrain(expr.into(), CtntInfo {
-                    class: decimal,
-                    types: vec![expected].into(),
-                });
+                self.constrain(
+                    CtntExpected::ExprOrPat(expr.into()),
+                    CtntFound::ExprOrPat(expr.into()),
+                    CtntInfo {
+                        class: decimal,
+                        types: vec![expected].into(),
+                    },
+                );
             },
             | (Expr::App { base, args }, _) => {
                 let base_ty = self.infer_expr(*base);
@@ -642,7 +659,11 @@ impl BodyInferenceContext<'_> {
             },
             | TyInfo::Where(where_, ty) => {
                 for ctnt in where_.constraints.iter() {
-                    self.constrain(expr.into(), ctnt.clone());
+                    self.constrain(
+                        CtntExpected::ExprOrPat(expr.into()),
+                        CtntFound::ExprOrPat(expr.into()),
+                        ctnt.clone(),
+                    );
                 }
 
                 self.check_app(ty, args, expr)

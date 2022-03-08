@@ -1,4 +1,7 @@
-use super::{ExprOrPatId, InferenceContext};
+use super::{
+    diagnostics::{CtntExpected, CtntFound},
+    ExprOrPatId, InferenceContext,
+};
 use crate::info::{TyId, TyInfo};
 
 #[derive(PartialEq)]
@@ -40,7 +43,11 @@ impl InferenceContext<'_> {
             },
             | (TyInfo::Where(where_, inner), _) if mode == SubsumeMode::Ctnt => {
                 for ctnt in where_.constraints.iter() {
-                    self.constrain(origin, ctnt.clone());
+                    self.constrain(
+                        CtntExpected::ExprOrPat(origin),
+                        CtntFound::ExprOrPat(origin),
+                        ctnt.clone(),
+                    );
                 }
 
                 self.subsume_types_impl(inner, t2, origin, mode)
