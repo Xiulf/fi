@@ -106,7 +106,6 @@ impl InferenceContext<'_> {
                     })
                     .collect::<Vec<_>>();
 
-                println!("{}", inner.display(self.db, &self.types));
                 let ty = inner.replace_vars(&mut self.types, &us, scope);
 
                 if let ExprOrPatId::ExprId(e) = id {
@@ -224,6 +223,20 @@ impl InferenceContext<'_> {
             },
             | (TyInfo::App(a1, a2), TyInfo::App(b1, b2)) if a2.len() == b2.len() => {
                 self.unify_types(a1, b1) && a2.iter().zip(b2.iter()).all(|(&a2, &b2)| self.unify_types(a2, b2))
+            },
+            | (TyInfo::App(_, a2), TyInfo::App(b1, b2)) if a2.len() < b2.len() => {
+                let src = self.types.source(t2);
+                let c1 = self.types.insert(TyInfo::App(b1, b2[..a2.len()].into()), src);
+                let c2 = self.types.insert(TyInfo::App(c1, b2[a2.len()..].into()), src);
+
+                self.unify_types(t1, c2)
+            },
+            | (TyInfo::App(a1, a2), TyInfo::App(_, b2)) if a2.len() > b2.len() => {
+                let src = self.types.source(t1);
+                let c1 = self.types.insert(TyInfo::App(a1, a2[..b2.len()].into()), src);
+                let c2 = self.types.insert(TyInfo::App(c1, a2[b2.len()..].into()), src);
+
+                self.unify_types(c2, t2)
             },
             | (TyInfo::Func(a1, a2), TyInfo::Func(b1, b2)) if a1.len() == b1.len() => {
                 a1.iter().zip(b1.iter()).all(|(&a1, &b1)| self.unify_types(a1, b1)) && self.unify_types(a2, b2)

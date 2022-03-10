@@ -4,7 +4,8 @@ use crate::infer::diagnostics::InferenceDiagnostic;
 use crate::infer::InferenceResult;
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeVars, Types};
 use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult};
-use crate::ty::{Constraint, Field, List, Reason, Ty, TyAndSrc, TyKind, WhereClause};
+use crate::ty::{Constraint, Field, List, Reason, Ty, TyAndSrc, TyKind, TypeVar, WhereClause};
+use rustc_hash::FxHashMap;
 
 impl ToInfo for TyAndSrc<Ty> {
     type Output = TyAndSrc<TyId>;
@@ -33,13 +34,25 @@ impl ToInfo for Ty {
 
     fn to_info(self, db: &dyn HirDatabase, types: &mut Types, type_vars: &mut TypeVars, src: TySource) -> Self::Output {
         let ty = rec(self, db, types, type_vars, src);
+        let mut scopes = FxHashMap::default();
 
-        return ty.everywhere_reverse(false, types, &mut |types, t| match types[t].clone() {
-            | TyInfo::ForAll(kinds, inner, scope) => {
+        ty.everything(types, &mut |t| match types[t] {
+            | TyInfo::ForAll(ref kinds, _, scope) => {
                 let new_scope = type_vars.alloc_scope(kinds.clone());
-                let inner = inner.rescope(types, scope, new_scope);
 
-                types.update(t, TyInfo::ForAll(kinds, inner, new_scope), true)
+                scopes.insert(scope, new_scope);
+            },
+            | _ => {},
+        });
+
+        return ty.everywhere(true, types, &mut |types, t| match types[t].clone() {
+            | TyInfo::TypeVar(tv) if scopes.contains_key(&tv.scope()) => {
+                types.update(t, TyInfo::TypeVar(TypeVar::new(tv.idx(), scopes[&tv.scope()])), true)
+            },
+            | TyInfo::ForAll(kinds, inner, scope) => {
+                let scope = scopes[&scope];
+
+                types.update(t, TyInfo::ForAll(kinds, inner, scope), true)
             },
             | _ => t,
         });

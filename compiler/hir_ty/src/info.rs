@@ -417,11 +417,11 @@ impl TyId {
                 | _ => unreachable!("{:?}", tail),
             },
             | TyInfo::App(base, ref args) => match types[base] {
-                | TyInfo::App(base2, ref args2) => types.update(
-                    ty,
-                    TyInfo::App(base2, args2.iter().chain(args.iter()).copied().collect()),
-                    false,
-                ),
+                | TyInfo::App(base2, ref args2) => {
+                    let args = args2.iter().chain(args.iter()).copied().collect();
+
+                    types.update(ty, TyInfo::App(base2, args), false)
+                },
                 | TyInfo::ForAll(_, inner, scope) => {
                     let args = args.clone();
 

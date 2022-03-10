@@ -20,7 +20,7 @@ type Result e t =
     | Ok t
 
 
-class Try self err where FromResidual self err =
+class Try self val err where FromResidual (self val) err =
     fn pure :: val -> self val
     fn branch :: self val -> ControlFlow err val
 
@@ -32,23 +32,23 @@ type ControlFlow b n =
     | Next n
 
 
-member Option () of Try =
+member Option t () of Try =
     fn pure x = Some x
 
     fn branch self = case self of
         Some x -> Next x
         None -> Break ()
 
-; member Option () of FromResidual =
-;     fn from_residual _ = None
+member (Option t) () of FromResidual =
+    fn from_residual _ = None
 
 
-member (Result e) e of Try =
+member (Result e) t e of Try =
     fn pure x = Ok x
 
     fn branch self = case self of
         Ok x -> Next x
         Err e -> Break e
 
-; member (Result e) e of FromResidual =
-;     fn from_residual e = Err e
+member (Result e t) e of FromResidual =
+    fn from_residual e = Err e

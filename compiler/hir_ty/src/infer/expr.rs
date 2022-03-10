@@ -1,5 +1,6 @@
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, Breakable, ExprOrPatId, InferenceDiagnostic};
+use crate::display::HirDisplay;
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
 use crate::lower::LowerCtx;
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
@@ -50,15 +51,14 @@ impl BodyInferenceContext<'_> {
                         | ValueNs::Ctor(id) => id.into(),
                     };
 
-                    let ty =
-                        self.db
-                            .value_ty(id)
-                            .ty
-                            .to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
+                    let ty = self.db.value_ty(id).ty;
+                    let ty = ty.to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
+                    let ty = self.instantiate(ty, expr.into());
+                    println!("{} :: {}", path, ty.display(self.icx.db, &self.icx.types));
 
                     self.result.type_of_expr.insert(expr, ty);
 
-                    return self.instantiate(ty, expr.into());
+                    return ty;
                 },
                 | None => {
                     self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
@@ -205,10 +205,11 @@ impl BodyInferenceContext<'_> {
                     let then_ty = self.subst_type(then_ty);
                     let else_ty = self.infer_expr(*else_);
                     let else_ty = self.subst_type(else_ty);
+                    let never_ty = self.lang_type("never-type", then_src);
 
-                    if then_ty == self.lang_type("never-type", then_src) {
+                    if then_ty == never_ty {
                         else_ty
-                    } else if else_ty == self.lang_type("never-type", else_src) {
+                    } else if else_ty == never_ty {
                         then_ty
                     } else {
                         if !self.unify_types(then_ty, else_ty) {
@@ -226,6 +227,7 @@ impl BodyInferenceContext<'_> {
                 if let TypeVarOwner::DefWithBodyId(def) = self.owner {
                     let pred_ty = self.infer_expr(*pred);
                     let res = self.fresh_type(src);
+                    let never_ty = self.lang_type("never-type", src);
 
                     for arm in arms.iter() {
                         self.check_pat(arm.pat, pred_ty);
@@ -240,7 +242,14 @@ impl BodyInferenceContext<'_> {
                             self.check_expr(guard, bool_ty);
                         }
 
-                        self.check_expr(arm.expr, res);
+                        let expr = self.infer_expr(arm.expr);
+
+                        if self.types[expr] != self.types[never_ty] {
+                            if !self.subsume_types(expr, res, arm.expr.into()) {
+                                self.report_mismatch(res, expr, arm.expr);
+                            }
+                        }
+
                         self.resolver = old_resolver;
                     }
 
