@@ -309,7 +309,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 fn peek(p: &Parser, allow_do: bool) -> bool {
     match p.current() {
         | DO_KW => allow_do,
-        | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | UNLESS_KW
+        | FN_KW | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | UNLESS_KW
         | WHILE_KW | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW | UNDERSCORE => true,
         | _ => false,
     }

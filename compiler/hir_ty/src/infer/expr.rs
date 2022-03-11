@@ -54,7 +54,6 @@ impl BodyInferenceContext<'_> {
                     let ty = self.db.value_ty(id).ty;
                     let ty = ty.to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
                     let ty = self.instantiate(ty, expr.into());
-                    println!("{} :: {}", path, ty.display(self.icx.db, &self.icx.types));
 
                     self.result.type_of_expr.insert(expr, ty);
 
@@ -187,9 +186,13 @@ impl BodyInferenceContext<'_> {
                 let ret = self.fresh_type(body_src);
                 let params = pats.iter().map(|&p| self.infer_pat(p)).collect::<Vec<_>>();
                 let old_ret_type = std::mem::replace(&mut self.ret_type, ret);
+                let def = self.resolver.body_owner().unwrap();
+                let new_resolver = Resolver::for_expr(self.db.upcast(), def, *body);
+                let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
 
                 self.check_expr(*body, ret);
                 self.ret_type = old_ret_type;
+                self.resolver = old_resolver;
                 self.fn_type(params.into(), ret, src)
             },
             | Expr::If { cond, then, else_, .. } => {

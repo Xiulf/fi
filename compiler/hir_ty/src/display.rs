@@ -169,6 +169,7 @@ impl fmt::Display for Unknown {
 impl Ty {
     fn needs_paren(self, db: &dyn HirDatabase, mode: ParenMode) -> bool {
         match (self.lookup(db), mode) {
+            | (TyKind::Tuple(tys), ParenMode::Arg | ParenMode::App) => !tys.is_empty(),
             | (TyKind::App(..), ParenMode::App) => true,
             | (
                 TyKind::Func(..) | TyKind::Tuple(..) | TyKind::ForAll(..) | TyKind::Where(..),

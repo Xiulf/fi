@@ -192,7 +192,7 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
 crate fn peek(p: &Parser) -> bool {
     match p.current() {
-        | IDENT | STAR | HASH | L_PAREN | L_BRACKET | L_BRACE | INT | STRING => true,
+        | IDENT | UNDERSCORE | STAR | HASH | L_PAREN | L_BRACKET | L_BRACE | INT | STRING => true,
         | _ => false,
     }
 }

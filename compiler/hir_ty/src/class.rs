@@ -302,10 +302,6 @@ impl TyId {
 }
 
 fn verify(matches: &[Matched<()>], deps: &[FunDep]) -> bool {
-    if matches.iter().any(|m| matches!(m, Matched::Apart)) {
-        return false;
-    }
-
     let expected = (0..matches.len()).collect::<FxHashSet<_>>();
     let initial_set = matches
         .iter()
@@ -375,10 +371,6 @@ fn match_type_inner(
     match (&types[ty], &types[with]) {
         | (_, TyInfo::Unknown(_) | TyInfo::Skolem(..)) => unreachable!(),
         | (TyInfo::Error, _) | (_, TyInfo::Error) => Matched::Match(()),
-        | (&TyInfo::Unknown(u), _) => {
-            subst.insert(u, with);
-            Matched::Unknown
-        },
         | (TyInfo::Skolem(_, _), _) => Matched::Unknown,
         | (TyInfo::TypeVar(a), TyInfo::TypeVar(b))
             if ty_skolems.contains(a) && with_skolems.contains(b) && a.idx() == b.idx() =>
@@ -388,6 +380,10 @@ fn match_type_inner(
         | (_, &TyInfo::TypeVar(tv)) => {
             vars.insert(tv, ty);
             Matched::Match(())
+        },
+        | (&TyInfo::Unknown(u), _) => {
+            subst.insert(u, with);
+            Matched::Unknown
         },
         | (&TyInfo::Figure(c1), &TyInfo::Figure(c2)) if c1 == c2 => Matched::Match(()),
         | (&TyInfo::Symbol(ref c1), &TyInfo::Symbol(ref c2)) if c1 == c2 => Matched::Match(()),
