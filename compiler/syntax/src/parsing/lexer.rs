@@ -148,7 +148,10 @@ impl<'src> Lexer<'src> {
             | ch if ch.is_xid_start() => self.name(start),
             | '_' if self.peek().is_xid_continue() => self.name(start),
             | '_' => self.insert_default(start, UNDERSCORE),
-            | '(' if is_op_char(self.peek()) && (is_op_char(self.peek_n(1)) || self.peek_n(1) == ')') => {
+            | '(' if is_op_char(self.peek()) => {
+                let chars = self.chars.clone();
+                let pos = (self.line, self.col, self.pos);
+
                 while is_op_char(self.peek()) {
                     self.advance();
                 }
@@ -157,7 +160,17 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     self.insert_default(start, SYMBOL);
                 } else {
-                    self.emit(ERROR);
+                    self.chars = chars;
+                    self.line = pos.0;
+                    self.col = pos.1;
+                    self.pos = pos.2;
+                    self.insert_default(start, L_PAREN);
+
+                    if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                        self.stack.pop().unwrap();
+                    }
+
+                    self.stack.push((start, LayoutDelim::Paren));
                 }
             },
             | '(' => {
@@ -307,9 +320,6 @@ impl<'src> Lexer<'src> {
             },
             | '`' => {
                 self.insert_default(start, TICK);
-            },
-            | '?' if !is_op_char(self.peek()) => {
-                self.insert_default(start, QMARK);
             },
             | '@' if !is_op_char(self.peek()) => {
                 self.insert_default(start, AT);
@@ -654,6 +664,22 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                 } else {
                     self.insert_default(start, INFIXR_KW);
+                }
+            },
+            | "postfix" => {
+                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                } else {
+                    self.insert_default(start, POSTFIX_KW);
+                }
+            },
+            | "prefix" => {
+                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                } else {
+                    self.insert_default(start, PREFIX_KW);
                 }
             },
             | "where" => match self.stack[..] {

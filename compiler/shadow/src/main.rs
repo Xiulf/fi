@@ -25,9 +25,6 @@ fn main() {
             (@arg input: +takes_value default_value("."))
             (@arg args: ...)
         )
-        (@subcommand docs =>
-            (@arg input: +takes_value default_value("."))
-        )
     )
     .get_matches();
 
@@ -84,15 +81,6 @@ fn main() {
             } else {
                 std::process::exit(1);
             }
-        }
-    } else if let Some(matches) = matches.subcommand_matches("docs") {
-        let input = matches.value_of("input").unwrap();
-
-        if let Some((driver, lib)) = Driver::init(Opts {
-            input,
-            ..Opts::default()
-        }) {
-            driver.docs(lib);
         }
     } else if let Some(input) = matches.value_of("file") {
         let target = matches.value_of("target");

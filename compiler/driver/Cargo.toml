@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 diagnostics = { path = "../diagnostics" }
-docs = { path = "../docs" }
 codegen = { path = "../codegen" }
 lower = { path = "../lower" }
 ir = { git = "https://github.com/Xiulf/lowlang.git", branch = "v4" }

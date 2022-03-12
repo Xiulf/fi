@@ -194,8 +194,14 @@ pub struct Fixity {
     pub ast_id: FileAstId<ast::ItemFixity>,
     pub name: Name,
     pub func: Path,
-    pub assoc: Assoc,
-    pub prec: Prec,
+    pub kind: FixityKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FixityKind {
+    Infix { assoc: Assoc, prec: Prec },
+    Postfix,
+    Prefix,
 }
 
 pub use ast::{Assoc, Prec};

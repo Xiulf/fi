@@ -15,7 +15,7 @@ crate fn any_item(p: &mut Parser) {
         | IMPORT_KW => {
             import(p, m);
         },
-        | INFIX_KW | INFIXL_KW | INFIXR_KW => {
+        | INFIX_KW | INFIXL_KW | INFIXR_KW | POSTFIX_KW | PREFIX_KW => {
             fixity(p, m);
         },
         | FOREIGN_KW => {
@@ -84,8 +84,18 @@ crate fn fixity(p: &mut Parser, m: Marker) {
         p.expect(AS_KW);
         paths::symbol(p);
         m.complete(p, ITEM_FIXITY);
+    } else if p.eat(POSTFIX_KW) {
+        paths::path(p);
+        p.expect(AS_KW);
+        paths::symbol(p);
+        m.complete(p, ITEM_FIXITY);
+    } else if p.eat(PREFIX_KW) {
+        paths::path(p);
+        p.expect(AS_KW);
+        paths::symbol(p);
+        m.complete(p, ITEM_FIXITY);
     } else {
-        p.error("expected 'infix', 'infixl' or 'infixr'");
+        p.error("expected 'infix', 'infixl', 'infixr', 'postfix' or 'prefix'");
         m.abandon(p);
     }
 }

@@ -191,10 +191,6 @@ impl Driver {
         }
     }
 
-    pub fn docs(&self, lib: LibId) {
-        docs::generate(&self.db, lib.into(), &self.db.target_dir(lib)).unwrap();
-    }
-
     fn write_assembly(&self, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> std::io::Result<bool> {
         if done.contains(&lib) {
             return Ok(false);

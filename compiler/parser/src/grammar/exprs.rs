@@ -57,13 +57,13 @@ crate fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 }
 
 crate fn app(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
-    let mut m = postfix(p, allow_do)?;
+    let mut m = postfix(p, true, allow_do)?;
 
-    if peek(p, allow_do) {
+    if peek(p, 0, allow_do) {
         let expr = m.precede(p);
 
-        while peek(p, allow_do) {
-            let _ = postfix(p, allow_do);
+        while peek(p, 0, allow_do) {
+            let _ = postfix(p, false, allow_do);
         }
 
         m = expr.complete(p, EXPR_APP);
@@ -72,8 +72,8 @@ crate fn app(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     Some(m)
 }
 
-crate fn postfix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
-    let mut m = atom(p, allow_do)?;
+crate fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<CompletedMarker> {
+    let mut m = prefix(p, allow_do)?;
 
     loop {
         match p.current() {
@@ -98,11 +98,30 @@ crate fn postfix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                     },
                 }
             },
+            | OPERATOR if allow_op && !peek(p, 1, allow_do) => {
+                let expr = m.precede(p);
+
+                p.bump(OPERATOR);
+                m = expr.complete(p, EXPR_POSTFIX);
+            },
             | _ => break,
         }
     }
 
     Some(m)
+}
+
+crate fn prefix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
+    if p.at(OPERATOR) {
+        let m = p.start();
+
+        p.bump(OPERATOR);
+        prefix(p, allow_do);
+
+        Some(m.complete(p, EXPR_PREFIX))
+    } else {
+        atom(p, allow_do)
+    }
 }
 
 crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
@@ -232,7 +251,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         | NEXT_KW => {
             p.bump(NEXT_KW);
 
-            if peek(p, true) {
+            if peek(p, 0, true) {
                 expr(p);
             }
 
@@ -241,7 +260,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         | BREAK_KW => {
             p.bump(BREAK_KW);
 
-            if peek(p, true) {
+            if peek(p, 0, true) {
                 expr(p);
             }
 
@@ -250,7 +269,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         | YIELD_KW => {
             p.bump(YIELD_KW);
 
-            while peek(p, true) {
+            while peek(p, 0, true) {
                 atom(p, true);
             }
 
@@ -259,7 +278,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         | RETURN_KW => {
             p.bump(RETURN_KW);
 
-            if peek(p, true) {
+            if peek(p, 0, true) {
                 expr(p);
             }
 
@@ -322,8 +341,8 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     }
 }
 
-fn peek(p: &Parser, allow_do: bool) -> bool {
-    match p.current() {
+fn peek(p: &Parser, n: usize, allow_do: bool) -> bool {
+    match p.nth(n) {
         | DO_KW | TRY_KW => allow_do,
         | FN_KW | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | UNLESS_KW
         | WHILE_KW | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW | UNDERSCORE => true,

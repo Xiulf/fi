@@ -1,12 +1,25 @@
 module main =
 
 import core
-import core/io
 
 
 fn main = try
     a <- None
     ret $ println a
+
+
+
+
+; class Neg self =
+;     fn neg :: self -> self
+; 
+; class Not self =
+;     fn not :: self -> self
+; 
+; prefix neg as (-)
+; prefix nog as (!)
+
+
 
 
 type Option t =
@@ -23,10 +36,15 @@ class Try self =
     fn ret :: output -> self output
     fn bind :: self a, (a -> self b) -> self b
 
-class OrElse self =
-    fn or_else :: self val, val -> val
+class Unwrap self =
+    fn unwrap :: self output -> output where Partial
+    fn unwrap_or :: self output, output -> output
 
-infixl 5 or_else as (!!)
+fn unwrap_unsafe x = partial $ unwrap x
+
+postfix unwrap_unsafe as (!)
+infixl 5 unwrap_or as (?)
+
 
 member Option of Try =
     fn ret x = Some x
@@ -35,6 +53,15 @@ member Option of Try =
         Some x -> f x
         None -> None
 
+member Option of Unwrap =
+    fn unwrap self = case self of
+        Some x -> x
+        None -> crash "cannot unwrap a none value"
+
+    fn unwrap_or self def = case self of
+        Some x -> x
+        None -> def
+
 
 member (Result e) of Try =
     fn ret x = Ok x
@@ -42,3 +69,12 @@ member (Result e) of Try =
     fn bind self f = case self of
         Ok x -> f x
         Err e -> Err e
+
+member (Result e) of Unwrap =
+    fn unwrap self = case self of
+        Ok x -> x
+        Err _ -> crash "cannot unwrap an err value"
+
+    fn unwrap_or self def = case self of
+        Ok x -> x
+        Err _ -> def

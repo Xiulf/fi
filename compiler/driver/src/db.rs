@@ -10,8 +10,7 @@ use std::sync::Arc;
     hir::db::HirDatabaseStorage,
     ir::db::IrDatabaseStorage,
     lower::db::LowerDatabaseStorage,
-    codegen::db::CodegenDatabaseStorage,
-    docs::db::DocDatabaseStorage
+    codegen::db::CodegenDatabaseStorage
 )]
 #[derive(Default)]
 pub struct RootDatabase {

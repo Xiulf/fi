@@ -214,6 +214,14 @@ impl ItemFixity {
         support::child(&self.0)
     }
 
+    pub fn is_postfix(&self) -> bool {
+        support::token(&self.0, POSTFIX_KW).is_some()
+    }
+
+    pub fn is_prefix(&self) -> bool {
+        support::token(&self.0, POSTFIX_KW).is_some()
+    }
+
     pub fn assoc(&self) -> Option<Assoc> {
         support::token(&self.0, INFIX_KW).map_or_else(
             || {

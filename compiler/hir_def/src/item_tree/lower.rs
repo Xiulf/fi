@@ -143,15 +143,22 @@ impl Ctx {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
         let func = Path::lower(item.func()?);
-        let prec = item.prec()?;
-        let assoc = item.assoc()?;
+        let kind = if item.is_postfix() {
+            FixityKind::Postfix
+        } else if item.is_prefix() {
+            FixityKind::Prefix
+        } else {
+            FixityKind::Infix {
+                prec: item.prec()?,
+                assoc: item.assoc()?,
+            }
+        };
 
         Some(id(self.tree.data.fixities.alloc(Fixity {
             ast_id,
             name,
             func,
-            prec,
-            assoc,
+            kind,
         })))
     }
 

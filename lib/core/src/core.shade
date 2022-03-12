@@ -5,6 +5,6 @@ module core (
 ) =
 
 import prim as c
-import intrinsics (($)) as c
+import intrinsics (($), unsafe, crash, partial) as c
 import core/ops as c
 import core/io (print, println, eprint, eprintln) as c

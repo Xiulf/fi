@@ -1,7 +1,7 @@
 use crate::db::DefDatabase;
 use crate::id::*;
-pub use crate::item_tree::{Assoc, FunDep, Prec};
 use crate::item_tree::{AssocItem, ItemTreeId};
+pub use crate::item_tree::{FixityKind, FunDep};
 use crate::name::Name;
 use crate::path::Path;
 use crate::resolver::{HasResolver, Resolver};
@@ -16,8 +16,7 @@ use syntax::ast;
 pub struct FixityData {
     pub name: Name,
     pub func: Path,
-    pub prec: Prec,
-    pub assoc: Assoc,
+    pub kind: FixityKind,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -105,8 +104,7 @@ impl FixityData {
         Arc::new(FixityData {
             name: it.name.clone(),
             func: it.func.clone(),
-            prec: it.prec,
-            assoc: it.assoc,
+            kind: it.kind.clone(),
         })
     }
 }

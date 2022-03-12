@@ -8,6 +8,7 @@ mod source_to_def;
 use base_db::input::FileId;
 use base_db::libs::LibId;
 pub use hir_def::body::Body;
+pub use hir_def::data::FixityKind;
 use hir_def::diagnostic::DiagnosticSink;
 pub use hir_def::expr::{CaseArm, Expr, ExprId, Literal, Stmt};
 use hir_def::id::*;
@@ -247,12 +248,8 @@ impl Fixity {
         self.module(db).path_to_name(db, self.name(db))
     }
 
-    pub fn assoc(self, db: &dyn HirDatabase) -> Assoc {
-        db.fixity_data(self.id).assoc
-    }
-
-    pub fn prec(self, db: &dyn HirDatabase) -> Prec {
-        db.fixity_data(self.id).prec
+    pub fn kind(self, db: &dyn HirDatabase) -> FixityKind {
+        db.fixity_data(self.id).kind
     }
 
     pub fn func(self, db: &dyn HirDatabase) -> Func {

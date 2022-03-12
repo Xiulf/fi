@@ -229,10 +229,14 @@ fn format_resolution(db: &dyn hir::db::HirDatabase, resolution: hir::PathResolut
             let m = Markup::new();
             let m = match def {
                 | hir::ModuleDef::Module(_) => m.text("module ", Styles::BOLD),
-                | hir::ModuleDef::Fixity(f) => match f.assoc(db) {
-                    | hir::Assoc::Left => m.text("infixl ", Styles::BOLD),
-                    | hir::Assoc::Right => m.text("infixr ", Styles::BOLD),
-                    | hir::Assoc::None => m.text("infix ", Styles::BOLD),
+                | hir::ModuleDef::Fixity(f) => match f.kind(db) {
+                    | hir::FixityKind::Infix { assoc, .. } => match assoc {
+                        | hir::Assoc::Left => m.text("infixl ", Styles::BOLD),
+                        | hir::Assoc::Right => m.text("infixr ", Styles::BOLD),
+                        | hir::Assoc::None => m.text("infix ", Styles::BOLD),
+                    },
+                    | hir::FixityKind::Postfix => m.text("postfix ", Styles::BOLD),
+                    | hir::FixityKind::Prefix => m.text("prefix ", Styles::BOLD),
                 },
                 | hir::ModuleDef::Func(_) => m.text("fun ", Styles::BOLD),
                 | hir::ModuleDef::Static(_) => m.text("static ", Styles::BOLD),

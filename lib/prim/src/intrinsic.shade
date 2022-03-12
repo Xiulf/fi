@@ -26,8 +26,9 @@ infixr 0 apply as ($)
 @intrinsic foreign fn ptr_read   :: ptr -> to where Pointer ptr to
 @intrinsic foreign fn ptr_write  :: ptr, to -> () where Pointer ptr to
 
-@intrinsic foreign fn apply         :: (a -> r), a -> r
-@intrinsic foreign fn transmute     :: a -> b where Unsafe
-@intrinsic foreign fn unsafe        :: (a where Unsafe) -> a
-@intrinsic foreign fn crash         :: a where Partial
-@intrinsic foreign fn unsafePartial :: (a where Partial) -> a
+@intrinsic foreign fn apply     :: (a -> r), a -> r
+@intrinsic foreign fn invoke    :: (-> r) -> r
+@intrinsic foreign fn transmute :: a -> b where Unsafe
+@intrinsic foreign fn unsafe    :: (a where Unsafe) -> a
+@intrinsic foreign fn crash     :: Str -> Never where Partial
+@intrinsic foreign fn partial   :: (a where Partial) -> a

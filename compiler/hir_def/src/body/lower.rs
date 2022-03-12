@@ -1,5 +1,5 @@
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
-use crate::data::FixityData;
+use crate::data::{FixityData, FixityKind};
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::expr::{CaseArm, Expr, ExprId, Literal, RecordField, Stmt};
@@ -13,7 +13,7 @@ use crate::type_ref::{TypeMap, TypeMapBuilder};
 use arena::Arena;
 use base_db::input::FileId;
 use std::sync::Arc;
-use syntax::{ast, AstPtr};
+use syntax::{ast, AstPtr, Prec};
 
 pub(super) fn lower(
     db: &dyn DefDatabase,
@@ -230,7 +230,10 @@ impl<'a> ExprCollector<'a> {
                             let (resolved, _) = self.def_map.resolve_path(self.db, self.module, op);
 
                             match resolved.values {
-                                | Some((ModuleDefId::FixityId(id), _)) => Some((id, self.db.fixity_data(id))),
+                                | Some((ModuleDefId::FixityId(id), _)) => match self.db.fixity_data(id).kind {
+                                    | FixityKind::Infix { assoc, prec } => Some((id, assoc, prec)),
+                                    | _ => None,
+                                },
                                 | _ => None,
                             }
                         })
@@ -249,21 +252,21 @@ impl<'a> ExprCollector<'a> {
                     fn go(
                         collector: &mut ExprCollector,
                         mut ops: impl Iterator<Item = Path>,
-                        mut fixities: Peekable<impl Iterator<Item = Option<(FixityId, Arc<FixityData>)>>>,
+                        mut fixities: Peekable<impl Iterator<Item = Option<(FixityId, Assoc, Prec)>>>,
                         mut exprs: impl Iterator<Item = ExprId>,
                         syntax_ptr: ExprPtr,
                     ) -> ExprId {
                         if let Some(op) = ops.next() {
-                            let left = if let Some((id, fixity)) = fixities.next().unwrap() {
+                            let left = if let Some((id, assoc, prec)) = fixities.next().unwrap() {
                                 if let Some(next) = fixities.peek() {
-                                    if let Some((id2, fixity2)) = next {
+                                    if let Some((id2, _, prec2)) = next {
                                         if id == *id2 {
-                                            match fixity.assoc {
+                                            match assoc {
                                                 | Assoc::Left => true,
                                                 | Assoc::Right => false,
                                                 | Assoc::None => true, // @TODO: this should be an error
                                             }
-                                        } else if fixity.prec >= fixity2.prec {
+                                        } else if prec >= *prec2 {
                                             true
                                         } else {
                                             false
