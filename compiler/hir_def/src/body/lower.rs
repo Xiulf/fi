@@ -344,6 +344,11 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::Do { stmts }, syntax_ptr)
             },
+            | ast::Expr::Try(e) => {
+                let stmts = e.block()?.statements().map(|s| self.collect_stmt(s)).collect();
+
+                self.alloc_expr(Expr::Try { stmts }, syntax_ptr)
+            },
             | ast::Expr::Clos(e) => {
                 let pats = e.params().map(|p| self.collect_pat(p)).collect();
                 let body = self.collect_expr_opt(e.body());

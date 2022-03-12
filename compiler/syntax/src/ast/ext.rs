@@ -804,6 +804,12 @@ impl ExprDo {
     }
 }
 
+impl ExprTry {
+    pub fn block(&self) -> Option<Block> {
+        support::child(&self.0)
+    }
+}
+
 impl ExprClos {
     pub fn params(&self) -> AstChildren<Pat> {
         support::children(&self.0)

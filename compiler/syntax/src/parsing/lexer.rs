@@ -694,6 +694,21 @@ impl<'src> Lexer<'src> {
                     self.insert_start(LayoutDelim::Do);
                 },
             },
+            | "try" => match self.stack[..] {
+                | [.., (_, LayoutDelim::Prop)] => {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                },
+                | [.., (_, LayoutDelim::If)] => {
+                    self.stack.pop().unwrap();
+                    self.emit(TRY_KW);
+                    self.insert_start(LayoutDelim::Do);
+                },
+                | _ => {
+                    self.insert_default(start, TRY_KW);
+                    self.insert_start(LayoutDelim::Do);
+                },
+            },
             | "if" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                     self.emit(IDENT);

@@ -121,7 +121,7 @@ crate fn fun(p: &mut Parser, m: Marker) {
 
         let body = p.start();
 
-        exprs::block(p);
+        exprs::block(p, false);
         body.complete(p, EXPR_DO);
         m.complete(p, ITEM_FUN);
     }

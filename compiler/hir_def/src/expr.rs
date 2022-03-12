@@ -49,6 +49,9 @@ pub enum Expr {
     Do {
         stmts: Box<[Stmt]>,
     },
+    Try {
+        stmts: Box<[Stmt]>,
+    },
     Clos {
         pats: Box<[PatId]>,
         body: ExprId,
@@ -137,7 +140,7 @@ impl Expr {
             | Expr::Record { fields } => {
                 fields.iter().for_each(|i| f(i.val));
             },
-            | Expr::Do { stmts } => {
+            | Expr::Do { stmts } | Expr::Try { stmts } => {
                 stmts.iter().for_each(|stmt| match stmt {
                     | Stmt::Let { val, .. } => f(*val),
                     | Stmt::Bind { val, .. } => f(*val),

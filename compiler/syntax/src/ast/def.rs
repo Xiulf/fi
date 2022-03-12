@@ -106,6 +106,7 @@ ast_node!(Expr {
     Record(ExprRecord, EXPR_RECORD),
     Array(ExprArray, EXPR_ARRAY),
     Do(ExprDo, EXPR_DO),
+    Try(ExprTry, EXPR_TRY),
     Clos(ExprClos, EXPR_CLOS),
     If(ExprIf, EXPR_IF),
     Case(ExprCase, EXPR_CASE),

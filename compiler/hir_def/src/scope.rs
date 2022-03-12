@@ -116,7 +116,7 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
     scopes.set_scope(expr, scope);
 
     match &body[expr] {
-        | Expr::Do { stmts } => {
+        | Expr::Do { stmts } | Expr::Try { stmts } => {
             compute_block_scopes(stmts, body, scopes, scope);
         },
         | Expr::Clos { pats, body: b } => {

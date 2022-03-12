@@ -4,8 +4,9 @@ import core
 import core/io
 
 
-fn main =
-    bind (Ok "test" :: Result Str _) fn a -> pure (println a)
+fn main = try
+    a <- None
+    ret $ println a
 
 
 type Option t =
@@ -17,21 +18,26 @@ type Result e t =
     | Ok t
 
 
-class Monad self =
-    fn pure :: val -> self val
+@lang = "try-class"
+class Try self =
+    fn ret :: output -> self output
     fn bind :: self a, (a -> self b) -> self b
 
+class OrElse self =
+    fn or_else :: self val, val -> val
 
-member Option of Monad =
-    fn pure x = Some x
+infixl 5 or_else as (!!)
+
+member Option of Try =
+    fn ret x = Some x
 
     fn bind self f = case self of
         Some x -> f x
         None -> None
 
 
-member (Result e) of Monad =
-    fn pure x = Ok x
+member (Result e) of Try =
+    fn ret x = Ok x
 
     fn bind self f = case self of
         Ok x -> f x

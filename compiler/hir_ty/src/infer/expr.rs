@@ -181,6 +181,7 @@ impl BodyInferenceContext<'_> {
                 self.types.insert(TyInfo::App(array_type, [elem_ty, len].into()), src)
             },
             | Expr::Do { stmts } => self.infer_block(stmts, expr),
+            | Expr::Try { stmts } => self.infer_try(stmts, expr),
             | Expr::Clos { pats, body } => {
                 let body_src = self.source(*body);
                 let ret = self.fresh_type(body_src);
@@ -406,54 +407,116 @@ impl BodyInferenceContext<'_> {
 
     pub fn infer_block(&mut self, stmts: &[Stmt], expr: ExprId) -> TyId {
         let src = self.source(expr);
+        let def = self.resolver.body_owner().unwrap();
+        let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+        let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
+        let last = stmts.len() - 1;
+        let never_ty = self.lang_type("never-type", src);
+        let mut diverges = false;
 
-        if let TypeVarOwner::DefWithBodyId(def) = self.owner {
-            let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
-            let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
-            let last = stmts.len() - 1;
-            let mut diverges = false;
+        for (i, stmt) in stmts.iter().enumerate() {
+            match *stmt {
+                | Stmt::Expr { expr } => {
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
 
-            for (i, stmt) in stmts.iter().enumerate() {
-                match *stmt {
-                    | Stmt::Expr { expr } => {
-                        self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+                    if i == last {
+                        return self.infer_expr(expr);
+                    } else {
+                        let ty = self.infer_expr(expr);
+                        let ty = self.subst_type(ty);
 
-                        if i == last {
-                            return self.infer_expr(expr);
-                        } else {
-                            let ty = self.infer_expr(expr);
-                            let ty = self.subst_type(ty);
-                            let src = self.types.source(ty);
-
-                            if ty == self.lang_type("never-type", src) {
-                                diverges = true;
-                            }
+                        if self.types[ty] == self.types[never_ty] {
+                            diverges = true;
                         }
-                    },
-                    | Stmt::Bind { pat, val } => {
-                        let ty = self.infer_pat(pat);
+                    }
+                },
+                | Stmt::Let { pat, val } => {
+                    let ty = self.infer_pat(pat);
 
-                        self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-                        self.check_expr(val, ty);
-                    },
-                    | Stmt::Let { pat, val } => {
-                        let ty = self.infer_pat(pat);
-
-                        self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-                        self.check_expr(val, ty);
-                    },
-                }
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
+                    self.check_expr(val, ty);
+                },
+                | Stmt::Bind { .. } => unreachable!(),
             }
+        }
 
-            self.resolver = old_resolver;
+        self.resolver = old_resolver;
 
-            if diverges {
-                self.lang_type("never-type", src)
-            } else {
-                self.unit(src)
-            }
+        if diverges {
+            never_ty
         } else {
-            self.error(src)
+            self.unit(src)
+        }
+    }
+
+    pub fn infer_try(&mut self, stmts: &[Stmt], expr: ExprId) -> TyId {
+        let src = self.source(expr);
+        let def = self.resolver.body_owner().unwrap();
+        let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+        let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
+        let try_class = self.lang_class("try-class");
+        let ty_kind = self.type_kind(src);
+        let kind = self.fn_type([ty_kind].into(), ty_kind, src);
+        let try_container = self.fresh_type_with_kind(kind, src);
+        let last = stmts.len() - 1;
+        let never_ty = self.lang_type("never-type", src);
+        let mut diverges = false;
+
+        self.constrain(
+            CtntExpected::ExprOrPat(expr.into()),
+            CtntFound::ExprOrPat(expr.into()),
+            CtntInfo {
+                class: try_class,
+                types: [try_container].into(),
+            },
+        );
+
+        for (i, stmt) in stmts.iter().enumerate() {
+            match *stmt {
+                | Stmt::Expr { expr } if i == last => {
+                    let src = self.source(expr);
+                    let val_ty = self.fresh_type(src);
+                    let app = self.types.insert(TyInfo::App(try_container, [val_ty].into()), src);
+
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+                    self.check_expr(expr, app);
+                    return app;
+                },
+                | Stmt::Expr { expr } => {
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+
+                    let ty = self.infer_expr(expr);
+                    let ty = self.subst_type(ty);
+
+                    if self.types[ty] == self.types[never_ty] {
+                        diverges = true;
+                    }
+                },
+                | Stmt::Bind { pat, val } => {
+                    let in_ty = self.infer_pat(pat);
+                    let val_src = self.source(val);
+                    let app = self.types.insert(TyInfo::App(try_container, [in_ty].into()), val_src);
+
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
+                    self.check_expr(val, app);
+                },
+                | Stmt::Let { pat, val } => {
+                    let ty = self.infer_pat(pat);
+
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
+                    self.check_expr(val, ty);
+                },
+            }
+        }
+
+        self.resolver = old_resolver;
+
+        if diverges {
+            never_ty
+        } else {
+            let unit = self.unit(src);
+
+            self.types.insert(TyInfo::App(try_container, [unit].into()), src)
         }
     }
 

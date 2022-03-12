@@ -123,8 +123,13 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         },
         | DO_KW if allow_do => {
             p.bump(DO_KW);
-            block(p);
+            block(p, false);
             Some(m.complete(p, EXPR_DO))
+        },
+        | TRY_KW if allow_do => {
+            p.bump(TRY_KW);
+            block(p, true);
+            Some(m.complete(p, EXPR_TRY))
         },
         | DO_KW => {
             p.error("do blocks are not allowed in this position");
@@ -158,8 +163,19 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                     let do_expr = p.start();
 
                     p.bump(DO_KW);
-                    block(p);
+                    block(p, false);
                     do_expr.complete(p, EXPR_DO);
+
+                    if p.eat(ELSE_KW) {
+                        expr(p);
+                    }
+                },
+                | TRY_KW => {
+                    let do_expr = p.start();
+
+                    p.bump(DO_KW);
+                    block(p, true);
+                    do_expr.complete(p, EXPR_TRY);
 
                     if p.eat(ELSE_KW) {
                         expr(p);
@@ -200,7 +216,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
             let body = p.start();
 
             p.expect(DO_KW);
-            block(p);
+            block(p, false);
             body.complete(p, EXPR_DO);
             Some(m.complete(p, EXPR_WHILE))
         },
@@ -209,7 +225,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 
             let body = p.start();
 
-            block(p);
+            block(p, false);
             body.complete(p, EXPR_DO);
             Some(m.complete(p, EXPR_LOOP))
         },
@@ -308,7 +324,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 
 fn peek(p: &Parser, allow_do: bool) -> bool {
     match p.current() {
-        | DO_KW => allow_do,
+        | DO_KW | TRY_KW => allow_do,
         | FN_KW | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | UNLESS_KW
         | WHILE_KW | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW | UNDERSCORE => true,
         | _ => false,
@@ -332,14 +348,14 @@ crate fn literal(p: &mut Parser) {
     }
 }
 
-crate fn block(p: &mut Parser) {
+crate fn block(p: &mut Parser, allow_bind: bool) {
     let m = p.start();
 
     p.expect(LYT_START);
 
     while !p.at(EOF) && !p.at(LYT_END) {
         p.eat(LYT_SEP);
-        stmt(p);
+        stmt(p, allow_bind);
 
         if !p.at(LYT_END) {
             p.expect(LYT_SEP);
@@ -350,7 +366,7 @@ crate fn block(p: &mut Parser) {
     m.complete(p, BLOCK);
 }
 
-crate fn stmt(p: &mut Parser) {
+crate fn stmt(p: &mut Parser, allow_bind: bool) {
     let m = p.start();
 
     if p.eat(LET_KW) {
@@ -358,7 +374,8 @@ crate fn stmt(p: &mut Parser) {
         p.expect(EQUALS);
         expr(p);
         m.complete(p, STMT_LET);
-    } else {
+        return;
+    } else if allow_bind {
         for i in 0..100 {
             if p.nth_at(i, LEFT_ARROW) {
                 patterns::app(p);
@@ -370,10 +387,10 @@ crate fn stmt(p: &mut Parser) {
                 break;
             }
         }
-
-        expr(p);
-        m.complete(p, STMT_EXPR);
     }
+
+    expr(p);
+    m.complete(p, STMT_EXPR);
 }
 
 crate fn case_arm(p: &mut Parser) {
