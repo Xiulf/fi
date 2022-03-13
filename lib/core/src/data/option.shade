@@ -1,0 +1,24 @@
+module core/data/option =
+
+import core/error (Try, Unwrap)
+import intrinsics (crash)
+
+type Option t =
+    | None
+    | Some t
+
+member Option of Try =
+    fn ret x = Some x
+
+    fn bind self f = case self of
+        Some x -> f x
+        None -> None
+
+member Option of Unwrap =
+    fn unwrap self = case self of
+        Some x -> x
+        None -> crash "cannot unwrap a none value"
+
+    fn unwrap_or self def = case self of
+        Some x -> x
+        None -> def

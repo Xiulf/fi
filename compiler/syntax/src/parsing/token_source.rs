@@ -52,7 +52,11 @@ impl<'t> TextTokenSource<'t> {
                 let mut len = 0.into();
 
                 move |token| {
-                    let pair = if token.kind.is_trivia() { None } else { Some((*token, len)) };
+                    let pair = if token.kind.is_trivia() {
+                        None
+                    } else {
+                        Some((*token, len))
+                    };
 
                     len += token.len;
                     pair

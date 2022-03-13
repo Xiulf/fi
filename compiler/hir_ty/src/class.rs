@@ -288,7 +288,11 @@ impl ClassEnvEntry {
 
 impl CtntInfo {
     pub fn can_be_generalized(&self, types: &Types) -> bool {
-        self.types.iter().any(|t| t.can_be_generalized(types))
+        if self.types.is_empty() {
+            true
+        } else {
+            self.types.iter().any(|t| t.can_be_generalized(types))
+        }
     }
 }
 

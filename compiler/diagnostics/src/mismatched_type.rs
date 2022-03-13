@@ -26,10 +26,12 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedType<'db, 'd, D
 
     fn primary_annotation(&self) -> Option<SourceAnnotation> {
         if let Some(found_src) = self.diag.found_src {
-            return Some(SourceAnnotation {
-                range: found_src.value.range(),
-                message: format!("type `{}` found here", self.diag.found.display(self.db)),
-            });
+            if found_src.file_id == self.diag.display_source().file_id {
+                return Some(SourceAnnotation {
+                    range: found_src.value.range(),
+                    message: format!("type `{}` found here", self.diag.found.display(self.db)),
+                });
+            }
         }
 
         Some(SourceAnnotation {
@@ -44,6 +46,15 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for MismatchedType<'db, 'd, D
 
     fn secondary_annotations(&self) -> Vec<SecondaryAnnotation> {
         let mut annotations = Vec::new();
+
+        if let Some(found) = self.diag.found_src {
+            if found.file_id != self.diag.display_source().file_id {
+                annotations.push(SecondaryAnnotation {
+                    range: found.map(|s| s.range()),
+                    message: format!("type `{}` found here", self.diag.found.display(self.db)),
+                });
+            }
+        }
 
         if let Some(expected) = self.diag.expected_src {
             annotations.push(SecondaryAnnotation {

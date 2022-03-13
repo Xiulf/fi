@@ -1,0 +1,37 @@
+module core/data/result =
+
+import core/data/option (Some, None)
+import core/error (Try, Unwrap)
+import intrinsics (crash)
+
+type Result e t =
+    | Err e
+    | Ok t
+
+fn ok result = case result of
+    Ok x -> Some x
+    Err _ -> None
+
+fn err result = case result of
+    Err e -> Some e
+    Ok _ -> None
+
+fn unwrap_err result = case result of
+    Err e -> e
+    Ok _ -> crash "cannot unwrap_err an ok value"
+
+member (Result e) of Try =
+    fn ret x = Ok x
+
+    fn bind self f = case self of
+        Ok x -> f x
+        Err e -> Err e
+
+member (Result e) of Unwrap =
+    fn unwrap self = case self of
+        Ok x -> x
+        Err _ -> crash "cannot unwrap an err value"
+
+    fn unwrap_or self def = case self of
+        Ok x -> x
+        Err _ -> def

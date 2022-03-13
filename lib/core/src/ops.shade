@@ -1,7 +1,22 @@
-module core/ops (module o) =
+module core/ops =
 
-import core/ops/add as o
-import core/ops/sub as o
-import core/ops/div as o
-import core/ops/rem as o
-import core/ops/eq as o
+infixl 6 add as (+)
+infixl 6 sub as (-)
+infixl 7 mul as (*)
+infixl 7 div as (/)
+infixl 7 rem as (%)
+
+class Add lhs rhs out | lhs rhs -> out, lhs -> rhs =
+    fn add :: lhs, rhs -> out
+
+class Sub lhs rhs out | lhs rhs -> out, lhs -> rhs =
+    fn sub :: lhs, rhs -> out
+
+class Mul lhs rhs out | lhs rhs -> out, lhs -> rhs =
+    fn mul :: lhs, rhs -> out
+
+class Div lhs rhs out | lhs rhs -> out, lhs -> rhs =
+    fn div :: lhs, rhs -> out
+
+class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
+    fn rem :: lhs, rhs -> out
