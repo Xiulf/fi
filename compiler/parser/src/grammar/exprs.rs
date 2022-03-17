@@ -42,10 +42,10 @@ crate fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         infix(p, allow_do);
 
         m = expr.complete(p, EXPR_INFIX);
-    } else if p.at(OPERATOR) || p.at(STAR) {
+    } else if peek_operator(p) {
         let expr = m.precede(p);
 
-        while p.at(OPERATOR) || p.at(STAR) {
+        while peek_operator(p) {
             p.bump_any();
             app(p, allow_do);
         }
@@ -59,12 +59,9 @@ crate fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 crate fn app(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = postfix(p, true, allow_do)?;
 
-    if peek(p, 0, allow_do) {
+    while peek(p, 0, allow_do) {
         let expr = m.precede(p);
-
-        while peek(p, 0, allow_do) {
-            let _ = postfix(p, false, allow_do);
-        }
+        let _ = postfix(p, false, allow_do);
 
         m = expr.complete(p, EXPR_APP);
     }
@@ -85,10 +82,6 @@ crate fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<Compl
                 match p.current() {
                     | IDENT => {
                         paths::name_ref(p);
-                        m = expr.complete(p, EXPR_FIELD);
-                    },
-                    | INT => {
-                        p.bump(INT);
                         m = expr.complete(p, EXPR_FIELD);
                     },
                     | _ => {
@@ -167,7 +160,7 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
             expr(p);
             Some(m.complete(p, EXPR_CLOS))
         },
-        | IF_KW | UNLESS_KW => {
+        | IF_KW => {
             p.bump_any();
             expr_(p, false);
 
@@ -228,89 +221,12 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 
             Some(m.complete(p, EXPR_CASE))
         },
-        | WHILE_KW | UNTIL_KW => {
-            p.bump_any();
-            expr_(p, false);
-
-            let body = p.start();
-
-            p.expect(DO_KW);
-            block(p, false);
-            body.complete(p, EXPR_DO);
-            Some(m.complete(p, EXPR_WHILE))
-        },
-        | LOOP_KW => {
-            p.bump(LOOP_KW);
-
-            let body = p.start();
-
-            block(p, false);
-            body.complete(p, EXPR_DO);
-            Some(m.complete(p, EXPR_LOOP))
-        },
-        | NEXT_KW => {
-            p.bump(NEXT_KW);
-
-            if peek(p, 0, true) {
-                expr(p);
-            }
-
-            Some(m.complete(p, EXPR_NEXT))
-        },
-        | BREAK_KW => {
-            p.bump(BREAK_KW);
-
-            if peek(p, 0, true) {
-                expr(p);
-            }
-
-            Some(m.complete(p, EXPR_BREAK))
-        },
-        | YIELD_KW => {
-            p.bump(YIELD_KW);
-
-            while peek(p, 0, true) {
-                atom(p, true);
-            }
-
-            Some(m.complete(p, EXPR_YIELD))
-        },
-        | RETURN_KW => {
-            p.bump(RETURN_KW);
-
-            if peek(p, 0, true) {
-                expr(p);
-            }
-
-            Some(m.complete(p, EXPR_RETURN))
-        },
         | L_PAREN => {
             p.bump(L_PAREN);
+            let _ = expr(p);
+            p.expect(R_PAREN);
 
-            if p.eat(R_PAREN) {
-                Some(m.complete(p, EXPR_TUPLE))
-            } else {
-                let mut is_tuple = false;
-                let _ = expr(p);
-
-                while p.eat(COMMA) {
-                    is_tuple = true;
-
-                    if p.at(R_PAREN) {
-                        break;
-                    } else {
-                        expr(p);
-                    }
-                }
-
-                p.expect(R_PAREN);
-
-                if is_tuple {
-                    Some(m.complete(p, EXPR_TUPLE))
-                } else {
-                    Some(m.complete(p, EXPR_PARENS))
-                }
-            }
+            Some(m.complete(p, EXPR_PARENS))
         },
         | L_BRACKET => {
             p.bump(L_BRACKET);
@@ -344,8 +260,8 @@ crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 fn peek(p: &Parser, n: usize, allow_do: bool) -> bool {
     match p.nth(n) {
         | DO_KW | TRY_KW => allow_do,
-        | FN_KW | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | UNLESS_KW
-        | WHILE_KW | LOOP_KW | UNTIL_KW | NEXT_KW | BREAK_KW | YIELD_KW | RETURN_KW | CASE_KW | UNDERSCORE => true,
+        | FN_KW | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | CASE_KW
+        | UNDERSCORE => true,
         | _ => false,
     }
 }

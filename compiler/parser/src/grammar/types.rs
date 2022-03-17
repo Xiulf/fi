@@ -3,10 +3,10 @@ use crate::parser::{CompletedMarker, Parser};
 use crate::syntax_kind::*;
 use crate::token_set::TokenSet;
 
-const TYPE_RECOVERY_SET: TokenSet = TokenSet::new(&[R_PAREN, COMMA]);
+const TYPE_RECOVERY_SET: TokenSet = TokenSet::new(&[R_PAREN, LYT_SEP, LYT_END]);
 
 crate fn ty(p: &mut Parser) {
-    if let Some(m) = func(p) {
+    if let Some(m) = infix(p) {
         if p.at(WHERE_KW) {
             let m = m.precede(p);
 
@@ -16,44 +16,29 @@ crate fn ty(p: &mut Parser) {
     }
 }
 
-crate fn func(p: &mut Parser) -> Option<CompletedMarker> {
-    let mut m = list(p)?;
+crate fn infix(p: &mut Parser) -> Option<CompletedMarker> {
+    let mut m = app(p)?;
 
-    if p.eat(ARROW) {
+    if peek_operator(p) {
         let ty = m.precede(p);
-        let _ = func(p);
 
-        m = ty.complete(p, TYPE_FN);
+        while peek_operator(p) {
+            p.bump_any();
+            app(p);
+        }
+
+        m = ty.complete(p, TYPE_INFIX);
     }
 
     Some(m)
 }
 
-crate fn list(p: &mut Parser) -> Option<CompletedMarker> {
-    let ty = app(p)?;
-
-    if p.at(COMMA) {
-        let list = ty.precede(p);
-
-        while p.eat(COMMA) {
-            let _ = app(p);
-        }
-
-        Some(list.complete(p, TYPE_TUPLE))
-    } else {
-        Some(ty)
-    }
-}
-
 crate fn app(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = atom(p)?;
 
-    if peek(p) {
+    while peek(p) {
         let ty = m.precede(p);
-
-        while peek(p) {
-            let _ = atom(p);
-        }
+        let _ = atom(p);
 
         m = ty.complete(p, TYPE_APP);
     }
@@ -87,74 +72,12 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
             lit.complete(p, LIT_STRING);
             Some(m.complete(p, TYPE_SYMBOL))
         },
-        | STAR => {
-            p.bump(STAR);
-            atom(p);
-            Some(m.complete(p, TYPE_PTR))
-        },
-        | ARROW => {
-            let arg = p.start();
-            arg.complete(p, TYPE_TUPLE);
-            p.bump(ARROW);
-            func(p);
-            Some(m.complete(p, TYPE_FN))
-        },
-        | HASH => {
-            p.bump(HASH);
-            p.expect(L_PAREN);
-
-            while !p.at(EOF) && !p.at(R_PAREN) {
-                let field = p.start();
-
-                paths::name(p);
-                p.expect(DBL_COLON);
-                ty(p);
-                field.complete(p, ROW_FIELD);
-
-                if !p.at(R_PAREN) && !p.at(PIPE) {
-                    p.expect(COMMA);
-                }
-
-                if p.eat(PIPE) {
-                    let tail = p.start();
-
-                    ty(p);
-                    tail.complete(p, ROW_TAIL);
-                }
-            }
-
-            p.expect(R_PAREN);
-            Some(m.complete(p, TYPE_ROW))
-        },
-        | L_BRACKET => {
-            p.bump(L_BRACKET);
-
-            if p.eat(STAR) {
-                opt_sentinel(p);
-                p.expect(R_BRACKET);
-                atom(p);
-                Some(m.complete(p, TYPE_PTR))
-            } else if p.eat(INT) {
-                p.expect(R_BRACKET);
-                atom(p);
-                Some(m.complete(p, TYPE_ARRAY))
-            } else {
-                p.expect(R_BRACKET);
-                atom(p);
-                Some(m.complete(p, TYPE_SLICE))
-            }
-        },
         | L_PAREN => {
             p.bump(L_PAREN);
+            let _ = ty(p);
+            p.expect(R_PAREN);
 
-            if p.eat(R_PAREN) {
-                Some(m.complete(p, TYPE_TUPLE))
-            } else {
-                let _ = ty(p);
-                p.expect(R_PAREN);
-
-                Some(m.complete(p, TYPE_PARENS))
-            }
+            Some(m.complete(p, TYPE_PARENS))
         },
         | L_BRACE => {
             p.bump(L_BRACE);
@@ -192,17 +115,7 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
 crate fn peek(p: &Parser) -> bool {
     match p.current() {
-        | IDENT | UNDERSCORE | STAR | HASH | L_PAREN | L_BRACKET | L_BRACE | INT | STRING => true,
+        | IDENT | UNDERSCORE | L_PAREN | L_BRACKET | L_BRACE | INT | STRING => true,
         | _ => false,
-    }
-}
-
-fn opt_sentinel(p: &mut Parser) {
-    if p.at(COLON) {
-        let m = p.start();
-
-        p.bump(COLON);
-        p.expect(INT);
-        m.complete(p, SENTINEL);
     }
 }

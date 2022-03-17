@@ -392,11 +392,6 @@ fn match_type_inner(
         | (&TyInfo::Figure(c1), &TyInfo::Figure(c2)) if c1 == c2 => Matched::Match(()),
         | (&TyInfo::Symbol(ref c1), &TyInfo::Symbol(ref c2)) if c1 == c2 => Matched::Match(()),
         | (&TyInfo::Ctor(c1), &TyInfo::Ctor(c2)) if c1 == c2 => Matched::Match(()),
-        | (&TyInfo::Tuple(ref t1), &TyInfo::Tuple(ref t2)) if t1.len() == t2.len() => t1
-            .iter()
-            .zip(t2.iter())
-            .map(|(t1, t2)| match_type_inner(types, *t1, *t2, ty_skolems, with_skolems, subst, vars))
-            .fold(Matched::Match(()), Matched::then),
         | (&TyInfo::App(a1, ref a2), &TyInfo::App(b1, ref b2)) if a2.len() == b2.len() => {
             match_type_inner(types, a1, b1, ty_skolems, with_skolems, subst, vars).then(
                 a2.iter()
@@ -405,12 +400,6 @@ fn match_type_inner(
                     .fold(Matched::Match(()), Matched::then),
             )
         },
-        | (&TyInfo::Func(ref a1, a2), &TyInfo::Func(ref b1, b2)) if a1.len() == b1.len() => a1
-            .iter()
-            .zip(b1.iter())
-            .map(|(a1, b1)| match_type_inner(types, *a1, *b1, ty_skolems, with_skolems, subst, vars))
-            .fold(Matched::Match(()), Matched::then)
-            .then(match_type_inner(types, a2, b2, ty_skolems, with_skolems, subst, vars)),
         | (&TyInfo::ForAll(ref v1, a1, s1), &TyInfo::ForAll(ref v2, a2, s2)) if v1.len() == v2.len() => {
             let mut matched = Matched::Match(());
 
@@ -449,7 +438,6 @@ fn type_score(db: &dyn HirDatabase, ty: Ty) -> isize {
 
             score
         },
-        | TyKind::Tuple(tys) => tys.iter().map(|&ty| type_score(db, ty)).sum(),
         | TyKind::App(a, b) => type_score(db, a) + b.iter().map(|&b| type_score(db, b)).sum::<isize>(),
         // | TyKind::Where(ctnt, ty) => ctnt.types.iter().map(|&t| type_score(db, t)).sum::<isize>() + type_score(db, ty),
         | TyKind::ForAll(k, t, _) => k.iter().map(|&k| type_score(db, k)).sum::<isize>() + type_score(db, t),

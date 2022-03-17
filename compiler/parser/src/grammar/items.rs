@@ -258,7 +258,7 @@ crate fn where_clause_item(p: &mut Parser) {
     if p.at(IDENT) && p.nth_at(1, DBL_COLON) {
         paths::name_ref(p);
         p.bump(DBL_COLON);
-        types::func(p);
+        types::infix(p);
         m.complete(p, TYPE_VAR_KIND);
     } else {
         paths::path(p);

@@ -84,7 +84,7 @@ impl<'t> Parser<'t> {
 
     crate fn expect(&mut self, kind: SyntaxKind) -> bool {
         if self.eat(kind) {
-            return true;
+            true
         } else {
             self.error(format!("expected {:?}", kind));
             false

@@ -30,9 +30,6 @@ pub enum TyInfo {
     Ctor(TypeCtorId),
     App(TyId, List<TyId>),
 
-    Tuple(List<TyId>),
-    Func(List<TyId>, TyId),
-
     Where(WhereClause<CtntInfo>, TyId),
     ForAll(List<TyId>, TyId, TypeVarScopeId),
 }
@@ -236,19 +233,6 @@ impl TyId {
 
                 f(types, ty)
             },
-            | TyInfo::Tuple(tys) => {
-                let tys = tys.iter().map(|t| t.everywhere(override_, types, f)).collect();
-                let ty = types.update(self, TyInfo::Tuple(tys), override_);
-
-                f(types, ty)
-            },
-            | TyInfo::Func(args, ret) => {
-                let args = args.iter().map(|t| t.everywhere(override_, types, f)).collect();
-                let ret = ret.everywhere(override_, types, f);
-                let ty = types.update(self, TyInfo::Func(args, ret), override_);
-
-                f(types, ty)
-            },
             | TyInfo::Where(where_, inner) => {
                 let where_ = WhereClause {
                     constraints: where_
@@ -308,17 +292,6 @@ impl TyId {
 
                 types.update(t, TyInfo::App(base, args), override_)
             },
-            | TyInfo::Tuple(tys) => {
-                let tys = tys.iter().map(|t| t.everywhere_reverse(override_, types, f)).collect();
-
-                types.update(t, TyInfo::Tuple(tys), override_)
-            },
-            | TyInfo::Func(args, ret) => {
-                let args = args.iter().map(|t| t.everywhere_reverse(override_, types, f)).collect();
-                let ret = ret.everywhere_reverse(override_, types, f);
-
-                types.update(t, TyInfo::Func(args, ret), override_)
-            },
             | TyInfo::Where(where_, inner) => {
                 let where_ = WhereClause {
                     constraints: where_
@@ -370,18 +343,6 @@ impl TyId {
                 for ty in args.iter() {
                     ty.everything(types, f);
                 }
-            },
-            | TyInfo::Tuple(ref tys) => {
-                for ty in tys.iter() {
-                    ty.everything(types, f);
-                }
-            },
-            | TyInfo::Func(ref args, ret) => {
-                for ty in args.iter() {
-                    ty.everything(types, f);
-                }
-
-                ret.everything(types, f);
             },
             | TyInfo::Where(ref where_, ty) => {
                 for ctnt in where_.constraints.iter() {
@@ -485,17 +446,6 @@ impl TyId {
                 let args = args.iter().map(|t| t.replace_vars(types, with, scope)).collect();
 
                 types.update(self, TyInfo::App(base, args), false)
-            },
-            | TyInfo::Tuple(tys) => {
-                let tys = tys.iter().map(|t| t.replace_vars(types, with, scope)).collect();
-
-                types.update(self, TyInfo::Tuple(tys), false)
-            },
-            | TyInfo::Func(args, ret) => {
-                let args = args.iter().map(|t| t.replace_vars(types, with, scope)).collect();
-                let ret = ret.replace_vars(types, with, scope);
-
-                types.update(self, TyInfo::Func(args, ret), false)
             },
             | TyInfo::Where(where_, inner) => {
                 let where_ = WhereClause {
@@ -675,35 +625,6 @@ impl std::fmt::Display for TyDisplay<'_> {
                     .map(|&a| format!("{}", self.with_ty(a, true)))
                     .collect::<Vec<_>>()
                     .join(" ")
-            ),
-            | TyInfo::Tuple(ref tys) => write!(
-                f,
-                "({}{})",
-                tys.iter()
-                    .map(|&t| format!("{}", self.with_ty(t, false)))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                if tys.len() == 1 { "," } else { "" }
-            ),
-            | TyInfo::Func(ref args, ret) if self.lhs_exposed => write!(
-                f,
-                "({}{}-> {})",
-                args.iter()
-                    .map(|&a| format!("{}", self.with_ty(a, true)))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                if args.is_empty() { "" } else { " " },
-                self.with_ty(ret, true),
-            ),
-            | TyInfo::Func(ref args, ret) => write!(
-                f,
-                "{}{}-> {}",
-                args.iter()
-                    .map(|&a| format!("{}", self.with_ty(a, true)))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                if args.is_empty() { "" } else { " " },
-                self.with_ty(ret, true),
             ),
             | TyInfo::Where(ref where_, ty) if self.lhs_exposed => write!(
                 f,

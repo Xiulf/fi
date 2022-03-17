@@ -113,7 +113,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             | TypeRef::Tuple(tys) => {
                 let tys = tys.iter().map(|&t| self.lower_ty(t)).collect();
 
-                self.icx.types.insert(TyInfo::Tuple(tys), src)
+                self.icx.tuple_type(tys, src)
             },
             | TypeRef::Ptr(to, len) => {
                 let to_ = self.lower_ty(*to);
@@ -141,23 +141,30 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
 
                 self.icx.types.insert(info, src)
             },
-            | TypeRef::App(base, args) => {
-                let base = self.lower_ty(*base);
-                let args = args.iter().map(|a| self.lower_ty(*a)).collect::<List<_>>();
+            | &TypeRef::App(mut base, arg) => {
+                let mut args = vec![self.lower_ty(arg)];
+
+                while let TypeRef::App(b, arg) = self.type_map[base] {
+                    base = b;
+                    args.push(self.lower_ty(arg));
+                }
+
+                args.reverse();
+
+                let base = self.lower_ty(base);
                 let src = self.source(ty);
 
                 self.check_kind_for_app(base, &args, src);
                 self.icx
                     .types
-                    .insert(TyInfo::App(base, args), src)
+                    .insert(TyInfo::App(base, args.into()), src)
                     .normalize(&mut self.icx.types)
             },
-            | TypeRef::Func(args, ret) => {
-                let args_ = args.iter().map(|arg| self.lower_ty(*arg)).collect::<List<_>>();
+            | TypeRef::Func(arg, ret) => {
+                let arg_ = self.lower_ty(*arg);
                 let ret_ = self.lower_ty(*ret);
 
-                self.check_kind_type(ret_);
-                self.fn_type(args_, ret_, src)
+                self.fn_type([arg_], ret_, src)
             },
             | TypeRef::Record(fields, tail) => {
                 let row = self.lower_row(fields, *tail, ty);
@@ -378,9 +385,9 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
                     .types
                     .insert(TyInfo::TypeVar(TypeVar::new(i as u32, *scope)), src)
             })
-            .collect();
+            .collect::<Vec<_>>();
 
-        ret = ctx.icx.types.insert(TyInfo::App(ret, args), src);
+        ret = ctx.icx.app_type(ret, args, src);
     }
 
     let args = ctor_data
@@ -392,7 +399,7 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
             ctx.check_kind_type(ty_);
             ty_
         })
-        .collect::<List<_>>();
+        .collect::<Vec<_>>();
 
     let ty = if !args.is_empty() {
         ctx.fn_type(args, ret, src)
@@ -414,7 +421,7 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
     let resolver = id.resolver(db.upcast());
     let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
-    let var_kinds = data
+    let vars = data
         .type_vars
         .iter()
         .map(|&var| {
@@ -423,26 +430,10 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
         })
         .collect::<Vec<_>>();
 
-    let scope = ctx.type_vars.add_scope(var_kinds.clone().into());
-    let ty = ctx.lower_ty(data.alias);
+    let scope = ctx.type_vars.add_scope(var.clone().into());
+    let mut ty = ctx.lower_ty(data.alias);
     let src = ctx.source(TypeOrigin::Def(id.into()));
-    let type_kind = ctx.type_kind(src);
-    let kinds = var_kinds
-        .into_iter()
-        .map(|kind| {
-            let kind = ctx.subst_type(kind);
-
-            if let TyInfo::Unknown(u) = ctx.icx.types[kind] {
-                ctx.solve_type(u, type_kind);
-                type_kind
-            } else {
-                kind
-            }
-        })
-        .collect::<List<_>>();
-
-    ctx.type_vars.pop_scope();
-
+    let vars = var_kinds(&mut ctx, vars, src);
     let ty = if !kinds.is_empty() {
         ctx.icx.types.insert(TyInfo::ForAll(kinds, ty, scope), src)
     } else {
@@ -489,9 +480,7 @@ pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         } else {
             let ty_kind = ctx.type_kind(src);
 
-            ctx.icx
-                .types
-                .insert(TyInfo::Func(var_kinds.clone().into(), ty_kind), src)
+            ctx.icx.fn_type(var_kinds.clone(), ty_kind, src)
         };
 
         ctx.icx.result.self_type = TyAndSrc { ty: ty_kind, src };

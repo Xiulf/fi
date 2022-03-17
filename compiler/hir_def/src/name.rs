@@ -8,7 +8,6 @@ pub struct Name(Repr);
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Repr {
     Text(SmolStr),
-    TupleField(usize),
 }
 
 impl Default for Name {
@@ -28,13 +27,6 @@ impl Name {
 
     pub fn missing() -> Self {
         Self::new_text("[missing name]".into())
-    }
-
-    pub fn as_tuple_index(&self) -> Option<usize> {
-        match self.0 {
-            | Repr::TupleField(idx) => Some(idx),
-            | _ => None,
-        }
     }
 
     pub fn is_lowercase(&self) -> bool {
@@ -63,10 +55,7 @@ impl AsName for ast::Name {
 
 impl AsName for ast::NameRef {
     fn as_name(&self) -> Name {
-        match self.as_tuple_field() {
-            | Some(idx) => Name::new_tuple_field(idx),
-            | None => Name::new_text(self.text().into()),
-        }
+        Name::new_text(self.text().into())
     }
 }
 
@@ -80,7 +69,6 @@ impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
             | Repr::Text(text) => text.fmt(f),
-            | Repr::TupleField(idx) => idx.fmt(f),
         }
     }
 }
@@ -89,7 +77,6 @@ impl PartialEq<str> for Name {
     fn eq(&self, other: &str) -> bool {
         match self.0 {
             | Repr::Text(ref t) => t.eq(other),
-            | Repr::TupleField(_) => false,
         }
     }
 }

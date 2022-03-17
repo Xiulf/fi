@@ -7,6 +7,7 @@ mod types;
 
 use crate::parser::Parser;
 use crate::syntax_kind::*;
+use crate::token_set::TokenSet;
 
 crate fn root(p: &mut Parser) {
     let m = p.start();
@@ -108,6 +109,12 @@ fn export(p: &mut Parser) {
             m.abandon(p);
         },
     }
+}
+
+fn peek_operator(p: &mut Parser) -> bool {
+    p.at_ts(TokenSet::new(&[
+        OPERATOR, ARROW, LEFT_ARROW, DBL_DOT, DOT, COMMA, COLON, PIPE, EQUALS, AT,
+    ]))
 }
 
 crate mod fragments {

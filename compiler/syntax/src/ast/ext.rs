@@ -499,6 +499,25 @@ impl Type {
     }
 }
 
+impl TypeInfix {
+    pub fn ops(&self) -> impl Iterator<Item = Operator> {
+        self.0
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .filter(|it| {
+                matches!(
+                    it.kind(),
+                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | DOT | COMMA | COLON | PIPE | EQUALS | AT
+                )
+            })
+            .map(Operator)
+    }
+
+    pub fn types(&self) -> AstChildren<Type> {
+        support::children(&self.0)
+    }
+}
+
 impl TypeFigure {
     pub fn int(&self) -> Option<LitInt> {
         support::child(&self.0)
@@ -513,60 +532,17 @@ impl TypeSymbol {
 
 impl TypeApp {
     pub fn base(&self) -> Option<Type> {
-        support::children(&self.0).nth(0)
+        support::children(&self.0).next()
     }
 
-    pub fn args(&self) -> Skip<AstChildren<Type>> {
-        support::children(&self.0).skip(1)
+    pub fn arg(&self) -> Option<Type> {
+        support::children(&self.0).last()
     }
 }
 
 impl TypePath {
     pub fn path(&self) -> Option<Path> {
         support::child(&self.0)
-    }
-}
-
-impl TypeArray {
-    pub fn elem(&self) -> Option<Type> {
-        support::child(&self.0)
-    }
-
-    pub fn len(&self) -> Option<usize> {
-        let int = support::token(&self.0, INT)?;
-        let text = int.text();
-
-        text.parse().ok()
-    }
-}
-
-impl TypeSlice {
-    pub fn elem(&self) -> Option<Type> {
-        support::child(&self.0)
-    }
-}
-
-impl TypePtr {
-    pub fn is_buf_ptr(&self) -> bool {
-        support::token(&self.0, L_BRACKET).is_some()
-    }
-
-    pub fn elem(&self) -> Option<Type> {
-        support::child(&self.0)
-    }
-
-    pub fn sentinel(&self) -> Option<Sentinel> {
-        support::child(&self.0)
-    }
-}
-
-impl TypeFn {
-    pub fn param(&self) -> Option<Type> {
-        support::children(&self.0).next()
-    }
-
-    pub fn ret(&self) -> Option<Type> {
-        support::children(&self.0).last()
     }
 }
 
@@ -577,22 +553,6 @@ impl TypeRec {
 
     pub fn tail(&self) -> Option<Type> {
         support::child::<RowTail>(&self.0).and_then(|t| support::child(&t.0))
-    }
-}
-
-impl TypeRow {
-    pub fn fields(&self) -> AstChildren<RowField> {
-        support::children(&self.0)
-    }
-
-    pub fn tail(&self) -> Option<Type> {
-        support::child::<RowTail>(&self.0).and_then(|t| support::child(&t.0))
-    }
-}
-
-impl TypeTuple {
-    pub fn types(&self) -> AstChildren<Type> {
-        support::children(&self.0)
     }
 }
 
@@ -622,15 +582,6 @@ impl RowField {
     }
 }
 
-impl Sentinel {
-    pub fn value(&self) -> i128 {
-        let int = support::token(&self.0, INT).unwrap();
-        let text = int.text();
-
-        text.parse().unwrap()
-    }
-}
-
 impl PatTyped {
     pub fn pat(&self) -> Option<Pat> {
         support::child(&self.0)
@@ -638,6 +589,25 @@ impl PatTyped {
 
     pub fn ty(&self) -> Option<Type> {
         support::child(&self.0)
+    }
+}
+
+impl PatInfix {
+    pub fn ops(&self) -> impl Iterator<Item = Operator> {
+        self.0
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .filter(|it| {
+                matches!(
+                    it.kind(),
+                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | DOT | COMMA | COLON | PIPE | EQUALS | AT
+                )
+            })
+            .map(Operator)
+    }
+
+    pub fn pats(&self) -> AstChildren<Pat> {
+        support::children(&self.0)
     }
 }
 
@@ -670,12 +640,6 @@ impl PatApp {
 impl PatParens {
     pub fn pat(&self) -> Option<Pat> {
         support::child(&self.0)
-    }
-}
-
-impl PatTuple {
-    pub fn pats(&self) -> AstChildren<Pat> {
-        support::children(&self.0)
     }
 }
 
@@ -724,20 +688,17 @@ impl ExprInfix {
         self.0
             .children_with_tokens()
             .filter_map(|it| it.into_token())
-            .filter(|it| it.kind() == SyntaxKind::OPERATOR || it.kind() == SyntaxKind::STAR)
+            .filter(|it| {
+                matches!(
+                    it.kind(),
+                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | DOT | COMMA | COLON | PIPE | EQUALS | AT
+                )
+            })
             .map(Operator)
     }
 
     pub fn path(&self) -> Option<Path> {
         support::child(&self.0)
-    }
-
-    pub fn lhs(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-
-    pub fn rhs(&self) -> Option<Expr> {
-        self.exprs().nth(1)
     }
 
     pub fn exprs(&self) -> AstChildren<Expr> {
@@ -747,11 +708,11 @@ impl ExprInfix {
 
 impl ExprApp {
     pub fn base(&self) -> Option<Expr> {
-        support::child(&self.0)
+        support::children(&self.0).next()
     }
 
-    pub fn args(&self) -> Skip<AstChildren<Expr>> {
-        support::children(&self.0).skip(1)
+    pub fn arg(&self) -> Option<Expr> {
+        support::children(&self.0).last()
     }
 }
 
@@ -772,25 +733,9 @@ impl ExprField {
     }
 }
 
-impl ExprIndex {
-    pub fn base(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-
-    pub fn index(&self) -> Option<Expr> {
-        support::children(&self.0).nth(1)
-    }
-}
-
 impl ExprParens {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
-    }
-}
-
-impl ExprTuple {
-    pub fn exprs(&self) -> AstChildren<Expr> {
-        support::children(&self.0)
     }
 }
 
@@ -840,10 +785,6 @@ impl ExprIf {
     pub fn else_(&self) -> Option<Expr> {
         support::children(&self.0).nth(2)
     }
-
-    pub fn is_unless(&self) -> bool {
-        support::token(&self.0, UNLESS_KW).is_some()
-    }
 }
 
 impl ExprCase {
@@ -871,50 +812,6 @@ impl CaseArm {
 }
 
 impl CaseGuard {
-    pub fn expr(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-}
-
-impl ExprWhile {
-    pub fn cond(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-
-    pub fn body(&self) -> Option<Expr> {
-        support::children(&self.0).nth(1)
-    }
-
-    pub fn is_until(&self) -> bool {
-        support::token(&self.0, UNTIL_KW).is_some()
-    }
-}
-
-impl ExprLoop {
-    pub fn body(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-}
-
-impl ExprNext {
-    pub fn expr(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-}
-
-impl ExprBreak {
-    pub fn expr(&self) -> Option<Expr> {
-        support::child(&self.0)
-    }
-}
-
-impl ExprYield {
-    pub fn exprs(&self) -> AstChildren<Expr> {
-        support::children(&self.0)
-    }
-}
-
-impl ExprReturn {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
     }
@@ -1119,9 +1016,5 @@ impl NameRef {
 
     pub fn text(&self) -> String {
         self.0.text().to_string()
-    }
-
-    pub fn as_tuple_field(&self) -> Option<usize> {
-        self.text().parse().ok()
     }
 }

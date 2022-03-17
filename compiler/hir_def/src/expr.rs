@@ -27,7 +27,7 @@ pub enum Expr {
     },
     App {
         base: ExprId,
-        args: Box<[ExprId]>,
+        arg: ExprId,
     },
     Field {
         base: ExprId,
@@ -36,9 +36,6 @@ pub enum Expr {
     Index {
         base: ExprId,
         index: ExprId,
-    },
-    Tuple {
-        exprs: Box<[ExprId]>,
     },
     Record {
         fields: Box<[RecordField<ExprId>]>,
@@ -125,9 +122,9 @@ impl Expr {
                 f(*lhs);
                 f(*rhs);
             },
-            | Expr::App { base, args } => {
+            | Expr::App { base, arg } => {
                 f(*base);
-                args.iter().copied().for_each(f);
+                f(*arg);
             },
             | Expr::Field { base, .. } => f(*base),
             | Expr::Index { base, index } => {

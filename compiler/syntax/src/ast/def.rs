@@ -53,38 +53,31 @@ ast_node!(@ AssocItem {
 });
 
 ast_node!(Pat {
-    Wildcard(PatWildcard, PAT_WILDCARD),
     Typed(PatTyped, PAT_TYPED),
+    Wildcard(PatWildcard, PAT_WILDCARD),
+    Infix(PatInfix, PAT_INFIX),
     App(PatApp, PAT_APP),
     Ctor(PatCtor, PAT_CTOR),
     Bind(PatBind, PAT_BIND),
     Lit(PatLit, PAT_LITERAL),
-    Tuple(PatTuple, PAT_TUPLE),
     Parens(PatParens, PAT_PARENS),
     Record(PatRecord, PAT_RECORD),
 });
 
 ast_node!(Type {
     Hole(TypeHole, TYPE_HOLE),
+    Infix(TypeInfix, TYPE_INFIX),
     Figure(TypeFigure, TYPE_FIGURE),
     Symbol(TypeSymbol, TYPE_SYMBOL),
     App(TypeApp, TYPE_APP),
     Path(TypePath, TYPE_PATH),
-    Array(TypeArray, TYPE_ARRAY),
-    Slice(TypeSlice, TYPE_SLICE),
-    Ptr(TypePtr, TYPE_PTR),
-    Fn(TypeFn, TYPE_FN),
     Rec(TypeRec, TYPE_REC),
-    Row(TypeRow, TYPE_ROW),
-    Tuple(TypeTuple, TYPE_TUPLE),
     Parens(TypeParens, TYPE_PARENS),
     Where(TypeWhere, TYPE_WHERE),
 });
 
 ast_node!(RowField, ROW_FIELD);
 ast_node!(RowTail, ROW_TAIL);
-
-ast_node!(Sentinel, SENTINEL);
 
 ast_node!(Stmt {
     Let(StmtLet, STMT_LET),
@@ -98,11 +91,9 @@ ast_node!(Expr {
     Infix(ExprInfix, EXPR_INFIX),
     App(ExprApp, EXPR_APP),
     Field(ExprField, EXPR_FIELD),
-    Index(ExprIndex, EXPR_INDEX),
     Path(ExprPath, EXPR_PATH),
     Lit(ExprLit, EXPR_LITERAL),
     Parens(ExprParens, EXPR_PARENS),
-    Tuple(ExprTuple, EXPR_TUPLE),
     Record(ExprRecord, EXPR_RECORD),
     Array(ExprArray, EXPR_ARRAY),
     Do(ExprDo, EXPR_DO),
@@ -110,12 +101,6 @@ ast_node!(Expr {
     Clos(ExprClos, EXPR_CLOS),
     If(ExprIf, EXPR_IF),
     Case(ExprCase, EXPR_CASE),
-    While(ExprWhile, EXPR_WHILE),
-    Loop(ExprLoop, EXPR_LOOP),
-    Next(ExprNext, EXPR_NEXT),
-    Break(ExprBreak, EXPR_BREAK),
-    Yield(ExprYield, EXPR_YIELD),
-    Return(ExprReturn, EXPR_RETURN),
 });
 
 ast_node!(Block, BLOCK);

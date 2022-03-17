@@ -19,7 +19,7 @@ pub enum TypeRef {
     Placeholder,
     Figure(i128),
     Symbol(String),
-    App(LocalTypeRefId, Box<[LocalTypeRefId]>),
+    App(LocalTypeRefId, LocalTypeRefId),
     Tuple(Box<[LocalTypeRefId]>),
     Path(Path),
     Ptr(LocalTypeRefId, PtrLen),
@@ -27,7 +27,7 @@ pub enum TypeRef {
     Array(LocalTypeRefId, usize),
     Record(Box<[Field]>, Option<LocalTypeRefId>),
     Row(Box<[Field]>, Option<LocalTypeRefId>),
-    Func(Box<[LocalTypeRefId]>, LocalTypeRefId),
+    Func(LocalTypeRefId, LocalTypeRefId),
     Where(WhereClause, LocalTypeRefId),
 }
 
@@ -114,7 +114,7 @@ impl TypeRef {
             },
             | ast::Type::App(inner) => TypeRef::App(
                 map.alloc_type_ref_opt(inner.base()),
-                inner.args().map(|a| map.alloc_type_ref(a)).collect(),
+                map.alloc_type_ref_opt(inner.arg()),
             ),
             | ast::Type::Path(inner) => convert_path(inner.path()).map(TypeRef::Path).unwrap_or(TypeRef::Error),
             | ast::Type::Array(inner) => inner
@@ -131,15 +131,10 @@ impl TypeRef {
                 },
             ),
             | ast::Type::Fn(inner) => {
-                let params = match inner.param() {
-                    | Some(ast::Type::Tuple(ty)) => ty.types().map(|t| map.alloc_type_ref(t)).collect(),
-                    | Some(ty) => [map.alloc_type_ref(ty)].into(),
-                    | None => [map.error()].into(),
-                };
-
+                let param = map.alloc_type_ref_opt(inner.param());
                 let ret = map.alloc_type_ref_opt(inner.ret());
 
-                TypeRef::Func(params, ret)
+                TypeRef::Func(param, ret)
             },
             | ast::Type::Rec(inner) => {
                 let fields = inner

@@ -1,45 +1,60 @@
 use super::*;
-use crate::parser::Parser;
+use crate::parser::{CompletedMarker, Parser};
 use crate::syntax_kind::*;
 use crate::token_set::TokenSet;
 
 crate fn pattern(p: &mut Parser) {
-    let m = p.start();
+    if let Some(m) = infix(p) {
+        if p.eat(DBL_COLON) {
+            let pat = m.precede(p);
 
-    app(p);
-
-    if p.eat(DBL_COLON) {
-        types::func(p);
-        m.complete(p, PAT_TYPED);
-    } else {
-        m.abandon(p);
+            types::ty(p);
+            pat.complete(p, PAT_TYPED);
+        }
     }
 }
 
-crate fn app(p: &mut Parser) {
-    let m = p.start();
+crate fn infix(p: &mut Parser) -> Option<CompletedMarker> {
+    let mut m = app(p)?;
 
-    atom(p);
+    if peek_operator(p) {
+        let pat = m.precede(p);
+
+        while peek_operator(p) {
+            p.bump_any();
+            app(p);
+        }
+
+        m = pat.complete(p, PAT_INFIX);
+    }
+
+    Some(m)
+}
+
+crate fn app(p: &mut Parser) -> Option<CompletedMarker> {
+    let mut m = atom(p)?;
 
     if peek(p) {
+        let pat = m.precede(p);
+
         while peek(p) {
             atom(p);
         }
 
-        m.complete(p, PAT_APP);
-    } else {
-        m.abandon(p);
+        m = pat.complete(p, PAT_APP);
     }
+
+    Some(m)
 }
 
-crate fn atom(p: &mut Parser) {
+crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
 
     match p.current() {
         | IDENT => {
             if p.nth_at(1, DOT) {
                 paths::path(p);
-                m.complete(p, PAT_CTOR);
+                Some(m.complete(p, PAT_CTOR))
             } else {
                 paths::name(p);
 
@@ -47,54 +62,35 @@ crate fn atom(p: &mut Parser) {
                     pattern(p);
                 }
 
-                m.complete(p, PAT_BIND);
+                Some(m.complete(p, PAT_BIND))
             }
         },
         | UNDERSCORE => {
             p.bump(UNDERSCORE);
-            m.complete(p, PAT_WILDCARD);
+            Some(m.complete(p, PAT_WILDCARD))
         },
         | INT | FLOAT | CHAR | STRING => {
             exprs::literal(p);
-            m.complete(p, PAT_LITERAL);
+            Some(m.complete(p, PAT_LITERAL))
         },
         | L_PAREN => {
             p.bump(L_PAREN);
+            let _ = pattern(p);
+            p.expect(R_PAREN);
 
-            if p.eat(R_PAREN) {
-                m.complete(p, PAT_TUPLE);
-            } else {
-                let mut is_tuple = false;
-                let _ = pattern(p);
-
-                while p.eat(COMMA) {
-                    is_tuple = true;
-
-                    if p.at(R_PAREN) {
-                        break;
-                    } else {
-                        pattern(p);
-                    }
-                }
-
-                p.expect(R_PAREN);
-
-                if is_tuple {
-                    m.complete(p, PAT_TUPLE);
-                } else {
-                    m.complete(p, PAT_PARENS);
-                }
-            }
+            Some(m.complete(p, PAT_PARENS))
         },
         | L_BRACE => {
             p.bump(L_BRACE);
             record_fields(p, pattern, true);
             p.expect(R_BRACE);
-            m.complete(p, PAT_RECORD);
+
+            Some(m.complete(p, PAT_RECORD))
         },
         | _ => {
             p.error("expected a pattern");
             m.abandon(p);
+            None
         },
     }
 }

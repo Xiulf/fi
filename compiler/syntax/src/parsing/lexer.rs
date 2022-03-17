@@ -324,16 +324,6 @@ impl<'src> Lexer<'src> {
             | '@' if !is_op_char(self.peek()) => {
                 self.insert_default(start, AT);
             },
-            | '#' if !is_op_char(self.peek()) => {
-                self.insert_default(start, HASH);
-            },
-            | '*' if !is_op_char(self.peek()) => {
-                self.insert_default(start, STAR);
-
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.stack.pop().unwrap();
-                }
-            },
             | '|' if !is_op_char(self.peek()) => {
                 let mut c = Collapse::new(self.tokens.len());
 
@@ -353,6 +343,14 @@ impl<'src> Lexer<'src> {
             | '/' if self.is_path_sep() => {
                 self.insert_default(start, PATH_SEP);
             },
+            | ',' => {
+                Collapse::new(self.tokens.len()).collapse(start, offside_end_p, &mut self.stack, &mut self.tokens);
+                self.emit(COMMA);
+
+                if let [.., (_, LayoutDelim::Brace)] = self.stack[..] {
+                    self.stack.push((start, LayoutDelim::Prop));
+                }
+            },
             | ch if is_op_char(ch) => {
                 while is_op_char(self.peek()) {
                     self.advance();
@@ -361,14 +359,6 @@ impl<'src> Lexer<'src> {
                 Collapse::new(self.tokens.len()).collapse(start, offside_end_p, &mut self.stack, &mut self.tokens);
                 self.insert_sep(start);
                 self.emit(OPERATOR);
-            },
-            | ',' => {
-                Collapse::new(self.tokens.len()).collapse(start, offside_end_p, &mut self.stack, &mut self.tokens);
-                self.emit(COMMA);
-
-                if let [.., (_, LayoutDelim::Brace)] = self.stack[..] {
-                    self.stack.push((start, LayoutDelim::Prop));
-                }
             },
             | _ => {
                 self.errors
@@ -744,15 +734,6 @@ impl<'src> Lexer<'src> {
                     self.insert_start(LayoutDelim::If);
                 }
             },
-            | "unless" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, UNLESS_KW);
-                    self.insert_start(LayoutDelim::If);
-                }
-            },
             | "then" => {
                 let mut c = Collapse::new(self.tokens.len());
 
@@ -793,63 +774,6 @@ impl<'src> Lexer<'src> {
                             self.emit(ELSE_KW);
                         }
                     },
-                }
-            },
-            | "while" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, WHILE_KW);
-                }
-            },
-            | "until" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, UNTIL_KW);
-                }
-            },
-            | "loop" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, LOOP_KW);
-                    self.insert_start(LayoutDelim::Loop);
-                }
-            },
-            | "break" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, BREAK_KW);
-                }
-            },
-            | "next" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, NEXT_KW);
-                }
-            },
-            | "yield" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, YIELD_KW);
-                }
-            },
-            | "return" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
-                    self.emit(IDENT);
-                    self.stack.pop().unwrap();
-                } else {
-                    self.insert_default(start, RETURN_KW);
                 }
             },
             | "case" => {
@@ -1083,7 +1007,7 @@ impl<'src> Lexer<'src> {
 fn is_op_char(ch: char) -> bool {
     match ch {
         | '!' | '@' | '#' | '$' | '%' | '^' | '&' | '*' | '-' | '+' | '=' | '~' | '\\' | '/' | '?' | '<' | '>'
-        | '|' => true,
+        | '|' | ':' | ',' | '.' => true,
         | _ => false,
     }
 }

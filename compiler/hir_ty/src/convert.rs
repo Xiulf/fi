@@ -82,17 +82,6 @@ impl ToInfo for Ty {
 
                     TyInfo::App(base, args)
                 },
-                | TyKind::Tuple(tys) => {
-                    let tys = tys.iter().map(|&t| rec(t, db, types, type_vars, src)).collect();
-
-                    TyInfo::Tuple(tys)
-                },
-                | TyKind::Func(args, ret) => {
-                    let args = args.iter().map(|&a| rec(a, db, types, type_vars, src)).collect();
-                    let ret = rec(ret, db, types, type_vars, src);
-
-                    TyInfo::Func(args, ret)
-                },
                 | TyKind::Where(where_, inner) => {
                     let where_ = where_.to_info(db, types, type_vars, src);
                     let inner = rec(inner, db, types, type_vars, src);
@@ -148,17 +137,6 @@ impl FromInfo for Ty {
                 let args = args.iter().map(|&a| Self::from_info(db, types, a)).collect();
 
                 TyKind::App(base, args)
-            },
-            | TyInfo::Tuple(ref tys) => {
-                let tys = tys.iter().map(|&t| Self::from_info(db, types, t)).collect();
-
-                TyKind::Tuple(tys)
-            },
-            | TyInfo::Func(ref args, ret) => {
-                let args = args.iter().map(|&a| Self::from_info(db, types, a)).collect();
-                let ret = Self::from_info(db, types, ret);
-
-                TyKind::Func(args, ret)
             },
             | TyInfo::Where(ref where_, inner) => {
                 let where_ = WhereClause::from_info(db, types, where_.clone());

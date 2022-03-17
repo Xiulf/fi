@@ -1,15 +1,11 @@
-module core/error =
+module core/error (module core/error, module t) =
 
+import prim (Try, ret, bind) as t
 import prim (Partial)
 import intrinsics (partial)
 
 postfix unwrap_unsafe as (!)
 infixl 5 unwrap_or as (?)
-
-@lang = "try-class"
-class Try self =
-    fn ret :: output -> self output
-    fn bind :: self a, (a -> self b) -> self b
 
 class Unwrap self =
     fn unwrap :: self output -> output where Partial

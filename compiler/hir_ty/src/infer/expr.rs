@@ -107,53 +107,38 @@ impl BodyInferenceContext<'_> {
                     }
 
                     let ty = self.infer_infix(id, expr.into());
+                    let mid = self.check_app(ty, *lhs, expr);
 
-                    self.check_app(ty, &[*lhs, *rhs], expr)
+                    self.check_app(mid, *rhs, expr)
                 },
                 | _ => {
                     self.report(InferenceDiagnostic::UnresolvedOperator { id: expr.into() });
                     self.error(src)
                 },
             },
-            | Expr::App { base, args } => {
+            | Expr::App { base, arg } => {
                 let base_ty = self.infer_expr(*base);
 
-                self.check_app(base_ty, args, expr)
+                self.check_app(base_ty, *arg, expr)
             },
             | Expr::Field { base, field } => {
-                if let Some(idx) = field.as_tuple_index() {
-                    let base_ty = self.infer_expr(*base);
-                    let base_ty = self.subst_type(base_ty);
+                let row_kind = self.lang_type("row-kind", src);
+                let type_kind = self.lang_type("type-kind", src);
+                let record_type = self.lang_type("record-type", src);
+                let kind = self.types.insert(TyInfo::App(row_kind, [type_kind].into()), src);
+                let tail = self.fresh_type_with_kind(kind, src);
+                let res = self.fresh_type(src);
+                let fields = vec![FieldInfo {
+                    name: field.clone(),
+                    ty: res,
+                }]
+                .into();
 
-                    if let TyInfo::Tuple(ref tys) = self.types[base_ty] {
-                        tys[idx]
-                    } else {
-                        unimplemented!("{:?}", self.types[base_ty]);
-                    }
-                } else {
-                    let row_kind = self.lang_type("row-kind", src);
-                    let type_kind = self.lang_type("type-kind", src);
-                    let record_type = self.lang_type("record-type", src);
-                    let kind = self.types.insert(TyInfo::App(row_kind, [type_kind].into()), src);
-                    let tail = self.fresh_type_with_kind(kind, src);
-                    let res = self.fresh_type(src);
-                    let fields = vec![FieldInfo {
-                        name: field.clone(),
-                        ty: res,
-                    }]
-                    .into();
+                let row = self.types.insert(TyInfo::Row(fields, Some(tail)), src);
+                let record = self.types.insert(TyInfo::App(record_type, [row].into()), src);
 
-                    let row = self.types.insert(TyInfo::Row(fields, Some(tail)), src);
-                    let record = self.types.insert(TyInfo::App(record_type, [row].into()), src);
-
-                    self.check_expr(*base, record);
-                    res
-                }
-            },
-            | Expr::Tuple { exprs } => {
-                let tys = exprs.iter().map(|&e| self.infer_expr(e)).collect();
-
-                self.types.insert(TyInfo::Tuple(tys), src)
+                self.check_expr(*base, record);
+                res
             },
             | Expr::Record { fields } => {
                 let record_type = self.lang_type("record-type", src);
@@ -656,9 +641,9 @@ impl BodyInferenceContext<'_> {
                     },
                 );
             },
-            | (Expr::App { base, args }, _) => {
+            | (Expr::App { base, arg }, _) => {
                 let base_ty = self.infer_expr(*base);
-                let ret = self.check_app(base_ty, args, expr);
+                let ret = self.check_app(base_ty, arg, expr);
 
                 if !self.subsume_types(ret, expected, expr.into()) {
                     self.report_mismatch(expected, ret, expr);
@@ -707,22 +692,11 @@ impl BodyInferenceContext<'_> {
         }
     }
 
-    pub fn check_app(&mut self, base_ty: TyId, args: &[ExprId], expr: ExprId) -> TyId {
+    pub fn check_app(&mut self, base_ty: TyId, arg: ExprId, expr: ExprId) -> TyId {
         let src = self.source(expr);
         let base_ty = self.subst_type(base_ty);
 
         match self.types[base_ty].clone() {
-            | TyInfo::Func(params, ret) => {
-                if params.len() != args.len() {
-                    // todo!("report error");
-                }
-
-                for (&param, &arg) in params.iter().zip(args) {
-                    self.check_expr(arg, param);
-                }
-
-                ret
-            },
             | TyInfo::ForAll(kinds, ty, scope) => {
                 let repl = kinds
                     .iter()
@@ -745,8 +719,8 @@ impl BodyInferenceContext<'_> {
             },
             | _ => {
                 let ret = self.fresh_type(src);
-                let args = args.iter().map(|&a| self.infer_expr(a)).collect();
-                let func_ty = self.fn_type(args, ret, src);
+                let arg = self.infer_expr(arg);
+                let func_ty = self.fn_type([arg], ret, src);
 
                 if !self.unify_types(base_ty, func_ty) {
                     self.report_mismatch(base_ty, func_ty, expr);

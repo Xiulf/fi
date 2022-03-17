@@ -250,8 +250,37 @@ impl<'a> InferenceContext<'a> {
         id.as_class().unwrap()
     }
 
-    pub(crate) fn fn_type(&mut self, args: List<TyId>, ret: TyId, src: TySource) -> TyId {
-        self.types.insert(TyInfo::Func(args, ret), src)
+    pub(crate) fn fn_type(&mut self, args: impl IntoIterator<Item = TyId>, ret: TyId, src: TySource) -> TyId {
+        let fn_type = self.lang_type("fn-type", src);
+
+        args.into_iter()
+            .rev()
+            .fold(ret, |ret, arg| self.app_type(fn_type, [arg, ret], src))
+    }
+
+    pub(crate) fn app_type(&mut self, base: TyId, args: impl IntoIterator<Item = TyId>, src: TySource) -> TyId {
+        args.into_iter()
+            .fold(base, |base, arg| self.types.insert(TyInfo::App(base, arg), src))
+    }
+
+    pub(crate) fn tuple_type(&mut self, tys: impl IntoIterator<Item = TyId>, src: TySource) -> TyId {
+        let mut iter = tys.into_iter().rev().fuse();
+
+        match (iter.next(), iter.next()) {
+            | (Some(b), Some(a)) => {
+                let pair_ty = self.lang_type("pair-type", src);
+
+                iter().fold(self.app_type(pair_ty, [a, b], src), |rhs, lhs| {
+                    self.app_type(pair_ty, [lhs, rhs], src)
+                })
+            },
+            | (Some(a), None) => a,
+            | (None, _) => self.unit_type(src),
+        }
+    }
+
+    pub(crate) fn unit_type(&mut self, src: TySource) -> TyId {
+        self.lang_type("unit-type", src)
     }
 
     pub(crate) fn report(&mut self, diag: InferenceDiagnostic<TyId, CtntInfo>) {

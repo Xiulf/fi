@@ -3,8 +3,6 @@ module prim =
 @lang = "type-kind"   foreign type Type     :: Type
 @lang = "figure-kind" foreign type Figure   :: Type
 @lang = "symbol-kind" foreign type Symbol   :: Type
-@lang = "tuple-kind"  foreign type Tuple    :: Type
-@lang = "row-kind"    foreign type Row      :: Type -> Type
 
 @lang = "never-type"
 @repr(uninhabited)
@@ -23,8 +21,8 @@ foreign type Char :: Type
 foreign type Str :: Type
 
 @lang = "fn-type"
-@repr(func(args = 0, ret = 1))
-foreign type Fn :: Tuple, Type -> Type
+@repr(func(arg = 0, ret = 1))
+foreign type Fn :: Ttype -> Type -> Type
 
 @lang = "ptr-type"
 @repr(ptr(elem = 0))
@@ -36,11 +34,11 @@ foreign type BufPtr :: Type -> Type
 
 @lang = "ptrbs-type"
 @repr(ptr(elem = 0))
-foreign type BufPtrSentinel :: Type, Figure -> Type
+foreign type BufPtrSentinel :: Type -> Figure -> Type
 
 @lang = "array-type"
 @repr(array(elem = 0, len = 1))
-foreign type Array :: Type, Figure -> Type
+foreign type Array :: Type -> Figure -> Type
 
 @lang = "slice-type"
 @repr(
@@ -49,13 +47,6 @@ foreign type Array :: Type, Figure -> Type
     f1(scalar = "usize")
 )
 foreign type Slice :: Type -> Type
-
-@lang = "record-type"
-@repr(record(fields = 0))
-foreign type Record :: Row Type -> Type
-
-@lang = "block-type"
-foreign type Block :: Type, Type -> Type
 
 @repr(scalar = "isize") foreign type Int  :: Type
 @repr(scalar = "usize") foreign type Uint :: Type
@@ -75,10 +66,13 @@ foreign type Block :: Type, Type -> Type
 @repr(scalar = "f32") foreign type Float32 :: Type
 @repr(scalar = "f64") foreign type Float64 :: Type
 
-type Unit = ()
 type Byte = Uint8
 type Float = Float32
 type Double = Float64
+
+@lang = "unit-type"
+type Unit =
+    | Unit
 
 @lang = "bool-type"
 type Bool =
@@ -88,6 +82,10 @@ type Bool =
 @lang = "proxy-type"
 type Proxy a =
     | Proxy
+
+@lang = "pair-type"
+type Pair a b =
+    | Pair a b
 
 @lang = "integer-class" class Integer t | -> t
 @lang = "decimal-class" class Decimal t | -> t
@@ -118,6 +116,11 @@ member (BufPtrSentinel t s) t of Pointer
 
 class Unsafe
 class Partial
+
+@lang = "try-class"
+class Try self =
+    fn ret :: output -> self output
+    fn bind :: self a, (a -> self b) -> self b
 
 @lang = "termination-class"
 class Termination t =
