@@ -1,11 +1,11 @@
-use crate::{
-    dyn_map::Policy,
-    id::{FuncId, MemberId},
-    in_file::InFile,
-};
-use rustc_hash::FxHashMap;
 use std::marker::PhantomData;
+
+use rustc_hash::FxHashMap;
 use syntax::{ast, AstNode, AstPtr};
+
+use crate::dyn_map::Policy;
+use crate::id::{FuncId, MemberId};
+use crate::in_file::InFile;
 
 pub type Key<K, V> = crate::dyn_map::Key<InFile<K>, V, AstPtrPolicy<K, V>>;
 

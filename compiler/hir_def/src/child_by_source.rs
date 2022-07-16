@@ -1,11 +1,10 @@
-use crate::{
-    db::DefDatabase,
-    dyn_map::DynMap,
-    id::{HasSource, Lookup, MemberId, ModuleDefId, ModuleId},
-    item_scope::ItemScope,
-    keys,
-};
 use base_db::input::FileId;
+
+use crate::db::DefDatabase;
+use crate::dyn_map::DynMap;
+use crate::id::{HasSource, Lookup, MemberId, ModuleDefId, ModuleId};
+use crate::item_scope::ItemScope;
+use crate::keys;
 
 pub trait ChildBySource {
     fn child_by_source(&self, db: &dyn DefDatabase, file_id: FileId) -> DynMap {

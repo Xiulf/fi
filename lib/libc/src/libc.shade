@@ -19,4 +19,4 @@ const STDOUT_FILENO = 1 :: C_Int
 const STDERR_FILENO = 2 :: C_Int
 
 foreign fn puts :: C_Str -> C_Int
-foreign fn write :: C_Int, BufPtr C_Char, Size_T -> Ssize_T
+foreign fn write :: C_Int -> BufPtr C_Char -> Size_T -> Ssize_T

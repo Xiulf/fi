@@ -1,7 +1,9 @@
-use crate::input::{FileId, SourceRootId};
-use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt;
 use std::ops::Index;
+
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use crate::input::{FileId, SourceRootId};
 
 #[derive(Debug, Clone)]
 pub struct LibData {

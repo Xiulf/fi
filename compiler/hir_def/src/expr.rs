@@ -1,8 +1,9 @@
+use arena::Idx;
+
 use crate::name::Name;
 use crate::pat::PatId;
 use crate::path::Path;
 use crate::type_ref::LocalTypeRefId;
-use arena::Idx;
 
 pub type ExprId = Idx<Expr>;
 
@@ -21,9 +22,8 @@ pub enum Expr {
         lit: Literal,
     },
     Infix {
-        op: Path,
-        lhs: ExprId,
-        rhs: ExprId,
+        exprs: Box<[ExprId]>,
+        ops: Box<[Path]>,
     },
     App {
         base: ExprId,
@@ -57,7 +57,6 @@ pub enum Expr {
         cond: ExprId,
         then: ExprId,
         else_: Option<ExprId>,
-        inverse: bool,
     },
     Case {
         pred: ExprId,
@@ -66,7 +65,6 @@ pub enum Expr {
     While {
         cond: ExprId,
         body: ExprId,
-        inverse: bool,
     },
     Loop {
         body: ExprId,
@@ -118,9 +116,8 @@ impl Expr {
         match self {
             | Expr::Missing | Expr::Hole | Expr::Path { .. } | Expr::Lit { .. } => {},
             | Expr::Typed { expr, .. } => f(*expr),
-            | Expr::Infix { lhs, rhs, .. } => {
-                f(*lhs);
-                f(*rhs);
+            | Expr::Infix { exprs, .. } => {
+                exprs.iter().copied().for_each(f);
             },
             | Expr::App { base, arg } => {
                 f(*base);
@@ -131,7 +128,7 @@ impl Expr {
                 f(*base);
                 f(*index);
             },
-            | Expr::Tuple { exprs } | Expr::Array { exprs } => {
+            | Expr::Array { exprs } => {
                 exprs.iter().copied().for_each(f);
             },
             | Expr::Record { fields } => {

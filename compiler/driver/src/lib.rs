@@ -2,14 +2,14 @@ pub mod db;
 pub mod diagnostics;
 pub mod manifest;
 
+use std::sync::Arc;
+
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
-use base_db::SourceDatabase;
-use base_db::SourceDatabaseExt;
-use codegen::db::CodegenDatabase;
+use base_db::{SourceDatabase, SourceDatabaseExt};
+// use codegen::db::CodegenDatabase;
 use ir::db::IrDatabase;
 use rustc_hash::FxHashSet;
-use std::sync::Arc;
 
 #[derive(Default)]
 pub struct Opts<'a> {
@@ -177,15 +177,16 @@ impl Driver {
         true
     }
 
-    pub fn run<'a>(&self, lib: LibId, args: impl Iterator<Item = &'a std::ffi::OsStr>) -> bool {
+    pub fn run<'a>(&self, _lib: LibId, _args: impl Iterator<Item = &'a std::ffi::OsStr>) -> bool {
         if self.build() {
-            let asm = self.db.lib_assembly(lib.into());
-            let path = asm.path(&self.db, &self.db.target_dir(lib));
-            let mut cmd = std::process::Command::new(path);
+            // let asm = self.db.lib_assembly(lib.into());
+            // let path = asm.path(&self.db, &self.db.target_dir(lib));
+            // let mut cmd = std::process::Command::new(path);
 
-            cmd.args(args);
-            println!("    \x1B[1;32m\x1B[1mRunning\x1B[0m {:?}", cmd);
-            cmd.status().unwrap().success()
+            // cmd.args(args);
+            // println!("    \x1B[1;32m\x1B[1mRunning\x1B[0m {:?}", cmd);
+            // cmd.status().unwrap().success()
+            true
         } else {
             false
         }
@@ -196,14 +197,14 @@ impl Driver {
             return Ok(false);
         }
 
-        let deps = lib.dependencies(&self.db).into_iter().map(|dep| {
+        let _deps = lib.dependencies(&self.db).into_iter().map(|dep| {
             let _ = self.write_assembly(dep.lib, done);
             dep.lib
         });
 
-        let asm = self.db.lib_assembly(lib);
+        // let asm = self.db.lib_assembly(lib);
 
-        asm.link(&self.db, deps, &self.db.target_dir(lib.into()));
+        // asm.link(&self.db, deps, &self.db.target_dir(lib.into()));
         done.insert(lib);
 
         Ok(true)

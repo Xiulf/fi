@@ -1,14 +1,12 @@
-#![feature(crate_visibility_modifier)]
-
 pub mod input;
 pub mod libs;
 pub mod metadata;
 
-use input::{FileId, FileTree, LineIndex, SourceRoot, SourceRootId};
-use std::fmt;
-use std::panic;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{fmt, panic};
+
+use input::{FileId, FileTree, LineIndex, SourceRoot, SourceRootId};
 use syntax::{ast, Parsed};
 
 pub trait Upcast<T: ?Sized> {

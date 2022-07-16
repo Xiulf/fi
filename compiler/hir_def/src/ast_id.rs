@@ -1,13 +1,15 @@
-use crate::db::DefDatabase;
-use crate::in_file::InFile;
-use arena::{Arena, Idx};
-use base_db::input::FileId;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::Arc;
+
+use arena::{Arena, Idx};
+use base_db::input::FileId;
 use syntax::ast::{self, AstNode};
 use syntax::ptr::{AstPtr, SyntaxNodePtr};
 use syntax::syntax_node::SyntaxNode;
+
+use crate::db::DefDatabase;
+use crate::in_file::InFile;
 
 pub type AstId<N> = InFile<FileAstId<N>>;
 

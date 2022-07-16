@@ -1,6 +1,8 @@
-use super::*;
-use parser::syntax_kind::*;
 use std::iter::{Peekable, Skip};
+
+use parser::syntax_kind::*;
+
+use super::*;
 
 pub trait AttrsOwner: AstNode {
     fn attrs(&self) -> AstChildren<Attr> {
@@ -723,13 +725,6 @@ impl ExprField {
 
     pub fn field(&self) -> Option<NameRef> {
         support::child(&self.0)
-    }
-
-    pub fn tuple_field(&self) -> Option<usize> {
-        let int = support::token(&self.0, INT)?;
-        let text = int.text();
-
-        text.parse().ok()
     }
 }
 

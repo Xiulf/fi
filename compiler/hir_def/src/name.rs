@@ -1,5 +1,6 @@
-use smol_str::SmolStr;
 use std::fmt;
+
+use smol_str::SmolStr;
 use syntax::ast;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -21,10 +22,6 @@ impl Name {
         Name(Repr::Text(text))
     }
 
-    pub fn new_tuple_field(idx: usize) -> Self {
-        Name(Repr::TupleField(idx))
-    }
-
     pub fn missing() -> Self {
         Self::new_text("[missing name]".into())
     }
@@ -32,7 +29,14 @@ impl Name {
     pub fn is_lowercase(&self) -> bool {
         match &self.0 {
             | Repr::Text(text) => text.chars().all(char::is_lowercase),
-            | Repr::TupleField(_) => false,
+        }
+    }
+}
+
+impl AsRef<str> for Name {
+    fn as_ref(&self) -> &str {
+        match self.0 {
+            | Repr::Text(ref s) => s.as_str(),
         }
     }
 }

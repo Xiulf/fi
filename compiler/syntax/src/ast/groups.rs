@@ -1,5 +1,6 @@
-use crate::ast::*;
 use std::iter::Peekable;
+
+use crate::ast::*;
 
 impl Module {
     pub fn item_groups(&self) -> ItemGroups {

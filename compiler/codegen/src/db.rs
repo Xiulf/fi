@@ -1,6 +1,8 @@
-use crate::assembly::{Assembly, ObjectFile};
-use lower::db::LowerDatabase;
 use std::sync::Arc;
+
+use lower::db::LowerDatabase;
+
+use crate::assembly::{Assembly, ObjectFile};
 
 #[salsa::query_group(CodegenDatabaseStorage)]
 pub trait CodegenDatabase: LowerDatabase {

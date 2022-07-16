@@ -1,16 +1,18 @@
 mod lower;
 
+use std::sync::Arc;
+
+use arena::{Arena, ArenaMap};
+use base_db::input::FileId;
+use rustc_hash::FxHashMap;
+use syntax::{ast, AstPtr};
+
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId};
 use crate::id::{DefWithBodyId, HasModule, HasSource, Lookup, ModuleId};
 use crate::in_file::InFile;
 use crate::pat::{Pat, PatId};
 use crate::type_ref::{LocalTypeRefId, TypeMap, TypeRef, TypeSourceMap};
-use arena::{Arena, ArenaMap};
-use base_db::input::FileId;
-use rustc_hash::FxHashMap;
-use std::sync::Arc;
-use syntax::{ast, AstPtr};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Body {

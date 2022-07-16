@@ -1,8 +1,9 @@
+use arena::Idx;
+
 use crate::expr::{Literal, RecordField};
 use crate::name::Name;
 use crate::path::Path;
 use crate::type_ref::LocalTypeRefId;
-use arena::Idx;
 
 pub type PatId = Idx<Pat>;
 
@@ -14,9 +15,13 @@ pub enum Pat {
         pat: PatId,
         ty: LocalTypeRefId,
     },
+    Infix {
+        pats: Box<[PatId]>,
+        ops: Box<[Path]>,
+    },
     App {
         base: PatId,
-        args: Vec<PatId>,
+        args: Box<[PatId]>,
     },
     Path {
         path: Path,
@@ -26,10 +31,10 @@ pub enum Pat {
         subpat: Option<PatId>,
     },
     Tuple {
-        pats: Vec<PatId>,
+        pats: Box<[PatId]>,
     },
     Record {
-        fields: Vec<RecordField<PatId>>,
+        fields: Box<[RecordField<PatId>]>,
         has_rest: bool,
     },
     Lit {
@@ -42,6 +47,9 @@ impl Pat {
         match self {
             | Pat::Missing | Pat::Wildcard | Pat::Lit { .. } | Pat::Path { .. } | Pat::Bind { subpat: None, .. } => {},
             | Pat::Typed { pat, .. } => f(*pat),
+            | Pat::Infix { pats, .. } => {
+                pats.iter().copied().for_each(f);
+            },
             | Pat::App { base, args } => {
                 f(*base);
                 args.iter().copied().for_each(f);

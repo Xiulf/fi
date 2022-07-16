@@ -1,3 +1,9 @@
+use std::any::Any;
+
+use base_db::input::FileId;
+use syntax::ptr::{AstPtr, SyntaxNodePtr};
+use syntax::{ast, AstNode};
+
 use crate::ast_id::AstId;
 use crate::db::DefDatabase;
 use crate::diagnostic::{Diagnostic, DiagnosticSink};
@@ -5,10 +11,6 @@ use crate::id::LocalModuleId;
 use crate::in_file::InFile;
 use crate::item_tree::{Item, ItemTree};
 use crate::name::Name;
-use base_db::input::FileId;
-use std::any::Any;
-use syntax::ptr::{AstPtr, SyntaxNodePtr};
-use syntax::{ast, AstNode};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DefDiagnostic {

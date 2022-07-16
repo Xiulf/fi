@@ -1,11 +1,13 @@
-use crate::parsing::lexer::Token;
-use crate::{SyntaxError, SyntaxTreeBuilder};
+use std::mem;
+
 use parser::syntax_kind::SyntaxKind;
 use parser::TreeSink;
 use rowan::{TextRange, TextSize};
-use std::mem;
 
-crate struct TextTreeSink<'t> {
+use crate::parsing::lexer::Token;
+use crate::{SyntaxError, SyntaxTreeBuilder};
+
+pub(crate) struct TextTreeSink<'t> {
     text: &'t str,
     tokens: &'t [Token],
     text_pos: TextSize,
@@ -83,7 +85,7 @@ impl<'t> TreeSink for TextTreeSink<'t> {
 }
 
 impl<'t> TextTreeSink<'t> {
-    crate fn new(text: &'t str, tokens: &'t [Token]) -> Self {
+    pub(crate) fn new(text: &'t str, tokens: &'t [Token]) -> Self {
         TextTreeSink {
             text,
             tokens,
@@ -94,7 +96,7 @@ impl<'t> TextTreeSink<'t> {
         }
     }
 
-    crate fn finish(mut self) -> (rowan::GreenNode, Vec<SyntaxError>) {
+    pub(crate) fn finish(mut self) -> (rowan::GreenNode, Vec<SyntaxError>) {
         match mem::replace(&mut self.state, State::Normal) {
             | State::PendingFinish => {
                 self.eat_trivia();

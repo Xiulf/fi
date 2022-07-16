@@ -1,15 +1,15 @@
 #![feature(try_blocks)]
 
+use std::io::{stdout, Stdout};
+
 use crossterm::cursor::{
     position, MoveDown, MoveLeft, MoveRight, MoveTo, MoveToColumn, MoveToNextLine, MoveUp, RestorePosition,
     SavePosition,
 };
-
 use crossterm::event::{read, Event, KeyCode, KeyModifiers};
 use crossterm::style::Print;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType, ScrollUp};
 use crossterm::{execute, queue, Result};
-use std::io::{stdout, Stdout};
 
 pub struct Repl<V, I> {
     stdout: Stdout,

@@ -1,8 +1,8 @@
 module prim =
 
-@lang = "type-kind"   foreign type Type     :: Type
-@lang = "figure-kind" foreign type Figure   :: Type
-@lang = "symbol-kind" foreign type Symbol   :: Type
+@lang = "type-kind"   foreign type Type   :: Type
+@lang = "figure-kind" foreign type Figure :: Type
+@lang = "symbol-kind" foreign type Symbol :: Type
 
 @lang = "never-type"
 @repr(uninhabited)
@@ -22,7 +22,9 @@ foreign type Str :: Type
 
 @lang = "fn-type"
 @repr(func(arg = 0, ret = 1))
-foreign type Fn :: Ttype -> Type -> Type
+foreign type Fn :: Type -> Type -> Type
+
+infixr 1 Fn as (->)
 
 @lang = "ptr-type"
 @repr(ptr(elem = 0))
@@ -87,6 +89,9 @@ type Proxy a =
 type Pair a b =
     | Pair a b
 
+@lang = "pair-operator"
+infixr 0 Pair as (,)
+
 @lang = "integer-class" class Integer t | -> t
 @lang = "decimal-class" class Decimal t | -> t
 @lang = "pointer-class" class Pointer t to | t -> to
@@ -120,7 +125,7 @@ class Partial
 @lang = "try-class"
 class Try self =
     fn ret :: output -> self output
-    fn bind :: self a, (a -> self b) -> self b
+    fn bind :: self a -> (a -> self b) -> self b
 
 @lang = "termination-class"
 class Termination t =

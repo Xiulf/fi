@@ -1,11 +1,13 @@
+use std::sync::Arc;
+
+use base_db::Upcast;
+use hir_def::db::DefDatabase;
+use hir_def::id::{ClassId, CtorId, DefWithBodyId, MemberId, TypeAliasId, TypeCtorId, ValueTyDefId};
+
 use crate::class::Members;
 use crate::infer::InferenceResult;
 use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult};
 use crate::ty::{Constraint, Ty, TyAndSrc, TyKind};
-use base_db::Upcast;
-use hir_def::db::DefDatabase;
-use hir_def::id::{ClassId, CtorId, DefWithBodyId, MemberId, TypeAliasId, TypeCtorId, ValueTyDefId};
-use std::sync::Arc;
 
 #[salsa::query_group(HirDatabaseStorage)]
 pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {

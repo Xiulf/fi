@@ -1,8 +1,10 @@
-use crate::in_file::InFile;
-use crate::name::{AsName, Name};
 use std::fmt;
 use std::iter::FromIterator;
+
 use syntax::ast;
+
+use crate::in_file::InFile;
+use crate::name::{AsName, Name};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Path {
@@ -10,6 +12,8 @@ pub struct Path {
 }
 
 impl Path {
+    const SEPARATOR: char = '/';
+
     pub fn from_segments(segments: impl IntoIterator<Item = Name>) -> Self {
         Path {
             segments: Vec::from_iter(segments),
@@ -42,6 +46,21 @@ impl Path {
         } else {
             None
         }
+    }
+
+    pub fn to_ident(&self) -> Name {
+        if self.segments.len() == 1 {
+            return self.segments[0].clone();
+        }
+
+        let mut res = String::from(self.segments[0].as_ref());
+
+        for name in &self.segments[1..] {
+            res.push(Self::SEPARATOR);
+            res.push_str(name.as_ref());
+        }
+
+        res.as_name()
     }
 
     pub fn to_instance(&mut self, name: Name) {

@@ -3,7 +3,7 @@ use crate::parser::Parser;
 use crate::syntax_kind::*;
 use crate::token_set::TokenSet;
 
-crate fn attr(p: &mut Parser) {
+pub(crate) fn attr(p: &mut Parser) {
     let attr = p.start();
 
     p.bump(AT);
@@ -18,7 +18,7 @@ crate fn attr(p: &mut Parser) {
     attr.complete(p, ATTR);
 }
 
-crate fn attr_args(p: &mut Parser) {
+pub(crate) fn attr_args(p: &mut Parser) {
     let m = p.start();
 
     p.expect(L_PAREN);
@@ -35,7 +35,7 @@ crate fn attr_args(p: &mut Parser) {
     m.complete(p, ATTR_ARGS);
 }
 
-crate fn attr_arg(p: &mut Parser) {
+pub(crate) fn attr_arg(p: &mut Parser) {
     let m = p.start();
 
     if p.at(IDENT) {

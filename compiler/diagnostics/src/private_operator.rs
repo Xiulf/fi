@@ -1,6 +1,7 @@
-use super::*;
 use hir::diagnostic::Diagnostic as _;
 use syntax::TextRange;
+
+use super::*;
 
 pub struct PrivateOperator<'db, 'd, DB: hir::db::HirDatabase> {
     _db: &'db DB,

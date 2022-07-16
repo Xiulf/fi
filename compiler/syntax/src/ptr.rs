@@ -1,11 +1,12 @@
-use crate::{AstNode, SyntaxKind, SyntaxNode, TextRange};
 use std::hash::{Hash, Hasher};
 use std::iter::successors;
 use std::marker::PhantomData;
 
+use crate::{AstNode, SyntaxKind, SyntaxNode, TextRange};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SyntaxNodePtr {
-    crate range: TextRange,
+    pub(crate) range: TextRange,
     kind: SyntaxKind,
 }
 

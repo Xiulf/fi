@@ -1,12 +1,14 @@
+use std::sync::Arc;
+
+use arena::{Arena, Idx};
+use rustc_hash::FxHashMap;
+
 use crate::body::Body;
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId, Stmt};
 use crate::id::DefWithBodyId;
 use crate::name::Name;
 use crate::pat::{Pat, PatId};
-use arena::{Arena, Idx};
-use rustc_hash::FxHashMap;
-use std::sync::Arc;
 
 pub type ExprScopeId = Idx<ExprScopeData>;
 

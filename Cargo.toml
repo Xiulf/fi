@@ -4,7 +4,7 @@ members = [
     "compiler/driver",
     "compiler/markup",
     "compiler/diagnostics",
-    "compiler/lower",
+    # "compiler/lower",
     "compiler/hir",
     "compiler/hir_ty",
     "compiler/hir_def",

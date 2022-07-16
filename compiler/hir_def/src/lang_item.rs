@@ -1,9 +1,11 @@
-use crate::db::DefDatabase;
-use crate::id::{AttrDefId, ClassId, FuncId, ModuleDefId, StaticId, TypeAliasId, TypeCtorId};
+use std::sync::Arc;
+
 use base_db::libs::LibId;
 use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
-use std::sync::Arc;
+
+use crate::db::DefDatabase;
+use crate::id::{AttrDefId, ClassId, FuncId, ModuleDefId, StaticId, TypeAliasId, TypeCtorId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LangItem {

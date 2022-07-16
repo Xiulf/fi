@@ -1,3 +1,10 @@
+use std::sync::Arc;
+
+use arena::Arena;
+use base_db::input::FileId;
+use rustc_hash::FxHashSet;
+use syntax::ast;
+
 use crate::db::DefDatabase;
 use crate::id::*;
 use crate::item_tree::{AssocItem, ItemTreeId};
@@ -6,11 +13,6 @@ use crate::name::Name;
 use crate::path::Path;
 use crate::resolver::{HasResolver, Resolver};
 use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap, TypeMapBuilder, TypeRef, TypeSourceMap, WhereClause};
-use arena::Arena;
-use base_db::input::FileId;
-use rustc_hash::FxHashSet;
-use std::sync::Arc;
-use syntax::ast;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct FixityData {
@@ -261,8 +263,9 @@ impl TypeAliasData {
 
 impl TypeCtorData {
     pub fn query(db: &dyn DefDatabase, id: TypeCtorId) -> Arc<Self> {
-        use crate::name::AsName;
         use ast::NameOwner;
+
+        use crate::name::AsName;
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];

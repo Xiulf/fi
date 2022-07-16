@@ -1,5 +1,6 @@
-use base_db::Upcast;
 use std::sync::Arc;
+
+use base_db::Upcast;
 
 #[salsa::query_group(LowerDatabaseStorage)]
 pub trait LowerDatabase:

@@ -1,11 +1,13 @@
+use std::hash::{Hash, Hasher};
+
+use arena::Idx;
+use base_db::libs::LibId;
+
 use crate::db::DefDatabase;
 use crate::def_map::ModuleData;
 use crate::in_file::InFile;
 use crate::item_tree::*;
 use crate::type_ref::{LocalTypeVarId, TypeMap, TypeSourceMap};
-use arena::Idx;
-use base_db::libs::LibId;
-use std::hash::{Hash, Hasher};
 
 macro_rules! impl_intern {
     ($id:ident, $loc:path, $intern:ident, $lookup:ident) => {
@@ -124,7 +126,7 @@ pub struct CtorId {
 
 pub type LocalCtorId = Idx<crate::data::CtorData>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ClassId(salsa::InternId);
 pub type ClassLoc = ItemLoc<Class>;
 impl_intern!(ClassId, ClassLoc, intern_class, lookup_intern_class);

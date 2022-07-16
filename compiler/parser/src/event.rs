@@ -1,7 +1,7 @@
-use crate::syntax_kind::SyntaxKind;
-use crate::ParseError;
-use crate::TreeSink;
 use std::mem;
+
+use crate::syntax_kind::SyntaxKind;
+use crate::{ParseError, TreeSink};
 
 pub enum Event {
     Start {
@@ -18,7 +18,7 @@ pub enum Event {
 }
 
 impl Event {
-    crate fn tombstone() -> Self {
+    pub(crate) fn tombstone() -> Self {
         Event::Start {
             kind: SyntaxKind::TOMBSTONE,
             forward_parent: None,
@@ -26,7 +26,7 @@ impl Event {
     }
 }
 
-crate fn process(sink: &mut dyn TreeSink, mut events: Vec<Event>) {
+pub(crate) fn process(sink: &mut dyn TreeSink, mut events: Vec<Event>) {
     let mut forward_parents = Vec::new();
 
     for i in 0..events.len() {

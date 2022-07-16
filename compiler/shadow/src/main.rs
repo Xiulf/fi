@@ -28,6 +28,12 @@ fn main() {
     )
     .get_matches();
 
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Debug)
+        .filter_module("salsa", log::LevelFilter::Off)
+        .format_timestamp(None)
+        .init();
+
     std::panic::set_hook(Box::new(|info| {
         let loc = info.location().unwrap();
         let msg = match info.payload().downcast_ref::<&'static str>() {

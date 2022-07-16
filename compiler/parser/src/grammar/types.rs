@@ -5,7 +5,7 @@ use crate::token_set::TokenSet;
 
 const TYPE_RECOVERY_SET: TokenSet = TokenSet::new(&[R_PAREN, LYT_SEP, LYT_END]);
 
-crate fn ty(p: &mut Parser) {
+pub(crate) fn ty(p: &mut Parser) {
     if let Some(m) = infix(p) {
         if p.at(WHERE_KW) {
             let m = m.precede(p);
@@ -16,7 +16,7 @@ crate fn ty(p: &mut Parser) {
     }
 }
 
-crate fn infix(p: &mut Parser) -> Option<CompletedMarker> {
+pub(crate) fn infix(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = app(p)?;
 
     if peek_operator(p) {
@@ -33,7 +33,7 @@ crate fn infix(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-crate fn app(p: &mut Parser) -> Option<CompletedMarker> {
+pub(crate) fn app(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = atom(p)?;
 
     while peek(p) {
@@ -46,7 +46,7 @@ crate fn app(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
+pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
 
     match p.current() {
@@ -113,7 +113,7 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     }
 }
 
-crate fn peek(p: &Parser) -> bool {
+pub(crate) fn peek(p: &Parser) -> bool {
     match p.current() {
         | IDENT | UNDERSCORE | L_PAREN | L_BRACKET | L_BRACE | INT | STRING => true,
         | _ => false,

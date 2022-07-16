@@ -1,3 +1,8 @@
+use std::sync::Arc;
+
+use arena::Arena;
+use base_db::libs::LibId;
+
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::expr::ExprId;
@@ -8,9 +13,6 @@ use crate::per_ns::PerNs;
 use crate::scope::{ExprScopeId, ExprScopes};
 use crate::type_ref::{TypeMap, TypeVar};
 use crate::visibility::Visibility;
-use arena::Arena;
-use base_db::libs::LibId;
-use std::sync::Arc;
 
 #[derive(Default, Debug, Clone)]
 pub struct Resolver {
@@ -45,6 +47,7 @@ struct TypeScope {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeNs {
+    Fixity(FixityId),
     TypeAlias(TypeAliasId),
     TypeCtor(TypeCtorId),
     Class(ClassId),
@@ -272,6 +275,7 @@ impl ModuleItemMap {
 fn to_type_ns(per_ns: PerNs) -> Option<(TypeNs, Visibility)> {
     let (def, vis) = per_ns.types?;
     let res = match def {
+        | ModuleDefId::FixityId(id) => TypeNs::Fixity(id),
         | ModuleDefId::TypeAliasId(id) => TypeNs::TypeAlias(id),
         | ModuleDefId::TypeCtorId(id) => TypeNs::TypeCtor(id),
         | ModuleDefId::ClassId(id) => TypeNs::Class(id),

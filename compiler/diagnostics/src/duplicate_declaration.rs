@@ -1,5 +1,6 @@
-use super::*;
 use syntax::{ast, AstNode, NameOwner, Parsed, SyntaxKind, SyntaxNodePtr};
+
+use super::*;
 
 pub struct DuplicateDeclaration<'db, 'd, DB: hir::db::HirDatabase> {
     db: &'db DB,

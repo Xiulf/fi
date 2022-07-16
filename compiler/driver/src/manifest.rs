@@ -1,4 +1,6 @@
-use crate::db::RootDatabase;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
 use anyhow::{Context, Result};
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
@@ -6,8 +8,8 @@ use base_db::SourceDatabaseExt;
 use path_slash::PathExt as _;
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+
+use crate::db::RootDatabase;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Manifest {

@@ -3,7 +3,7 @@ use crate::parser::{Marker, Parser};
 use crate::syntax_kind::*;
 use crate::token_set::TokenSet;
 
-crate fn any_item(p: &mut Parser) {
+pub(crate) fn any_item(p: &mut Parser) {
     let m = p.start();
 
     while p.at(AT) {
@@ -50,7 +50,7 @@ crate fn any_item(p: &mut Parser) {
     }
 }
 
-crate fn import(p: &mut Parser, m: Marker) {
+pub(crate) fn import(p: &mut Parser, m: Marker) {
     p.expect(IMPORT_KW);
     paths::module_name_ref(p);
 
@@ -76,7 +76,7 @@ crate fn import(p: &mut Parser, m: Marker) {
     m.complete(p, IMPORT);
 }
 
-crate fn fixity(p: &mut Parser, m: Marker) {
+pub(crate) fn fixity(p: &mut Parser, m: Marker) {
     if p.at(INFIX_KW) || p.at(INFIXL_KW) || p.at(INFIXR_KW) {
         p.bump_any();
         p.expect(INT);
@@ -100,7 +100,7 @@ crate fn fixity(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn foreign(p: &mut Parser, m: Marker) {
+pub(crate) fn foreign(p: &mut Parser, m: Marker) {
     p.expect(FOREIGN_KW);
 
     match p.current() {
@@ -115,7 +115,7 @@ crate fn foreign(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn fun(p: &mut Parser, m: Marker) {
+pub(crate) fn fun(p: &mut Parser, m: Marker) {
     p.expect(FN_KW);
     paths::name(p);
 
@@ -137,7 +137,7 @@ crate fn fun(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn static_(p: &mut Parser, m: Marker) {
+pub(crate) fn static_(p: &mut Parser, m: Marker) {
     p.expect(STATIC_KW);
     paths::name(p);
 
@@ -151,7 +151,7 @@ crate fn static_(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn const_(p: &mut Parser, m: Marker) {
+pub(crate) fn const_(p: &mut Parser, m: Marker) {
     p.expect(CONST_KW);
     paths::name(p);
 
@@ -165,7 +165,7 @@ crate fn const_(p: &mut Parser, m: Marker) {
     }
 }
 
-crate fn type_(p: &mut Parser, m: Marker) {
+pub(crate) fn type_(p: &mut Parser, m: Marker) {
     p.expect(TYPE_KW);
     paths::name(p);
 
@@ -193,7 +193,7 @@ crate fn type_(p: &mut Parser, m: Marker) {
     m.complete(p, ITEM_TYPE);
 }
 
-crate fn ctor(p: &mut Parser, m: Marker) {
+pub(crate) fn ctor(p: &mut Parser, m: Marker) {
     paths::name(p);
 
     while types::peek(p) {
@@ -203,7 +203,7 @@ crate fn ctor(p: &mut Parser, m: Marker) {
     m.complete(p, ITEM_CTOR);
 }
 
-crate fn class(p: &mut Parser, m: Marker) {
+pub(crate) fn class(p: &mut Parser, m: Marker) {
     p.expect(CLASS_KW);
     paths::name(p);
     type_vars(p);
@@ -237,7 +237,7 @@ crate fn class(p: &mut Parser, m: Marker) {
     m.complete(p, ITEM_CLASS);
 }
 
-crate fn where_clause(p: &mut Parser) {
+pub(crate) fn where_clause(p: &mut Parser) {
     let m = p.start();
 
     p.expect(WHERE_KW);
@@ -252,7 +252,7 @@ crate fn where_clause(p: &mut Parser) {
     m.complete(p, WHERE_CLAUSE);
 }
 
-crate fn where_clause_item(p: &mut Parser) {
+pub(crate) fn where_clause_item(p: &mut Parser) {
     let m = p.start();
 
     if p.at(IDENT) && p.nth_at(1, DBL_COLON) {
@@ -271,7 +271,7 @@ crate fn where_clause_item(p: &mut Parser) {
     }
 }
 
-crate fn type_vars(p: &mut Parser) {
+pub(crate) fn type_vars(p: &mut Parser) {
     let m = p.start();
 
     while p.at(IDENT) {
@@ -281,7 +281,7 @@ crate fn type_vars(p: &mut Parser) {
     m.complete(p, TYPE_VARS);
 }
 
-crate fn fun_dep(p: &mut Parser) {
+pub(crate) fn fun_dep(p: &mut Parser) {
     let m = p.start();
 
     while p.at(IDENT) {
@@ -297,7 +297,7 @@ crate fn fun_dep(p: &mut Parser) {
     m.complete(p, FUN_DEP);
 }
 
-crate fn member(p: &mut Parser, m: Marker) {
+pub(crate) fn member(p: &mut Parser, m: Marker) {
     p.expect(MEMBER_KW);
     types::atom(p);
 
@@ -329,7 +329,7 @@ crate fn member(p: &mut Parser, m: Marker) {
     m.complete(p, ITEM_MEMBER);
 }
 
-crate fn assoc_item(p: &mut Parser) {
+pub(crate) fn assoc_item(p: &mut Parser) {
     let m = p.start();
 
     while p.at(AT) {

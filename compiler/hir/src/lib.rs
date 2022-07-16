@@ -13,10 +13,13 @@ use hir_def::diagnostic::DiagnosticSink;
 pub use hir_def::expr::{CaseArm, Expr, ExprId, Literal, Stmt};
 use hir_def::id::*;
 pub use hir_def::in_file::InFile;
+use hir_def::item_scope::ExportNs;
 pub use hir_def::item_tree::{Assoc, Prec};
 pub use hir_def::name::{AsName, Name};
 pub use hir_def::pat::{Pat, PatId};
 pub use hir_def::path::Path;
+use hir_def::resolver::HasResolver;
+use hir_def::visibility::Visibility;
 pub use hir_def::{attrs, id};
 use hir_ty::db::HirDatabase;
 pub use hir_ty::display::HirDisplay;
@@ -107,14 +110,10 @@ impl Module {
             .collect()
     }
 
-    pub fn is_exported(self, db: &dyn HirDatabase, name: Name) -> bool {
+    pub fn is_exported(self, db: &dyn HirDatabase, name: Name, ns: ExportNs) -> bool {
         let def_map = db.def_map(self.id.lib);
 
-        true
-        // !def_map[self.id.local_id]
-        //     .exports
-        //     .get(db.upcast(), &def_map, self.id.local_id, &name)
-        //     .is_none()
+        def_map[self.id.local_id].exports.resolve_visibility(&name, ns, self.id) == Visibility::Public
     }
 
     pub fn declarations(self, db: &dyn HirDatabase) -> Vec<ModuleDef> {
@@ -254,7 +253,7 @@ impl Fixity {
 
     pub fn func(self, db: &dyn HirDatabase) -> Func {
         let path = &db.fixity_data(self.id).func;
-        let resolver = hir_def::resolver::HasResolver::resolver(self.id, db.upcast());
+        let resolver = self.id.resolver(db.upcast());
         let id = resolver.resolve_value_fully(db.upcast(), path);
 
         if let Some((hir_def::resolver::ValueNs::Func(id), _)) = id {
@@ -264,7 +263,7 @@ impl Fixity {
         }
     }
 
-    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+    pub fn diagnostics(self, _db: &dyn HirDatabase, _sink: &mut DiagnosticSink) {
     }
 }
 
@@ -341,14 +340,14 @@ impl Func {
         if let Some(assoc) = self.as_assoc_item(db) {
             matches!(assoc.container(db), AssocItemContainer::Member(_))
         } else {
-            self.module(db).is_exported(db, self.name(db))
+            self.module(db).is_exported(db, self.name(db), ExportNs::Values)
         }
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
-        let data = db.func_data(self.id);
+        let _data = db.func_data(self.id);
         let infer = db.infer(self.id.into());
-        let body = db.body(self.id.into());
+        let _body = db.body(self.id.into());
 
         // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
         // eprintln!("fn {} :: {}", data.name, infer.self_type.ty.display(db));
@@ -356,11 +355,11 @@ impl Func {
         // for (expr, ty) in infer.type_of_expr.iter() {
         //     eprintln!("{:?} :: {}", body[expr], ty.display(db));
         // }
-        //
+
         // for (pat, ty) in infer.type_of_pat.iter() {
         //     eprintln!("{:?} :: {}", body[pat], ty.display(db));
         // }
-        //
+
         // eprintln!();
 
         infer.add_diagnostics(db, self.id.into(), sink);
@@ -428,7 +427,7 @@ impl Static {
         if let Some(assoc) = self.as_assoc_item(db) {
             matches!(assoc.container(db), AssocItemContainer::Member(_))
         } else {
-            self.module(db).is_exported(db, self.name(db))
+            self.module(db).is_exported(db, self.name(db), ExportNs::Values)
         }
     }
 
@@ -542,7 +541,7 @@ impl TypeCtor {
     }
 
     pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
-        self.module(db).is_exported(db, self.name(db))
+        self.module(db).is_exported(db, self.name(db), ExportNs::Types)
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
@@ -623,7 +622,7 @@ impl Class {
         self.module(db).path_to_name(db, self.name(db))
     }
 
-    pub fn constraints(self, db: &dyn HirDatabase) -> Vec<ty::Constraint> {
+    pub fn constraints(self, _db: &dyn HirDatabase) -> Vec<ty::Constraint> {
         Vec::new()
     }
 
@@ -708,56 +707,22 @@ fn ty_link_name(
     ty: &hir_def::type_ref::LocalTypeRefId,
     out: &mut String,
 ) -> std::fmt::Result {
-    use hir_def::type_ref::{PtrLen, TypeRef};
     use std::fmt::Write;
+
+    use hir_def::type_ref::TypeRef;
 
     match &map[*ty] {
         | TypeRef::Error => write!(out, "error"),
         | TypeRef::Placeholder => write!(out, "_"),
         | TypeRef::Figure(i) => write!(out, "{}", i),
         | TypeRef::Symbol(s) => write!(out, "{:?}", s),
+        | TypeRef::Path(p) => write!(out, "{}", p),
         | TypeRef::App(a, b) => {
             write!(out, "(")?;
             ty_link_name(map, a, out)?;
-            for b in b.iter() {
-                write!(out, " ")?;
-                ty_link_name(map, b, out)?;
-            }
+            write!(out, " ")?;
+            ty_link_name(map, b, out)?;
             write!(out, ")")
-        },
-        | TypeRef::Tuple(ts) => {
-            write!(out, "(")?;
-
-            for (i, t) in ts.iter().enumerate() {
-                if i != 0 {
-                    write!(out, ", ")?;
-                }
-
-                ty_link_name(map, t, out)?;
-            }
-
-            write!(out, ")")
-        },
-        | TypeRef::Path(p) => write!(out, "{}", p),
-        | TypeRef::Ptr(t, PtrLen::Single) => {
-            write!(out, "*")?;
-            ty_link_name(map, t, out)
-        },
-        | TypeRef::Ptr(t, PtrLen::Multiple(None)) => {
-            write!(out, "[*]")?;
-            ty_link_name(map, t, out)
-        },
-        | TypeRef::Ptr(t, PtrLen::Multiple(Some(s))) => {
-            write!(out, "[*:{}]", s.0)?;
-            ty_link_name(map, t, out)
-        },
-        | TypeRef::Slice(t) => {
-            write!(out, "[]")?;
-            ty_link_name(map, t, out)
-        },
-        | TypeRef::Array(t, len) => {
-            write!(out, "[{}]", len)?;
-            ty_link_name(map, t, out)
         },
         | _ => unimplemented!(),
     }

@@ -1,10 +1,10 @@
-use crate::db::CodegenDatabase;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
 use base_db::libs::LibKind;
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
 use tempfile::NamedTempFile;
+
+use crate::db::CodegenDatabase;
 
 #[derive(Debug)]
 pub struct ObjectFile {

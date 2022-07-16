@@ -1,16 +1,18 @@
-use crate::ast::AstToken;
-use crate::syntax_node::SyntaxToken;
-use parser::syntax_kind::SyntaxKind;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Whitespace(crate SyntaxToken);
+use parser::syntax_kind::SyntaxKind;
+
+use crate::ast::AstToken;
+use crate::syntax_node::SyntaxToken;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Comment(crate SyntaxToken);
+pub struct Whitespace(pub(crate) SyntaxToken);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Operator(crate SyntaxToken);
+pub struct Comment(pub(crate) SyntaxToken);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Operator(pub(crate) SyntaxToken);
 
 pub enum CommentKind {
     Doc,

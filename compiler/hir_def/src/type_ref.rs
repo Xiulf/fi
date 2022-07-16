@@ -1,8 +1,9 @@
-use crate::name::{AsName, Name};
-use crate::path::{convert_path, Path};
 use arena::{Arena, ArenaMap, Idx};
 use rustc_hash::FxHashMap;
 use syntax::{ast, AstPtr};
+
+use crate::name::{AsName, Name};
+use crate::path::{convert_path, Path};
 
 pub type LocalTypeRefId = Idx<TypeRef>;
 pub type LocalTypeVarId = Idx<TypeVar>;
@@ -19,15 +20,10 @@ pub enum TypeRef {
     Placeholder,
     Figure(i128),
     Symbol(String),
-    App(LocalTypeRefId, LocalTypeRefId),
-    Tuple(Box<[LocalTypeRefId]>),
     Path(Path),
-    Ptr(LocalTypeRefId, PtrLen),
-    Slice(LocalTypeRefId),
-    Array(LocalTypeRefId, usize),
+    App(LocalTypeRefId, LocalTypeRefId),
+    Infix(Box<[LocalTypeRefId]>, Box<[Path]>),
     Record(Box<[Field]>, Option<LocalTypeRefId>),
-    Row(Box<[Field]>, Option<LocalTypeRefId>),
-    Func(LocalTypeRefId, LocalTypeRefId),
     Where(WhereClause, LocalTypeRefId),
 }
 
@@ -112,29 +108,16 @@ impl TypeRef {
 
                 TypeRef::Error
             },
+            | ast::Type::Path(inner) => convert_path(inner.path()).map(TypeRef::Path).unwrap_or(TypeRef::Error),
             | ast::Type::App(inner) => TypeRef::App(
                 map.alloc_type_ref_opt(inner.base()),
                 map.alloc_type_ref_opt(inner.arg()),
             ),
-            | ast::Type::Path(inner) => convert_path(inner.path()).map(TypeRef::Path).unwrap_or(TypeRef::Error),
-            | ast::Type::Array(inner) => inner
-                .len()
-                .map(|l| TypeRef::Array(map.alloc_type_ref_opt(inner.elem()), l))
-                .unwrap_or(TypeRef::Error),
-            | ast::Type::Slice(inner) => TypeRef::Slice(map.alloc_type_ref_opt(inner.elem())),
-            | ast::Type::Ptr(inner) => TypeRef::Ptr(
-                map.alloc_type_ref_opt(inner.elem()),
-                if inner.is_buf_ptr() {
-                    PtrLen::Multiple(inner.sentinel().map(|s| Sentinel(s.value())))
-                } else {
-                    PtrLen::Single
-                },
-            ),
-            | ast::Type::Fn(inner) => {
-                let param = map.alloc_type_ref_opt(inner.param());
-                let ret = map.alloc_type_ref_opt(inner.ret());
+            | ast::Type::Infix(inner) => {
+                let tys = inner.types().map(|t| map.alloc_type_ref(t)).collect();
+                let ops = inner.ops().map(|op| Path::from(op.as_name())).collect();
 
-                TypeRef::Func(param, ret)
+                TypeRef::Infix(tys, ops)
             },
             | ast::Type::Rec(inner) => {
                 let fields = inner
@@ -151,22 +134,6 @@ impl TypeRef {
 
                 TypeRef::Record(fields, tail)
             },
-            | ast::Type::Row(inner) => {
-                let fields = inner
-                    .fields()
-                    .filter_map(|f| {
-                        Some(Field {
-                            name: f.name()?.as_name(),
-                            ty: map.alloc_type_ref_opt(f.ty()),
-                        })
-                    })
-                    .collect();
-
-                let tail = inner.tail().map(|t| map.alloc_type_ref(t));
-
-                TypeRef::Row(fields, tail)
-            },
-            | ast::Type::Tuple(inner) => TypeRef::Tuple(inner.types().map(|t| map.alloc_type_ref(t)).collect()),
             | ast::Type::Parens(inner) => Self::from_ast_opt(inner.ty(), map),
             | ast::Type::Where(inner) => {
                 let where_clause = map.lower_where_clause(inner.where_clause());

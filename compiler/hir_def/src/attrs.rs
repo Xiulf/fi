@@ -1,13 +1,15 @@
+use std::ops::Deref;
+use std::sync::Arc;
+
+use either::Either;
+use syntax::ast;
+
 use crate::db::DefDatabase;
 use crate::expr::Literal;
 use crate::id::{AttrDefId, Lookup};
 use crate::in_file::InFile;
 use crate::item_tree::{ItemTreeId, ItemTreeNode};
 use crate::name::{AsName, Name};
-use either::Either;
-use std::ops::Deref;
-use std::sync::Arc;
-use syntax::ast;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Attrs(pub(crate) RawAttrs);

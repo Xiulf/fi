@@ -1,8 +1,9 @@
-use anymap::Map;
-use rustc_hash::FxHashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
+
+use anymap::Map;
+use rustc_hash::FxHashMap;
 
 pub struct Key<K, V, P = (K, V)> {
     _marker: PhantomData<(K, V, P)>,

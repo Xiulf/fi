@@ -1,10 +1,11 @@
-use crate::db::LowerDatabase;
 use arena::ArenaMap;
 use hir::attrs::{AttrInput, AttrInputGroup};
 use hir::id::TypeCtorId;
 use hir::ty::{TyKind, TypeVarScopeId};
 use ir::layout::{Integer, Primitive};
 use ir::ty::GenericVar;
+
+use crate::db::LowerDatabase;
 
 pub fn is_boxed(db: &dyn LowerDatabase, id: TypeCtorId) -> bool {
     let lower = db.kind_for_ctor(id);

@@ -1,6 +1,16 @@
 mod collector;
 mod path_resolution;
 
+use std::io;
+use std::ops::Index;
+use std::sync::Arc;
+
+use arena::Arena;
+use base_db::input::FileId;
+use base_db::libs::LibId;
+use rustc_hash::FxHashMap;
+use syntax::ast;
+
 use crate::ast_id::{AstId, FileAstId};
 use crate::db::DefDatabase;
 use crate::diagnostics::DefDiagnostic;
@@ -8,14 +18,6 @@ use crate::id::{LocalModuleId, ModuleId};
 use crate::in_file::InFile;
 use crate::item_scope::{ItemExports, ItemScope};
 use crate::name::Name;
-use arena::Arena;
-use base_db::input::FileId;
-use base_db::libs::LibId;
-use rustc_hash::FxHashMap;
-use std::io;
-use std::ops::Index;
-use std::sync::Arc;
-use syntax::ast;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DefMap {

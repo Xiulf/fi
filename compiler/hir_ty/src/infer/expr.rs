@@ -1,16 +1,20 @@
-use super::diagnostics::{CtntExpected, CtntFound};
-use super::{BodyInferenceContext, Breakable, ExprOrPatId, InferenceDiagnostic};
-use crate::display::HirDisplay;
-use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
-use crate::lower::LowerCtx;
+use std::sync::Arc;
+
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::{FixityId, TypeVarOwner};
+use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
-use std::sync::Arc;
+
+use super::diagnostics::{CtntExpected, CtntFound};
+use super::{BodyInferenceContext, Breakable, ExprOrPatId, InferenceContext, InferenceDiagnostic};
+// use crate::display::HirDisplay;
+use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
+use crate::lower::LowerCtx;
 
 impl BodyInferenceContext<'_> {
     pub fn infer_expr(&mut self, expr: ExprId) -> TyId {
         self.db.check_canceled();
+        log::trace!("infer_expr({:?})", expr);
 
         let body = Arc::clone(&self.body);
         let src = self.source(expr);
@@ -25,45 +29,7 @@ impl BodyInferenceContext<'_> {
                 ty_
             }),
             | Expr::Hole => self.fresh_type(src),
-            | Expr::Path { path } => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
-                | Some((value, vis)) => 't: {
-                    if path.segments().len() > 1
-                        && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
-                    {
-                        self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
-                    }
-
-                    let id = match value {
-                        | ValueNs::Local(pat) => break 't self.result.type_of_pat[pat],
-                        | ValueNs::Fixity(id) => break 't self.infer_infix(id, expr.into()),
-                        | ValueNs::Func(id) => {
-                            if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
-                                break 't self
-                                    .icx
-                                    .subst
-                                    .subst_type(&mut self.icx.types, self.icx.result.self_type.ty);
-                            } else {
-                                id.into()
-                            }
-                        },
-                        | ValueNs::Static(id) => id.into(),
-                        | ValueNs::Const(id) => id.into(),
-                        | ValueNs::Ctor(id) => id.into(),
-                    };
-
-                    let ty = self.db.value_ty(id).ty;
-                    let ty = ty.to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
-                    let ty = self.instantiate(ty, expr.into());
-
-                    self.result.type_of_expr.insert(expr, ty);
-
-                    return ty;
-                },
-                | None => {
-                    self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
-                    self.error(src)
-                },
-            },
+            | Expr::Path { path } => self.icx.infer_path(path, self.resolver.clone(), expr),
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
                     let integer = self.lang_class("integer-class");
@@ -98,23 +64,25 @@ impl BodyInferenceContext<'_> {
                 | Literal::Char(_) => self.lang_type("char-type", src),
                 | Literal::String(_) => self.lang_type("str-type", src),
             },
-            | Expr::Infix { op, lhs, rhs } => match self.resolver.resolve_value_fully(self.db.upcast(), op) {
-                | Some((ValueNs::Fixity(id), vis)) => {
-                    if op.segments().len() > 1
-                        && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
-                    {
-                        self.report(InferenceDiagnostic::PrivateOperator { id: expr.into() });
-                    }
+            | Expr::Infix { exprs, ops } => {
+                let exprs = exprs.iter().map(|&e| self.infer_expr(e)).collect::<Vec<_>>();
 
-                    let ty = self.infer_infix(id, expr.into());
-                    let mid = self.check_app(ty, *lhs, expr);
+                self.process_infix(
+                    exprs.into_iter(),
+                    ops,
+                    src,
+                    |ctx, op, lhs, rhs| {
+                        let ret = ctx.fresh_type(src);
+                        let func_ty = ctx.fn_type([lhs, rhs], ret, src);
 
-                    self.check_app(mid, *rhs, expr)
-                },
-                | _ => {
-                    self.report(InferenceDiagnostic::UnresolvedOperator { id: expr.into() });
-                    self.error(src)
-                },
+                        if !ctx.unify_types(op, func_ty) {
+                            ctx.report_mismatch(op, func_ty, expr);
+                        }
+
+                        ret
+                    },
+                    |ctx, path, resolver| ctx.infer_path(path, resolver, expr),
+                )
             },
             | Expr::App { base, arg } => {
                 let base_ty = self.infer_expr(*base);
@@ -179,7 +147,7 @@ impl BodyInferenceContext<'_> {
                 self.check_expr(*body, ret);
                 self.ret_type = old_ret_type;
                 self.resolver = old_resolver;
-                self.fn_type(params.into(), ret, src)
+                self.fn_type(params, ret, src)
             },
             | Expr::If { cond, then, else_, .. } => {
                 let then_src = self.source(*then);
@@ -189,7 +157,7 @@ impl BodyInferenceContext<'_> {
                 self.check_expr(*cond, bool_type);
 
                 if let Some(else_) = else_ {
-                    let else_src = self.source(*else_);
+                    let _else_src = self.source(*else_);
                     let then_ty = self.infer_expr(*then);
                     let then_ty = self.subst_type(then_ty);
                     let else_ty = self.infer_expr(*else_);
@@ -232,6 +200,7 @@ impl BodyInferenceContext<'_> {
                         }
 
                         let expr = self.infer_expr(arm.expr);
+                        let expr = self.subst_type(expr);
 
                         if self.types[expr] != self.types[never_ty] {
                             if !self.subsume_types(expr, res, arm.expr.into()) {
@@ -320,7 +289,7 @@ impl BodyInferenceContext<'_> {
             },
             | Expr::Yield { exprs } => {
                 let ret = self.fresh_type(src);
-                let args = exprs.iter().map(|&e| self.infer_expr(e)).collect();
+                let args = exprs.iter().map(|&e| self.infer_expr(e)).collect::<Vec<_>>();
                 let ty = self.fn_type(args, ret, src);
 
                 if let Some(yield_ty) = self.yield_type {
@@ -355,39 +324,6 @@ impl BodyInferenceContext<'_> {
 
         self.result.type_of_expr.insert(expr, ty);
         ty
-    }
-
-    pub fn infer_infix(&mut self, id: FixityId, origin: ExprOrPatId) -> TyId {
-        let src = self.source(origin);
-        let data = self.db.fixity_data(id);
-        let resolver = id.resolver(self.db.upcast());
-        let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
-            | Some((ValueNs::Func(id), vis)) => {
-                if data.func.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), resolver.module().unwrap())
-                {
-                    self.report(InferenceDiagnostic::PrivateValue { id: origin });
-                }
-
-                id.into()
-            },
-            | Some((ValueNs::Ctor(id), vis)) => {
-                if data.func.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), resolver.module().unwrap())
-                {
-                    self.report(InferenceDiagnostic::PrivateValue { id: origin });
-                }
-
-                id.into()
-            },
-            | _ => return self.error(src),
-        };
-
-        let ty = self
-            .db
-            .value_ty(id)
-            .ty
-            .to_info(self.icx.db, &mut self.icx.types, &mut self.icx.type_vars, src);
-
-        self.instantiate(ty, origin)
     }
 
     pub fn infer_block(&mut self, stmts: &[Stmt], expr: ExprId) -> TyId {
@@ -441,7 +377,7 @@ impl BodyInferenceContext<'_> {
         let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
         let try_class = self.lang_class("try-class");
         let ty_kind = self.type_kind(src);
-        let kind = self.fn_type([ty_kind].into(), ty_kind, src);
+        let kind = self.fn_type([ty_kind], ty_kind, src);
         let try_container = self.fresh_type_with_kind(kind, src);
         let last = stmts.len() - 1;
         let never_ty = self.lang_type("never-type", src);
@@ -643,17 +579,17 @@ impl BodyInferenceContext<'_> {
             },
             | (Expr::App { base, arg }, _) => {
                 let base_ty = self.infer_expr(*base);
-                let ret = self.check_app(base_ty, arg, expr);
+                let ret = self.check_app(base_ty, *arg, expr);
 
                 if !self.subsume_types(ret, expected, expr.into()) {
                     self.report_mismatch(expected, ret, expr);
                 }
             },
-            | (Expr::Tuple { exprs }, TyInfo::Tuple(tys)) if exprs.len() == tys.len() => {
-                for (&expr, &exp) in exprs.iter().zip(tys.iter()) {
-                    self.check_expr(expr, exp);
-                }
-            },
+            // | (Expr::Tuple { exprs }, TyInfo::Tuple(tys)) if exprs.len() == tys.len() => {
+            //     for (&expr, &exp) in exprs.iter().zip(tys.iter()) {
+            //         self.check_expr(expr, exp);
+            //     }
+            // },
             //             | (Expr::Clos { pats, stmts }, _) => {
             //                 use hir_def::id::HasModule;
             //                 let module = self.owner.module(self.db.upcast());
@@ -704,7 +640,7 @@ impl BodyInferenceContext<'_> {
                     .collect::<Vec<_>>();
                 let ty = ty.replace_vars(&mut self.types, &repl, scope);
 
-                self.check_app(ty, args, expr)
+                self.check_app(ty, arg, expr)
             },
             | TyInfo::Where(where_, ty) => {
                 for ctnt in where_.constraints.iter() {
@@ -715,7 +651,7 @@ impl BodyInferenceContext<'_> {
                     );
                 }
 
-                self.check_app(ty, args, expr)
+                self.check_app(ty, arg, expr)
             },
             | _ => {
                 let ret = self.fresh_type(src);
@@ -773,5 +709,80 @@ impl BodyInferenceContext<'_> {
         }
 
         self.resolver = old_resolver;
+    }
+}
+
+impl InferenceContext<'_> {
+    fn infer_path(&mut self, path: &Path, resolver: Resolver, expr: ExprId) -> TyId {
+        let src = self.source(expr);
+
+        match resolver.resolve_value_fully(self.db.upcast(), path) {
+            | Some((value, vis)) => 't: {
+                if path.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
+                {
+                    self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
+                }
+
+                let id = match value {
+                    | ValueNs::Local(pat) => break 't self.result.type_of_pat[pat],
+                    | ValueNs::Fixity(id) => break 't self.infer_infix(id, expr.into()),
+                    | ValueNs::Func(id) => {
+                        if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
+                            break 't self.subst.subst_type(&mut self.types, self.result.self_type.ty);
+                        } else {
+                            id.into()
+                        }
+                    },
+                    | ValueNs::Static(id) => id.into(),
+                    | ValueNs::Const(id) => id.into(),
+                    | ValueNs::Ctor(id) => id.into(),
+                };
+
+                let ty = self.db.value_ty(id).ty;
+                let ty = ty.to_info(self.db, &mut self.types, &mut self.type_vars, src);
+                let ty = self.instantiate(ty, expr.into());
+
+                self.result.type_of_expr.insert(expr, ty);
+
+                return ty;
+            },
+            | None => {
+                self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
+                self.error(src)
+            },
+        }
+    }
+
+    pub fn infer_infix(&mut self, id: FixityId, origin: ExprOrPatId) -> TyId {
+        let src = self.source(origin);
+        let data = self.db.fixity_data(id);
+        let resolver = id.resolver(self.db.upcast());
+        let id = match resolver.resolve_value_fully(self.db.upcast(), &data.func) {
+            | Some((ValueNs::Func(id), vis)) => {
+                if data.func.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), resolver.module().unwrap())
+                {
+                    self.report(InferenceDiagnostic::PrivateValue { id: origin });
+                }
+
+                id.into()
+            },
+            | Some((ValueNs::Ctor(id), vis)) => {
+                if data.func.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), resolver.module().unwrap())
+                {
+                    self.report(InferenceDiagnostic::PrivateValue { id: origin });
+                }
+
+                id.into()
+            },
+            | _ => return self.error(src),
+        };
+
+        let ty = self
+            .db
+            .value_ty(id)
+            .ty
+            .to_info(self.db, &mut self.types, &mut self.type_vars, src);
+
+        self.instantiate(ty, origin)
     }
 }

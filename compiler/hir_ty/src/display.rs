@@ -1,11 +1,13 @@
+use std::fmt;
+
+pub use fmt::{Result, Write};
+use hir_def::id::Lookup;
+use hir_def::lang_item::LangItem;
+
 use crate::class::{Class, FunDep, Member, Members};
 use crate::db::HirDatabase;
 use crate::info::Unknown;
 use crate::ty::*;
-pub use fmt::{Result, Write};
-use hir_def::id::Lookup;
-use hir_def::lang_item::LangItem;
-use std::fmt;
 
 pub trait HirDisplay {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result;
@@ -171,10 +173,7 @@ impl Ty {
         match (self.lookup(db), mode) {
             | (TyKind::Tuple(tys), ParenMode::Arg | ParenMode::App) => !tys.is_empty(),
             | (TyKind::App(..), ParenMode::App) => true,
-            | (
-                TyKind::Func(..) | TyKind::Tuple(..) | TyKind::ForAll(..) | TyKind::Where(..),
-                ParenMode::Arg | ParenMode::App,
-            ) => true,
+            | (TyKind::Func(..) | TyKind::ForAll(..) | TyKind::Where(..), ParenMode::Arg | ParenMode::App) => true,
             | (TyKind::ForAll(..) | TyKind::Where(..), ParenMode::Where) => true,
             | _ => false,
         }
@@ -247,6 +246,11 @@ impl HirDisplay for Ty {
                         "slice-type"(1) => {
                             write!(f, "[]")?;
                             TyParens(args[0], ParenMode::App).hir_fmt(f)
+                        },
+                        "fn-type"(2) => {
+                            TyParens(args[0], ParenMode::App).hir_fmt(f)?;
+                            write!(f, " -> ")?;
+                            args[1].hir_fmt(f)
                         },
                         "record-type"(1) => {
                             write!(f, "{{")?;

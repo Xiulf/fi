@@ -1,19 +1,23 @@
+use std::sync::Arc;
+
+use hir_def::expr::Literal;
+use hir_def::pat::{Pat, PatId};
+use hir_def::resolver::ValueNs;
+
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, InferenceDiagnostic};
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
 use crate::lower::LowerCtx;
-use hir_def::expr::Literal;
-use hir_def::pat::{Pat, PatId};
-use hir_def::resolver::ValueNs;
-use std::sync::Arc;
 
 impl BodyInferenceContext<'_> {
     pub fn infer_pat(&mut self, pat: PatId) -> TyId {
         self.db.check_canceled();
+        log::trace!("infer_pat({:?})", pat);
 
         let body = Arc::clone(&self.body);
         let src = self.source(pat);
         let ty = match &body[pat] {
+            | Pat::Tuple { .. } => unimplemented!(),
             | Pat::Missing => self.error(src),
             | Pat::Wildcard => self.fresh_type(src),
             | Pat::Typed { pat, ty } => self.owner.with_type_map(self.db.upcast(), |type_map| {
@@ -23,9 +27,50 @@ impl BodyInferenceContext<'_> {
                 self.check_pat(*pat, ty);
                 ty
             }),
+            | Pat::Infix { pats, ops } => {
+                let pats = pats.iter().map(|&p| self.infer_pat(p)).collect::<Vec<_>>();
+
+                self.process_infix(
+                    pats.into_iter(),
+                    ops,
+                    src,
+                    |ctx, op, lhs, rhs| {
+                        let ret = ctx.fresh_type(src);
+                        let ty = ctx.fn_type([lhs, rhs], ret, src);
+
+                        if !ctx.unify_types(op, ty) {
+                            ctx.report_mismatch(op, ty, pat);
+                        }
+
+                        ret
+                    },
+                    |ctx, path, resolver| match resolver.resolve_value_fully(ctx.db.upcast(), path) {
+                        | Some((value, vis)) => {
+                            if path.segments().len() > 1
+                                && !vis.is_visible_from(ctx.db.upcast(), ctx.resolver.module().unwrap())
+                            {
+                                ctx.report(InferenceDiagnostic::PrivateValue { id: pat.into() });
+                            }
+
+                            let ty = match value {
+                                | ValueNs::Ctor(id) => ctx.db.value_ty(id.into()),
+                                | _ => todo!(),
+                            };
+
+                            let ty = ty.to_info(ctx.db, &mut ctx.types, &mut ctx.type_vars, src).ty;
+
+                            ctx.instantiate(ty, pat.into())
+                        },
+                        | None => {
+                            ctx.report(InferenceDiagnostic::UnresolvedValue { id: pat.into() });
+                            ctx.error(src)
+                        },
+                    },
+                )
+            },
             | Pat::App { base, args } => {
                 let ret = self.fresh_type(src);
-                let args = args.iter().map(|&a| self.infer_pat(a)).collect();
+                let args = args.iter().map(|&a| self.infer_pat(a)).collect::<Vec<_>>();
                 let base_src = self.source(*base);
                 let ty = self.fn_type(args, ret, base_src);
 
@@ -61,11 +106,6 @@ impl BodyInferenceContext<'_> {
             | Pat::Bind {
                 subpat: Some(subpat), ..
             } => self.infer_pat(*subpat),
-            | Pat::Tuple { pats } => {
-                let tys = pats.iter().map(|&p| self.infer_pat(p)).collect();
-
-                self.types.insert(TyInfo::Tuple(tys), src)
-            },
             | Pat::Record { fields, has_rest } => {
                 let tail = if *has_rest {
                     let row_kind = self.lang_type("row-kind", src);

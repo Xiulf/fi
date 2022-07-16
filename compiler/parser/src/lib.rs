@@ -1,5 +1,3 @@
-#![feature(crate_visibility_modifier)]
-
 pub mod event;
 mod grammar;
 mod parser;

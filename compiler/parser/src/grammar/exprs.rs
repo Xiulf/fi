@@ -2,7 +2,7 @@ use super::*;
 use crate::parser::{CompletedMarker, Parser};
 use crate::syntax_kind::*;
 
-crate fn expr(p: &mut Parser) {
+pub(crate) fn expr(p: &mut Parser) {
     expr_(p, true);
 }
 
@@ -18,7 +18,7 @@ fn expr_(p: &mut Parser, allow_do: bool) {
     }
 }
 
-crate fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
+pub(crate) fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = infix(p, allow_do)?;
 
     if p.eat(EQUALS) {
@@ -31,7 +31,7 @@ crate fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     Some(m)
 }
 
-crate fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
+pub(crate) fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = app(p, allow_do)?;
 
     if p.at(TICK) {
@@ -56,7 +56,7 @@ crate fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     Some(m)
 }
 
-crate fn app(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
+pub(crate) fn app(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = postfix(p, true, allow_do)?;
 
     while peek(p, 0, allow_do) {
@@ -69,7 +69,7 @@ crate fn app(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     Some(m)
 }
 
-crate fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<CompletedMarker> {
+pub(crate) fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = prefix(p, allow_do)?;
 
     loop {
@@ -104,7 +104,7 @@ crate fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<Compl
     Some(m)
 }
 
-crate fn prefix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
+pub(crate) fn prefix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     if p.at(OPERATOR) {
         let m = p.start();
 
@@ -117,7 +117,7 @@ crate fn prefix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     }
 }
 
-crate fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
+pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let m = p.start();
 
     match p.current() {
@@ -266,7 +266,7 @@ fn peek(p: &Parser, n: usize, allow_do: bool) -> bool {
     }
 }
 
-crate fn literal(p: &mut Parser) {
+pub(crate) fn literal(p: &mut Parser) {
     let m = p.start();
 
     if p.eat(INT) {
@@ -283,13 +283,13 @@ crate fn literal(p: &mut Parser) {
     }
 }
 
-crate fn block(p: &mut Parser, allow_bind: bool) {
+pub(crate) fn block(p: &mut Parser, allow_bind: bool) {
     let m = p.start();
 
     p.expect(LYT_START);
 
     while !p.at(EOF) && !p.at(LYT_END) {
-        p.eat(LYT_SEP);
+        // p.eat(LYT_SEP);
         stmt(p, allow_bind);
 
         if !p.at(LYT_END) {
@@ -301,7 +301,7 @@ crate fn block(p: &mut Parser, allow_bind: bool) {
     m.complete(p, BLOCK);
 }
 
-crate fn stmt(p: &mut Parser, allow_bind: bool) {
+pub(crate) fn stmt(p: &mut Parser, allow_bind: bool) {
     let m = p.start();
 
     if p.eat(LET_KW) {
@@ -328,7 +328,7 @@ crate fn stmt(p: &mut Parser, allow_bind: bool) {
     m.complete(p, STMT_EXPR);
 }
 
-crate fn case_arm(p: &mut Parser) {
+pub(crate) fn case_arm(p: &mut Parser) {
     let m = p.start();
 
     patterns::pattern(p);

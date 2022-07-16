@@ -1,17 +1,17 @@
-use crate::db::HirDatabase;
-use crate::source_analyzer::SourceAnalyzer;
-use crate::source_to_def::{ChildContainer, SourceToDefCache, SourceToDefCtx};
-use crate::PathResolution;
+use std::cell::RefCell;
+use std::fmt;
+
 use base_db::input::FileId;
 use hir_def::in_file::InFile;
 use hir_def::resolver::{HasResolver, Resolver};
 use hir_ty::ty::Ty;
 use rustc_hash::FxHashMap;
-use std::cell::RefCell;
-use std::fmt;
-use syntax::AstNode as _;
-use syntax::SyntaxNode;
-use syntax::{ast, TextSize};
+use syntax::{ast, AstNode as _, SyntaxNode, TextSize};
+
+use crate::db::HirDatabase;
+use crate::source_analyzer::SourceAnalyzer;
+use crate::source_to_def::{ChildContainer, SourceToDefCache, SourceToDefCtx};
+use crate::PathResolution;
 
 pub struct Semantics<'db, DB> {
     pub db: &'db DB,
@@ -87,11 +87,11 @@ impl<'db> SemanticsImpl<'db> {
     }
 
     fn type_of_expr(&self, expr: &ast::Expr) -> Option<Ty> {
-        self.analyze(expr.syntax()).type_of_expr(self.db, expr)
+        self.analyze(expr.syntax()).type_of_expr(expr)
     }
 
     fn type_of_pat(&self, pat: &ast::Pat) -> Option<Ty> {
-        self.analyze(pat.syntax()).type_of_pat(self.db, pat)
+        self.analyze(pat.syntax()).type_of_pat(pat)
     }
 
     fn kind_of(&self, ty: &ast::Type) -> Option<Ty> {

@@ -1,9 +1,8 @@
-use crate::{
-    db::DefDatabase,
-    def_map::DefMap,
-    id::{LocalModuleId, ModuleId},
-};
 use std::fmt;
+
+use crate::db::DefDatabase;
+use crate::def_map::DefMap;
+use crate::id::{LocalModuleId, ModuleId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Visibility {

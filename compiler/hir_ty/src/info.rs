@@ -1,16 +1,13 @@
-use crate::{
-    db::HirDatabase,
-    infer::ExprOrPatId,
-    ty::{List, TypeVar, WhereClause},
-};
 use arena::{Arena, ArenaMap, Idx};
-use hir_def::{
-    expr::ExprId,
-    id::{ClassId, TypeCtorId, TypeVarOwner, TypedDefId},
-    name::Name,
-    pat::PatId,
-    type_ref::{LocalTypeRefId, LocalTypeVarId},
-};
+use hir_def::expr::ExprId;
+use hir_def::id::{ClassId, TypeCtorId, TypeVarOwner, TypedDefId};
+use hir_def::name::Name;
+use hir_def::pat::PatId;
+use hir_def::type_ref::{LocalTypeRefId, LocalTypeVarId};
+
+use crate::db::HirDatabase;
+use crate::infer::ExprOrPatId;
+use crate::ty::{List, TypeVar, WhereClause};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TyId(Idx<TyInfo>);

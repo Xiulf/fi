@@ -1,6 +1,10 @@
-use crate::{libs::LibId, SourceDatabaseExt};
+use std::fs::File;
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
-use std::{fs::File, sync::Arc};
+
+use crate::libs::LibId;
+use crate::SourceDatabaseExt;
 
 #[derive(Default, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Metadata {}

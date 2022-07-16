@@ -1,14 +1,16 @@
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+use arena::{Idx, RawIdx};
+use base_db::input::FileId;
+use syntax::ast::{self, NameOwner};
+
 use crate::ast_id::AstIdMap;
 use crate::db::DefDatabase;
 use crate::in_file::InFile;
 use crate::item_tree::*;
 use crate::name::AsName;
 use crate::path::Path;
-use arena::{Idx, RawIdx};
-use base_db::input::FileId;
-use std::marker::PhantomData;
-use std::sync::Arc;
-use syntax::ast::{self, NameOwner};
 
 fn id<N: ItemTreeNode>(index: Idx<N>) -> LocalItemTreeId<N> {
     LocalItemTreeId {

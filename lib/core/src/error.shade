@@ -1,7 +1,7 @@
 module core/error (module core/error, module t) =
 
 import prim (Try, ret, bind) as t
-import prim (Partial)
+import prim (Partial, (->))
 import intrinsics (partial)
 
 postfix unwrap_unsafe as (!)
@@ -9,6 +9,6 @@ infixl 5 unwrap_or as (?)
 
 class Unwrap self =
     fn unwrap :: self output -> output where Partial
-    fn unwrap_or :: self output, output -> output
+    fn unwrap_or :: self output -> output -> output
 
 fn unwrap_unsafe x = partial (unwrap x)

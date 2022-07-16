@@ -1,12 +1,14 @@
+use std::collections::hash_map::Entry;
+use std::io;
+
+use base_db::libs::LibId;
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use crate::db::DefDatabase;
 use crate::id::{ClassId, HasModule, LocalModuleId, Lookup, MemberId, ModuleDefId, ModuleId};
 use crate::name::Name;
 use crate::per_ns::PerNs;
 use crate::visibility::Visibility;
-use base_db::libs::LibId;
-use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::hash_map::Entry;
-use std::io;
 
 #[derive(Clone, Copy)]
 pub enum ImportType {

@@ -3,13 +3,15 @@ mod ext;
 mod groups;
 mod tokens;
 
-use crate::syntax_node::{SyntaxNode, SyntaxNodeChildren, SyntaxToken};
+use std::marker::PhantomData;
+
 pub use def::*;
 pub use ext::*;
 pub use groups::*;
 use parser::syntax_kind::SyntaxKind;
-use std::marker::PhantomData;
 pub use tokens::*;
+
+use crate::syntax_node::{SyntaxNode, SyntaxNodeChildren, SyntaxToken};
 
 pub trait AstNode {
     fn can_cast(kind: SyntaxKind) -> bool
@@ -98,7 +100,7 @@ mod support {
 macro_rules! ast_node {
     ($name:ident, $($kind:ident)|*) => {
         #[derive(Debug, Clone, PartialEq, Eq)]
-        pub struct $name(crate $crate::syntax_node::SyntaxNode);
+        pub struct $name(pub(crate) $crate::syntax_node::SyntaxNode);
 
         impl $crate::ast::AstNode for $name {
             fn can_cast(kind: ::parser::syntax_kind::SyntaxKind) -> bool {

@@ -1,4 +1,5 @@
-use crate::db::RootDatabase;
+use std::io;
+
 use ariadne::{Cache, Color, ColorGenerator, Label, Report, ReportKind, Source};
 use base_db::input::FileId;
 use base_db::{SourceDatabase, SourceDatabaseExt};
@@ -6,8 +7,9 @@ use diagnostics::{DiagnosticForWith, Level};
 use hir::db::HirDatabase;
 use hir::diagnostic::{Diagnostic, DiagnosticSink};
 use rustc_hash::FxHashMap;
-use std::io;
 use syntax::SyntaxError;
+
+use crate::db::RootDatabase;
 
 pub fn emit_diagnostics(db: &RootDatabase, lib: hir::Lib, mut writer: impl io::Write) -> io::Result<usize> {
     let mut errors = 0;

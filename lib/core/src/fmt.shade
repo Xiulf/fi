@@ -1,11 +1,11 @@
 module core/fmt =
 
 import core/io (Write, write)
-import prim (Str)
+import prim (Str, (->))
 import intrinsics (transmute, unsafe, ($))
 
 class Fmt f =
-    fn fmt :: w, f -> w where Write w
+    fn fmt :: w -> f -> w where Write w
 
 ; instance Fmt Str =
 ;     fun fmt w self = do

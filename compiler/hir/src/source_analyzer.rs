@@ -1,5 +1,5 @@
-use crate::db::HirDatabase;
-use crate::{Class, Const, Ctor, Fixity, Func, Local, PathResolution, Static, TypeAlias, TypeCtor};
+use std::sync::Arc;
+
 use base_db::input::FileId;
 use hir_def::body::{Body, BodySourceMap};
 use hir_def::expr::ExprId;
@@ -12,10 +12,12 @@ use hir_def::scope::{ExprScopeId, ExprScopes};
 use hir_def::type_ref::LocalTypeRefId;
 use hir_ty::infer::InferenceResult;
 use hir_ty::ty::{Constraint, Ty};
-use std::sync::Arc;
-use syntax::{ast, SyntaxNode, TextSize};
-use syntax::{AstNode, TextRange};
+use syntax::{ast, AstNode, SyntaxNode, TextRange, TextSize};
 
+use crate::db::HirDatabase;
+use crate::{Class, Const, Ctor, Fixity, Func, Local, PathResolution, Static, TypeAlias, TypeCtor};
+
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct SourceAnalyzer {
     pub(crate) file_id: FileId,
@@ -79,7 +81,7 @@ impl SourceAnalyzer {
         resolve_hir_path_(db, &self.resolver, &hir_path, prefer_value_ns)
     }
 
-    pub fn type_of_expr(&self, db: &dyn HirDatabase, expr: &ast::Expr) -> Option<Ty> {
+    pub fn type_of_expr(&self, expr: &ast::Expr) -> Option<Ty> {
         let expr_id = self.expr_id(expr)?;
         let infer = self.infer.as_ref()?;
         let ty = infer.type_of_expr[expr_id];
@@ -87,7 +89,7 @@ impl SourceAnalyzer {
         Some(ty)
     }
 
-    pub fn type_of_pat(&self, db: &dyn HirDatabase, pat: &ast::Pat) -> Option<Ty> {
+    pub fn type_of_pat(&self, pat: &ast::Pat) -> Option<Ty> {
         let pat_id = self.pat_id(pat)?;
         let infer = self.infer.as_ref()?;
         let ty = infer.type_of_pat[pat_id];
@@ -224,6 +226,7 @@ fn resolve_hir_path_(
         };
 
         let res = match ty {
+            | TypeNs::Fixity(id) => PathResolution::Def(Fixity::from(id).into()),
             | TypeNs::TypeAlias(id) => PathResolution::Def(TypeAlias::from(id).into()),
             | TypeNs::TypeCtor(id) => PathResolution::Def(TypeCtor::from(id).into()),
             | TypeNs::Class(id) => PathResolution::Def(Class::from(id).into()),

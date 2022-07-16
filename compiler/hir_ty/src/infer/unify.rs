@@ -1,12 +1,9 @@
-use super::{
-    diagnostics::{CtntExpected, CtntFound},
-    ExprOrPatId, InferenceContext,
-};
-use crate::{
-    info::{CtntInfo, FieldInfo, TyId, TyInfo, TySource, TypeOrigin, Types, Unknown},
-    ty::{List, TypeVar, WhereClause},
-};
 use rustc_hash::FxHashMap;
+
+use super::diagnostics::{CtntExpected, CtntFound};
+use super::{ExprOrPatId, InferenceContext};
+use crate::info::{CtntInfo, FieldInfo, TyId, TyInfo, TySource, Types, Unknown};
+use crate::ty::{List, TypeVar, WhereClause};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UnkLevel(Vec<Unknown>);
@@ -173,6 +170,9 @@ impl InferenceContext<'_> {
         }
 
         if !self.constraints.is_empty() {
+            self.constraints.sort_by_key(|c| c.0.class);
+            self.constraints.dedup_by_key(|c| c.0.clone());
+
             let subst = &self.subst;
             let types = &mut self.types;
             let where_ = WhereClause {
@@ -218,9 +218,6 @@ impl InferenceContext<'_> {
             | (TyInfo::Row(..), _) => self.unify_rows(t1, t2),
             | (_, TyInfo::Row(..)) => self.unify_rows(t1, t2),
             | (TyInfo::Ctor(c1), TyInfo::Ctor(c2)) => c1 == c2,
-            | (TyInfo::Tuple(t1), TyInfo::Tuple(t2)) if t1.len() == t2.len() => {
-                t1.iter().zip(t2.iter()).all(|(t1, t2)| self.unify_types(*t1, *t2))
-            },
             | (TyInfo::App(a1, a2), TyInfo::App(b1, b2)) if a2.len() == b2.len() => {
                 self.unify_types(a1, b1) && a2.iter().zip(b2.iter()).all(|(&a2, &b2)| self.unify_types(a2, b2))
             },
@@ -237,9 +234,6 @@ impl InferenceContext<'_> {
                 let c2 = self.types.insert(TyInfo::App(c1, a2[b2.len()..].into()), src);
 
                 self.unify_types(c2, t2)
-            },
-            | (TyInfo::Func(a1, a2), TyInfo::Func(b1, b2)) if a1.len() == b1.len() => {
-                a1.iter().zip(b1.iter()).all(|(&a1, &b1)| self.unify_types(a1, b1)) && self.unify_types(a2, b2)
             },
             | (TyInfo::ForAll(k1, t1, s1), TyInfo::ForAll(k2, t2, s2)) => {
                 let sk1 = self.skolemize(&k1, t1, s1);

@@ -1,6 +1,7 @@
-use super::*;
 use hir::diagnostic::Diagnostic as _;
 use hir::display::HirDisplay;
+
+use super::*;
 
 pub struct MismatchedType<'db, 'd, DB: hir::db::HirDatabase> {
     db: &'db DB,

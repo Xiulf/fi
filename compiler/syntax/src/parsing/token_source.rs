@@ -1,8 +1,9 @@
-use crate::parsing::lexer::Token;
 use parser::TokenSource;
 use rowan::{TextRange, TextSize};
 
-crate struct TextTokenSource<'t> {
+use crate::parsing::lexer::Token;
+
+pub(crate) struct TextTokenSource<'t> {
     text: &'t str,
     token_offset_pairs: Vec<(Token, TextSize)>,
     curr: (parser::Token, usize),
@@ -45,7 +46,7 @@ fn mk_token(pos: usize, token_offset_pairs: &[(Token, TextSize)]) -> parser::Tok
 }
 
 impl<'t> TextTokenSource<'t> {
-    crate fn new(text: &'t str, raw_tokens: &'t [Token]) -> Self {
+    pub(crate) fn new(text: &'t str, raw_tokens: &'t [Token]) -> Self {
         let token_offset_pairs = raw_tokens
             .iter()
             .filter_map({

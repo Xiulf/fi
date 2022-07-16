@@ -1,7 +1,8 @@
-use crate::error::*;
-use crate::Parsed;
 use parser::syntax_kind::SyntaxKind;
 use rowan::{GreenNode, GreenNodeBuilder, Language};
+
+use crate::error::*;
+use crate::Parsed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FcLanguage {}

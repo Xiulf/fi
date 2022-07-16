@@ -1,7 +1,9 @@
-use crate::in_file::InFile;
 use std::any::Any;
 use std::fmt;
+
 use syntax::ptr::SyntaxNodePtr;
+
+use crate::in_file::InFile;
 
 pub trait Diagnostic: Any + Send + Sync + fmt::Debug + 'static {
     fn message(&self) -> String;

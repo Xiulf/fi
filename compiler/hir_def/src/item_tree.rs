@@ -1,5 +1,16 @@
 mod lower;
 
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
+use std::ops::{Index, Range};
+use std::sync::Arc;
+
+use arena::{Arena, Idx};
+use base_db::input::FileId;
+use rustc_hash::FxHashMap;
+use syntax::ast::{self, AstNode};
+
 use crate::ast_id::FileAstId;
 use crate::attrs::{Attrs, RawAttrs};
 use crate::db::DefDatabase;
@@ -7,15 +18,6 @@ use crate::diagnostics::ItemTreeDiagnostic;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::Path;
-use arena::{Arena, Idx};
-use base_db::input::FileId;
-use rustc_hash::FxHashMap;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
-use std::ops::{Index, Range};
-use std::sync::Arc;
-use syntax::ast::{self, AstNode};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ItemTree {

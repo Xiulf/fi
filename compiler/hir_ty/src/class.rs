@@ -1,13 +1,14 @@
+use std::sync::Arc;
+
+use arena::{Arena, Idx};
+use hir_def::id::{ClassId, Lookup, MemberId};
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use crate::db::HirDatabase;
-use crate::display::HirDisplay;
 use crate::infer::InferenceContext;
 use crate::info::{CtntInfo, ToInfo, TyId, TyInfo, TySource, TypeVars, Types, Unknown};
 use crate::lower::MemberLowerResult;
 use crate::ty::{Constraint, Ty, TyKind, TypeVar, WhereClause};
-use arena::{Arena, Idx};
-use hir_def::id::{ClassId, Lookup, MemberId};
-use rustc_hash::{FxHashMap, FxHashSet};
-use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Class<T, C> {
@@ -109,15 +110,15 @@ impl Members {
     ) -> Option<Arc<MemberMatchResult>> {
         let members = db.members(constraint.class);
 
-        // println!(
-        //     "\n{} {}",
+        // log::debug!(
+        //     "{}{}",
         //     db.class_data(constraint.class).name,
         //     constraint
         //         .types
         //         .iter()
-        //         .map(|t| format!("{}", t.display(db, types)))
+        //         .map(|t| format!(" ({})", t.display(db, types)))
         //         .collect::<Vec<_>>()
-        //         .join(" ")
+        //         .join("")
         // );
 
         members.matches(db, types, type_vars, constraint, src).map(Arc::new)
@@ -167,7 +168,7 @@ impl Member<Ty, Constraint> {
             })
             .collect::<Vec<_>>();
 
-        if !verify(&matches, deps) {
+        if !verify(&matches, deps) || matches.iter().all(|m| m == &Matched::Apart) {
             return None;
         }
 
@@ -251,7 +252,7 @@ impl ClassEnv {
 
     pub fn solve(
         &self,
-        db: &dyn HirDatabase,
+        _db: &dyn HirDatabase,
         types: &Types,
         ctnt: CtntInfo,
         scope: Option<ClassEnvScope>,

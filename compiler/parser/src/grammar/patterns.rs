@@ -3,7 +3,7 @@ use crate::parser::{CompletedMarker, Parser};
 use crate::syntax_kind::*;
 use crate::token_set::TokenSet;
 
-crate fn pattern(p: &mut Parser) {
+pub(crate) fn pattern(p: &mut Parser) {
     if let Some(m) = infix(p) {
         if p.eat(DBL_COLON) {
             let pat = m.precede(p);
@@ -14,13 +14,17 @@ crate fn pattern(p: &mut Parser) {
     }
 }
 
-crate fn infix(p: &mut Parser) -> Option<CompletedMarker> {
+fn peek_operator_pat(p: &mut Parser) -> bool {
+    peek_operator(p) && !p.at_ts(TokenSet::new(&[ARROW, LEFT_ARROW, EQUALS]))
+}
+
+pub(crate) fn infix(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = app(p)?;
 
-    if peek_operator(p) {
+    if peek_operator_pat(p) {
         let pat = m.precede(p);
 
-        while peek_operator(p) {
+        while peek_operator_pat(p) {
             p.bump_any();
             app(p);
         }
@@ -31,7 +35,7 @@ crate fn infix(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-crate fn app(p: &mut Parser) -> Option<CompletedMarker> {
+pub(crate) fn app(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = atom(p)?;
 
     if peek(p) {
@@ -47,7 +51,7 @@ crate fn app(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
+pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
 
     match p.current() {
@@ -95,7 +99,7 @@ crate fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     }
 }
 
-crate fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser), allow_rest: bool) {
+pub(crate) fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser), allow_rest: bool) {
     while !p.at(R_BRACE) {
         let field = p.start();
 

@@ -9,7 +9,7 @@ use crate::parser::Parser;
 use crate::syntax_kind::*;
 use crate::token_set::TokenSet;
 
-crate fn root(p: &mut Parser) {
+pub(crate) fn root(p: &mut Parser) {
     let m = p.start();
 
     while !p.at(EOF) {
@@ -117,14 +117,14 @@ fn peek_operator(p: &mut Parser) -> bool {
     ]))
 }
 
-crate mod fragments {
+pub(crate) mod fragments {
     use super::*;
 
-    crate fn path(p: &mut Parser) {
+    pub(crate) fn path(p: &mut Parser) {
         paths::path(p);
     }
 
-    crate fn type_(p: &mut Parser) {
+    pub(crate) fn type_(p: &mut Parser) {
         types::ty(p);
     }
 }

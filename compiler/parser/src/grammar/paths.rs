@@ -1,7 +1,7 @@
 use crate::parser::Parser;
 use crate::syntax_kind::*;
 
-crate fn path(p: &mut Parser) {
+pub(crate) fn path(p: &mut Parser) {
     let path = p.start();
 
     path_segment(p);
@@ -22,7 +22,7 @@ crate fn path(p: &mut Parser) {
     path.complete(p, PATH);
 }
 
-crate fn module_name(p: &mut Parser) {
+pub(crate) fn module_name(p: &mut Parser) {
     let name = p.start();
 
     p.expect(IDENT);
@@ -35,7 +35,7 @@ crate fn module_name(p: &mut Parser) {
     name.complete(p, NAME);
 }
 
-crate fn module_name_ref(p: &mut Parser) {
+pub(crate) fn module_name_ref(p: &mut Parser) {
     let name = p.start();
 
     p.expect(IDENT);
@@ -48,7 +48,7 @@ crate fn module_name_ref(p: &mut Parser) {
     name.complete(p, NAME_REF);
 }
 
-crate fn path_segment(p: &mut Parser) {
+pub(crate) fn path_segment(p: &mut Parser) {
     let m = p.start();
 
     match p.current() {
@@ -63,7 +63,7 @@ crate fn path_segment(p: &mut Parser) {
     m.complete(p, PATH_SEGMENT);
 }
 
-crate fn name(p: &mut Parser) {
+pub(crate) fn name(p: &mut Parser) {
     if p.at(IDENT) {
         let m = p.start();
 
@@ -75,7 +75,7 @@ crate fn name(p: &mut Parser) {
     }
 }
 
-crate fn symbol(p: &mut Parser) {
+pub(crate) fn symbol(p: &mut Parser) {
     if p.at(SYMBOL) {
         let m = p.start();
 
@@ -87,7 +87,7 @@ crate fn symbol(p: &mut Parser) {
     }
 }
 
-crate fn name_ref(p: &mut Parser) {
+pub(crate) fn name_ref(p: &mut Parser) {
     if p.at(IDENT) {
         let m = p.start();
 
@@ -99,7 +99,7 @@ crate fn name_ref(p: &mut Parser) {
     }
 }
 
-crate fn name_or_symbol_ref(p: &mut Parser) {
+pub(crate) fn name_or_symbol_ref(p: &mut Parser) {
     if p.at(IDENT) {
         let m = p.start();
 

@@ -5,7 +5,7 @@ import intrinsics (unsafe, transmute, ($))
 import core/ops
 
 class Write w =
-    fn write :: w, Slice Byte -> w
+    fn write :: w -> Slice Byte -> w
 
 type Stdout =
     | Stdout
@@ -47,6 +47,6 @@ fn print_i32 i =
 
     let ch = i % 10
     let ch = ch + 48
-    let addr = intrinsics/addr_of ch :: *Int32
-    let bytes = unsafe $ transmute (addr, 4 :: Uint)
+    let addr = intrinsics/addr_of ch :: Ptr Int32
+    let bytes = unsafe $ transmute (addr, (4 :: Uint))
     print bytes

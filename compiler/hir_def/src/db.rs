@@ -1,3 +1,10 @@
+use std::sync::Arc;
+
+use base_db::input::FileId;
+use base_db::libs::LibId;
+use base_db::{SourceDatabase, SourceDatabaseExt, Upcast};
+use smol_str::SmolStr;
+
 use crate::ast_id::AstIdMap;
 use crate::attrs::AttrsWithOwner;
 use crate::body::{Body, BodySourceMap};
@@ -7,11 +14,6 @@ use crate::id::*;
 use crate::item_tree::ItemTree;
 use crate::lang_item::{LangItem, LangItems};
 use crate::scope::ExprScopes;
-use base_db::input::FileId;
-use base_db::libs::LibId;
-use base_db::{SourceDatabase, SourceDatabaseExt, Upcast};
-use smol_str::SmolStr;
-use std::sync::Arc;
 
 #[salsa::query_group(InternDatabaseStorage)]
 pub trait InternDatabase: SourceDatabaseExt {

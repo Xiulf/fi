@@ -1,9 +1,11 @@
-use crate::error::SyntaxError;
-use parser::syntax_kind::*;
-use rowan::{TextRange, TextSize};
 use std::iter::Peekable;
 use std::str::CharIndices;
+
+use parser::syntax_kind::*;
+use rowan::{TextRange, TextSize};
 use unicode_xid::UnicodeXID;
+
+use crate::error::SyntaxError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Token {
@@ -60,15 +62,12 @@ enum LayoutDelim {
     Then,
     Of,
     Do,
-    Loop,
 }
 
 impl LayoutDelim {
     fn is_indented(self) -> bool {
         match self {
-            | LayoutDelim::Where | LayoutDelim::ClassBody | LayoutDelim::Of | LayoutDelim::Do | LayoutDelim::Loop => {
-                true
-            },
+            | LayoutDelim::Where | LayoutDelim::ClassBody | LayoutDelim::Of | LayoutDelim::Do => true,
             | _ => false,
         }
     }

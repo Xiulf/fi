@@ -1,6 +1,7 @@
+use std::sync::Arc;
+
 use base_db::input::FileId;
 use base_db::{Canceled, CheckCanceled, FileLoader, FileLoaderDelegate, Upcast};
-use std::sync::Arc;
 
 #[salsa::database(
     base_db::SourceDatabaseStorage,
@@ -9,8 +10,8 @@ use std::sync::Arc;
     hir::db::DefDatabaseStorage,
     hir::db::HirDatabaseStorage,
     ir::db::IrDatabaseStorage,
-    lower::db::LowerDatabaseStorage,
-    codegen::db::CodegenDatabaseStorage
+    // lower::db::LowerDatabaseStorage,
+    // codegen::db::CodegenDatabaseStorage
 )]
 #[derive(Default)]
 pub struct RootDatabase {

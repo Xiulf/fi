@@ -1,3 +1,5 @@
+use rustc_hash::FxHashMap;
+
 use crate::class::{Class, Member};
 use crate::db::HirDatabase;
 use crate::infer::diagnostics::InferenceDiagnostic;
@@ -5,7 +7,6 @@ use crate::infer::InferenceResult;
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeVars, Types};
 use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult};
 use crate::ty::{Constraint, Field, List, Reason, Ty, TyAndSrc, TyKind, TypeVar, WhereClause};
-use rustc_hash::FxHashMap;
 
 impl ToInfo for TyAndSrc<Ty> {
     type Output = TyAndSrc<TyId>;
@@ -101,6 +102,7 @@ impl ToInfo for Ty {
                     TyInfo::ForAll(vars, ret, scope)
                 },
                 | TyKind::TypeVar(tv) => TyInfo::TypeVar(tv),
+                | _ => unimplemented!(),
             };
 
             types.insert(info, src)
@@ -325,11 +327,11 @@ impl FromInfo for InferenceDiagnostic<Ty, Constraint> {
             | InferenceDiagnostic::UnresolvedValue { id } => Self::UnresolvedValue { id },
             | InferenceDiagnostic::UnresolvedType { owner, id } => Self::UnresolvedType { owner, id },
             | InferenceDiagnostic::UnresolvedClass { src } => Self::UnresolvedClass { src },
-            | InferenceDiagnostic::UnresolvedOperator { id } => Self::UnresolvedOperator { id },
+            | InferenceDiagnostic::UnresolvedOperator { src, idx } => Self::UnresolvedOperator { src, idx },
             | InferenceDiagnostic::PrivateValue { id } => Self::PrivateValue { id },
             | InferenceDiagnostic::PrivateType { owner, id } => Self::PrivateType { owner, id },
             | InferenceDiagnostic::PrivateClass { src } => Self::PrivateClass { src },
-            | InferenceDiagnostic::PrivateOperator { id } => Self::PrivateOperator { id },
+            | InferenceDiagnostic::PrivateOperator { src, idx } => Self::PrivateOperator { src, idx },
             | InferenceDiagnostic::MismatchedKind {
                 expected,
                 found,

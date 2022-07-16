@@ -1,4 +1,3 @@
-use crate::db::HirDatabase;
 use base_db::input::FileId;
 use hir_def::child_by_source::ChildBySource;
 use hir_def::dyn_map::DynMap;
@@ -7,6 +6,8 @@ use hir_def::in_file::InFile;
 use hir_def::keys::{self, Key};
 use rustc_hash::FxHashMap;
 use syntax::{ast, AstNode, SyntaxNode};
+
+use crate::db::HirDatabase;
 
 pub(super) type SourceToDefCache = FxHashMap<(ChildContainer, FileId), DynMap>;
 

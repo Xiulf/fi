@@ -1,3 +1,5 @@
+use base_db::libs::LibId;
+
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::id::{LocalModuleId, ModuleDefId};
@@ -5,7 +7,6 @@ use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::visibility::Visibility;
-use base_db::libs::LibId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResolveMode {

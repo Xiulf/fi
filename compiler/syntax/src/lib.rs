@@ -1,21 +1,19 @@
-#![feature(crate_visibility_modifier)]
-
 pub mod ast;
 pub mod error;
 pub mod parsing;
 pub mod ptr;
 pub mod syntax_node;
 
+use std::marker::PhantomData;
+use std::sync::Arc;
+
 pub use ast::*;
 pub use error::*;
 pub use parser::syntax_kind::{self, SyntaxKind};
 pub use ptr::*;
+use rowan::GreenNode;
 pub use rowan::{TextRange, TextSize};
 pub use syntax_node::*;
-
-use rowan::GreenNode;
-use std::marker::PhantomData;
-use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Parsed<T> {

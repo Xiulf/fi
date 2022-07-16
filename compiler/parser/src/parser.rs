@@ -1,46 +1,45 @@
 use crate::event::Event;
 use crate::token_set::TokenSet;
-use crate::SyntaxKind;
-use crate::{ParseError, TokenSource};
+use crate::{ParseError, SyntaxKind, TokenSource};
 
-crate struct Parser<'t> {
+pub(crate) struct Parser<'t> {
     token_source: &'t mut dyn TokenSource,
     events: Vec<Event>,
 }
 
 impl<'t> Parser<'t> {
-    crate fn new(token_source: &'t mut dyn TokenSource) -> Self {
+    pub(crate) fn new(token_source: &'t mut dyn TokenSource) -> Self {
         Parser {
             token_source,
             events: Vec::new(),
         }
     }
 
-    crate fn finish(self) -> Vec<Event> {
+    pub(crate) fn finish(self) -> Vec<Event> {
         self.events
     }
 
-    crate fn current(&self) -> SyntaxKind {
+    pub(crate) fn current(&self) -> SyntaxKind {
         self.nth(0)
     }
 
-    crate fn nth(&self, n: usize) -> SyntaxKind {
+    pub(crate) fn nth(&self, n: usize) -> SyntaxKind {
         self.token_source.lookahead_nth(n).kind
     }
 
-    crate fn at(&self, kind: SyntaxKind) -> bool {
+    pub(crate) fn at(&self, kind: SyntaxKind) -> bool {
         self.nth_at(0, kind)
     }
 
-    crate fn nth_at(&self, n: usize, kind: SyntaxKind) -> bool {
+    pub(crate) fn nth_at(&self, n: usize, kind: SyntaxKind) -> bool {
         self.nth(n) == kind
     }
 
-    crate fn at_ts(&self, kinds: TokenSet) -> bool {
+    pub(crate) fn at_ts(&self, kinds: TokenSet) -> bool {
         kinds.contains(self.current())
     }
 
-    crate fn eat(&mut self, kind: SyntaxKind) -> bool {
+    pub(crate) fn eat(&mut self, kind: SyntaxKind) -> bool {
         if self.at(kind) {
             self.do_bump(kind);
             true
@@ -49,28 +48,28 @@ impl<'t> Parser<'t> {
         }
     }
 
-    crate fn start(&mut self) -> Marker {
+    pub(crate) fn start(&mut self) -> Marker {
         let pos = self.events.len() as u32;
 
         self.push_event(Event::tombstone());
         Marker::new(pos)
     }
 
-    crate fn bump(&mut self, kind: SyntaxKind) {
+    pub(crate) fn bump(&mut self, kind: SyntaxKind) {
         assert!(self.eat(kind));
     }
 
-    crate fn bump_any(&mut self) {
+    pub(crate) fn bump_any(&mut self) {
         self.do_bump(self.current());
     }
 
-    crate fn error(&mut self, msg: impl Into<String>) {
+    pub(crate) fn error(&mut self, msg: impl Into<String>) {
         let msg = ParseError(msg.into().into());
 
         self.push_event(Event::Error { msg });
     }
 
-    crate fn err_recover(&mut self, msg: impl Into<String>, recovery: TokenSet) {
+    pub(crate) fn err_recover(&mut self, msg: impl Into<String>, recovery: TokenSet) {
         if self.at_ts(recovery) {
             self.error(msg);
         } else {
@@ -82,7 +81,7 @@ impl<'t> Parser<'t> {
         }
     }
 
-    crate fn expect(&mut self, kind: SyntaxKind) -> bool {
+    pub(crate) fn expect(&mut self, kind: SyntaxKind) -> bool {
         if self.eat(kind) {
             true
         } else {
@@ -101,7 +100,7 @@ impl<'t> Parser<'t> {
     }
 }
 
-crate struct Marker {
+pub(crate) struct Marker {
     pos: u32,
     complete: bool,
 }
@@ -111,7 +110,7 @@ impl Marker {
         Marker { pos, complete: false }
     }
 
-    crate fn complete(mut self, p: &mut Parser, kind: SyntaxKind) -> CompletedMarker {
+    pub(crate) fn complete(mut self, p: &mut Parser, kind: SyntaxKind) -> CompletedMarker {
         self.complete = true;
 
         let idx = self.pos as usize;
@@ -130,7 +129,7 @@ impl Marker {
         CompletedMarker::new(self.pos, finish_pos, kind)
     }
 
-    crate fn abandon(mut self, p: &mut Parser) {
+    pub(crate) fn abandon(mut self, p: &mut Parser) {
         self.complete = true;
 
         let idx = self.pos as usize;
@@ -156,7 +155,7 @@ impl Drop for Marker {
 }
 
 #[allow(dead_code)]
-crate struct CompletedMarker {
+pub(crate) struct CompletedMarker {
     start: u32,
     end: u32,
     kind: SyntaxKind,
@@ -168,7 +167,7 @@ impl CompletedMarker {
         CompletedMarker { start, end, kind }
     }
 
-    crate fn precede(self, p: &mut Parser) -> Marker {
+    pub(crate) fn precede(self, p: &mut Parser) -> Marker {
         let new_pos = p.start();
         let idx = self.start as usize;
 
@@ -182,7 +181,7 @@ impl CompletedMarker {
         new_pos
     }
 
-    crate fn undo_completion(self, p: &mut Parser) -> Marker {
+    pub(crate) fn undo_completion(self, p: &mut Parser) -> Marker {
         let start = self.start as usize;
         let end = self.end as usize;
 
@@ -202,7 +201,7 @@ impl CompletedMarker {
         Marker::new(self.start)
     }
 
-    crate fn kind(&self) -> SyntaxKind {
+    pub(crate) fn kind(&self) -> SyntaxKind {
         self.kind
     }
 }

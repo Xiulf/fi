@@ -1,9 +1,11 @@
-use crate::ty::{Constraint, Ty};
+use std::any::Any;
+
 use base_db::input::FileId;
 use hir_def::diagnostic::Diagnostic;
 use hir_def::in_file::InFile;
-use std::any::Any;
 use syntax::{ast, AstPtr, SyntaxNodePtr};
+
+use crate::ty::{Constraint, Ty};
 
 #[derive(Debug)]
 pub struct UnresolvedValue {
@@ -69,6 +71,7 @@ impl Diagnostic for UnresolvedClass {
 pub struct UnresolvedOperator {
     pub file: FileId,
     pub src: SyntaxNodePtr,
+    pub idx: usize,
 }
 
 impl Diagnostic for UnresolvedOperator {
@@ -149,6 +152,7 @@ impl Diagnostic for PrivateClass {
 pub struct PrivateOperator {
     pub file: FileId,
     pub src: SyntaxNodePtr,
+    pub idx: usize,
 }
 
 impl Diagnostic for PrivateOperator {

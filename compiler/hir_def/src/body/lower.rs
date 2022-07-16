@@ -1,19 +1,19 @@
+use std::sync::Arc;
+
+use arena::Arena;
+use base_db::input::FileId;
+use syntax::{ast, AstPtr};
+
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
-use crate::data::{FixityData, FixityKind};
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::expr::{CaseArm, Expr, ExprId, Literal, RecordField, Stmt};
-use crate::id::{FixityId, LocalModuleId, ModuleDefId, ModuleId};
+use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
-use crate::item_tree::Assoc;
 use crate::name::{AsName, Name};
 use crate::pat::{Pat, PatId};
 use crate::path::Path;
 use crate::type_ref::{TypeMap, TypeMapBuilder};
-use arena::Arena;
-use base_db::input::FileId;
-use std::sync::Arc;
-use syntax::{ast, AstPtr, Prec};
 
 pub(super) fn lower(
     db: &dyn DefDatabase,
@@ -35,7 +35,7 @@ pub(super) fn lower(
             body_expr: ExprId::DUMMY,
             type_map: TypeMap::default(),
         },
-        type_builder: TypeMapBuilder::default(),
+        type_builder: TypeMap::builder(),
     }
     .collect(params, body)
 }
@@ -74,7 +74,7 @@ impl<'a> ExprCollector<'a> {
                 let mut arms = Vec::new();
 
                 for (params, expr) in params.into_iter().zip(exprs) {
-                    let pats = params.into_iter().map(|p| self.collect_pat(p)).collect::<Vec<_>>();
+                    let pats = params.into_iter().map(|p| self.collect_pat(p)).collect::<Box<[_]>>();
                     param_count = pats.len();
                     let pat = self.alloc_pat_desugared(Pat::Tuple { pats });
                     let expr = self.collect_expr(expr);
@@ -84,17 +84,22 @@ impl<'a> ExprCollector<'a> {
 
                 let exprs = (0..param_count)
                     .map(|i| {
-                        let name = format!("${}", i).as_name();
+                        let name = format!("$arg{}", i).as_name();
                         let path = Path::from(name.clone());
-                        let pat = self.alloc_pat_desugared(Pat::Bind { name, subpat: None });
                         let expr = self.alloc_expr_desugared(Expr::Path { path });
+                        let pat = self.alloc_pat_desugared(Pat::Bind { name, subpat: None });
 
                         self.body.params.push(pat);
                         expr
                     })
-                    .collect();
+                    .collect::<Box<[_]>>();
 
-                let pred = self.alloc_expr_desugared(Expr::Tuple { exprs });
+                let commas = vec![Path::from("(,)".as_name()); exprs.len() - 1]; // @TODO: resolve (,) language item
+                let pred = self.alloc_expr_desugared(Expr::Infix {
+                    exprs,
+                    ops: commas.into(),
+                });
+
                 let arms = arms.into();
 
                 self.body.body_expr = self.alloc_expr_desugared(Expr::Case { pred, arms });
@@ -185,11 +190,7 @@ impl<'a> ExprCollector<'a> {
             },
             | ast::Expr::Field(e) => {
                 let base = self.collect_expr_opt(e.base());
-                let field = e
-                    .field()
-                    .as_ref()
-                    .map(AsName::as_name)
-                    .or_else(|| e.tuple_field().map(Name::new_tuple_field))?;
+                let field = e.field()?.as_name();
 
                 self.alloc_expr(Expr::Field { base, field }, syntax_ptr)
             },
@@ -215,92 +216,18 @@ impl<'a> ExprCollector<'a> {
             | ast::Expr::Infix(e) => {
                 if let Some(path) = e.path() {
                     let path = Path::lower(path);
-                    let lhs = self.collect_expr_opt(e.lhs());
-                    let rhs = self.collect_expr_opt(e.rhs());
+                    let mut exprs = e.exprs();
+                    let lhs = self.collect_expr_opt(exprs.next());
+                    let rhs = self.collect_expr_opt(exprs.next());
                     let base = self.alloc_expr(Expr::Path { path }, syntax_ptr.clone());
                     let base = self.alloc_expr(Expr::App { base, arg: lhs }, syntax_ptr.clone());
 
                     self.alloc_expr(Expr::App { base, arg: rhs }, syntax_ptr)
                 } else {
-                    let exprs = e.exprs().map(|e| self.collect_expr(e)).collect::<Vec<_>>();
-                    let ops = e.ops().map(|op| Path::from(op.as_name())).collect::<Vec<_>>();
-                    let fixities = ops
-                        .iter()
-                        .map(|op| {
-                            let (resolved, _) = self.def_map.resolve_path(self.db, self.module, op);
+                    let exprs = e.exprs().map(|e| self.collect_expr(e)).collect();
+                    let ops = e.ops().map(|op| Path::from(op.as_name())).collect();
 
-                            match resolved.values {
-                                | Some((ModuleDefId::FixityId(id), _)) => match self.db.fixity_data(id).kind {
-                                    | FixityKind::Infix { assoc, prec } => Some((id, assoc, prec)),
-                                    | _ => None,
-                                },
-                                | _ => None,
-                            }
-                        })
-                        .collect::<Vec<_>>();
-
-                    return Some(go(
-                        self,
-                        ops.into_iter(),
-                        fixities.into_iter().peekable(),
-                        exprs.into_iter(),
-                        syntax_ptr,
-                    ));
-
-                    use std::iter::{once, Peekable};
-
-                    fn go(
-                        collector: &mut ExprCollector,
-                        mut ops: impl Iterator<Item = Path>,
-                        mut fixities: Peekable<impl Iterator<Item = Option<(FixityId, Assoc, Prec)>>>,
-                        mut exprs: impl Iterator<Item = ExprId>,
-                        syntax_ptr: ExprPtr,
-                    ) -> ExprId {
-                        if let Some(op) = ops.next() {
-                            let left = if let Some((id, assoc, prec)) = fixities.next().unwrap() {
-                                if let Some(next) = fixities.peek() {
-                                    if let Some((id2, _, prec2)) = next {
-                                        if id == *id2 {
-                                            match assoc {
-                                                | Assoc::Left => true,
-                                                | Assoc::Right => false,
-                                                | Assoc::None => true, // @TODO: this should be an error
-                                            }
-                                        } else if prec >= *prec2 {
-                                            true
-                                        } else {
-                                            false
-                                        }
-                                    } else {
-                                        false
-                                    }
-                                } else {
-                                    let lhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
-                                    let rhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
-
-                                    return collector.alloc_expr(Expr::Infix { op, lhs, rhs }, syntax_ptr);
-                                }
-                            } else {
-                                false
-                            };
-
-                            if left {
-                                let lhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
-                                let rhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
-                                let expr = collector.alloc_expr(Expr::Infix { op, lhs, rhs }, syntax_ptr.clone());
-                                let exprs = once(expr).chain(exprs).collect::<Vec<_>>();
-
-                                go(collector, ops, fixities, exprs.into_iter(), syntax_ptr)
-                            } else {
-                                let lhs = exprs.next().unwrap_or_else(|| collector.missing_expr());
-                                let rhs = go(collector, ops, fixities, exprs, syntax_ptr.clone());
-
-                                collector.alloc_expr(Expr::Infix { op, lhs, rhs }, syntax_ptr)
-                            }
-                        } else {
-                            exprs.next().unwrap_or_else(|| collector.missing_expr())
-                        }
-                    }
+                    self.alloc_expr(Expr::Infix { exprs, ops }, syntax_ptr)
                 }
             },
             | ast::Expr::Parens(e) => {
@@ -309,11 +236,6 @@ impl<'a> ExprCollector<'a> {
 
                 self.source_map.expr_map.insert(src, inner);
                 inner
-            },
-            | ast::Expr::Tuple(e) => {
-                let exprs = e.exprs().map(|e| self.collect_expr(e)).collect();
-
-                self.alloc_expr(Expr::Tuple { exprs }, syntax_ptr)
             },
             | ast::Expr::Record(e) => {
                 let fields = e
@@ -363,15 +285,7 @@ impl<'a> ExprCollector<'a> {
                 let then = self.collect_expr_opt(e.then());
                 let else_ = e.else_().map(|e| self.collect_expr(e));
 
-                self.alloc_expr(
-                    Expr::If {
-                        cond,
-                        then,
-                        else_,
-                        inverse: e.is_unless(),
-                    },
-                    syntax_ptr,
-                )
+                self.alloc_expr(Expr::If { cond, then, else_ }, syntax_ptr)
             },
             | ast::Expr::Case(e) => {
                 let pred = self.collect_expr_opt(e.pred());
@@ -388,45 +302,6 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::Case { pred, arms }, syntax_ptr)
             },
-            | ast::Expr::While(e) => {
-                let cond = self.collect_expr_opt(e.cond());
-                let body = self.collect_expr_opt(e.body());
-
-                self.alloc_expr(
-                    Expr::While {
-                        cond,
-                        body,
-                        inverse: e.is_until(),
-                    },
-                    syntax_ptr,
-                )
-            },
-            | ast::Expr::Loop(e) => {
-                let body = self.collect_expr_opt(e.body());
-
-                self.alloc_expr(Expr::Loop { body }, syntax_ptr)
-            },
-            | ast::Expr::Next(e) => {
-                let expr = e.expr().map(|e| self.collect_expr(e));
-
-                self.alloc_expr(Expr::Next { expr }, syntax_ptr)
-            },
-            | ast::Expr::Break(e) => {
-                let expr = e.expr().map(|e| self.collect_expr(e));
-
-                self.alloc_expr(Expr::Break { expr }, syntax_ptr)
-            },
-            | ast::Expr::Yield(e) => {
-                let exprs = e.exprs().map(|e| self.collect_expr(e)).collect();
-
-                self.alloc_expr(Expr::Yield { exprs }, syntax_ptr)
-            },
-            | ast::Expr::Return(e) => {
-                let expr = e.expr().map(|e| self.collect_expr(e));
-
-                self.alloc_expr(Expr::Return { expr }, syntax_ptr)
-            },
-            | _ => unimplemented!("{:?}", expr),
         })
     }
 
@@ -515,10 +390,11 @@ impl<'a> ExprCollector<'a> {
 
                 return Some(inner);
             },
-            | ast::Pat::Tuple(p) => {
+            | ast::Pat::Infix(p) => {
                 let pats = p.pats().map(|p| self.collect_pat(p)).collect();
+                let ops = p.ops().map(|op| Path::from(op.as_name())).collect();
 
-                Pat::Tuple { pats }
+                Pat::Infix { ops, pats }
             },
             | ast::Pat::Record(p) => {
                 let fields = p

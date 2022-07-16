@@ -1,3 +1,7 @@
+use base_db::input::FileId;
+use rustc_hash::{FxHashMap, FxHashSet};
+use syntax::{ast, NameOwner};
+
 use crate::db::DefDatabase;
 use crate::def_map::path_resolution::{FixPoint, ResolveMode};
 use crate::def_map::DefMap;
@@ -10,9 +14,6 @@ use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::visibility::Visibility;
-use base_db::input::FileId;
-use rustc_hash::{FxHashMap, FxHashSet};
-use syntax::{ast, NameOwner};
 
 // const FIXED_POINT_LIMIT: usize = 8192;
 const GLOBAL_RECURSION_LIMIT: usize = 100;
@@ -399,7 +400,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                     | ast::Export::Module(name) => {
                         let path = crate::path::convert_path(name.path()).unwrap();
 
-                        if path.as_ident() == Some(&def_map[self.module_id].name) {
+                        if path.to_ident() == def_map[self.module_id].name {
                             self.export_all = true;
                         } else {
                             let (res, _) = def_map.resolve_import(self.def_collector.db, self.module_id, &path);
@@ -630,7 +631,6 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                     }
                     .intern(self.def_collector.db);
 
-                    let data = self.def_collector.db.type_ctor_data(new_id);
                     let visibility = self.resolve_visibility(&it.name, ExportNs::Types);
                     let group = self.def_collector.def_map[self.module_id]
                         .exports
@@ -646,10 +646,11 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         | None => Visibility::Module(module),
                     };
 
-                    for (local_id, data) in data.ctors.iter() {
+                    for (i, local_id) in it.ctors.clone().enumerate() {
+                        let data = &self.item_tree[local_id];
                         let id = CtorId {
                             parent: new_id,
-                            local_id,
+                            local_id: LocalCtorId::from_raw(arena::RawIdx::from(i as u32)),
                         };
 
                         let id = ModuleDefId::CtorId(id);
