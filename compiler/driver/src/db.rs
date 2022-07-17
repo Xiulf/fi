@@ -9,9 +9,7 @@ use base_db::{Canceled, CheckCanceled, FileLoader, FileLoaderDelegate, Upcast};
     hir::db::InternDatabaseStorage,
     hir::db::DefDatabaseStorage,
     hir::db::HirDatabaseStorage,
-    ir::db::IrDatabaseStorage,
-    // lower::db::LowerDatabaseStorage,
-    // codegen::db::CodegenDatabaseStorage
+    codegen::db::CodegenDatabaseStorage
 )]
 #[derive(Default)]
 pub struct RootDatabase {
@@ -65,8 +63,8 @@ impl Upcast<dyn hir::db::HirDatabase + 'static> for RootDatabase {
     }
 }
 
-impl Upcast<dyn ir::db::IrDatabase + 'static> for RootDatabase {
-    fn upcast(&self) -> &(dyn ir::db::IrDatabase + 'static) {
+impl Upcast<dyn codegen::db::CodegenDatabase + 'static> for RootDatabase {
+    fn upcast(&self) -> &(dyn codegen::db::CodegenDatabase + 'static) {
         self
     }
 }

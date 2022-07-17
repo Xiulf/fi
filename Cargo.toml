@@ -4,6 +4,8 @@ members = [
     "compiler/driver",
     "compiler/markup",
     "compiler/diagnostics",
+    "compiler/backend_js",
+    "compiler/codegen",
     # "compiler/lower",
     "compiler/hir",
     "compiler/hir_ty",

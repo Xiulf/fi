@@ -1,0 +1,12 @@
+[package]
+name = "backend_js"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "shade_backend_js"
+crate-type = ["dylib"]
+
+[dependencies]
+hir = { path = "../hir" }
+log = "0.4.17"

@@ -2,6 +2,6 @@ module main =
 
 import core
 
-fn main = try
-    a <- None
-    ret $ println a
+fn main = 
+    let a = "test"
+    println a

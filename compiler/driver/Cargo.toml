@@ -2,13 +2,11 @@
 name = "driver"
 version = "0.1.0"
 authors = ["Cyberduc-k <tttymo@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 diagnostics = { path = "../diagnostics" }
-# codegen = { path = "../codegen" }
-# lower = { path = "../lower" }
-ir = { git = "https://github.com/Xiulf/lowlang.git", branch = "v4" }
+codegen = { path = "../codegen" }
 hir = { path = "../hir" }
 hir_def = { path = "../hir_def" }
 syntax = { path = "../syntax" }

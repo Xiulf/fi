@@ -2,13 +2,11 @@ pub mod db;
 pub mod diagnostics;
 pub mod manifest;
 
-use std::sync::Arc;
-
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::{SourceDatabase, SourceDatabaseExt};
-// use codegen::db::CodegenDatabase;
-use ir::db::IrDatabase;
+use codegen::db::CodegenDatabase;
+use codegen::CompilerTarget;
 use rustc_hash::FxHashSet;
 
 #[derive(Default)]
@@ -33,9 +31,11 @@ impl Driver {
         let lib = driver.load(opts.input)?;
 
         driver.lib = lib;
-        driver.db.set_triple(match opts.target {
-            | Some(target) => Arc::new(target.parse().unwrap()),
-            | None => Arc::new(target_lexicon::Triple::host()),
+        driver.db.set_target(match opts.target {
+            | Some("javascript") => CompilerTarget::Javascript,
+            // | Some(target) => Arc::new(target.parse().unwrap()),
+            // | None => Arc::new(target_lexicon::Triple::host()),
+            | _ => CompilerTarget::Javascript,
         });
 
         Some((driver, lib))
@@ -56,9 +56,11 @@ impl Driver {
 
         driver.lib = lib;
         driver.db.set_target_dir(lib, path.parent().unwrap().join("target"));
-        driver.db.set_triple(match opts.target {
-            | Some(target) => Arc::new(target.parse().unwrap()),
-            | None => Arc::new(target_lexicon::Triple::host()),
+        driver.db.set_target(match opts.target {
+            | Some("javascript") => CompilerTarget::Javascript,
+            // | Some(target) => Arc::new(target.parse().unwrap()),
+            // | None => Arc::new(target_lexicon::Triple::host()),
+            | _ => CompilerTarget::Javascript,
         });
 
         driver.db.set_libs(driver.libs.clone().into());
@@ -78,7 +80,7 @@ impl Driver {
         root.insert_file(root_file, "<interactive>");
 
         driver.lib = lib;
-        driver.db.set_triple(Arc::new(target_lexicon::Triple::host()));
+        driver.db.set_target(CompilerTarget::Javascript);
         driver.db.set_libs(driver.libs.clone().into());
         driver.db.set_source_root(root_id, root.into());
         driver.db.set_lib_source_root(lib, root_id);
@@ -197,14 +199,14 @@ impl Driver {
             return Ok(false);
         }
 
-        let _deps = lib.dependencies(&self.db).into_iter().map(|dep| {
+        let deps = lib.dependencies(&self.db).into_iter().map(|dep| {
             let _ = self.write_assembly(dep.lib, done);
             dep.lib
         });
 
-        // let asm = self.db.lib_assembly(lib);
+        let asm = self.db.lib_assembly(lib);
 
-        // asm.link(&self.db, deps, &self.db.target_dir(lib.into()));
+        asm.link(&self.db, deps, &self.db.target_dir(lib.into()));
         done.insert(lib);
 
         Ok(true)

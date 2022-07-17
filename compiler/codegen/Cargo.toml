@@ -1,14 +1,13 @@
 [package]
 name = "codegen"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-ir_codegen = { package = "codegen", git = "https://github.com/Xiulf/lowlang.git", branch = "v4" }
-ir = { git = "https://github.com/Xiulf/lowlang.git", branch = "v4" }
-lower = { path = "../lower" }
 hir = { path = "../hir" }
 base_db = { path = "../base_db" }
 target-lexicon = "0.12.0"
+libloading = "0.7.0"
 tempfile = "3.2.0"
 salsa = "0.16.0"
+log = "0.4.17"

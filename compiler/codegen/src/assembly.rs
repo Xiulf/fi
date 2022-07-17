@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use base_db::libs::LibKind;
+// use base_db::libs::LibKind;
 use tempfile::NamedTempFile;
 
 use crate::db::CodegenDatabase;
+use crate::CompilerTarget;
 
 #[derive(Debug)]
 pub struct ObjectFile {
@@ -53,16 +54,16 @@ impl Assembly {
         deps: impl Iterator<Item = hir::Lib>,
         target_dir: &Path,
     ) -> PathBuf {
-        let mut linker = crate::linker::create();
+        let mut linker = crate::linker::create(db.target());
         let out = self.path(db, target_dir);
 
         for obj in self.objects.iter() {
-            linker.add_object(obj.tmp_path());
+            linker.add_module(obj.tmp_path());
         }
 
-        linker.rpath(target_dir);
-        linker.arg("-L");
-        linker.arg(target_dir);
+        linker.runtime_path(target_dir);
+        // linker.arg("-L");
+        // linker.arg(target_dir);
 
         add_deps(&mut *linker, db.upcast(), deps.collect());
 
@@ -70,54 +71,53 @@ impl Assembly {
             for dep in deps {
                 add_deps(linker, db, dep.dependencies(db).into_iter().map(|d| d.lib).collect());
 
-                let name = dep.name(db).to_string();
+                // let name = dep.name(db).to_string();
 
-                match db.libs()[dep.into()].kind {
-                    | LibKind::Dynamic => linker.add_shared_object(&name),
-                    | LibKind::Static => linker.add_static_lib(&name),
-                    | LibKind::Executable => panic!("cannot link with an executable"),
-                }
+                // linker.add_object(db.libs()[dep.into()].kind, &name);
             }
         }
 
-        match db.libs()[self.lib.into()].kind {
-            | LibKind::Dynamic => linker.build_shared_object(&out),
-            | LibKind::Static => linker.build_static_lib(&out),
-            | LibKind::Executable => linker.build_executable(&out),
-        }
+        linker.out_kind(db.libs()[self.lib.into()].kind);
+        linker.build(&out);
+        linker.run().unwrap();
 
-        linker.run();
         out
     }
 
     fn extension(&self, db: &dyn CodegenDatabase) -> &'static str {
-        match db.libs()[self.lib.into()].kind {
-            | LibKind::Dynamic => match db.triple().operating_system {
-                | target_lexicon::OperatingSystem::Windows => "dll",
-                | target_lexicon::OperatingSystem::MacOSX { .. } => "dylib",
-                | target_lexicon::OperatingSystem::Wasi => "wasm",
-                | _ => "so",
-            },
-            | LibKind::Static => match db.triple().operating_system {
-                | target_lexicon::OperatingSystem::Windows => "lib",
-                | target_lexicon::OperatingSystem::Wasi => "wasm",
-                | _ => "a",
-            },
-            | LibKind::Executable => match db.triple().operating_system {
-                | target_lexicon::OperatingSystem::Windows => "exe",
-                | target_lexicon::OperatingSystem::Wasi => "wasm",
-                | _ => "",
-            },
+        match db.target() {
+            | CompilerTarget::Javascript => "js",
         }
+        // match db.libs()[self.lib.into()].kind {
+        //     | LibKind::Dynamic => match db.triple().operating_system {
+        //         | target_lexicon::OperatingSystem::Windows => "dll",
+        //         | target_lexicon::OperatingSystem::MacOSX { .. } => "dylib",
+        //         | target_lexicon::OperatingSystem::Wasi => "wasm",
+        //         | _ => "so",
+        //     },
+        //     | LibKind::Static => match db.triple().operating_system {
+        //         | target_lexicon::OperatingSystem::Windows => "lib",
+        //         | target_lexicon::OperatingSystem::Wasi => "wasm",
+        //         | _ => "a",
+        //     },
+        //     | LibKind::Executable => match db.triple().operating_system {
+        //         | target_lexicon::OperatingSystem::Windows => "exe",
+        //         | target_lexicon::OperatingSystem::Wasi => "wasm",
+        //         | _ => "",
+        //     },
+        // }
     }
 
     fn prefix(&self, db: &dyn CodegenDatabase) -> &'static str {
-        match db.libs()[self.lib.into()].kind {
-            | LibKind::Dynamic | LibKind::Static => match db.triple().operating_system {
-                | target_lexicon::OperatingSystem::Wasi => "",
-                | _ => "lib",
-            },
-            | LibKind::Executable => "",
+        match db.target() {
+            | CompilerTarget::Javascript => "",
         }
+        // match db.libs()[self.lib.into()].kind {
+        //     | LibKind::Dynamic | LibKind::Static => match db.triple().operating_system {
+        //         | target_lexicon::OperatingSystem::Wasi => "",
+        //         | _ => "lib",
+        //     },
+        //     | LibKind::Executable => "",
+        // }
     }
 }
