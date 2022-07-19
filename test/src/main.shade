@@ -3,5 +3,6 @@ module main =
 import core
 
 fn main = 
-    let a = "test"
+    let a = do
+        "test"
     println a

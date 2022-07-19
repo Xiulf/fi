@@ -18,7 +18,7 @@ pub use hir_def::item_tree::{Assoc, Prec};
 pub use hir_def::name::{AsName, Name};
 pub use hir_def::pat::{Pat, PatId};
 pub use hir_def::path::Path;
-use hir_def::resolver::HasResolver;
+pub use hir_def::resolver::{HasResolver, Resolver, TypeNs, ValueNs};
 use hir_def::visibility::Visibility;
 pub use hir_def::{attrs, id};
 use hir_ty::db::HirDatabase;
@@ -112,8 +112,14 @@ impl Module {
 
     pub fn is_exported(self, db: &dyn HirDatabase, name: Name, ns: ExportNs) -> bool {
         let def_map = db.def_map(self.id.lib);
+        let def = def_map[self.id.local_id].scope.get(&name);
+        let vis = match ns {
+            | ExportNs::Types => def.types.map(|t| t.1),
+            | ExportNs::Values => def.values.map(|t| t.1),
+            | ExportNs::Any => unreachable!(),
+        };
 
-        def_map[self.id.local_id].exports.resolve_visibility(&name, ns, self.id) == Visibility::Public
+        vis == Some(Visibility::Public)
     }
 
     pub fn declarations(self, db: &dyn HirDatabase) -> Vec<ModuleDef> {

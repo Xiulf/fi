@@ -8,5 +8,6 @@ name = "shade_backend_js"
 crate-type = ["dylib"]
 
 [dependencies]
+arena = { path = "../arena" }
 hir = { path = "../hir" }
 log = "0.4.17"

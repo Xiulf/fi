@@ -1,8 +1,12 @@
+mod expr;
+mod indent;
+
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
 
+use arena::ArenaMap;
 use hir::db::HirDatabase;
-use hir::{Expr, Literal, Pat, Stmt};
+use hir::id::DefWithBodyId;
 
 #[no_mangle]
 pub fn init(logger: &'static dyn log::Log, max_level: log::LevelFilter) {
@@ -19,30 +23,27 @@ pub fn codegen(db: &dyn HirDatabase, module: hir::Module, file: &mut dyn Write) 
 
 struct Ctx<'a> {
     db: &'a dyn HirDatabase,
-    out: BufWriter<&'a mut dyn Write>,
-    indent: usize,
-    should_indent: bool,
+    out: indent::IndentWriter<BufWriter<&'a mut dyn Write>>,
 }
 
 struct BodyCtx<'a, 'b> {
     ctx: &'a mut Ctx<'b>,
     body: Arc<hir::Body>,
-    did_return: bool,
+    owner: DefWithBodyId,
+    locals: ArenaMap<hir::PatId, expr::JsExpr>,
 }
 
 impl<'a> Ctx<'a> {
     pub fn new(db: &'a dyn HirDatabase, out: &'a mut dyn Write) -> Self {
         Self {
             db,
-            out: BufWriter::new(out),
-            indent: 0,
-            should_indent: false,
+            out: indent::IndentWriter::new(BufWriter::new(out)),
         }
     }
 
     pub fn codegen(&mut self, module: hir::Module) -> io::Result<()> {
         writeln!(self, "(function($shade) {{")?;
-        self.indent += 1;
+        self.out.indent();
         writeln!(
             self,
             r#"const $module = $shade["{0}"] || ($shade["{0}"] = {{}})"#,
@@ -53,7 +54,7 @@ impl<'a> Ctx<'a> {
             self.codegen_def(def)?;
         }
 
-        self.indent -= 1;
+        self.out.dedent();
         writeln!(self, "}})($shade || ($shade = {{}}));")?;
         self.flush()
     }
@@ -69,17 +70,34 @@ impl<'a> Ctx<'a> {
 
     pub fn codegen_func(&mut self, func: hir::Func) -> io::Result<()> {
         if !func.is_foreign(self.db) && func.has_body(self.db) {
-            writeln!(self, "function {}() {{", func.name(self.db))?;
-            self.indent += 1;
+            write!(self, "function {}(", func.name(self.db))?;
+            let mut bcx = BodyCtx::new(self, hir::id::FuncId::from(func).into());
+            let body = bcx.body.clone();
 
-            let mut bcx = BodyCtx::new(self, self.db.body(hir::id::FuncId::from(func).into()));
-            bcx.lower(true, true)?;
+            for (i, &pat) in body.params().iter().enumerate() {
+                let name = format!("${}", u32::from(pat.into_raw()));
+                let param = expr::JsExpr::Ident { name: name.clone() };
 
-            self.indent -= 1;
-            writeln!(self, "}}")?;
+                bcx.lower_pat(pat, param, &mut Vec::new());
+
+                if i > 0 {
+                    write!(bcx, ", ")?;
+                }
+
+                write!(bcx, "{}", name)?;
+            }
+
+            writeln!(bcx, ") {{")?;
+            bcx.out.indent();
+            bcx.lower(true)?;
+            bcx.out.dedent();
+            writeln!(self, ";\n}}")?;
         }
 
-        if !func.is_intrinsic(self.db) && (func.is_foreign(self.db) || func.has_body(self.db)) {
+        if !func.is_intrinsic(self.db)
+            && (func.is_foreign(self.db) || func.has_body(self.db))
+            && func.is_exported(self.db)
+        {
             writeln!(self, "$module.{0} = {0};", func.name(self.db))?;
         }
 
@@ -87,200 +105,55 @@ impl<'a> Ctx<'a> {
     }
 
     pub fn codegen_const(&mut self, const_: hir::Const) -> io::Result<()> {
-        writeln!(self, "const {} = undefined;", const_.name(self.db))?;
+        write!(self, "const {} = ", const_.name(self.db))?;
+        let mut bcx = BodyCtx::new(self, hir::id::ConstId::from(const_).into());
+        bcx.lower(false)?;
+        writeln!(self, ";")?;
         writeln!(self, "$module.{0} = {0};", const_.name(self.db))
     }
 
     pub fn codegen_static(&mut self, static_: hir::Static) -> io::Result<()> {
-        writeln!(self, "const {} = {{ $: undefined }};", static_.name(self.db))?;
+        write!(self, "const {} = {{ $: ", static_.name(self.db))?;
+        let mut bcx = BodyCtx::new(self, hir::id::StaticId::from(static_).into());
+        bcx.lower(false)?;
+        writeln!(self, " }};")?;
         writeln!(self, "$module.{0} = {0};", static_.name(self.db))
     }
 }
 
 impl<'a, 'b> BodyCtx<'a, 'b> {
-    pub fn new(ctx: &'a mut Ctx<'b>, body: Arc<hir::Body>) -> Self {
+    pub fn new(ctx: &'a mut Ctx<'b>, owner: DefWithBodyId) -> Self {
         Self {
+            body: ctx.db.body(owner),
+            locals: ArenaMap::default(),
+            owner,
             ctx,
-            body,
-            did_return: false,
         }
     }
 
-    pub fn lower(&mut self, in_block: bool, should_return: bool) -> io::Result<()> {
-        self.lower_expr(self.body.body_expr(), in_block, should_return)?;
+    pub fn lower(&mut self, in_block: bool) -> io::Result<()> {
+        let expr = self.lower_expr_inline(self.body.body_expr());
+        let ret = if in_block {
+            match expr {
+                | expr::JsExpr::Block { mut exprs } => {
+                    let last = exprs.pop().unwrap();
 
-        if should_return && !self.did_return {
-            let body_expr = self.body.body_expr();
-            writeln!(self, "return ${};", u32::from(body_expr.into_raw()))?;
-        }
-
-        Ok(())
-    }
-
-    pub fn lower_expr(&mut self, expr: hir::ExprId, in_block: bool, should_return: bool) -> io::Result<()> {
-        let body = self.body.clone();
-
-        match &body[expr] {
-            | Expr::Hole => write!(self, "undefined"),
-            | Expr::Typed { expr, .. } => self.lower_expr(*expr, in_block, should_return),
-            | Expr::Do { stmts } => self.lower_block(expr, stmts, in_block, should_return),
-            | Expr::Lit { lit } => match lit {
-                | Literal::Int(l) => write!(self, "{}", l),
-                | Literal::Float(l) => write!(self, "{}", l),
-                | Literal::Char(l) => write!(self, "{:?}", l),
-                | Literal::String(l) => write!(self, "{:?}", l),
-            },
-            | Expr::Path { path } => match path.as_ident() {
-                | Some(ident) => write!(self, "{}", ident),
-                | None => {
-                    let (ident, module) = path.segments().split_last().unwrap();
-                    let module = module.iter().map(|t| t.to_string()).collect::<Vec<_>>().join("/");
-
-                    write!(self, "$shade[\"{}\"].{}", module, ident)
+                    exprs.push(expr::JsExpr::Return { expr: Box::new(last) });
+                    expr::JsExpr::Block { exprs }
                 },
-            },
-            | Expr::App { mut base, arg } => {
-                let mut args = vec![*arg];
-
-                while let Expr::App { base: base2, arg } = body[base] {
-                    base = base2;
-                    args.push(arg);
-                }
-
-                self.lower_expr(base, false, false)?;
-                write!(self, "(")?;
-
-                for (i, arg) in args.into_iter().enumerate() {
-                    if i > 0 {
-                        write!(self, ", ")?;
-                    }
-
-                    self.lower_expr(arg, false, false)?;
-                }
-
-                write!(self, ")")
-            },
-            | Expr::If {
-                cond,
-                then,
-                else_: Some(else_),
-            } => {
-                self.lower_expr(*cond, false, false)?;
-                write!(self, " ? ")?;
-                self.lower_expr(*then, false, false)?;
-                write!(self, " : ")?;
-                self.lower_expr(*else_, false, false)
-            },
-            | Expr::If {
-                cond,
-                then,
-                else_: None,
-            } => {
-                write!(self, "if (")?;
-                self.lower_expr(*cond, false, false)?;
-                writeln!(self, ") {{")?;
-                self.indent += 1;
-                self.lower_expr(*then, true, false)?;
-                self.indent -= 1;
-                writeln!(self, "}}")
-            },
-            | e => {
-                log::warn!(target: "lower_expr", "not yet implemented: {:?}", e);
-                Ok(())
-            },
-        }
-    }
-
-    pub fn lower_block(
-        &mut self,
-        expr: hir::ExprId,
-        stmts: &[Stmt],
-        in_block: bool,
-        should_return: bool,
-    ) -> io::Result<()> {
-        if !in_block {
-            writeln!(self, "(let ${} = (function() {{", u32::from(expr.into_raw()))?;
-        }
-
-        for (i, stmt) in stmts.iter().enumerate() {
-            match stmt {
-                | Stmt::Expr { expr } if i == stmts.len() - 1 => {
-                    if !in_block || should_return {
-                        write!(self, "return ")?;
-
-                        if should_return {
-                            self.did_return = true;
-                        }
-                    }
-
-                    self.lower_expr(*expr, false, false)?;
-                    writeln!(self, ";")?;
-                },
-                | Stmt::Expr { expr } => {
-                    self.lower_expr(*expr, false, false)?;
-                    writeln!(self, ";")?;
-                },
-                | Stmt::Let { pat, val } => {
-                    write!(self, "let ${} = ", u32::from(val.into_raw()))?;
-                    self.lower_expr(*val, false, false)?;
-                    writeln!(self, ";")?;
-                    self.lower_pat(*pat, format!("${}", u32::from(val.into_raw())))?;
-                },
-                | Stmt::Bind { .. } => {},
+                | _ => expr::JsExpr::Return { expr: Box::new(expr) },
             }
-        }
+        } else {
+            expr
+        };
 
-        if !in_block {
-            writeln!(self, "}})())")?;
-        }
-
-        Ok(())
-    }
-
-    pub fn lower_pat(&mut self, pat: hir::PatId, expr: String) -> io::Result<()> {
-        let body = self.body.clone();
-
-        match &body[pat] {
-            | Pat::Missing => Ok(()),
-            | Pat::Wildcard => Ok(()),
-            | Pat::Bind { name, subpat: None } => {
-                writeln!(self, "let {} = {};", name, expr)
-            },
-            | p => {
-                log::warn!(target: "lower_pat", "not yet implemented: {:?}", p);
-                Ok(())
-            },
-        }
+        ret.write(&mut self.out, in_block)
     }
 }
 
 impl<'a> Write for Ctx<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut start = 0;
-        let mut written = 0;
-
-        for cur in 0..buf.len() {
-            if buf[cur] == b'\n' {
-                self.should_indent = true;
-                continue;
-            }
-
-            if self.should_indent {
-                written += self.out.write(&buf[start..cur])?;
-                start = cur;
-                self.should_indent = false;
-
-                for _ in 0..self.indent {
-                    self.out.write(&[b' ', b' ', b' ', b' '])?;
-                }
-            }
-        }
-
-        if start < buf.len() {
-            written += self.out.write(&buf[start..])?;
-        }
-
-        Ok(written)
+        self.out.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
