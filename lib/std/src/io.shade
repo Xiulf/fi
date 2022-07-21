@@ -32,13 +32,13 @@ fn eprintln (s :: Str) =
 member Stdout of Write =
     fn write s bytes =
         let (ptr, len) = unsafe $ transmute bytes
-        libc/write libc/STDOUT_FILENO ptr len
+        c/write libc/STDOUT_FILENO ptr len
         s
 
 member Stderr of Write =
     fn write s bytes =
         let (ptr, len) = unsafe $ transmute bytes
-        libc/write libc/STDERR_FILENO ptr len
+        c/write libc/STDERR_FILENO ptr len
         s
 
 fn print_i32 i =

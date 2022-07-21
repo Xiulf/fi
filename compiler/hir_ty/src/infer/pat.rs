@@ -17,7 +17,6 @@ impl BodyInferenceContext<'_> {
         let body = Arc::clone(&self.body);
         let src = self.source(pat);
         let ty = match &body[pat] {
-            | Pat::Tuple { .. } => unimplemented!(),
             | Pat::Missing => self.error(src),
             | Pat::Wildcard => self.fresh_type(src),
             | Pat::Typed { pat, ty } => self.owner.with_type_map(self.db.upcast(), |type_map| {

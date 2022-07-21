@@ -30,9 +30,6 @@ pub enum Pat {
         name: Name,
         subpat: Option<PatId>,
     },
-    Tuple {
-        pats: Box<[PatId]>,
-    },
     Record {
         fields: Box<[RecordField<PatId>]>,
         has_rest: bool,
@@ -57,9 +54,6 @@ impl Pat {
             | Pat::Bind {
                 subpat: Some(subpat), ..
             } => f(*subpat),
-            | Pat::Tuple { pats } => {
-                pats.iter().copied().for_each(f);
-            },
             | Pat::Record { fields, .. } => {
                 fields.iter().map(|f| f.val).for_each(f);
             },

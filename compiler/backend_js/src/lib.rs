@@ -1,12 +1,16 @@
+mod adt;
 mod expr;
 mod indent;
 
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
 
+use adt::Repr;
 use arena::ArenaMap;
 use hir::db::HirDatabase;
 use hir::id::DefWithBodyId;
+use hir::{AsName, TypeCtor};
+use rustc_hash::FxHashMap;
 
 #[no_mangle]
 pub fn init(logger: &'static dyn log::Log, max_level: log::LevelFilter) {
@@ -24,6 +28,7 @@ pub fn codegen(db: &dyn HirDatabase, module: hir::Module, file: &mut dyn Write) 
 struct Ctx<'a> {
     db: &'a dyn HirDatabase,
     out: indent::IndentWriter<BufWriter<&'a mut dyn Write>>,
+    ty_ctor_reprs: FxHashMap<TypeCtor, Repr>,
 }
 
 struct BodyCtx<'a, 'b> {
@@ -38,6 +43,7 @@ impl<'a> Ctx<'a> {
         Self {
             db,
             out: indent::IndentWriter::new(BufWriter::new(out)),
+            ty_ctor_reprs: FxHashMap::default(),
         }
     }
 
@@ -55,7 +61,7 @@ impl<'a> Ctx<'a> {
         }
 
         self.out.dedent();
-        writeln!(self, "}})($shade || ($shade = {{}}));")?;
+        writeln!(self, "}})(this.$shade || (this.$shade = {{}}));")?;
         self.flush()
     }
 
@@ -69,13 +75,15 @@ impl<'a> Ctx<'a> {
     }
 
     pub fn codegen_func(&mut self, func: hir::Func) -> io::Result<()> {
+        let id = hir::id::FuncId::from(func);
+
         if !func.is_foreign(self.db) && func.has_body(self.db) {
             write!(self, "function {}(", func.name(self.db))?;
-            let mut bcx = BodyCtx::new(self, hir::id::FuncId::from(func).into());
+            let mut bcx = BodyCtx::new(self, id.into());
             let body = bcx.body.clone();
 
             for (i, &pat) in body.params().iter().enumerate() {
-                let name = format!("${}", u32::from(pat.into_raw()));
+                let name = format!("$p{}", u32::from(pat.into_raw()));
                 let param = expr::JsExpr::Ident { name: name.clone() };
 
                 bcx.lower_pat(pat, param, &mut Vec::new());
@@ -94,11 +102,22 @@ impl<'a> Ctx<'a> {
             writeln!(self, ";\n}}")?;
         }
 
-        if !func.is_intrinsic(self.db)
-            && (func.is_foreign(self.db) || func.has_body(self.db))
-            && func.is_exported(self.db)
-        {
-            writeln!(self, "$module.{0} = {0};", func.name(self.db))?;
+        if !func.is_intrinsic(self.db) && func.is_exported(self.db) {
+            if func.is_foreign(self.db) {
+                let link_name = if let Some(name) = self.db.attrs(id.into()).by_key("link_name").string_value().next() {
+                    name.as_name()
+                } else {
+                    func.name(self.db)
+                };
+
+                writeln!(self, "$module.{} = {};", func.name(self.db), link_name)?;
+            } else if func.has_body(self.db) {
+                writeln!(self, "$module.{0} = {0};", func.name(self.db))?;
+            }
+        }
+
+        if self.db.attrs(id.into()).by_key("main").exists() {
+            writeln!(self, "$shade.main = {}", func.name(self.db))?;
         }
 
         Ok(())

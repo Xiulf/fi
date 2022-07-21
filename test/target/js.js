@@ -89,8 +89,6 @@
 (function($shade) {
     const $module = $shade["core/data/char"] || ($shade["core/data/char"] = {})
 })(this.$shade || (this.$shade = {}));
-// /mnt/e/Language/fc/test/target/js.js
-// /mnt/e/Language/fc/test/target/core.js
 // /mnt/e/Language/fc/lib/js/include/js.js
 function log(str) {
   console.log(str);
@@ -104,16 +102,3 @@ function log(str) {
 (function($shade) {
     const $module = $shade["js"] || ($shade["js"] = {})
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmp7FLtmD
-(function($shade) {
-    const $module = $shade["main"] || ($shade["main"] = {})
-    function main() {
-        var $p0 = "test";
-        var $p3 = [0, 21];
-        $shade["js/console"].log($p0);
-        return $shade["js/console"].log($p3);
-    }
-    $module.main = main;
-    $shade.main = main
-})(this.$shade || (this.$shade = {}));
-$shade.main();

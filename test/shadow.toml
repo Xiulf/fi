@@ -6,4 +6,4 @@ output = "executable"
 
 [dependencies]
 core = { path = "../lib/core" }
-prim = { path = "../lib/prim" }
+js = { path = "../lib/js" }

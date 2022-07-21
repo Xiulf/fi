@@ -1,8 +1,12 @@
 module main =
 
 import core
+import js/console
 
+@main
 fn main = 
-    let a = do
-        "test"
-    println a
+    let a = "test"
+    let b = Err 21
+
+    log a
+    log b

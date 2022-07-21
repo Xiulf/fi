@@ -36,6 +36,9 @@ pub enum JsExpr {
         lhs: Box<JsExpr>,
         rhs: Box<JsExpr>,
     },
+    Array {
+        exprs: Vec<JsExpr>,
+    },
     If {
         cond: Box<JsExpr>,
         then: Box<JsExpr>,
@@ -51,6 +54,17 @@ pub enum JsExpr {
     Return {
         expr: Box<JsExpr>,
     },
+    Throw {
+        expr: Box<JsExpr>,
+    },
+    Labeled {
+        label: String,
+        expr: Box<JsExpr>,
+    },
+    Goto {
+        label: String,
+        end: bool,
+    },
 }
 
 pub enum Arg {
@@ -63,6 +77,7 @@ impl JsExpr {
         match self {
             | Self::Undefined | Self::Ident { .. } | Self::Literal { .. } => true,
             | Self::Field { base, .. } | Self::Index { base, .. } => base.is_inline(),
+            | Self::Array { exprs } => exprs.iter().all(Self::is_inline),
             | Self::If {
                 cond,
                 then,
@@ -87,8 +102,15 @@ impl JsExpr {
 
     pub fn is_effectful(&self) -> bool {
         match self {
-            | Self::Assign { .. } | Self::Call { .. } | Self::Var { .. } | Self::Return { .. } => true,
+            | Self::Assign { .. }
+            | Self::Call { .. }
+            | Self::Var { .. }
+            | Self::Return { .. }
+            | Self::Throw { .. }
+            | Self::Goto { .. } => true,
             | Self::Field { base, .. } | Self::Index { base, .. } => base.is_effectful(),
+            | Self::BinOp { lhs, rhs, .. } => lhs.is_effectful() || rhs.is_effectful(),
+            | Self::Array { exprs } => exprs.iter().any(Self::is_effectful),
             | Self::If {
                 cond,
                 then,
@@ -100,6 +122,14 @@ impl JsExpr {
                 else_: None,
             } => cond.is_effectful() || then.is_effectful(),
             | Self::Block { exprs } => exprs.iter().any(Self::is_effectful),
+            | Self::Labeled { expr, .. } => expr.is_effectful(),
+            | _ => false,
+        }
+    }
+
+    pub fn is_terminator(&self) -> bool {
+        match self {
+            | Self::Return { .. } | Self::Throw { .. } | Self::Goto { .. } => true,
             | _ => false,
         }
     }
@@ -150,6 +180,19 @@ impl JsExpr {
                 write!(out, " {} ", op)?;
                 rhs.write_inner(out, false)
             },
+            | JsExpr::Array { exprs } => {
+                write!(out, "[")?;
+
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
+
+                    expr.write_inner(out, false)?;
+                }
+
+                write!(out, "]")
+            },
             | JsExpr::Call { base, args } => {
                 base.write_inner(out, false)?;
                 write!(out, "(")?;
@@ -170,6 +213,10 @@ impl JsExpr {
                 for (i, expr) in exprs.iter().enumerate() {
                     if expr.is_effectful() {
                         expr.write_inner(out, true)?;
+
+                        if expr.is_terminator() {
+                            break;
+                        }
 
                         if i < exprs.len() - 1 {
                             writeln!(out, ";")?;
@@ -221,6 +268,21 @@ impl JsExpr {
                 write!(out, "return ")?;
                 expr.write_inner(out, false)
             },
+            | JsExpr::Throw { expr } => {
+                write!(out, "throw ")?;
+                expr.write_inner(out, false)
+            },
+            | JsExpr::Labeled { label, expr } => {
+                writeln!(out, "{}: do {{", label)?;
+                out.indent();
+                expr.write_inner(out, true)?;
+                out.dedent();
+                write!(out, ";\n}} while(0)")
+            },
+            | JsExpr::Goto { label, end } if *end => {
+                write!(out, "break {}", label)
+            },
+            | JsExpr::Goto { label, .. } => write!(out, "continue {}", label),
         }
     }
 }
@@ -263,7 +325,7 @@ impl BodyCtx<'_, '_> {
                 let mut else_ = else_.map(|e| self.lower_expr_inline(e));
 
                 if !then.is_inline() || !else_.as_ref().map(JsExpr::is_inline).unwrap_or(true) {
-                    let name = format!("${}", u32::from(expr.into_raw()));
+                    let name = format!("$e{}", u32::from(expr.into_raw()));
                     let var = JsExpr::Ident { name: name.clone() };
 
                     match &mut then {
@@ -338,10 +400,97 @@ impl BodyCtx<'_, '_> {
         }
     }
 
-    pub fn lower_case(&mut self, pred: hir::ExprId, _arms: &[hir::CaseArm], block: &mut Vec<JsExpr>) -> JsExpr {
+    pub fn lower_case(&mut self, pred: hir::ExprId, arms: &[hir::CaseArm], block: &mut Vec<JsExpr>) -> JsExpr {
+        let name = format!("$e{}", u32::from(pred.into_raw()));
+        let label = format!("$l{}", u32::from(pred.into_raw()));
+        let res = JsExpr::Ident { name: name.clone() };
         let pred = self.lower_expr(pred, block);
+        let mut out = Vec::new();
 
-        pred
+        block.push(JsExpr::Var { name, expr: None });
+
+        for arm in arms {
+            let mut then = Vec::new();
+
+            if let Some(cond) = self.lower_pat(arm.pat, pred.clone(), &mut then) {
+                if let Some(guard) = arm.guard {
+                    let guard = self.lower_expr(guard, &mut then);
+                    let mut in_guard = Vec::new();
+                    let expr = self.lower_expr(arm.expr, &mut in_guard);
+
+                    in_guard.push(JsExpr::Assign {
+                        place: Box::new(res.clone()),
+                        expr: Box::new(expr),
+                    });
+
+                    in_guard.push(JsExpr::Goto {
+                        label: label.clone(),
+                        end: true,
+                    });
+
+                    then.push(JsExpr::If {
+                        cond: Box::new(guard),
+                        then: Box::new(JsExpr::Block { exprs: in_guard }),
+                        else_: None,
+                    });
+                } else {
+                    let expr = self.lower_expr(arm.expr, &mut then);
+
+                    then.push(JsExpr::Assign {
+                        place: Box::new(res.clone()),
+                        expr: Box::new(expr),
+                    });
+
+                    then.push(JsExpr::Goto {
+                        label: label.clone(),
+                        end: true,
+                    });
+                }
+
+                out.push(JsExpr::If {
+                    cond: Box::new(cond),
+                    then: Box::new(JsExpr::Block { exprs: then }),
+                    else_: None,
+                });
+            } else if let Some(guard) = arm.guard {
+                let guard = self.lower_expr(guard, &mut out);
+                let expr = self.lower_expr(arm.expr, &mut then);
+
+                then.push(JsExpr::Assign {
+                    place: Box::new(res.clone()),
+                    expr: Box::new(expr),
+                });
+
+                then.push(JsExpr::Goto {
+                    label: label.clone(),
+                    end: true,
+                });
+
+                out.push(JsExpr::If {
+                    cond: Box::new(guard),
+                    then: Box::new(JsExpr::Block { exprs: then }),
+                    else_: None,
+                });
+            } else {
+                out.append(&mut then);
+
+                let expr = self.lower_expr(arm.expr, &mut out);
+
+                out.push(JsExpr::Assign {
+                    place: Box::new(res.clone()),
+                    expr: Box::new(expr),
+                });
+
+                break;
+            }
+        }
+
+        block.push(JsExpr::Labeled {
+            label,
+            expr: Box::new(JsExpr::Block { exprs: out }),
+        });
+
+        res
     }
 
     pub fn lower_block(&mut self, stmts: &[Stmt], exprs: &mut Vec<JsExpr>) -> JsExpr {
@@ -363,7 +512,7 @@ impl BodyCtx<'_, '_> {
                     } else if self.pat_is_ignored(pat) {
                         exprs.push(expr);
                     } else {
-                        let ident = format!("${}", u32::from(val.into_raw()));
+                        let ident = format!("$p{}", u32::from(val.into_raw()));
 
                         exprs.push(JsExpr::Var {
                             name: ident.clone(),
@@ -391,22 +540,51 @@ impl BodyCtx<'_, '_> {
         }
     }
 
-    pub fn lower_pat(&mut self, pat: hir::PatId, place: JsExpr, exprs: &mut Vec<JsExpr>) {
+    pub fn lower_pat(&mut self, pat: hir::PatId, place: JsExpr, exprs: &mut Vec<JsExpr>) -> Option<JsExpr> {
         let body = self.body.clone();
 
         match body[pat] {
-            | Pat::Missing => {},
-            | Pat::Wildcard => {},
+            | Pat::Missing => None,
+            | Pat::Wildcard => None,
             | Pat::Typed { pat, .. } => self.lower_pat(pat, place, exprs),
             | Pat::Bind { subpat, .. } => {
                 self.locals.insert(pat, place.clone());
 
                 if let Some(subpat) = subpat {
-                    self.lower_pat(subpat, place, exprs);
+                    return self.lower_pat(subpat, place, exprs);
                 }
+
+                None
+            },
+            | Pat::App { base, ref args } => match body[base] {
+                | Pat::Path { ref path } => {
+                    let resolver = self.owner.resolver(self.db.upcast());
+                    let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
+
+                    match resolved {
+                        | ValueNs::Ctor(id) => {
+                            let (places, check) = self.deconstruct(id.into(), place);
+                            let mut args = places
+                                .into_iter()
+                                .zip(args.iter())
+                                .filter_map(|(place, &a)| self.lower_pat(a, place, exprs));
+
+                            let first = check.or_else(|| args.next())?;
+
+                            Some(args.fold(first, |lhs, rhs| JsExpr::BinOp {
+                                op: "&&",
+                                lhs: Box::new(lhs),
+                                rhs: Box::new(rhs),
+                            }))
+                        },
+                        | _ => unreachable!(),
+                    }
+                },
+                | _ => unreachable!(),
             },
             | ref p => {
                 log::warn!(target: "lower_pat", "not yet implemented: {:?}", p);
+                None
             },
         }
     }
@@ -458,6 +636,11 @@ impl BodyCtx<'_, '_> {
                 }
 
                 self.lower_path(resolver, path)
+            },
+            | ValueNs::Ctor(id) => {
+                let args = args.into_iter().map(|a| self.lower_arg(a, block)).collect();
+
+                return self.construct(id.into(), args);
             },
             | _ => self.lower_path(resolver, path),
         };
@@ -555,6 +738,12 @@ impl BodyCtx<'_, '_> {
                 let base = args.remove(0);
 
                 self.lower_app(base, args, block)
+            },
+            | "crash" => {
+                let arg = self.lower_arg(args.remove(0), block);
+
+                block.push(JsExpr::Throw { expr: Box::new(arg) });
+                JsExpr::Undefined
             },
             | "ge_i32" => {
                 let rhs = args.remove(1);

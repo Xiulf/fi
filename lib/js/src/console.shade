@@ -1,0 +1,6 @@
+module js/console =
+
+import core
+
+@link_name = "console.log"
+foreign fn log :: a -> Unit

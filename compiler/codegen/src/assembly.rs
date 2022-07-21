@@ -57,13 +57,7 @@ impl Assembly {
         let mut linker = crate::linker::create(db.target());
         let out = self.path(db, target_dir);
 
-        for obj in self.objects.iter() {
-            linker.add_module(obj.tmp_path());
-        }
-
         linker.runtime_path(target_dir);
-        // linker.arg("-L");
-        // linker.arg(target_dir);
 
         add_deps(&mut *linker, db.upcast(), deps.collect());
 
@@ -71,10 +65,18 @@ impl Assembly {
             for dep in deps {
                 add_deps(linker, db, dep.dependencies(db).into_iter().map(|d| d.lib).collect());
 
-                // let name = dep.name(db).to_string();
+                let name = dep.name(db).to_string();
 
-                // linker.add_object(db.libs()[dep.into()].kind, &name);
+                linker.add_object(db.libs()[dep.into()].kind, &name);
             }
+        }
+
+        for link in &db.libs()[self.lib.into()].links {
+            linker.add_object(base_db::libs::LibKind::Dynamic, link);
+        }
+
+        for obj in self.objects.iter() {
+            linker.add_module(obj.tmp_path());
         }
 
         linker.out_kind(db.libs()[self.lib.into()].kind);

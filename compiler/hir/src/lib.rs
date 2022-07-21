@@ -24,6 +24,7 @@ pub use hir_def::{attrs, id};
 use hir_ty::db::HirDatabase;
 pub use hir_ty::display::HirDisplay;
 pub use hir_ty::infer::{InferenceResult, MethodSource};
+use hir_ty::ty::Ty;
 pub use hir_ty::{display, ty};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -320,6 +321,8 @@ impl Func {
     pub fn link_name(self, db: &dyn HirDatabase) -> Name {
         if self.is_foreign(db) {
             self.name(db)
+        } else if let Some(name) = db.attrs(self.id.into()).by_key("link_name").string_value().next() {
+            name.as_name()
         } else {
             let mut path = self.path(db);
 
@@ -550,6 +553,14 @@ impl TypeCtor {
         self.module(db).is_exported(db, self.name(db), ExportNs::Types)
     }
 
+    pub fn ctors(self, db: &dyn HirDatabase) -> Vec<Ctor> {
+        db.type_ctor_data(self.id)
+            .ctors
+            .iter()
+            .map(|(id, _)| Ctor { parent: self, id })
+            .collect()
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let lower = db.kind_for_ctor(self.id);
 
@@ -586,6 +597,18 @@ impl Ctor {
 
     pub fn type_ctor(self) -> TypeCtor {
         self.parent
+    }
+
+    pub fn types(self, db: &dyn HirDatabase) -> Vec<Ty> {
+        let lower = db.ctor_ty(CtorId {
+            parent: self.parent.id,
+            local_id: self.id,
+        });
+
+        let data = db.type_ctor_data(self.parent.id);
+        let ctor = &data.ctors[self.id];
+
+        ctor.types.iter().map(|&t| lower.types[t]).collect()
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {

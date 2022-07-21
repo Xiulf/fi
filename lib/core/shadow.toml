@@ -4,5 +4,4 @@ version = "0.1.0"
 entry = "src/core.shade"
 
 [dependencies]
-libc = { path = "../libc" }
 prim = { path = "../prim" }

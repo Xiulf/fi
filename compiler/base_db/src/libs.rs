@@ -12,6 +12,7 @@ pub struct LibData {
     pub kind: LibKind,
     pub deps: Vec<LibId>,
     pub dependent: Vec<LibId>,
+    pub links: Vec<String>,
     pub source_root: SourceRootId,
     pub root_file: FileId,
 }
@@ -44,6 +45,7 @@ impl LibSet {
         kind: LibKind,
         source_root: SourceRootId,
         root_file: FileId,
+        links: Vec<String>,
     ) -> (LibId, bool) {
         let name = name.into();
 
@@ -61,6 +63,7 @@ impl LibSet {
                 kind,
                 root_file,
                 source_root,
+                links,
                 deps: Vec::new(),
                 dependent: Vec::new(),
             };

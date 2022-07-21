@@ -26,6 +26,9 @@ pub struct Project {
     pub entry: String,
 
     #[serde(default)]
+    pub link: Vec<PathBuf>,
+
+    #[serde(default)]
     #[serde(with = "lib_kind")]
     pub output: LibKind,
 }
@@ -47,6 +50,12 @@ impl Manifest {
 
     pub fn dep_dirs<'a>(&'a self, proj_dir: &'a Path) -> impl Iterator<Item = PathBuf> + 'a {
         self.dependencies.values().map(move |d| d.get_dir(proj_dir))
+    }
+}
+
+impl Project {
+    pub fn link_with<'a>(&'a self) -> impl Iterator<Item = &'a PathBuf> {
+        self.link.iter()
     }
 }
 
@@ -81,6 +90,7 @@ pub fn load_project(
         manifest.project.output,
         root_id,
         root_file,
+        manifest.project.link_with().map(|l| l.display().to_string()).collect(),
     );
 
     if exists {
@@ -125,7 +135,7 @@ pub fn load_normal(
     let mut root = SourceRoot::new_local();
     let root_id = SourceRootId(*roots);
     let root_file = FileId(*files);
-    let (lib, _) = libs.add_lib(name, kind, root_id, root_file);
+    let (lib, _) = libs.add_lib(name, kind, root_id, root_file, Vec::new());
 
     *roots += 1;
 

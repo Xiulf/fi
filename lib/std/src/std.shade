@@ -1,0 +1,7 @@
+module std (
+    module s,
+    c,
+) =
+
+import core as s
+import io (print, println, eprint, eprintln) as s

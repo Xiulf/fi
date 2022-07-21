@@ -76,7 +76,12 @@ impl<'a> ExprCollector<'a> {
                 for (params, expr) in params.into_iter().zip(exprs) {
                     let pats = params.into_iter().map(|p| self.collect_pat(p)).collect::<Box<[_]>>();
                     param_count = pats.len();
-                    let pat = self.alloc_pat_desugared(Pat::Tuple { pats });
+                    let commas = vec![Path::from("(,)".as_name()); param_count - 1]; // @TODO: resolve (,) language item
+                    let pat = self.alloc_pat_desugared(Pat::Infix {
+                        pats,
+                        ops: commas.into(),
+                    });
+
                     let expr = self.collect_expr(expr);
 
                     arms.push(CaseArm { pat, expr, guard: None });

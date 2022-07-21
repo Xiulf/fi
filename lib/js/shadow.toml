@@ -1,0 +1,8 @@
+[project]
+name = "js"
+version = "0.1.0"
+entry = "src/js.shade"
+link = ["../../lib/js/include/js.js"]
+
+[dependencies]
+core = { path = "../core" }

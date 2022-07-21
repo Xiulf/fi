@@ -1,4 +1,4 @@
-module libc =
+module c =
 
 import prim
 
