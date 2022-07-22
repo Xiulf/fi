@@ -148,6 +148,7 @@ impl<'a> Ctx<'a> {
     pub fn deconstruct_repr(&mut self, repr: Repr, place: JsExpr) -> (Vec<JsExpr>, Option<JsExpr>) {
         match repr {
             | Repr::Any => (vec![place], None),
+            | Repr::Scalar { .. } => (Vec::new(), None),
             | Repr::Tuple { items } => (
                 (0..items.len())
                     .map(|i| JsExpr::Index {

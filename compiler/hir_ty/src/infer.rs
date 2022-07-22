@@ -6,7 +6,7 @@ mod skolem;
 mod subsume;
 mod unify;
 
-use std::iter::{FromIterator, Peekable};
+use std::iter::{Enumerate, FromIterator, Peekable};
 use std::sync::Arc;
 
 use arena::ArenaMap;
@@ -106,7 +106,7 @@ pub struct InferenceResult<T, C> {
     pub type_of_pat: ArenaMap<PatId, T>,
     pub kind_of_ty: ArenaMap<LocalTypeRefId, T>,
     pub instances: FxHashMap<ExprId, Vec<T>>,
-    pub methods: FxHashMap<ExprId, MethodSource>,
+    pub methods: FxHashMap<(ExprId, usize), MethodSource>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic<T, C>>,
 }
 
@@ -147,8 +147,15 @@ enum Breakable {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExprOrPatId {
+    ExprIdInfix(ExprId, usize),
     ExprId(ExprId),
     PatId(PatId),
+}
+
+impl From<(ExprId, usize)> for ExprOrPatId {
+    fn from((id, i): (ExprId, usize)) -> Self {
+        Self::ExprIdInfix(id, i)
+    }
 }
 
 impl From<ExprId> for ExprOrPatId {
@@ -238,7 +245,7 @@ impl<'a> InferenceContext<'a> {
 
     pub(crate) fn lang_type(&mut self, name: &'static str, src: TySource) -> TyId {
         let module = self.owner.module(self.db.upcast());
-        let ty = self.db.lang_item(module.lib, name.into()).unwrap();
+        let ty = self.db.lang_item(module.lib, name.into()).expect(name);
         let ty = ty.as_type_ctor().unwrap();
 
         self.types.insert(TyInfo::Ctor(ty), src)
@@ -246,7 +253,7 @@ impl<'a> InferenceContext<'a> {
 
     pub(crate) fn lang_ctor(&self, name: &'static str) -> TypeCtorId {
         let module = self.owner.module(self.db.upcast());
-        let ty = self.db.lang_item(module.lib, name.into()).unwrap();
+        let ty = self.db.lang_item(module.lib, name.into()).expect(name);
 
         ty.as_type_ctor().unwrap()
     }
@@ -261,7 +268,7 @@ impl<'a> InferenceContext<'a> {
 
     pub(crate) fn lang_class(&self, name: &'static str) -> ClassId {
         let module = self.owner.module(self.db.upcast());
-        let id = self.db.lang_item(module.lib, name.into()).unwrap();
+        let id = self.db.lang_item(module.lib, name.into()).expect(name);
 
         id.as_class().unwrap()
     }
@@ -299,8 +306,8 @@ impl<'a> InferenceContext<'a> {
         items: impl Iterator<Item = TyId>,
         ops: &[Path],
         src: TySource,
-        f: impl Fn(&mut InferenceContext, TyId, TyId, TyId) -> TyId,
-        resolve: impl FnMut(&mut InferenceContext, &Path, Resolver) -> TyId,
+        f: impl Fn(&mut InferenceContext, usize, TyId, TyId, TyId) -> TyId,
+        resolve: impl FnMut(&mut InferenceContext, usize, &Path, Resolver) -> TyId,
     ) -> TyId {
         let fixities = ops
             .iter()
@@ -349,22 +356,29 @@ impl<'a> InferenceContext<'a> {
             })
             .collect::<Vec<_>>();
 
-        return go(self, fixities.into_iter().peekable(), items, src, &f, resolve);
+        return go(
+            self,
+            fixities.into_iter().enumerate().peekable(),
+            items,
+            src,
+            &f,
+            resolve,
+        );
 
         fn go(
             ctx: &mut InferenceContext,
-            mut fixities: Peekable<impl Iterator<Item = Option<(FixityId, Assoc, Prec)>>>,
+            mut fixities: Peekable<Enumerate<impl Iterator<Item = Option<(FixityId, Assoc, Prec)>>>>,
             mut types: impl Iterator<Item = TyId>,
             src: TySource,
-            f: &impl Fn(&mut InferenceContext, TyId, TyId, TyId) -> TyId,
-            mut resolve: impl FnMut(&mut InferenceContext, &Path, Resolver) -> TyId,
+            f: &impl Fn(&mut InferenceContext, usize, TyId, TyId, TyId) -> TyId,
+            mut resolve: impl FnMut(&mut InferenceContext, usize, &Path, Resolver) -> TyId,
         ) -> TyId {
-            if let Some(fix) = fixities.next() {
+            if let Some((i, fix)) = fixities.next() {
                 let (left, op) = if let Some((id, assoc, prec)) = fix {
                     let data = ctx.db.fixity_data(id);
-                    let op = resolve(ctx, &data.func, id.resolver(ctx.db.upcast()));
+                    let op = resolve(ctx, i, &data.func, id.resolver(ctx.db.upcast()));
 
-                    if let Some(next) = fixities.peek() {
+                    if let Some((_, next)) = fixities.peek() {
                         let left = if let Some((id2, _, prec2)) = next {
                             if id == *id2 {
                                 match assoc {
@@ -384,7 +398,7 @@ impl<'a> InferenceContext<'a> {
                         let lhs = types.next().unwrap_or_else(|| ctx.error(src));
                         let rhs = types.next().unwrap_or_else(|| ctx.error(src));
 
-                        return f(ctx, op, lhs, rhs);
+                        return f(ctx, i, op, lhs, rhs);
                     }
                 } else {
                     (false, ctx.error(src))
@@ -393,7 +407,7 @@ impl<'a> InferenceContext<'a> {
                 if left {
                     let lhs = types.next().unwrap_or_else(|| ctx.error(src));
                     let rhs = types.next().unwrap_or_else(|| ctx.error(src));
-                    let t = f(ctx, op, lhs, rhs);
+                    let t = f(ctx, i, op, lhs, rhs);
                     let types = std::iter::once(t).chain(types).collect::<Vec<_>>();
 
                     go(ctx, fixities, types.into_iter(), src, f, resolve)
@@ -401,7 +415,7 @@ impl<'a> InferenceContext<'a> {
                     let lhs = types.next().unwrap_or_else(|| ctx.error(src));
                     let rhs = go(ctx, fixities, types, src, f, resolve);
 
-                    f(ctx, op, lhs, rhs)
+                    f(ctx, i, op, lhs, rhs)
                 }
             } else {
                 types.next().unwrap_or_else(|| ctx.error(src))
@@ -855,7 +869,7 @@ pub(crate) mod diagnostics {
                     let source_map = db.body_source_map(owner).1;
 
                     match id {
-                        | ExprOrPatId::ExprId(id) => {
+                        | ExprOrPatId::ExprIdInfix(id, _) | ExprOrPatId::ExprId(id) => {
                             source_map.expr_syntax(id).ok().map(|s| s.map(|v| v.syntax_node_ptr()))
                         },
                         | ExprOrPatId::PatId(id) => {
@@ -889,7 +903,7 @@ pub(crate) mod diagnostics {
             };
 
             let ty_src = |src: TySource| match src.1 {
-                | TypeOrigin::ExprId(id) => match src.0 {
+                | TypeOrigin::ExprIdInfix(id, _) | TypeOrigin::ExprId(id) => match src.0 {
                     | TypeVarOwner::DefWithBodyId(owner) => {
                         let source_map = db.body_source_map(owner).1;
 
@@ -964,7 +978,7 @@ pub(crate) mod diagnostics {
                             };
 
                             match id {
-                                | ExprOrPatId::ExprId(id) => {
+                                | ExprOrPatId::ExprIdInfix(id, _) | ExprOrPatId::ExprId(id) => {
                                     source_map.expr_syntax(id).unwrap().value.syntax_node_ptr()
                                 },
                                 | ExprOrPatId::PatId(id) => source_map.pat_syntax(id).unwrap().value.syntax_node_ptr(),
@@ -1016,7 +1030,7 @@ pub(crate) mod diagnostics {
                             };
 
                             match id {
-                                | ExprOrPatId::ExprId(id) => {
+                                | ExprOrPatId::ExprIdInfix(id, _) | ExprOrPatId::ExprId(id) => {
                                     source_map.expr_syntax(id).unwrap().value.syntax_node_ptr()
                                 },
                                 | ExprOrPatId::PatId(id) => source_map.pat_syntax(id).unwrap().value.syntax_node_ptr(),

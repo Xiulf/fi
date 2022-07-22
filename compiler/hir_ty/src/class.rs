@@ -282,6 +282,10 @@ impl std::ops::Index<ClassEnvScope> for ClassEnv {
 }
 
 impl ClassEnvEntry {
+    pub fn ctnt(&self) -> &CtntInfo {
+        &self.ctnt
+    }
+
     pub fn is_method(&self) -> bool {
         self.is_method
     }

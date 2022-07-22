@@ -56,7 +56,7 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
     match p.current() {
         | IDENT => {
-            if p.nth_at(1, DOT) {
+            if p.nth_at(1, PATH_SEP) {
                 paths::path(p);
                 Some(m.complete(p, PAT_CTOR))
             } else {

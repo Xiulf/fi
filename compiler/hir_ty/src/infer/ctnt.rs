@@ -23,13 +23,26 @@ impl InferenceContext<'_> {
 
         for (ctnt, expected, found, scope) in unsolved {
             if ctnt.can_be_generalized(&self.types) {
+                let class = self.db.class_data(ctnt.class);
+
                 self.constraints.push((ctnt, expected, found, scope));
 
-                if let CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) = found {
-                    self.result
-                        .methods
-                        .insert(expr, MethodSource::Record(self.member_records));
-                    self.member_records += 1;
+                if !class.items.is_empty() {
+                    match found {
+                        | CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) => {
+                            self.result
+                                .methods
+                                .insert((expr, 0), MethodSource::Record(self.member_records));
+                            self.member_records += 1;
+                        },
+                        | CtntFound::ExprOrPat(ExprOrPatId::ExprIdInfix(expr, idx)) => {
+                            self.result
+                                .methods
+                                .insert((expr, idx), MethodSource::Record(self.member_records));
+                            self.member_records += 1;
+                        },
+                        | _ => {},
+                    }
                 }
             } else {
                 self.report(InferenceDiagnostic::UnsolvedConstraint { expected, found, ctnt });
@@ -56,13 +69,23 @@ impl InferenceContext<'_> {
             }
 
             let entry = &self.class_env[res.scope];
+            let class = self.db.class_data(entry.ctnt().class);
 
-            if entry.is_method() {
-                if let CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) = found {
-                    self.result
-                        .methods
-                        .insert(expr, MethodSource::Record(self.member_records));
-                    self.member_records += 1;
+            if !class.items.is_empty() {
+                match found {
+                    | CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) => {
+                        self.result
+                            .methods
+                            .insert((expr, 0), MethodSource::Record(self.member_records));
+                        self.member_records += 1;
+                    },
+                    | CtntFound::ExprOrPat(ExprOrPatId::ExprIdInfix(expr, idx)) => {
+                        self.result
+                            .methods
+                            .insert((expr, idx), MethodSource::Record(self.member_records));
+                        self.member_records += 1;
+                    },
+                    | _ => {},
                 }
             }
 
@@ -70,8 +93,16 @@ impl InferenceContext<'_> {
         } else if let Some(res) = Members::solve_constraint(self.db, &mut self.types, &mut self.type_vars, &ctnt, src) {
             res.apply(self);
 
-            if let CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) = found {
-                self.result.methods.insert(expr, MethodSource::Member(res.member));
+            match found {
+                | CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) => {
+                    self.result.methods.insert((expr, 0), MethodSource::Member(res.member));
+                },
+                | CtntFound::ExprOrPat(ExprOrPatId::ExprIdInfix(expr, idx)) => {
+                    self.result
+                        .methods
+                        .insert((expr, idx), MethodSource::Member(res.member));
+                },
+                | _ => {},
             }
 
             true

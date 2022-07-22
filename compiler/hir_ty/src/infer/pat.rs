@@ -33,7 +33,7 @@ impl BodyInferenceContext<'_> {
                     pats.into_iter(),
                     ops,
                     src,
-                    |ctx, op, lhs, rhs| {
+                    |ctx, _, op, lhs, rhs| {
                         let ret = ctx.fresh_type(src);
                         let ty = ctx.fn_type([lhs, rhs], ret, src);
 
@@ -43,7 +43,7 @@ impl BodyInferenceContext<'_> {
 
                         ret
                     },
-                    |ctx, path, resolver| match resolver.resolve_value_fully(ctx.db.upcast(), path) {
+                    |ctx, _, path, resolver| match resolver.resolve_value_fully(ctx.db.upcast(), path) {
                         | Some((value, vis)) => {
                             if path.segments().len() > 1
                                 && !vis.is_visible_from(ctx.db.upcast(), ctx.resolver.module().unwrap())

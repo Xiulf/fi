@@ -29,7 +29,7 @@ impl BodyInferenceContext<'_> {
                 ty_
             }),
             | Expr::Hole => self.fresh_type(src),
-            | Expr::Path { path } => self.icx.infer_path(path, self.resolver.clone(), expr),
+            | Expr::Path { path } => self.icx.infer_path(path, self.resolver.clone(), expr, None),
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
                     let integer = self.lang_class("integer-class");
@@ -71,7 +71,8 @@ impl BodyInferenceContext<'_> {
                     exprs.into_iter(),
                     ops,
                     src,
-                    |ctx, op, lhs, rhs| {
+                    |ctx, i, op, lhs, rhs| {
+                        let src = ctx.source((expr, i));
                         let ret = ctx.fresh_type(src);
                         let func_ty = ctx.fn_type([lhs, rhs], ret, src);
 
@@ -81,7 +82,7 @@ impl BodyInferenceContext<'_> {
 
                         ret
                     },
-                    |ctx, path, resolver| ctx.infer_path(path, resolver, expr),
+                    |ctx, i, path, resolver| ctx.infer_path(path, resolver, expr, Some(i)),
                 )
             },
             | Expr::App { base, arg } => {
@@ -713,8 +714,8 @@ impl BodyInferenceContext<'_> {
 }
 
 impl InferenceContext<'_> {
-    fn infer_path(&mut self, path: &Path, resolver: Resolver, expr: ExprId) -> TyId {
-        let src = self.source(expr);
+    fn infer_path(&mut self, path: &Path, resolver: Resolver, expr: ExprId, idx: Option<usize>) -> TyId {
+        let src = self.source((expr, idx.unwrap_or(0)));
 
         match resolver.resolve_value_fully(self.db.upcast(), path) {
             | Some((value, vis)) => 't: {
@@ -740,7 +741,7 @@ impl InferenceContext<'_> {
 
                 let ty = self.db.value_ty(id).ty;
                 let ty = ty.to_info(self.db, &mut self.types, &mut self.type_vars, src);
-                let ty = self.instantiate(ty, expr.into());
+                let ty = self.instantiate(ty, (expr, idx.unwrap_or(0)).into());
 
                 self.result.type_of_expr.insert(expr, ty);
 

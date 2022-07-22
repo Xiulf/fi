@@ -50,6 +50,7 @@ pub type TySource = (TypeVarOwner, TypeOrigin);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeOrigin {
+    ExprIdInfix(ExprId, usize),
     ExprId(ExprId),
     PatId(PatId),
     TypeRefId(LocalTypeRefId),
@@ -528,6 +529,12 @@ impl TyId {
     }
 }
 
+impl From<(ExprId, usize)> for TypeOrigin {
+    fn from((id, i): (ExprId, usize)) -> Self {
+        Self::ExprIdInfix(id, i)
+    }
+}
+
 impl From<ExprId> for TypeOrigin {
     fn from(id: ExprId) -> Self {
         Self::ExprId(id)
@@ -555,6 +562,7 @@ impl From<LocalTypeVarId> for TypeOrigin {
 impl From<ExprOrPatId> for TypeOrigin {
     fn from(id: ExprOrPatId) -> Self {
         match id {
+            | ExprOrPatId::ExprIdInfix(id, i) => Self::ExprIdInfix(id, i),
             | ExprOrPatId::ExprId(id) => Self::ExprId(id),
             | ExprOrPatId::PatId(id) => Self::PatId(id),
         }

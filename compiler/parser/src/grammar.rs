@@ -113,7 +113,7 @@ fn export(p: &mut Parser) {
 
 fn peek_operator(p: &mut Parser) -> bool {
     p.at_ts(TokenSet::new(&[
-        OPERATOR, ARROW, LEFT_ARROW, DBL_DOT, DOT, COMMA, COLON, PIPE, EQUALS, AT,
+        OPERATOR, ARROW, LEFT_ARROW, DBL_DOT, COMMA, COLON, PIPE, EQUALS, AT,
     ]))
 }
 

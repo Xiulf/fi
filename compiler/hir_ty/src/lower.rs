@@ -137,11 +137,11 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                     types.into_iter(),
                     ops,
                     src,
-                    |ctx, op, lhs, rhs| {
+                    |ctx, _, op, lhs, rhs| {
                         ctx.check_kind_for_app(op, &[lhs, rhs], src);
                         ctx.app_type(op, [lhs, rhs], src)
                     },
-                    |ctx, path, resolver| ctx.lower_path_resolver(path, resolver, ty),
+                    |ctx, _, path, resolver| ctx.lower_path_resolver(path, resolver, ty),
                 )
             },
             | TypeRef::Record(fields, tail) => {

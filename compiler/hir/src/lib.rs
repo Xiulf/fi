@@ -595,6 +595,10 @@ impl Ctor {
         self.module(db).path_to_name(db, self.name(db))
     }
 
+    pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
+        self.module(db).is_exported(db, self.name(db), ExportNs::Values)
+    }
+
     pub fn type_ctor(self) -> TypeCtor {
         self.parent
     }
@@ -651,6 +655,10 @@ impl Class {
         self.module(db).path_to_name(db, self.name(db))
     }
 
+    pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
+        self.module(db).is_exported(db, self.name(db), ExportNs::Types)
+    }
+
     pub fn constraints(self, _db: &dyn HirDatabase) -> Vec<ty::Constraint> {
         Vec::new()
     }
@@ -690,17 +698,17 @@ impl Member {
         self.id.lookup(db.upcast()).id.file_id
     }
 
+    pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
+        self.class(db).is_exported(db)
+    }
+
     pub fn link_name(self, db: &dyn HirDatabase) -> Name {
-        let data = db.member_data(self.id);
-        let type_map = data.type_map();
-        let mut name = data.class.segments().last().unwrap().to_string();
+        use salsa::InternKey;
+        let lower = db.lower_member(self.id);
+        let name = Class::from(lower.member.class).name(db);
+        let id = u32::from(self.id.as_intern_id());
 
-        for (_i, ty) in data.types.iter().enumerate() {
-            name.push('_');
-            ty_link_name(&type_map, ty, &mut name).unwrap();
-        }
-
-        name.as_name()
+        format!("$member_{}_{}", name, id).as_name()
     }
 
     pub fn class(self, db: &dyn HirDatabase) -> Class {
@@ -728,32 +736,6 @@ impl Member {
         for item in self.items(db) {
             item.diagnostics(db, sink);
         }
-    }
-}
-
-fn ty_link_name(
-    map: &hir_def::type_ref::TypeMap,
-    ty: &hir_def::type_ref::LocalTypeRefId,
-    out: &mut String,
-) -> std::fmt::Result {
-    use std::fmt::Write;
-
-    use hir_def::type_ref::TypeRef;
-
-    match &map[*ty] {
-        | TypeRef::Error => write!(out, "error"),
-        | TypeRef::Placeholder => write!(out, "_"),
-        | TypeRef::Figure(i) => write!(out, "{}", i),
-        | TypeRef::Symbol(s) => write!(out, "{:?}", s),
-        | TypeRef::Path(p) => write!(out, "{}", p),
-        | TypeRef::App(a, b) => {
-            write!(out, "(")?;
-            ty_link_name(map, a, out)?;
-            write!(out, " ")?;
-            ty_link_name(map, b, out)?;
-            write!(out, ")")
-        },
-        | _ => unimplemented!(),
     }
 }
 

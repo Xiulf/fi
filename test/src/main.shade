@@ -6,7 +6,7 @@ import js/console
 @main
 fn main = 
     let a = "test"
-    let b = Err 21
+    let b = Err $ 21 - 4 + 12
 
     log a
     log b

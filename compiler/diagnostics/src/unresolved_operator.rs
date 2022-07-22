@@ -22,9 +22,7 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for UnresolvedOperator<'db, '
 impl<'db, 'd, DB: hir::db::HirDatabase> UnresolvedOperator<'db, 'd, DB> {
     pub fn new(db: &'db DB, diag: &'d hir::diagnostic::UnresolvedOperator) -> Self {
         use syntax::syntax_kind::*;
-        const SYMBOLS: [SyntaxKind; 10] = [
-            OPERATOR, ARROW, LEFT_ARROW, DBL_DOT, DOT, COMMA, COLON, PIPE, EQUALS, AT,
-        ];
+        const SYMBOLS: [SyntaxKind; 9] = [OPERATOR, ARROW, LEFT_ARROW, DBL_DOT, COMMA, COLON, PIPE, EQUALS, AT];
 
         let parse = db.parse(diag.file);
         let location = diag

@@ -509,7 +509,7 @@ impl TypeInfix {
             .filter(|it| {
                 matches!(
                     it.kind(),
-                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | DOT | COMMA | COLON | PIPE | EQUALS | AT
+                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | COMMA | COLON | PIPE | EQUALS | AT
                 )
             })
             .map(Operator)
@@ -602,7 +602,7 @@ impl PatInfix {
             .filter(|it| {
                 matches!(
                     it.kind(),
-                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | DOT | COMMA | COLON | PIPE | EQUALS | AT
+                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | COMMA | COLON | PIPE | EQUALS | AT
                 )
             })
             .map(Operator)
@@ -693,7 +693,7 @@ impl ExprInfix {
             .filter(|it| {
                 matches!(
                     it.kind(),
-                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | DOT | COMMA | COLON | PIPE | EQUALS | AT
+                    OPERATOR | ARROW | LEFT_ARROW | DBL_DOT | COMMA | COLON | PIPE | EQUALS | AT
                 )
             })
             .map(Operator)

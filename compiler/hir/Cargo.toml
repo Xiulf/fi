@@ -10,3 +10,4 @@ hir_def = { path = "../hir_def" }
 syntax = { path = "../syntax" }
 base_db = { path = "../base_db" }
 rustc-hash = "1.1.0"
+salsa = "0.16.0"
