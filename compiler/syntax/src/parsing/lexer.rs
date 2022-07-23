@@ -264,10 +264,10 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                 }
             },
-            | ':' => {
+            | ':' if !is_op_char(self.peek()) => {
                 self.insert_default(start, COLON);
             },
-            | '=' => match self.stack[..] {
+            | '=' if !is_op_char(self.peek()) => match self.stack[..] {
                 | [.., (_, LayoutDelim::ClassHead), (_, LayoutDelim::Where)] => {
                     Collapse::new(self.tokens.len()).collapse(
                         start,
