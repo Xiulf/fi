@@ -102,6 +102,8 @@ ast_node!(Expr {
     Clos(ExprClos, EXPR_CLOS),
     If(ExprIf, EXPR_IF),
     Case(ExprCase, EXPR_CASE),
+    Recur(ExprRecur, EXPR_RECUR),
+    Return(ExprReturn, EXPR_RETURN),
 });
 
 ast_node!(Block, BLOCK);

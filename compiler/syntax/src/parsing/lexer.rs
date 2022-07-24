@@ -814,6 +814,22 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, LET_KW);
                 }
             },
+            | "recur" => {
+                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                } else {
+                    self.insert_default(start, RECUR_KW);
+                }
+            },
+            | "return" => {
+                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                } else {
+                    self.insert_default(start, RETURN_KW);
+                }
+            },
             | _ => {
                 self.insert_default(start, IDENT);
 

@@ -51,6 +51,11 @@ pub enum JsExpr {
         name: String,
         expr: Option<Box<JsExpr>>,
     },
+    Lambda {
+        name: String,
+        params: Vec<String>,
+        body: Box<JsExpr>,
+    },
     Return {
         expr: Box<JsExpr>,
     },
@@ -105,6 +110,7 @@ impl JsExpr {
             | Self::Assign { .. }
             | Self::Call { .. }
             | Self::Var { .. }
+            | Self::Lambda { .. }
             | Self::Return { .. }
             | Self::Throw { .. }
             | Self::Goto { .. } => true,
@@ -225,6 +231,23 @@ impl JsExpr {
                 }
 
                 Ok(())
+            },
+            | JsExpr::Lambda { name, params, body } => {
+                write!(out, "function {}(", name)?;
+
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
+
+                    write!(out, "{}", param)?;
+                }
+
+                writeln!(out, ") {{")?;
+                out.indent();
+                body.write_inner(out, true)?;
+                out.dedent();
+                write!(out, ";\n}}")
             },
             | JsExpr::Var { name, expr: Some(expr) } => {
                 write!(out, "var {} = ", name)?;
@@ -440,6 +463,36 @@ impl BodyCtx<'_, '_> {
                     then: Box::new(then),
                     else_: else_.map(Box::new),
                 }
+            },
+            | Expr::Lambda { ref pats, body } => {
+                let name = format!("$l{}", u32::from(expr.into_raw()));
+                let mut params = Vec::with_capacity(pats.len());
+                let mut exprs = Vec::new();
+
+                for (i, &pat) in pats.iter().enumerate() {
+                    let name = format!("$p{}", i);
+                    let param = JsExpr::Ident { name: name.clone() };
+
+                    self.lower_pat(pat, param, &mut exprs);
+                    params.push(name);
+                }
+
+                self.in_lambda.push(name);
+
+                let expr = Box::new(self.lower_expr(body, &mut exprs));
+                let body = Box::new(JsExpr::Return { expr });
+                let name = self.in_lambda.pop().unwrap();
+
+                block.push(JsExpr::Lambda {
+                    name: name.clone(),
+                    params,
+                    body,
+                });
+
+                JsExpr::Ident { name }
+            },
+            | Expr::Recur => JsExpr::Ident {
+                name: self.in_lambda.last().unwrap().clone(),
             },
             | Expr::Case { pred, ref arms } => self.lower_case(pred, arms, block),
             | ref e => {
@@ -883,6 +936,7 @@ impl BodyCtx<'_, '_> {
             | "imul" => self.intrinsic_binop("*", args, block),
             | "idiv" => self.intrinsic_binop("/", args, block),
             | "irem" => self.intrinsic_binop("%", args, block),
+            | "ieq" => self.intrinsic_binop("==", args, block),
             | "ge_i32" => self.intrinsic_binop(">=", args, block),
             | _ => {
                 log::warn!(target: "lower_intrinsic", "todo: {:?}", name);

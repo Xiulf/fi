@@ -1,0 +1,6 @@
+module core/data/bool =
+
+import prim (Bool, True, False)
+
+fn not True = False
+fn not False = True

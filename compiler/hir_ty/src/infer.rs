@@ -133,16 +133,7 @@ struct BodyInferenceContext<'a> {
     icx: InferenceContext<'a>,
     body: Arc<Body>,
     ret_type: TyId,
-    yield_type: Option<TyId>,
-    block_ret_type: Option<TyId>,
-    block_break_type: Option<TyId>,
-    breakable: Vec<Breakable>,
-}
-
-#[derive(Clone, Copy)]
-enum Breakable {
-    Loop(TyId),
-    While,
+    lambda_type: Vec<TyId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -622,10 +613,7 @@ impl<'a> BodyInferenceContext<'a> {
             icx,
             body: db.body(owner),
             ret_type: error,
-            yield_type: None,
-            block_ret_type: None,
-            block_break_type: None,
-            breakable: Vec::new(),
+            lambda_type: Vec::new(),
         }
     }
 
@@ -675,23 +663,6 @@ impl<'a> BodyInferenceContext<'a> {
 
         self.ret_type = ret;
         self.check_expr(body.body_expr(), ret);
-
-        if let Some(_yield_type) = self.yield_type {
-            todo!();
-            // let block_type = self.lang_type("block-type");
-            // let yield_type = TyKind::App(block_type, yield_type).intern(self.db);
-            // let yield_type = TyKind::App(yield_type, ret).intern(self.db);
-
-            // ty = self.fn_type(yield_type, ret);
-
-            // for &pat in self.body.params().iter().rev() {
-            //     let arg = self.result.type_of_pat[pat];
-
-            //     ty = self.fn_type(arg, ty);
-            // }
-
-            // self.result.self_type = ty;
-        }
     }
 }
 

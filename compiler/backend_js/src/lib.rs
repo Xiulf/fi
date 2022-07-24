@@ -38,6 +38,7 @@ struct BodyCtx<'a, 'b> {
     infer: Arc<hir::InferenceResult<hir::ty::Ty, hir::ty::Constraint>>,
     locals: ArenaMap<hir::PatId, expr::JsExpr>,
     records: Vec<expr::JsExpr>,
+    in_lambda: Vec<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -162,7 +163,6 @@ impl<'a> Ctx<'a> {
         write!(self, "function {}(", name.as_ref().map(AsRef::as_ref).unwrap_or(""))?;
         let mut bcx = BodyCtx::new(self, owner);
         let body = bcx.body.clone();
-
         let mut ty = bcx.infer.self_type.ty;
 
         loop {
@@ -220,6 +220,7 @@ impl<'a, 'b> BodyCtx<'a, 'b> {
             infer: ctx.db.infer(owner),
             locals: ArenaMap::default(),
             records: Vec::new(),
+            in_lambda: Vec::new(),
             owner,
             ctx,
         }

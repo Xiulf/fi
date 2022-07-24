@@ -1,7 +1,10 @@
 module core/ops =
 
-import prim ((->))
+import prim ((->), Bool)
+import core/data/bool (not)
 
+infixl 5 eq as (==)
+infixl 5 ne as (!=)
 infixl 6 add as (+)
 infixl 6 sub as (-)
 infixl 7 mul as (*)
@@ -22,3 +25,8 @@ class Div lhs rhs out | lhs rhs -> out, lhs -> rhs =
 
 class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
     fn rem :: lhs -> rhs -> out
+
+class Eq lhs rhs =
+    fn eq :: lhs -> rhs -> Bool
+
+fn ne lhs rhs = not (eq lhs rhs)

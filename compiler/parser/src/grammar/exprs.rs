@@ -221,6 +221,17 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 
             Some(m.complete(p, EXPR_CASE))
         },
+        | RECUR_KW => {
+            p.bump(RECUR_KW);
+
+            Some(m.complete(p, EXPR_RECUR))
+        },
+        | RETURN_KW => {
+            p.bump(RETURN_KW);
+            expr(p);
+
+            Some(m.complete(p, EXPR_RETURN))
+        },
         | L_PAREN => {
             p.bump(L_PAREN);
             let _ = expr(p);
@@ -261,7 +272,7 @@ fn peek(p: &Parser, n: usize, allow_do: bool) -> bool {
     match p.nth(n) {
         | DO_KW | TRY_KW => allow_do,
         | FN_KW | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | CASE_KW
-        | UNDERSCORE => true,
+        | UNDERSCORE | RECUR_KW | RETURN_KW => true,
         | _ => false,
     }
 }

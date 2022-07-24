@@ -792,6 +792,12 @@ impl ExprCase {
     }
 }
 
+impl ExprReturn {
+    pub fn expr(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+}
+
 impl CaseArm {
     pub fn pat(&self) -> Option<Pat> {
         support::child(&self.0)

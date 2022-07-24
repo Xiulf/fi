@@ -49,7 +49,7 @@ pub enum Expr {
     Try {
         stmts: Box<[Stmt]>,
     },
-    Clos {
+    Lambda {
         pats: Box<[PatId]>,
         body: ExprId,
     },
@@ -62,24 +62,9 @@ pub enum Expr {
         pred: ExprId,
         arms: Box<[CaseArm]>,
     },
-    While {
-        cond: ExprId,
-        body: ExprId,
-    },
-    Loop {
-        body: ExprId,
-    },
-    Next {
-        expr: Option<ExprId>,
-    },
-    Break {
-        expr: Option<ExprId>,
-    },
-    Yield {
-        exprs: Box<[ExprId]>,
-    },
+    Recur,
     Return {
-        expr: Option<ExprId>,
+        expr: ExprId,
     },
 }
 
@@ -114,7 +99,7 @@ pub struct CaseArm {
 impl Expr {
     pub fn walk(&self, mut f: impl FnMut(ExprId)) {
         match self {
-            | Expr::Missing | Expr::Hole | Expr::Path { .. } | Expr::Lit { .. } => {},
+            | Expr::Missing | Expr::Hole | Expr::Path { .. } | Expr::Lit { .. } | Expr::Recur => {},
             | Expr::Typed { expr, .. } => f(*expr),
             | Expr::Infix { exprs, .. } => {
                 exprs.iter().copied().for_each(f);
@@ -141,7 +126,7 @@ impl Expr {
                     | Stmt::Expr { expr } => f(*expr),
                 });
             },
-            | Expr::Clos { pats: _, body } => f(*body),
+            | Expr::Lambda { pats: _, body } => f(*body),
             | Expr::If { cond, then, else_, .. } => {
                 f(*cond);
                 f(*then);
@@ -154,16 +139,8 @@ impl Expr {
                     f(arm.expr);
                 });
             },
-            | Expr::While { cond, body, .. } => {
-                f(*cond);
-                f(*body);
-            },
-            | Expr::Loop { body } => f(*body),
-            | Expr::Next { expr } | Expr::Break { expr } | Expr::Return { expr } => {
-                expr.map(f);
-            },
-            | Expr::Yield { exprs } => {
-                exprs.iter().copied().for_each(f);
+            | Expr::Return { expr } => {
+                f(*expr);
             },
         }
     }

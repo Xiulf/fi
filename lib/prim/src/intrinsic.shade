@@ -9,6 +9,7 @@ infixr 0 apply as ($)
 @intrinsic foreign fn imul :: i -> i -> i where Integer i
 @intrinsic foreign fn idiv :: i -> i -> i where Integer i
 @intrinsic foreign fn irem :: i -> i -> i where Integer i
+@intrinsic foreign fn ieq  :: i -> i -> Bool where Integer i
 
 @intrinsic foreign fn eq_i32 :: Int32 -> Int32 -> Bool
 @intrinsic foreign fn ge_i32 :: Int32 -> Int32 -> Bool

@@ -17,3 +17,6 @@ member i i i of Div where Integer i =
 
 member i i i of Rem where Integer i =
     fn rem a b = intrinsics/irem a b
+
+member i i of Eq where Integer i =
+    fn eq a b = intrinsics/ieq a b

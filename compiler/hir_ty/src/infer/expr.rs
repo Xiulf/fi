@@ -6,7 +6,7 @@ use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 
 use super::diagnostics::{CtntExpected, CtntFound};
-use super::{BodyInferenceContext, Breakable, ExprOrPatId, InferenceContext, InferenceDiagnostic};
+use super::{BodyInferenceContext, ExprOrPatId, InferenceContext, InferenceDiagnostic};
 // use crate::display::HirDisplay;
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
 use crate::lower::LowerCtx;
@@ -136,19 +136,22 @@ impl BodyInferenceContext<'_> {
             },
             | Expr::Do { stmts } => self.infer_block(stmts, expr),
             | Expr::Try { stmts } => self.infer_try(stmts, expr),
-            | Expr::Clos { pats, body } => {
+            | Expr::Lambda { pats, body } => {
                 let body_src = self.source(*body);
                 let ret = self.fresh_type(body_src);
                 let params = pats.iter().map(|&p| self.infer_pat(p)).collect::<Vec<_>>();
+                let lambda_type = self.fn_type(params, ret, src);
                 let old_ret_type = std::mem::replace(&mut self.ret_type, ret);
                 let def = self.resolver.body_owner().unwrap();
                 let new_resolver = Resolver::for_expr(self.db.upcast(), def, *body);
                 let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
 
+                self.lambda_type.push(lambda_type);
                 self.check_expr(*body, ret);
                 self.ret_type = old_ret_type;
                 self.resolver = old_resolver;
-                self.fn_type(params, ret, src)
+                self.lambda_type.pop().unwrap();
+                self.subst_type(lambda_type)
             },
             | Expr::If { cond, then, else_, .. } => {
                 let then_src = self.source(*then);
@@ -217,105 +220,14 @@ impl BodyInferenceContext<'_> {
                     unreachable!();
                 }
             },
-            | Expr::While { cond, body, .. } => {
-                let cond_src = self.source(*cond);
-                let bool_type = self.lang_type("bool-type", cond_src);
-
-                self.breakable.push(Breakable::While);
-                self.check_expr(*cond, bool_type);
-                self.infer_expr(*body);
-                self.breakable.pop().unwrap();
-                self.unit(src)
-            },
-            | Expr::Loop { body } => {
-                let never_type = self.lang_type("never-type", src);
-
-                self.breakable.push(Breakable::Loop(never_type));
-                self.infer_expr(*body);
-
-                match self.breakable.pop().unwrap() {
-                    | Breakable::Loop(ty) => ty,
-                    | _ => unreachable!(),
-                }
-            },
-            | Expr::Next { expr: inner } => {
-                if let Some(inner) = inner {
-                    if let Some(block_ret) = self.block_ret_type {
-                        self.check_expr(*inner, block_ret);
-                    } else if let Some(_) = self.breakable.last() {
-                        self.report(InferenceDiagnostic::CannotNextWithValue { id: expr.into() });
-                    } else {
-                        self.report(InferenceDiagnostic::NextOutsideLoop { id: expr.into() });
-                    }
-                } else if let None = self.breakable.last() {
-                    self.report(InferenceDiagnostic::NextOutsideLoop { id: expr.into() });
-                }
-
-                self.lang_type("never-type", src)
-            },
-            | Expr::Break { expr: inner } => {
-                if let Some(inner) = inner {
-                    if let Some(break_type) = self.block_break_type {
-                        self.check_expr(*inner, break_type);
-                    } else if let Some(&br) = self.breakable.last() {
-                        if let Breakable::Loop(ty) = br {
-                            if ty == self.lang_type("never-type", src) {
-                                let ty = self.infer_expr(*inner);
-
-                                *self.breakable.last_mut().unwrap() = Breakable::Loop(ty);
-                            } else {
-                                self.check_expr(*inner, ty);
-                            }
-                        } else {
-                            self.report(InferenceDiagnostic::CannotBreakWithValue { id: expr.into() });
-                        }
-                    } else {
-                        self.report(InferenceDiagnostic::BreakOutsideLoop { id: expr.into() });
-                    }
-                } else if let Some(&br) = self.breakable.last() {
-                    if let Breakable::Loop(ty) = br {
-                        let unit = self.unit(src);
-
-                        if ty == self.lang_type("never-type", src) {
-                            *self.breakable.last_mut().unwrap() = Breakable::Loop(unit);
-                        } else if !self.unify_types(ty, unit) {
-                            self.report_mismatch(unit, ty, expr);
-                        }
-                    }
-                } else {
-                    self.report(InferenceDiagnostic::BreakOutsideLoop { id: expr.into() });
-                }
-
-                self.lang_type("never-type", src)
-            },
-            | Expr::Yield { exprs } => {
-                let ret = self.fresh_type(src);
-                let args = exprs.iter().map(|&e| self.infer_expr(e)).collect::<Vec<_>>();
-                let ty = self.fn_type(args, ret, src);
-
-                if let Some(yield_ty) = self.yield_type {
-                    if !self.unify_types(yield_ty, ty) {
-                        self.report_mismatch(yield_ty, ty, expr);
-                    }
-                } else {
-                    self.yield_type = Some(ty);
-                }
-
-                ret
+            | Expr::Recur => match self.lambda_type.last() {
+                | Some(lambda_type) => *lambda_type,
+                | None => todo!(),
             },
             | Expr::Return { expr: inner } => {
                 let ret = self.ret_type;
 
-                if let Some(inner) = inner {
-                    self.check_expr(*inner, ret);
-                } else {
-                    let unit = self.unit(src);
-
-                    if !self.unify_types(ret, unit) {
-                        self.report_mismatch(ret, unit, expr);
-                    }
-                }
-
+                self.check_expr(*inner, ret);
                 self.lang_type("never-type", src)
             },
             | e => unimplemented!("{:?}", e),

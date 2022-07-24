@@ -121,7 +121,7 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
         | Expr::Do { stmts } | Expr::Try { stmts } => {
             compute_block_scopes(stmts, body, scopes, scope);
         },
-        | Expr::Clos { pats, body: b } => {
+        | Expr::Lambda { pats, body: b } => {
             let scope = scopes.new_scope(scope);
 
             for &pat in pats.iter() {

@@ -65,6 +65,8 @@ pub enum SyntaxKind {
     CASE_KW,
     OF_KW,
     LET_KW,
+    RECUR_KW,
+    RETURN_KW,
 
     // Syntax tree
     SOURCE_FILE,
@@ -152,6 +154,8 @@ pub enum SyntaxKind {
     EXPR_TRY,
     EXPR_IF,
     EXPR_CASE,
+    EXPR_RECUR,
+    EXPR_RETURN,
 
     CASE_ARM,
     CASE_GUARD,

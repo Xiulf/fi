@@ -77,10 +77,14 @@ impl<'a> ExprCollector<'a> {
                     let pats = params.into_iter().map(|p| self.collect_pat(p)).collect::<Box<[_]>>();
                     param_count = pats.len();
                     let commas = vec![Path::from("(,)".as_name()); param_count - 1]; // @TODO: resolve (,) language item
-                    let pat = self.alloc_pat_desugared(Pat::Infix {
-                        pats,
-                        ops: commas.into(),
-                    });
+                    let pat = if param_count == 1 {
+                        pats[0]
+                    } else {
+                        self.alloc_pat_desugared(Pat::Infix {
+                            pats,
+                            ops: commas.into(),
+                        })
+                    };
 
                     let expr = self.collect_expr(expr);
 
@@ -100,10 +104,14 @@ impl<'a> ExprCollector<'a> {
                     .collect::<Box<[_]>>();
 
                 let commas = vec![Path::from("(,)".as_name()); exprs.len() - 1]; // @TODO: resolve (,) language item
-                let pred = self.alloc_expr_desugared(Expr::Infix {
-                    exprs,
-                    ops: commas.into(),
-                });
+                let pred = if exprs.len() == 1 {
+                    exprs[0]
+                } else {
+                    self.alloc_expr_desugared(Expr::Infix {
+                        exprs,
+                        ops: commas.into(),
+                    })
+                };
 
                 let arms = arms.into();
 
@@ -283,7 +291,7 @@ impl<'a> ExprCollector<'a> {
                 let pats = e.params().map(|p| self.collect_pat(p)).collect();
                 let body = self.collect_expr_opt(e.body());
 
-                self.alloc_expr(Expr::Clos { pats, body }, syntax_ptr)
+                self.alloc_expr(Expr::Lambda { pats, body }, syntax_ptr)
             },
             | ast::Expr::If(e) => {
                 let cond = self.collect_expr_opt(e.cond());
@@ -306,6 +314,12 @@ impl<'a> ExprCollector<'a> {
                     .collect();
 
                 self.alloc_expr(Expr::Case { pred, arms }, syntax_ptr)
+            },
+            | ast::Expr::Recur(_) => self.alloc_expr(Expr::Recur, syntax_ptr),
+            | ast::Expr::Return(e) => {
+                let expr = self.collect_expr_opt(e.expr());
+
+                self.alloc_expr(Expr::Return { expr }, syntax_ptr)
             },
         })
     }
