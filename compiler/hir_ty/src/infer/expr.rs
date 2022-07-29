@@ -29,6 +29,7 @@ impl BodyInferenceContext<'_> {
                 ty_
             }),
             | Expr::Hole => self.fresh_type(src),
+            | Expr::Unit => self.unit(src),
             | Expr::Path { path } => self.icx.infer_path(path, self.resolver.clone(), expr, None),
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {

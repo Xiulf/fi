@@ -12,21 +12,21 @@ infixl 7 div as (/)
 infixl 7 rem as (%)
 
 class Add lhs rhs out | lhs rhs -> out, lhs -> rhs =
-    fn add :: lhs -> rhs -> out
+    add :: lhs -> rhs -> out
 
 class Sub lhs rhs out | lhs rhs -> out, lhs -> rhs =
-    fn sub :: lhs -> rhs -> out
+    sub :: lhs -> rhs -> out
 
 class Mul lhs rhs out | lhs rhs -> out, lhs -> rhs =
-    fn mul :: lhs -> rhs -> out
+    mul :: lhs -> rhs -> out
 
 class Div lhs rhs out | lhs rhs -> out, lhs -> rhs =
-    fn div :: lhs -> rhs -> out
+    div :: lhs -> rhs -> out
 
 class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
-    fn rem :: lhs -> rhs -> out
+    rem :: lhs -> rhs -> out
 
 class Eq lhs rhs =
-    fn eq :: lhs -> rhs -> Bool
+    eq :: lhs -> rhs -> Bool
 
-fn ne lhs rhs = not (eq lhs rhs)
+ne lhs rhs = not (eq lhs rhs)

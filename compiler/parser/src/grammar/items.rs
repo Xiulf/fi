@@ -21,7 +21,8 @@ pub(crate) fn any_item(p: &mut Parser) {
         | FOREIGN_KW => {
             foreign(p, m);
         },
-        | FN_KW => {
+        // | FN_KW => {
+        | IDENT => {
             fun(p, m);
         },
         | STATIC_KW => {
@@ -104,7 +105,8 @@ pub(crate) fn foreign(p: &mut Parser, m: Marker) {
     p.expect(FOREIGN_KW);
 
     match p.current() {
-        | FN_KW => fun(p, m),
+        // | FN_KW => fun(p, m),
+        | IDENT => fun(p, m),
         | STATIC_KW => static_(p, m),
         | TYPE_KW => type_(p, m),
         | _ => {
@@ -116,7 +118,7 @@ pub(crate) fn foreign(p: &mut Parser, m: Marker) {
 }
 
 pub(crate) fn fun(p: &mut Parser, m: Marker) {
-    p.expect(FN_KW);
+    // p.expect(FN_KW);
     paths::name(p);
 
     if p.eat(DBL_COLON) {
@@ -338,11 +340,16 @@ pub(crate) fn assoc_item(p: &mut Parser) {
     }
 
     match p.current() {
-        | FN_KW => fun(p, m),
+        // | FN_KW => fun(p, m),
+        | IDENT => fun(p, m),
         | STATIC_KW => static_(p, m),
         | _ => {
             p.error("expected an associated item");
             m.abandon(p);
+
+            while !p.at_ts(TokenSet::new(&[EOF, LYT_SEP, LYT_END])) {
+                p.bump_any();
+            }
         },
     }
 }

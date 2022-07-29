@@ -15,6 +15,7 @@ pub enum Expr {
         ty: LocalTypeRefId,
     },
     Hole,
+    Unit,
     Path {
         path: Path,
     },
@@ -99,7 +100,7 @@ pub struct CaseArm {
 impl Expr {
     pub fn walk(&self, mut f: impl FnMut(ExprId)) {
         match self {
-            | Expr::Missing | Expr::Hole | Expr::Path { .. } | Expr::Lit { .. } | Expr::Recur => {},
+            | Expr::Missing | Expr::Hole | Expr::Unit | Expr::Path { .. } | Expr::Lit { .. } | Expr::Recur => {},
             | Expr::Typed { expr, .. } => f(*expr),
             | Expr::Infix { exprs, .. } => {
                 exprs.iter().copied().for_each(f);

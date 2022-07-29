@@ -283,7 +283,7 @@ impl HirDisplay for Ty {
             | TyKind::Error(Reason::Unknown) => write!(f, "{{unknown}}"),
             | TyKind::TypeVar(t) => write!(f, "{}", t),
             | TyKind::Figure(i) => write!(f, "{}", i),
-            | TyKind::Symbol(s) => write!(f, "{}", s),
+            | TyKind::Symbol(s) => write!(f, "{:?}", s),
             | TyKind::Row(fields, tail) => {
                 write!(f, "(")?;
                 f.write_joined(fields.iter(), ", ")?;

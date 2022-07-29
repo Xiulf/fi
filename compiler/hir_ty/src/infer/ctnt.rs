@@ -28,20 +28,8 @@ impl InferenceContext<'_> {
                 self.constraints.push((ctnt, expected, found, scope));
 
                 if !class.items.is_empty() {
-                    match found {
-                        | CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) => {
-                            self.result
-                                .methods
-                                .insert((expr, 0), MethodSource::Record(self.member_records));
-                            self.member_records += 1;
-                        },
-                        | CtntFound::ExprOrPat(ExprOrPatId::ExprIdInfix(expr, idx)) => {
-                            self.result
-                                .methods
-                                .insert((expr, idx), MethodSource::Record(self.member_records));
-                            self.member_records += 1;
-                        },
-                        | _ => {},
+                    if self.record_solve(found, MethodSource::Record(self.member_records)) {
+                        self.member_records += 1;
                     }
                 }
             } else {
@@ -72,43 +60,38 @@ impl InferenceContext<'_> {
             let class = self.db.class_data(entry.ctnt().class);
 
             if !class.items.is_empty() {
-                match found {
-                    | CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) => {
-                        self.result
-                            .methods
-                            .insert((expr, 0), MethodSource::Record(self.member_records));
-                        self.member_records += 1;
-                    },
-                    | CtntFound::ExprOrPat(ExprOrPatId::ExprIdInfix(expr, idx)) => {
-                        self.result
-                            .methods
-                            .insert((expr, idx), MethodSource::Record(self.member_records));
-                        self.member_records += 1;
-                    },
-                    | _ => {},
+                if self.record_solve(found, MethodSource::Record(self.member_records)) {
+                    self.member_records += 1;
                 }
             }
 
             true
         } else if let Some(res) = Members::solve_constraint(self.db, &mut self.types, &mut self.type_vars, &ctnt, src) {
             res.apply(self);
+            self.record_solve(found, MethodSource::Member(res.member));
 
-            match found {
-                | CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) => {
-                    self.result.methods.insert((expr, 0), MethodSource::Member(res.member));
-                },
-                | CtntFound::ExprOrPat(ExprOrPatId::ExprIdInfix(expr, idx)) => {
-                    self.result
-                        .methods
-                        .insert((expr, idx), MethodSource::Member(res.member));
-                },
-                | _ => {},
+            for ctnt in &res.constraints {
+                self.record_solve(found, MethodSource::Member(ctnt.member));
             }
 
             true
         } else {
             self.constraints.push((ctnt, expected, found, scope));
             false
+        }
+    }
+
+    fn record_solve(&mut self, found: CtntFound, method: MethodSource) -> bool {
+        match found {
+            | CtntFound::ExprOrPat(ExprOrPatId::ExprId(expr)) => {
+                self.result.methods.entry((expr, 0)).or_default().push(method);
+                true
+            },
+            | CtntFound::ExprOrPat(ExprOrPatId::ExprIdInfix(expr, idx)) => {
+                self.result.methods.entry((expr, idx)).or_default().push(method);
+                true
+            },
+            | _ => false,
         }
     }
 }

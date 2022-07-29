@@ -619,6 +619,12 @@ impl PatLit {
     }
 }
 
+impl PatCtor {
+    pub fn path(&self) -> Option<Path> {
+        support::child(&self.0)
+    }
+}
+
 impl PatBind {
     pub fn name(&self) -> Option<Name> {
         support::child(&self.0)

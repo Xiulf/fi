@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use hir::id::HasModule;
-use hir::{Const, Expr, Func, HasResolver, Literal, MethodSource, Module, Pat, Path, Resolver, Static, Stmt, ValueNs};
+use hir::{Const, Expr, Func, HasResolver, Literal, MethodSource, Module, Path, Resolver, Static, Stmt, ValueNs};
 
 use crate::indent::IndentWriter;
 use crate::BodyCtx;
@@ -34,6 +34,10 @@ pub enum JsExpr {
     BinOp {
         op: &'static str,
         lhs: Box<JsExpr>,
+        rhs: Box<JsExpr>,
+    },
+    UnOp {
+        op: &'static str,
         rhs: Box<JsExpr>,
     },
     Array {
@@ -88,6 +92,8 @@ impl JsExpr {
                 then,
                 else_: Some(else_),
             } => cond.is_inline() && then.is_inline() && else_.is_inline(),
+            | Self::BinOp { lhs, rhs, .. } => lhs.is_inline() && rhs.is_inline(),
+            | Self::UnOp { rhs, .. } => rhs.is_inline(),
             | Self::Call { base, args } => base.is_inline() || args.iter().any(Self::is_inline),
             | Self::Block { exprs } => exprs.len() <= 1,
             | _ => false,
@@ -116,6 +122,7 @@ impl JsExpr {
             | Self::Goto { .. } => true,
             | Self::Field { base, .. } | Self::Index { base, .. } => base.is_effectful(),
             | Self::BinOp { lhs, rhs, .. } => lhs.is_effectful() || rhs.is_effectful(),
+            | Self::UnOp { rhs, .. } => rhs.is_effectful(),
             | Self::Array { exprs } => exprs.iter().any(Self::is_effectful),
             | Self::If {
                 cond,
@@ -184,6 +191,10 @@ impl JsExpr {
             | JsExpr::BinOp { lhs, rhs, op } => {
                 lhs.write_inner(out, false)?;
                 write!(out, " {} ", op)?;
+                rhs.write_inner(out, false)
+            },
+            | JsExpr::UnOp { op, rhs } => {
+                write!(out, "{}", op)?;
                 rhs.write_inner(out, false)
             },
             | JsExpr::Array { exprs } => {
@@ -318,6 +329,7 @@ impl BodyCtx<'_, '_> {
             | Expr::Hole => JsExpr::Undefined,
             | Expr::Typed { expr, .. } => self.lower_expr(expr, block),
             | Expr::Lit { ref lit } => JsExpr::Literal { lit: lit.clone() },
+            | Expr::Unit => JsExpr::Undefined,
             | Expr::Path { ref path } => self.lower_path(&Resolver::for_expr(self.db.upcast(), self.owner, expr), path),
             | Expr::Do { ref stmts } => self.lower_block(stmts, block),
             | Expr::App { mut base, arg } => {
@@ -331,79 +343,7 @@ impl BodyCtx<'_, '_> {
                 args.reverse();
                 self.lower_app(Arg::ExprId(base), args, block)
             },
-            | Expr::Infix { ref exprs, ref ops } => {
-                use std::iter::{once, Enumerate, Peekable};
-                let exprs = exprs.iter().map(|&e| Arg::ExprId(e));
-                let resolver = Resolver::for_expr(self.db.upcast(), self.owner, expr);
-                let db = self.db;
-                let fixities = ops.iter().map(|op| {
-                    let (resolved, _, _) = resolver.resolve_value(db.upcast(), op).unwrap();
-
-                    match resolved {
-                        | ValueNs::Fixity(id) => match db.fixity_data(id).kind {
-                            | hir::FixityKind::Infix { assoc, prec } => ((id, assoc, prec)),
-                            | _ => unreachable!(),
-                        },
-                        | _ => unreachable!(),
-                    }
-                });
-
-                return go(
-                    self,
-                    fixities.peekable(),
-                    exprs,
-                    ops.iter().enumerate(),
-                    expr,
-                    &resolver,
-                    block,
-                );
-
-                fn go<'a>(
-                    ctx: &mut BodyCtx,
-                    mut fixities: Peekable<impl Iterator<Item = (hir::id::FixityId, hir::Assoc, hir::Prec)>>,
-                    mut exprs: impl Iterator<Item = Arg>,
-                    mut ops: Enumerate<impl Iterator<Item = &'a hir::Path>>,
-                    id: hir::ExprId,
-                    resolver: &Resolver,
-                    block: &mut Vec<JsExpr>,
-                ) -> JsExpr {
-                    if let Some((fix, assoc, prec)) = fixities.next() {
-                        let (i, op) = ops.next().unwrap();
-                        let left = if let Some((fix2, _, prec2)) = fixities.peek() {
-                            if fix == *fix2 {
-                                match assoc {
-                                    | hir::Assoc::Left => true,
-                                    | hir::Assoc::Right => false,
-                                    | hir::Assoc::None => true,
-                                }
-                            } else {
-                                prec >= *prec2
-                            }
-                        } else {
-                            let lhs = exprs.next().unwrap();
-                            let rhs = exprs.next().unwrap();
-
-                            return ctx.lower_path_app(resolver, Some((id, i)), op, vec![lhs, rhs], block);
-                        };
-
-                        if left {
-                            let lhs = exprs.next().unwrap();
-                            let rhs = exprs.next().unwrap();
-                            let exp = ctx.lower_path_app(resolver, Some((id, i)), op, vec![lhs, rhs], block);
-                            let exprs = once(Arg::JsExpr(exp)).chain(exprs).collect::<Vec<_>>();
-
-                            go(ctx, fixities, exprs.into_iter(), ops, id, resolver, block)
-                        } else {
-                            let lhs = exprs.next().unwrap();
-                            let rhs = go(ctx, fixities, exprs, ops, id, resolver, block);
-
-                            ctx.lower_path_app(resolver, Some((id, i)), op, vec![lhs, Arg::JsExpr(rhs)], block)
-                        }
-                    } else {
-                        ctx.lower_arg(exprs.next().unwrap(), block)
-                    }
-                }
-            },
+            | Expr::Infix { ref exprs, ref ops } => self.lower_expr_infix(expr, exprs, ops, block),
             | Expr::If { cond, then, else_ } => {
                 let cond = Box::new(self.lower_expr(cond, block));
                 let mut then = self.lower_expr_inline(then);
@@ -470,7 +410,7 @@ impl BodyCtx<'_, '_> {
                 let mut exprs = Vec::new();
 
                 for (i, &pat) in pats.iter().enumerate() {
-                    let name = format!("$p{}", i);
+                    let name = format!("$l{}p{}", u32::from(expr.into_raw()), i);
                     let param = JsExpr::Ident { name: name.clone() };
 
                     self.lower_pat(pat, param, &mut exprs);
@@ -512,6 +452,86 @@ impl BodyCtx<'_, '_> {
             exprs.push(res);
 
             JsExpr::Block { exprs }
+        }
+    }
+
+    pub fn lower_expr_infix(
+        &mut self,
+        expr: hir::ExprId,
+        exprs: &[hir::ExprId],
+        ops: &[hir::Path],
+        block: &mut Vec<JsExpr>,
+    ) -> JsExpr {
+        use std::iter::{once, Enumerate, Peekable};
+        let exprs = exprs.iter().map(|&e| Arg::ExprId(e));
+        let resolver = Resolver::for_expr(self.db.upcast(), self.owner, expr);
+        let db = self.db;
+        let fixities = ops.iter().map(|op| {
+            let (resolved, _, _) = resolver.resolve_value(db.upcast(), op).unwrap();
+
+            match resolved {
+                | ValueNs::Fixity(id) => match db.fixity_data(id).kind {
+                    | hir::FixityKind::Infix { assoc, prec } => ((id, assoc, prec)),
+                    | _ => unreachable!(),
+                },
+                | _ => unreachable!(),
+            }
+        });
+
+        return go(
+            self,
+            fixities.peekable(),
+            exprs,
+            ops.iter().enumerate(),
+            expr,
+            &resolver,
+            block,
+        );
+
+        fn go<'a>(
+            ctx: &mut BodyCtx,
+            mut fixities: Peekable<impl Iterator<Item = (hir::id::FixityId, hir::Assoc, hir::Prec)>>,
+            mut exprs: impl Iterator<Item = Arg>,
+            mut ops: Enumerate<impl Iterator<Item = &'a hir::Path>>,
+            id: hir::ExprId,
+            resolver: &Resolver,
+            block: &mut Vec<JsExpr>,
+        ) -> JsExpr {
+            if let Some((fix, assoc, prec)) = fixities.next() {
+                let (i, op) = ops.next().unwrap();
+                let left = if let Some((fix2, _, prec2)) = fixities.peek() {
+                    if fix == *fix2 {
+                        match assoc {
+                            | hir::Assoc::Left => true,
+                            | hir::Assoc::Right => false,
+                            | hir::Assoc::None => true,
+                        }
+                    } else {
+                        prec >= *prec2
+                    }
+                } else {
+                    let lhs = exprs.next().unwrap();
+                    let rhs = exprs.next().unwrap();
+
+                    return ctx.lower_path_app(resolver, Some((id, i)), op, vec![lhs, rhs], block);
+                };
+
+                if left {
+                    let lhs = exprs.next().unwrap();
+                    let rhs = exprs.next().unwrap();
+                    let exp = ctx.lower_path_app(resolver, Some((id, i)), op, vec![lhs, rhs], block);
+                    let exprs = once(Arg::JsExpr(exp)).chain(exprs).collect::<Vec<_>>();
+
+                    go(ctx, fixities, exprs.into_iter(), ops, id, resolver, block)
+                } else {
+                    let lhs = exprs.next().unwrap();
+                    let rhs = go(ctx, fixities, exprs, ops, id, resolver, block);
+
+                    ctx.lower_path_app(resolver, Some((id, i)), op, vec![lhs, Arg::JsExpr(rhs)], block)
+                }
+            } else {
+                ctx.lower_arg(exprs.next().unwrap(), block)
+            }
         }
     }
 
@@ -644,84 +664,10 @@ impl BodyCtx<'_, '_> {
         JsExpr::Undefined
     }
 
-    fn pat_is_ignored(&self, pat: hir::PatId) -> bool {
-        match self.body[pat] {
-            | Pat::Missing | Pat::Wildcard => true,
-            | Pat::Typed { pat, .. } => self.pat_is_ignored(pat),
-            | Pat::App { base, ref args } => self.pat_is_ignored(base) && args.iter().all(|&p| self.pat_is_ignored(p)),
-            | Pat::Infix { ref pats, .. } => pats.iter().all(|&p| self.pat_is_ignored(p)),
-            | Pat::Record { ref fields, .. } => fields.iter().all(|f| self.pat_is_ignored(f.val)),
-            | _ => false,
-        }
-    }
-
-    pub fn lower_pat(&mut self, pat: hir::PatId, place: JsExpr, exprs: &mut Vec<JsExpr>) -> Option<JsExpr> {
-        let body = self.body.clone();
-
-        match body[pat] {
-            | Pat::Missing => None,
-            | Pat::Wildcard => None,
-            | Pat::Typed { pat, .. } => self.lower_pat(pat, place, exprs),
-            | Pat::Bind { subpat, .. } => {
-                self.locals.insert(pat, place.clone());
-
-                if let Some(subpat) = subpat {
-                    return self.lower_pat(subpat, place, exprs);
-                }
-
-                None
-            },
-            | Pat::Path { ref path } => {
-                let resolver = self.owner.resolver(self.db.upcast());
-                let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
-
-                match resolved {
-                    | ValueNs::Ctor(id) => {
-                        let (places, check) = self.deconstruct(id.into(), place);
-                        assert!(places.is_empty());
-
-                        check
-                    },
-                    | _ => unreachable!(),
-                }
-            },
-            | Pat::App { base, ref args } => match body[base] {
-                | Pat::Path { ref path } => {
-                    let resolver = self.owner.resolver(self.db.upcast());
-                    let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
-
-                    match resolved {
-                        | ValueNs::Ctor(id) => {
-                            let (places, check) = self.deconstruct(id.into(), place);
-                            let mut args = places
-                                .into_iter()
-                                .zip(args.iter())
-                                .filter_map(|(place, &a)| self.lower_pat(a, place, exprs));
-
-                            let first = check.or_else(|| args.next())?;
-
-                            Some(args.fold(first, |lhs, rhs| JsExpr::BinOp {
-                                op: "&&",
-                                lhs: Box::new(lhs),
-                                rhs: Box::new(rhs),
-                            }))
-                        },
-                        | _ => unreachable!(),
-                    }
-                },
-                | _ => unreachable!(),
-            },
-            | ref p => {
-                log::warn!(target: "lower_pat", "not yet implemented: {:?}", p);
-                None
-            },
-        }
-    }
-
-    pub fn member_ref(&mut self, member: hir::Member) -> JsExpr {
+    pub fn member_ref(&mut self, member: hir::Member, sources: &mut dyn Iterator<Item = MethodSource>) -> JsExpr {
         let module = member.module(self.db);
-
-        if module != self.owner.module(self.db.upcast()).into() {
+        let lower = self.db.lower_member(member.into());
+        let record = if module != self.owner.module(self.db.upcast()).into() {
             let base = Box::new(JsExpr::Ident {
                 name: String::from("$shade"),
             });
@@ -735,13 +681,51 @@ impl BodyCtx<'_, '_> {
 
             JsExpr::Field {
                 base,
-                field: member.link_name(self.db).to_string(),
+                field: self.mangle(member.link_name(self.db)),
             }
         } else {
             JsExpr::Ident {
-                name: member.link_name(self.db).to_string(),
+                name: self.mangle(member.link_name(self.db)),
+            }
+        };
+
+        let skip = lower
+            .member
+            .where_clause
+            .constraints
+            .iter()
+            .map(|c| self.db.class_data(c.class).items.is_empty())
+            .collect::<Vec<_>>();
+
+        if skip.iter().any(|b| !*b) {
+            let args = skip
+                .into_iter()
+                .filter_map(|s| {
+                    if s {
+                        sources.next().unwrap();
+                        None
+                    } else {
+                        Some(match sources.next().unwrap() {
+                            | MethodSource::Member(m) => self.member_ref(m.into(), sources),
+                            | MethodSource::Record(r) => self.records[r].clone(),
+                        })
+                    }
+                })
+                .collect();
+
+            return JsExpr::Call {
+                base: Box::new(record),
+                args,
+            };
+        }
+
+        for s in skip {
+            if s {
+                sources.next().unwrap();
             }
         }
+
+        record
     }
 
     pub fn lower_app(&mut self, base: Arg, args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
@@ -749,36 +733,71 @@ impl BodyCtx<'_, '_> {
 
         if let Arg::ExprId(id) = base {
             if let Expr::Path { ref path } = body[id] {
-                if let Some(method) = self.infer.methods.get(&(id, 0)) {
-                    let base = match *method {
-                        | MethodSource::Member(id) => self.member_ref(id.into()),
-                        | MethodSource::Record(idx) => self.records[idx].clone(),
-                    };
-
-                    let base = JsExpr::Field {
-                        base: Box::new(base),
-                        field: path.segments().last().unwrap().to_string(),
-                    };
-
-                    return self.lower_app(Arg::JsExpr(base), args, block);
-                }
-
                 let resolver = Resolver::for_expr(self.db.upcast(), self.owner, id);
 
                 return self.lower_path_app(&resolver, Some((id, 0)), path, args, block);
             }
         }
 
-        let base = Box::new(self.lower_arg(base, block));
-        let args = args
-            .into_iter()
+        let base = self.lower_arg(base, block);
+
+        args.into_iter()
             .map(|a| match a {
                 | Arg::ExprId(id) => self.lower_expr(id, block),
                 | Arg::JsExpr(expr) => expr,
             })
-            .collect();
+            .fold(base, |base, a| JsExpr::Call {
+                base: Box::new(base),
+                args: vec![a],
+            })
+    }
 
-        JsExpr::Call { base, args }
+    fn func_params(&self, id: hir::id::FuncId, is_method: bool) -> usize {
+        let infer = self.db.infer(id.into());
+        let mut ty = infer.self_type.ty;
+        let mut first_where = true;
+        let mut params = 0;
+
+        loop {
+            match ty.lookup(self.db) {
+                | hir::ty::TyKind::ForAll(_, inner, _) => ty = inner,
+                | hir::ty::TyKind::Where(clause, inner) => {
+                    if !(is_method && first_where) {
+                        params += clause
+                            .constraints
+                            .iter()
+                            .filter(|c| !self.db.class_data(c.class).items.is_empty())
+                            .count();
+                    }
+
+                    ty = inner;
+                    first_where = false;
+                },
+                | _ => break,
+            }
+        }
+
+        if self.db.func_data(id).has_body {
+            let body = self.db.body(id.into());
+
+            params + body.params().len()
+        } else {
+            use hir::id::Lookup;
+            let lib = id.lookup(self.db.upcast()).module(self.db.upcast()).lib;
+            let func_ctor = self
+                .db
+                .lang_item(lib, "fn-type".into())
+                .unwrap()
+                .as_type_ctor()
+                .unwrap();
+
+            while let Some([_, ret]) = ty.match_ctor(self.db, func_ctor).as_deref() {
+                params += 1;
+                ty = *ret;
+            }
+
+            params
+        }
     }
 
     pub fn lower_path_app(
@@ -786,12 +805,12 @@ impl BodyCtx<'_, '_> {
         resolver: &Resolver,
         expr: Option<(hir::ExprId, usize)>,
         path: &Path,
-        args: Vec<Arg>,
+        mut args: Vec<Arg>,
         block: &mut Vec<JsExpr>,
     ) -> JsExpr {
         let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
-        let base = match resolved {
-            | ValueNs::Local(id) => self.locals[id].clone(),
+        let (mut base, params, is_method) = match resolved {
+            | ValueNs::Local(id) => (self.locals[id].clone(), args.len(), false),
             | ValueNs::Fixity(id) => {
                 let resolver = id.resolver(self.db.upcast());
                 let data = self.db.fixity_data(id);
@@ -805,43 +824,66 @@ impl BodyCtx<'_, '_> {
                     return self.lower_intrinsic(&func.name(self.db).to_string(), args, block);
                 }
 
-                self.lower_path(resolver, path)
+                let is_method = matches!(func.as_assoc_item(self.db), Some(hir::AssocItem::Func(_)));
+
+                (
+                    self.lower_path(resolver, path),
+                    self.func_params(id, is_method),
+                    is_method,
+                )
             },
             | ValueNs::Ctor(id) => {
                 let args = args.into_iter().map(|a| self.lower_arg(a, block)).collect();
 
                 return self.construct(id.into(), args);
             },
-            | _ => self.lower_path(resolver, path),
+            | _ => (self.lower_path(resolver, path), args.len(), false),
         };
 
         if let Some(id) = expr {
-            if let Some(method) = self.infer.methods.get(&id) {
-                let base = match *method {
-                    | MethodSource::Member(id) => self.member_ref(id.into()),
-                    | MethodSource::Record(idx) => self.records[idx].clone(),
-                };
+            let infer = self.infer.clone();
 
-                let base = JsExpr::Field {
-                    base: Box::new(base),
-                    field: path.segments().last().unwrap().to_string(),
-                };
+            if let Some(methods) = infer.methods.get(&id) {
+                let mut methods = methods.iter().copied();
 
-                return self.lower_app(Arg::JsExpr(base), args, block);
+                if is_method {
+                    let b = match methods.next().unwrap() {
+                        | MethodSource::Member(id) => self.member_ref(id.into(), &mut methods),
+                        | MethodSource::Record(idx) => self.records[idx].clone(),
+                    };
+
+                    base = JsExpr::Field {
+                        base: Box::new(b),
+                        field: self.mangle(path.segments().last().unwrap()),
+                    };
+                }
+
+                while let Some(m) = methods.next() {
+                    args.insert(0, match m {
+                        | MethodSource::Member(id) => Arg::JsExpr(self.member_ref(id.into(), &mut methods)),
+                        | MethodSource::Record(idx) => Arg::JsExpr(self.records[idx].clone()),
+                    });
+                }
             }
         }
 
-        let args = args
-            .into_iter()
+        let args2 = args
+            .drain(..params)
             .map(|a| match a {
                 | Arg::ExprId(id) => self.lower_expr(id, block),
                 | Arg::JsExpr(expr) => expr,
             })
             .collect();
 
-        JsExpr::Call {
+        let base = JsExpr::Call {
             base: Box::new(base),
-            args,
+            args: args2,
+        };
+
+        if !args.is_empty() {
+            self.lower_app(Arg::JsExpr(base), args, block)
+        } else {
+            base
         }
     }
 
@@ -852,14 +894,36 @@ impl BodyCtx<'_, '_> {
         match resolved {
             | ValueNs::Local(id) => self.locals[id].clone(),
             | ValueNs::Func(id) => {
-                if Func::from(id).module(self.db) == module {
-                    JsExpr::Ident {
-                        name: path.segments().last().unwrap().to_string(),
+                let base = if Func::from(id).module(self.db) == module {
+                    let attrs = self.db.attrs(id.into());
+                    let mut link_name = attrs.by_key("link_name").string_value();
+
+                    if let Some(name) = link_name.next() {
+                        JsExpr::Ident { name: name.to_string() }
+                    } else if attrs.by_key("no_mangle").exists() {
+                        JsExpr::Ident {
+                            name: path.segments().last().unwrap().to_string(),
+                        }
+                    } else {
+                        JsExpr::Ident {
+                            name: self.mangle(path.segments().last().unwrap()),
+                        }
                     }
                 } else {
                     let path = Func::from(id).path(self.db);
                     self.path_expr(path)
+                };
+
+                let is_method = matches!(Func::from(id).as_assoc_item(self.db), Some(hir::AssocItem::Func(_)));
+
+                if self.func_params(id, is_method) == 0 {
+                    return JsExpr::Call {
+                        base: Box::new(base),
+                        args: Vec::new(),
+                    };
                 }
+
+                base
             },
             | ValueNs::Const(id) => {
                 if Const::from(id).module(self.db) == module {
@@ -872,16 +936,21 @@ impl BodyCtx<'_, '_> {
                 }
             },
             | ValueNs::Static(id) => {
-                if Static::from(id).module(self.db) == module {
+                let base = if Static::from(id).module(self.db) == module {
                     JsExpr::Ident {
                         name: path.segments().last().unwrap().to_string(),
                     }
                 } else {
                     let path = Static::from(id).path(self.db);
                     self.path_expr(path)
+                };
+
+                JsExpr::Field {
+                    base: Box::new(base),
+                    field: String::from("$"),
                 }
             },
-            | ValueNs::Ctor(_id) => JsExpr::Undefined,
+            | ValueNs::Ctor(id) => self.construct(id.into(), Vec::new()),
             | ValueNs::Fixity(id) => {
                 let resolver = id.resolver(self.db.upcast());
                 let data = self.db.fixity_data(id);
@@ -908,7 +977,7 @@ impl BodyCtx<'_, '_> {
         }
     }
 
-    pub fn lower_arg(&mut self, arg: Arg, block: &mut Vec<JsExpr>) -> JsExpr {
+    fn lower_arg(&mut self, arg: Arg, block: &mut Vec<JsExpr>) -> JsExpr {
         match arg {
             | Arg::ExprId(id) => self.lower_expr(id, block),
             | Arg::JsExpr(expr) => expr,
@@ -930,6 +999,22 @@ impl BodyCtx<'_, '_> {
 
                 block.push(JsExpr::Throw { expr: Box::new(arg) });
                 JsExpr::Undefined
+            },
+            | "new" => match self.lower_arg(args.remove(0), block) {
+                | JsExpr::Literal {
+                    lit: Literal::String(s),
+                } => JsExpr::Call {
+                    base: Box::new(JsExpr::UnOp {
+                        op: "new ",
+                        rhs: Box::new(JsExpr::Ident { name: s }),
+                    }),
+                    args: Vec::new(),
+                },
+                | _ => unreachable!(),
+            },
+            | "spread" => JsExpr::UnOp {
+                op: "...",
+                rhs: Box::new(self.lower_arg(args.remove(0), block)),
             },
             | "iadd" => self.intrinsic_binop("+", args, block),
             | "isub" => self.intrinsic_binop("-", args, block),

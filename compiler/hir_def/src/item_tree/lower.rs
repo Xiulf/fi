@@ -242,7 +242,10 @@ impl Ctx {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
         let fundeps = item.fundeps().filter_map(|f| self.lower_fun_dep(f)).collect();
-        let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
+        let items = item
+            .item_groups()
+            .filter_map(|(item, group)| self.lower_assoc_item(item, group))
+            .collect();
 
         Some(id(self.tree.data.classes.alloc(Class {
             name,
@@ -269,14 +272,25 @@ impl Ctx {
     fn lower_member(&mut self, item: &ast::ItemMember) -> Option<LocalItemTreeId<Member>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let class = Path::lower(item.class()?);
-        let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
+        let items = item
+            .item_groups()
+            .filter_map(|(item, group)| self.lower_assoc_item(item, group))
+            .collect();
 
         Some(id(self.tree.data.members.alloc(Member { ast_id, class, items })))
     }
 
-    fn lower_assoc_item(&mut self, item: ast::AssocItem) -> Option<AssocItem> {
+    fn lower_assoc_item(&mut self, item: ast::AssocItem, group: Vec<ast::AssocItem>) -> Option<AssocItem> {
         match item {
-            | ast::AssocItem::Fun(it) => self.lower_fun(&it, std::iter::empty()).map(AssocItem::Func),
+            | ast::AssocItem::Fun(it) => self
+                .lower_fun(
+                    &it,
+                    group.into_iter().map(|it| match it {
+                        | ast::AssocItem::Fun(it) => it,
+                        | _ => unreachable!(),
+                    }),
+                )
+                .map(AssocItem::Func),
             | ast::AssocItem::Static(it) => self.lower_static(&it).map(AssocItem::Static),
         }
     }

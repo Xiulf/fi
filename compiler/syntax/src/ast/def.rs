@@ -61,6 +61,7 @@ ast_node!(Pat {
     Ctor(PatCtor, PAT_CTOR),
     Bind(PatBind, PAT_BIND),
     Lit(PatLit, PAT_LITERAL),
+    Unit(PatUnit, PAT_UNIT),
     Parens(PatParens, PAT_PARENS),
     Record(PatRecord, PAT_RECORD),
 });
@@ -70,6 +71,7 @@ ast_node!(Type {
     Infix(TypeInfix, TYPE_INFIX),
     Figure(TypeFigure, TYPE_FIGURE),
     Symbol(TypeSymbol, TYPE_SYMBOL),
+    Unit(TypeUnit, TYPE_UNIT),
     App(TypeApp, TYPE_APP),
     Path(TypePath, TYPE_PATH),
     Rec(TypeRec, TYPE_REC),
@@ -94,6 +96,7 @@ ast_node!(Expr {
     Field(ExprField, EXPR_FIELD),
     Path(ExprPath, EXPR_PATH),
     Lit(ExprLit, EXPR_LITERAL),
+    Unit(ExprUnit, EXPR_UNIT),
     Parens(ExprParens, EXPR_PARENS),
     Record(ExprRecord, EXPR_RECORD),
     Array(ExprArray, EXPR_ARRAY),

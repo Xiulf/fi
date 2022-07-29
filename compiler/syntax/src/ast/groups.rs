@@ -10,8 +10,28 @@ impl Module {
     }
 }
 
+impl ItemClass {
+    pub fn item_groups(&self) -> AssocItemGroups {
+        AssocItemGroups {
+            items: self.items().peekable(),
+        }
+    }
+}
+
+impl ItemMember {
+    pub fn item_groups(&self) -> AssocItemGroups {
+        AssocItemGroups {
+            items: self.items().peekable(),
+        }
+    }
+}
+
 pub struct ItemGroups {
     items: Peekable<AstChildren<Item>>,
+}
+
+pub struct AssocItemGroups {
+    items: Peekable<AstChildren<AssocItem>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,8 +46,42 @@ enum ItemGroupKind {
     Member,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum AssocItemGroupKind {
+    Func(bool),
+    Static(bool),
+}
+
 impl Iterator for ItemGroups {
     type Item = (Item, Vec<Item>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.items.next()?;
+        let name = item.group_name();
+        let mut rest = Vec::new();
+        let mut kind = item.group_kind();
+
+        while let Some(next) = self.items.peek() {
+            if name_eq(&next.group_name(), &name) && rest.len() != kind.max() {
+                let kind2 = next.group_kind();
+
+                if kind == kind2 {
+                    kind = kind2;
+                    rest.push(self.items.next()?);
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Some((item, rest))
+    }
+}
+
+impl Iterator for AssocItemGroups {
+    type Item = (AssocItem, Vec<AssocItem>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let item = self.items.next()?;
@@ -74,6 +128,15 @@ impl ItemGroupKind {
     }
 }
 
+impl AssocItemGroupKind {
+    fn max(self) -> usize {
+        match self {
+            | AssocItemGroupKind::Func(_) => usize::MAX,
+            | AssocItemGroupKind::Static(_) => 1,
+        }
+    }
+}
+
 impl PartialEq for ItemGroupKind {
     fn eq(&self, other: &Self) -> bool {
         use ItemGroupKind::*;
@@ -91,6 +154,20 @@ impl PartialEq for ItemGroupKind {
             | (Type(false), Type(false)) => true,
             | (Class, Class) => true,
             | (Member, Member) => true,
+            | _ => false,
+        }
+    }
+}
+
+impl PartialEq for AssocItemGroupKind {
+    fn eq(&self, other: &Self) -> bool {
+        use AssocItemGroupKind::*;
+
+        match (self, other) {
+            | (Func(true), Func(false)) => true,
+            | (Func(false), Func(false)) => true,
+            | (Static(true), Static(false)) => true,
+            | (Static(false), Static(false)) => true,
             | _ => false,
         }
     }
@@ -123,6 +200,26 @@ impl Item {
             | Item::Type(_) => ItemGroupKind::Type(false),
             | Item::Class(_) => ItemGroupKind::Class,
             | Item::Member(_) => ItemGroupKind::Member,
+        }
+    }
+}
+
+impl AssocItem {
+    fn group_name(&self) -> Option<Name> {
+        match self {
+            | AssocItem::Fun(it) => it.name(),
+            | AssocItem::Static(it) => it.name(),
+        }
+    }
+
+    fn group_kind(&self) -> AssocItemGroupKind {
+        match self {
+            | AssocItem::Fun(it) if it.is_foreign() => AssocItemGroupKind::Func(false),
+            | AssocItem::Fun(it) if it.ty().is_some() => AssocItemGroupKind::Func(true),
+            | AssocItem::Fun(_) => AssocItemGroupKind::Func(false),
+            | AssocItem::Static(it) if it.is_foreign() => AssocItemGroupKind::Static(false),
+            | AssocItem::Static(it) if it.ty().is_some() => AssocItemGroupKind::Static(true),
+            | AssocItem::Static(_) => AssocItemGroupKind::Static(false),
         }
     }
 }

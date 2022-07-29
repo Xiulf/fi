@@ -8,7 +8,7 @@ use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, S
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::expr::{CaseArm, Expr, ExprId, Literal, RecordField, Stmt};
-use crate::id::{LocalModuleId, ModuleDefId, ModuleId};
+use crate::id::{LocalModuleId, Lookup, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
 use crate::name::{AsName, Name};
 use crate::pat::{Pat, PatId};
@@ -72,11 +72,29 @@ impl<'a> ExprCollector<'a> {
                 let params = params.unwrap();
                 let mut param_count = 0;
                 let mut arms = Vec::new();
+                let comma = {
+                    let id = self
+                        .db
+                        .lang_item(self.def_map.lib(), "pair-operator".into())
+                        .unwrap()
+                        .as_fixity()
+                        .unwrap();
+
+                    let module = id.lookup(self.db).module;
+                    let def_map = self.db.def_map(module.lib);
+                    let data = self.db.fixity_data(id);
+
+                    Path::from_segments([def_map[module.local_id].name.clone(), data.name.clone()])
+                };
 
                 for (params, expr) in params.into_iter().zip(exprs) {
                     let pats = params.into_iter().map(|p| self.collect_pat(p)).collect::<Box<[_]>>();
-                    param_count = pats.len();
-                    let commas = vec![Path::from("(,)".as_name()); param_count - 1]; // @TODO: resolve (,) language item
+
+                    if arms.is_empty() {
+                        param_count = pats.len();
+                    }
+
+                    let commas = vec![comma.clone(); param_count - 1];
                     let pat = if param_count == 1 {
                         pats[0]
                     } else {
@@ -103,7 +121,7 @@ impl<'a> ExprCollector<'a> {
                     })
                     .collect::<Box<[_]>>();
 
-                let commas = vec![Path::from("(,)".as_name()); exprs.len() - 1]; // @TODO: resolve (,) language item
+                let commas = vec![comma; exprs.len() - 1];
                 let pred = if exprs.len() == 1 {
                     exprs[0]
                 } else {
@@ -243,6 +261,7 @@ impl<'a> ExprCollector<'a> {
                     self.alloc_expr(Expr::Infix { exprs, ops }, syntax_ptr)
                 }
             },
+            | ast::Expr::Unit(_) => self.alloc_expr(Expr::Unit, syntax_ptr),
             | ast::Expr::Parens(e) => {
                 let inner = self.collect_expr_opt(e.expr());
                 let src = self.to_source(syntax_ptr);
@@ -378,6 +397,7 @@ impl<'a> ExprCollector<'a> {
                 Pat::Lit { lit }
             },
             | ast::Pat::Wildcard(_) => Pat::Wildcard,
+            | ast::Pat::Unit(_) => Pat::Unit,
             | ast::Pat::Bind(pat) => {
                 let name = pat.name().map(|n| n.as_name()).unwrap_or_else(Name::missing);
                 let subpat = pat.subpat().map(|sp| self.collect_pat(sp));
@@ -394,6 +414,11 @@ impl<'a> ExprCollector<'a> {
                 } else {
                     Pat::Bind { name, subpat }
                 }
+            },
+            | ast::Pat::Ctor(p) => {
+                let path = p.path().map(Path::lower)?;
+
+                Pat::Path { path }
             },
             | ast::Pat::App(p) => {
                 let base = self.collect_pat_opt(p.base());
@@ -444,7 +469,6 @@ impl<'a> ExprCollector<'a> {
 
                 Pat::Record { fields, has_rest }
             },
-            | _ => unimplemented!("{:?}", pat),
         };
 
         Some(self.alloc_pat(pattern, ptr))

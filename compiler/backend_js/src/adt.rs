@@ -5,6 +5,7 @@ use crate::expr::JsExpr;
 use crate::Ctx;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Repr {
     Any,
     Scalar { scalar: Scalar },
@@ -14,6 +15,7 @@ pub enum Repr {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Scalar {
     Undefined,
     Bool,

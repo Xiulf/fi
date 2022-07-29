@@ -354,19 +354,27 @@ impl Func {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
-        let _data = db.func_data(self.id);
         let infer = db.infer(self.id.into());
-        let _body = db.body(self.id.into());
+        // let data = db.func_data(self.id);
+        // let body = db.body(self.id.into());
 
         // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
         // eprintln!("fn {} :: {}", data.name, infer.self_type.ty.display(db));
 
-        // for (expr, ty) in infer.type_of_expr.iter() {
-        //     eprintln!("{:?} :: {}", body[expr], ty.display(db));
+        // for ((id, i), method) in &infer.methods {
+        //     eprintln!("{:?}#{} -> {:?}", id, i, method);
         // }
 
+        // eprintln!();
+
+        // for (expr, ty) in infer.type_of_expr.iter() {
+        //     eprintln!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
+        // }
+
+        // eprintln!();
+
         // for (pat, ty) in infer.type_of_pat.iter() {
-        //     eprintln!("{:?} :: {}", body[pat], ty.display(db));
+        //     eprintln!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
         // }
 
         // eprintln!();

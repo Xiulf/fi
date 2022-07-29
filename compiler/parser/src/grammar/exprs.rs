@@ -234,10 +234,15 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         },
         | L_PAREN => {
             p.bump(L_PAREN);
-            let _ = expr(p);
-            p.expect(R_PAREN);
 
-            Some(m.complete(p, EXPR_PARENS))
+            if p.eat(R_PAREN) {
+                Some(m.complete(p, EXPR_UNIT))
+            } else {
+                let _ = expr(p);
+                p.expect(R_PAREN);
+
+                Some(m.complete(p, EXPR_PARENS))
+            }
         },
         | L_BRACKET => {
             p.bump(L_BRACKET);

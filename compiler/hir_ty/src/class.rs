@@ -43,6 +43,7 @@ pub struct Members {
 pub struct MemberMatchResult {
     pub member: MemberId,
     pub subst: FxHashMap<Unknown, TyId>,
+    pub constraints: Vec<Arc<MemberMatchResult>>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -111,7 +112,7 @@ impl Members {
         let members = db.members(constraint.class);
 
         // log::debug!(
-        //     "{}{}",
+        //     "solve {}{}",
         //     db.class_data(constraint.class).name,
         //     constraint
         //         .types
@@ -168,9 +169,13 @@ impl Member<Ty, Constraint> {
             })
             .collect::<Vec<_>>();
 
+        // log::debug!("{:#?}", matches);
+
         if !verify(&matches, deps) || matches.iter().all(|m| m == &Matched::Apart) {
             return None;
         }
+
+        let mut constraints = Vec::with_capacity(self.where_clause.constraints.len());
 
         for ctnt in self.where_clause.constraints.iter() {
             let ctnt = CtntInfo {
@@ -188,8 +193,12 @@ impl Member<Ty, Constraint> {
                     .collect(),
             };
 
-            if let None = Members::solve_constraint(db, types, type_vars, &ctnt, src) {
-                return None;
+            match Members::solve_constraint(db, types, type_vars, &ctnt, src) {
+                | None => return None,
+                | Some(solution) => {
+                    constraints.push(solution.clone());
+                    constraints.extend(solution.constraints.iter().cloned());
+                },
             }
         }
 
@@ -204,7 +213,11 @@ impl Member<Ty, Constraint> {
             });
         }
 
-        Some(MemberMatchResult { member: self.id, subst })
+        Some(MemberMatchResult {
+            member: self.id,
+            subst,
+            constraints,
+        })
     }
 
     fn priority(&self, db: &dyn HirDatabase) -> isize {
@@ -246,7 +259,7 @@ impl ClassEnv {
         self.current
     }
 
-    fn in_socpe(&self, scope: Option<ClassEnvScope>) -> impl Iterator<Item = ClassEnvScope> + '_ {
+    fn in_scope(&self, scope: Option<ClassEnvScope>) -> impl Iterator<Item = ClassEnvScope> + '_ {
         std::iter::successors(scope, move |&s| self.entries[s].parent)
     }
 
@@ -257,7 +270,7 @@ impl ClassEnv {
         ctnt: CtntInfo,
         scope: Option<ClassEnvScope>,
     ) -> Option<ClassEnvMatchResult> {
-        self.in_socpe(scope).find_map(|scope| {
+        self.in_scope(scope).find_map(|scope| {
             let entry = &self.entries[scope];
             let mut subst = FxHashMap::default();
             let mut vars = FxHashMap::default();

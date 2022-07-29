@@ -9,4 +9,4 @@ import intrinsics (($), unsafe, crash, partial) as c
 import core/ops as c
 import core/error (unwrap, unwrap_or, ret, (!), (?)) as c
 import core/data/option (Option, Some, None) as c
-import core/data/result (Result, Ok, Err) as c
+import core/data/result (Result, Ok, Error) as c

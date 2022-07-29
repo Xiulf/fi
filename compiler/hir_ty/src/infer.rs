@@ -24,6 +24,7 @@ use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 use hir_def::type_ref::{LocalTypeRefId, LocalTypeVarId};
 use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
 use syntax::{Assoc, Prec};
 
 use self::diagnostics::{CtntExpected, CtntFound};
@@ -106,11 +107,11 @@ pub struct InferenceResult<T, C> {
     pub type_of_pat: ArenaMap<PatId, T>,
     pub kind_of_ty: ArenaMap<LocalTypeRefId, T>,
     pub instances: FxHashMap<ExprId, Vec<T>>,
-    pub methods: FxHashMap<(ExprId, usize), MethodSource>,
+    pub methods: FxHashMap<(ExprId, usize), SmallVec<[MethodSource; 1]>>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic<T, C>>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MethodSource {
     Member(MemberId),
     Record(usize),
@@ -264,13 +265,18 @@ impl<'a> InferenceContext<'a> {
         id.as_class().unwrap()
     }
 
-    pub(crate) fn fn_args(&self, mut ty: TyId) -> (List<TyId>, TyId) {
+    pub(crate) fn fn_args(&self, mut ty: TyId, mut max_args: usize) -> (List<TyId>, TyId) {
         let fn_ctor = self.lang_ctor("fn-type");
         let mut args = Vec::new();
 
         while let Some(a) = ty.match_ctor(&self.types, fn_ctor) {
+            if max_args == 0 {
+                break;
+            }
+
             args.push(a[0]);
             ty = a[1];
+            max_args -= 1;
         }
 
         (args.into(), ty)
@@ -640,7 +646,7 @@ impl<'a> BodyInferenceContext<'a> {
         }
 
         let body = self.body.clone();
-        let (a, mut ret) = self.fn_args(ann);
+        let (a, mut ret) = self.fn_args(ann, body.params().len());
 
         if a.is_empty() {
             let src = self.source(body.body_expr());

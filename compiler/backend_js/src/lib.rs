@@ -1,6 +1,7 @@
 mod adt;
 mod expr;
 mod indent;
+mod pat;
 
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
@@ -50,6 +51,20 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    fn mangle(&self, name: impl AsRef<str>) -> String {
+        let name = name.as_ref();
+        let mut res = String::with_capacity(name.len());
+
+        for c in name.chars() {
+            match c {
+                | '\'' => res.push('$'),
+                | _ => res.push(c),
+            }
+        }
+
+        res
+    }
+
     pub fn codegen(&mut self, module: hir::Module) -> io::Result<()> {
         let decls = module.declarations(self.db);
         let members = module.members(self.db);
@@ -91,26 +106,34 @@ impl<'a> Ctx<'a> {
         let id = hir::id::FuncId::from(func);
 
         if !func.is_foreign(self.db) && func.has_body(self.db) {
-            self.codegen_body(id.into(), Some(func.name(self.db)))?;
+            self.codegen_body(id.into(), Some(func.name(self.db)), false)?;
             writeln!(self, "")?;
         }
 
         if !func.is_intrinsic(self.db) && func.is_exported(self.db) {
+            let attrs = self.db.attrs(id.into());
+
             if func.is_foreign(self.db) {
-                let link_name = if let Some(name) = self.db.attrs(id.into()).by_key("link_name").string_value().next() {
+                let link_name = if let Some(name) = attrs.by_key("link_name").string_value().next() {
                     name.as_name()
                 } else {
                     func.name(self.db)
                 };
 
-                writeln!(self, "$module.{} = {};", func.name(self.db), link_name)?;
+                writeln!(self, "$module.{} = {};", self.mangle(func.name(self.db)), link_name)?;
             } else if func.has_body(self.db) {
-                writeln!(self, "$module.{0} = {0};", func.name(self.db))?;
+                let name = if attrs.by_key("no_mangle").exists() {
+                    func.name(self.db).to_string()
+                } else {
+                    self.mangle(func.name(self.db))
+                };
+
+                writeln!(self, "$module.{0} = {0};", name)?;
             }
         }
 
         if self.db.attrs(id.into()).by_key("main").exists() {
-            writeln!(self, "$shade.main = {}", func.name(self.db))?;
+            writeln!(self, "$shade.$main = {}", func.name(self.db))?;
         }
 
         Ok(())
@@ -132,16 +155,45 @@ impl<'a> Ctx<'a> {
 
     pub fn codegen_member(&mut self, member: hir::Member) -> io::Result<()> {
         let items = member.items(self.db);
+        let lower = self.db.lower_member(member.into());
 
         if !items.is_empty() {
-            writeln!(self, "const {} = {{", member.link_name(self.db))?;
+            let has_constraints = lower
+                .member
+                .where_clause
+                .constraints
+                .iter()
+                .any(|c| !self.db.class_data(c.class).items.is_empty());
+
+            if !has_constraints {
+                writeln!(self, "const {} = {{", member.link_name(self.db))?;
+            } else {
+                write!(self, "function {}(", member.link_name(self.db))?;
+                let mut i = 0;
+
+                for c in lower.member.where_clause.constraints.iter() {
+                    if !self.db.class_data(c.class).items.is_empty() {
+                        if i > 0 {
+                            write!(self, ", ")?;
+                        }
+
+                        write!(self, "$r{}", i)?;
+                        i += 1;
+                    }
+                }
+
+                writeln!(self, ") {{")?;
+                self.out.indent();
+                writeln!(self, "return {{")?;
+            }
+
             self.out.indent();
 
             for item in items {
-                write!(self, "{}: ", item.name(self.db))?;
+                write!(self, "{}: ", self.mangle(item.name(self.db)))?;
 
                 match item {
-                    | hir::AssocItem::Func(id) => self.codegen_body(hir::id::FuncId::from(id).into(), None)?,
+                    | hir::AssocItem::Func(id) => self.codegen_body(hir::id::FuncId::from(id).into(), None, true)?,
                     | hir::AssocItem::Static(id) => self.codegen_body_expr(hir::id::StaticId::from(id).into())?,
                 }
 
@@ -151,19 +203,29 @@ impl<'a> Ctx<'a> {
             self.out.dedent();
             writeln!(self, "}};")?;
 
+            if has_constraints {
+                self.out.dedent();
+                writeln!(self, "}}")?;
+            }
+
             if member.is_exported(self.db) {
-                writeln!(self, "$module.{0} = {0};", member.link_name(self.db))?;
+                writeln!(self, "$module.{0} = {0};", self.mangle(member.link_name(self.db)))?;
             }
         }
 
         Ok(())
     }
 
-    pub fn codegen_body(&mut self, owner: DefWithBodyId, name: Option<hir::Name>) -> io::Result<()> {
+    pub fn codegen_body(
+        &mut self,
+        owner: DefWithBodyId,
+        name: Option<hir::Name>,
+        mut skip_where: bool,
+    ) -> io::Result<()> {
         write!(self, "function {}(", name.as_ref().map(AsRef::as_ref).unwrap_or(""))?;
         let mut bcx = BodyCtx::new(self, owner);
-        let body = bcx.body.clone();
         let mut ty = bcx.infer.self_type.ty;
+        let body = bcx.body.clone();
 
         loop {
             match ty.lookup(bcx.db) {
@@ -176,12 +238,16 @@ impl<'a> Ctx<'a> {
                             let name = format!("$r{}", bcx.records.len());
                             let record = expr::JsExpr::Ident { name: name.clone() };
 
-                            write!(bcx, "{}, ", name)?;
+                            if !skip_where {
+                                write!(bcx, "{}, ", name)?;
+                            }
+
                             bcx.records.push(record);
                         }
                     }
 
                     ty = inner;
+                    skip_where = false;
                 },
                 | _ => break,
             }
@@ -228,18 +294,14 @@ impl<'a, 'b> BodyCtx<'a, 'b> {
 
     pub fn lower(&mut self, in_block: bool) -> io::Result<()> {
         let expr = self.lower_expr_inline(self.body.body_expr());
-        let ret = if in_block {
-            match expr {
-                | expr::JsExpr::Block { mut exprs } => {
-                    let last = exprs.pop().unwrap();
+        let ret = match expr {
+            | expr::JsExpr::Block { mut exprs } => {
+                let last = exprs.pop().unwrap();
 
-                    exprs.push(expr::JsExpr::Return { expr: Box::new(last) });
-                    expr::JsExpr::Block { exprs }
-                },
-                | _ => expr::JsExpr::Return { expr: Box::new(expr) },
-            }
-        } else {
-            expr
+                exprs.push(expr::JsExpr::Return { expr: Box::new(last) });
+                expr::JsExpr::Block { exprs }
+            },
+            | _ => expr::JsExpr::Return { expr: Box::new(expr) },
         };
 
         ret.write(&mut self.out, in_block)

@@ -4,19 +4,19 @@ import prim (Integer)
 import core/ops
 
 member i i i of Add where Integer i =
-    fn add a b = intrinsics/iadd a b
+    add a b = intrinsics/iadd a b
 
 member i i i of Sub where Integer i =
-    fn sub a b = intrinsics/isub a b
+    sub a b = intrinsics/isub a b
 
 member i i i of Mul where Integer i =
-    fn mul a b = intrinsics/imul a b
+    mul a b = intrinsics/imul a b
 
 member i i i of Div where Integer i =
-    fn div a b = intrinsics/idiv a b
+    div a b = intrinsics/idiv a b
 
 member i i i of Rem where Integer i =
-    fn rem a b = intrinsics/irem a b
+    rem a b = intrinsics/irem a b
 
 member i i of Eq where Integer i =
-    fn eq a b = intrinsics/ieq a b
+    eq a b = intrinsics/ieq a b

@@ -124,12 +124,12 @@ class Partial
 
 @lang = "try-class"
 class Try self =
-    fn ret :: output -> self output
-    fn bind :: self a -> (a -> self b) -> self b
+    ret :: output -> self output
+    bind :: self a -> (a -> self b) -> self b
 
 @lang = "termination-class"
 class Termination t =
-    fn report :: t -> Int32
+    report :: t -> Int32
 
 member Unit of Termination =
-    fn report _ = 0
+    report _ = 0

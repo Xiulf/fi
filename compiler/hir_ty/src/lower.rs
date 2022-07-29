@@ -111,6 +111,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             | TypeRef::Figure(i) => self.icx.types.insert(TyInfo::Figure(*i), src),
             | TypeRef::Symbol(s) => self.icx.types.insert(TyInfo::Symbol(s.clone().into()), src),
             | TypeRef::Path(path) => self.lower_path(&path, ty),
+            | TypeRef::Unit => self.unit(src),
             | &TypeRef::App(mut base, arg) => {
                 let mut args = vec![self.lower_ty(arg)];
 
@@ -352,7 +353,7 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
         .ty;
 
     let vars = {
-        let (args, _) = ctx.fn_args(kind);
+        let (args, _) = ctx.fn_args(kind, usize::MAX);
 
         if args.len() > 0 {
             let scope = ctx.type_vars.add_scope(args.clone());

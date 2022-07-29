@@ -18,6 +18,7 @@ pub enum TypeVarSource {
 pub enum TypeRef {
     Error,
     Placeholder,
+    Unit,
     Figure(i128),
     Symbol(String),
     Path(Path),
@@ -134,6 +135,7 @@ impl TypeRef {
 
                 TypeRef::Record(fields, tail)
             },
+            | ast::Type::Unit(_) => TypeRef::Unit,
             | ast::Type::Parens(inner) => Self::from_ast_opt(inner.ty(), map),
             | ast::Type::Where(inner) => {
                 let where_clause = map.lower_where_clause(inner.where_clause());

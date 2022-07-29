@@ -19,6 +19,7 @@ impl BodyInferenceContext<'_> {
         let ty = match &body[pat] {
             | Pat::Missing => self.error(src),
             | Pat::Wildcard => self.fresh_type(src),
+            | Pat::Unit => self.unit(src),
             | Pat::Typed { pat, ty } => self.owner.with_type_map(self.db.upcast(), |type_map| {
                 let mut lcx = LowerCtx::new(type_map, self);
                 let ty = lcx.lower_ty(*ty);

@@ -15,7 +15,7 @@ impl InferenceContext<'_> {
         let src = self.source(origin);
         let never = self.lang_type("never-type", src);
 
-        if t1 == never {
+        if self.types[t1] == self.types[never] {
             return true;
         }
 

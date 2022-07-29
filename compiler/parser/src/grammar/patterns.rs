@@ -79,10 +79,15 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
         },
         | L_PAREN => {
             p.bump(L_PAREN);
-            let _ = pattern(p);
-            p.expect(R_PAREN);
 
-            Some(m.complete(p, PAT_PARENS))
+            if p.eat(R_PAREN) {
+                Some(m.complete(p, PAT_UNIT))
+            } else {
+                let _ = pattern(p);
+                p.expect(R_PAREN);
+
+                Some(m.complete(p, PAT_PARENS))
+            }
         },
         | L_BRACE => {
             p.bump(L_BRACE);

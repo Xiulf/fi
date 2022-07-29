@@ -1,1 +1,12 @@
 module js =
+
+import core
+
+foreign toString :: a -> Str
+
+@intrinsic foreign new :: Str -> a
+@intrinsic foreign spread :: JsArray a -> Spread
+
+foreign push :: JsArray a -> a -> JsArray a
+foreign type JsArray :: Type -> Type
+foreign type Spread :: Type

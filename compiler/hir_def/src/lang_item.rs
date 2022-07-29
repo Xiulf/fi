@@ -5,10 +5,11 @@ use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
 
 use crate::db::DefDatabase;
-use crate::id::{AttrDefId, ClassId, FuncId, ModuleDefId, StaticId, TypeAliasId, TypeCtorId};
+use crate::id::{AttrDefId, ClassId, FixityId, FuncId, ModuleDefId, StaticId, TypeAliasId, TypeCtorId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LangItem {
+    FixityId(FixityId),
     FuncId(FuncId),
     StaticId(StaticId),
     TypeAliasId(TypeAliasId),
@@ -22,6 +23,13 @@ pub struct LangItems {
 }
 
 impl LangItem {
+    pub fn as_fixity(self) -> Option<FixityId> {
+        match self {
+            | LangItem::FixityId(id) => Some(id),
+            | _ => None,
+        }
+    }
+
     pub fn as_func(self) -> Option<FuncId> {
         match self {
             | LangItem::FuncId(id) => Some(id),
@@ -70,6 +78,7 @@ impl LangItems {
         for (_, module) in def_map.modules() {
             for def in module.scope.declarations() {
                 match def {
+                    | ModuleDefId::FixityId(id) => lang_items.collect_lang_item(db, id, LangItem::FixityId),
                     | ModuleDefId::FuncId(id) => lang_items.collect_lang_item(db, id, LangItem::FuncId),
                     | ModuleDefId::StaticId(id) => lang_items.collect_lang_item(db, id, LangItem::StaticId),
                     | ModuleDefId::TypeAliasId(id) => lang_items.collect_lang_item(db, id, LangItem::TypeAliasId),

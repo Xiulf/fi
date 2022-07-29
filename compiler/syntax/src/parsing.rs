@@ -12,7 +12,11 @@ pub fn parse_text(text: &str) -> (GreenNode, Vec<SyntaxError>) {
     // let mut pos = rowan::TextSize::from(0);
 
     // for token in &tokens {
-    //     println!("{:?}: {:?}", &text[rowan::TextRange::at(pos, token.len)], token);
+    //     println!(
+    //         "{:<20}: {:?}",
+    //         format!("{:?}", &text[rowan::TextRange::at(pos, token.len)]),
+    //         token
+    //     );
     //     pos += token.len;
     // }
 

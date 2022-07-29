@@ -112,6 +112,7 @@ pub enum SyntaxKind {
     PAT_LITERAL,
     PAT_WILDCARD,
     PAT_PARENS,
+    PAT_UNIT,
     PAT_RECORD,
 
     FIELD_NORMAL,
@@ -121,6 +122,7 @@ pub enum SyntaxKind {
     TYPE_INFIX,
     TYPE_FIGURE,
     TYPE_SYMBOL,
+    TYPE_UNIT,
     TYPE_APP,
     TYPE_PATH,
     TYPE_REC,
@@ -146,6 +148,7 @@ pub enum SyntaxKind {
     EXPR_FIELD,
     EXPR_PATH,
     EXPR_LITERAL,
+    EXPR_UNIT,
     EXPR_PARENS,
     EXPR_RECORD,
     EXPR_ARRAY,

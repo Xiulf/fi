@@ -1,5 +1,5 @@
 // /mnt/e/Language/fc/test/target/prim.js
-// /tmp/.tmpH34Ttg
+// /tmp/.tmpEc41oA
 (function($shade) {
     const $module = $shade["prim"] || ($shade["prim"] = {})
     const $member_Termination_17 = {
@@ -9,13 +9,13 @@
     };
     $module.$member_Termination_17 = $member_Termination_17;
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmpGEBdn0
+// /tmp/.tmpD2DYbc
 (function($shade) {
     const $module = $shade["intrinsics"] || ($shade["intrinsics"] = {})
 })(this.$shade || (this.$shade = {}));
 // /mnt/e/Language/fc/test/target/core.js
 // /mnt/e/Language/fc/test/target/prim.js
-// /tmp/.tmpFTQA5q
+// /tmp/.tmp62yOBq
 (function($shade) {
     const $module = $shade["core/error"] || ($shade["core/error"] = {})
     function unwrap_unsafe($r0, $p0) {
@@ -23,7 +23,7 @@
     }
     $module.unwrap_unsafe = unwrap_unsafe;
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmp7zlkZd
+// /tmp/.tmpVkgo4c
 (function($shade) {
     const $module = $shade["core/data/int"] || ($shade["core/data/int"] = {})
     const $member_Add_18 = {
@@ -63,8 +63,8 @@
     };
     $module.$member_Eq_23 = $member_Eq_23;
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmpQfDVzP
-// /tmp/.tmpEua17P
+// /tmp/.tmpCRseVC
+// /tmp/.tmpnlrZM0
 (function($shade) {
     const $module = $shade["core/ops"] || ($shade["core/ops"] = {})
     function ne($p0, $p1) {
@@ -72,7 +72,7 @@
     }
     $module.ne = ne;
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmpM8J2No
+// /tmp/.tmp1IhBt0
 (function($shade) {
     const $module = $shade["core/data/option"] || ($shade["core/data/option"] = {})
     const $member_Try_24 = {
@@ -87,7 +87,7 @@
                     break $l0
                 };
                 if ($p0[0] == 0) {
-                    $e0 = undefined;
+                    $e0 = [0, undefined];
                     break $l0
                 };
             } while(0);
@@ -126,18 +126,18 @@
     };
     $module.$member_Unwrap_25 = $member_Unwrap_25;
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmpbbEIVq
+// /tmp/.tmpMJLltO
 (function($shade) {
     const $module = $shade["core/data/bool"] || ($shade["core/data/bool"] = {})
     function not($p2) {
         var $e4;
         $l4: do {
             if ($p2[0] == 1) {
-                $e4 = undefined;
+                $e4 = [0, undefined];
                 break $l4
             };
             if ($p2[0] == 0) {
-                $e4 = undefined;
+                $e4 = [1, undefined];
                 break $l4
             };
         } while(0);
@@ -145,133 +145,168 @@
     }
     $module.not = not;
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmppun8yb
+// /tmp/.tmpmUvWHO
 (function($shade) {
     const $module = $shade["core/data/result"] || ($shade["core/data/result"] = {})
-    function ok($p0) {
-        var $e0;
-        $l0: do {
-            if ($p0[0] == 1) {
-                $e0 = [1, $p0[1]];
-                break $l0
+    function ok($p6) {
+        var $e6;
+        $l6: do {
+            if ($p6[0] == 1) {
+                $e6 = [1, $p6[1]];
+                break $l6
             };
-            if ($p0[0] == 0) {
-                $e0 = undefined;
-                break $l0
+            if ($p6[0] == 0) {
+                $e6 = [0, undefined];
+                break $l6
             };
         } while(0);
-        return $e0;
+        return $e6;
     }
     $module.ok = ok;
-    function err($p0) {
-        var $e0;
-        $l0: do {
-            if ($p0[0] == 0) {
-                $e0 = [1, $p0[1]];
-                break $l0
+    function err($p6) {
+        var $e6;
+        $l6: do {
+            if ($p6[0] == 0) {
+                $e6 = [1, $p6[1]];
+                break $l6
             };
-            if ($p0[0] == 1) {
-                $e0 = undefined;
-                break $l0
+            if ($p6[0] == 1) {
+                $e6 = [0, undefined];
+                break $l6
             };
         } while(0);
-        return $e0;
+        return $e6;
     }
     $module.err = err;
-    function unwrap_err($p0) {
-        var $e0;
-        $l0: do {
-            if ($p0[0] == 0) {
-                $e0 = $p0[1];
-                break $l0
+    function unwrap_err($p6) {
+        var $e6;
+        $l6: do {
+            if ($p6[0] == 0) {
+                $e6 = $p6[1];
+                break $l6
             };
-            if ($p0[0] == 1) {
+            if ($p6[0] == 1) {
                 throw "cannot unwrap_err an ok value"
             };
         } while(0);
-        return $e0;
+        return $e6;
     }
     $module.unwrap_err = unwrap_err;
     const $member_Try_26 = {
         ret: function ($p0) {
             return [1, $p0];
         },
-        bind: function ($p0, $p1) {
-            var $e0;
-            $l0: do {
-                if ($p0[0] == 1) {
-                    $e0 = $p1($p0[1]);
-                    break $l0
+        bind: function ($p10, $p11) {
+            var $e10;
+            $l10: do {
+                if ([$p10, $p11][0][0] == 1) {
+                    $e10 = [$p10, $p11][1]([$p10, $p11][0][1]);
+                    break $l10
                 };
-                if ($p0[0] == 0) {
-                    $e0 = [0, $p0[1]];
-                    break $l0
+                if ([$p10, $p11][0][0] == 0) {
+                    $e10 = [0, [$p10, $p11][0][1]];
+                    break $l10
                 };
             } while(0);
-            return $e0;
+            return $e10;
         },
     };
     $module.$member_Try_26 = $member_Try_26;
     const $member_Unwrap_27 = {
-        unwrap: function ($p0) {
-            var $e0;
-            $l0: do {
-                if ($p0[0] == 1) {
-                    $e0 = $p0[1];
-                    break $l0
+        unwrap: function ($p6) {
+            var $e6;
+            $l6: do {
+                if ($p6[0] == 1) {
+                    $e6 = $p6[1];
+                    break $l6
                 };
-                if ($p0[0] == 0) {
+                if ($p6[0] == 0) {
                     throw "cannot unwrap an err value"
                 };
             } while(0);
-            return $e0;
+            return $e6;
         },
-        unwrap_or: function ($p0, $p1) {
-            var $e0;
-            $l0: do {
-                if ($p0[0] == 1) {
-                    $e0 = $p0[1];
-                    break $l0
+        unwrap_or: function ($p10, $p11) {
+            var $e6;
+            $l6: do {
+                if ([$p10, $p11][0][0] == 1) {
+                    $e6 = [$p10, $p11][0][1];
+                    break $l6
                 };
-                if ($p0[0] == 0) {
-                    $e0 = $p1;
-                    break $l0
+                if ([$p10, $p11][0][0] == 0) {
+                    $e6 = [$p10, $p11][1];
+                    break $l6
                 };
             } while(0);
-            return $e0;
+            return $e6;
         },
     };
     $module.$member_Unwrap_27 = $member_Unwrap_27;
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmpN2q9O7
-// /tmp/.tmpJn6kHU
+// /tmp/.tmp1xajlW
+// /tmp/.tmpsVbEWx
 // /mnt/e/Language/fc/test/target/js.js
 // /mnt/e/Language/fc/test/target/core.js
 // /mnt/e/Language/fc/lib/js/include/js.js
-function log(str) {
-  console.log(str);
+function toString(x) {
+  return x.toString();
 }
-// /tmp/.tmp4C8s9U
-// /tmp/.tmpzMnPs9
+
+function push(a, x) {
+  a.push(x);
+  return a;
+}
+
+function newArray(_) {
+  return [];
+}
+// /tmp/.tmpY1dRyz
+(function($shade) {
+    const $module = $shade["js"] || ($shade["js"] = {})
+    $module.toString = toString;
+    $module.push = push;
+})(this.$shade || (this.$shade = {}));
+// /tmp/.tmpUh6Co7
 (function($shade) {
     const $module = $shade["js/console"] || ($shade["js/console"] = {})
     $module.log = console.log;
+    function print($r0, ) {
+        return $r0.print$(new Array());
+    }
+    $module.print = print;
+    const $member_Print_28 = {
+        print$: function ($p0) {
+            return console.log(...$p0);
+        },
+    };
+    $module.$member_Print_28 = $member_Print_28;
+    function $member_Print_29($r0) {
+        return {
+            print$: function ($p0) {
+                function $l9($l9p0) {
+                    return $r0.print$($shade["js"].push($p0, $shade["js"].toString($l9p0)));
+                };
+                return $l9;
+            },
+        };
+    }
+    $module.$member_Print_29 = $member_Print_29;
 })(this.$shade || (this.$shade = {}));
-// /tmp/.tmpVC5wZz
+// /tmp/.tmp2Jo4ga
 (function($shade) {
     const $module = $shade["main"] || ($shade["main"] = {})
     function main() {
-        var $p2 = test(undefined);
-        return $shade["js/console"].log($p2);
+        var $p0 = test();
+        return $shade["js/console"].print($shade["js/console"].$member_Print_29($shade["js/console"].$member_Print_29($shade["js/console"].$member_Print_29($shade["js/console"].$member_Print_28))))($p0)("test")(234);
     }
     $module.main = main;
-    $shade.main = main
-    function test($p0) {
-        function $l12($p0) {
-            return $shade["core/data/int"].$member_Eq_23.eq($p0, 0) ? 1 : $shade["core/data/int"].$member_Mul_20.mul($p0, $l12($shade["core/data/int"].$member_Sub_19.sub($p0, 1)));
+    $shade.$main = main
+    function test() {
+        function $l12($l12p0) {
+            return $shade["core/data/int"].$member_Eq_23.eq($l12p0, 0) ? 1 : $shade["core/data/int"].$member_Mul_20.mul($l12p0, $l12($shade["core/data/int"].$member_Sub_19.sub($l12p0, 1)));
         };
         return $l12(5);
     }
     $module.test = test;
 })(this.$shade || (this.$shade = {}));
-$shade.main();
+$shade.$main();

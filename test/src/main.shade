@@ -1,18 +1,66 @@
 module main =
 
 import core
+import core/data/result
 import js/console
 
 @main
-fn main = 
-    let a = test Unit
+main =
+    let a = test
 
-    log a
+    print a "test" 234 :: ()
 
 
-fn test Unit =
+test =
     let go = fn x ->
         if x == 0 then 1
         else x * recur (x - 1)
     
     go 5
+
+
+; effect Yield a b =
+;    | yield a -> b
+
+; iter k f =
+;    handle k () with
+;        yield x -> resume (f x)
+
+; test () =
+;    let a = yield 4
+;    let b = yield 5
+;    let c = yield 6
+
+; main =
+;    iter test fn x -> print x :: ()
+
+
+
+; iter k f =
+;    handle k () with
+;        yield x; c -> c (f x)
+
+; test () =
+;    do(yield 4) fn a ->
+;        do(yield 5) fn b ->
+;            do(yield 6) fn c -> return
+
+
+
+; type Test =
+;    | TestStart
+;    | TestYield1
+;    | TestYield2
+;    | TestYield3
+;    | TestDone
+
+; test_construct () =
+;     TestStart
+
+; test_resume self () =
+;    case self of
+;        TestStart  -> *self = TestYield1; yield 4
+;        TestYield1 -> *self = TestYield2; yield 5
+;        TestYield2 -> *self = TestYield3; yield 6
+;        TestYield3 -> *self = TestDone; return
+;        TestDone   -> crash "generator completed"

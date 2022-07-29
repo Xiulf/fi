@@ -45,12 +45,14 @@ struct Lexer<'src> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LayoutDelim {
     Root,
-    Where,
-    TypeDecl,
+    ModuleHead,
     ClassHead,
     ClassBody,
     MemberHead,
+    MemberBody,
     DeclHead,
+    TypeDecl,
+    Where,
     Prop,
     Case,
     CaseBinders,
@@ -67,7 +69,11 @@ enum LayoutDelim {
 impl LayoutDelim {
     fn is_indented(self) -> bool {
         match self {
-            | LayoutDelim::Where | LayoutDelim::ClassBody | LayoutDelim::Of | LayoutDelim::Do => true,
+            | LayoutDelim::Where
+            | LayoutDelim::ClassBody
+            | LayoutDelim::MemberBody
+            | LayoutDelim::Of
+            | LayoutDelim::Do => true,
             | _ => false,
         }
     }
@@ -296,6 +302,11 @@ impl<'src> Lexer<'src> {
 
                     self.stack.pop().unwrap();
                     self.emit(EQUALS);
+                    self.insert_start(LayoutDelim::MemberBody);
+                },
+                | [.., (_, LayoutDelim::ModuleHead)] => {
+                    self.stack.pop().unwrap();
+                    self.emit(EQUALS);
                     self.insert_start(LayoutDelim::Where);
                 },
                 | [.., (_, LayoutDelim::ClassHead)] => {
@@ -306,7 +317,7 @@ impl<'src> Lexer<'src> {
                 | [.., (_, LayoutDelim::MemberHead)] => {
                     self.stack.pop().unwrap();
                     self.emit(EQUALS);
-                    self.insert_start(LayoutDelim::Where);
+                    self.insert_start(LayoutDelim::MemberBody);
                 },
                 | [.., (_, LayoutDelim::DeclHead)] => {
                     self.stack.pop().unwrap();
@@ -550,7 +561,7 @@ impl<'src> Lexer<'src> {
                     self.insert_default(start, MODULE_KW);
 
                     if self.is_def_start(start) {
-                        self.stack.push((start, LayoutDelim::MemberHead));
+                        self.stack.push((start, LayoutDelim::ModuleHead));
                     }
                 }
             },
@@ -563,14 +574,12 @@ impl<'src> Lexer<'src> {
                 }
             },
             | "type" => {
-                if self.is_top_decl(start) {
-                    self.insert_default(start, TYPE_KW);
-                    self.stack.push((start, LayoutDelim::TypeDecl));
-                } else if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                     self.emit(IDENT);
                     self.stack.pop().unwrap();
                 } else {
                     self.insert_default(start, TYPE_KW);
+                    self.stack.push((start, LayoutDelim::TypeDecl));
                 }
             },
             | "foreign" => {
@@ -612,10 +621,7 @@ impl<'src> Lexer<'src> {
                     self.stack.pop().unwrap();
                 } else {
                     self.insert_default(start, CLASS_KW);
-
-                    if self.is_top_decl(start) {
-                        self.stack.push((start, LayoutDelim::ClassHead));
-                    }
+                    self.stack.push((start, LayoutDelim::ClassHead));
                 }
             },
             | "member" => match self.stack[..] {
@@ -625,10 +631,7 @@ impl<'src> Lexer<'src> {
                 },
                 | _ => {
                     self.insert_default(start, MEMBER_KW);
-
-                    if self.is_top_decl(start) {
-                        self.stack.push((start, LayoutDelim::MemberHead));
-                    }
+                    self.stack.push((start, LayoutDelim::MemberHead));
                 },
             },
             | "infix" => {
@@ -836,6 +839,10 @@ impl<'src> Lexer<'src> {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                     self.stack.pop().unwrap();
                 }
+
+                if self.is_decl(start) {
+                    self.insert_start(LayoutDelim::DeclHead);
+                }
             },
         }
     }
@@ -864,11 +871,11 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    fn is_top_decl(&self, pos: (usize, usize)) -> bool {
-        if let [(_, LayoutDelim::Root), (start, LayoutDelim::Where)] = self.stack[..] {
-            start.1 == pos.1
-        } else {
-            false
+    fn is_decl(&self, pos: (usize, usize)) -> bool {
+        match self.stack[..] {
+            | [(_, LayoutDelim::Root), (start, LayoutDelim::Where)]
+            | [.., (start, LayoutDelim::ClassBody | LayoutDelim::MemberBody)] => start.1 == pos.1,
+            | _ => false,
         }
     }
 
@@ -917,7 +924,7 @@ impl<'src> Lexer<'src> {
 
     fn insert_sep(&mut self, start: (usize, usize)) {
         match self.stack[..] {
-            | [.., (pos, LayoutDelim::TypeDecl | LayoutDelim::MemberHead | LayoutDelim::ClassHead)]
+            | [.., (pos, LayoutDelim::Where), (_, LayoutDelim::TypeDecl | LayoutDelim::MemberHead | LayoutDelim::ClassHead)]
                 if sep_p(start, pos) =>
             {
                 self.stack.pop().unwrap();
