@@ -1,7 +1,7 @@
 module Core.Ops =
 
 import Prim ((->), Bool, True, False)
-import Core.Data.Bool (not)
+import Data.Bool (not)
 import Core.Cmp
 
 infixl 4 eq as (==)

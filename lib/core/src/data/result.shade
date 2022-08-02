@@ -1,6 +1,6 @@
-module Core.Data.Result =
+module Data.Result =
 
-import Core.Data.Option (Some, None)
+import Data.Option (Some, None)
 import Core.Error (Try, Unwrap)
 import Intrinsics (crash)
 

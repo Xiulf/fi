@@ -1,7 +1,6 @@
 [project]
 name = "std"
 version = "0.1.0"
-entry = "src/std.shade"
 
 [dependencies]
 c = { path = "../c" }

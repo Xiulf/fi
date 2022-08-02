@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fmt, panic};
 
-use input::{FileId, FileTree, LineIndex, SourceRoot, SourceRootId};
+use input::{FileId, LineIndex, SourceRoot, SourceRootId};
 use syntax::{ast, Parsed};
 
 pub trait Upcast<T: ?Sized> {
@@ -43,9 +43,6 @@ pub trait SourceDatabaseExt: SourceDatabase {
 
     #[salsa::input]
     fn target_dir(&self, lib: libs::LibId) -> PathBuf;
-
-    #[salsa::invoke(FileTree::file_tree_query)]
-    fn file_tree(&self, lib: libs::LibId) -> Arc<FileTree>;
 
     fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
 

@@ -75,7 +75,7 @@ impl Driver {
         let root_file = FileId(0);
         let (lib, _) = driver
             .libs
-            .add_lib("<interactive>", Default::default(), root_id, root_file, Vec::new());
+            .add_lib("<interactive>", Default::default(), root_id, Vec::new());
 
         root.insert_file(root_file, "<interactive>");
 

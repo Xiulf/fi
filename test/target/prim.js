@@ -1,4 +1,8 @@
-// /tmp/.tmpRHiYCB
+// /tmp/.tmp6avEyi
+(function($shade) {
+    const $module = $shade["Intrinsics"] || ($shade["Intrinsics"] = {})
+})(this.$shade || (this.$shade = {}));
+// /tmp/.tmp7ftQbJ
 (function($shade) {
     const $module = $shade["Prim"] || ($shade["Prim"] = {})
     const $member_Termination_17 = {
@@ -7,8 +11,4 @@
         },
     };
     $module.$member_Termination_17 = $member_Termination_17;
-})(this.$shade || (this.$shade = {}));
-// /tmp/.tmpYsxcPb
-(function($shade) {
-    const $module = $shade["Intrinsics"] || ($shade["Intrinsics"] = {})
 })(this.$shade || (this.$shade = {}));

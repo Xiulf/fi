@@ -1,4 +1,4 @@
-module Core.Data.List =
+module Data.List =
 
 type List a =
     | Nil

@@ -6,13 +6,33 @@ import Js.Console
 
 @main
 main =
-    let a = 0:1:2:3:4:Nil
-    printList a
+    let a = 0 : 1 : 2 : 3 : 4 : Nil
+    let b = map a fn x -> x * 2
+
+    log $ spread $ toArray b
 
 
-printList list =
-    let go = fn list arr -> case list of
-        Cons x xs -> recur xs (push arr x)
-        Nil -> log (spread arr)
+toArray list =
+    foldl list (new "Array") fn arr x -> (push arr x)
+
+
+class Map m =
+    map :: m a -> (a -> b) -> m b
+
+class Foldable f =
+    foldl :: f a -> b -> (b -> a -> b) -> b
+    foldr :: f a -> b -> (b -> a -> b) -> b
+
+member List of Map =
+    map list f = case list of
+        x : xs -> f x : map xs f
+        Nil -> Nil
+
+member List of Foldable =
+    foldl list init f = case list of
+        x : xs -> foldl xs (f init x) f
+        Nil -> init
     
-    go list (new "Array")
+    foldr list init f = case list of
+        x : xs -> f (foldr xs init f) x
+        Nil -> init

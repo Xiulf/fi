@@ -1,4 +1,4 @@
-module Core.Data.Option =
+module Data.Option =
 
 import Core.Error (Try, Unwrap)
 import Intrinsics (crash)

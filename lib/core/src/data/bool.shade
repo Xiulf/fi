@@ -1,4 +1,4 @@
-module Core.Data.Bool =
+module Data.Bool =
 
 import Prim (Bool, True, False)
 

@@ -3,7 +3,7 @@ use std::ops::Index;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::input::{FileId, SourceRootId};
+use crate::input::SourceRootId;
 
 #[derive(Debug, Clone)]
 pub struct LibData {
@@ -14,7 +14,6 @@ pub struct LibData {
     pub dependent: Vec<LibId>,
     pub links: Vec<String>,
     pub source_root: SourceRootId,
-    pub root_file: FileId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -44,7 +43,6 @@ impl LibSet {
         name: impl Into<String>,
         kind: LibKind,
         source_root: SourceRootId,
-        root_file: FileId,
         links: Vec<String>,
     ) -> (LibId, bool) {
         let name = name.into();
@@ -61,7 +59,6 @@ impl LibSet {
                 id,
                 name,
                 kind,
-                root_file,
                 source_root,
                 links,
                 deps: Vec::new(),

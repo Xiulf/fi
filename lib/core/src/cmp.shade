@@ -1,7 +1,7 @@
 module Core.Cmp =
 
 import Core
-import Core.Data.Bool (not)
+import Data.Bool (not)
 
 class Eq lhs rhs =
     eq :: lhs -> rhs -> Bool

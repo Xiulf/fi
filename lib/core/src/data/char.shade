@@ -1,4 +1,4 @@
-module Core.Data.Char (
+module Data.Char (
     ; encode_utf8, len_utf8
 ) =
 

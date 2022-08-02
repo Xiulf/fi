@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -23,7 +24,9 @@ pub struct Manifest {
 pub struct Project {
     pub name: String,
     pub version: String,
-    pub entry: String,
+
+    #[serde(default = "Project::default_src")]
+    pub src: PathBuf,
 
     #[serde(default)]
     pub link: Vec<PathBuf>,
@@ -57,6 +60,10 @@ impl Project {
     pub fn link_with<'a>(&'a self) -> impl Iterator<Item = &'a PathBuf> {
         self.link.iter()
     }
+
+    fn default_src() -> PathBuf {
+        PathBuf::from("src")
+    }
 }
 
 impl Dependency {
@@ -66,8 +73,6 @@ impl Dependency {
         }
     }
 }
-
-const EXTENSION: &'static str = "shade";
 
 pub fn load_project(
     rdb: &mut RootDatabase,
@@ -84,12 +89,10 @@ pub fn load_project(
 
     let manifest = Manifest::load(path)?;
     let root_id = SourceRootId(*roots);
-    let root_file = FileId(*files);
     let (lib, exists) = libs.add_lib(
         manifest.project.name.clone(),
         manifest.project.output,
         root_id,
-        root_file,
         manifest.project.link_with().map(|l| l.display().to_string()).collect(),
     );
 
@@ -99,17 +102,9 @@ pub fn load_project(
 
     *roots += 1;
 
-    load_file(
-        rdb,
-        &mut root,
-        root_id,
-        root_file,
-        lib,
-        files,
-        path.join(&manifest.project.entry).parent().unwrap(),
-        &path.join(&manifest.project.entry),
-        true,
-    )?;
+    let src_dir = path.join(&manifest.project.src);
+
+    load_dir(rdb, &mut root, root_id, lib, files, &src_dir, &src_dir)?;
 
     for dep in manifest.dep_dirs(path) {
         let dep = load_project(rdb, libs, roots, files, &dep)?;
@@ -134,22 +129,11 @@ pub fn load_normal(
     let name = path.file_stem().unwrap().to_str().unwrap();
     let mut root = SourceRoot::new_local();
     let root_id = SourceRootId(*roots);
-    let root_file = FileId(*files);
-    let (lib, _) = libs.add_lib(name, kind, root_id, root_file, Vec::new());
+    let (lib, _) = libs.add_lib(name, kind, root_id, Vec::new());
 
     *roots += 1;
 
-    load_file(
-        rdb,
-        &mut root,
-        root_id,
-        root_file,
-        lib,
-        files,
-        path.parent().unwrap(),
-        path,
-        true,
-    )?;
+    load_dir(rdb, &mut root, root_id, lib, files, path, path)?;
 
     rdb.set_lib_source_root(lib, root_id);
     rdb.set_source_root(root_id, root.into());
@@ -157,21 +141,42 @@ pub fn load_normal(
     Ok(lib)
 }
 
-fn load_file(
+fn load_dir(
     rdb: &mut RootDatabase,
     root: &mut SourceRoot,
     root_id: SourceRootId,
-    file_id: FileId,
     lib: LibId,
     files: &mut u32,
     project: &Path,
     path: &Path,
-    _root: bool,
 ) -> Result<()> {
-    let text =
-        std::fs::read_to_string(path).with_context(|| format!("Failed to load source file from {}", path.display()))?;
+    for entry in path.read_dir()? {
+        let entry = entry?;
+        let meta = entry.metadata()?;
+
+        if meta.is_file() {
+            load_file(rdb, root, root_id, lib, files, project, &entry.path())?;
+        } else {
+            load_dir(rdb, root, root_id, lib, files, project, &entry.path())?;
+        }
+    }
+
+    Ok(())
+}
+
+fn load_file(
+    rdb: &mut RootDatabase,
+    root: &mut SourceRoot,
+    root_id: SourceRootId,
+    lib: LibId,
+    files: &mut u32,
+    project: &Path,
+    path: &Path,
+) -> Result<()> {
+    let text = read_to_string(path).with_context(|| format!("Failed to load source file from {}", path.display()))?;
     let file_path = path.strip_prefix(project).ok().and_then(|p| p.to_slash()).unwrap();
     let file_path = RelativePath::from_path(&file_path).unwrap();
+    let file_id = FileId(*files);
 
     rdb.set_file_text(file_id, text.into());
     rdb.set_file_source_root(file_id, root_id);
@@ -179,38 +184,7 @@ fn load_file(
     root.insert_file(file_id, file_path);
     *files += 1;
 
-    let dir = if _root {
-        project.to_path_buf()
-    } else {
-        file_as_dir(path)
-    };
-
-    if let Ok(read_dir) = dir.read_dir() {
-        let ext = std::ffi::OsStr::new(EXTENSION);
-
-        for entry in read_dir {
-            let child_path = entry?.path();
-
-            if _root && child_path == path {
-                continue;
-            }
-
-            if child_path.is_file() && child_path.extension() == Some(ext) {
-                let file_id = FileId(*files);
-
-                load_file(rdb, root, root_id, file_id, lib, files, project, &child_path, false)?;
-            }
-        }
-    }
-
     Ok(())
-}
-
-fn file_as_dir(path: &Path) -> PathBuf {
-    let file_stem = path.file_stem().unwrap();
-    let dir = path.parent().unwrap();
-
-    dir.join(file_stem)
 }
 
 mod lib_kind {
