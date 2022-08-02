@@ -1,8 +1,8 @@
-module core/error (module core/error, module t) =
+module Core.Error (module Core.Error, module t) =
 
-import prim (Try, ret, bind) as t
-import prim (Partial, (->))
-import intrinsics (partial)
+import Prim (Try, ret, bind) as t
+import Prim (Partial, (->))
+import Intrinsics (partial)
 
 postfix unwrap_unsafe as (!)
 infixl 5 unwrap_or as (?)

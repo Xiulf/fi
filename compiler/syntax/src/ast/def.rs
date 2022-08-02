@@ -94,7 +94,7 @@ ast_node!(Expr {
     Infix(ExprInfix, EXPR_INFIX),
     App(ExprApp, EXPR_APP),
     Field(ExprField, EXPR_FIELD),
-    Path(ExprPath, EXPR_PATH),
+    Ident(ExprIdent, EXPR_IDENT),
     Lit(ExprLit, EXPR_LITERAL),
     Unit(ExprUnit, EXPR_UNIT),
     Parens(ExprParens, EXPR_PARENS),

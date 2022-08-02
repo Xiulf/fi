@@ -7,7 +7,6 @@ use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, ExprOrPatId, InferenceContext, InferenceDiagnostic};
-// use crate::display::HirDisplay;
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
 use crate::lower::LowerCtx;
 
@@ -30,7 +29,7 @@ impl BodyInferenceContext<'_> {
             }),
             | Expr::Hole => self.fresh_type(src),
             | Expr::Unit => self.unit(src),
-            | Expr::Path { path } => self.icx.infer_path(path, self.resolver.clone(), expr, None),
+            | Expr::Path { path } => return self.icx.infer_path(path, self.resolver.clone(), expr, None),
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
                     let integer = self.lang_class("integer-class");
@@ -654,15 +653,17 @@ impl InferenceContext<'_> {
 
                 let ty = self.db.value_ty(id).ty;
                 let ty = ty.to_info(self.db, &mut self.types, &mut self.type_vars, src);
-                let ty = self.instantiate(ty, (expr, idx.unwrap_or(0)).into());
 
                 self.result.type_of_expr.insert(expr, ty);
 
-                return ty;
+                return self.instantiate(ty, (expr, idx.unwrap_or(0)).into());
             },
             | None => {
+                let ty = self.error(src);
+
                 self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
-                self.error(src)
+                self.result.type_of_expr.insert(expr, ty);
+                ty
             },
         }
     }

@@ -105,7 +105,7 @@ impl InferenceContext<'_> {
 
                 let ty = inner.replace_vars(&mut self.types, &us, scope);
 
-                if let ExprOrPatId::ExprId(e) = id {
+                if let ExprOrPatId::ExprId(e) | ExprOrPatId::ExprIdInfix(e, _) = id {
                     self.result.instances.insert(e, us);
                 }
 

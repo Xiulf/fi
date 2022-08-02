@@ -1,7 +1,7 @@
-module core/data/option =
+module Core.Data.Option =
 
-import core/error (Try, Unwrap)
-import intrinsics (crash)
+import Core.Error (Try, Unwrap)
+import Intrinsics (crash)
 
 type Option t =
     | None

@@ -1,8 +1,8 @@
-module core/data/result =
+module Core.Data.Result =
 
-import core/data/option (Some, None)
-import core/error (Try, Unwrap)
-import intrinsics (crash)
+import Core.Data.Option (Some, None)
+import Core.Error (Try, Unwrap)
+import Intrinsics (crash)
 
 type Result e t =
     | Error e

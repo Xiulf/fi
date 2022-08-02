@@ -90,12 +90,12 @@ impl Interactive {
             return;
         }
 
-        *self.lines.last_mut().unwrap() = format!("let _ = {}", text);
+        *self.lines.last_mut().unwrap() = format!("let _ = _ `{}` _", text);
         self.driver.db.set_file_text(self.file, self.text().into());
 
         let sema = Semantics::new(&self.db);
         let parsed = sema.parse(self.file);
-        let offset = self.offset(12);
+        let offset = self.offset(15);
 
         if let Some(path) = sema.find_node_at_offset::<syntax::ast::Path>(parsed.syntax(), offset) {
             let resolution = sema.resolve_path(&path);
@@ -180,7 +180,7 @@ impl Interactive {
             text.push_str(import);
         }
 
-        text.push_str("\nfun main = do");
+        text.push_str("\nmain =");
 
         for line in &self.lines {
             text.push_str("\n    ");
@@ -221,14 +221,18 @@ fn format_resolution(db: &dyn hir::db::HirDatabase, resolution: hir::PathResolut
             let name = type_var.name(db);
 
             Markup::new()
-                .text("for ", Styles::BOLD)
+                .text("forall ", Styles::BOLD)
                 .text(name.to_string(), Styles::NONE)
         },
         | hir::PathResolution::Def(def) => {
             let name = def.name(db);
             let m = Markup::new();
             let m = match def {
-                | hir::ModuleDef::Module(_) => m.text("module ", Styles::BOLD),
+                | hir::ModuleDef::Module(_) => {
+                    return m
+                        .text("module ", Styles::BOLD)
+                        .text(name.to_string(), Styles::UNDERLINE)
+                },
                 | hir::ModuleDef::Fixity(f) => match f.kind(db) {
                     | hir::FixityKind::Infix { assoc, .. } => match assoc {
                         | hir::Assoc::Left => m.text("infixl ", Styles::BOLD),
@@ -238,7 +242,7 @@ fn format_resolution(db: &dyn hir::db::HirDatabase, resolution: hir::PathResolut
                     | hir::FixityKind::Postfix => m.text("postfix ", Styles::BOLD),
                     | hir::FixityKind::Prefix => m.text("prefix ", Styles::BOLD),
                 },
-                | hir::ModuleDef::Func(_) => m.text("fun ", Styles::BOLD),
+                | hir::ModuleDef::Func(_) => m.text("function ", Styles::BOLD),
                 | hir::ModuleDef::Static(_) => m.text("static ", Styles::BOLD),
                 | hir::ModuleDef::Const(_) => m.text("const ", Styles::BOLD),
                 | hir::ModuleDef::TypeAlias(_) => m.text("type ", Styles::BOLD),
@@ -247,7 +251,11 @@ fn format_resolution(db: &dyn hir::db::HirDatabase, resolution: hir::PathResolut
                 | hir::ModuleDef::Class(_) => m.text("class ", Styles::BOLD),
             };
 
-            m.text(name.to_string(), Styles::UNDERLINE)
+            let module = def.module(db).unwrap().name(db);
+
+            m.text(module.to_string(), Styles::UNDERLINE)
+                .text(".", Styles::NONE)
+                .text(name.to_string(), Styles::UNDERLINE)
         },
     }
 }

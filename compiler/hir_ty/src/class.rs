@@ -407,6 +407,8 @@ fn match_type_inner(
             subst.insert(u, with);
             Matched::Unknown
         },
+        // @TODO: this case is not valid
+        | (TyInfo::TypeVar(_), _) => Matched::Unknown,
         | (&TyInfo::Figure(c1), &TyInfo::Figure(c2)) if c1 == c2 => Matched::Match(()),
         | (&TyInfo::Symbol(ref c1), &TyInfo::Symbol(ref c2)) if c1 == c2 => Matched::Match(()),
         | (&TyInfo::Ctor(c1), &TyInfo::Ctor(c2)) if c1 == c2 => Matched::Match(()),

@@ -1,6 +1,6 @@
-module intrinsics =
+module Intrinsics =
 
-import prim
+import Prim
 
 infixr 0 apply as ($)
 
@@ -10,9 +10,7 @@ infixr 0 apply as ($)
 @intrinsic foreign idiv :: i -> i -> i where Integer i
 @intrinsic foreign irem :: i -> i -> i where Integer i
 @intrinsic foreign ieq  :: i -> i -> Bool where Integer i
-
-@intrinsic foreign eq_i32 :: Int32 -> Int32 -> Bool
-@intrinsic foreign ge_i32 :: Int32 -> Int32 -> Bool
+@intrinsic foreign icmp :: i -> i -> Int where Integer i
 
 ; @intrinsic foreign iconvert :: a -> b where Integer a, Integer b
 @intrinsic foreign u32_to_u8 :: Uint32 -> Uint8

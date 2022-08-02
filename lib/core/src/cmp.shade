@@ -1,0 +1,33 @@
+module Core.Cmp =
+
+import Core
+import Core.Data.Bool (not)
+
+class Eq lhs rhs =
+    eq :: lhs -> rhs -> Bool
+    
+class Ord lhs rhs where Eq lhs rhs =
+    cmp :: lhs -> rhs -> Ordering
+
+type Ordering =
+    | Lt
+    | Eq
+    | Gt
+
+ne lhs rhs = not (eq lhs rhs)
+
+lt lhs rhs = case lhs `cmp` rhs of
+    Lt -> True
+    _ -> False
+    
+le lhs rhs = case lhs `cmp` rhs of
+    Gt -> False
+    _ -> True
+
+gt lhs rhs = case lhs `cmp` rhs of
+    Gt -> True
+    _ -> False
+
+ge lhs rhs = case lhs `cmp` rhs of
+    Lt -> False
+    _ -> True

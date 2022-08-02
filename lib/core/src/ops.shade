@@ -1,15 +1,23 @@
-module core/ops =
+module Core.Ops =
 
-import prim ((->), Bool)
-import core/data/bool (not)
+import Prim ((->), Bool, True, False)
+import Core.Data.Bool (not)
+import Core.Cmp
 
-infixl 5 eq as (==)
-infixl 5 ne as (!=)
+infixl 4 eq as (==)
+infixl 4 ne as (!=)
+infixl 4 lt as (<)
+infixl 4 le as (<=)
+infixl 4 gt as (>)
+infixl 4 ge as (>=)
+
 infixl 6 add as (+)
 infixl 6 sub as (-)
 infixl 7 mul as (*)
 infixl 7 div as (/)
 infixl 7 rem as (%)
+
+infixl 6 concat as (++)
 
 class Add lhs rhs out | lhs rhs -> out, lhs -> rhs =
     add :: lhs -> rhs -> out
@@ -26,7 +34,6 @@ class Div lhs rhs out | lhs rhs -> out, lhs -> rhs =
 class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
     rem :: lhs -> rhs -> out
 
-class Eq lhs rhs =
-    eq :: lhs -> rhs -> Bool
 
-ne lhs rhs = not (eq lhs rhs)
+class Concat lhs rhs | lhs -> rhs =
+    concat :: lhs -> rhs -> lhs

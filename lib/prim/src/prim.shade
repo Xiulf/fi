@@ -1,8 +1,9 @@
-module prim =
+module Prim =
 
 @lang = "type-kind"   foreign type Type   :: Type
 @lang = "figure-kind" foreign type Figure :: Type
 @lang = "symbol-kind" foreign type Symbol :: Type
+@lang = "row-kind"    foreign type Row    :: Type -> Type
 
 @lang = "never-type"
 @repr(uninhabited)
@@ -49,6 +50,10 @@ foreign type Array :: Type -> Figure -> Type
     f1(scalar = "usize")
 )
 foreign type Slice :: Type -> Type
+
+@lang = "record-type"
+@repr(record(fields = 0))
+foreign type Record :: Row Type -> Type
 
 @repr(scalar = "isize") foreign type Int  :: Type
 @repr(scalar = "usize") foreign type Uint :: Type

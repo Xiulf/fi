@@ -219,20 +219,17 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::App { base, arg }, syntax_ptr)
             },
-            | ast::Expr::Field(e) => {
-                let base = self.collect_expr_opt(e.base());
-                let field = e.field()?.as_name();
+            | ast::Expr::Field(e) => self.collect_expr_path(syntax_ptr, e),
+            // | ast::Expr::Field(e) => {
+            //     let base = self.collect_expr_opt(e.base());
+            //     let field = e.field()?.as_name();
 
-                self.alloc_expr(Expr::Field { base, field }, syntax_ptr)
-            },
-            | ast::Expr::Path(e) => {
-                let path = e
-                    .path()
-                    .map(Path::lower)
-                    .map(|path| Expr::Path { path })
-                    .unwrap_or(Expr::Missing);
+            //     self.alloc_expr(Expr::Field { base, field }, syntax_ptr)
+            // },
+            | ast::Expr::Ident(e) => {
+                let path = Path::from(e.name_ref()?.as_name());
 
-                self.alloc_expr(path, syntax_ptr)
+                self.alloc_expr(Expr::Path { path }, syntax_ptr)
             },
             | ast::Expr::Lit(e) => {
                 let lit = match e.literal()? {
@@ -349,6 +346,57 @@ impl<'a> ExprCollector<'a> {
         } else {
             self.missing_expr()
         }
+    }
+
+    fn collect_expr_path(&mut self, ptr: AstPtr<ast::Expr>, mut expr: ast::ExprField) -> ExprId {
+        let mut syntax_ptrs = vec![ptr];
+        let mut segments = vec![expr.field().map(|n| n.as_name())];
+
+        loop {
+            match expr.base() {
+                | Some(ref ep @ ast::Expr::Field(ref e)) => {
+                    syntax_ptrs.push(AstPtr::new(ep));
+                    segments.push(e.field().map(|n| n.as_name()));
+                    expr = e.clone();
+                },
+                | Some(ref ep @ ast::Expr::Ident(ref e)) => {
+                    syntax_ptrs.push(AstPtr::new(ep));
+                    segments.push(e.name_ref().map(|n| n.as_name()));
+
+                    for i in (0..segments.len()).rev() {
+                        let path = Path::from_segments(segments[i..].iter().filter_map(|n| n.clone()).rev());
+                        let (resolved, _) = self.def_map.resolve_path(self.db, self.module, &path);
+
+                        if resolved.values.is_some() {
+                            let base = self.alloc_expr(Expr::Path { path }, syntax_ptrs[i].clone());
+
+                            return segments
+                                .drain(..i)
+                                .zip(syntax_ptrs)
+                                .rfold(base, |base, (field, syntax_ptr)| {
+                                    field
+                                        .map(|field| self.alloc_expr(Expr::Field { base, field }, syntax_ptr))
+                                        .unwrap_or_else(|| self.missing_expr())
+                                });
+                        }
+                    }
+
+                    segments.pop().unwrap();
+                    syntax_ptrs.pop().unwrap();
+                    break;
+                },
+                | _ => break,
+            }
+        }
+
+        segments
+            .into_iter()
+            .zip(syntax_ptrs)
+            .rfold(self.collect_expr_opt(expr.base()), |base, (field, syntax_ptr)| {
+                field
+                    .map(|field| self.alloc_expr(Expr::Field { base, field }, syntax_ptr))
+                    .unwrap_or_else(|| self.missing_expr())
+            })
     }
 
     fn collect_stmt(&mut self, stmt: ast::Stmt) -> Stmt {

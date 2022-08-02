@@ -34,7 +34,7 @@ pub(crate) fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> 
 pub(crate) fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = app(p, allow_do)?;
 
-    if p.at(TICK) {
+    if p.eat(TICK) {
         let expr = m.precede(p);
 
         paths::path(p);
@@ -126,8 +126,8 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
             Some(m.complete(p, EXPR_HOLE))
         },
         | IDENT | SYMBOL => {
-            paths::path(p);
-            Some(m.complete(p, EXPR_PATH))
+            paths::name_or_symbol_ref(p);
+            Some(m.complete(p, EXPR_IDENT))
         },
         | INT | FLOAT | CHAR | STRING => {
             literal(p);

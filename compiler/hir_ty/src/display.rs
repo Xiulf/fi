@@ -328,7 +328,7 @@ impl HirDisplay for Ty {
 
                 write!(
                     f,
-                    "for{}. ",
+                    "forall{}. ",
                     kinds
                         .iter()
                         .enumerate()

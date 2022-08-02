@@ -258,7 +258,7 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 self.insert_default(start, DBL_DOT);
             },
-            | '.' if self.is_field_dot() => {
+            | '.' if self.is_path_sep() => {
                 self.insert_default(start, DOT);
                 self.stack.push((start, LayoutDelim::Prop));
             },
@@ -349,9 +349,6 @@ impl<'src> Lexer<'src> {
                         self.insert_default(start, PIPE);
                     },
                 }
-            },
-            | '/' if self.is_path_sep() => {
-                self.insert_default(start, PATH_SEP);
             },
             | ',' => {
                 Collapse::new(self.tokens.len()).collapse(start, offside_end_p, &mut self.stack, &mut self.tokens);
@@ -884,16 +881,6 @@ impl<'src> Lexer<'src> {
             | [(start, LayoutDelim::Root)] => start.1 == pos.1,
             | [.., (start, LayoutDelim::Where)] => start.1 == pos.1,
             | _ => false,
-        }
-    }
-
-    fn is_field_dot(&mut self) -> bool {
-        let next = self.peek();
-
-        if let Some(tok) = self.tokens.last() {
-            tok.kind == IDENT && next.is_xid_start()
-        } else {
-            false
         }
     }
 

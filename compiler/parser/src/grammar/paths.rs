@@ -6,12 +6,12 @@ pub(crate) fn path(p: &mut Parser) {
 
     path_segment(p);
 
-    while p.at(PATH_SEP) {
+    while p.at(DOT) {
         if p.nth_at(1, IDENT) {
-            p.bump(PATH_SEP);
+            p.bump(DOT);
             path_segment(p);
         } else if p.nth_at(1, SYMBOL) {
-            p.bump(PATH_SEP);
+            p.bump(DOT);
             path_segment(p);
             break;
         } else {
@@ -27,8 +27,8 @@ pub(crate) fn module_name(p: &mut Parser) {
 
     p.expect(IDENT);
 
-    while p.at(PATH_SEP) && p.nth_at(1, IDENT) {
-        p.bump(PATH_SEP);
+    while p.at(DOT) && p.nth_at(1, IDENT) {
+        p.bump(DOT);
         p.bump(IDENT);
     }
 
@@ -40,8 +40,8 @@ pub(crate) fn module_name_ref(p: &mut Parser) {
 
     p.expect(IDENT);
 
-    while p.at(PATH_SEP) && p.nth_at(1, IDENT) {
-        p.bump(PATH_SEP);
+    while p.at(DOT) && p.nth_at(1, IDENT) {
+        p.bump(DOT);
         p.bump(IDENT);
     }
 

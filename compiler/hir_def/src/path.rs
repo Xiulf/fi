@@ -12,7 +12,7 @@ pub struct Path {
 }
 
 impl Path {
-    const SEPARATOR: char = '/';
+    const SEPARATOR: char = '.';
 
     pub fn from_segments(segments: impl IntoIterator<Item = Name>) -> Self {
         Path {
@@ -119,7 +119,7 @@ impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, segment) in self.segments.iter().enumerate() {
             if i != 0 {
-                write!(f, "/")?;
+                write!(f, "{}", Path::SEPARATOR)?;
             }
 
             segment.fmt(f)?;

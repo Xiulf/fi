@@ -247,18 +247,27 @@ impl JsExpr {
                 write!(out, "function {}(", name)?;
 
                 for (i, param) in params.iter().enumerate() {
-                    if i > 0 {
-                        write!(out, ", ")?;
-                    }
-
                     write!(out, "{}", param)?;
+
+                    if i < params.len() - 1 {
+                        writeln!(out, ") {{")?;
+                        out.indent();
+                        write!(out, "return function(")?;
+                    }
                 }
 
                 writeln!(out, ") {{")?;
                 out.indent();
                 body.write_inner(out, true)?;
                 out.dedent();
-                write!(out, ";\n}}")
+                write!(out, ";\n}}")?;
+
+                for _ in 0..params.len() - 1 {
+                    out.dedent();
+                    write!(out, ";\n}}")?;
+                }
+
+                Ok(())
             },
             | JsExpr::Var { name, expr: Some(expr) } => {
                 write!(out, "var {} = ", name)?;
@@ -344,6 +353,10 @@ impl BodyCtx<'_, '_> {
                 self.lower_app(Arg::ExprId(base), args, block)
             },
             | Expr::Infix { ref exprs, ref ops } => self.lower_expr_infix(expr, exprs, ops, block),
+            | Expr::Field { base, ref field } => JsExpr::Field {
+                base: Box::new(self.lower_expr(base, block)),
+                field: field.to_string(),
+            },
             | Expr::If { cond, then, else_ } => {
                 let cond = Box::new(self.lower_expr(cond, block));
                 let mut then = self.lower_expr_inline(then);
@@ -420,7 +433,8 @@ impl BodyCtx<'_, '_> {
                 self.in_lambda.push(name);
 
                 let expr = Box::new(self.lower_expr(body, &mut exprs));
-                let body = Box::new(JsExpr::Return { expr });
+                let _ = exprs.push(JsExpr::Return { expr });
+                let body = Box::new(JsExpr::Block { exprs });
                 let name = self.in_lambda.pop().unwrap();
 
                 block.push(JsExpr::Lambda {
@@ -810,7 +824,7 @@ impl BodyCtx<'_, '_> {
     ) -> JsExpr {
         let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
         let (mut base, params, is_method) = match resolved {
-            | ValueNs::Local(id) => (self.locals[id].clone(), args.len(), false),
+            | ValueNs::Local(id) => (self.locals[id].clone(), 1, false),
             | ValueNs::Fixity(id) => {
                 let resolver = id.resolver(self.db.upcast());
                 let data = self.db.fixity_data(id);
@@ -1022,7 +1036,7 @@ impl BodyCtx<'_, '_> {
             | "idiv" => self.intrinsic_binop("/", args, block),
             | "irem" => self.intrinsic_binop("%", args, block),
             | "ieq" => self.intrinsic_binop("==", args, block),
-            | "ge_i32" => self.intrinsic_binop(">=", args, block),
+            | "icmp" => self.intrinsic_icmp(args, block),
             | _ => {
                 log::warn!(target: "lower_intrinsic", "todo: {:?}", name);
                 JsExpr::Undefined
@@ -1037,5 +1051,26 @@ impl BodyCtx<'_, '_> {
         let rhs = Box::new(self.lower_arg(rhs, block));
 
         JsExpr::BinOp { op, lhs, rhs }
+    }
+
+    fn intrinsic_icmp(&mut self, mut args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
+        let rhs = args.remove(1);
+        let lhs = args.remove(0);
+        let lhs = Box::new(self.lower_arg(lhs, block));
+        let rhs = Box::new(self.lower_arg(rhs, block));
+
+        JsExpr::If {
+            cond: Box::new(JsExpr::BinOp {
+                op: "==",
+                lhs: lhs.clone(),
+                rhs: rhs.clone(),
+            }),
+            then: Box::new(JsExpr::Literal { lit: Literal::Int(1) }),
+            else_: Some(Box::new(JsExpr::If {
+                cond: Box::new(JsExpr::BinOp { op: "<", lhs, rhs }),
+                then: Box::new(JsExpr::Literal { lit: Literal::Int(-1) }),
+                else_: Some(Box::new(JsExpr::Literal { lit: Literal::Int(1) })),
+            })),
+        }
     }
 }

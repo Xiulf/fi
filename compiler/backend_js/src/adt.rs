@@ -49,7 +49,18 @@ impl<'a> Ctx<'a> {
                 .map(|ctor| {
                     let types = ctor.types(self.db);
 
-                    self.tuple_repr(types)
+                    // self.tuple_repr(types)
+                    if types.is_empty() {
+                        Repr::Scalar {
+                            scalar: Scalar::Undefined,
+                        }
+                    } else if types.len() == 1 {
+                        Repr::Any
+                    } else {
+                        Repr::Tuple {
+                            items: (0..types.len()).map(|_| Repr::Any).collect(),
+                        }
+                    }
                 })
                 .collect::<Vec<_>>();
 

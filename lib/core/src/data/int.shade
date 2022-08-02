@@ -1,22 +1,29 @@
-module core/data/int =
+module Core.Data.Int =
 
-import prim (Integer)
-import core/ops
+import Prim (Integer)
+import Core.Ops
+import Core.Cmp
 
 member i i i of Add where Integer i =
-    add a b = intrinsics/iadd a b
+    add a b = Intrinsics.iadd a b
 
 member i i i of Sub where Integer i =
-    sub a b = intrinsics/isub a b
+    sub a b = Intrinsics.isub a b
 
 member i i i of Mul where Integer i =
-    mul a b = intrinsics/imul a b
+    mul a b = Intrinsics.imul a b
 
 member i i i of Div where Integer i =
-    div a b = intrinsics/idiv a b
+    div a b = Intrinsics.idiv a b
 
 member i i i of Rem where Integer i =
-    rem a b = intrinsics/irem a b
+    rem a b = Intrinsics.irem a b
 
 member i i of Eq where Integer i =
-    eq a b = intrinsics/ieq a b
+    eq a b = Intrinsics.ieq a b
+
+member i i of Ord where Integer i =
+    cmp a b = case Intrinsics.icmp a b of
+        0 -> Eq
+        1 -> Gt
+        _ -> Lt

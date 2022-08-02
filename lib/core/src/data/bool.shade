@@ -1,6 +1,6 @@
-module core/data/bool =
+module Core.Data.Bool =
 
-import prim (Bool, True, False)
+import Prim (Bool, True, False)
 
 not True = False
 not False = True

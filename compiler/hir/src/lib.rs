@@ -359,7 +359,7 @@ impl Func {
         // let body = db.body(self.id.into());
 
         // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-        // eprintln!("fn {} :: {}", data.name, infer.self_type.ty.display(db));
+        // eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
         // for ((id, i), method) in &infer.methods {
         //     eprintln!("{:?}#{} -> {:?}", id, i, method);

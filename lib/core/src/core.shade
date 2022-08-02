@@ -1,12 +1,13 @@
-module core (
-    module core,
-    module c,
-    libc,
+module Core (
+    module Core,
+    module C,
+    Libc,
 ) =
 
-import prim as c
-import intrinsics (($), unsafe, crash, partial) as c
-import core/ops as c
-import core/error (unwrap, unwrap_or, ret, (!), (?)) as c
-import core/data/option (Option, Some, None) as c
-import core/data/result (Result, Ok, Error) as c
+import Prim as C
+import Intrinsics (($), unsafe, crash, partial) as C
+import Core.Ops as C
+import Core.Error (unwrap, unwrap_or, ret, (!), (?)) as C
+import Core.Data.Option (Option, Some, None) as C
+import Core.Data.Result (Result, Ok, Error) as C
+import Core.Data.List (List, Cons, Nil, (:)) as C

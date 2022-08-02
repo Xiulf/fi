@@ -1,0 +1,7 @@
+module Core.Data.List =
+
+type List a =
+    | Nil
+    | Cons a (List a)
+    
+infixr 6 Cons as (:)

@@ -69,12 +69,12 @@ impl SourceAnalyzer {
     }
 
     pub fn resolve_path(&self, db: &dyn HirDatabase, path: &ast::Path) -> Option<PathResolution> {
-        let parent = || path.syntax().parent();
-        let mut prefer_value_ns = false;
+        // let parent = || path.syntax().parent();
+        let prefer_value_ns = false;
 
-        if let Some(_) = parent().and_then(ast::ExprPath::cast) {
-            prefer_value_ns = true;
-        }
+        // if let Some(_) = parent().and_then(ast::ExprPath::cast) {
+        //     prefer_value_ns = true;
+        // }
 
         let hir_path = Path::lower(path.clone());
 

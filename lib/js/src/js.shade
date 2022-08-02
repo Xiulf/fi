@@ -1,8 +1,9 @@
-module js =
+module Js =
 
-import core
+import Core
 
 foreign toString :: a -> Str
+foreign concatString :: Str -> a -> Str
 
 @intrinsic foreign new :: Str -> a
 @intrinsic foreign spread :: JsArray a -> Spread
@@ -10,3 +11,6 @@ foreign toString :: a -> Str
 foreign push :: JsArray a -> a -> JsArray a
 foreign type JsArray :: Type -> Type
 foreign type Spread :: Type
+
+member Str a of Concat =
+    concat a b = concatString a b

@@ -679,8 +679,8 @@ impl ExprTyped {
     }
 }
 
-impl ExprPath {
-    pub fn path(&self) -> Option<Path> {
+impl ExprIdent {
+    pub fn name_ref(&self) -> Option<NameRef> {
         support::child(&self.0)
     }
 }

@@ -1,7 +1,7 @@
-module js/console =
+module Js.Console =
 
-import core
-import js
+import Core
+import Js
 
 @link_name = "console.log"
 foreign log :: a -> Unit

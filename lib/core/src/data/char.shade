@@ -1,11 +1,11 @@
-module core/data/char (
+module Core.Data.Char (
     ; encode_utf8, len_utf8
 ) =
 
-import prim (Uint32, Char)
+import Prim (Uint32, Char)
 
 ; fun encode_utf8 code buf = do
-;     let len = len_utf8 code
+    ; let len = len_utf8 code
 ; 
 ; fun len_utf8 code =
 ;     if code < MAX_ONE_B

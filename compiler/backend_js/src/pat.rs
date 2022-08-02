@@ -51,6 +51,11 @@ impl BodyCtx<'_, '_> {
                     | _ => unreachable!(),
                 }
             },
+            | Pat::Lit { ref lit } => Some(JsExpr::BinOp {
+                op: "==",
+                lhs: Box::new(place),
+                rhs: Box::new(JsExpr::Literal { lit: lit.clone() }),
+            }),
             | Pat::App { base, ref args } => match body[base] {
                 | Pat::Path { ref path } => {
                     let resolver = self.owner.resolver(self.db.upcast());
