@@ -558,6 +558,16 @@ impl TypeRec {
     }
 }
 
+impl TypeRow {
+    pub fn fields(&self) -> AstChildren<RowField> {
+        support::children(&self.0)
+    }
+
+    pub fn tail(&self) -> Option<Type> {
+        support::child::<RowTail>(&self.0).and_then(|t| support::child(&t.0))
+    }
+}
+
 impl TypeParens {
     pub fn ty(&self) -> Option<Type> {
         support::child(&self.0)

@@ -19,7 +19,7 @@ fn expr_(p: &mut Parser, allow_do: bool) {
 }
 
 pub(crate) fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
-    let mut m = infix(p, allow_do)?;
+    let mut m = infix(p, allow_do, false)?;
 
     if p.eat(EQUALS) {
         let expr = m.precede(p);
@@ -31,7 +31,7 @@ pub(crate) fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> 
     Some(m)
 }
 
-pub(crate) fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
+pub(crate) fn infix(p: &mut Parser, allow_do: bool, in_record: bool) -> Option<CompletedMarker> {
     let mut m = app(p, allow_do)?;
 
     if p.eat(TICK) {
@@ -39,13 +39,13 @@ pub(crate) fn infix(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 
         paths::path(p);
         p.expect(TICK);
-        infix(p, allow_do);
+        infix(p, allow_do, in_record);
 
         m = expr.complete(p, EXPR_INFIX);
-    } else if peek_operator(p) {
+    } else if peek_operator(p, in_record) {
         let expr = m.precede(p);
 
-        while peek_operator(p) {
+        while peek_operator(p, in_record) {
             p.bump_any();
             app(p, allow_do);
         }
@@ -260,7 +260,7 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         },
         | L_BRACE => {
             p.bump(L_BRACE);
-            patterns::record_fields(p, expr, false);
+            record_fields(p);
             p.expect(R_BRACE);
             Some(m.complete(p, EXPR_RECORD))
         },
@@ -296,6 +296,26 @@ pub(crate) fn literal(p: &mut Parser) {
     } else {
         p.error("expected a literal");
         m.abandon(p);
+    }
+}
+
+pub(crate) fn record_fields(p: &mut Parser) {
+    while !p.at(R_BRACE) {
+        let field = p.start();
+
+        if p.at(IDENT) && p.nth_at(1, EQUALS) {
+            paths::name(p);
+            p.bump(EQUALS);
+            infix(p, true, true);
+            field.complete(p, FIELD_NORMAL);
+        } else {
+            paths::name(p);
+            field.complete(p, FIELD_PUN);
+        }
+
+        if !p.at(R_BRACE) {
+            p.expect(COMMA);
+        }
     }
 }
 

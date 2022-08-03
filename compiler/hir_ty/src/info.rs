@@ -365,21 +365,26 @@ impl TyId {
     }
 
     pub fn normalize(self, types: &mut Types) -> TyId {
-        self.everywhere(false, types, &mut |types, ty| match types[ty] {
-            | TyInfo::Row(ref f1, Some(tail)) => match types[tail] {
-                | TyInfo::Row(ref f2, None) => {
-                    let fields = f1.iter().cloned().chain(f2.iter().cloned()).collect();
+        self.everywhere(true, types, &mut |types, ty| match types[ty] {
+            | TyInfo::Row(ref f1, Some(tail)) => {
+                let f1 = f1.clone();
+                let tail = tail.normalize(types);
 
-                    types.update(ty, TyInfo::Row(fields, None), false)
-                },
-                | TyInfo::TypeVar(_) | TyInfo::Unknown(_) | TyInfo::Error => ty,
-                | _ => unreachable!("{:?}", tail),
+                match types[tail] {
+                    | TyInfo::Row(ref f2, tail2) => {
+                        let fields = f1.into_vec().into_iter().chain(f2.iter().cloned()).collect();
+
+                        types.update(ty, TyInfo::Row(fields, tail2), true)
+                    },
+                    | TyInfo::TypeVar(_) | TyInfo::Unknown(_) | TyInfo::Error => ty,
+                    | _ => unreachable!("{:?}", tail),
+                }
             },
             | TyInfo::App(base, ref args) => match types[base] {
                 | TyInfo::App(base2, ref args2) => {
                     let args = args2.iter().chain(args.iter()).copied().collect();
 
-                    types.update(ty, TyInfo::App(base2, args), false)
+                    types.update(ty, TyInfo::App(base2, args), true)
                 },
                 | TyInfo::ForAll(_, inner, scope) => {
                     let args = args.clone();
@@ -604,7 +609,7 @@ impl std::fmt::Display for TyDisplay<'_> {
             | TyInfo::Row(ref fields, None) => {
                 write!(
                     f,
-                    "#({})",
+                    "({})",
                     fields
                         .iter()
                         .map(|f| format!("{} :: {}", f.name, self.with_ty(f.ty, false)))

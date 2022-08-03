@@ -1,38 +1,11 @@
 module Main =
 
 import Core
-import Js
 import Js.Console
+import Js.DOM
 
 @main
 main =
-    let a = 0 : 1 : 2 : 3 : 4 : Nil
-    let b = map a fn x -> x * 2
-
-    log $ spread $ toArray b
-
-
-toArray list =
-    foldl list (new "Array") fn arr x -> (push arr x)
-
-
-class Map m =
-    map :: m a -> (a -> b) -> m b
-
-class Foldable f =
-    foldl :: f a -> b -> (b -> a -> b) -> b
-    foldr :: f a -> b -> (b -> a -> b) -> b
-
-member List of Map =
-    map list f = case list of
-        x : xs -> f x : map xs f
-        Nil -> Nil
-
-member List of Foldable =
-    foldl list init f = case list of
-        x : xs -> foldl xs (f init x) f
-        Nil -> init
+    let a = createElement "a" :: HTMLAnchorElement
     
-    foldr list init f = case list of
-        x : xs -> f (foldr xs init f) x
-        Nil -> init
+    print a.className a.href :: ()

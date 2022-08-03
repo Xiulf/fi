@@ -1,0 +1,10 @@
+module Core.Foldable =
+
+import Core
+
+class Foldable f =
+    foldl :: f a -> b -> (b -> a -> b) -> b
+    foldr :: f a -> b -> (b -> a -> b) -> b
+
+foldMap :: f d -> d where Foldable f, Default d, Concat d
+foldMap f = foldr f default concat

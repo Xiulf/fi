@@ -25,6 +25,7 @@ pub enum TypeRef {
     App(LocalTypeRefId, LocalTypeRefId),
     Infix(Box<[LocalTypeRefId]>, Box<[Path]>),
     Record(Box<[Field]>, Option<LocalTypeRefId>),
+    Row(Box<[Field]>, Option<LocalTypeRefId>),
     Where(WhereClause, LocalTypeRefId),
 }
 
@@ -134,6 +135,21 @@ impl TypeRef {
                 let tail = inner.tail().map(|t| map.alloc_type_ref(t));
 
                 TypeRef::Record(fields, tail)
+            },
+            | ast::Type::Row(inner) => {
+                let fields = inner
+                    .fields()
+                    .filter_map(|f| {
+                        Some(Field {
+                            name: f.name()?.as_name(),
+                            ty: map.alloc_type_ref_opt(f.ty()),
+                        })
+                    })
+                    .collect();
+
+                let tail = inner.tail().map(|t| map.alloc_type_ref(t));
+
+                TypeRef::Row(fields, tail)
             },
             | ast::Type::Unit(_) => TypeRef::Unit,
             | ast::Type::Parens(inner) => Self::from_ast_opt(inner.ty(), map),

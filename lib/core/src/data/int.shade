@@ -1,8 +1,11 @@
 module Data.Int =
 
-import Prim (Integer)
+import Core
 import Core.Ops
 import Core.Cmp
+
+member i of Default where Integer i =
+    default = 0
 
 member i i i of Add where Integer i =
     add a b = Intrinsics.iadd a b

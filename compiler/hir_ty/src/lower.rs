@@ -155,6 +155,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 self.check_kind(row, row_kind);
                 self.icx.types.insert(TyInfo::App(record_ty, [row].into()), src)
             },
+            | TypeRef::Row(fields, tail) => self.lower_row(fields, *tail, ty),
             | TypeRef::Where(where_clause, inner) => {
                 let where_ = self.lower_where_clause(where_clause, WhereSource::TypeRef(ty));
                 let inner = self.lower_ty(*inner);
@@ -220,7 +221,10 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             ty
         });
 
-        self.icx.types.insert(TyInfo::Row(fields, tail), src)
+        self.icx
+            .types
+            .insert(TyInfo::Row(fields, tail), src)
+            .normalize(&mut self.icx.types)
     }
 }
 

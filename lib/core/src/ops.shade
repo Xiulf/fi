@@ -34,6 +34,5 @@ class Div lhs rhs out | lhs rhs -> out, lhs -> rhs =
 class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
     rem :: lhs -> rhs -> out
 
-
 class Concat lhs rhs | lhs -> rhs =
     concat :: lhs -> rhs -> lhs

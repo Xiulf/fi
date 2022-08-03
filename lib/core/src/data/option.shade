@@ -1,11 +1,15 @@
 module Data.Option =
 
+import Core
 import Core.Error (Try, Unwrap)
 import Intrinsics (crash)
 
 type Option t =
     | None
     | Some t
+
+member (Option t) of Default =
+    default = None
 
 member Option of Try =
     ret x = Some x

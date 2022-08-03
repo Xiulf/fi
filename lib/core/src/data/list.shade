@@ -1,7 +1,22 @@
 module Data.List =
 
+import Core
+import Core.Foldable
+
 type List a =
     | Nil
     | Cons a (List a)
     
 infixr 6 Cons as (:)
+
+member (List a) of Default =
+    default = Nil
+
+member List of Foldable =
+    foldl list init f = case list of
+        x : xs -> foldl xs (f init x) f
+        Nil -> init
+    
+    foldr list init f = case list of
+        x : xs -> f (foldr xs init f) x
+        Nil -> init

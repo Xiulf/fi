@@ -43,6 +43,9 @@ pub enum JsExpr {
     Array {
         exprs: Vec<JsExpr>,
     },
+    Object {
+        fields: Vec<(String, JsExpr)>,
+    },
     If {
         cond: Box<JsExpr>,
         then: Box<JsExpr>,
@@ -87,6 +90,7 @@ impl JsExpr {
             | Self::Undefined | Self::Ident { .. } | Self::Literal { .. } => true,
             | Self::Field { base, .. } | Self::Index { base, .. } => base.is_inline(),
             | Self::Array { exprs } => exprs.iter().all(Self::is_inline),
+            | Self::Object { fields } => fields.iter().all(|f| f.1.is_inline()),
             | Self::If {
                 cond,
                 then,
@@ -124,6 +128,7 @@ impl JsExpr {
             | Self::BinOp { lhs, rhs, .. } => lhs.is_effectful() || rhs.is_effectful(),
             | Self::UnOp { rhs, .. } => rhs.is_effectful(),
             | Self::Array { exprs } => exprs.iter().any(Self::is_effectful),
+            | Self::Object { fields } => fields.iter().all(|f| f.1.is_effectful()),
             | Self::If {
                 cond,
                 then,
@@ -209,6 +214,20 @@ impl JsExpr {
                 }
 
                 write!(out, "]")
+            },
+            | JsExpr::Object { fields } => {
+                write!(out, "{{ ")?;
+
+                for (i, (name, expr)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
+
+                    write!(out, "{}: ", name)?;
+                    expr.write_inner(out, false)?;
+                }
+
+                write!(out, " }}")
             },
             | JsExpr::Call { base, args } => {
                 base.write_inner(out, false)?;
@@ -356,6 +375,14 @@ impl BodyCtx<'_, '_> {
             | Expr::Field { base, ref field } => JsExpr::Field {
                 base: Box::new(self.lower_expr(base, block)),
                 field: field.to_string(),
+            },
+            | Expr::Record { ref fields } => {
+                let fields = fields
+                    .iter()
+                    .map(|field| (field.name.to_string(), self.lower_expr(field.val, block)))
+                    .collect();
+
+                JsExpr::Object { fields }
             },
             | Expr::If { cond, then, else_ } => {
                 let cond = Box::new(self.lower_expr(cond, block));

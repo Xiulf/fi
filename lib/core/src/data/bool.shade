@@ -1,6 +1,9 @@
 module Data.Bool =
 
-import Prim (Bool, True, False)
+import Core
 
 not True = False
 not False = True
+
+member Bool of Default =
+    default = False

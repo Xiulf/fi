@@ -75,6 +75,7 @@ ast_node!(Type {
     App(TypeApp, TYPE_APP),
     Path(TypePath, TYPE_PATH),
     Rec(TypeRec, TYPE_REC),
+    Row(TypeRow, TYPE_ROW),
     Parens(TypeParens, TYPE_PARENS),
     Where(TypeWhere, TYPE_WHERE),
 });

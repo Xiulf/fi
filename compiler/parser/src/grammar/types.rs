@@ -6,7 +6,7 @@ use crate::token_set::TokenSet;
 const TYPE_RECOVERY_SET: TokenSet = TokenSet::new(&[R_PAREN, LYT_SEP, LYT_END]);
 
 pub(crate) fn ty(p: &mut Parser) {
-    if let Some(m) = infix(p) {
+    if let Some(m) = infix(p, false) {
         if p.at(WHERE_KW) {
             let m = m.precede(p);
 
@@ -16,13 +16,13 @@ pub(crate) fn ty(p: &mut Parser) {
     }
 }
 
-pub(crate) fn infix(p: &mut Parser) -> Option<CompletedMarker> {
+pub(crate) fn infix(p: &mut Parser, in_record: bool) -> Option<CompletedMarker> {
     let mut m = app(p)?;
 
-    if peek_operator(p) {
+    if peek_operator(p, in_record) {
         let ty = m.precede(p);
 
-        while peek_operator(p) {
+        while peek_operator(p, in_record) {
             p.bump_any();
             app(p);
         }
@@ -77,6 +77,29 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
             if p.eat(R_PAREN) {
                 Some(m.complete(p, TYPE_UNIT))
+            } else if p.at(IDENT) && p.nth_at(1, DBL_COLON) {
+                while !p.at(EOF) && !p.at(R_PAREN) {
+                    let field = p.start();
+
+                    paths::name(p);
+                    p.expect(DBL_COLON);
+                    infix(p, true);
+                    field.complete(p, ROW_FIELD);
+
+                    if !p.at(R_BRACE) && !p.at(PIPE) {
+                        p.expect(COMMA);
+                    }
+
+                    if p.eat(PIPE) {
+                        let tail = p.start();
+
+                        ty(p);
+                        tail.complete(p, ROW_TAIL);
+                    }
+                }
+
+                p.expect(R_PAREN);
+                Some(m.complete(p, TYPE_ROW))
             } else {
                 let _ = ty(p);
                 p.expect(R_PAREN);
@@ -92,7 +115,7 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
                 paths::name(p);
                 p.expect(DBL_COLON);
-                ty(p);
+                infix(p, true);
                 field.complete(p, ROW_FIELD);
 
                 if !p.at(R_BRACE) && !p.at(PIPE) {

@@ -50,14 +50,10 @@ impl InferenceContext<'_> {
 
                 self.subsume_types_impl(inner, t2, origin, mode)
             },
-            // | (TyInfo::Func(a1, r1), TyInfo::Func(a2, r2)) => {
-            //     a2.iter()
-            //         .zip(a1.iter())
-            //         .all(|(&a2, &a1)| self.subsume_types_impl(a2, a1, origin, SubsumeMode::NoCtnt))
-            //         && self.subsume_types_impl(r1, r2, origin, SubsumeMode::NoCtnt)
-            // },
             | (TyInfo::Row(..), TyInfo::Row(..)) => {
                 let safe = unsafe { &*(&self.types as *const _) };
+                let t1 = t1.normalize(&mut self.types);
+                let t2 = t2.normalize(&mut self.types);
                 let (common, ((ts1, t1), (ts2, t2))) = TyId::align_rows_with(
                     safe,
                     |a, b| self.subsume_types_impl(a, b, origin, SubsumeMode::NoCtnt),
@@ -91,7 +87,25 @@ impl InferenceContext<'_> {
 
                 self.unify_types(t1, t2)
             },
-            | (_, _) => self.unify_types(t1, t2),
+            | (_, _) => {
+                let func_id = self.lang_ctor("fn-type");
+                let record_id = self.lang_ctor("record-type");
+
+                if let (Some(a1), Some(a2)) = (t1.match_ctor(&self.types, func_id), t2.match_ctor(&self.types, func_id))
+                {
+                    return self.subsume_types_impl(a2[0], a1[0], origin, SubsumeMode::NoCtnt)
+                        && self.subsume_types_impl(a1[1], a2[1], origin, SubsumeMode::NoCtnt);
+                }
+
+                if let (Some(a1), Some(a2)) = (
+                    t1.match_ctor(&self.types, record_id),
+                    t2.match_ctor(&self.types, record_id),
+                ) {
+                    return self.subsume_types_impl(a1[0], a2[0], origin, SubsumeMode::NoCtnt);
+                }
+
+                self.unify_types(t1, t2)
+            },
         }
     }
 }

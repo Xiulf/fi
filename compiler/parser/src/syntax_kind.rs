@@ -126,6 +126,7 @@ pub enum SyntaxKind {
     TYPE_APP,
     TYPE_PATH,
     TYPE_REC,
+    TYPE_ROW,
     TYPE_PARENS,
     TYPE_WHERE,
 

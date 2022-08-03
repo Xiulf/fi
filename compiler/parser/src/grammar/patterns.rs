@@ -4,7 +4,7 @@ use crate::syntax_kind::*;
 use crate::token_set::TokenSet;
 
 pub(crate) fn pattern(p: &mut Parser) {
-    if let Some(m) = infix(p) {
+    if let Some(m) = infix(p, false) {
         if p.eat(DBL_COLON) {
             let pat = m.precede(p);
 
@@ -14,17 +14,17 @@ pub(crate) fn pattern(p: &mut Parser) {
     }
 }
 
-fn peek_operator_pat(p: &mut Parser) -> bool {
-    peek_operator(p) && !p.at_ts(TokenSet::new(&[ARROW, LEFT_ARROW, EQUALS]))
+fn peek_operator_pat(p: &mut Parser, in_record: bool) -> bool {
+    peek_operator(p, in_record) && !p.at_ts(TokenSet::new(&[ARROW, LEFT_ARROW, EQUALS]))
 }
 
-pub(crate) fn infix(p: &mut Parser) -> Option<CompletedMarker> {
+pub(crate) fn infix(p: &mut Parser, in_record: bool) -> Option<CompletedMarker> {
     let mut m = app(p)?;
 
-    if peek_operator_pat(p) {
+    if peek_operator_pat(p, in_record) {
         let pat = m.precede(p);
 
-        while peek_operator_pat(p) {
+        while peek_operator_pat(p, in_record) {
             p.bump_any();
             app(p);
         }
@@ -91,7 +91,7 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
         },
         | L_BRACE => {
             p.bump(L_BRACE);
-            record_fields(p, pattern, true);
+            record_fields(p);
             p.expect(R_BRACE);
 
             Some(m.complete(p, PAT_RECORD))
@@ -104,14 +104,14 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
     }
 }
 
-pub(crate) fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser), allow_rest: bool) {
+pub(crate) fn record_fields(p: &mut Parser) {
     while !p.at(R_BRACE) {
         let field = p.start();
 
         if p.at(IDENT) && p.nth_at(1, COLON) {
             paths::name(p);
             p.bump(COLON);
-            f(p);
+            infix(p, true);
             field.complete(p, FIELD_NORMAL);
         } else {
             paths::name(p);
@@ -122,7 +122,7 @@ pub(crate) fn record_fields(p: &mut Parser, mut f: impl FnMut(&mut Parser), allo
             p.expect(COMMA);
         }
 
-        if allow_rest && p.eat(DBL_DOT) {
+        if p.eat(DBL_DOT) {
             break;
         }
     }

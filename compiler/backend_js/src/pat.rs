@@ -65,11 +65,25 @@ impl BodyCtx<'_, '_> {
                 },
                 | _ => unreachable!(),
             },
+            | Pat::Record { ref fields, .. } => fields.iter().fold(None, |acc, field| {
+                let place = JsExpr::Field {
+                    base: Box::new(place.clone()),
+                    field: field.name.to_string(),
+                };
+
+                let check = self.lower_pat(field.val, place, exprs);
+
+                match (acc, check) {
+                    | (Some(a), Some(b)) => Some(JsExpr::BinOp {
+                        op: "&&",
+                        lhs: Box::new(a),
+                        rhs: Box::new(b),
+                    }),
+                    | (None, b) => b,
+                    | (a, None) => a,
+                }
+            }),
             | Pat::Infix { ref pats, ref ops } => self.lower_pat_infix(place, pats, ops, exprs),
-            | ref p => {
-                log::warn!(target: "lower_pat", "not yet implemented: {:?}", p);
-                None
-            },
         }
     }
 

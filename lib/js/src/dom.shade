@@ -1,0 +1,15 @@
+module Js.DOM =
+
+import Core
+
+@link_name = "document.createElement.bind(document)"
+foreign createElement :: Str -> HTMLElement a
+
+type HTMLElement a = {
+    className :: Str,
+    | a
+}
+
+type HTMLAnchorElement = HTMLElement (
+    href :: Str,
+)
