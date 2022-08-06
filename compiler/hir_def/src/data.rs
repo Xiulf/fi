@@ -25,7 +25,6 @@ pub struct FixityData {
 pub struct FuncData {
     pub name: Name,
     pub ty: Option<LocalTypeRefId>,
-    pub type_vars: Box<[LocalTypeVarId]>,
     pub has_body: bool,
     pub is_foreign: bool,
     type_map: TypeMap,
@@ -147,7 +146,6 @@ impl FuncData {
         let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
-        let type_vars = register_type_vars(db, loc.container.resolver(db), &mut type_builder);
         let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(FuncData {
@@ -155,7 +153,6 @@ impl FuncData {
             has_body: it.has_body,
             is_foreign: it.is_foreign,
             ty,
-            type_vars,
             type_map,
             type_source_map,
         })

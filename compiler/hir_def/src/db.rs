@@ -13,7 +13,7 @@ use crate::def_map::DefMap;
 use crate::id::*;
 use crate::item_tree::ItemTree;
 use crate::lang_item::{LangItem, LangItems};
-use crate::scope::ExprScopes;
+use crate::scope::{ExprScopes, TypeScopes};
 
 #[salsa::query_group(InternDatabaseStorage)]
 pub trait InternDatabase: SourceDatabaseExt {
@@ -61,6 +61,9 @@ pub trait DefDatabase: InternDatabase + Upcast<dyn SourceDatabase> {
 
     #[salsa::invoke(ExprScopes::expr_scopes_query)]
     fn expr_scopes(&self, def: DefWithBodyId) -> Arc<ExprScopes>;
+
+    #[salsa::invoke(TypeScopes::type_scopes_query)]
+    fn type_scopes(&self, owner: TypeVarOwner) -> Arc<TypeScopes>;
 
     #[salsa::invoke(data::FixityData::query)]
     fn fixity_data(&self, id: FixityId) -> Arc<data::FixityData>;

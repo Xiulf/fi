@@ -105,7 +105,7 @@ impl Module {
     pub fn path_to_name(self, db: &dyn HirDatabase, name: Name) -> Path {
         self.name(db)
             .to_string()
-            .split('/')
+            .split(Path::SEPARATOR)
             .map(|s| s.as_name())
             .chain(std::iter::once(name))
             .collect()
@@ -194,6 +194,15 @@ impl ModuleDef {
             | ModuleDef::TypeAlias(it) => Some(it.module(db)),
             | ModuleDef::TypeCtor(it) => Some(it.module(db)),
             | ModuleDef::Class(it) => Some(it.module(db)),
+        }
+    }
+
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        let name = self.name(db);
+
+        match self.module(db) {
+            | Some(module) => module.path_to_name(db, name),
+            | None => name.to_string().split(Path::SEPARATOR).map(|s| s.as_name()).collect(),
         }
     }
 
@@ -318,11 +327,16 @@ impl Func {
         db.attrs(self.id.into()).by_key("intrinsic").exists()
     }
 
-    pub fn link_name(self, db: &dyn HirDatabase) -> Name {
-        if self.is_foreign(db) {
-            self.name(db)
-        } else if let Some(name) = db.attrs(self.id.into()).by_key("link_name").string_value().next() {
-            name.as_name()
+    pub fn link_name(self, db: &dyn HirDatabase) -> (Name, bool) {
+        let attrs = db.attrs(self.id.into());
+        let mut link_name = attrs.by_key("link_name").string_value();
+
+        if let Some(name) = link_name.next() {
+            (name.as_name(), false)
+        } else if attrs.by_key("no_mangle").exists() {
+            (self.name(db), false)
+        } else if self.is_foreign(db) {
+            (self.name(db), false)
         } else {
             let mut path = self.path(db);
 
@@ -334,7 +348,7 @@ impl Func {
                 }
             }
 
-            path.to_string().as_name()
+            (path.to_string().as_name(), true)
         }
     }
 
@@ -411,9 +425,16 @@ impl Static {
         self.module(db).path_to_name(db, self.name(db))
     }
 
-    pub fn link_name(self, db: &dyn HirDatabase) -> Name {
-        if self.is_foreign(db) {
-            self.name(db)
+    pub fn link_name(self, db: &dyn HirDatabase) -> (Name, bool) {
+        let attrs = db.attrs(AttrDefId::StaticId(self.id));
+        let mut link_name = attrs.by_key("link_name").string_value();
+
+        if let Some(name) = link_name.next() {
+            (name.as_name(), false)
+        } else if attrs.by_key("no_mangle").exists() {
+            (self.name(db), false)
+        } else if self.is_foreign(db) {
+            (self.name(db), false)
         } else {
             let mut path = self.path(db);
 
@@ -425,7 +446,7 @@ impl Static {
                 }
             }
 
-            path.to_string().as_name()
+            (path.to_string().as_name(), true)
         }
     }
 

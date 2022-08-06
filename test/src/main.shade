@@ -1,11 +1,12 @@
 module Main =
 
 import Core
+import Core.Cmp
+import Js
 import Js.Console
-import Js.DOM
 
 @main
 main =
-    let a = createElement "a" :: HTMLAnchorElement
+    let a = 0:1:2:3:4:Nil
     
-    print a.className a.href :: ()
+    print $ toArray a :: ()

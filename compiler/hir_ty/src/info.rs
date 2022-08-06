@@ -120,6 +120,10 @@ impl TypeVars {
         self.current.pop().unwrap();
     }
 
+    pub fn top_scope(&self) -> TypeVarScopeId {
+        self.current[0]
+    }
+
     pub fn scope_at(&self, depth: usize) -> TypeVarScopeId {
         self.current[self.current.len() - depth - 1]
     }
@@ -376,8 +380,7 @@ impl TyId {
 
                         types.update(ty, TyInfo::Row(fields, tail2), true)
                     },
-                    | TyInfo::TypeVar(_) | TyInfo::Unknown(_) | TyInfo::Error => ty,
-                    | _ => unreachable!("{:?}", tail),
+                    | _ => ty,
                 }
             },
             | TyInfo::App(base, ref args) => match types[base] {
@@ -597,7 +600,7 @@ impl std::fmt::Display for TyDisplay<'_> {
             | TyInfo::Row(ref fields, Some(tail)) => {
                 write!(
                     f,
-                    "#({} | {})",
+                    "({} | {})",
                     fields
                         .iter()
                         .map(|f| format!("{} :: {}", f.name, self.with_ty(f.ty, false)))

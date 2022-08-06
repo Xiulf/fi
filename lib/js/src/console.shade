@@ -4,7 +4,7 @@ import Core
 import Js
 
 @link_name = "console.log"
-foreign log :: a -> Unit
+foreign log :: forall a. a -> Unit
 
 print = print' (new "Array")
 

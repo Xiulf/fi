@@ -332,6 +332,7 @@ impl FromInfo for InferenceDiagnostic<Ty, Constraint> {
             | InferenceDiagnostic::PrivateType { owner, id } => Self::PrivateType { owner, id },
             | InferenceDiagnostic::PrivateClass { src } => Self::PrivateClass { src },
             | InferenceDiagnostic::PrivateOperator { src, idx } => Self::PrivateOperator { src, idx },
+            | InferenceDiagnostic::UninferredType { src } => Self::UninferredType { src },
             | InferenceDiagnostic::MismatchedKind {
                 expected,
                 found,

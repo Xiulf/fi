@@ -129,8 +129,8 @@ class Partial
 
 @lang = "try-class"
 class Try self =
-    ret :: output -> self output
-    bind :: self a -> (a -> self b) -> self b
+    ret :: forall output. output -> self output
+    bind :: forall a b. self a -> (a -> self b) -> self b
 
 @lang = "termination-class"
 class Termination t =

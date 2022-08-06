@@ -1,16 +1,22 @@
 module Js =
 
 import Core
+import Core.Foldable (foldl)
 
-foreign toString :: a -> Str
-foreign concatString :: Str -> a -> Str
+foreign toString :: forall a. a -> Str
+foreign concatString :: forall a. Str -> a -> Str
 
-@intrinsic foreign new :: Str -> a
+@intrinsic foreign new :: forall a. Str -> a
 @intrinsic foreign spread :: JsArray -> Spread
+@intrinsic foreign assign :: forall a. a -> a -> ()
 
-foreign push :: JsArray -> a -> JsArray
+infix 0 assign as (=)
+
+foreign push :: forall a. JsArray -> a -> JsArray
 foreign type JsArray :: Type
 foreign type Spread :: Type
+
+toArray list = foldl list (new "Array") fn arr x -> push arr x
 
 member Str a of Concat =
     concat a b = concatString a b

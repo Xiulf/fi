@@ -38,7 +38,13 @@ use crate::ty::{Constraint, List, Ty, TyAndSrc, TypeVar, WhereClause};
 pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<InferenceResult<Ty, Constraint>> {
     let body = db.body(def);
     let resolver = Resolver::for_expr(db.upcast(), def, body.body_expr());
-    let mut icx = BodyInferenceContext::new(db, resolver, def);
+    let has_annotation = match def {
+        | DefWithBodyId::FuncId(id) => db.func_data(id).ty.is_some(),
+        | DefWithBodyId::ConstId(id) => db.const_data(id).ty.is_some(),
+        | DefWithBodyId::StaticId(id) => db.static_data(id).ty.is_some(),
+    };
+
+    let mut icx = BodyInferenceContext::new(db, resolver, def, !has_annotation);
 
     match def.container(db.upcast()) {
         | ContainerId::Class(id) => icx.class_owner(id),
@@ -51,37 +57,40 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let data = db.func_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
-            let scope = lcx.push_type_vars(&data.type_vars);
+            // let scope = lcx.push_type_vars(&data.type_vars);
             let ty = data
                 .ty
                 .map(|t| lcx.lower_ty(t))
                 .unwrap_or(lcx.fresh_type_without_kind(src));
 
-            (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
+            // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
+            (ty, data.name.clone())
         }),
         | DefWithBodyId::StaticId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.static_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
+            // let scope = lcx.push_type_vars(&data.type_vars);
+            let ty = data
+                .ty
+                .map(|t| lcx.lower_ty(t))
+                .unwrap_or(lcx.fresh_type_without_kind(src));
 
-            (
-                data.ty
-                    .map(|t| lcx.lower_ty(t))
-                    .unwrap_or(lcx.fresh_type_without_kind(src)),
-                data.name.clone(),
-            )
+            // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
+            (ty, data.name.clone())
         }),
         | DefWithBodyId::ConstId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.const_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
+            // let scope = lcx.push_type_vars(&data.type_vars);
+            let ty = data
+                .ty
+                .map(|t| lcx.lower_ty(t))
+                .unwrap_or(lcx.fresh_type_without_kind(src));
 
-            (
-                data.ty
-                    .map(|t| lcx.lower_ty(t))
-                    .unwrap_or(lcx.fresh_type_without_kind(src)),
-                data.name.clone(),
-            )
+            // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
+            (ty, data.name.clone())
         }),
     };
 
@@ -124,6 +133,7 @@ pub struct InferenceContext<'a> {
     pub(crate) result: InferenceResult<TyId, CtntInfo>,
     pub(crate) types: Types,
     pub(crate) type_vars: TypeVars,
+    can_generalize: bool,
     subst: unify::Substitution,
     class_env: ClassEnv,
     member_records: usize,
@@ -163,7 +173,7 @@ impl From<PatId> for ExprOrPatId {
 }
 
 impl<'a> InferenceContext<'a> {
-    pub fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: TypeVarOwner) -> Self {
+    pub fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: TypeVarOwner, can_generalize: bool) -> Self {
         let mut types = Types::default();
         let src = (owner, TypeOrigin::Def(owner.into()));
         let self_type = types.insert(TyInfo::Error, src);
@@ -182,6 +192,7 @@ impl<'a> InferenceContext<'a> {
                 methods: FxHashMap::default(),
                 diagnostics: Vec::new(),
             },
+            can_generalize,
             subst: unify::Substitution::default(),
             type_vars: TypeVars::default(),
             class_env: ClassEnv::default(),
@@ -197,6 +208,10 @@ impl<'a> InferenceContext<'a> {
     pub fn finish_mut(&mut self) -> InferenceResult<Ty, Constraint> {
         self.solve_constraints();
 
+        if !self.can_generalize {
+            self.report_unknowns(self.result.self_type.ty);
+        }
+
         let self_type = self.types.insert(TyInfo::Error, (self.owner, TypeOrigin::Synthetic));
         let mut res = std::mem::replace(&mut self.result, InferenceResult {
             self_type: TyAndSrc {
@@ -211,7 +226,10 @@ impl<'a> InferenceContext<'a> {
             diagnostics: Vec::new(),
         });
 
-        res.self_type.ty = self.generalize(res.self_type.ty);
+        if self.can_generalize {
+            res.self_type.ty = self.generalize(res.self_type.ty);
+        }
+
         res.self_type.ty = res.self_type.ty.normalize(&mut self.types);
         res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(self)).collect();
 
@@ -466,15 +484,15 @@ impl<'a> InferenceContext<'a> {
         self.type_vars.add_scope(kinds)
     }
 
-    pub(crate) fn wrap_type_vars(&mut self, inner: TyId, scope: TypeVarScopeId, src: TySource) -> TyId {
-        if !self.type_vars.var_kinds(scope).is_empty() {
-            let kinds = self.type_vars.var_kinds(scope).clone();
+    // pub(crate) fn wrap_type_vars(&mut self, inner: TyId, scope: TypeVarScopeId, src: TySource) -> TyId {
+    //     if !self.type_vars.var_kinds(scope).is_empty() {
+    //         let kinds = self.type_vars.var_kinds(scope).clone();
 
-            self.types.insert(TyInfo::ForAll(kinds, inner, scope), src)
-        } else {
-            inner
-        }
-    }
+    //         self.types.insert(TyInfo::ForAll(kinds, inner, scope), src)
+    //     } else {
+    //         inner
+    //     }
+    // }
 
     fn with_owner<T>(&mut self, id: TypeVarOwner, f: impl FnOnce(&mut Self) -> T) -> T {
         let owner = std::mem::replace(&mut self.owner, id);
@@ -513,7 +531,7 @@ impl<'a> InferenceContext<'a> {
     fn class_item(&mut self, class: ClassId, ann: TyId) -> TyId {
         let src = self.source(TypeOrigin::Def(class.into()));
         let lower = self.db.lower_class(class);
-        let scope = self.type_vars.scope_at(1);
+        let scope = self.type_vars.top_scope();
         let types = (0..lower.class.vars.len() as u32)
             .map(|i| self.types.insert(TyInfo::TypeVar(TypeVar::new(i, scope)), src))
             .collect::<List<_>>();
@@ -594,7 +612,7 @@ impl<'a> InferenceContext<'a> {
         }
 
         if !kinds.is_empty() {
-            let scope = self.type_vars.scope_at(1);
+            let scope = self.type_vars.top_scope();
 
             item_ty = self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
         }
@@ -607,11 +625,28 @@ impl<'a> InferenceContext<'a> {
 
         item_ty
     }
+
+    fn report_unknowns(&mut self, ty: TyId) {
+        let ty = self.subst_type(ty);
+        let mut unknowns = FxHashMap::default();
+        let mut find_unknowns = |ty: TyId| match self.types[ty] {
+            | TyInfo::Unknown(u) if !unknowns.contains_key(&u) => {
+                unknowns.insert(u, self.types.source(ty));
+            },
+            | _ => {},
+        };
+
+        ty.everything(&self.types, &mut find_unknowns);
+
+        for (_, src) in unknowns {
+            self.report(InferenceDiagnostic::UninferredType { src });
+        }
+    }
 }
 
 impl<'a> BodyInferenceContext<'a> {
-    fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: DefWithBodyId) -> Self {
-        let mut icx = InferenceContext::new(db, resolver, owner.into());
+    fn new(db: &'a dyn HirDatabase, resolver: Resolver, owner: DefWithBodyId, can_generalize: bool) -> Self {
+        let mut icx = InferenceContext::new(db, resolver, owner.into(), can_generalize);
         let src = icx.source(TypeOrigin::Synthetic);
         let error = icx.types.insert(TyInfo::Error, src);
 
@@ -767,6 +802,9 @@ pub(crate) mod diagnostics {
             src: OperatorSource,
             idx: usize,
         },
+        UninferredType {
+            src: TySource,
+        },
         MismatchedKind {
             expected: T,
             found: T,
@@ -908,6 +946,7 @@ pub(crate) mod diagnostics {
 
                     source_map.type_var_syntax(id).map(|s| match s {
                         | TypeVarSource::Type(s) => file.with_value(s.syntax_node_ptr()),
+                        | TypeVarSource::Name(s) => file.with_value(s.syntax_node_ptr()),
                         | TypeVarSource::NameRef(s) => file.with_value(s.syntax_node_ptr()),
                     })
                 }),
@@ -1019,6 +1058,11 @@ pub(crate) mod diagnostics {
                     };
 
                     sink.push(PrivateOperator { file, src, idx: *idx });
+                },
+                | InferenceDiagnostic::UninferredType { src } => {
+                    let src = ty_src(*src).unwrap();
+
+                    sink.push(UninferredType { src });
                 },
                 | InferenceDiagnostic::MismatchedKind {
                     expected,

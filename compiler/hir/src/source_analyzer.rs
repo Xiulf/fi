@@ -102,7 +102,7 @@ impl SourceAnalyzer {
         let resolver = self.resolver.clone();
         let owner = resolver.body_owner()?.into();
         let body = self.body.as_ref()?;
-        let mut infer_ctx = hir_ty::infer::InferenceContext::new(db, resolver, owner);
+        let mut infer_ctx = hir_ty::infer::InferenceContext::new(db, resolver, owner, false);
         let mut lower_ctx = hir_ty::lower::LowerCtx::new(body.type_map(), &mut infer_ctx);
         let ty = lower_ctx.lower_ty(type_id);
         let kind = infer_ctx.infer_kind(ty);

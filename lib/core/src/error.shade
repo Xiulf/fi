@@ -8,7 +8,7 @@ postfix unwrap_unsafe as (!)
 infixl 5 unwrap_or as (?)
 
 class Unwrap self =
-    unwrap :: self output -> output where Partial
-    unwrap_or :: self output -> output -> output
+    unwrap :: forall output. self output -> output where Partial
+    unwrap_or :: forall output. self output -> output -> output
 
 unwrap_unsafe x = partial (unwrap x)

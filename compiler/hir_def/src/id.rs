@@ -285,6 +285,19 @@ impl HasModule for TypeVarOwner {
 }
 
 impl TypeVarOwner {
+    pub fn type_vars(self, db: &dyn DefDatabase) -> Option<Box<[LocalTypeVarId]>> {
+        match self {
+            | TypeVarOwner::DefWithBodyId(_) => None,
+            | TypeVarOwner::TypedDefId(id) => match id {
+                | TypedDefId::TypeAliasId(id) => Some(db.type_alias_data(id).type_vars.clone()),
+                | TypedDefId::TypeCtorId(id) => Some(db.type_ctor_data(id).type_vars.clone()),
+                | TypedDefId::ClassId(id) => Some(db.class_data(id).type_vars.clone()),
+                | TypedDefId::MemberId(id) => Some(db.member_data(id).type_vars.clone()),
+                | _ => None,
+            },
+        }
+    }
+
     pub fn with_type_map<T>(self, db: &dyn DefDatabase, f: impl FnOnce(&TypeMap) -> T) -> T {
         match self {
             | TypeVarOwner::DefWithBodyId(def) => f(db.body(def).type_map()),

@@ -77,6 +77,7 @@ ast_node!(Type {
     Rec(TypeRec, TYPE_REC),
     Row(TypeRow, TYPE_ROW),
     Parens(TypeParens, TYPE_PARENS),
+    Forall(TypeForall, TYPE_FORALL),
     Where(TypeWhere, TYPE_WHERE),
 });
 

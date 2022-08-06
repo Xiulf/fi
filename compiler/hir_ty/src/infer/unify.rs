@@ -190,9 +190,9 @@ impl InferenceContext<'_> {
             ty
         } else {
             let kinds = unknowns.into_values().collect();
-            let ty = self.types.insert(TyInfo::ForAll(kinds, ty, scope), src);
+            let ty = self.subst_type(ty);
 
-            self.subst_type(ty)
+            self.types.insert(TyInfo::ForAll(kinds, ty, scope), src)
         }
     }
 
@@ -289,7 +289,28 @@ impl InferenceContext<'_> {
                 s1 == s2 && f1.is_empty() && f2.is_empty()
             },
             | (Some(&TyInfo::Unknown(u1)), Some(&TyInfo::Unknown(u2))) if u1 != u2 => {
-                unimplemented!();
+                for f in f1.iter() {
+                    if self.occurs(u2, f.ty) {
+                        return false;
+                    }
+                }
+
+                for f in f2.iter() {
+                    if self.occurs(u1, f.ty) {
+                        return false;
+                    }
+                }
+
+                let &(_, kind) = self.subst.unsolved(u1);
+                let src1 = self.types.source(t1.unwrap());
+                let src2 = self.types.source(t2.unwrap());
+                let rest = self.fresh_type_with_kind(kind, src1);
+                let r1 = self.types.insert(TyInfo::Row(f2, Some(rest)), src1);
+                let r2 = self.types.insert(TyInfo::Row(f1, Some(rest)), src2);
+
+                self.solve_type(u1, r1);
+                self.solve_type(u2, r2);
+                true
             },
             | (_, _) => false,
         }

@@ -7,7 +7,7 @@ pub(crate) fn expr(p: &mut Parser) {
 }
 
 fn expr_(p: &mut Parser, allow_do: bool) {
-    if let Some(m) = assign(p, allow_do) {
+    if let Some(m) = infix(p, allow_do, false) {
         if p.at(DBL_COLON) {
             let expr = m.precede(p);
             let _ = p.bump(DBL_COLON);
@@ -18,18 +18,18 @@ fn expr_(p: &mut Parser, allow_do: bool) {
     }
 }
 
-pub(crate) fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
-    let mut m = infix(p, allow_do, false)?;
+// pub(crate) fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
+//     let mut m = infix(p, allow_do, false)?;
 
-    if p.eat(EQUALS) {
-        let expr = m.precede(p);
-        let _ = expr_(p, allow_do);
+//     if p.eat(EQUALS) {
+//         let expr = m.precede(p);
+//         let _ = expr_(p, allow_do);
 
-        m = expr.complete(p, EXPR_ASSIGN);
-    }
+//         m = expr.complete(p, EXPR_ASSIGN);
+//     }
 
-    Some(m)
-}
+//     Some(m)
+// }
 
 pub(crate) fn infix(p: &mut Parser, allow_do: bool, in_record: bool) -> Option<CompletedMarker> {
     let mut m = app(p, allow_do)?;

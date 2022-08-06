@@ -1,16 +1,17 @@
 mod adt;
 mod expr;
 mod indent;
+mod intrinsic;
 mod pat;
 
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
 
-use adt::Repr;
+use adt::Layout;
 use arena::ArenaMap;
 use hir::db::HirDatabase;
 use hir::id::DefWithBodyId;
-use hir::{AsName, TypeCtor};
+use hir::TypeCtor;
 use rustc_hash::FxHashMap;
 
 #[no_mangle]
@@ -29,7 +30,7 @@ pub fn codegen(db: &dyn HirDatabase, module: hir::Module, file: &mut dyn Write) 
 struct Ctx<'a> {
     db: &'a dyn HirDatabase,
     out: indent::IndentWriter<BufWriter<&'a mut dyn Write>>,
-    ty_ctor_reprs: FxHashMap<TypeCtor, Repr>,
+    ty_ctor_reprs: FxHashMap<TypeCtor, Layout>,
 }
 
 struct BodyCtx<'a, 'b> {
@@ -51,13 +52,19 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    fn mangle(&self, name: impl AsRef<str>) -> String {
+    fn mangle(&self, (name, mangle): (impl AsRef<str>, bool)) -> String {
         let name = name.as_ref();
+
+        if !mangle {
+            return name.to_string();
+        }
+
         let mut res = String::with_capacity(name.len());
 
         for c in name.chars() {
             match c {
                 | '\'' => res.push('$'),
+                | '.' => res.push('_'),
                 | _ => res.push(c),
             }
         }
@@ -69,28 +76,34 @@ impl<'a> Ctx<'a> {
         let decls = module.declarations(self.db);
         let members = module.members(self.db);
 
-        if !decls.is_empty() || !members.is_empty() {
-            writeln!(self, "(function($shade) {{")?;
-            self.out.indent();
-            writeln!(
-                self,
-                r#"const $module = $shade["{0}"] || ($shade["{0}"] = {{}})"#,
-                module.name(self.db)
-            )?;
+        for &def in &decls {
+            self.register_def(def)?;
+        }
 
-            for def in decls {
-                self.codegen_def(def)?;
-            }
+        for def in decls {
+            self.codegen_def(def)?;
+        }
 
-            for member in members {
-                self.codegen_member(member)?;
-            }
-
-            self.out.dedent();
-            writeln!(self, "}})(this.$shade || (this.$shade = {{}}));")?;
+        for member in members {
+            self.codegen_member(member)?;
         }
 
         self.flush()
+    }
+
+    pub fn register_def(&mut self, def: hir::ModuleDef) -> io::Result<()> {
+        match def {
+            | hir::ModuleDef::Func(f) if !f.is_foreign(self.db) && f.has_body(self.db) => {
+                writeln!(self, "var {};", self.mangle(f.link_name(self.db)))
+            },
+            | hir::ModuleDef::Static(s) if !s.is_foreign(self.db) => {
+                writeln!(self, "var {};", self.mangle(s.link_name(self.db)))
+            },
+            | hir::ModuleDef::Const(c) => {
+                writeln!(self, "var {};", self.mangle((c.path(self.db).to_string(), true)))
+            },
+            | _ => Ok(()),
+        }
     }
 
     pub fn codegen_def(&mut self, def: hir::ModuleDef) -> io::Result<()> {
@@ -106,51 +119,32 @@ impl<'a> Ctx<'a> {
         let id = hir::id::FuncId::from(func);
 
         if !func.is_foreign(self.db) && func.has_body(self.db) {
-            self.codegen_body(id.into(), Some(func.name(self.db)), false)?;
-            writeln!(self, "")?;
-        }
-
-        if !func.is_intrinsic(self.db) && func.is_exported(self.db) {
-            let attrs = self.db.attrs(id.into());
-
-            if func.is_foreign(self.db) {
-                let link_name = if let Some(name) = attrs.by_key("link_name").string_value().next() {
-                    name.as_name()
-                } else {
-                    func.name(self.db)
-                };
-
-                writeln!(self, "$module.{} = {};", self.mangle(func.name(self.db)), link_name)?;
-            } else if func.has_body(self.db) {
-                let name = if attrs.by_key("no_mangle").exists() {
-                    func.name(self.db).to_string()
-                } else {
-                    self.mangle(func.name(self.db))
-                };
-
-                writeln!(self, "$module.{0} = {0};", name)?;
-            }
+            write!(self, "{} = ", self.mangle(func.link_name(self.db)))?;
+            self.codegen_body(id.into(), false)?;
+            writeln!(self, ";")?;
         }
 
         if self.db.attrs(id.into()).by_key("main").exists() {
-            writeln!(self, "$shade.$main = {}", func.name(self.db))?;
+            writeln!(self, "const $main = {}", self.mangle(func.link_name(self.db)))?;
         }
 
         Ok(())
     }
 
     pub fn codegen_const(&mut self, const_: hir::Const) -> io::Result<()> {
-        write!(self, "const {} = ", const_.name(self.db))?;
+        write!(self, "{} = ", self.mangle((const_.path(self.db).to_string(), true)))?;
         self.codegen_body_expr(hir::id::ConstId::from(const_).into())?;
-        writeln!(self, ";")?;
-        writeln!(self, "$module.{0} = {0};", const_.name(self.db))
+        writeln!(self, ";")
     }
 
     pub fn codegen_static(&mut self, static_: hir::Static) -> io::Result<()> {
-        write!(self, "const {} = {{ $: ", static_.name(self.db))?;
-        self.codegen_body_expr(hir::id::StaticId::from(static_).into())?;
-        writeln!(self, " }};")?;
-        writeln!(self, "$module.{0} = {0};", static_.name(self.db))
+        if !static_.is_foreign(self.db) {
+            write!(self, "{} = ", self.mangle(static_.link_name(self.db)))?;
+            self.codegen_body_expr(hir::id::StaticId::from(static_).into())?;
+            writeln!(self, ";")?;
+        }
+
+        Ok(())
     }
 
     pub fn codegen_member(&mut self, member: hir::Member) -> io::Result<()> {
@@ -190,10 +184,10 @@ impl<'a> Ctx<'a> {
             self.out.indent();
 
             for item in items {
-                write!(self, "{}: ", self.mangle(item.name(self.db)))?;
+                write!(self, "{}: ", self.mangle((item.name(self.db), true)))?;
 
                 match item {
-                    | hir::AssocItem::Func(id) => self.codegen_body(hir::id::FuncId::from(id).into(), None, true)?,
+                    | hir::AssocItem::Func(id) => self.codegen_body(hir::id::FuncId::from(id).into(), true)?,
                     | hir::AssocItem::Static(id) => self.codegen_body_expr(hir::id::StaticId::from(id).into())?,
                 }
 
@@ -207,22 +201,13 @@ impl<'a> Ctx<'a> {
                 self.out.dedent();
                 writeln!(self, "}}")?;
             }
-
-            if member.is_exported(self.db) {
-                writeln!(self, "$module.{0} = {0};", self.mangle(member.link_name(self.db)))?;
-            }
         }
 
         Ok(())
     }
 
-    pub fn codegen_body(
-        &mut self,
-        owner: DefWithBodyId,
-        name: Option<hir::Name>,
-        mut skip_where: bool,
-    ) -> io::Result<()> {
-        write!(self, "function {}(", name.as_ref().map(AsRef::as_ref).unwrap_or(""))?;
+    pub fn codegen_body(&mut self, owner: DefWithBodyId, mut skip_where: bool) -> io::Result<()> {
+        write!(self, "function(")?;
         let mut bcx = BodyCtx::new(self, owner);
         let mut ty = bcx.infer.self_type.ty;
         let body = bcx.body.clone();

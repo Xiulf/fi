@@ -11,6 +11,7 @@ pub type LocalTypeVarId = Idx<TypeVar>;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TypeVarSource {
     Type(AstPtr<ast::Type>),
+    Name(AstPtr<ast::Name>),
     NameRef(AstPtr<ast::NameRef>),
 }
 
@@ -26,17 +27,9 @@ pub enum TypeRef {
     Infix(Box<[LocalTypeRefId]>, Box<[Path]>),
     Record(Box<[Field]>, Option<LocalTypeRefId>),
     Row(Box<[Field]>, Option<LocalTypeRefId>),
+    Forall(Box<[LocalTypeVarId]>, LocalTypeRefId),
     Where(WhereClause, LocalTypeRefId),
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PtrLen {
-    Single,
-    Multiple(Option<Sentinel>),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Sentinel(pub i128);
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WhereClause {
@@ -89,29 +82,29 @@ pub(crate) struct TypeMapBuilder {
 }
 
 impl TypeRef {
-    fn from_ast(node: ast::Type, map: &mut TypeMapBuilder) -> TypeRef {
+    fn from_ast(node: ast::Type, map: &mut TypeMapBuilder) -> Self {
         match node {
-            | ast::Type::Hole(_) => TypeRef::Placeholder,
+            | ast::Type::Hole(_) => Self::Placeholder,
             | ast::Type::Figure(inner) => {
                 if let Some(int) = inner.int() {
                     if let Some(val) = int.value() {
-                        return TypeRef::Figure(val);
+                        return Self::Figure(val);
                     }
                 }
 
-                TypeRef::Error
+                Self::Error
             },
             | ast::Type::Symbol(inner) => {
                 if let Some(string) = inner.string() {
                     if let Some(val) = string.value() {
-                        return TypeRef::Symbol(val);
+                        return Self::Symbol(val);
                     }
                 }
 
-                TypeRef::Error
+                Self::Error
             },
-            | ast::Type::Path(inner) => convert_path(inner.path()).map(TypeRef::Path).unwrap_or(TypeRef::Error),
-            | ast::Type::App(inner) => TypeRef::App(
+            | ast::Type::Path(inner) => convert_path(inner.path()).map(Self::Path).unwrap_or(Self::Error),
+            | ast::Type::App(inner) => Self::App(
                 map.alloc_type_ref_opt(inner.base()),
                 map.alloc_type_ref_opt(inner.arg()),
             ),
@@ -119,7 +112,7 @@ impl TypeRef {
                 let tys = inner.types().map(|t| map.alloc_type_ref(t)).collect();
                 let ops = inner.ops().map(|op| Path::from(op.as_name())).collect();
 
-                TypeRef::Infix(tys, ops)
+                Self::Infix(tys, ops)
             },
             | ast::Type::Rec(inner) => {
                 let fields = inner
@@ -134,7 +127,7 @@ impl TypeRef {
 
                 let tail = inner.tail().map(|t| map.alloc_type_ref(t));
 
-                TypeRef::Record(fields, tail)
+                Self::Record(fields, tail)
             },
             | ast::Type::Row(inner) => {
                 let fields = inner
@@ -149,21 +142,31 @@ impl TypeRef {
 
                 let tail = inner.tail().map(|t| map.alloc_type_ref(t));
 
-                TypeRef::Row(fields, tail)
+                Self::Row(fields, tail)
             },
-            | ast::Type::Unit(_) => TypeRef::Unit,
+            | ast::Type::Unit(_) => Self::Unit,
             | ast::Type::Parens(inner) => Self::from_ast_opt(inner.ty(), map),
+            | ast::Type::Forall(inner) => {
+                if let Some(vars) = inner.vars() {
+                    let vars = vars.type_vars().map(|v| map.alloc_type_var(v)).collect();
+                    let inner = map.alloc_type_ref_opt(inner.ty());
+
+                    Self::Forall(vars, inner)
+                } else {
+                    Self::from_ast_opt(inner.ty(), map)
+                }
+            },
             | ast::Type::Where(inner) => {
                 let where_clause = map.lower_where_clause(inner.where_clause());
                 let inner = map.alloc_type_ref_opt(inner.ty());
 
-                TypeRef::Where(where_clause, inner)
+                Self::Where(where_clause, inner)
             },
         }
     }
 
-    fn from_ast_opt(node: Option<ast::Type>, map: &mut TypeMapBuilder) -> TypeRef {
-        node.map(|n| Self::from_ast(n, map)).unwrap_or(TypeRef::Error)
+    fn from_ast_opt(node: Option<ast::Type>, map: &mut TypeMapBuilder) -> Self {
+        node.map(|n| Self::from_ast(n, map)).unwrap_or(Self::Error)
     }
 }
 
@@ -238,11 +241,11 @@ impl TypeMapBuilder {
         self.alloc_type_var_impl(var, TypeVarSource::Type(source))
     }
 
-    pub fn alloc_type_var(&mut self, node: ast::NameRef) -> LocalTypeVarId {
+    pub fn alloc_type_var(&mut self, node: ast::Name) -> LocalTypeVarId {
         let var = TypeVar { name: node.as_name() };
         let ptr = AstPtr::new(&node);
 
-        self.alloc_type_var_impl(var, TypeVarSource::NameRef(ptr))
+        self.alloc_type_var_impl(var, TypeVarSource::Name(ptr))
     }
 
     pub fn lower_where_clause(&mut self, where_clause: Option<ast::WhereClause>) -> WhereClause {

@@ -56,6 +56,7 @@ pub enum SyntaxKind {
     POSTFIX_KW,
     PREFIX_KW,
     WHERE_KW,
+    FORALL_KW,
     AS_KW,
     DO_KW,
     TRY_KW,
@@ -128,12 +129,11 @@ pub enum SyntaxKind {
     TYPE_REC,
     TYPE_ROW,
     TYPE_PARENS,
+    TYPE_FORALL,
     TYPE_WHERE,
 
     ROW_FIELD,
     ROW_TAIL,
-
-    SENTINEL,
 
     STMT_LET,
     STMT_BIND,

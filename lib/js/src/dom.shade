@@ -2,13 +2,36 @@ module Js.DOM =
 
 import Core
 
-@link_name = "document.createElement.bind(document)"
-foreign createElement :: Str -> HTMLElement a
+@link_name = "document.createElement"
+foreign createElement' :: forall a. Str -> a
+
+@link_name = "((e, s, f) => e.addEventListener(s, f))"
+foreign addEventListener :: forall a. HTMLElement a -> Str -> (() -> ()) -> ()
+
+@intrinsic foreign symToStr :: forall s. Sym s -> Str
+
+foreign static document :: Document
+
+createElement :: forall name el. Sym name -> el where NamedElement name el
+createElement sym = createElement' (symToStr sym)
+
+type Sym :: Symbol -> Type
+type Sym s = | Sym
+
+class NamedElement name el | name -> el where name :: Symbol
 
 type HTMLElement a = {
-    className :: Str,
+    appendChild :: ChildElement -> (),
     | a
 }
+
+type ChildElement = Record ()
+
+type Document = HTMLElement (
+    body :: HTMLBodyElement,
+)
+
+type HTMLBodyElement = HTMLElement ()
 
 type HTMLAnchorElement = HTMLElement (
     href :: Str,

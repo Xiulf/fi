@@ -12,7 +12,7 @@ pub struct Path {
 }
 
 impl Path {
-    const SEPARATOR: char = '.';
+    pub const SEPARATOR: char = '.';
 
     pub fn from_segments(segments: impl IntoIterator<Item = Name>) -> Self {
         Path {

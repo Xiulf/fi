@@ -170,6 +170,25 @@ impl Diagnostic for PrivateOperator {
 }
 
 #[derive(Debug)]
+pub struct UninferredType {
+    pub src: InFile<SyntaxNodePtr>,
+}
+
+impl Diagnostic for UninferredType {
+    fn message(&self) -> String {
+        "could not infer type".into()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        self.src
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
 pub struct MismatchedKind {
     pub expected: Ty,
     pub found: Ty,

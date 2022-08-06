@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use hir::id::HasModule;
-use hir::{Const, Expr, Func, HasResolver, Literal, MethodSource, Module, Path, Resolver, Static, Stmt, ValueNs};
+use hir::{Const, Expr, Func, HasResolver, Literal, MethodSource, Path, Resolver, Static, Stmt, ValueNs};
 
 use crate::indent::IndentWriter;
 use crate::BodyCtx;
@@ -706,28 +706,9 @@ impl BodyCtx<'_, '_> {
     }
 
     pub fn member_ref(&mut self, member: hir::Member, sources: &mut dyn Iterator<Item = MethodSource>) -> JsExpr {
-        let module = member.module(self.db);
         let lower = self.db.lower_member(member.into());
-        let record = if module != self.owner.module(self.db.upcast()).into() {
-            let base = Box::new(JsExpr::Ident {
-                name: String::from("$shade"),
-            });
-
-            let base = Box::new(JsExpr::Index {
-                base,
-                idx: Box::new(JsExpr::Literal {
-                    lit: Literal::String(module.name(self.db).to_string()),
-                }),
-            });
-
-            JsExpr::Field {
-                base,
-                field: self.mangle(member.link_name(self.db)),
-            }
-        } else {
-            JsExpr::Ident {
-                name: self.mangle(member.link_name(self.db)),
-            }
+        let record = JsExpr::Ident {
+            name: self.mangle((member.link_name(self.db), true)),
         };
 
         let skip = lower
@@ -895,7 +876,7 @@ impl BodyCtx<'_, '_> {
 
                     base = JsExpr::Field {
                         base: Box::new(b),
-                        field: self.mangle(path.segments().last().unwrap()),
+                        field: self.mangle((path.segments().last().unwrap(), true)),
                     };
                 }
 
@@ -930,29 +911,12 @@ impl BodyCtx<'_, '_> {
 
     pub fn lower_path(&mut self, resolver: &Resolver, path: &Path) -> JsExpr {
         let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
-        let module = Module::from(self.owner.module(self.db.upcast()));
 
         match resolved {
             | ValueNs::Local(id) => self.locals[id].clone(),
             | ValueNs::Func(id) => {
-                let base = if Func::from(id).module(self.db) == module {
-                    let attrs = self.db.attrs(id.into());
-                    let mut link_name = attrs.by_key("link_name").string_value();
-
-                    if let Some(name) = link_name.next() {
-                        JsExpr::Ident { name: name.to_string() }
-                    } else if attrs.by_key("no_mangle").exists() {
-                        JsExpr::Ident {
-                            name: path.segments().last().unwrap().to_string(),
-                        }
-                    } else {
-                        JsExpr::Ident {
-                            name: self.mangle(path.segments().last().unwrap()),
-                        }
-                    }
-                } else {
-                    let path = Func::from(id).path(self.db);
-                    self.path_expr(path)
+                let base = JsExpr::Ident {
+                    name: self.mangle(Func::from(id).link_name(self.db)),
                 };
 
                 let is_method = matches!(Func::from(id).as_assoc_item(self.db), Some(hir::AssocItem::Func(_)));
@@ -966,30 +930,11 @@ impl BodyCtx<'_, '_> {
 
                 base
             },
-            | ValueNs::Const(id) => {
-                if Const::from(id).module(self.db) == module {
-                    JsExpr::Ident {
-                        name: path.segments().last().unwrap().to_string(),
-                    }
-                } else {
-                    let path = Const::from(id).path(self.db);
-                    self.path_expr(path)
-                }
+            | ValueNs::Const(id) => JsExpr::Ident {
+                name: self.mangle((Const::from(id).path(self.db).to_string(), true)),
             },
-            | ValueNs::Static(id) => {
-                let base = if Static::from(id).module(self.db) == module {
-                    JsExpr::Ident {
-                        name: path.segments().last().unwrap().to_string(),
-                    }
-                } else {
-                    let path = Static::from(id).path(self.db);
-                    self.path_expr(path)
-                };
-
-                JsExpr::Field {
-                    base: Box::new(base),
-                    field: String::from("$"),
-                }
+            | ValueNs::Static(id) => JsExpr::Ident {
+                name: self.mangle(Static::from(id).link_name(self.db)),
             },
             | ValueNs::Ctor(id) => self.construct(id.into(), Vec::new()),
             | ValueNs::Fixity(id) => {
@@ -1001,103 +946,10 @@ impl BodyCtx<'_, '_> {
         }
     }
 
-    pub fn path_expr(&self, path: Path) -> JsExpr {
-        let (ident, module) = path.segments().split_last().unwrap();
-        let module = module.iter().map(|i| i.to_string()).collect::<Vec<_>>().join("/");
-
-        JsExpr::Field {
-            base: Box::new(JsExpr::Index {
-                base: Box::new(JsExpr::Ident {
-                    name: String::from("$shade"),
-                }),
-                idx: Box::new(JsExpr::Literal {
-                    lit: Literal::String(module),
-                }),
-            }),
-            field: ident.to_string(),
-        }
-    }
-
-    fn lower_arg(&mut self, arg: Arg, block: &mut Vec<JsExpr>) -> JsExpr {
+    pub fn lower_arg(&mut self, arg: Arg, block: &mut Vec<JsExpr>) -> JsExpr {
         match arg {
             | Arg::ExprId(id) => self.lower_expr(id, block),
             | Arg::JsExpr(expr) => expr,
-        }
-    }
-
-    pub fn lower_intrinsic(&mut self, name: &str, mut args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
-        match name {
-            | "transmute" => self.lower_arg(args.remove(0), block),
-            | "partial" => self.lower_arg(args.remove(0), block),
-            | "unsafe" => self.lower_arg(args.remove(0), block),
-            | "apply" => {
-                let base = args.remove(0);
-
-                self.lower_app(base, args, block)
-            },
-            | "crash" => {
-                let arg = self.lower_arg(args.remove(0), block);
-
-                block.push(JsExpr::Throw { expr: Box::new(arg) });
-                JsExpr::Undefined
-            },
-            | "new" => match self.lower_arg(args.remove(0), block) {
-                | JsExpr::Literal {
-                    lit: Literal::String(s),
-                } => JsExpr::Call {
-                    base: Box::new(JsExpr::UnOp {
-                        op: "new ",
-                        rhs: Box::new(JsExpr::Ident { name: s }),
-                    }),
-                    args: Vec::new(),
-                },
-                | _ => unreachable!(),
-            },
-            | "spread" => JsExpr::UnOp {
-                op: "...",
-                rhs: Box::new(self.lower_arg(args.remove(0), block)),
-            },
-            | "iadd" => self.intrinsic_binop("+", args, block),
-            | "isub" => self.intrinsic_binop("-", args, block),
-            | "imul" => self.intrinsic_binop("*", args, block),
-            | "idiv" => self.intrinsic_binop("/", args, block),
-            | "irem" => self.intrinsic_binop("%", args, block),
-            | "ieq" => self.intrinsic_binop("==", args, block),
-            | "icmp" => self.intrinsic_icmp(args, block),
-            | _ => {
-                log::warn!(target: "lower_intrinsic", "todo: {:?}", name);
-                JsExpr::Undefined
-            },
-        }
-    }
-
-    fn intrinsic_binop(&mut self, op: &'static str, mut args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
-        let rhs = args.remove(1);
-        let lhs = args.remove(0);
-        let lhs = Box::new(self.lower_arg(lhs, block));
-        let rhs = Box::new(self.lower_arg(rhs, block));
-
-        JsExpr::BinOp { op, lhs, rhs }
-    }
-
-    fn intrinsic_icmp(&mut self, mut args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
-        let rhs = args.remove(1);
-        let lhs = args.remove(0);
-        let lhs = Box::new(self.lower_arg(lhs, block));
-        let rhs = Box::new(self.lower_arg(rhs, block));
-
-        JsExpr::If {
-            cond: Box::new(JsExpr::BinOp {
-                op: "==",
-                lhs: lhs.clone(),
-                rhs: rhs.clone(),
-            }),
-            then: Box::new(JsExpr::Literal { lit: Literal::Int(1) }),
-            else_: Some(Box::new(JsExpr::If {
-                cond: Box::new(JsExpr::BinOp { op: "<", lhs, rhs }),
-                then: Box::new(JsExpr::Literal { lit: Literal::Int(-1) }),
-                else_: Some(Box::new(JsExpr::Literal { lit: Literal::Int(1) })),
-            })),
         }
     }
 }

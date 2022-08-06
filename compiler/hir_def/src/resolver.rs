@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use arena::Arena;
 use base_db::libs::LibId;
 
 use crate::db::DefDatabase;
@@ -10,8 +9,8 @@ use crate::id::*;
 use crate::pat::PatId;
 use crate::path::Path;
 use crate::per_ns::PerNs;
-use crate::scope::{ExprScopeId, ExprScopes};
-use crate::type_ref::{TypeMap, TypeVar};
+use crate::scope::{ExprScopeId, ExprScopes, TypeScopeId, TypeScopes};
+use crate::type_ref::LocalTypeRefId;
 use crate::visibility::Visibility;
 
 #[derive(Default, Debug, Clone)]
@@ -42,7 +41,8 @@ struct ExprScope {
 #[derive(Debug, Clone)]
 struct TypeScope {
     owner: TypeVarOwner,
-    type_vars: Arena<TypeVar>,
+    type_scopes: Arc<TypeScopes>,
+    scope_id: TypeScopeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -91,12 +91,16 @@ impl Resolver {
         for scope in self.scopes.iter().rev() {
             match scope {
                 | Scope::TypeScope(scope) if n_segments == 1 => {
-                    let entry = scope.type_vars.iter().find(|(_, tv)| &tv.name == first_name);
+                    let entry = scope
+                        .type_scopes
+                        .entries(scope.scope_id)
+                        .iter()
+                        .find(|entry| entry.name() == first_name);
 
                     if let Some(e) = entry {
                         let id = TypeVarId {
                             owner: scope.owner,
-                            local_id: e.0,
+                            local_id: e.id(),
                         };
 
                         return Some((TypeNs::TypeVar(id), Visibility::Public, None));
@@ -191,9 +195,10 @@ impl Resolver {
 
         for scope in scopes {
             if let Some(idx) = scope
-                .type_vars
+                .type_scopes
+                .entries(scope.scope_id)
                 .iter()
-                .position(|(local_id, _)| id.local_id == local_id && id.owner == scope.owner)
+                .position(|entry| id.local_id == entry.id() && id.owner == scope.owner)
             {
                 return Some((idx, depth));
             }
@@ -229,11 +234,26 @@ impl Resolver {
         r
     }
 
-    pub fn with_type_vars(self, map: &TypeMap, owner: TypeVarOwner) -> Self {
-        self.push_scope(Scope::TypeScope(TypeScope {
-            owner,
-            type_vars: map.type_vars().clone(),
-        }))
+    pub fn for_type_ref(db: &dyn DefDatabase, owner: TypeVarOwner, type_ref: LocalTypeRefId) -> Self {
+        let mut r = owner.resolver(db);
+        let scopes = db.type_scopes(owner);
+        let scope_id = scopes.scope_for(type_ref);
+        let scope_chain = scopes.scope_chain(scope_id).collect::<Vec<_>>();
+
+        for scope in scope_chain.into_iter().rev() {
+            if !scopes.entries(scope).is_empty() {
+                r = r.push_type_scope(owner, Arc::clone(&scopes), scope);
+            }
+        }
+
+        r
+    }
+
+    pub fn with_type_vars(self, db: &dyn DefDatabase, owner: TypeVarOwner) -> Self {
+        let scopes = db.type_scopes(owner);
+        let scope = scopes.root();
+
+        self.push_type_scope(owner, scopes, scope)
     }
 }
 
@@ -251,6 +271,14 @@ impl Resolver {
         self.push_scope(Scope::ExprScope(ExprScope {
             owner,
             expr_scopes,
+            scope_id,
+        }))
+    }
+
+    fn push_type_scope(self, owner: TypeVarOwner, type_scopes: Arc<TypeScopes>, scope_id: TypeScopeId) -> Self {
+        self.push_scope(Scope::TypeScope(TypeScope {
+            owner,
+            type_scopes,
             scope_id,
         }))
     }
@@ -315,24 +343,28 @@ impl HasResolver for FixityId {
 
 impl HasResolver for FuncId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let data = db.func_data(self);
+        // let data = db.func_data(self);
 
-        self.lookup(db)
-            .container
-            .resolver(db)
-            .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
+        self.lookup(db).container.resolver(db)
+        // .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
 impl HasResolver for StaticId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
+        // let data = db.static_data(self);
+
         self.lookup(db).container.resolver(db)
+        // .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
 impl HasResolver for ConstId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
+        // let data = db.const_data(self);
+
         self.lookup(db).module.resolver(db)
+        // .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
@@ -354,45 +386,37 @@ impl HasResolver for CtorId {
 
 impl HasResolver for TypeAliasId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let data = db.type_alias_data(self);
-
         self.lookup(db)
             .module
             .resolver(db)
-            .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
+            .with_type_vars(db, TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
 impl HasResolver for TypeCtorId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let data = db.type_ctor_data(self);
-
         self.lookup(db)
             .module
             .resolver(db)
-            .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
+            .with_type_vars(db, TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
 impl HasResolver for ClassId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let data = db.class_data(self);
-
         self.lookup(db)
             .module
             .resolver(db)
-            .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
+            .with_type_vars(db, TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
 impl HasResolver for MemberId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        let data = db.member_data(self);
-
         self.lookup(db)
             .module
             .resolver(db)
-            .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
+            .with_type_vars(db, TypeVarOwner::TypedDefId(self.into()))
     }
 }
 

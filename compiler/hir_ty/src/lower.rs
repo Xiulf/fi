@@ -156,6 +156,17 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 self.icx.types.insert(TyInfo::App(record_ty, [row].into()), src)
             },
             | TypeRef::Row(fields, tail) => self.lower_row(fields, *tail, ty),
+            | TypeRef::Forall(vars, inner) => {
+                let scope = self.push_type_vars(vars);
+                let kinds = self.type_vars.var_kinds(scope).clone();
+                let resolver = Resolver::for_type_ref(self.db.upcast(), self.owner, *inner);
+                let resolver = std::mem::replace(&mut self.icx.resolver, resolver);
+                let inner = self.lower_ty(*inner);
+
+                self.icx.resolver = resolver;
+                self.type_vars.pop_scope();
+                self.icx.types.insert(TyInfo::ForAll(kinds, inner, scope), src)
+            },
             | TypeRef::Where(where_clause, inner) => {
                 let where_ = self.lower_where_clause(where_clause, WhereSource::TypeRef(ty));
                 let inner = self.lower_ty(*inner);
@@ -291,7 +302,20 @@ impl LowerCtx<'_, '_> {
         src: ClassSource,
     ) -> Option<CtntInfo> {
         let class = self.lower_class_path(&ctnt.class, src)?;
-        let types = ctnt.types.iter().map(|&t| self.lower_ty(t)).collect();
+        let class_info = self.db.lower_class(class);
+        let types = ctnt
+            .types
+            .iter()
+            .zip(class_info.class.vars.iter())
+            .map(|(&t, &kind)| {
+                let ty = self.lower_ty(t);
+                let src = self.icx.types.source(ty);
+                let kind = kind.to_info(self.db, &mut self.icx.types, &mut self.icx.type_vars, src);
+
+                self.check_kind(ty, kind);
+                ty
+            })
+            .collect();
 
         Some(CtntInfo { class, types })
     }
@@ -346,7 +370,7 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
     let ty_data = db.type_ctor_data(id.parent);
     let ctor_data = &ty_data.ctors[id.local_id];
     let resolver = id.resolver(db.upcast());
-    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()), false);
     let mut ctx = LowerCtx::new(ty_data.type_map(), &mut icx);
     let src = ctx.source(TypeOrigin::Def(id.into()));
     let mut ret = ctx.icx.types.insert(TyInfo::Ctor(id.parent), src);
@@ -408,7 +432,7 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
 pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<LowerResult<Ty>> {
     let data = db.type_alias_data(id);
     let resolver = id.resolver(db.upcast());
-    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()), false);
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
     let vars = data
         .type_vars
@@ -445,7 +469,7 @@ pub(crate) fn type_for_alias_recover(
 pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerResult<Ty>> {
     let data = db.type_ctor_data(id);
     let resolver = id.resolver(db.upcast());
-    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()), false);
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
 
     if let Some(kind) = data.kind {
@@ -509,7 +533,7 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
     let data = db.class_data(id);
     let type_map = data.type_map();
     let resolver = id.resolver(db.upcast());
-    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()), false);
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
     let var_kinds_ = data
         .type_vars
@@ -551,10 +575,10 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
 
                 if let Some(ty) = data.ty {
                     ctx.for_assoc_item(TypeVarOwner::TypedDefId(id.into()), data.type_map(), |ctx| {
-                        let _ = ctx.push_type_vars(&data.type_vars);
+                        // let _ = ctx.push_type_vars(&data.type_vars);
                         let ty = ctx.lower_ty(ty);
 
-                        ctx.type_vars.pop_scope();
+                        // ctx.type_vars.pop_scope();
                         ty
                     })
                 } else {
@@ -593,7 +617,7 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
     let data = db.member_data(id);
     let _type_map = data.type_map();
     let resolver = id.resolver(db.upcast());
-    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+    let mut icx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()), false);
     let mut ctx = LowerCtx::new(data.type_map(), &mut icx);
     let vars = data
         .type_vars
@@ -652,7 +676,7 @@ pub fn verify_member(db: &dyn HirDatabase, id: MemberId) -> Vec<InferenceDiagnos
     let class = db.lower_class(lower.member.class);
     let data = db.member_data(id);
     let resolver = id.resolver(db.upcast());
-    let mut ctx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()));
+    let mut ctx = InferenceContext::new(db, resolver, TypeVarOwner::TypedDefId(id.into()), false);
     let vars = lower
         .member
         .vars

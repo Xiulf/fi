@@ -277,7 +277,7 @@ pub(crate) fn type_vars(p: &mut Parser) {
     let m = p.start();
 
     while p.at(IDENT) {
-        paths::name_ref(p);
+        paths::name(p);
     }
 
     m.complete(p, TYPE_VARS);

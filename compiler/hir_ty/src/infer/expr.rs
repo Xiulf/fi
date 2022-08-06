@@ -628,8 +628,7 @@ impl BodyInferenceContext<'_> {
 impl InferenceContext<'_> {
     fn infer_path(&mut self, path: &Path, resolver: Resolver, expr: ExprId, idx: Option<usize>) -> TyId {
         let src = self.source((expr, idx.unwrap_or(0)));
-
-        match resolver.resolve_value_fully(self.db.upcast(), path) {
+        let ty = match resolver.resolve_value_fully(self.db.upcast(), path) {
             | Some((value, vis)) => 't: {
                 if path.segments().len() > 1 && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
                 {
@@ -662,10 +661,12 @@ impl InferenceContext<'_> {
                 let ty = self.error(src);
 
                 self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
-                self.result.type_of_expr.insert(expr, ty);
                 ty
             },
-        }
+        };
+
+        self.result.type_of_expr.insert(expr, ty);
+        ty
     }
 
     pub fn infer_infix(&mut self, id: FixityId, origin: ExprOrPatId) -> TyId {

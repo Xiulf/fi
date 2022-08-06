@@ -53,6 +53,7 @@ enum LayoutDelim {
     DeclHead,
     TypeDecl,
     Where,
+    Forall,
     Prop,
     Case,
     CaseBinders,
@@ -254,15 +255,24 @@ impl<'src> Lexer<'src> {
 
                 self.emit(ARROW);
             },
-            | '.' if self.peek() == '.' => {
+            | '.' if self.peek() == '.' && !is_op_char(self.peek_n(1)) => {
                 self.advance();
                 self.insert_default(start, DBL_DOT);
             },
             | '.' if self.is_path_sep() => {
                 self.insert_default(start, DOT);
-                self.stack.push((start, LayoutDelim::Prop));
+
+                if let [.., (_, LayoutDelim::Forall)] = self.stack[..] {
+                    self.stack.pop().unwrap();
+                } else {
+                    self.stack.push((start, LayoutDelim::Prop));
+                }
             },
-            | ':' if self.peek() == ':' => {
+            | '.' if matches!(self.stack[..], [.., (_, LayoutDelim::Forall)]) => {
+                self.insert_default(start, DOT);
+                self.stack.pop().unwrap();
+            },
+            | ':' if self.peek() == ':' && !is_op_char(self.peek_n(1)) => {
                 self.advance();
                 self.insert_default(start, DBL_COLON);
 
@@ -685,6 +695,15 @@ impl<'src> Lexer<'src> {
                     self.emit(WHERE_KW);
                     self.insert_start(LayoutDelim::Where);
                 },
+            },
+            | "forall" => {
+                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                } else {
+                    self.insert_default(start, FORALL_KW);
+                    self.insert_start(LayoutDelim::Forall);
+                }
             },
             | "as" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {

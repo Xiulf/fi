@@ -64,6 +64,17 @@ impl InferenceContext<'_> {
 
     /// Check that `ty` has kind `kind`
     pub fn check_kind(&mut self, ty: TyId, kind: TyId) {
+        let ty = self.subst_type(ty);
+
+        match self.types[ty] {
+            | TyInfo::Ctor(id) if id == self.lang_ctor("unit-type") => {
+                if let Some(_) = kind.match_ctor(&self.types, self.lang_ctor("row-kind")) {
+                    return;
+                }
+            },
+            | _ => {},
+        }
+
         let ty_kind = self.infer_kind(ty);
 
         if !self.unify_types(ty_kind, kind) {
@@ -92,7 +103,17 @@ impl InferenceContext<'_> {
         let base_src = self.types.source(base);
         let base_kind = self.infer_kind(base);
         let base_kind = self.subst_type(base_kind);
-        let arg_kinds = args.iter().map(|&a| self.infer_kind(a)).collect::<Vec<_>>();
+        let (params, base_kind) = self.fn_args(base_kind, args.len());
+        let param_count = params.len();
+
+        for (param, &arg) in params.into_vec().into_iter().zip(&args[..param_count]) {
+            self.check_kind(arg, param);
+        }
+
+        let arg_kinds = args[param_count..]
+            .iter()
+            .map(|&a| self.infer_kind(a))
+            .collect::<Vec<_>>();
         let ret_kind = self.fresh_type(src);
         let fun_kind = self.fn_type(arg_kinds, ret_kind, base_src);
 

@@ -458,7 +458,7 @@ impl ItemMember {
 }
 
 impl TypeVars {
-    pub fn type_vars(&self) -> AstChildren<NameRef> {
+    pub fn type_vars(&self) -> AstChildren<Name> {
         support::children(&self.0)
     }
 }
@@ -569,6 +569,16 @@ impl TypeRow {
 }
 
 impl TypeParens {
+    pub fn ty(&self) -> Option<Type> {
+        support::child(&self.0)
+    }
+}
+
+impl TypeForall {
+    pub fn vars(&self) -> Option<TypeVars> {
+        support::child(&self.0)
+    }
+
     pub fn ty(&self) -> Option<Type> {
         support::child(&self.0)
     }

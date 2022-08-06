@@ -72,6 +72,13 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
             lit.complete(p, LIT_STRING);
             Some(m.complete(p, TYPE_SYMBOL))
         },
+        | FORALL_KW => {
+            p.bump(FORALL_KW);
+            items::type_vars(p);
+            p.expect(DOT);
+            let _ = ty(p);
+            Some(m.complete(p, TYPE_FORALL))
+        },
         | L_PAREN => {
             p.bump(L_PAREN);
 
