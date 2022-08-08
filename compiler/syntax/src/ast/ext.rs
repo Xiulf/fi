@@ -754,6 +754,16 @@ impl ExprField {
     }
 }
 
+impl ExprMethod {
+    pub fn base(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn method(&self) -> Option<Expr> {
+        support::children(&self.0).nth(1)
+    }
+}
+
 impl ExprParens {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)

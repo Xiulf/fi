@@ -59,11 +59,18 @@ pub(crate) fn infix(p: &mut Parser, allow_do: bool, in_record: bool) -> Option<C
 pub(crate) fn app(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
     let mut m = postfix(p, true, allow_do)?;
 
-    while peek(p, 0, allow_do) {
+    while peek(p, 0, allow_do) || p.at(DOT) {
         let expr = m.precede(p);
-        let _ = postfix(p, false, allow_do);
 
-        m = expr.complete(p, EXPR_APP);
+        if p.eat(DOT) {
+            let _ = atom(p, false);
+
+            m = expr.complete(p, EXPR_METHOD);
+        } else {
+            let _ = postfix(p, false, allow_do);
+
+            m = expr.complete(p, EXPR_APP);
+        }
     }
 
     Some(m)
@@ -74,10 +81,10 @@ pub(crate) fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<
 
     loop {
         match p.current() {
-            | DOT => {
+            | PATH_SEP => {
                 let expr = m.precede(p);
 
-                p.bump(DOT);
+                p.bump(PATH_SEP);
 
                 match p.current() {
                     | IDENT => {

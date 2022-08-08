@@ -750,10 +750,27 @@ impl BodyCtx<'_, '_> {
         record
     }
 
-    pub fn lower_app(&mut self, base: Arg, args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
+    pub fn lower_app(&mut self, base: Arg, mut args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
         let body = self.body.clone();
 
         if let Arg::ExprId(id) = base {
+            if let Some(types) = self.infer.instances.get(&id) {
+                let mut i = 0;
+
+                for ty in types {
+                    if let hir::ty::TyKind::Symbol(s) = ty.lookup(self.db) {
+                        args.insert(
+                            i,
+                            Arg::JsExpr(JsExpr::Literal {
+                                lit: Literal::String(s.into_string()),
+                            }),
+                        );
+
+                        i += 1;
+                    }
+                }
+            }
+
             if let Expr::Path { ref path } = body[id] {
                 let resolver = Resolver::for_expr(self.db.upcast(), self.owner, id);
 
@@ -777,14 +794,29 @@ impl BodyCtx<'_, '_> {
     fn func_params(&self, id: hir::id::FuncId, is_method: bool) -> usize {
         let infer = self.db.infer(id.into());
         let mut ty = infer.self_type.ty;
-        let mut first_where = true;
+        let mut first_forall = is_method;
+        let mut first_where = is_method;
         let mut params = 0;
 
         loop {
             match ty.lookup(self.db) {
-                | hir::ty::TyKind::ForAll(_, inner, _) => ty = inner,
+                | hir::ty::TyKind::ForAll(kinds, inner, _) => {
+                    if !first_forall {
+                        let lib = self.owner.module(self.db.upcast()).lib;
+                        let symbol_ctor = self.db.lang_item(lib, "symbol-kind".into()).unwrap();
+                        let symbol_ctor = symbol_ctor.as_type_ctor().unwrap();
+
+                        params += kinds
+                            .iter()
+                            .filter(|k| k.lookup(self.db) == hir::ty::TyKind::Ctor(symbol_ctor))
+                            .count();
+                    }
+
+                    ty = inner;
+                    first_forall = false;
+                },
                 | hir::ty::TyKind::Where(clause, inner) => {
-                    if !(is_method && first_where) {
+                    if !first_where {
                         params += clause
                             .constraints
                             .iter()
@@ -880,11 +912,21 @@ impl BodyCtx<'_, '_> {
                     };
                 }
 
+                let mut i = 0;
+
                 while let Some(m) = methods.next() {
-                    args.insert(0, match m {
-                        | MethodSource::Member(id) => Arg::JsExpr(self.member_ref(id.into(), &mut methods)),
-                        | MethodSource::Record(idx) => Arg::JsExpr(self.records[idx].clone()),
-                    });
+                    match m {
+                        | MethodSource::Member(id) => {
+                            let lower = self.db.lower_member(id);
+
+                            if !self.db.class_data(lower.member.class).items.is_empty() {
+                                args.insert(i, Arg::JsExpr(self.member_ref(id.into(), &mut methods)));
+                            }
+                        },
+                        | MethodSource::Record(idx) => args.insert(i, Arg::JsExpr(self.records[idx].clone())),
+                    }
+
+                    i += 1;
                 }
             }
         }

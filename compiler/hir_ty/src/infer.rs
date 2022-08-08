@@ -58,11 +58,9 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
             // let scope = lcx.push_type_vars(&data.type_vars);
-            let ty = data
-                .ty
-                .map(|t| lcx.lower_ty(t))
-                .unwrap_or(lcx.fresh_type_without_kind(src));
+            let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
+            lcx.check_kind_type(ty);
             // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
             (ty, data.name.clone())
         }),
@@ -71,11 +69,9 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
             // let scope = lcx.push_type_vars(&data.type_vars);
-            let ty = data
-                .ty
-                .map(|t| lcx.lower_ty(t))
-                .unwrap_or(lcx.fresh_type_without_kind(src));
+            let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
+            lcx.check_kind_type(ty);
             // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
             (ty, data.name.clone())
         }),
@@ -84,11 +80,9 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
             // let scope = lcx.push_type_vars(&data.type_vars);
-            let ty = data
-                .ty
-                .map(|t| lcx.lower_ty(t))
-                .unwrap_or(lcx.fresh_type_without_kind(src));
+            let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
+            lcx.check_kind_type(ty);
             // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
             (ty, data.name.clone())
         }),

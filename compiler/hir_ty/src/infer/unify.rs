@@ -197,8 +197,8 @@ impl InferenceContext<'_> {
     }
 
     pub fn unify_types(&mut self, t1: TyId, t2: TyId) -> bool {
-        let t1 = self.subst_type(t1);
-        let t2 = self.subst_type(t2);
+        let t1 = self.subst_type(t1).normalize(&mut self.types);
+        let t2 = self.subst_type(t2).normalize(&mut self.types);
 
         match (self.types[t1].clone(), self.types[t2].clone()) {
             | (TyInfo::Error, _) | (_, TyInfo::Error) => true,

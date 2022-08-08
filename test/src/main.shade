@@ -4,9 +4,15 @@ import Core
 import Core.Cmp
 import Js
 import Js.Console
+import Js.DOM
 
 @main
 main =
-    let a = 0:1:2:3:4:Nil
+    let a = createElement (Sym :: Sym "a")
     
-    print $ toArray a :: ()
+    a.innerHTML = "Test"
+
+    document.body .appendChild a
+    a .addEventListener "click" fn _ -> print "click" :: ()
+
+    print a :: ()

@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 
 use crate::class::{Class, FunDep, Member};
 use crate::db::HirDatabase;
-// use crate::display::HirDisplay;
+use crate::display::HirDisplay;
 use crate::infer::diagnostics::{ClassSource, CtntExpected, CtntFound, InferenceDiagnostic, WhereSource};
 use crate::infer::InferenceContext;
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin};
@@ -126,10 +126,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 let src = self.source(ty);
 
                 self.check_kind_for_app(base, &args, src);
-                self.icx
-                    .types
-                    .insert(TyInfo::App(base, args.into()), src)
-                    .normalize(&mut self.icx.types)
+                self.app_type(base, args, src).normalize(&mut self.icx.types)
             },
             | TypeRef::Infix(types, ops) => {
                 let types = types.iter().map(|&t| self.lower_ty(t)).collect::<Vec<_>>();
@@ -519,8 +516,10 @@ pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         ctx.type_vars.pop_scope();
 
         let ty = ctx.subst_type(ty_kind);
+        let res = ctx.finish(ty);
 
-        ctx.finish(ty)
+        log::debug!("{} :: {}", data.name, res.ty.ty.display(db));
+        res
     }
 }
 

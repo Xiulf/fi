@@ -39,6 +39,7 @@ struct BodyCtx<'a, 'b> {
     body: Arc<hir::Body>,
     infer: Arc<hir::InferenceResult<hir::ty::Ty, hir::ty::Constraint>>,
     locals: ArenaMap<hir::PatId, expr::JsExpr>,
+    type_vars: Vec<expr::JsExpr>,
     records: Vec<expr::JsExpr>,
     in_lambda: Vec<String>,
 }
@@ -206,28 +207,49 @@ impl<'a> Ctx<'a> {
         Ok(())
     }
 
-    pub fn codegen_body(&mut self, owner: DefWithBodyId, mut skip_where: bool) -> io::Result<()> {
+    pub fn codegen_body(&mut self, owner: DefWithBodyId, is_assoc: bool) -> io::Result<()> {
         write!(self, "function(")?;
+        let mut skip_where = is_assoc;
+        let mut skip_forall = is_assoc;
         let mut bcx = BodyCtx::new(self, owner);
         let mut ty = bcx.infer.self_type.ty;
         let body = bcx.body.clone();
 
         loop {
             match ty.lookup(bcx.db) {
-                | hir::ty::TyKind::ForAll(_, inner, _) => ty = inner,
+                | hir::ty::TyKind::ForAll(kinds, inner, _) => {
+                    use hir::id::HasModule;
+                    let lib = bcx.owner.module(bcx.db.upcast()).lib;
+                    let symbol_ctor = bcx.db.lang_item(lib, "symbol-kind".into()).unwrap();
+                    let symbol_ctor = symbol_ctor.as_type_ctor().unwrap();
+
+                    for kind in kinds.iter() {
+                        if kind.lookup(bcx.db) == hir::ty::TyKind::Ctor(symbol_ctor) {
+                            let name = format!("$t{}", bcx.type_vars.len());
+
+                            if !skip_forall {
+                                write!(bcx, "{}, ", name)?;
+                            }
+
+                            bcx.type_vars.push(expr::JsExpr::Ident { name });
+                        }
+                    }
+
+                    ty = inner;
+                    skip_forall = false;
+                },
                 | hir::ty::TyKind::Where(clause, inner) => {
                     for ctnt in clause.constraints.iter() {
                         let class = bcx.db.class_data(ctnt.class);
 
                         if !class.items.is_empty() {
                             let name = format!("$r{}", bcx.records.len());
-                            let record = expr::JsExpr::Ident { name: name.clone() };
 
                             if !skip_where {
                                 write!(bcx, "{}, ", name)?;
                             }
 
-                            bcx.records.push(record);
+                            bcx.records.push(expr::JsExpr::Ident { name });
                         }
                     }
 
@@ -270,6 +292,7 @@ impl<'a, 'b> BodyCtx<'a, 'b> {
             body: ctx.db.body(owner),
             infer: ctx.db.infer(owner),
             locals: ArenaMap::default(),
+            type_vars: Vec::new(),
             records: Vec::new(),
             in_lambda: Vec::new(),
             owner,

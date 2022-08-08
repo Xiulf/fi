@@ -1,17 +1,17 @@
 // /mnt/e/Language/fc/test/target/prim.js
-// /tmp/.tmpxEK7LJ
+// /tmp/.tmpzzW6Mj
+// /tmp/.tmphpB9jU
 const $member_Termination_17 = {
     report: function($p0) {
         return 0;
     },
 };
-// /tmp/.tmpmwePyx
-// /tmp/.tmpr4JhsG
+// /tmp/.tmppRYcv3
 var Core_Foldable_foldMap;
 Core_Foldable_foldMap = function($r0, $r1, $r2, $p0) {
     return $r0.foldr($p0, Core_default(), Core_Ops_concat);
 };
-// /tmp/.tmppo80I5
+// /tmp/.tmpJ3E9Hc
 const $member_Default_18 = {
     default: function() {
         return false;
@@ -65,8 +65,8 @@ const $member_Unwrap_20 = {
         return $e0;
     },
 };
-// /tmp/.tmpuuw1zY
-// /tmp/.tmpJIe56w
+// /tmp/.tmpL5qIoT
+// /tmp/.tmptDn6r5
 var Core_Cmp_ne;
 var Core_Cmp_lt;
 var Core_Cmp_le;
@@ -119,8 +119,8 @@ Core_Cmp_ge = function($p0, $p1) {
     } while(0);
     return $e4;
 };
-// /tmp/.tmpzAnTiv
-// /tmp/.tmp3fLKhS
+// /tmp/.tmptcfbQv
+// /tmp/.tmpc2ODZ0
 var Data_Result_ok;
 var Data_Result_err;
 var Data_Result_unwrap_err;
@@ -213,7 +213,7 @@ const $member_Unwrap_22 = {
         return $e6;
     },
 };
-// /tmp/.tmpkVKnID
+// /tmp/.tmp0nNKph
 const $member_Default_23 = {
     default: function() {
         return 0;
@@ -266,13 +266,13 @@ const $member_Ord_30 = {
         return $e4;
     },
 };
-// /tmp/.tmpmyGbrS
-// /tmp/.tmpUWojrl
+// /tmp/.tmpuVyHdM
+// /tmp/.tmpdMikIA
 var Core_Error_unwrap_unsafe;
 Core_Error_unwrap_unsafe = function($r0, $p0) {
     return $r0.unwrap($p0);
 };
-// /tmp/.tmpL6FLyl
+// /tmp/.tmpOHRVqb
 const $member_Default_31 = {
     default: function() {
         return false;
@@ -308,7 +308,7 @@ const $member_Foldable_32 = {
         return $e0;
     },
 };
-// /tmp/.tmpkDDqk5
+// /tmp/.tmpVHpoIJ
 var Data_Bool_not;
 Data_Bool_not = function($p2) {
     var $e4;

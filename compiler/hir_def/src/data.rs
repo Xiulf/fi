@@ -3,13 +3,13 @@ use std::sync::Arc;
 use arena::Arena;
 use base_db::input::FileId;
 use rustc_hash::FxHashSet;
-use syntax::ast;
+use syntax::NameOwner;
 
 use crate::db::DefDatabase;
 use crate::id::*;
 use crate::item_tree::{AssocItem, ItemTreeId};
 pub use crate::item_tree::{FixityKind, FunDep};
-use crate::name::Name;
+use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::resolver::{HasResolver, Resolver};
 use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap, TypeMapBuilder, TypeRef, TypeSourceMap, WhereClause};
@@ -225,11 +225,12 @@ impl ConstData {
 impl TypeAliasData {
     pub fn query(db: &dyn DefDatabase, id: TypeAliasId) -> Arc<Self> {
         let loc = id.lookup(db);
+        let src = loc.source(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
-        let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
-        let type_vars = match src.value.vars() {
+        let type_vars = src.value.vars().or_else(|| src.value.next()?.vars());
+        let type_vars = match type_vars {
             | Some(vars) => vars
                 .type_vars()
                 .map(|t| type_builder.alloc_type_var(t))
@@ -237,7 +238,8 @@ impl TypeAliasData {
             | None => Box::new([]),
         };
 
-        let alias = type_builder.alloc_type_ref_opt(src.value.alias());
+        let alias = src.value.alias().or_else(|| src.value.next()?.alias());
+        let alias = type_builder.alloc_type_ref_opt(alias);
         let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(TypeAliasData {
@@ -260,17 +262,16 @@ impl TypeAliasData {
 
 impl TypeCtorData {
     pub fn query(db: &dyn DefDatabase, id: TypeCtorId) -> Arc<Self> {
-        use ast::NameOwner;
-
-        use crate::name::AsName;
         let loc = id.lookup(db);
+        let src = loc.source(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
-        let src = loc.source(db);
         let mut type_builder = TypeMap::builder();
         let mut ctors = Arena::new();
-        let kind = src.value.kind().map(|t| type_builder.alloc_type_ref(t));
-        let type_vars = match src.value.vars() {
+        let kind = src.value.kind().or_else(|| src.value.next()?.kind());
+        let kind = kind.map(|k| type_builder.alloc_type_ref(k));
+        let type_vars = src.value.vars().or_else(|| src.value.next()?.vars());
+        let type_vars = match type_vars {
             | Some(vars) => vars
                 .type_vars()
                 .map(|t| type_builder.alloc_type_var(t))
@@ -278,7 +279,13 @@ impl TypeCtorData {
             | None => Box::new([]),
         };
 
-        for ctor in src.value.ctors() {
+        let it_ctors = src
+            .value
+            .next()
+            .map(|it| it.ctors())
+            .unwrap_or_else(|| src.value.ctors());
+
+        for ctor in it_ctors {
             ctors.alloc(CtorData {
                 name: ctor.name().unwrap().as_name(),
                 types: ctor.types().map(|t| type_builder.alloc_type_ref(t)).collect(),

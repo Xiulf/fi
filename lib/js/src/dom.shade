@@ -5,8 +5,11 @@ import Core
 @link_name = "document.createElement"
 foreign createElement' :: forall a. Str -> a
 
-@link_name = "((e, s, f) => e.addEventListener(s, f))"
+@link_name = "Node.prototype.addEventListener.call"
 foreign addEventListener :: forall a. HTMLElement a -> Str -> (() -> ()) -> ()
+
+@link_name = "Node.prototype.appendChild.call"
+foreign appendChild :: forall a b. HTMLElement a -> HTMLElement b -> ()
 
 @intrinsic foreign symToStr :: forall s. Sym s -> Str
 
@@ -20,18 +23,20 @@ type Sym s = | Sym
 
 class NamedElement name el | name -> el where name :: Symbol
 
+member "a" HTMLAnchorElement of NamedElement
+
 type HTMLElement a = {
-    appendChild :: ChildElement -> (),
+    innerHTML :: Str,
+    innerText :: Str,
     | a
 }
-
-type ChildElement = Record ()
 
 type Document = HTMLElement (
     body :: HTMLBodyElement,
 )
 
 type HTMLBodyElement = HTMLElement ()
+
 
 type HTMLAnchorElement = HTMLElement (
     href :: Str,

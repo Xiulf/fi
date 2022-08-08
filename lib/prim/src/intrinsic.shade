@@ -3,6 +3,7 @@ module Intrinsics =
 import Prim
 
 infixr 0 apply as ($)
+infixl 1 applyFlipped as (.)
 
 @intrinsic foreign iadd :: forall i. i -> i -> i where Integer i
 @intrinsic foreign isub :: forall i. i -> i -> i where Integer i
@@ -25,8 +26,9 @@ infixr 0 apply as ($)
 @intrinsic foreign ptr_read   :: forall ptr to. ptr -> to where Pointer ptr to
 @intrinsic foreign ptr_write  :: forall ptr to. ptr -> to -> Unit where Pointer ptr to
 
-@intrinsic foreign apply     :: forall a r. (a -> r) -> a -> r
-@intrinsic foreign transmute :: forall a b. a -> b where Unsafe
-@intrinsic foreign unsafe    :: forall a. (a where Unsafe) -> a
-@intrinsic foreign crash     :: Str -> Never where Partial
-@intrinsic foreign partial   :: forall a. (a where Partial) -> a
+@intrinsic foreign apply        :: forall a r. (a -> r) -> a -> r
+@intrinsic foreign applyFlipped :: forall a r. a -> (a -> r) -> r
+@intrinsic foreign transmute    :: forall a b. a -> b where Unsafe
+@intrinsic foreign unsafe       :: forall a. (a where Unsafe) -> a
+@intrinsic foreign crash        :: Str -> Never where Partial
+@intrinsic foreign partial      :: forall a. (a where Partial) -> a

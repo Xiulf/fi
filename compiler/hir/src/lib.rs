@@ -369,11 +369,11 @@ impl Func {
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let infer = db.infer(self.id.into());
-        // let data = db.func_data(self.id);
+        let data = db.func_data(self.id);
         // let body = db.body(self.id.into());
 
         // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-        // eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
+        eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
         // for ((id, i), method) in &infer.methods {
         //     eprintln!("{:?}#{} -> {:?}", id, i, method);

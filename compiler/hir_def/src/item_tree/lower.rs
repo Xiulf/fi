@@ -106,7 +106,13 @@ impl Ctx {
                 .map(Into::into),
             | ast::Item::Static(ast) => self.lower_static(ast).map(Into::into),
             | ast::Item::Const(ast) => self.lower_const(ast).map(Into::into),
-            | ast::Item::Type(ast) => self.lower_type(ast),
+            | ast::Item::Type(ast) => self.lower_type(
+                ast,
+                rest.first().map(|it| match it {
+                    | ast::Item::Type(it) => it,
+                    | _ => unreachable!(),
+                }),
+            ),
             | ast::Item::Class(ast) => self.lower_class(ast).map(Into::into),
             | ast::Item::Member(ast) => self.lower_member(ast).map(Into::into),
         };
@@ -201,18 +207,19 @@ impl Ctx {
         Some(id(self.tree.data.consts.alloc(Const { name, ast_id })))
     }
 
-    fn lower_type(&mut self, item: &ast::ItemType) -> Option<Items> {
+    fn lower_type(&mut self, item: &ast::ItemType, next: Option<&ast::ItemType>) -> Option<Items> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
 
-        if let Some(_) = item.alias() {
+        if let Some(_) = item.alias().or_else(|| next?.alias()) {
             let talias = TypeAlias { ast_id, name };
 
             Some(id(self.tree.data.type_aliases.alloc(talias)).into())
         } else {
             let start = self.next_ctor_idx();
+            let ctors = next.map(|it| it.ctors()).unwrap_or_else(|| item.ctors());
 
-            for ctor in item.ctors() {
+            for ctor in ctors {
                 self.lower_ctor(&ctor);
             }
 

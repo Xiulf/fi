@@ -55,6 +55,7 @@ impl<'t> Parser<'t> {
         Marker::new(pos)
     }
 
+    #[track_caller]
     pub(crate) fn bump(&mut self, kind: SyntaxKind) {
         assert!(self.eat(kind));
     }

@@ -1,10 +1,14 @@
-use hir::ty::TyKind;
+use hir::ty::{TyKind, TypeVar};
 use hir::Literal;
 
 use crate::expr::{Arg, JsExpr};
 use crate::BodyCtx;
 
 impl BodyCtx<'_, '_> {
+    pub fn get_type_var(&mut self, var: TypeVar) -> JsExpr {
+        self.type_vars[var.idx() as usize].clone()
+    }
+
     pub fn lower_intrinsic(&mut self, name: &str, mut args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
         match name {
             | "transmute" => self.lower_arg(args.remove(0), block),
@@ -12,6 +16,11 @@ impl BodyCtx<'_, '_> {
             | "unsafe" => self.lower_arg(args.remove(0), block),
             | "apply" => {
                 let base = args.remove(0);
+
+                self.lower_app(base, args, block)
+            },
+            | "applyFlipped" => {
+                let base = args.remove(1);
 
                 self.lower_app(base, args, block)
             },
@@ -35,11 +44,10 @@ impl BodyCtx<'_, '_> {
             },
             | "symToStr" => match args.remove(0) {
                 | Arg::ExprId(expr) => {
-                    use hir::display::HirDisplay;
-                    log::debug!("{}", self.infer.type_of_expr[expr].display(self.db));
                     let sym = match self.infer.type_of_expr[expr].lookup(self.db) {
                         | TyKind::App(_, a) => match a[0].lookup(self.db) {
                             | TyKind::Symbol(s) => s,
+                            | TyKind::TypeVar(id) => return self.get_type_var(id),
                             | _ => unreachable!(),
                         },
                         | _ => unreachable!(),

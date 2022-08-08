@@ -40,22 +40,22 @@ impl InferenceContext<'_> {
                 if TypeVarOwner::TypedDefId(id.into()) == self.owner {
                     self.result.self_type.ty
                 } else {
-                    self.db
-                        .kind_for_ctor(id)
-                        .ty
-                        .ty
-                        .to_info(self.db, &mut self.types, &mut self.type_vars, src)
+                    let lower = self.db.kind_for_ctor(id);
+
+                    lower.ty.ty.to_info(self.db, &mut self.types, &mut self.type_vars, src)
                 }
             },
             | TyInfo::App(base, args) => self.check_kind_for_app(base, &args, src),
             | TyInfo::Where(_, ty) => self.infer_kind(ty),
             | TyInfo::ForAll(kinds, inner, scope) => {
+                for kind in kinds.into_vec() {
+                    self.check_kind_type(kind);
+                }
+
                 self.type_vars.push_scope(scope);
-
-                let inner_kind = self.infer_kind(inner);
-
+                self.check_kind_type(inner);
                 self.type_vars.pop_scope();
-                self.fn_type(kinds.to_vec(), inner_kind, src)
+                self.lang_type("type-kind", src)
             },
         };
 

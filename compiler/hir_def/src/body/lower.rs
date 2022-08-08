@@ -220,12 +220,18 @@ impl<'a> ExprCollector<'a> {
                 self.alloc_expr(Expr::App { base, arg }, syntax_ptr)
             },
             | ast::Expr::Field(e) => self.collect_expr_path(syntax_ptr, e),
-            // | ast::Expr::Field(e) => {
-            //     let base = self.collect_expr_opt(e.base());
-            //     let field = e.field()?.as_name();
+            | ast::Expr::Method(e) => {
+                let method = self.collect_expr_opt(e.method());
+                let base = self.collect_expr_opt(e.base());
 
-            //     self.alloc_expr(Expr::Field { base, field }, syntax_ptr)
-            // },
+                self.alloc_expr(
+                    Expr::App {
+                        base: method,
+                        arg: base,
+                    },
+                    syntax_ptr,
+                )
+            },
             | ast::Expr::Ident(e) => {
                 let path = Path::from(e.name_ref()?.as_name());
 
