@@ -257,74 +257,14 @@ impl Diagnostic for UnsolvedConstraint {
 }
 
 #[derive(Debug)]
-pub struct BreakOutsideLoop {
+pub struct RecursiveTypeAlias {
     pub file: FileId,
     pub src: SyntaxNodePtr,
 }
 
-impl Diagnostic for BreakOutsideLoop {
+impl Diagnostic for RecursiveTypeAlias {
     fn message(&self) -> String {
-        "cannot break outside a loop".into()
-    }
-
-    fn display_source(&self) -> InFile<SyntaxNodePtr> {
-        InFile::new(self.file, self.src)
-    }
-
-    fn as_any(&self) -> &(dyn Any + Send + 'static) {
-        self
-    }
-}
-
-#[derive(Debug)]
-pub struct CannotBreakWithValue {
-    pub file: FileId,
-    pub src: SyntaxNodePtr,
-}
-
-impl Diagnostic for CannotBreakWithValue {
-    fn message(&self) -> String {
-        "cannot break with a value inside a while loop".into()
-    }
-
-    fn display_source(&self) -> InFile<SyntaxNodePtr> {
-        InFile::new(self.file, self.src)
-    }
-
-    fn as_any(&self) -> &(dyn Any + Send + 'static) {
-        self
-    }
-}
-
-#[derive(Debug)]
-pub struct NextOutsideLoop {
-    pub file: FileId,
-    pub src: SyntaxNodePtr,
-}
-
-impl Diagnostic for NextOutsideLoop {
-    fn message(&self) -> String {
-        "cannot use next outside a loop".into()
-    }
-
-    fn display_source(&self) -> InFile<SyntaxNodePtr> {
-        InFile::new(self.file, self.src)
-    }
-
-    fn as_any(&self) -> &(dyn Any + Send + 'static) {
-        self
-    }
-}
-
-#[derive(Debug)]
-pub struct CannotNextWithValue {
-    pub file: FileId,
-    pub src: SyntaxNodePtr,
-}
-
-impl Diagnostic for CannotNextWithValue {
-    fn message(&self) -> String {
-        "cannot use next with a value inside loops".into()
+        "recursive type alias".into()
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {

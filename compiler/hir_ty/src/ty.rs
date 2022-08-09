@@ -1,4 +1,4 @@
-use hir_def::id::{ClassId, TypeCtorId};
+use hir_def::id::{ClassId, TypeAliasId, TypeCtorId};
 use hir_def::name::Name;
 
 use crate::db::HirDatabase;
@@ -25,6 +25,7 @@ pub enum TyKind {
     Row(List<Field>, Option<Ty>),
 
     Ctor(TypeCtorId),
+    Alias(TypeAliasId),
     App(Ty, List<Ty>),
 
     Tuple(List<Ty>),

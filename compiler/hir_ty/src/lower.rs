@@ -10,7 +10,6 @@ use rustc_hash::FxHashMap;
 
 use crate::class::{Class, FunDep, Member};
 use crate::db::HirDatabase;
-use crate::display::HirDisplay;
 use crate::infer::diagnostics::{ClassSource, CtntExpected, CtntFound, InferenceDiagnostic, WhereSource};
 use crate::infer::InferenceContext;
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin};
@@ -280,13 +279,11 @@ impl InferenceContext<'_> {
 
                 self.types.insert(TyInfo::TypeVar(type_var), src)
             },
-            | TypeNs::TypeAlias(id) => {
-                self.db
-                    .type_for_alias(id)
-                    .ty
-                    .to_info(self.db, &mut self.types, &mut self.type_vars, src)
-                    .ty
+            | TypeNs::TypeAlias(id) if TypeVarOwner::TypedDefId(id.into()) == self.owner => {
+                self.report(InferenceDiagnostic::RecursiveTypeAlias { src });
+                self.error(src)
             },
+            | TypeNs::TypeAlias(id) => self.types.insert(TyInfo::Alias(id), src),
             | TypeNs::TypeCtor(id) => self.types.insert(TyInfo::Ctor(id), src),
         }
     }
@@ -516,10 +513,8 @@ pub(crate) fn kind_for_ctor(db: &dyn HirDatabase, id: TypeCtorId) -> Arc<LowerRe
         ctx.type_vars.pop_scope();
 
         let ty = ctx.subst_type(ty_kind);
-        let res = ctx.finish(ty);
 
-        log::debug!("{} :: {}", data.name, res.ty.ty.display(db));
-        res
+        ctx.finish(ty)
     }
 }
 

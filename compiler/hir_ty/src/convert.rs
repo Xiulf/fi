@@ -77,6 +77,7 @@ impl ToInfo for Ty {
                     TyInfo::Row(fields, tail)
                 },
                 | TyKind::Ctor(id) => TyInfo::Ctor(id),
+                | TyKind::Alias(id) => TyInfo::Alias(id),
                 | TyKind::App(base, args) => {
                     let base = rec(base, db, types, type_vars, src);
                     let args = args.iter().map(|&a| rec(a, db, types, type_vars, src)).collect();
@@ -134,6 +135,7 @@ impl FromInfo for Ty {
                 TyKind::Row(fields, tail)
             },
             | TyInfo::Ctor(id) => TyKind::Ctor(id),
+            | TyInfo::Alias(id) => TyKind::Alias(id),
             | TyInfo::App(base, ref args) => {
                 let base = Self::from_info(db, types, base);
                 let args = args.iter().map(|&a| Self::from_info(db, types, a)).collect();
@@ -362,10 +364,7 @@ impl FromInfo for InferenceDiagnostic<Ty, Constraint> {
                 found,
                 ctnt: Constraint::from_info(db, types, ctnt),
             },
-            | InferenceDiagnostic::BreakOutsideLoop { id } => Self::BreakOutsideLoop { id },
-            | InferenceDiagnostic::CannotBreakWithValue { id } => Self::CannotBreakWithValue { id },
-            | InferenceDiagnostic::NextOutsideLoop { id } => Self::NextOutsideLoop { id },
-            | InferenceDiagnostic::CannotNextWithValue { id } => Self::CannotNextWithValue { id },
+            | InferenceDiagnostic::RecursiveTypeAlias { src } => Self::RecursiveTypeAlias { src },
         }
     }
 }

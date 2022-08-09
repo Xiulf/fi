@@ -11,6 +11,7 @@ main =
     let a = createElement (Sym :: Sym "a")
     
     a.innerHTML = "Test"
+    a.test = 0
 
     document.body .appendChild a
     a .addEventListener "click" fn _ -> print "click" :: ()

@@ -171,7 +171,7 @@ impl Member<Ty, Constraint> {
 
         // log::debug!("{:#?}", matches);
 
-        if !verify(&matches, deps) || matches.iter().all(|m| m == &Matched::Apart) {
+        if !verify(&matches, deps) || matches.iter().any(|m| m == &Matched::Apart) {
             return None;
         }
 

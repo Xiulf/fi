@@ -45,6 +45,23 @@ impl InferenceContext<'_> {
                     lower.ty.ty.to_info(self.db, &mut self.types, &mut self.type_vars, src)
                 }
             },
+            | TyInfo::Alias(id) => {
+                let ty = if TypeVarOwner::TypedDefId(id.into()) == self.owner {
+                    self.result.self_type.ty
+                } else {
+                    let lower = self.db.type_for_alias(id);
+
+                    lower.ty.ty.to_info(self.db, &mut self.types, &mut self.type_vars, src)
+                };
+
+                if let TyInfo::ForAll(kinds, inner, _) = self.types[ty].clone() {
+                    let kind = self.infer_kind(inner);
+
+                    self.fn_type(kinds.into_vec(), kind, src)
+                } else {
+                    self.infer_kind(ty)
+                }
+            },
             | TyInfo::App(base, args) => self.check_kind_for_app(base, &args, src),
             | TyInfo::Where(_, ty) => self.infer_kind(ty),
             | TyInfo::ForAll(kinds, inner, scope) => {

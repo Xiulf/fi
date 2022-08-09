@@ -1,6 +1,6 @@
 use arena::{Arena, ArenaMap, Idx};
 use hir_def::expr::ExprId;
-use hir_def::id::{ClassId, TypeCtorId, TypeVarOwner, TypedDefId};
+use hir_def::id::{ClassId, TypeAliasId, TypeCtorId, TypeVarOwner, TypedDefId};
 use hir_def::name::Name;
 use hir_def::pat::PatId;
 use hir_def::type_ref::{LocalTypeRefId, LocalTypeVarId};
@@ -25,6 +25,7 @@ pub enum TyInfo {
     Row(List<FieldInfo>, Option<TyId>),
 
     Ctor(TypeCtorId),
+    Alias(TypeAliasId),
     App(TyId, List<TyId>),
 
     Where(WhereClause<CtntInfo>, TyId),
@@ -389,11 +390,11 @@ impl TyId {
 
                     types.update(ty, TyInfo::App(base2, args), true)
                 },
-                | TyInfo::ForAll(_, inner, scope) => {
-                    let args = args.clone();
+                // | TyInfo::ForAll(_, inner, scope) => {
+                //     let args = args.clone();
 
-                    inner.replace_vars(types, &args, scope)
-                },
+                //     inner.replace_vars(types, &args, scope)
+                // },
                 | _ => ty,
             },
             //             | TyInfo::Where(ref w1, t1) => match types[t1] {
@@ -495,8 +496,11 @@ impl TyId {
         Vec<R>,
         ((List<FieldInfo>, Option<TyId>), (List<FieldInfo>, Option<TyId>)),
     ) {
-        let (s1, tail1) = t1.to_row_list(types);
-        let (s2, tail2) = t2.to_row_list(types);
+        let (mut s1, tail1) = t1.to_row_list(types);
+        let (mut s2, tail2) = t2.to_row_list(types);
+
+        s1.sort_by_key(|f| f.name.clone());
+        s2.sort_by_key(|f| f.name.clone());
 
         return go((types, &mut f, tail1, tail2), s1.iter().cloned(), s2.iter().cloned());
 
@@ -621,6 +625,7 @@ impl std::fmt::Display for TyDisplay<'_> {
                 )
             },
             | TyInfo::Ctor(id) => self.db.type_ctor_data(id).name.fmt(f),
+            | TyInfo::Alias(id) => self.db.type_alias_data(id).name.fmt(f),
             | TyInfo::App(base, ref args) if self.lhs_exposed => write!(
                 f,
                 "({} {})",

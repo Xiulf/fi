@@ -57,33 +57,27 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let data = db.func_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
-            // let scope = lcx.push_type_vars(&data.type_vars);
             let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
             lcx.check_kind_type(ty);
-            // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
             (ty, data.name.clone())
         }),
         | DefWithBodyId::StaticId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.static_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
-            // let scope = lcx.push_type_vars(&data.type_vars);
             let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
             lcx.check_kind_type(ty);
-            // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
             (ty, data.name.clone())
         }),
         | DefWithBodyId::ConstId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
             let data = db.const_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
-            // let scope = lcx.push_type_vars(&data.type_vars);
             let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
             lcx.check_kind_type(ty);
-            // (lcx.wrap_type_vars(ty, scope, src), data.name.clone())
             (ty, data.name.clone())
         }),
     };
@@ -478,16 +472,6 @@ impl<'a> InferenceContext<'a> {
         self.type_vars.add_scope(kinds)
     }
 
-    // pub(crate) fn wrap_type_vars(&mut self, inner: TyId, scope: TypeVarScopeId, src: TySource) -> TyId {
-    //     if !self.type_vars.var_kinds(scope).is_empty() {
-    //         let kinds = self.type_vars.var_kinds(scope).clone();
-
-    //         self.types.insert(TyInfo::ForAll(kinds, inner, scope), src)
-    //     } else {
-    //         inner
-    //     }
-    // }
-
     fn with_owner<T>(&mut self, id: TypeVarOwner, f: impl FnOnce(&mut Self) -> T) -> T {
         let owner = std::mem::replace(&mut self.owner, id);
         let res = f(self);
@@ -723,7 +707,6 @@ impl InferenceResult<Ty, Constraint> {
 
 pub(crate) mod diagnostics {
     use hir_def::diagnostic::DiagnosticSink;
-    use hir_def::expr::ExprId;
     use hir_def::id::{ClassId, HasSource, Lookup, MemberId, TypeVarOwner};
     use hir_def::in_file::InFile;
     use hir_def::type_ref::{LocalTypeRefId, TypeVarSource};
@@ -817,17 +800,8 @@ pub(crate) mod diagnostics {
             found: CtntFound,
             ctnt: C,
         },
-        BreakOutsideLoop {
-            id: ExprId,
-        },
-        CannotBreakWithValue {
-            id: ExprId,
-        },
-        NextOutsideLoop {
-            id: ExprId,
-        },
-        CannotNextWithValue {
-            id: ExprId,
+        RecursiveTypeAlias {
+            src: TySource,
         },
     }
 
@@ -1117,45 +1091,13 @@ pub(crate) mod diagnostics {
                         ctnt: ctnt.clone(),
                     });
                 },
-                | InferenceDiagnostic::BreakOutsideLoop { id } => {
-                    let source_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
-                        | _ => return,
-                    };
+                | InferenceDiagnostic::RecursiveTypeAlias { src } => {
+                    let src = ty_src(*src).unwrap();
 
-                    let src = source_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
-
-                    sink.push(BreakOutsideLoop { file, src });
-                },
-                | InferenceDiagnostic::CannotBreakWithValue { id } => {
-                    let source_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
-                        | _ => return,
-                    };
-
-                    let src = source_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
-
-                    sink.push(CannotBreakWithValue { file, src });
-                },
-                | InferenceDiagnostic::NextOutsideLoop { id } => {
-                    let source_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
-                        | _ => return,
-                    };
-
-                    let src = source_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
-
-                    sink.push(NextOutsideLoop { file, src });
-                },
-                | InferenceDiagnostic::CannotNextWithValue { id } => {
-                    let source_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
-                        | _ => return,
-                    };
-
-                    let src = source_map.expr_syntax(*id).unwrap().value.syntax_node_ptr();
-
-                    sink.push(CannotNextWithValue { file, src });
+                    sink.push(RecursiveTypeAlias {
+                        file: src.file_id,
+                        src: src.value,
+                    });
                 },
             }
         }

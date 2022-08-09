@@ -37,7 +37,6 @@ type Document = HTMLElement (
 
 type HTMLBodyElement = HTMLElement ()
 
-
 type HTMLAnchorElement = HTMLElement (
     href :: Str,
 )
