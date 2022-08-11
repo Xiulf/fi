@@ -51,7 +51,7 @@ impl InferenceContext<'_> {
             | CtntFound::Member(id) => self.source(TypeOrigin::Def(id.into())),
         };
 
-        if let Some(res) = self.class_env.solve(self.db, &self.types, ctnt.clone(), scope) {
+        if let Some(res) = self.class_env.solve(self.db, &mut self.types, ctnt.clone(), scope) {
             for (&u, &ty) in res.subst.iter() {
                 self.solve_type(u, ty);
             }
@@ -67,7 +67,7 @@ impl InferenceContext<'_> {
 
             true
         } else if let Some(res) = Members::solve_constraint(self.db, &mut self.types, &mut self.type_vars, &ctnt, src) {
-            res.apply(self);
+            res.apply(ctnt, self);
             self.record_solve(found, MethodSource::Member(res.member));
 
             for ctnt in &res.constraints {

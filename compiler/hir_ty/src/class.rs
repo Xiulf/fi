@@ -5,8 +5,8 @@ use hir_def::id::{ClassId, Lookup, MemberId};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::db::HirDatabase;
-use crate::infer::InferenceContext;
-use crate::info::{CtntInfo, ToInfo, TyId, TyInfo, TySource, TypeVars, Types, Unknown};
+use crate::infer::{ExprOrPatId, InferenceContext};
+use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVars, Types, Unknown};
 use crate::lower::MemberLowerResult;
 use crate::ty::{Constraint, Ty, TyKind, TypeVar, WhereClause};
 
@@ -42,7 +42,7 @@ pub struct Members {
 #[derive(Debug, PartialEq, Eq)]
 pub struct MemberMatchResult {
     pub member: MemberId,
-    pub subst: FxHashMap<Unknown, TyId>,
+    pub subst: Box<[TyId]>,
     pub constraints: Vec<Arc<MemberMatchResult>>,
 }
 
@@ -140,9 +140,22 @@ impl Members {
 }
 
 impl MemberMatchResult {
-    pub(crate) fn apply(&self, icx: &mut InferenceContext) {
-        for (&u, &ty) in self.subst.iter() {
-            icx.solve_type(u, ty);
+    pub(crate) fn apply(&self, ctnt: CtntInfo, icx: &mut InferenceContext) {
+        // for (&u, &ty) in self.subst.iter() {
+        //     icx.solve_type(u, ty);
+        // }
+
+        for (&a, &b) in self.subst.iter().zip(ctnt.types.iter()) {
+            if !icx.unify_types(a, b) {
+                let id = match icx.types.source(a).1 {
+                    | TypeOrigin::ExprIdInfix(id, i) => ExprOrPatId::ExprIdInfix(id, i),
+                    | TypeOrigin::ExprId(id) => ExprOrPatId::ExprId(id),
+                    | TypeOrigin::PatId(id) => ExprOrPatId::PatId(id),
+                    | _ => unreachable!(),
+                };
+
+                icx.report_mismatch(a, b, id);
+            }
         }
     }
 }
@@ -169,9 +182,9 @@ impl Member<Ty, Constraint> {
             })
             .collect::<Vec<_>>();
 
-        // log::debug!("{:#?}", matches);
+        // log::debug!("{:?}, {}", matches, verify(&matches, deps));
 
-        if !verify(&matches, deps) || matches.iter().any(|m| m == &Matched::Apart) {
+        if !verify(&matches, deps) || matches.iter().all(|m| matches!(m, Matched::Apart)) {
             return None;
         }
 
@@ -202,16 +215,32 @@ impl Member<Ty, Constraint> {
             }
         }
 
+        let subst = self
+            .types
+            .iter()
+            .map(|ty| {
+                let ty = ty.to_info(db, types, type_vars, src);
+
+                ty.everywhere(true, types, &mut |types, t| match types[t] {
+                    | TyInfo::TypeVar(v) => match vars.get(&v) {
+                        | Some(ty) => *ty,
+                        | None => t,
+                    },
+                    | _ => t,
+                })
+            })
+            .collect();
+
         // @TODO: check if this is always the right thing to do
-        for ty in subst.values_mut() {
-            *ty = ty.everywhere(false, types, &mut |types, t| match types[t] {
-                | TyInfo::TypeVar(v) => match vars.get(&v) {
-                    | Some(ty) => *ty,
-                    | None => t,
-                },
-                | _ => t,
-            });
-        }
+        // for ty in subst.values_mut() {
+        //     *ty = ty.everywhere(false, types, &mut |types, t| match types[t] {
+        //         | TyInfo::TypeVar(v) => match vars.get(&v) {
+        //             | Some(ty) => *ty,
+        //             | None => t,
+        //         },
+        //         | _ => t,
+        //     });
+        // }
 
         Some(MemberMatchResult {
             member: self.id,
@@ -266,7 +295,7 @@ impl ClassEnv {
     pub fn solve(
         &self,
         _db: &dyn HirDatabase,
-        types: &Types,
+        types: &mut Types,
         ctnt: CtntInfo,
         scope: Option<ClassEnvScope>,
     ) -> Option<ClassEnvMatchResult> {
@@ -364,7 +393,7 @@ fn verify(matches: &[Matched<()>], deps: &[FunDep]) -> bool {
 }
 
 fn match_type(
-    types: &Types,
+    types: &mut Types,
     ty: TyId,
     with: TyId,
     subst: &mut FxHashMap<Unknown, TyId>,
@@ -382,7 +411,7 @@ fn match_type(
 }
 
 fn match_type_inner(
-    types: &Types,
+    types: &mut Types,
     ty: TyId,
     with: TyId,
     ty_skolems: &mut FxHashSet<TypeVar>,
@@ -390,29 +419,30 @@ fn match_type_inner(
     subst: &mut FxHashMap<Unknown, TyId>,
     vars: &mut FxHashMap<TypeVar, TyId>,
 ) -> Matched<()> {
-    match (&types[ty], &types[with]) {
+    match (types[ty].clone(), types[with].clone()) {
         | (_, TyInfo::Unknown(_) | TyInfo::Skolem(..)) => unreachable!(),
         | (TyInfo::Error, _) | (_, TyInfo::Error) => Matched::Match(()),
         | (TyInfo::Skolem(_, _), _) => Matched::Unknown,
         | (TyInfo::TypeVar(a), TyInfo::TypeVar(b))
-            if ty_skolems.contains(a) && with_skolems.contains(b) && a.idx() == b.idx() =>
+            if ty_skolems.contains(&a) && with_skolems.contains(&b) && a.idx() == b.idx() =>
         {
             Matched::Match(())
         },
-        | (_, &TyInfo::TypeVar(tv)) => {
+        | (_, TyInfo::TypeVar(tv)) => {
             vars.insert(tv, ty);
             Matched::Match(())
         },
-        | (&TyInfo::Unknown(u), _) => {
+        | (TyInfo::Unknown(u), _) => {
             subst.insert(u, with);
             Matched::Unknown
         },
         // @TODO: this case is not valid
         | (TyInfo::TypeVar(_), _) => Matched::Unknown,
-        | (&TyInfo::Figure(c1), &TyInfo::Figure(c2)) if c1 == c2 => Matched::Match(()),
-        | (&TyInfo::Symbol(ref c1), &TyInfo::Symbol(ref c2)) if c1 == c2 => Matched::Match(()),
-        | (&TyInfo::Ctor(c1), &TyInfo::Ctor(c2)) if c1 == c2 => Matched::Match(()),
-        | (&TyInfo::App(a1, ref a2), &TyInfo::App(b1, ref b2)) if a2.len() == b2.len() => {
+        | (TyInfo::Figure(c1), TyInfo::Figure(c2)) if c1 == c2 => Matched::Match(()),
+        | (TyInfo::Symbol(ref c1), TyInfo::Symbol(ref c2)) if c1 == c2 => Matched::Match(()),
+        | (TyInfo::Ctor(c1), TyInfo::Ctor(c2)) if c1 == c2 => Matched::Match(()),
+        | (TyInfo::Alias(c1), TyInfo::Alias(c2)) if c1 == c2 => Matched::Match(()),
+        | (TyInfo::App(a1, ref a2), TyInfo::App(b1, ref b2)) if a2.len() == b2.len() => {
             match_type_inner(types, a1, b1, ty_skolems, with_skolems, subst, vars).then(
                 a2.iter()
                     .zip(b2.iter())
@@ -420,7 +450,7 @@ fn match_type_inner(
                     .fold(Matched::Match(()), Matched::then),
             )
         },
-        | (&TyInfo::ForAll(ref v1, a1, s1), &TyInfo::ForAll(ref v2, a2, s2)) if v1.len() == v2.len() => {
+        | (TyInfo::ForAll(ref v1, a1, s1), TyInfo::ForAll(ref v2, a2, s2)) if v1.len() == v2.len() => {
             let mut matched = Matched::Match(());
 
             for (i, (k1, k2)) in v1.iter().zip(v2.iter()).enumerate() {
@@ -437,6 +467,41 @@ fn match_type_inner(
             }
 
             matched
+        },
+        | (TyInfo::Row(..), TyInfo::Row(..)) => {
+            let safe = unsafe { &*(types as *const Types) };
+            let (matches, (lhs, rhs)) = TyId::align_rows_with(
+                safe,
+                |t1, t2| match_type_inner(types, t1, t2, ty_skolems, with_skolems, subst, vars),
+                ty,
+                with,
+            );
+
+            let tails = match_row_tails(types, lhs, rhs, vars);
+
+            matches.into_iter().rfold(tails, Matched::then)
+        },
+        | (_, _) => Matched::Apart,
+    }
+}
+
+fn match_row_tails(
+    types: &mut Types,
+    (f1, t1): (Box<[FieldInfo]>, Option<TyId>),
+    (f2, t2): (Box<[FieldInfo]>, Option<TyId>),
+    vars: &mut FxHashMap<TypeVar, TyId>,
+) -> Matched<()> {
+    match (t1.map(|t| &types[t]), t2.map(|t| &types[t])) {
+        | (None, None) if f1.is_empty() && f2.is_empty() => Matched::Match(()),
+        | (Some(TyInfo::Unknown(u1)), Some(TyInfo::Unknown(u2))) if u1 == u2 => Matched::Match(()),
+        | (Some(TyInfo::TypeVar(u1)), Some(TyInfo::TypeVar(u2))) if u1 == u2 => Matched::Match(()),
+        | (Some(TyInfo::Skolem(u1, _)), Some(TyInfo::Skolem(u2, _))) if u1 == u2 => Matched::Match(()),
+        | (Some(TyInfo::Unknown(_)), _) => Matched::Unknown,
+        | (_, Some(&TyInfo::TypeVar(v))) => {
+            let src = types.source(t2.unwrap());
+            let tail = types.insert(TyInfo::Row(f1, t1), src);
+            vars.insert(v, tail);
+            Matched::Match(())
         },
         | (_, _) => Matched::Apart,
     }

@@ -600,7 +600,7 @@ impl std::fmt::Display for TyDisplay<'_> {
             | TyInfo::Skolem(tv, k) => write!(f, "({} :: {})", tv, self.with_ty(k, false)),
             | TyInfo::TypeVar(tv) => tv.fmt(f),
             | TyInfo::Figure(i) => i.fmt(f),
-            | TyInfo::Symbol(ref s) => s.fmt(f),
+            | TyInfo::Symbol(ref s) => std::fmt::Debug::fmt(s, f),
             | TyInfo::Row(ref fields, Some(tail)) => {
                 write!(
                     f,

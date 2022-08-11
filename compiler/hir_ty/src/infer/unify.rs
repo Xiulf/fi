@@ -297,6 +297,9 @@ impl InferenceContext<'_> {
         (f2, t2): (List<FieldInfo>, Option<TyId>),
     ) -> bool {
         match (t1.map(|t| &self.types[t]), t2.map(|t| &self.types[t])) {
+            | (Some(TyInfo::Unknown(u1)), Some(TyInfo::Unknown(u2))) if f1.is_empty() && f2.is_empty() && u1 == u2 => {
+                true
+            },
             | (Some(&TyInfo::Unknown(u)), _) if f1.is_empty() => {
                 let src = self.types.source(t1.unwrap());
                 let ty = self.types.insert(TyInfo::Row(f2, t2), src);
@@ -314,7 +317,7 @@ impl InferenceContext<'_> {
             | (Some(&TyInfo::Skolem(_, s1)), Some(&TyInfo::Skolem(_, s2))) => {
                 s1 == s2 && f1.is_empty() && f2.is_empty()
             },
-            | (Some(&TyInfo::Unknown(u1)), Some(&TyInfo::Unknown(u2))) if u1 != u2 => {
+            | (Some(&TyInfo::Unknown(u1)), Some(&TyInfo::Unknown(u2))) => {
                 for f in f1.iter() {
                     if self.occurs(u2, f.ty) {
                         return false;

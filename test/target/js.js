@@ -1,19 +1,19 @@
 // /mnt/e/Language/fc/test/target/prim.js
-// /tmp/.tmpND6Gvl
+// /tmp/.tmpSK04SI
+// /tmp/.tmpJjBl40
 const $member_Termination_17 = {
     report: function($p0) {
         return 0;
     },
 };
-// /tmp/.tmp3ZQAio
 // /mnt/e/Language/fc/test/target/core.js
 // /mnt/e/Language/fc/test/target/prim.js
-// /tmp/.tmpHtkVGB
+// /tmp/.tmpijQFFX
 var Core_Foldable_foldMap;
 Core_Foldable_foldMap = function($r0, $r1, $r2, $p0) {
     return $r0.foldr($p0, Core_default(), Core_Ops_concat);
 };
-// /tmp/.tmpDMAQP1
+// /tmp/.tmp2Kipbg
 const $member_Default_18 = {
     default: function() {
         return false;
@@ -67,8 +67,8 @@ const $member_Unwrap_20 = {
         return $e0;
     },
 };
-// /tmp/.tmpGkCCRF
-// /tmp/.tmp7SX2uo
+// /tmp/.tmpGaL3Lh
+// /tmp/.tmpAhr7lR
 var Core_Cmp_ne;
 var Core_Cmp_lt;
 var Core_Cmp_le;
@@ -121,8 +121,8 @@ Core_Cmp_ge = function($p0, $p1) {
     } while(0);
     return $e4;
 };
-// /tmp/.tmpbF72UQ
-// /tmp/.tmpfP8FwJ
+// /tmp/.tmpHegbfj
+// /tmp/.tmpxfXHQj
 var Data_Result_ok;
 var Data_Result_err;
 var Data_Result_unwrap_err;
@@ -215,7 +215,7 @@ const $member_Unwrap_22 = {
         return $e6;
     },
 };
-// /tmp/.tmpW33Hhe
+// /tmp/.tmp6jLLK2
 const $member_Default_23 = {
     default: function() {
         return 0;
@@ -268,13 +268,13 @@ const $member_Ord_30 = {
         return $e4;
     },
 };
-// /tmp/.tmpcHj4Vn
-// /tmp/.tmp0ghWZP
+// /tmp/.tmp1gWDN0
+// /tmp/.tmph1b0oP
 var Core_Error_unwrap_unsafe;
 Core_Error_unwrap_unsafe = function($r0, $p0) {
     return $r0.unwrap($p0);
 };
-// /tmp/.tmpvAdYgg
+// /tmp/.tmpnpAvZ5
 const $member_Default_31 = {
     default: function() {
         return false;
@@ -310,7 +310,7 @@ const $member_Foldable_32 = {
         return $e0;
     },
 };
-// /tmp/.tmpxu9sQf
+// /tmp/.tmpANiKN1
 var Data_Bool_not;
 Data_Bool_not = function($p2) {
     var $e4;
@@ -344,32 +344,7 @@ function push(a, x) {
 function concatString(a, b) {
   return a + b.toString();
 }
-// /tmp/.tmpfS05Yr
-var Js_Console_print;
-Js_Console_print = function($r0, ) {
-    return $r0.print$(new Array());
-};
-const $member_Print_34 = {
-    print$: function($p0) {
-        return console.log(...$p0);
-    },
-};
-function $member_Print_35($r0) {
-    return {
-        print$: function($p0) {
-            function $l7($l7p0) {
-                return $r0.print$(push($p0, $l7p0));
-            };
-            return $l7;
-        },
-    };
-}
-// /tmp/.tmpMgIzXH
-var Js_DOM_createElement;
-Js_DOM_createElement = function($t0, $p0) {
-    return document.createElement($t0);
-};
-// /tmp/.tmpWqXbm4
+// /tmp/.tmp84gLMX
 var Js_toArray;
 Js_toArray = function($r0, $p0) {
     function $l12($l12p0) {
@@ -379,8 +354,33 @@ Js_toArray = function($r0, $p0) {
     };
     return $r0.foldl($p0, new Array(), $l12);
 };
-const $member_Concat_37 = {
+const $member_Concat_34 = {
     concat: function($p0, $p1) {
         return concatString($p0, $p1);
     },
+};
+// /tmp/.tmpdNn2DD
+var Js_Console_print;
+Js_Console_print = function($r0, ) {
+    return $r0.print$(new Array());
+};
+const $member_Print_35 = {
+    print$: function($p0) {
+        return console.log(...$p0);
+    },
+};
+function $member_Print_36($r0) {
+    return {
+        print$: function($p0) {
+            function $l7($l7p0) {
+                return $r0.print$(push($p0, $l7p0));
+            };
+            return $l7;
+        },
+    };
+}
+// /tmp/.tmpO0GfnU
+var Js_DOM_createElement;
+Js_DOM_createElement = function($t0, $p0) {
+    return document.createElement($t0);
 };
