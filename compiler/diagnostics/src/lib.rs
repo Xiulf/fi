@@ -4,6 +4,7 @@ mod mismatched_type;
 mod private_operator;
 mod unresolved_operator;
 mod unsolved_constraint;
+mod value_hole;
 
 use hir::InFile;
 use syntax::TextRange;
@@ -80,6 +81,8 @@ impl<DB: hir::db::HirDatabase> DiagnosticForWith<DB> for dyn hir::diagnostic::Di
             f(&private_operator::PrivateOperator::new(with, v))
         } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::DuplicateDeclaration>() {
             f(&duplicate_declaration::DuplicateDeclaration::new(with, v))
+        } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::ValueHole>() {
+            f(&value_hole::ValueHole::new(with, v))
         } else {
             f(&GenericDiagnostic { diagnostic: self })
         }

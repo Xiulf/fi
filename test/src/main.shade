@@ -2,17 +2,18 @@ module Main =
 
 import Core
 import Core.Cmp
+import Data.Bool
 import Js
 import Js.Console
 import Js.DOM
 
 @main
 main =
-    let a = createElement (Sym :: Sym "a")
-    
-    a.innerHTML = "Test"
-    a .addEventListener "click" fn _ -> print "click" :: ()
+    let a, b, c = default :: Int8, Option (), Str
+    let f = _ + 1
 
-    document.body .appendChild a
+    print a b c f :: ()
 
-    print a :: ()
+test =
+    let a = if True then 0 else 1
+    a + 1

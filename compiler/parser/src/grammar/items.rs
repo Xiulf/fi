@@ -37,7 +37,7 @@ pub(crate) fn any_item(p: &mut Parser) {
         | CLASS_KW => {
             class(p, m);
         },
-        | MEMBER_KW => {
+        | DERIVE_KW | MEMBER_KW => {
             member(p, m);
         },
         | _ => {
@@ -300,6 +300,7 @@ pub(crate) fn fun_dep(p: &mut Parser) {
 }
 
 pub(crate) fn member(p: &mut Parser, m: Marker) {
+    p.eat(DERIVE_KW);
     p.expect(MEMBER_KW);
     types::atom(p);
 

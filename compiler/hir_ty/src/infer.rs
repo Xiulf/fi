@@ -121,8 +121,8 @@ pub struct InferenceContext<'a> {
     pub(crate) result: InferenceResult<TyId, CtntInfo>,
     pub(crate) types: Types,
     pub(crate) type_vars: TypeVars,
+    pub(crate) subst: unify::Substitution,
     can_generalize: bool,
-    subst: unify::Substitution,
     class_env: ClassEnv,
     member_records: usize,
     constraints: Vec<(CtntInfo, CtntExpected, CtntFound, Option<ClassEnvScope>)>,
@@ -706,9 +706,13 @@ impl InferenceResult<Ty, Constraint> {
 }
 
 pub(crate) mod diagnostics {
+    use std::sync::Arc;
+
     use hir_def::diagnostic::DiagnosticSink;
+    use hir_def::expr::ExprId;
     use hir_def::id::{ClassId, HasSource, Lookup, MemberId, TypeVarOwner};
     use hir_def::in_file::InFile;
+    use hir_def::resolver::ValueNs;
     use hir_def::type_ref::{LocalTypeRefId, TypeVarSource};
     use syntax::{ast, AstNode, AstPtr, SyntaxNodePtr};
 
@@ -716,6 +720,7 @@ pub(crate) mod diagnostics {
     use crate::db::HirDatabase;
     use crate::diagnostics::*;
     use crate::info::{CtntInfo, TyId, TySource, TypeOrigin};
+    use crate::search::TypeSearchResult;
     use crate::ty::{Constraint, Ty};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -803,6 +808,11 @@ pub(crate) mod diagnostics {
         RecursiveTypeAlias {
             src: TySource,
         },
+        ValueHole {
+            id: ExprId,
+            ty: T,
+            search: Arc<TypeSearchResult<ValueNs>>,
+        },
     }
 
     impl InferenceDiagnostic<TyId, CtntInfo> {
@@ -838,6 +848,12 @@ pub(crate) mod diagnostics {
                         found,
                         ctnt: icx.subst_ctnt(&ctnt),
                     }
+                },
+                | InferenceDiagnostic::ValueHole { id, ty, .. } => {
+                    let ty = icx.subst_type(ty);
+                    let search = icx.search_value(ty, id);
+
+                    InferenceDiagnostic::ValueHole { id, ty, search }
                 },
                 | _ => self,
             }
@@ -1097,6 +1113,21 @@ pub(crate) mod diagnostics {
                     sink.push(RecursiveTypeAlias {
                         file: src.file_id,
                         src: src.value,
+                    });
+                },
+                | InferenceDiagnostic::ValueHole { id, ty, search } => {
+                    let source_map = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                        | _ => return,
+                    };
+
+                    let src = source_map.expr_syntax(*id).unwrap().map(|ptr| ptr.syntax_node_ptr());
+
+                    sink.push(ValueHole {
+                        file: src.file_id,
+                        src: src.value,
+                        ty: *ty,
+                        search: search.clone(),
                     });
                 },
             }

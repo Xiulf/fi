@@ -1,11 +1,15 @@
+use std::borrow::Cow;
 use std::io::{self, Write};
 
 use hir::id::HasModule;
-use hir::{Const, Expr, Func, HasResolver, Literal, MethodSource, Path, Resolver, Static, Stmt, ValueNs};
+use hir::{
+    Const, Ctor, Expr, Func, HasResolver, Literal, MethodSource, Path, Resolver, Static, Stmt, TypeCtor, ValueNs,
+};
 
 use crate::indent::IndentWriter;
 use crate::BodyCtx;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum JsExpr {
     Undefined,
@@ -40,6 +44,10 @@ pub enum JsExpr {
         op: &'static str,
         rhs: Box<JsExpr>,
     },
+    New {
+        class: Cow<'static, str>,
+        args: Vec<JsExpr>,
+    },
     Array {
         exprs: Vec<JsExpr>,
     },
@@ -69,14 +77,6 @@ pub enum JsExpr {
     Throw {
         expr: Box<JsExpr>,
     },
-    Labeled {
-        label: String,
-        expr: Box<JsExpr>,
-    },
-    Goto {
-        label: String,
-        end: bool,
-    },
 }
 
 pub enum Arg {
@@ -98,6 +98,7 @@ impl JsExpr {
             } => cond.is_inline() && then.is_inline() && else_.is_inline(),
             | Self::BinOp { lhs, rhs, .. } => lhs.is_inline() && rhs.is_inline(),
             | Self::UnOp { rhs, .. } => rhs.is_inline(),
+            | Self::New { args, .. } => args.iter().any(Self::is_inline),
             | Self::Call { base, args } => base.is_inline() || args.iter().any(Self::is_inline),
             | Self::Block { exprs } => exprs.len() <= 1,
             | _ => false,
@@ -122,8 +123,7 @@ impl JsExpr {
             | Self::Var { .. }
             | Self::Lambda { .. }
             | Self::Return { .. }
-            | Self::Throw { .. }
-            | Self::Goto { .. } => true,
+            | Self::Throw { .. } => true,
             | Self::Field { base, .. } | Self::Index { base, .. } => base.is_effectful(),
             | Self::BinOp { lhs, rhs, .. } => lhs.is_effectful() || rhs.is_effectful(),
             | Self::UnOp { rhs, .. } => rhs.is_effectful(),
@@ -140,14 +140,13 @@ impl JsExpr {
                 else_: None,
             } => cond.is_effectful() || then.is_effectful(),
             | Self::Block { exprs } => exprs.iter().any(Self::is_effectful),
-            | Self::Labeled { expr, .. } => expr.is_effectful(),
             | _ => false,
         }
     }
 
     pub fn is_terminator(&self) -> bool {
         match self {
-            | Self::Return { .. } | Self::Throw { .. } | Self::Goto { .. } => true,
+            | Self::Return { .. } | Self::Throw { .. } => true,
             | _ => false,
         }
     }
@@ -201,6 +200,19 @@ impl JsExpr {
             | JsExpr::UnOp { op, rhs } => {
                 write!(out, "{}", op)?;
                 rhs.write_inner(out, false)
+            },
+            | JsExpr::New { class, args } => {
+                write!(out, "new {}(", class)?;
+
+                for (i, arg) in args.iter().enumerate() {
+                    if i != 0 {
+                        write!(out, ", ")?;
+                    }
+
+                    arg.write_inner(out, false)?;
+                }
+
+                write!(out, ")")
             },
             | JsExpr::Array { exprs } => {
                 write!(out, "[")?;
@@ -310,11 +322,17 @@ impl JsExpr {
                     out.indent();
                     then.write_inner(out, true)?;
                     out.dedent();
-                    writeln!(out, "\n}} else {{")?;
-                    out.indent();
-                    else_.write_inner(out, true)?;
-                    out.dedent();
-                    write!(out, "\n}}")
+
+                    if matches!(**else_, JsExpr::If { .. }) && !else_.is_inline() {
+                        write!(out, ";\n}} else ")?;
+                        else_.write_inner(out, false)
+                    } else {
+                        writeln!(out, ";\n}} else {{")?;
+                        out.indent();
+                        else_.write_inner(out, true)?;
+                        out.dedent();
+                        write!(out, ";\n}}")
+                    }
                 },
                 | None => {
                     write!(out, "if (")?;
@@ -323,7 +341,7 @@ impl JsExpr {
                     out.indent();
                     then.write_inner(out, true)?;
                     out.dedent();
-                    write!(out, "\n}}")
+                    write!(out, ";\n}}")
                 },
             },
             | JsExpr::Return { expr } => {
@@ -334,17 +352,6 @@ impl JsExpr {
                 write!(out, "throw ")?;
                 expr.write_inner(out, false)
             },
-            | JsExpr::Labeled { label, expr } => {
-                writeln!(out, "{}: do {{", label)?;
-                out.indent();
-                expr.write_inner(out, true)?;
-                out.dedent();
-                write!(out, ";\n}} while(0)")
-            },
-            | JsExpr::Goto { label, end } if *end => {
-                write!(out, "break {}", label)
-            },
-            | JsExpr::Goto { label, .. } => write!(out, "continue {}", label),
         }
     }
 }
@@ -358,7 +365,12 @@ impl BodyCtx<'_, '_> {
             | Expr::Typed { expr, .. } => self.lower_expr(expr, block),
             | Expr::Lit { ref lit } => JsExpr::Literal { lit: lit.clone() },
             | Expr::Unit => JsExpr::Undefined,
-            | Expr::Path { ref path } => self.lower_path(&Resolver::for_expr(self.db.upcast(), self.owner, expr), path),
+            | Expr::Path { ref path } => self.lower_path(
+                &Resolver::for_expr(self.db.upcast(), self.owner, expr),
+                Some((expr, 0)),
+                path,
+                block,
+            ),
             | Expr::Do { ref stmts } => self.lower_block(stmts, block),
             | Expr::App { mut base, arg } => {
                 let mut args = vec![Arg::ExprId(arg)];
@@ -385,72 +397,29 @@ impl BodyCtx<'_, '_> {
                 JsExpr::Object { fields }
             },
             | Expr::If { cond, then, else_ } => {
-                let cond = Box::new(self.lower_expr(cond, block));
-                let mut then = self.lower_expr_inline(then);
-                let mut else_ = else_.map(|e| self.lower_expr_inline(e));
+                let lib = self.owner.module(self.db.upcast()).lib;
+                let bool = self.db.lang_item(lib, "bool-type".into()).unwrap();
+                let bool = TypeCtor::from(bool.as_type_ctor().unwrap());
+                let true_ = self.mangle((bool.ctors(self.db)[1].path(self.db).to_string(), true));
+                let cond = Box::new(JsExpr::BinOp {
+                    op: "instanceof",
+                    lhs: Box::new(self.lower_expr(cond, block)),
+                    rhs: Box::new(JsExpr::Ident { name: true_ }),
+                });
 
-                if !then.is_inline() || !else_.as_ref().map(JsExpr::is_inline).unwrap_or(true) {
-                    let name = format!("$e{}", u32::from(expr.into_raw()));
-                    let var = JsExpr::Ident { name: name.clone() };
+                let then = Box::new(self.lower_expr_inline(then));
+                let else_ = else_.map(|e| Box::new(self.lower_expr_inline(e)));
+                let ifelse = JsExpr::If { cond, then, else_ };
 
-                    match &mut then {
-                        | JsExpr::Block { exprs } => {
-                            let last = exprs.pop().unwrap();
-
-                            exprs.push(JsExpr::Assign {
-                                place: Box::new(var.clone()),
-                                expr: Box::new(last),
-                            });
-                        },
-                        | other => {
-                            *other = JsExpr::Assign {
-                                place: Box::new(var.clone()),
-                                expr: Box::new(other.clone()),
-                            };
-                        },
-                    }
-
-                    match else_.as_mut() {
-                        | Some(JsExpr::Block { exprs }) => {
-                            let last = exprs.pop().unwrap();
-
-                            exprs.push(JsExpr::Assign {
-                                place: Box::new(var.clone()),
-                                expr: Box::new(last),
-                            });
-                        },
-                        | Some(other) => {
-                            *other = JsExpr::Assign {
-                                place: Box::new(var.clone()),
-                                expr: Box::new(other.clone()),
-                            };
-                        },
-                        | None => {},
-                    }
-
-                    block.push(JsExpr::Var { name, expr: None });
-                    block.push(JsExpr::If {
-                        cond,
-                        then: Box::new(then),
-                        else_: else_.map(Box::new),
-                    });
-
-                    return var;
-                }
-
-                JsExpr::If {
-                    cond,
-                    then: Box::new(then),
-                    else_: else_.map(Box::new),
-                }
+                self.get_result(expr, ifelse, block)
             },
             | Expr::Lambda { ref pats, body } => {
-                let name = format!("$l{}", u32::from(expr.into_raw()));
+                let name = format!("lambda{}", u32::from(expr.into_raw()));
                 let mut params = Vec::with_capacity(pats.len());
                 let mut exprs = Vec::new();
 
                 for (i, &pat) in pats.iter().enumerate() {
-                    let name = format!("$l{}p{}", u32::from(expr.into_raw()), i);
+                    let name = format!("lambda{}_param{}", u32::from(expr.into_raw()), i);
                     let param = JsExpr::Ident { name: name.clone() };
 
                     self.lower_pat(pat, param, &mut exprs);
@@ -475,7 +444,7 @@ impl BodyCtx<'_, '_> {
             | Expr::Recur => JsExpr::Ident {
                 name: self.in_lambda.last().unwrap().clone(),
             },
-            | Expr::Case { pred, ref arms } => self.lower_case(pred, arms, block),
+            | Expr::Case { pred, ref arms } => self.lower_case(expr, pred, arms, block),
             | ref e => {
                 log::warn!(target: "lower_expr", "not yet implemented: {:?}", e);
                 JsExpr::Undefined
@@ -576,97 +545,57 @@ impl BodyCtx<'_, '_> {
         }
     }
 
-    pub fn lower_case(&mut self, pred: hir::ExprId, arms: &[hir::CaseArm], block: &mut Vec<JsExpr>) -> JsExpr {
-        let name = format!("$e{}", u32::from(pred.into_raw()));
-        let label = format!("$l{}", u32::from(pred.into_raw()));
-        let res = JsExpr::Ident { name: name.clone() };
+    pub fn lower_case(
+        &mut self,
+        expr: hir::ExprId,
+        pred: hir::ExprId,
+        arms: &[hir::CaseArm],
+        block: &mut Vec<JsExpr>,
+    ) -> JsExpr {
         let pred = self.lower_expr(pred, block);
-        let mut out = Vec::new();
-
-        block.push(JsExpr::Var { name, expr: None });
+        let mut checks = Vec::with_capacity(arms.len());
+        let mut else_ = JsExpr::Throw {
+            expr: Box::new(JsExpr::Literal {
+                lit: Literal::String("failed pattern match".into()),
+            }),
+        };
 
         for arm in arms {
-            let mut then = Vec::new();
+            let check = self.lower_pat(arm.pat, pred.clone(), block);
+            let check = match arm.guard {
+                | None => check,
+                | Some(guard) => {
+                    let guard = self.lower_expr(guard, block);
 
-            if let Some(cond) = self.lower_pat(arm.pat, pred.clone(), &mut then) {
-                if let Some(guard) = arm.guard {
-                    let guard = self.lower_expr(guard, &mut then);
-                    let mut in_guard = Vec::new();
-                    let expr = self.lower_expr(arm.expr, &mut in_guard);
+                    Some(
+                        check
+                            .map(|c| JsExpr::BinOp {
+                                op: "&&",
+                                lhs: Box::new(c),
+                                rhs: Box::new(guard.clone()),
+                            })
+                            .unwrap_or(guard),
+                    )
+                },
+            };
 
-                    in_guard.push(JsExpr::Assign {
-                        place: Box::new(res.clone()),
-                        expr: Box::new(expr),
-                    });
+            let then = self.lower_expr_inline(arm.expr);
 
-                    in_guard.push(JsExpr::Goto {
-                        label: label.clone(),
-                        end: true,
-                    });
-
-                    then.push(JsExpr::If {
-                        cond: Box::new(guard),
-                        then: Box::new(JsExpr::Block { exprs: in_guard }),
-                        else_: None,
-                    });
-                } else {
-                    let expr = self.lower_expr(arm.expr, &mut then);
-
-                    then.push(JsExpr::Assign {
-                        place: Box::new(res.clone()),
-                        expr: Box::new(expr),
-                    });
-
-                    then.push(JsExpr::Goto {
-                        label: label.clone(),
-                        end: true,
-                    });
-                }
-
-                out.push(JsExpr::If {
-                    cond: Box::new(cond),
-                    then: Box::new(JsExpr::Block { exprs: then }),
-                    else_: None,
-                });
-            } else if let Some(guard) = arm.guard {
-                let guard = self.lower_expr(guard, &mut out);
-                let expr = self.lower_expr(arm.expr, &mut then);
-
-                then.push(JsExpr::Assign {
-                    place: Box::new(res.clone()),
-                    expr: Box::new(expr),
-                });
-
-                then.push(JsExpr::Goto {
-                    label: label.clone(),
-                    end: true,
-                });
-
-                out.push(JsExpr::If {
-                    cond: Box::new(guard),
-                    then: Box::new(JsExpr::Block { exprs: then }),
-                    else_: None,
-                });
+            if let Some(check) = check {
+                checks.push((check, then));
             } else {
-                out.append(&mut then);
-
-                let expr = self.lower_expr(arm.expr, &mut out);
-
-                out.push(JsExpr::Assign {
-                    place: Box::new(res.clone()),
-                    expr: Box::new(expr),
-                });
-
+                else_ = then;
                 break;
             }
         }
 
-        block.push(JsExpr::Labeled {
-            label,
-            expr: Box::new(JsExpr::Block { exprs: out }),
+        let case = checks.into_iter().rfold(else_, |e, (c, t)| JsExpr::If {
+            cond: Box::new(c),
+            then: Box::new(t),
+            else_: Some(Box::new(e)),
         });
 
-        res
+        self.get_result(expr, case, block)
     }
 
     pub fn lower_block(&mut self, stmts: &[Stmt], exprs: &mut Vec<JsExpr>) -> JsExpr {
@@ -881,7 +810,9 @@ impl BodyCtx<'_, '_> {
                 let is_method = matches!(func.as_assoc_item(self.db), Some(hir::AssocItem::Func(_)));
 
                 (
-                    self.lower_path(resolver, path),
+                    JsExpr::Ident {
+                        name: self.mangle(func.link_name(self.db)),
+                    },
                     self.func_params(id, is_method),
                     is_method,
                 )
@@ -889,9 +820,12 @@ impl BodyCtx<'_, '_> {
             | ValueNs::Ctor(id) => {
                 let args = args.into_iter().map(|a| self.lower_arg(a, block)).collect();
 
-                return self.construct(id.into(), args);
+                return JsExpr::New {
+                    class: Cow::Owned(self.mangle((Ctor::from(id).path(self.db).to_string(), true))),
+                    args,
+                };
             },
-            | _ => (self.lower_path(resolver, path), args.len(), false),
+            | _ => (self.lower_path(resolver, expr, path, block), args.len(), false),
         };
 
         if let Some(id) = expr {
@@ -951,7 +885,13 @@ impl BodyCtx<'_, '_> {
         }
     }
 
-    pub fn lower_path(&mut self, resolver: &Resolver, path: &Path) -> JsExpr {
+    pub fn lower_path(
+        &mut self,
+        resolver: &Resolver,
+        expr: Option<(hir::ExprId, usize)>,
+        path: &Path,
+        block: &mut Vec<JsExpr>,
+    ) -> JsExpr {
         let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
 
         match resolved {
@@ -964,9 +904,18 @@ impl BodyCtx<'_, '_> {
                 let is_method = matches!(Func::from(id).as_assoc_item(self.db), Some(hir::AssocItem::Func(_)));
 
                 if self.func_params(id, is_method) == 0 {
-                    return JsExpr::Call {
-                        base: Box::new(base),
-                        args: Vec::new(),
+                    return self.lower_path_app(resolver, expr, path, Vec::new(), block);
+                } else if is_method {
+                    let infer = self.infer.clone();
+                    let mut methods = infer.methods[&expr.unwrap()].iter().copied();
+                    let b = match methods.next().unwrap() {
+                        | MethodSource::Member(id) => self.member_ref(id.into(), &mut methods),
+                        | MethodSource::Record(idx) => self.records[idx].clone(),
+                    };
+
+                    return JsExpr::Field {
+                        base: Box::new(b),
+                        field: self.mangle((path.segments().last().unwrap(), true)),
                     };
                 }
 
@@ -978,12 +927,15 @@ impl BodyCtx<'_, '_> {
             | ValueNs::Static(id) => JsExpr::Ident {
                 name: self.mangle(Static::from(id).link_name(self.db)),
             },
-            | ValueNs::Ctor(id) => self.construct(id.into(), Vec::new()),
+            | ValueNs::Ctor(id) => JsExpr::New {
+                class: Cow::Owned(self.mangle((Ctor::from(id).path(self.db).to_string(), true))),
+                args: Vec::new(),
+            },
             | ValueNs::Fixity(id) => {
                 let resolver = id.resolver(self.db.upcast());
                 let data = self.db.fixity_data(id);
 
-                self.lower_path(&resolver, &data.func)
+                self.lower_path(&resolver, expr, &data.func, block)
             },
         }
     }

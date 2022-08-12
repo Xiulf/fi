@@ -1,0 +1,9 @@
+module Core.Default =
+
+import Core
+
+class Default t =
+    default :: t
+    
+member Str of Default =
+    default = ""

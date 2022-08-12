@@ -50,6 +50,7 @@ pub enum SyntaxKind {
     CONST_KW,
     CLASS_KW,
     MEMBER_KW,
+    DERIVE_KW,
     INFIX_KW,
     INFIXL_KW,
     INFIXR_KW,

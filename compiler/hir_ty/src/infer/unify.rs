@@ -10,7 +10,7 @@ use crate::ty::{List, TypeVar, WhereClause};
 pub(crate) struct UnkLevel(Vec<Unknown>);
 
 #[derive(Default, Debug, Clone)]
-pub(super) struct Substitution {
+pub(crate) struct Substitution {
     next_unknown: u32,
     tys: FxHashMap<Unknown, TyId>,
     unsolved: FxHashMap<Unknown, (UnkLevel, TyId)>,

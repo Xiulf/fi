@@ -22,7 +22,7 @@ impl InferenceContext<'_> {
         }
 
         for (ctnt, expected, found, scope) in unsolved {
-            if ctnt.can_be_generalized(&self.types) {
+            if self.can_generalize && ctnt.can_be_generalized(&self.types) {
                 let class = self.db.class_data(ctnt.class);
 
                 self.constraints.push((ctnt, expected, found, scope));

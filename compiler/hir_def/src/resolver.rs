@@ -45,7 +45,7 @@ struct TypeScope {
     scope_id: TypeScopeId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeNs {
     Fixity(FixityId),
     TypeAlias(TypeAliasId),
@@ -54,7 +54,7 @@ pub enum TypeNs {
     TypeVar(TypeVarId),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueNs {
     Local(PatId),
     Fixity(FixityId),
@@ -156,6 +156,37 @@ impl Resolver {
             | None => Some((value, vis)),
             | Some(_) => None,
         }
+    }
+
+    pub fn iter_values(&self) -> impl Iterator<Item = ValueNs> + '_ {
+        self.scopes.iter().rev().flat_map(|scope| match scope {
+            | Scope::ExprScope(scope) => scope
+                .expr_scopes
+                .entries(scope.scope_id)
+                .iter()
+                .map(|entry| ValueNs::Local(entry.pat()))
+                .collect::<Vec<_>>(),
+            | Scope::ModuleScope(scope) => scope.values(),
+            | Scope::TypeScope(_) => Vec::new(),
+        })
+    }
+
+    pub fn iter_types(&self) -> impl Iterator<Item = TypeNs> + '_ {
+        self.scopes.iter().rev().flat_map(|scope| match scope {
+            | Scope::TypeScope(scope) => scope
+                .type_scopes
+                .entries(scope.scope_id)
+                .iter()
+                .map(|entry| {
+                    TypeNs::TypeVar(TypeVarId {
+                        owner: scope.owner,
+                        local_id: entry.id(),
+                    })
+                })
+                .collect::<Vec<_>>(),
+            | Scope::ModuleScope(scope) => scope.types(),
+            | Scope::ExprScope(_) => Vec::new(),
+        })
     }
 
     fn module_scope(&self) -> Option<(&DefMap, LocalModuleId)> {
@@ -297,6 +328,26 @@ impl ModuleItemMap {
         let (res, vis) = to_value_ns(module_def)?;
 
         Some((res, vis, idx))
+    }
+
+    fn values(&self) -> Vec<ValueNs> {
+        self.def_map[self.module_id]
+            .scope
+            .entries()
+            .map(|(_, ns)| ns)
+            .filter_map(to_value_ns)
+            .map(|(ns, _)| ns)
+            .collect()
+    }
+
+    fn types(&self) -> Vec<TypeNs> {
+        self.def_map[self.module_id]
+            .scope
+            .entries()
+            .map(|(_, ns)| ns)
+            .filter_map(to_type_ns)
+            .map(|(ns, _)| ns)
+            .collect()
     }
 }
 

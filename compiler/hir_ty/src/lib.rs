@@ -9,4 +9,5 @@ pub mod display;
 pub mod infer;
 mod info;
 pub mod lower;
+pub mod search;
 pub mod ty;

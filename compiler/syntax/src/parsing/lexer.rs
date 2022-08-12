@@ -644,6 +644,14 @@ impl<'src> Lexer<'src> {
                     self.stack.push((start, LayoutDelim::MemberHead));
                 },
             },
+            | "derive" => {
+                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+                    self.emit(IDENT);
+                    self.stack.pop().unwrap();
+                } else {
+                    self.insert_default(start, DERIVE_KW);
+                }
+            },
             | "infix" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
                     self.emit(IDENT);

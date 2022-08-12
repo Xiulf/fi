@@ -7,11 +7,8 @@ module Core (
 import Prim as C
 import Intrinsics (($), (.), unsafe, crash, partial) as C
 import Core.Ops as C
+import Core.Default as C
 import Core.Error (unwrap, unwrap_or, ret, (!), (?)) as C
 import Data.Option (Option, Some, None) as C
 import Data.Result (Result, Ok, Error) as C
 import Data.List (List, Cons, Nil, (:)) as C
-
-
-class Default t =
-    default :: t

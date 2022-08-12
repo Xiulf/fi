@@ -1,18 +1,15 @@
-mod adt;
 mod expr;
 mod indent;
 mod intrinsic;
+mod optimize;
 mod pat;
 
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
 
-use adt::Layout;
 use arena::ArenaMap;
 use hir::db::HirDatabase;
 use hir::id::DefWithBodyId;
-use hir::TypeCtor;
-use rustc_hash::FxHashMap;
 
 #[no_mangle]
 pub fn init(logger: &'static dyn log::Log, max_level: log::LevelFilter) {
@@ -30,7 +27,6 @@ pub fn codegen(db: &dyn HirDatabase, module: hir::Module, file: &mut dyn Write) 
 struct Ctx<'a> {
     db: &'a dyn HirDatabase,
     out: indent::IndentWriter<BufWriter<&'a mut dyn Write>>,
-    ty_ctor_reprs: FxHashMap<TypeCtor, Layout>,
 }
 
 struct BodyCtx<'a, 'b> {
@@ -49,7 +45,6 @@ impl<'a> Ctx<'a> {
         Self {
             db,
             out: indent::IndentWriter::new(BufWriter::new(out)),
-            ty_ctor_reprs: FxHashMap::default(),
         }
     }
 
@@ -103,6 +98,9 @@ impl<'a> Ctx<'a> {
             | hir::ModuleDef::Const(c) => {
                 writeln!(self, "var {};", self.mangle((c.path(self.db).to_string(), true)))
             },
+            | hir::ModuleDef::Ctor(c) => {
+                writeln!(self, "var {};", self.mangle((c.path(self.db).to_string(), true)))
+            },
             | _ => Ok(()),
         }
     }
@@ -112,6 +110,7 @@ impl<'a> Ctx<'a> {
             | hir::ModuleDef::Func(func) => self.codegen_func(func),
             | hir::ModuleDef::Const(const_) => self.codegen_const(const_),
             | hir::ModuleDef::Static(static_) => self.codegen_static(static_),
+            | hir::ModuleDef::Ctor(ctor) => self.codegen_ctor(ctor),
             | _ => Ok(()),
         }
     }
@@ -148,6 +147,43 @@ impl<'a> Ctx<'a> {
         Ok(())
     }
 
+    pub fn codegen_ctor(&mut self, ctor: hir::Ctor) -> io::Result<()> {
+        let types = ctor.types(self.db);
+        writeln!(
+            self,
+            "{} = (function() {{",
+            self.mangle((ctor.path(self.db).to_string(), true)),
+        )?;
+
+        self.out.indent();
+        writeln!(self, "class {} {{", ctor.name(self.db))?;
+        self.out.indent();
+        write!(self, "constructor(")?;
+
+        for i in 0..types.len() {
+            if i != 0 {
+                write!(self, ", ")?;
+            }
+
+            write!(self, "field{}", i)?;
+        }
+
+        writeln!(self, ") {{")?;
+        self.out.indent();
+
+        for i in 0..types.len() {
+            writeln!(self, "this.field{0} = field{0};", i)?;
+        }
+
+        self.out.dedent();
+        writeln!(self, "}}")?;
+        self.out.dedent();
+        writeln!(self, "}}")?;
+        writeln!(self, "return {};", ctor.name(self.db))?;
+        self.out.dedent();
+        writeln!(self, "}})();")
+    }
+
     pub fn codegen_member(&mut self, member: hir::Member) -> io::Result<()> {
         let items = member.items(self.db);
         let lower = self.db.lower_member(member.into());
@@ -172,7 +208,7 @@ impl<'a> Ctx<'a> {
                             write!(self, ", ")?;
                         }
 
-                        write!(self, "$r{}", i)?;
+                        write!(self, "record{}", i)?;
                         i += 1;
                     }
                 }
@@ -225,7 +261,7 @@ impl<'a> Ctx<'a> {
 
                     for kind in kinds.iter() {
                         if kind.lookup(bcx.db) == hir::ty::TyKind::Ctor(symbol_ctor) {
-                            let name = format!("$t{}", bcx.type_vars.len());
+                            let name = format!("type{}", bcx.type_vars.len());
 
                             if !skip_forall {
                                 write!(bcx, "{}, ", name)?;
@@ -243,7 +279,7 @@ impl<'a> Ctx<'a> {
                         let class = bcx.db.class_data(ctnt.class);
 
                         if !class.items.is_empty() {
-                            let name = format!("$r{}", bcx.records.len());
+                            let name = format!("record{}", bcx.records.len());
 
                             if !skip_where {
                                 write!(bcx, "{}, ", name)?;
@@ -261,7 +297,7 @@ impl<'a> Ctx<'a> {
         }
 
         for (i, &pat) in body.params().iter().enumerate() {
-            let name = format!("$p{}", u32::from(pat.into_raw()));
+            let name = format!("param{}", u32::from(pat.into_raw()));
             let param = expr::JsExpr::Ident { name: name.clone() };
 
             bcx.lower_pat(pat, param, &mut Vec::new());
@@ -302,15 +338,7 @@ impl<'a, 'b> BodyCtx<'a, 'b> {
 
     pub fn lower(&mut self, in_block: bool) -> io::Result<()> {
         let expr = self.lower_expr_inline(self.body.body_expr());
-        let ret = match expr {
-            | expr::JsExpr::Block { mut exprs } => {
-                let last = exprs.pop().unwrap();
-
-                exprs.push(expr::JsExpr::Return { expr: Box::new(last) });
-                expr::JsExpr::Block { exprs }
-            },
-            | _ => expr::JsExpr::Return { expr: Box::new(expr) },
-        };
+        let ret = self.wrap_return(expr);
 
         ret.write(&mut self.out, in_block)
     }

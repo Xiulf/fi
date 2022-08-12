@@ -1,4 +1,4 @@
-use hir::{HasResolver, Pat, Resolver, ValueNs};
+use hir::{Ctor, HasResolver, Pat, Resolver, ValueNs};
 
 use crate::expr::JsExpr;
 use crate::BodyCtx;
@@ -201,5 +201,30 @@ impl BodyCtx<'_, '_> {
                 ctx.lower_pat_arg(pats.next().unwrap(), place, block)
             }
         }
+    }
+
+    pub fn deconstruct(&mut self, ctor: Ctor, place: JsExpr) -> (Vec<JsExpr>, Option<JsExpr>) {
+        let type_ctor = ctor.type_ctor();
+        let places = (0..ctor.types(self.db).len())
+            .map(|i| JsExpr::Field {
+                base: Box::new(place.clone()),
+                field: format!("field{}", i),
+            })
+            .collect();
+
+        if type_ctor.ctors(self.db).len() != 1 {
+            return (
+                places,
+                Some(JsExpr::BinOp {
+                    op: "instanceof",
+                    lhs: Box::new(place),
+                    rhs: Box::new(JsExpr::Ident {
+                        name: self.mangle((ctor.path(self.db).to_string(), true)),
+                    }),
+                }),
+            );
+        }
+
+        (places, None)
     }
 }

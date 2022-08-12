@@ -27,7 +27,17 @@ impl BodyInferenceContext<'_> {
                 self.check_expr(*expr, ty_);
                 ty_
             }),
-            | Expr::Hole => self.fresh_type(src),
+            | Expr::Hole => {
+                let ty = self.fresh_type(src);
+
+                self.report(InferenceDiagnostic::ValueHole {
+                    id: expr,
+                    ty,
+                    search: Default::default(),
+                });
+
+                ty
+            },
             | Expr::Unit => self.unit(src),
             | Expr::Path { path } => return self.icx.infer_path(path, self.resolver.clone(), expr, None),
             | Expr::Lit { lit } => match lit {
@@ -268,7 +278,7 @@ impl BodyInferenceContext<'_> {
                     let ty = self.infer_pat(pat);
 
                     self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-                    self.check_expr(val, ty);
+                    self.check_expr(val, ty)
                 },
                 | Stmt::Bind { .. } => unreachable!(),
             }
@@ -498,39 +508,6 @@ impl BodyInferenceContext<'_> {
                     self.report_mismatch(expected, ret, expr);
                 }
             },
-            // | (Expr::Tuple { exprs }, TyInfo::Tuple(tys)) if exprs.len() == tys.len() => {
-            //     for (&expr, &exp) in exprs.iter().zip(tys.iter()) {
-            //         self.check_expr(expr, exp);
-            //     }
-            // },
-            //             | (Expr::Clos { pats, stmts }, _) => {
-            //                 use hir_def::id::HasModule;
-            //                 let module = self.owner.module(self.db.upcast());
-            //                 let block_ty = self.db.lang_item(module.lib, "block-type".into()).unwrap();
-            //                 let block_ty = block_ty.as_type_ctor().unwrap();
-            //
-            //                 if let Some([f_ty, r_ty]) = expected.match_ctor(&self.types, block_ty).as_deref() {
-            //                     let ret = self.fresh_type(src);
-            //                     let args = pats.iter().map(|&p| self.infer_pat(p)).collect();
-            //                     let ty = self.fn_type(args, ret, src);
-            //
-            //                     self.block_ret_type = Some(ret);
-            //                     self.block_break_type = Some(*r_ty);
-            //                     self.check_block(stmts, ret, expr.into());
-            //                     self.block_ret_type = None;
-            //                     self.block_break_type = None;
-            //
-            //                     if !self.unify_types(*f_ty, ty) {
-            //                         self.report_mismatch(*f_ty, ty, expr);
-            //                     }
-            //                 } else {
-            //                     let infer = self.infer_expr(expr);
-            //
-            //                     if !self.subsume_types(infer, expected, expr.into()) {
-            //                         self.report_mismatch(expected, infer, expr);
-            //                     }
-            //                 }
-            //             },
             | (_, _) => {
                 let infer = self.infer_expr(expr);
 
@@ -610,7 +587,7 @@ impl BodyInferenceContext<'_> {
                     let ty = self.infer_pat(pat);
 
                     self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
-                    self.check_expr(val, ty);
+                    self.check_expr(val, ty)
                 },
             }
         }

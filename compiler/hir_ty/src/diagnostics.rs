@@ -1,10 +1,13 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use base_db::input::FileId;
 use hir_def::diagnostic::Diagnostic;
 use hir_def::in_file::InFile;
+use hir_def::resolver::ValueNs;
 use syntax::{ast, AstPtr, SyntaxNodePtr};
 
+use crate::search::TypeSearchResult;
 use crate::ty::{Constraint, Ty};
 
 #[derive(Debug)]
@@ -265,6 +268,28 @@ pub struct RecursiveTypeAlias {
 impl Diagnostic for RecursiveTypeAlias {
     fn message(&self) -> String {
         "recursive type alias".into()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src)
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct ValueHole {
+    pub file: FileId,
+    pub src: SyntaxNodePtr,
+    pub ty: Ty,
+    pub search: Arc<TypeSearchResult<ValueNs>>,
+}
+
+impl Diagnostic for ValueHole {
+    fn message(&self) -> String {
+        "value hole".into()
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {

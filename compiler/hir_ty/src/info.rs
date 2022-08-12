@@ -76,7 +76,7 @@ pub type TypeVarScopeId = Idx<TypeVarScope>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeScopeSet(u32);
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Types {
     types: Arena<TyInfo>,
     sources: ArenaMap<Idx<TyInfo>, TySource>,
