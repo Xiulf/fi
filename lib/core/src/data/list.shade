@@ -1,7 +1,11 @@
 module Data.List =
 
 import Core
+import Core.Cmp
+import Core.Ops (Index, index)
 import Core.Foldable
+import Core.Mappable
+import Data.Option
 
 type List a =
     | Nil
@@ -9,14 +13,76 @@ type List a =
     
 infixr 6 Cons as (:)
 
+length (_:xs) = 1 + length xs
+length Nil    = 0
+
+first (x:_) = Some x
+first Nil   = None
+
+last (x:Nil) = Some x
+last (_: xs) = last xs
+last Nil     = None
+
+reverse list = foldl list Nil fn acc x -> x:acc
+
+sort :: forall a. List a -> List a where Ord a a
+sort list = sortBy list fn a b -> cmp a b
+
+sortByKey :: forall a b. List a -> (a -> b) -> List a where Ord b b
+sortByKey list key = sortBy list fn a b -> key a `cmp` key b
+
+sortBy :: forall a. List a -> (a -> a -> Ordering) -> List a
+sortBy list cmp =
+    let merge = fn la lb -> case la, lb of
+        a : as', b : bs'
+            if a `cmp` b == Gt -> b : recur la bs'
+            else               -> a : recur as' lb
+        Nil, bs' -> bs'
+        as', Nil -> as'
+    
+    let mergePairs = fn list -> case list of
+        a : b : xs -> merge a b : recur xs
+        _ -> list
+    
+    let mergeAll = fn list -> case list of
+        x : Nil -> x
+        _ -> recur (mergePairs list)
+
+    mergeAll (sequences cmp list)
+
+descending cmp = fn a la lb -> case lb of
+    b : bs if a `cmp` b == Gt -> descending cmp b (a:la) bs
+    _ -> (a:la) : sequences cmp lb
+
+ascending cmp = fn a la lb -> case lb of
+    b : bs if a `cmp` b != Gt -> ascending cmp b (fn ys -> la (a : ys)) bs
+    _ -> la (a:Nil) : sequences cmp lb
+
+sequences :: forall a. (a -> a -> Ordering) -> List a -> List (List a)
+sequences cmp = fn list -> case list of
+    a : b : xs
+        if a `cmp` b == Gt -> descending cmp b (a:Nil) xs
+        else               -> ascending cmp b (fn x -> a:x) xs
+    _ -> list : Nil
+
 member (List a) of Default =
     default = Nil
 
+member List of FromFoldable =
+    fromFoldable f = foldr f Nil fn acc x -> x:acc
+
+member (List a) i a of Index where Integer i  =
+    index (x: _) 0   = x
+    index (_:xs) idx = index xs (idx - 1)
+    index Nil    _   = partial (crash "index out of range")
+
 member List of Foldable =
-    foldl list init f = case list of
-        x : xs -> foldl xs (f init x) f
-        Nil -> init
+    foldl (x:xs) init f = foldl xs (f init x) f
+    foldl Nil    init _ = init
     
-    foldr list init f = case list of
-        x : xs -> f (foldr xs init f) x
-        Nil -> init
+    foldr (x:xs) init f = f (foldr xs init f) x
+    foldr Nil    init _ = init
+
+member List of Mappable =
+    map (x:xs) f = f x : map xs f
+    map Nil    _ = Nil

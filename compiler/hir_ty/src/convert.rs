@@ -365,6 +365,7 @@ impl FromInfo for InferenceDiagnostic<Ty, Constraint> {
                 ctnt: Constraint::from_info(db, types, ctnt),
             },
             | InferenceDiagnostic::RecursiveTypeAlias { src } => Self::RecursiveTypeAlias { src },
+            | InferenceDiagnostic::InferenceCycle { owner } => Self::InferenceCycle { owner },
             | InferenceDiagnostic::ValueHole { id, ty, search } => Self::ValueHole {
                 id,
                 search,

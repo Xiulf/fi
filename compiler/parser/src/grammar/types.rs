@@ -6,7 +6,7 @@ use crate::token_set::TokenSet;
 const TYPE_RECOVERY_SET: TokenSet = TokenSet::new(&[R_PAREN, LYT_SEP, LYT_END]);
 
 pub(crate) fn ty(p: &mut Parser) {
-    if let Some(m) = infix(p, false) {
+    if let Some(m) = infix(p, TokenSet::EMPTY) {
         if p.at(WHERE_KW) {
             let m = m.precede(p);
 
@@ -16,13 +16,13 @@ pub(crate) fn ty(p: &mut Parser) {
     }
 }
 
-pub(crate) fn infix(p: &mut Parser, in_record: bool) -> Option<CompletedMarker> {
+pub(crate) fn infix(p: &mut Parser, disallow: impl Into<TokenSet> + Copy) -> Option<CompletedMarker> {
     let mut m = app(p)?;
 
-    if peek_operator(p, in_record) {
+    if peek_operator(p, disallow) {
         let ty = m.precede(p);
 
-        while peek_operator(p, in_record) {
+        while peek_operator(p, disallow) {
             p.bump_any();
             app(p);
         }
@@ -90,7 +90,7 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
                     paths::name(p);
                     p.expect(DBL_COLON);
-                    infix(p, true);
+                    infix(p, COMMA | PIPE);
                     field.complete(p, ROW_FIELD);
 
                     if !p.at(R_BRACE) && !p.at(PIPE) {
@@ -122,7 +122,7 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
 
                 paths::name(p);
                 p.expect(DBL_COLON);
-                infix(p, true);
+                infix(p, COMMA | PIPE);
                 field.complete(p, ROW_FIELD);
 
                 if !p.at(R_BRACE) && !p.at(PIPE) {

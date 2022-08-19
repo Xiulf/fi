@@ -10,7 +10,7 @@ use base_db::libs::LibId;
 pub use hir_def::body::Body;
 pub use hir_def::data::FixityKind;
 use hir_def::diagnostic::DiagnosticSink;
-pub use hir_def::expr::{CaseArm, Expr, ExprId, Literal, Stmt};
+pub use hir_def::expr::{CaseArm, CaseValue, Expr, ExprId, Literal, Stmt};
 use hir_def::id::*;
 pub use hir_def::in_file::InFile;
 use hir_def::item_scope::ExportNs;
@@ -372,7 +372,7 @@ impl Func {
         // let data = db.func_data(self.id);
         // let body = db.body(self.id.into());
 
-        // if data.name.as_ref() == "main" {
+        // if data.name.as_ref() == "sequences" {
         //     // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
         //     eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 

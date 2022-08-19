@@ -90,11 +90,16 @@ pub enum Stmt {
     Expr { expr: ExprId },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaseArm {
     pub pat: PatId,
-    pub guard: Option<ExprId>,
-    pub expr: ExprId,
+    pub value: CaseValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CaseValue {
+    Normal(ExprId),
+    Guarded(Box<[ExprId]>, Box<[ExprId]>),
 }
 
 impl Expr {
@@ -135,9 +140,20 @@ impl Expr {
             },
             | Expr::Case { pred, arms } => {
                 f(*pred);
-                arms.iter().for_each(|arm| {
-                    arm.guard.map(&mut f);
-                    f(arm.expr);
+
+                arms.iter().for_each(|arm| match &arm.value {
+                    | CaseValue::Normal(e) => f(*e),
+                    | CaseValue::Guarded(guards, exprs) => {
+                        let guards = guards.iter().copied();
+                        let mut exprs = exprs.iter().copied();
+
+                        guards.zip(exprs.by_ref()).for_each(|(g, e)| {
+                            f(g);
+                            f(e);
+                        });
+
+                        exprs.next().map(&mut f);
+                    },
                 });
             },
             | Expr::Return { expr } => {

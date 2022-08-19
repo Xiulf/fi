@@ -384,36 +384,14 @@ impl TyId {
                     | _ => ty,
                 }
             },
-            | TyInfo::App(base, ref args) => match types[base] {
-                | TyInfo::App(base2, ref args2) => {
-                    let args = args2.iter().chain(args.iter()).copied().collect();
+            // | TyInfo::App(base, ref args) => match types[base] {
+            //     | TyInfo::App(base2, ref args2) => {
+            //         let args = args2.iter().chain(args.iter()).copied().collect();
 
-                    types.update(ty, TyInfo::App(base2, args), true)
-                },
-                // | TyInfo::ForAll(_, inner, scope) => {
-                //     let args = args.clone();
-
-                //     inner.replace_vars(types, &args, scope)
-                // },
-                | _ => ty,
-            },
-            //             | TyInfo::Where(ref w1, t1) => match types[t1] {
-            //                 | TyInfo::Where(ref w2, t2) => {
-            //                     let where_clause = WhereClause {
-            //                         constraints: w2.constraints.iter().chain(w1.constraints.iter()).cloned().collect(),
-            //                     };
-            //
-            //                     types.update(ty, TyInfo::Where(where_clause, t2), false)
-            //                 },
-            //                 | TyInfo::ForAll(ref kinds, inner, scope) => {
-            //                     let w1 = w1.clone();
-            //                     let kinds = kinds.clone();
-            //                     let inner = types.update(inner, TyInfo::Where(w1, inner), false);
-            //
-            //                     types.update(ty, TyInfo::ForAll(kinds, inner, scope), false)
-            //                 },
-            //                 | _ => ty,
-            //             },
+            //         types.update(ty, TyInfo::App(base2, args), true)
+            //     },
+            //     | _ => ty,
+            // },
             | _ => ty,
         })
     }

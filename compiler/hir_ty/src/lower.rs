@@ -3,6 +3,7 @@ use std::sync::Arc;
 use arena::ArenaMap;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::id::*;
+use hir_def::infix::ProcessInfix;
 use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, TypeNs};
 use hir_def::type_ref::{LocalTypeRefId, TypeMap, TypeRef};
@@ -164,7 +165,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
                 self.icx.types.insert(TyInfo::ForAll(kinds, inner, scope), src)
             },
             | TypeRef::Where(where_clause, inner) => {
-                let where_ = self.lower_where_clause(where_clause, WhereSource::TypeRef(ty));
+                let where_ = self.lower_where_clause(where_clause, WhereSource::TypeRef(self.owner, ty));
                 let inner = self.lower_ty(*inner);
 
                 self.icx.types.insert(TyInfo::Where(where_, inner), src)
@@ -353,10 +354,94 @@ impl<'a, 'b> std::ops::DerefMut for LowerCtx<'a, 'b> {
 
 pub(crate) fn value_ty(db: &dyn HirDatabase, id: ValueTyDefId) -> TyAndSrc<Ty> {
     match id {
-        | ValueTyDefId::FuncId(id) => db.infer(id.into()).self_type,
-        | ValueTyDefId::StaticId(id) => db.infer(id.into()).self_type,
-        | ValueTyDefId::ConstId(id) => db.infer(id.into()).self_type,
+        | ValueTyDefId::FuncId(id) => {
+            let data = db.func_data(id);
+
+            if let Some(ty) = data.ty {
+                let resolver = id.resolver(db.upcast());
+                let mut icx = InferenceContext::new(db, resolver, TypedDefId::FuncId(id).into(), false);
+                let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+
+                match id.lookup(db.upcast()).container {
+                    | ContainerId::Class(id) => lcx.icx.class_owner(id),
+                    | ContainerId::Member(id) => lcx.icx.member_owner(id),
+                    | ContainerId::Module(_) => {},
+                }
+
+                let ty = lcx.lower_ty(ty);
+                let ty = match id.lookup(db.upcast()).container {
+                    | ContainerId::Class(i) => lcx.icx.class_item(i, ty),
+                    | ContainerId::Member(i) => lcx.icx.member_item(i, ty, &data.name, &db.body(id.into())),
+                    | _ => ty,
+                };
+
+                lcx.finish(ty).ty
+            } else {
+                db.infer(id.into()).self_type
+            }
+        },
+        | ValueTyDefId::StaticId(id) => {
+            let data = db.static_data(id);
+
+            if let Some(ty) = data.ty {
+                let resolver = id.resolver(db.upcast());
+                let mut icx = InferenceContext::new(db, resolver, TypedDefId::StaticId(id).into(), false);
+                let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+
+                match id.lookup(db.upcast()).container {
+                    | ContainerId::Class(id) => lcx.icx.class_owner(id),
+                    | ContainerId::Member(id) => lcx.icx.member_owner(id),
+                    | ContainerId::Module(_) => {},
+                }
+
+                let ty = lcx.lower_ty(ty);
+                let ty = match id.lookup(db.upcast()).container {
+                    | ContainerId::Class(i) => lcx.icx.class_item(i, ty),
+                    | ContainerId::Member(i) => lcx.icx.member_item(i, ty, &data.name, &db.body(id.into())),
+                    | _ => ty,
+                };
+
+                lcx.finish(ty).ty
+            } else {
+                db.infer(id.into()).self_type
+            }
+        },
+        | ValueTyDefId::ConstId(id) => {
+            let data = db.const_data(id);
+
+            if let Some(ty) = data.ty {
+                let resolver = id.resolver(db.upcast());
+                let mut icx = InferenceContext::new(db, resolver, TypedDefId::ConstId(id).into(), false);
+                let mut lcx = LowerCtx::new(data.type_map(), &mut icx);
+                let ty = lcx.lower_ty(ty);
+
+                lcx.finish(ty).ty
+            } else {
+                db.infer(id.into()).self_type
+            }
+        },
         | ValueTyDefId::CtorId(id) => db.ctor_ty(id).ty,
+    }
+}
+
+pub(crate) fn value_ty_recover(db: &dyn HirDatabase, _cycle: &Vec<String>, id: &ValueTyDefId) -> TyAndSrc<Ty> {
+    let owner = match *id {
+        | ValueTyDefId::FuncId(id) => TypeVarOwner::DefWithBodyId(DefWithBodyId::FuncId(id)),
+        | ValueTyDefId::ConstId(id) => TypeVarOwner::DefWithBodyId(DefWithBodyId::ConstId(id)),
+        | ValueTyDefId::StaticId(id) => TypeVarOwner::DefWithBodyId(DefWithBodyId::StaticId(id)),
+        | ValueTyDefId::CtorId(id) => TypeVarOwner::TypedDefId(TypedDefId::CtorId(id)),
+    };
+
+    let def = match *id {
+        | ValueTyDefId::FuncId(id) => TypedDefId::FuncId(id),
+        | ValueTyDefId::ConstId(id) => TypedDefId::ConstId(id),
+        | ValueTyDefId::StaticId(id) => TypedDefId::StaticId(id),
+        | ValueTyDefId::CtorId(id) => TypedDefId::CtorId(id),
+    };
+
+    TyAndSrc {
+        ty: crate::ty::TyKind::Error(crate::ty::Reason::Error).intern(db),
+        src: (owner, TypeOrigin::Def(def)),
     }
 }
 

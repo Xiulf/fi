@@ -2,6 +2,7 @@ module Data.Option =
 
 import Core
 import Core.Error (Try, Unwrap)
+import Core.Mappable
 import Intrinsics (crash)
 
 type Option t =
@@ -14,15 +15,16 @@ member (Option t) of Default =
 member Option of Try =
     ret x = Some x
 
-    bind self f = case self of
-        Some x -> f x
-        None -> None
+    bind (Some x) f = f x
+    bind None _ = None
 
 member Option of Unwrap =
-    unwrap self = case self of
-        Some x -> x
-        None -> crash "cannot unwrap a none value"
+    unwrap (Some x) = x
+    unwrap None = crash "cannot unwrap a none value"
 
-    unwrap_or self def = case self of
-        Some x -> x
-        None -> def
+    unwrap_or (Some x) _ = x
+    unwrap_or None def = def
+
+member Option of Mappable =
+    map (Some x) f = Some (f x)
+    map None _ = None

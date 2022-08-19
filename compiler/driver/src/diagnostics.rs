@@ -104,7 +104,7 @@ fn emit_diagnostic(
     } else {
         let span = (file_id, usize::from(d.range().start())..usize::from(d.range().end()));
 
-        builder = builder.with_label(Label::new(span).with_message(d.title()).with_color(color));
+        builder = builder.with_label(Label::new(span).with_color(color));
     }
 
     for ann in d.secondary_annotations() {

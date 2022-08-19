@@ -6,4 +6,4 @@ import Core.Cmp
 member (Pair a b) of Default where Default a, Default b =
     default = default, default
 
-derive member (Pair a b) of Eq where Eq a, Eq b
+; derive member (Pair a b) of Eq where Eq a, Eq b

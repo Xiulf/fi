@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 use arena::ArenaMap;
 use hir::db::HirDatabase;
-use hir::id::DefWithBodyId;
+use hir::id::{DefWithBodyId, HasModule};
+use hir::ty::{Ty, TyKind};
 
 #[no_mangle]
 pub fn init(logger: &'static dyn log::Log, max_level: log::LevelFilter) {
@@ -245,55 +246,37 @@ impl<'a> Ctx<'a> {
 
     pub fn codegen_body(&mut self, owner: DefWithBodyId, is_assoc: bool) -> io::Result<()> {
         write!(self, "function(")?;
-        let mut skip_where = is_assoc;
-        let mut skip_forall = is_assoc;
         let mut bcx = BodyCtx::new(self, owner);
-        let mut ty = bcx.infer.self_type.ty;
+        let mut ty = if is_assoc {
+            bcx.member_item()
+        } else {
+            bcx.infer.self_type.ty
+        };
+
+        let type_vars = bcx.type_vars.len();
+        let records = bcx.records.len();
         let body = bcx.body.clone();
 
-        loop {
-            match ty.lookup(bcx.db) {
-                | hir::ty::TyKind::ForAll(kinds, inner, _) => {
-                    use hir::id::HasModule;
-                    let lib = bcx.owner.module(bcx.db.upcast()).lib;
-                    let symbol_ctor = bcx.db.lang_item(lib, "symbol-kind".into()).unwrap();
-                    let symbol_ctor = symbol_ctor.as_type_ctor().unwrap();
+        ty = for_each_type_var(bcx.db, owner, ty, || {
+            let name = format!("type{}", bcx.type_vars.len());
 
-                    for kind in kinds.iter() {
-                        if kind.lookup(bcx.db) == hir::ty::TyKind::Ctor(symbol_ctor) {
-                            let name = format!("type{}", bcx.type_vars.len());
+            write!(bcx, "{}, ", name)?;
+            bcx.type_vars.push(expr::JsExpr::Ident { name });
+            Ok(())
+        })?;
 
-                            if !skip_forall {
-                                write!(bcx, "{}, ", name)?;
-                            }
+        for_each_record(bcx.db, ty, || {
+            let name = format!("record{}", bcx.records.len());
 
-                            bcx.type_vars.push(expr::JsExpr::Ident { name });
-                        }
-                    }
+            write!(bcx, "{}, ", name)?;
+            bcx.records.push(expr::JsExpr::Ident { name });
+            Ok(())
+        })?;
 
-                    ty = inner;
-                    skip_forall = false;
-                },
-                | hir::ty::TyKind::Where(clause, inner) => {
-                    for ctnt in clause.constraints.iter() {
-                        let class = bcx.db.class_data(ctnt.class);
-
-                        if !class.items.is_empty() {
-                            let name = format!("record{}", bcx.records.len());
-
-                            if !skip_where {
-                                write!(bcx, "{}, ", name)?;
-                            }
-
-                            bcx.records.push(expr::JsExpr::Ident { name });
-                        }
-                    }
-
-                    ty = inner;
-                    skip_where = false;
-                },
-                | _ => break,
-            }
+        if bcx.type_vars.len() != type_vars || bcx.records.len() != records {
+            writeln!(bcx, ") {{")?;
+            bcx.out.indent();
+            write!(bcx, "return function (")?;
         }
 
         for (i, &pat) in body.params().iter().enumerate() {
@@ -313,7 +296,14 @@ impl<'a> Ctx<'a> {
         bcx.out.indent();
         bcx.lower(true)?;
         bcx.out.dedent();
-        write!(self, ";\n}}")
+        write!(bcx, ";\n}}")?;
+
+        if bcx.type_vars.len() != type_vars || bcx.records.len() != records {
+            bcx.out.dedent();
+            write!(self, ";\n}}")?;
+        }
+
+        Ok(())
     }
 
     pub fn codegen_body_expr(&mut self, owner: DefWithBodyId) -> io::Result<()> {
@@ -342,6 +332,67 @@ impl<'a, 'b> BodyCtx<'a, 'b> {
 
         ret.write(&mut self.out, in_block)
     }
+
+    pub fn member_item(&mut self) -> Ty {
+        let mut ty = self.infer.self_type.ty;
+
+        ty = for_each_type_var(self.db, self.owner, ty, || {
+            let name = format!("type{}", self.type_vars.len());
+
+            self.type_vars.push(expr::JsExpr::Ident { name });
+            Ok(())
+        })
+        .unwrap();
+
+        ty = for_each_record(self.db, ty, || {
+            let name = format!("record{}", self.records.len());
+
+            self.records.push(expr::JsExpr::Ident { name });
+            Ok(())
+        })
+        .unwrap();
+
+        ty
+    }
+}
+
+fn for_each_type_var(
+    db: &dyn HirDatabase,
+    owner: DefWithBodyId,
+    ty: Ty,
+    mut f: impl FnMut() -> io::Result<()>,
+) -> io::Result<Ty> {
+    if let TyKind::ForAll(kinds, inner, _) = ty.lookup(db) {
+        let lib = owner.module(db.upcast()).lib;
+        let symbol_ctor = db.lang_item(lib, "symbol-kind".into()).unwrap();
+        let symbol_ctor = symbol_ctor.as_type_ctor().unwrap();
+
+        for kind in kinds.iter() {
+            if kind.lookup(db) == TyKind::Ctor(symbol_ctor) {
+                f()?;
+            }
+        }
+
+        return Ok(inner);
+    }
+
+    Ok(ty)
+}
+
+fn for_each_record(db: &dyn HirDatabase, ty: Ty, mut f: impl FnMut() -> io::Result<()>) -> io::Result<Ty> {
+    if let TyKind::Where(clause, inner) = ty.lookup(db) {
+        for ctnt in clause.constraints.iter() {
+            let class = db.class_data(ctnt.class);
+
+            if !class.items.is_empty() {
+                f()?;
+            }
+        }
+
+        return Ok(inner);
+    }
+
+    Ok(ty)
 }
 
 impl<'a> Write for Ctx<'a> {

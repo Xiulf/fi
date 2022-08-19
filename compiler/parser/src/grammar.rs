@@ -111,10 +111,10 @@ fn export(p: &mut Parser) {
     }
 }
 
-fn peek_operator(p: &mut Parser, in_record: bool) -> bool {
+fn peek_operator(p: &mut Parser, disallow: impl Into<TokenSet>) -> bool {
     const OPERATORS: TokenSet = TokenSet::new(&[OPERATOR, ARROW, LEFT_ARROW, DBL_DOT, COMMA, COLON, PIPE, EQUALS, AT]);
 
-    p.at_ts(OPERATORS) && (!in_record || !p.at_ts(TokenSet::new(&[COMMA, PIPE])))
+    p.at_ts(OPERATORS) && !p.at_ts(disallow.into())
 }
 
 pub(crate) mod fragments {

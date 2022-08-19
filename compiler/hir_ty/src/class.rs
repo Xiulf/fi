@@ -178,7 +178,7 @@ impl Member<Ty, Constraint> {
             .zip(self.types.iter())
             .map(|(&ty, with)| {
                 let with = with.to_info(db, types, type_vars, src);
-                match_type(types, ty, with, &mut subst, &mut vars)
+                match_type(db, types, ty, with, &mut subst, &mut vars)
             })
             .collect::<Vec<_>>();
 
@@ -294,18 +294,23 @@ impl ClassEnv {
 
     pub fn solve(
         &self,
-        _db: &dyn HirDatabase,
+        db: &dyn HirDatabase,
         types: &mut Types,
         ctnt: CtntInfo,
         scope: Option<ClassEnvScope>,
     ) -> Option<ClassEnvMatchResult> {
         self.in_scope(scope).find_map(|scope| {
             let entry = &self.entries[scope];
+
+            if entry.ctnt().class != ctnt.class {
+                return None;
+            }
+
             let mut subst = FxHashMap::default();
             let mut vars = FxHashMap::default();
 
             for (&ty, &with) in ctnt.types.iter().zip(entry.ctnt.types.iter()) {
-                if match_type(types, ty, with, &mut subst, &mut vars) != Matched::Match(()) {
+                if match_type(db, types, ty, with, &mut subst, &mut vars) != Matched::Match(()) {
                     return None;
                 }
             }
@@ -393,6 +398,7 @@ fn verify(matches: &[Matched<()>], deps: &[FunDep]) -> bool {
 }
 
 fn match_type(
+    db: &dyn HirDatabase,
     types: &mut Types,
     ty: TyId,
     with: TyId,
@@ -400,6 +406,7 @@ fn match_type(
     vars: &mut FxHashMap<TypeVar, TyId>,
 ) -> Matched<()> {
     match_type_inner(
+        db,
         types,
         ty,
         with,
@@ -411,6 +418,7 @@ fn match_type(
 }
 
 fn match_type_inner(
+    db: &dyn HirDatabase,
     types: &mut Types,
     ty: TyId,
     with: TyId,
@@ -419,9 +427,13 @@ fn match_type_inner(
     subst: &mut FxHashMap<Unknown, TyId>,
     vars: &mut FxHashMap<TypeVar, TyId>,
 ) -> Matched<()> {
+    // log::debug!("{} == {}", ty.display(db, types), with.display(db, types));
     match (types[ty].clone(), types[with].clone()) {
-        | (_, TyInfo::Unknown(_) | TyInfo::Skolem(..)) => unreachable!(),
+        | (_, TyInfo::Unknown(_)) => unreachable!(),
         | (TyInfo::Error, _) | (_, TyInfo::Error) => Matched::Match(()),
+        | (TyInfo::Skolem(v1, t1), TyInfo::Skolem(v2, t2)) if v1 == v2 => {
+            match_type_inner(db, types, t1, t2, ty_skolems, with_skolems, subst, vars)
+        },
         | (TyInfo::Skolem(_, _), _) => Matched::Unknown,
         | (TyInfo::TypeVar(a), TyInfo::TypeVar(b))
             if ty_skolems.contains(&a) && with_skolems.contains(&b) && a.idx() == b.idx() =>
@@ -443,10 +455,10 @@ fn match_type_inner(
         | (TyInfo::Ctor(c1), TyInfo::Ctor(c2)) if c1 == c2 => Matched::Match(()),
         | (TyInfo::Alias(c1), TyInfo::Alias(c2)) if c1 == c2 => Matched::Match(()),
         | (TyInfo::App(a1, ref a2), TyInfo::App(b1, ref b2)) if a2.len() == b2.len() => {
-            match_type_inner(types, a1, b1, ty_skolems, with_skolems, subst, vars).then(
+            match_type_inner(db, types, a1, b1, ty_skolems, with_skolems, subst, vars).then(
                 a2.iter()
                     .zip(b2.iter())
-                    .map(|(a2, b2)| match_type_inner(types, *a2, *b2, ty_skolems, with_skolems, subst, vars))
+                    .map(|(a2, b2)| match_type_inner(db, types, *a2, *b2, ty_skolems, with_skolems, subst, vars))
                     .fold(Matched::Match(()), Matched::then),
             )
         },
@@ -456,10 +468,28 @@ fn match_type_inner(
             for (i, (k1, k2)) in v1.iter().zip(v2.iter()).enumerate() {
                 ty_skolems.insert(TypeVar::new(i as u32, s1));
                 with_skolems.insert(TypeVar::new(i as u32, s2));
-                matched = matched.then(match_type(types, *k1, *k2, subst, vars));
+                matched = matched.then(match_type_inner(
+                    db,
+                    types,
+                    *k1,
+                    *k2,
+                    ty_skolems,
+                    with_skolems,
+                    subst,
+                    vars,
+                ));
             }
 
-            matched = matched.then(match_type_inner(types, a1, a2, ty_skolems, with_skolems, subst, vars));
+            matched = matched.then(match_type_inner(
+                db,
+                types,
+                a1,
+                a2,
+                ty_skolems,
+                with_skolems,
+                subst,
+                vars,
+            ));
 
             for i in 0..v1.len() as u32 {
                 ty_skolems.remove(&TypeVar::new(i, s1));
@@ -472,7 +502,7 @@ fn match_type_inner(
             let safe = unsafe { &*(types as *const Types) };
             let (matches, (lhs, rhs)) = TyId::align_rows_with(
                 safe,
-                |t1, t2| match_type_inner(types, t1, t2, ty_skolems, with_skolems, subst, vars),
+                |t1, t2| match_type_inner(db, types, t1, t2, ty_skolems, with_skolems, subst, vars),
                 ty,
                 with,
             );

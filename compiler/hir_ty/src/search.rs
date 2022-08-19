@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use hir_def::expr::ExprId;
 use hir_def::id::TypeVarOwner;
-use hir_def::resolver::{TypeNs, ValueNs};
+use hir_def::resolver::{Resolver, ValueNs};
 
 use crate::infer::InferenceContext;
 use crate::info::{ToInfo, TyId, TyInfo};
@@ -20,68 +20,65 @@ impl<Ns> Default for TypeSearchResult<Ns> {
 
 impl InferenceContext<'_> {
     pub fn search_value(&mut self, ty: TyId, expr: ExprId) -> Arc<TypeSearchResult<ValueNs>> {
-        let mut icx = InferenceContext::new(self.db, self.resolver.clone(), self.owner, false);
-        let safe = unsafe { &mut *(&mut icx as *mut InferenceContext) };
-        let safe2 = unsafe { &mut *(&mut icx as *mut InferenceContext) };
+        let resolver = Resolver::for_expr(self.db.upcast(), self.resolver.body_owner().unwrap(), expr);
+        let mut results = Vec::new();
+        let subst = self.subst.clone();
         let src = self.source(expr);
 
-        icx.types = self.types.clone();
-        icx.subst = self.subst.clone();
+        for ns in resolver.iter_values() {
+            let t = match ns {
+                | ValueNs::Local(id) => {
+                    let t = self.result.type_of_pat[id];
+                    self.subst_type(t)
+                },
+                | ValueNs::Fixity(_) => self.unit(src),
+                | ValueNs::Func(id) => {
+                    if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
+                        let t = self.result.self_type.ty;
+                        self.subst_type(t)
+                    } else {
+                        self.db
+                            .value_ty(id.into())
+                            .ty
+                            .to_info(self.db, &mut self.types, &mut self.type_vars, src)
+                    }
+                },
+                | ValueNs::Static(id) => {
+                    self.db
+                        .value_ty(id.into())
+                        .ty
+                        .to_info(self.db, &mut self.types, &mut self.type_vars, src)
+                },
+                | ValueNs::Const(id) => {
+                    self.db
+                        .value_ty(id.into())
+                        .ty
+                        .to_info(self.db, &mut self.types, &mut self.type_vars, src)
+                },
+                | ValueNs::Ctor(id) => {
+                    self.db
+                        .value_ty(id.into())
+                        .ty
+                        .to_info(self.db, &mut self.types, &mut self.type_vars, src)
+                },
+            };
 
-        let results = self
-            .resolver
-            .iter_values()
-            .map(|ns| {
-                let ty = match ns {
-                    | ValueNs::Local(id) => self.result.type_of_pat[id],
-                    | ValueNs::Fixity(_) => safe.unit(src),
-                    | ValueNs::Func(id) => {
-                        if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
-                            self.result.self_type.ty
-                        } else {
-                            self.db
-                                .value_ty(id.into())
-                                .ty
-                                .to_info(self.db, &mut safe.types, &mut safe.type_vars, src)
-                        }
-                    },
-                    | ValueNs::Static(id) => {
-                        self.db
-                            .value_ty(id.into())
-                            .ty
-                            .to_info(self.db, &mut safe.types, &mut safe.type_vars, src)
-                    },
-                    | ValueNs::Const(id) => {
-                        self.db
-                            .value_ty(id.into())
-                            .ty
-                            .to_info(self.db, &mut safe.types, &mut safe.type_vars, src)
-                    },
-                    | ValueNs::Ctor(id) => {
-                        self.db
-                            .value_ty(id.into())
-                            .ty
-                            .to_info(self.db, &mut safe.types, &mut safe.type_vars, src)
-                    },
-                };
+            if self.types[t] == TyInfo::Error {
+                continue;
+            }
 
-                (ns, ty)
-            })
-            .filter(|(_, t)| safe2.types[*t] != TyInfo::Error)
-            .filter(|(_, t)| {
-                let res = icx.subsume_types(*t, ty, expr.into());
-                icx.solve_constraints();
-                let res = res && icx.result.diagnostics.is_empty();
-                icx.result.diagnostics.clear();
-                res
-            })
-            .map(|(ns, _)| ns)
-            .collect();
+            let res = self.subsume_types(t, ty, expr.into());
+            let _ = self.solve_constraints();
+
+            if res && self.result.diagnostics.is_empty() {
+                results.push(ns);
+            }
+
+            self.result.diagnostics.clear();
+        }
+
+        self.subst = subst;
 
         Arc::new(TypeSearchResult { results })
-    }
-
-    pub fn search_type(&self, ty: TyId) -> Arc<TypeSearchResult<TypeNs>> {
-        Arc::new(TypeSearchResult { results: Vec::new() })
     }
 }

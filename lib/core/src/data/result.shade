@@ -2,6 +2,7 @@ module Data.Result =
 
 import Data.Option (Some, None)
 import Core.Error (Try, Unwrap)
+import Core.Mappable
 import Intrinsics (crash)
 
 type Result e t =
@@ -29,3 +30,7 @@ member (Result e) of Unwrap =
 
     unwrap_or (Ok x) _ = x
     unwrap_or (Error _) def = def
+
+member (Result e) of Mappable =
+    map (Ok x) f = Ok (f x)
+    map (Error e) _ = Error e

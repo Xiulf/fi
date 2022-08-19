@@ -25,22 +25,31 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for ValueHole<'db, 'd, DB> {
     }
 
     fn notes(&self) -> Vec<String> {
+        if self.diag.search.results.is_empty() {
+            return Vec::new();
+        }
+
+        let body = self.db.body(self.diag.owner);
         let found = self
             .diag
             .search
             .results
             .iter()
             .map(|&ns| match ns {
-                | ValueNs::Local(id) => String::new(),
-                | ValueNs::Fixity(id) => Fixity::from(id).path(self.db).to_string(),
-                | ValueNs::Func(id) => Func::from(id).path(self.db).to_string(),
-                | ValueNs::Static(id) => Static::from(id).path(self.db).to_string(),
-                | ValueNs::Const(id) => Const::from(id).path(self.db).to_string(),
-                | ValueNs::Ctor(id) => Ctor::from(id).path(self.db).to_string(),
+                | ValueNs::Local(id) => match body[id] {
+                    | hir::Pat::Bind { ref name, .. } => name.clone(),
+                    | _ => unreachable!(),
+                },
+                | ValueNs::Fixity(id) => Fixity::from(id).name(self.db),
+                | ValueNs::Func(id) => Func::from(id).name(self.db),
+                | ValueNs::Static(id) => Static::from(id).name(self.db),
+                | ValueNs::Const(id) => Const::from(id).name(self.db),
+                | ValueNs::Ctor(id) => Ctor::from(id).name(self.db),
             })
+            .map(|n| n.to_string())
             .collect::<Vec<_>>();
 
-        vec![format!("available values: {}", found.join(", "))]
+        vec![format!("available values:\n  {}", found.join(", "))]
     }
 }
 

@@ -11,6 +11,7 @@ pub mod dyn_map;
 pub mod expr;
 pub mod id;
 pub mod in_file;
+pub mod infix;
 pub mod item_scope;
 pub mod item_tree;
 pub mod keys;

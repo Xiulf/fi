@@ -6,26 +6,25 @@ mod skolem;
 mod subsume;
 mod unify;
 
-use std::iter::{Enumerate, FromIterator, Peekable};
+use std::iter::FromIterator;
 use std::sync::Arc;
 
 use arena::ArenaMap;
 use diagnostics::InferenceDiagnostic;
 use hir_def::body::Body;
-use hir_def::data::FixityKind;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
 use hir_def::id::{
     AssocItemId, ClassId, ContainerId, DefWithBodyId, FixityId, HasModule, MemberId, TypeCtorId, TypeVarOwner,
 };
+use hir_def::infix::ProcessInfix;
 use hir_def::name::Name;
 use hir_def::pat::PatId;
 use hir_def::path::Path;
-use hir_def::resolver::{HasResolver, Resolver, ValueNs};
+use hir_def::resolver::Resolver;
 use hir_def::type_ref::{LocalTypeRefId, LocalTypeVarId};
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use syntax::{Assoc, Prec};
 
 use self::diagnostics::{CtntExpected, CtntFound};
 use crate::class::{ClassEnv, ClassEnvScope};
@@ -95,6 +94,27 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
     }
 
     Arc::new(icx.finish())
+}
+
+pub(crate) fn infer_recover(
+    db: &dyn HirDatabase,
+    _cycle: &Vec<String>,
+    def: &DefWithBodyId,
+) -> Arc<InferenceResult<Ty, Constraint>> {
+    let owner = TypeVarOwner::from(*def);
+    let src = (owner, TypeOrigin::Def(owner.into()));
+    let self_type = crate::ty::TyKind::Error(crate::ty::Reason::Error).intern(db);
+    let diagnostics = vec![InferenceDiagnostic::InferenceCycle { owner }];
+
+    Arc::new(InferenceResult {
+        self_type: TyAndSrc { ty: self_type, src },
+        type_of_expr: ArenaMap::default(),
+        type_of_pat: ArenaMap::default(),
+        kind_of_ty: ArenaMap::default(),
+        instances: FxHashMap::default(),
+        methods: FxHashMap::default(),
+        diagnostics,
+    })
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -219,6 +239,8 @@ impl<'a> InferenceContext<'a> {
         }
 
         res.self_type.ty = res.self_type.ty.normalize(&mut self.types);
+        self.result.self_type = res.self_type;
+        self.result.type_of_pat = res.type_of_pat.clone();
         res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(self)).collect();
 
         let mut finalize = |v: &mut TyId| {
@@ -304,133 +326,13 @@ impl<'a> InferenceContext<'a> {
         self.types.insert(TyInfo::App(base, List::from_iter(args)), src)
     }
 
-    pub(crate) fn process_infix(
-        &mut self,
-        items: impl Iterator<Item = TyId>,
-        ops: &[Path],
-        src: TySource,
-        f: impl Fn(&mut InferenceContext, usize, TyId, TyId, TyId) -> TyId,
-        resolve: impl FnMut(&mut InferenceContext, usize, &Path, Resolver) -> TyId,
-    ) -> TyId {
-        let fixities = ops
-            .iter()
-            .enumerate()
-            .map(|(idx, op)| {
-                let (resolved, vis, _) = match self.resolver.resolve_value(self.db.upcast(), op) {
-                    | Some(r) => r,
-                    | None => {
-                        self.report(InferenceDiagnostic::UnresolvedOperator {
-                            src: match src.1 {
-                                | TypeOrigin::ExprId(id) => OperatorSource::ExprOrPat(id.into()),
-                                | TypeOrigin::PatId(id) => OperatorSource::ExprOrPat(id.into()),
-                                | TypeOrigin::TypeRefId(id) => OperatorSource::TypeRef(src.0, id),
-                                | _ => unreachable!(),
-                            },
-                            idx,
-                        });
-
-                        return None;
-                    },
-                };
-
-                if !vis.is_visible_from(self.db.upcast(), self.owner.module(self.db.upcast())) {
-                    self.report(InferenceDiagnostic::PrivateOperator {
-                        src: match src.1 {
-                            | TypeOrigin::ExprId(id) => OperatorSource::ExprOrPat(id.into()),
-                            | TypeOrigin::PatId(id) => OperatorSource::ExprOrPat(id.into()),
-                            | TypeOrigin::TypeRefId(id) => OperatorSource::TypeRef(src.0, id),
-                            | _ => unreachable!(),
-                        },
-                        idx,
-                    });
-
-                    return None;
-                }
-
-                let id = match resolved {
-                    | ValueNs::Fixity(id) => id,
-                    | _ => return None,
-                };
-
-                match self.db.fixity_data(id).kind {
-                    | FixityKind::Infix { assoc, prec } => Some((id, assoc, prec)),
-                    | _ => None,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        return go(
-            self,
-            fixities.into_iter().enumerate().peekable(),
-            items,
-            src,
-            &f,
-            resolve,
-        );
-
-        fn go(
-            ctx: &mut InferenceContext,
-            mut fixities: Peekable<Enumerate<impl Iterator<Item = Option<(FixityId, Assoc, Prec)>>>>,
-            mut types: impl Iterator<Item = TyId>,
-            src: TySource,
-            f: &impl Fn(&mut InferenceContext, usize, TyId, TyId, TyId) -> TyId,
-            mut resolve: impl FnMut(&mut InferenceContext, usize, &Path, Resolver) -> TyId,
-        ) -> TyId {
-            if let Some((i, fix)) = fixities.next() {
-                let (left, op) = if let Some((id, assoc, prec)) = fix {
-                    let data = ctx.db.fixity_data(id);
-                    let op = resolve(ctx, i, &data.func, id.resolver(ctx.db.upcast()));
-
-                    if let Some((_, next)) = fixities.peek() {
-                        let left = if let Some((id2, _, prec2)) = next {
-                            if id == *id2 {
-                                match assoc {
-                                    | Assoc::Left => true,
-                                    | Assoc::Right => false,
-                                    | Assoc::None => true, // @TODO: report error
-                                }
-                            } else {
-                                prec >= *prec2
-                            }
-                        } else {
-                            false
-                        };
-
-                        (left, op)
-                    } else {
-                        let lhs = types.next().unwrap_or_else(|| ctx.error(src));
-                        let rhs = types.next().unwrap_or_else(|| ctx.error(src));
-
-                        return f(ctx, i, op, lhs, rhs);
-                    }
-                } else {
-                    (false, ctx.error(src))
-                };
-
-                if left {
-                    let lhs = types.next().unwrap_or_else(|| ctx.error(src));
-                    let rhs = types.next().unwrap_or_else(|| ctx.error(src));
-                    let t = f(ctx, i, op, lhs, rhs);
-                    let types = std::iter::once(t).chain(types).collect::<Vec<_>>();
-
-                    go(ctx, fixities, types.into_iter(), src, f, resolve)
-                } else {
-                    let lhs = types.next().unwrap_or_else(|| ctx.error(src));
-                    let rhs = go(ctx, fixities, types, src, f, resolve);
-
-                    f(ctx, i, op, lhs, rhs)
-                }
-            } else {
-                types.next().unwrap_or_else(|| ctx.error(src))
-            }
-        }
-    }
-
     pub(crate) fn report(&mut self, diag: InferenceDiagnostic<TyId, CtntInfo>) {
         self.result.diagnostics.push(diag);
     }
 
+    // #[track_caller]
     pub(crate) fn report_mismatch(&mut self, expected: TyId, found: TyId, id: impl Into<ExprOrPatId>) {
+        // log::debug!("mismatch: {}", std::panic::Location::caller());
         let expected_src = self.types.source(expected);
         let found_src = self.types.source(found);
 
@@ -480,7 +382,7 @@ impl<'a> InferenceContext<'a> {
         res
     }
 
-    fn class_owner(&mut self, id: ClassId) {
+    pub(crate) fn class_owner(&mut self, id: ClassId) {
         let lower = self.db.lower_class(id);
         let src = self.source(TypeOrigin::Def(id.into()));
         let vars = lower
@@ -493,7 +395,7 @@ impl<'a> InferenceContext<'a> {
         self.type_vars.add_scope(vars);
     }
 
-    fn member_owner(&mut self, id: MemberId) {
+    pub(crate) fn member_owner(&mut self, id: MemberId) {
         let lower = self.db.lower_member(id);
         let src = self.source(TypeOrigin::Def(id.into()));
         let vars = lower
@@ -506,7 +408,7 @@ impl<'a> InferenceContext<'a> {
         self.type_vars.add_scope(vars);
     }
 
-    fn class_item(&mut self, class: ClassId, ann: TyId) -> TyId {
+    pub(crate) fn class_item(&mut self, class: ClassId, ann: TyId) -> TyId {
         let src = self.source(TypeOrigin::Def(class.into()));
         let lower = self.db.lower_class(class);
         let scope = self.type_vars.top_scope();
@@ -530,7 +432,9 @@ impl<'a> InferenceContext<'a> {
         self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
     }
 
-    fn member_item(&mut self, member: MemberId, ann: TyId, item: &Name, body: &Body) -> TyId {
+    pub(crate) fn member_item(&mut self, member: MemberId, ann: TyId, item: &Name, body: &Body) -> TyId {
+        self.can_generalize = false;
+
         let lower = self.db.lower_member(member);
 
         if lower.member.class == ClassId::dummy() {
@@ -619,6 +523,12 @@ impl<'a> InferenceContext<'a> {
         for (_, src) in unknowns {
             self.report(InferenceDiagnostic::UninferredType { src });
         }
+
+        let constraints = std::mem::replace(&mut self.constraints, Vec::new());
+
+        for (ctnt, expected, found, _) in constraints {
+            self.report(InferenceDiagnostic::UnsolvedConstraint { expected, found, ctnt });
+        }
     }
 }
 
@@ -642,9 +552,10 @@ impl<'a> BodyInferenceContext<'a> {
 
     fn check_body(&mut self, ann: TyId, is_func: bool) {
         match self.types[ann].clone() {
-            | TyInfo::ForAll(_, ty, scope) => {
+            | TyInfo::ForAll(_kinds, inner, scope) => {
                 self.type_vars.push_scope(scope);
-                self.check_body(ty, is_func);
+                // let sk = self.skolemize(&kinds, inner, scope);
+                self.check_body(inner, is_func);
                 return;
             },
             | TyInfo::Where(where_, ty) => {
@@ -682,6 +593,85 @@ impl<'a> BodyInferenceContext<'a> {
 
         self.ret_type = ret;
         self.check_expr(body.body_expr(), ret);
+    }
+
+    pub(crate) fn with_expr_scope<T>(&mut self, expr: ExprId, f: impl FnOnce(&mut Self) -> T) -> T {
+        if let TypeVarOwner::DefWithBodyId(def) = self.owner {
+            let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+            let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
+            let res = f(self);
+
+            self.resolver = old_resolver;
+            res
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+impl<'a> ProcessInfix for InferenceContext<'a> {
+    type It = TyId;
+    type Src = TySource;
+
+    fn db(&self) -> &dyn hir_def::db::DefDatabase {
+        self.db.upcast()
+    }
+
+    fn resolver(&self) -> &Resolver {
+        &self.resolver
+    }
+
+    fn error(&mut self, src: Self::Src) -> Self::It {
+        Self::error(self, src)
+    }
+
+    fn on_unresolved(&mut self, src: Self::Src, idx: usize, _: &Path) {
+        self.report(InferenceDiagnostic::UnresolvedOperator {
+            src: match src.1 {
+                | TypeOrigin::ExprIdInfix(id, idx) => OperatorSource::ExprOrPat((id, idx).into()),
+                | TypeOrigin::ExprId(id) => OperatorSource::ExprOrPat(id.into()),
+                | TypeOrigin::TypeRefId(id) => OperatorSource::TypeRef(self.owner, id.into()),
+                | _ => unreachable!(),
+            },
+            idx,
+        });
+    }
+
+    fn on_private(&mut self, src: Self::Src, idx: usize, _: &Path, _: FixityId) {
+        self.report(InferenceDiagnostic::PrivateOperator {
+            src: match src.1 {
+                | TypeOrigin::ExprIdInfix(id, idx) => OperatorSource::ExprOrPat((id, idx).into()),
+                | TypeOrigin::ExprId(id) => OperatorSource::ExprOrPat(id.into()),
+                | TypeOrigin::TypeRefId(id) => OperatorSource::TypeRef(self.owner, id.into()),
+                | _ => unreachable!(),
+            },
+            idx,
+        });
+    }
+}
+
+impl<'a> ProcessInfix for BodyInferenceContext<'a> {
+    type It = TyId;
+    type Src = TySource;
+
+    fn db(&self) -> &dyn hir_def::db::DefDatabase {
+        self.db.upcast()
+    }
+
+    fn resolver(&self) -> &Resolver {
+        &self.resolver
+    }
+
+    fn error(&mut self, src: Self::Src) -> Self::It {
+        InferenceContext::error(self, src)
+    }
+
+    fn on_unresolved(&mut self, src: Self::Src, idx: usize, path: &Path) {
+        InferenceContext::on_unresolved(self, src, idx, path);
+    }
+
+    fn on_private(&mut self, src: Self::Src, idx: usize, path: &Path, id: FixityId) {
+        InferenceContext::on_private(self, src, idx, path, id);
     }
 }
 
@@ -743,7 +733,7 @@ pub(crate) mod diagnostics {
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum WhereSource {
-        TypeRef(LocalTypeRefId),
+        TypeRef(TypeVarOwner, LocalTypeRefId),
         Class(ClassId),
         Member(MemberId),
     }
@@ -808,6 +798,9 @@ pub(crate) mod diagnostics {
         RecursiveTypeAlias {
             src: TySource,
         },
+        InferenceCycle {
+            owner: TypeVarOwner,
+        },
         ValueHole {
             id: ExprId,
             ty: T,
@@ -868,20 +861,23 @@ pub(crate) mod diagnostics {
                     let source_map = db.body_source_map(owner).1;
 
                     match id {
-                        | ExprOrPatId::ExprIdInfix(id, _) | ExprOrPatId::ExprId(id) => {
-                            source_map.expr_syntax(id).ok().map(|s| s.map(|v| v.syntax_node_ptr()))
+                        | ExprOrPatId::ExprIdInfix(id, _) | ExprOrPatId::ExprId(id) => match source_map.expr_syntax(id)
+                        {
+                            | Ok(e) => e.map(|v| v.syntax_node_ptr()),
+                            | Err(e) => e.0.source(db.upcast()).map(|v| SyntaxNodePtr::new(v.syntax())),
                         },
-                        | ExprOrPatId::PatId(id) => {
-                            source_map.pat_syntax(id).ok().map(|s| s.map(|v| v.syntax_node_ptr()))
+                        | ExprOrPatId::PatId(id) => match source_map.pat_syntax(id) {
+                            | Ok(e) => e.map(|v| v.syntax_node_ptr()),
+                            | Err(e) => e.0.source(db.upcast()).map(|v| SyntaxNodePtr::new(v.syntax())),
                         },
                     }
                 },
-                | _ => None,
+                | _ => unreachable!(),
             };
 
             let where_src = |src| match src {
-                | WhereSource::TypeRef(tr) => owner.with_type_source_map(db.upcast(), |source_map| {
-                    let root = db.parse(file).syntax_node();
+                | WhereSource::TypeRef(owner, tr) => owner.with_type_source_map(db.upcast(), |source_map| {
+                    let root = owner.source(db.upcast()).file_syntax(db.upcast());
 
                     source_map
                         .type_ref_syntax(tr)
@@ -940,7 +936,7 @@ pub(crate) mod diagnostics {
 
             match self {
                 | InferenceDiagnostic::UnresolvedValue { id } => {
-                    let src = expr_or_pat(owner, *id).unwrap().value;
+                    let src = expr_or_pat(owner, *id).value;
 
                     sink.push(UnresolvedValue { file, src });
                 },
@@ -992,7 +988,7 @@ pub(crate) mod diagnostics {
                     sink.push(UnresolvedOperator { file, src, idx: *idx });
                 },
                 | InferenceDiagnostic::PrivateValue { id } => {
-                    let src = expr_or_pat(owner, *id).unwrap().value;
+                    let src = expr_or_pat(owner, *id).value;
 
                     sink.push(PrivateValue { file, src });
                 },
@@ -1071,7 +1067,7 @@ pub(crate) mod diagnostics {
                     expected_src,
                     found_src,
                 } => {
-                    let src = expr_or_pat(owner, *id).unwrap().value;
+                    let src = expr_or_pat(owner, *id).value;
                     let expected_src = ty_src(*expected_src);
                     let found_src = ty_src(*found_src);
 
@@ -1086,14 +1082,14 @@ pub(crate) mod diagnostics {
                 },
                 | InferenceDiagnostic::UnsolvedConstraint { expected, found, ctnt } => {
                     let expected = match *expected {
-                        | CtntExpected::ExprOrPat(id) => expr_or_pat(owner, id),
+                        | CtntExpected::ExprOrPat(id) => Some(expr_or_pat(owner, id)),
                         | CtntExpected::Where(w, i) => where_src(w)
                             .and_then(|w| w.map(|w| w.constraints().nth(i)).transpose())
                             .map(|c| c.map(|c| SyntaxNodePtr::new(c.syntax()))),
                     };
 
                     let src = match *found {
-                        | CtntFound::ExprOrPat(id) => expr_or_pat(owner, id).unwrap(),
+                        | CtntFound::ExprOrPat(id) => expr_or_pat(owner, id),
                         | CtntFound::Member(id) => id
                             .lookup(db.upcast())
                             .source(db.upcast())
@@ -1115,18 +1111,28 @@ pub(crate) mod diagnostics {
                         src: src.value,
                     });
                 },
+                | InferenceDiagnostic::InferenceCycle { owner } => {
+                    let src = owner.source(db.upcast());
+
+                    sink.push(InferenceCycle {
+                        file: src.file_id,
+                        src: SyntaxNodePtr::new(src.value.syntax()),
+                    });
+                },
                 | InferenceDiagnostic::ValueHole { id, ty, search } => {
-                    let source_map = match owner {
-                        | TypeVarOwner::DefWithBodyId(id) => db.body_source_map(id).1,
+                    let owner = match owner {
+                        | TypeVarOwner::DefWithBodyId(id) => id,
                         | _ => return,
                     };
 
+                    let source_map = db.body_source_map(owner).1;
                     let src = source_map.expr_syntax(*id).unwrap().map(|ptr| ptr.syntax_node_ptr());
 
                     sink.push(ValueHole {
                         file: src.file_id,
                         src: src.value,
                         ty: *ty,
+                        owner,
                         search: search.clone(),
                     });
                 },

@@ -221,6 +221,11 @@ impl InferenceContext<'_> {
     pub fn unify_types(&mut self, t1: TyId, t2: TyId) -> bool {
         let t1 = self.subst_type(t1).normalize(&mut self.types);
         let t2 = self.subst_type(t2).normalize(&mut self.types);
+        // log::debug!(
+        //     "{} == {}",
+        //     t1.display(self.db, &self.types),
+        //     t2.display(self.db, &self.types),
+        // );
 
         match (self.types[t1].clone(), self.types[t2].clone()) {
             | (TyInfo::Error, _) | (_, TyInfo::Error) => true,
@@ -280,6 +285,17 @@ impl InferenceContext<'_> {
                 self.unify_types(sk, t2)
             },
             | (_, TyInfo::ForAll(_, _, _)) => self.unify_types(t2, t1),
+            | (TyInfo::Where(c1, a1), TyInfo::Where(c2, a2)) if c1.constraints.len() == c2.constraints.len() => {
+                c1.constraints.iter().zip(c2.constraints.iter()).all(|(c1, c2)| {
+                    c1.class == c2.class
+                        && c1.types.len() == c2.types.len()
+                        && c1
+                            .types
+                            .iter()
+                            .zip(c2.types.iter())
+                            .all(|(&t1, &t2)| self.unify_types(t1, t2))
+                }) && self.unify_types(a1, a2)
+            },
             | (_, _) => false,
         }
     }

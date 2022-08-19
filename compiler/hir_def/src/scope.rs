@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 
 use crate::body::Body;
 use crate::db::DefDatabase;
-use crate::expr::{Expr, ExprId, Stmt};
+use crate::expr::{CaseValue, Expr, ExprId, Stmt};
 use crate::id::{DefWithBodyId, TypeVarOwner};
 use crate::name::Name;
 use crate::pat::{Pat, PatId};
@@ -168,11 +168,13 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
 
                 scopes.add_bindings(body, scope, arm.pat);
 
-                if let Some(guard) = arm.guard {
-                    compute_expr_scopes(guard, body, scopes, scope);
+                match arm.value {
+                    | CaseValue::Normal(expr) => compute_expr_scopes(expr, body, scopes, scope),
+                    | CaseValue::Guarded(ref guards, ref exprs) => {
+                        guards.iter().for_each(|&g| compute_expr_scopes(g, body, scopes, scope));
+                        exprs.iter().for_each(|&e| compute_expr_scopes(e, body, scopes, scope));
+                    },
                 }
-
-                compute_expr_scopes(arm.expr, body, scopes, scope);
             }
         },
         | e => e.walk(|e| compute_expr_scopes(e, body, scopes, scope)),

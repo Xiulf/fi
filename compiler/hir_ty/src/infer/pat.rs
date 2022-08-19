@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use hir_def::expr::Literal;
+use hir_def::infix::ProcessInfix;
 use hir_def::pat::{Pat, PatId};
 use hir_def::resolver::ValueNs;
 
@@ -57,7 +58,7 @@ impl BodyInferenceContext<'_> {
                                 | _ => todo!(),
                             };
 
-                            let ty = ty.to_info(ctx.db, &mut ctx.types, &mut ctx.type_vars, src).ty;
+                            let ty = ty.to_info(ctx.db, &mut ctx.icx.types, &mut ctx.icx.type_vars, src).ty;
 
                             ctx.instantiate(ty, pat.into())
                         },

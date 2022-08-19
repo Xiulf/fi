@@ -3,6 +3,7 @@ module Core.Cmp =
 import Core
 import Data.Bool (not)
 
+
 class Eq lhs rhs =
     eq :: lhs -> rhs -> Bool
     
@@ -14,20 +15,28 @@ type Ordering =
     | Eq
     | Gt
 
+
 ne lhs rhs = not (eq lhs rhs)
 
 lt lhs rhs = case lhs `cmp` rhs of
     Lt -> True
-    _ -> False
+    _  -> False
     
 le lhs rhs = case lhs `cmp` rhs of
     Gt -> False
-    _ -> True
+    _  -> True
 
 gt lhs rhs = case lhs `cmp` rhs of
     Gt -> True
-    _ -> False
+    _  -> False
 
 ge lhs rhs = case lhs `cmp` rhs of
     Lt -> False
-    _ -> True
+    _  -> True
+
+
+member Ordering Ordering of Eq =
+    eq Lt Lt = True
+    eq Eq Eq = True
+    eq Gt Gt = True
+    eq _  _  = False

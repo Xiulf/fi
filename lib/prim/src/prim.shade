@@ -40,8 +40,8 @@ foreign type BufPtr :: Type -> Type
 foreign type BufPtrSentinel :: Type -> Figure -> Type
 
 @lang = "array-type"
-@repr(array(elem = 0, len = 1))
-foreign type Array :: Type -> Figure -> Type
+@repr(array(elem = 1, len = 0))
+foreign type Array :: Figure -> Type -> Type
 
 @lang = "slice-type"
 @repr(

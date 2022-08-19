@@ -15,7 +15,9 @@ pub(crate) fn pattern(p: &mut Parser) {
 }
 
 fn peek_operator_pat(p: &mut Parser, in_record: bool) -> bool {
-    peek_operator(p, in_record) && !p.at_ts(TokenSet::new(&[ARROW, LEFT_ARROW, EQUALS]))
+    let disallow = if in_record { COMMA.into() } else { TokenSet::EMPTY };
+
+    peek_operator(p, disallow | ARROW | LEFT_ARROW | EQUALS)
 }
 
 pub(crate) fn infix(p: &mut Parser, in_record: bool) -> Option<CompletedMarker> {

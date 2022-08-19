@@ -1,19 +1,16 @@
 module Main =
 
 import Core
-import Core.Cmp
-import Data.Bool
+import Data.List
 import Js
 import Js.Console
-import Js.DOM
 
 @main
 main =
-    let a, b, c = default :: Int8, Option (), Str
-    let f = _ + 1
-
-    print a b c f :: ()
-
-test =
-    let a = if True then 0 else 1
-    a + 1
+    let a = 4:0:2:1:3:Nil
+    let b = reverse a
+    let c = b#3
+    let d = length a
+    let e = sort a .toArray
+    
+    print a b c d e :: ()

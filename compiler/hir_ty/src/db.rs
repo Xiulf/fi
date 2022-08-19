@@ -12,9 +12,11 @@ use crate::ty::{Constraint, Ty, TyAndSrc, TyKind};
 #[salsa::query_group(HirDatabaseStorage)]
 pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     #[salsa::invoke(crate::infer::infer_query)]
+    #[salsa::cycle(crate::infer::infer_recover)]
     fn infer(&self, id: DefWithBodyId) -> Arc<InferenceResult<Ty, Constraint>>;
 
     #[salsa::invoke(crate::lower::value_ty)]
+    #[salsa::cycle(crate::lower::value_ty_recover)]
     fn value_ty(&self, id: ValueTyDefId) -> TyAndSrc<Ty>;
 
     #[salsa::invoke(crate::lower::ctor_ty)]

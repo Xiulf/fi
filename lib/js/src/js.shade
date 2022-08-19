@@ -1,6 +1,7 @@
 module Js =
 
 import Core
+import Core.Ops (Concat)
 import Core.Foldable (foldl)
 
 foreign toString :: forall a. a -> Str

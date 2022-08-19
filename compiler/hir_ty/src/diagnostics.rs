@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use base_db::input::FileId;
 use hir_def::diagnostic::Diagnostic;
+use hir_def::id::DefWithBodyId;
 use hir_def::in_file::InFile;
 use hir_def::resolver::ValueNs;
 use syntax::{ast, AstPtr, SyntaxNodePtr};
@@ -280,10 +281,31 @@ impl Diagnostic for RecursiveTypeAlias {
 }
 
 #[derive(Debug)]
+pub struct InferenceCycle {
+    pub file: FileId,
+    pub src: SyntaxNodePtr,
+}
+
+impl Diagnostic for InferenceCycle {
+    fn message(&self) -> String {
+        "cycle when inferring type".into()
+    }
+
+    fn display_source(&self) -> InFile<SyntaxNodePtr> {
+        InFile::new(self.file, self.src)
+    }
+
+    fn as_any(&self) -> &(dyn Any + Send + 'static) {
+        self
+    }
+}
+
+#[derive(Debug)]
 pub struct ValueHole {
     pub file: FileId,
     pub src: SyntaxNodePtr,
     pub ty: Ty,
+    pub owner: DefWithBodyId,
     pub search: Arc<TypeSearchResult<ValueNs>>,
 }
 

@@ -18,6 +18,7 @@ infixl 7 div as (/)
 infixl 7 rem as (%)
 
 infixl 6 concat as (++)
+infixl 8 index as (#)
 
 class Add lhs rhs out | lhs rhs -> out, lhs -> rhs =
     add :: lhs -> rhs -> out
@@ -36,3 +37,6 @@ class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
 
 class Concat lhs rhs | lhs -> rhs =
     concat :: lhs -> rhs -> lhs
+
+class Index list idx out | list idx -> out, list -> idx =
+    index :: list -> idx -> out

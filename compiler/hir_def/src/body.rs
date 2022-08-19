@@ -40,8 +40,8 @@ pub struct BodySourceMap {
     type_source_map: TypeSourceMap,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SyntheticSyntax;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SyntheticSyntax(pub DefWithBodyId);
 
 enum BodyExpr {
     Single(ast::Expr),
@@ -96,7 +96,7 @@ impl Body {
             },
         };
 
-        let (body, source_map) = Body::new(db, params, body, file_id, module);
+        let (body, source_map) = Body::new(db, def, params, body, file_id, module);
 
         (Arc::new(body), Arc::new(source_map))
     }
@@ -107,12 +107,13 @@ impl Body {
 
     fn new(
         db: &dyn DefDatabase,
+        owner: DefWithBodyId,
         params: Option<Vec<ast::AstChildren<ast::Pat>>>,
         body: Option<BodyExpr>,
         file_id: FileId,
         module: ModuleId,
     ) -> (Body, BodySourceMap) {
-        lower::lower(db, params, body, file_id, module)
+        lower::lower(db, owner, params, body, file_id, module)
     }
 
     pub fn has_body(&self) -> bool {

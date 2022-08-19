@@ -164,6 +164,8 @@ pub enum SyntaxKind {
     EXPR_RETURN,
 
     CASE_ARM,
+    CASE_VALUE,
+    CASE_GUARDED,
     CASE_GUARD,
 
     LIT_INT,

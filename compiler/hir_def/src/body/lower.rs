@@ -7,8 +7,8 @@ use syntax::{ast, AstPtr};
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
-use crate::expr::{CaseArm, Expr, ExprId, Literal, RecordField, Stmt};
-use crate::id::{LocalModuleId, Lookup, ModuleDefId, ModuleId};
+use crate::expr::{CaseArm, CaseValue, Expr, ExprId, Literal, RecordField, Stmt};
+use crate::id::{DefWithBodyId, LocalModuleId, Lookup, ModuleDefId, ModuleId};
 use crate::in_file::InFile;
 use crate::name::{AsName, Name};
 use crate::pat::{Pat, PatId};
@@ -17,6 +17,7 @@ use crate::type_ref::{TypeMap, TypeMapBuilder};
 
 pub(super) fn lower(
     db: &dyn DefDatabase,
+    owner: DefWithBodyId,
     params: Option<Vec<ast::AstChildren<ast::Pat>>>,
     body: Option<super::BodyExpr>,
     file_id: FileId,
@@ -25,6 +26,7 @@ pub(super) fn lower(
     ExprCollector {
         db,
         file_id,
+        owner,
         module: module.local_id,
         def_map: db.def_map(module.lib),
         source_map: BodySourceMap::default(),
@@ -46,6 +48,7 @@ struct ExprCollector<'a> {
     source_map: BodySourceMap,
     def_map: Arc<DefMap>,
     module: LocalModuleId,
+    owner: DefWithBodyId,
     file_id: FileId,
     type_builder: TypeMapBuilder,
 }
@@ -105,8 +108,9 @@ impl<'a> ExprCollector<'a> {
                     };
 
                     let expr = self.collect_expr(expr);
+                    let value = CaseValue::Normal(expr);
 
-                    arms.push(CaseArm { pat, expr, guard: None });
+                    arms.push(CaseArm { pat, value });
                 }
 
                 let exprs = (0..param_count)
@@ -161,7 +165,7 @@ impl<'a> ExprCollector<'a> {
     }
 
     fn alloc_expr_desugared(&mut self, expr: Expr) -> ExprId {
-        self.make_expr(expr, Err(SyntheticSyntax))
+        self.make_expr(expr, Err(SyntheticSyntax(self.owner)))
     }
 
     fn missing_expr(&mut self) -> ExprId {
@@ -184,11 +188,11 @@ impl<'a> ExprCollector<'a> {
     }
 
     fn alloc_pat_desugared(&mut self, pat: Pat) -> PatId {
-        self.make_pat(pat, Err(SyntheticSyntax))
+        self.make_pat(pat, Err(SyntheticSyntax(self.owner)))
     }
 
     fn missing_pat(&mut self) -> PatId {
-        self.make_pat(Pat::Missing, Err(SyntheticSyntax))
+        self.alloc_pat_desugared(Pat::Missing)
     }
 
     fn make_pat(&mut self, pat: Pat, src: Result<PatSource, SyntheticSyntax>) -> PatId {
@@ -328,12 +332,29 @@ impl<'a> ExprCollector<'a> {
                     .arms()
                     .map(|arm| {
                         let pat = self.collect_pat_opt(arm.pat());
-                        let guard = arm.guard().map(|g| self.collect_expr_opt(g.expr()));
-                        let expr = self.collect_expr_opt(arm.val());
+                        let value = match arm.value()? {
+                            | ast::CaseValue::Normal(v) => CaseValue::Normal(self.collect_expr_opt(v.expr())),
+                            | ast::CaseValue::Guarded(v) => {
+                                let mut guards = Vec::new();
+                                let mut exprs = Vec::new();
 
-                        CaseArm { pat, guard, expr }
+                                for g in v.guards() {
+                                    if g.is_else() {
+                                        exprs.push(self.collect_expr_opt(g.guard()));
+                                        break;
+                                    }
+
+                                    guards.push(self.collect_expr_opt(g.guard()));
+                                    exprs.push(self.collect_expr_opt(g.value()));
+                                }
+
+                                CaseValue::Guarded(guards.into(), exprs.into())
+                            },
+                        };
+
+                        Some(CaseArm { pat, value })
                     })
-                    .collect();
+                    .collect::<Option<Box<[_]>>>()?;
 
                 self.alloc_expr(Expr::Case { pred, arms }, syntax_ptr)
             },

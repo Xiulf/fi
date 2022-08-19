@@ -239,6 +239,7 @@ impl<'src> Lexer<'src> {
                     start,
                     |s, p, lyt| match lyt {
                         | LayoutDelim::Do => true,
+                        | LayoutDelim::CaseBinders => true,
                         | LayoutDelim::Of => false,
                         | LayoutDelim::DeclHead => false,
                         | _ => offside_end_p(s, p, lyt),
@@ -754,14 +755,18 @@ impl<'src> Lexer<'src> {
                     self.insert_start(LayoutDelim::Do);
                 },
             },
-            | "if" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+            | "if" => match self.stack[..] {
+                | [.., (_, LayoutDelim::Prop)] => {
                     self.emit(IDENT);
                     self.stack.pop().unwrap();
-                } else {
+                },
+                | [.., (_, LayoutDelim::CaseBinders)] => {
+                    self.emit(IF_KW);
+                },
+                | _ => {
                     self.insert_default(start, IF_KW);
                     self.insert_start(LayoutDelim::If);
-                }
+                },
             },
             | "then" => {
                 let mut c = Collapse::new(self.tokens.len());

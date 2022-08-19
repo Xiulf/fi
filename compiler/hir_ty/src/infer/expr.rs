@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use hir_def::expr::{Expr, ExprId, Literal, Stmt};
+use hir_def::expr::{CaseArm, CaseValue, Expr, ExprId, Literal, Stmt};
 use hir_def::id::{FixityId, TypeVarOwner};
+use hir_def::infix::ProcessInfix;
 use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, ExprOrPatId, InferenceContext, InferenceDiagnostic};
-use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
+use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo, TySource};
 use crate::lower::LowerCtx;
 
 impl BodyInferenceContext<'_> {
@@ -82,15 +83,9 @@ impl BodyInferenceContext<'_> {
                     ops,
                     src,
                     |ctx, i, op, lhs, rhs| {
-                        let src = ctx.source((expr, i));
-                        let ret = ctx.fresh_type(src);
-                        let func_ty = ctx.fn_type([lhs, rhs], ret, src);
+                        let mid = ctx.check_app(op, lhs, (expr, i));
 
-                        if !ctx.unify_types(op, func_ty) {
-                            ctx.report_mismatch(op, func_ty, expr);
-                        }
-
-                        ret
+                        ctx.check_app(mid, rhs, (expr, i))
                     },
                     |ctx, i, path, resolver| ctx.infer_path(path, resolver, expr, Some(i)),
                 )
@@ -98,7 +93,7 @@ impl BodyInferenceContext<'_> {
             | Expr::App { base, arg } => {
                 let base_ty = self.infer_expr(*base);
 
-                self.check_app(base_ty, *arg, expr)
+                self.infer_app(base_ty, *arg, expr)
             },
             | Expr::Field { base, field } => {
                 let row_kind = self.lang_type("row-kind", src);
@@ -142,7 +137,7 @@ impl BodyInferenceContext<'_> {
                     self.check_expr(expr, elem_ty);
                 }
 
-                self.types.insert(TyInfo::App(array_type, [elem_ty, len].into()), src)
+                self.types.insert(TyInfo::App(array_type, [len, elem_ty].into()), src)
             },
             | Expr::Do { stmts } => self.infer_block(stmts, expr),
             | Expr::Try { stmts } => self.infer_try(stmts, expr),
@@ -194,42 +189,7 @@ impl BodyInferenceContext<'_> {
                     self.unit(src)
                 }
             },
-            | Expr::Case { pred, arms } => {
-                if let TypeVarOwner::DefWithBodyId(def) = self.owner {
-                    let pred_ty = self.infer_expr(*pred);
-                    let res = self.fresh_type(src);
-                    let never_ty = self.lang_type("never-type", src);
-
-                    for arm in arms.iter() {
-                        self.check_pat(arm.pat, pred_ty);
-
-                        let new_resolver = Resolver::for_expr(self.db.upcast(), def, arm.expr);
-                        let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
-
-                        if let Some(guard) = arm.guard {
-                            let bool_src = self.source(guard);
-                            let bool_ty = self.lang_type("bool-type", bool_src);
-
-                            self.check_expr(guard, bool_ty);
-                        }
-
-                        let expr = self.infer_expr(arm.expr);
-                        let expr = self.subst_type(expr);
-
-                        if self.types[expr] != self.types[never_ty] {
-                            if !self.subsume_types(expr, res, arm.expr.into()) {
-                                self.report_mismatch(res, expr, arm.expr);
-                            }
-                        }
-
-                        self.resolver = old_resolver;
-                    }
-
-                    res
-                } else {
-                    unreachable!();
-                }
-            },
+            | Expr::Case { pred, arms } => self.infer_case(src, *pred, arms),
             | Expr::Recur => match self.lambda_type.last() {
                 | Some(lambda_type) => *lambda_type,
                 | None => todo!(),
@@ -247,6 +207,51 @@ impl BodyInferenceContext<'_> {
 
         self.result.type_of_expr.insert(expr, ty);
         ty
+    }
+
+    pub fn infer_case(&mut self, src: TySource, pred: ExprId, arms: &[CaseArm]) -> TyId {
+        let pred_ty = self.infer_expr(pred);
+        let res = self.fresh_type(src);
+
+        for arm in arms.iter() {
+            self.check_pat(arm.pat, pred_ty);
+
+            match arm.value {
+                | CaseValue::Normal(expr) => {
+                    self.with_expr_scope(expr, |ctx| {
+                        let ty = ctx.infer_expr(expr);
+                        let ty = ctx.subst_type(ty);
+
+                        if !ctx.subsume_types(ty, res, expr.into()) {
+                            ctx.report_mismatch(res, ty, expr);
+                        }
+                    });
+                },
+                | CaseValue::Guarded(ref guards, ref exprs) => {
+                    for &guard in guards.iter() {
+                        self.with_expr_scope(guard, |ctx| {
+                            let bool_src = ctx.source(guard);
+                            let bool_ty = ctx.lang_type("bool-type", bool_src);
+
+                            ctx.check_expr(guard, bool_ty);
+                        });
+                    }
+
+                    for &expr in exprs.iter() {
+                        self.with_expr_scope(expr, |ctx| {
+                            let ty = ctx.infer_expr(expr);
+                            let ty = ctx.subst_type(ty);
+
+                            if !ctx.subsume_types(ty, res, expr.into()) {
+                                ctx.report_mismatch(res, ty, expr);
+                            }
+                        });
+                    }
+                },
+            }
+        }
+
+        res
     }
 
     pub fn infer_block(&mut self, stmts: &[Stmt], expr: ExprId) -> TyId {
@@ -502,7 +507,7 @@ impl BodyInferenceContext<'_> {
             },
             | (Expr::App { base, arg }, _) => {
                 let base_ty = self.infer_expr(*base);
-                let ret = self.check_app(base_ty, *arg, expr);
+                let ret = self.infer_app(base_ty, *arg, expr);
 
                 if !self.subsume_types(ret, expected, expr.into()) {
                     self.report_mismatch(expected, ret, expr);
@@ -510,6 +515,8 @@ impl BodyInferenceContext<'_> {
             },
             | (_, _) => {
                 let infer = self.infer_expr(expr);
+                let infer = self.subst_type(infer);
+                // log::debug!("{}", std::panic::Location::caller());
 
                 if !self.subsume_types(infer, expected, expr.into()) {
                     self.report_mismatch(expected, infer, expr);
@@ -518,9 +525,24 @@ impl BodyInferenceContext<'_> {
         }
     }
 
-    pub fn check_app(&mut self, base_ty: TyId, arg: ExprId, expr: ExprId) -> TyId {
-        let src = self.source(expr);
+    pub fn infer_app(&mut self, base_ty: TyId, arg: ExprId, expr: ExprId) -> TyId {
         let base_ty = self.subst_type(base_ty);
+        let func_ty = self.lang_ctor("fn-type");
+
+        if let Some(&[arg_ty, ret_ty]) = base_ty.match_ctor(&self.types, func_ty).as_deref() {
+            self.check_expr(arg, arg_ty);
+            return ret_ty;
+        }
+
+        let arg = self.infer_expr(arg);
+
+        self.check_app(base_ty, arg, expr)
+    }
+
+    pub fn check_app(&mut self, base_ty: TyId, arg: TyId, expr: impl Into<ExprOrPatId> + Copy) -> TyId {
+        let src = self.source(expr.into());
+        let base_ty = self.subst_type(base_ty);
+        // log::debug!("{}", base_ty.display(self.db, &self.types));
 
         match self.types[base_ty].clone() {
             | TyInfo::ForAll(kinds, ty, scope) => {
@@ -545,10 +567,16 @@ impl BodyInferenceContext<'_> {
             },
             | _ => {
                 let ret = self.fresh_type(src);
-                let arg = self.infer_expr(arg);
                 let func_ty = self.fn_type([arg], ret, src);
+                // log::debug!("{}", std::panic::Location::caller());
+                // log::debug!(
+                //     "{} == {}",
+                //     base_ty.display(self.db, &self.types),
+                //     func_ty.display(self.db, &self.types)
+                // );
 
                 if !self.unify_types(base_ty, func_ty) {
+                    // log::debug!("mismatch");
                     self.report_mismatch(base_ty, func_ty, expr);
                 }
 

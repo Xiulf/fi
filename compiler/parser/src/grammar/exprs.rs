@@ -3,11 +3,11 @@ use crate::parser::{CompletedMarker, Parser};
 use crate::syntax_kind::*;
 
 pub(crate) fn expr(p: &mut Parser) {
-    expr_(p, true);
+    expr_(p, true, TokenSet::EMPTY);
 }
 
-fn expr_(p: &mut Parser, allow_do: bool) {
-    if let Some(m) = infix(p, allow_do, false) {
+fn expr_(p: &mut Parser, allow_do: bool, disallow: impl Into<TokenSet> + Copy) {
+    if let Some(m) = infix(p, allow_do, disallow) {
         if p.at(DBL_COLON) {
             let expr = m.precede(p);
             let _ = p.bump(DBL_COLON);
@@ -18,34 +18,22 @@ fn expr_(p: &mut Parser, allow_do: bool) {
     }
 }
 
-// pub(crate) fn assign(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
-//     let mut m = infix(p, allow_do, false)?;
-
-//     if p.eat(EQUALS) {
-//         let expr = m.precede(p);
-//         let _ = expr_(p, allow_do);
-
-//         m = expr.complete(p, EXPR_ASSIGN);
-//     }
-
-//     Some(m)
-// }
-
-pub(crate) fn infix(p: &mut Parser, allow_do: bool, in_record: bool) -> Option<CompletedMarker> {
+pub(crate) fn infix(p: &mut Parser, allow_do: bool, disallow: impl Into<TokenSet> + Copy) -> Option<CompletedMarker> {
     let mut m = app(p, allow_do)?;
 
-    if p.eat(TICK) {
+    while p.eat(TICK) {
         let expr = m.precede(p);
 
         paths::path(p);
         p.expect(TICK);
-        infix(p, allow_do, in_record);
-
+        app(p, allow_do);
         m = expr.complete(p, EXPR_INFIX);
-    } else if peek_operator(p, in_record) {
+    }
+
+    if peek_operator(p, disallow) {
         let expr = m.precede(p);
 
-        while peek_operator(p, in_record) {
+        while peek_operator(p, disallow) {
             p.bump_any();
             app(p, allow_do);
         }
@@ -169,7 +157,7 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
         },
         | IF_KW => {
             p.bump_any();
-            expr_(p, false);
+            expr_(p, false, TokenSet::EMPTY);
 
             match p.current() {
                 | THEN_KW => {
@@ -255,7 +243,7 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
             p.bump(L_BRACKET);
 
             while !p.at(EOF) && !p.at(R_BRACKET) {
-                expr(p);
+                expr_(p, true, COMMA);
 
                 if !p.at(R_BRACKET) {
                     p.expect(COMMA);
@@ -313,7 +301,7 @@ pub(crate) fn record_fields(p: &mut Parser) {
         if p.at(IDENT) && p.nth_at(1, EQUALS) {
             paths::name(p);
             p.bump(EQUALS);
-            infix(p, true, true);
+            infix(p, true, COMMA | PIPE);
             field.complete(p, FIELD_NORMAL);
         } else {
             paths::name(p);
@@ -367,23 +355,51 @@ pub(crate) fn stmt(p: &mut Parser, allow_bind: bool) {
         }
     }
 
+    while p.eat(LYT_SEP) {}
+
     expr(p);
     m.complete(p, STMT_EXPR);
 }
 
-pub(crate) fn case_arm(p: &mut Parser) {
+fn case_arm(p: &mut Parser) {
     let m = p.start();
 
     patterns::pattern(p);
+    case_value(p);
+    m.complete(p, CASE_ARM);
+}
 
-    if p.eat(PIPE) {
-        let guard = p.start();
+fn case_value(p: &mut Parser) {
+    let m = p.start();
 
+    if p.eat(ARROW) {
         expr(p);
-        guard.complete(p, CASE_GUARD);
+        m.complete(p, CASE_VALUE);
+        return;
     }
 
+    case_guard(p);
+
+    while p.at_ts(IF_KW | ELSE_KW) {
+        case_guard(p);
+    }
+
+    m.complete(p, CASE_GUARDED);
+}
+
+fn case_guard(p: &mut Parser) {
+    let m = p.start();
+
+    if p.eat(ELSE_KW) {
+        p.expect(ARROW);
+        expr(p);
+        m.complete(p, CASE_GUARD);
+        return;
+    }
+
+    p.bump(IF_KW);
+    expr_(p, true, ARROW);
     p.expect(ARROW);
     expr(p);
-    m.complete(p, CASE_ARM);
+    m.complete(p, CASE_GUARD);
 }

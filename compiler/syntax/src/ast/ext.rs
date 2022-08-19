@@ -839,18 +839,34 @@ impl CaseArm {
         support::child(&self.0)
     }
 
-    pub fn guard(&self) -> Option<CaseGuard> {
-        support::child(&self.0)
-    }
-
-    pub fn val(&self) -> Option<Expr> {
+    pub fn value(&self) -> Option<CaseValue> {
         support::child(&self.0)
     }
 }
 
-impl CaseGuard {
+impl CaseValueNormal {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.0)
+    }
+}
+
+impl CaseValueGuarded {
+    pub fn guards(&self) -> AstChildren<CaseGuard> {
+        support::children(&self.0)
+    }
+}
+
+impl CaseGuard {
+    pub fn is_else(&self) -> bool {
+        support::token(&self.0, ELSE_KW).is_some()
+    }
+
+    pub fn guard(&self) -> Option<Expr> {
+        support::child(&self.0)
+    }
+
+    pub fn value(&self) -> Option<Expr> {
+        support::children(&self.0).nth(1)
     }
 }
 

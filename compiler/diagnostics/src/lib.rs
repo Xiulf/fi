@@ -1,4 +1,5 @@
 mod duplicate_declaration;
+mod inference_cycle;
 mod mismatched_kind;
 mod mismatched_type;
 mod private_operator;
@@ -7,7 +8,7 @@ mod unsolved_constraint;
 mod value_hole;
 
 use hir::InFile;
-use syntax::TextRange;
+use syntax::{ast, AstNode, NameOwner, Parsed, SyntaxKind, SyntaxNodePtr, TextRange};
 
 pub trait Diagnostic {
     fn title(&self) -> String;
@@ -81,6 +82,8 @@ impl<DB: hir::db::HirDatabase> DiagnosticForWith<DB> for dyn hir::diagnostic::Di
             f(&private_operator::PrivateOperator::new(with, v))
         } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::DuplicateDeclaration>() {
             f(&duplicate_declaration::DuplicateDeclaration::new(with, v))
+        } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::InferenceCycle>() {
+            f(&inference_cycle::InferenceCycle::new(with, v))
         } else if let Some(v) = self.as_any().downcast_ref::<hir::diagnostic::ValueHole>() {
             f(&value_hole::ValueHole::new(with, v))
         } else {
@@ -100,5 +103,14 @@ impl<'d> Diagnostic for GenericDiagnostic<'d> {
 
     fn range(&self) -> TextRange {
         self.diagnostic.display_source().value.range()
+    }
+}
+
+fn item_name(ptr: SyntaxNodePtr, parse: &Parsed<ast::SourceFile>) -> TextRange {
+    match ptr.kind() {
+        | SyntaxKind::ITEM_FUN => ast::ItemFun::cast(ptr.to_node(parse.tree().syntax()))
+            .and_then(|i| Some(i.name()?.syntax().text_range()))
+            .unwrap_or_else(|| ptr.range()),
+        | _ => ptr.range(),
     }
 }
