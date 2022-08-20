@@ -7,6 +7,7 @@ use std::{fs, io};
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::{SourceDatabase, SourceDatabaseExt};
+use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
 use rustc_hash::FxHashSet;
@@ -141,7 +142,9 @@ impl Driver {
         let mut last_changed = false;
 
         for lib in hir::Lib::all(db) {
-            let changed = metadata::read_metadata(db, lib.into(), &db.target_dir(self.lib))
+            let id = lib.into();
+            let target_dir = db.target_dir(id);
+            let changed = metadata::read_metadata(db, id, &target_dir)
                 .map(|m| m.has_changed(db))
                 .unwrap_or(false);
 
@@ -152,7 +155,7 @@ impl Driver {
                     return Ok(false);
                 }
 
-                metadata::write_metadata(db, lib.into(), &db.target_dir(self.lib))?;
+                metadata::write_metadata(db, id, &target_dir)?;
                 last_changed = true;
             }
         }
@@ -167,13 +170,16 @@ impl Driver {
         fs::create_dir_all(self.db.target_dir(self.lib))?;
         let start = std::time::Instant::now();
         let db = &self.db;
+        let target_dir = db.target_dir(self.lib);
         let mut done = FxHashSet::default();
         let mut last_changed = false;
 
         for lib in hir::Lib::all(db) {
-            let changed = metadata::read_metadata(db, lib.into(), &db.target_dir(self.lib))
+            let id = lib.into();
+            let changed = metadata::read_metadata(db, id, &target_dir)
                 .map(|m| m.has_changed(db))
                 .unwrap_or(false);
+            let changed = changed || !Assembly::dummy(lib).path(db, &target_dir).exists();
 
             if changed || last_changed {
                 eprintln!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
@@ -188,7 +194,7 @@ impl Driver {
                 }
 
                 self.write_assembly(lib, &mut done)?;
-                metadata::write_metadata(db, lib.into(), &db.target_dir(self.lib))?;
+                metadata::write_metadata(db, id, &target_dir)?;
                 last_changed = true;
             } else {
                 done.insert(lib);

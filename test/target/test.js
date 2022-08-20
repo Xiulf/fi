@@ -1,6 +1,5 @@
 // /mnt/e/Language/fc/test/target/prim.js
-// /tmp/.tmpXW6km1
-// /tmp/.tmpvE0ey8
+// /tmp/.tmpjZUUF0
 var Prim_Unit;
 var Prim_False;
 var Prim_True;
@@ -48,16 +47,17 @@ const $member_Termination_17 = {
         return 0;
     },
 };
+// /tmp/.tmpbJadKP
 // /mnt/e/Language/fc/test/target/core.js
 // /mnt/e/Language/fc/test/target/prim.js
-// /tmp/.tmpfznM0Y
-// /tmp/.tmpa9eXYO
+// /tmp/.tmpTFI4Wk
+// /tmp/.tmptnRfQV
 const $member_Default_18 = {
     default: function() {
         return "";
     },
 };
-// /tmp/.tmp4GYuMI
+// /tmp/.tmpsOCEcS
 var Data_Option_None;
 var Data_Option_Some;
 Data_Option_None = (function() {
@@ -128,8 +128,8 @@ const $member_Mappable_22 = {
         };
     },
 };
-// /tmp/.tmpR0hVA3
-// /tmp/.tmpws8qWP
+// /tmp/.tmpfoKWFU
+// /tmp/.tmpgqwh5f
 var Core_Cmp_Lt;
 var Core_Cmp_Eq;
 var Core_Cmp_Gt;
@@ -208,15 +208,15 @@ const $member_Eq_23 = {
         };
     },
 };
-// /tmp/.tmpATBRZ3
-// /tmp/.tmpsENKD8
+// /tmp/.tmpjHo9w1
+// /tmp/.tmpmfAt77
 var Core_Error_unwrap_unsafe;
 Core_Error_unwrap_unsafe = function(record0, ) {
     return function (param0) {
         return record0.unwrap(param0);
     };
 };
-// /tmp/.tmpAZ03xO
+// /tmp/.tmpOo1sBL
 function $member_Default_24(record0, record1) {
     return {
         default: function() {
@@ -224,7 +224,7 @@ function $member_Default_24(record0, record1) {
         },
     };
 }
-// /tmp/.tmpGQC4gI
+// /tmp/.tmpw2Lr1s
 const $member_Default_25 = {
     default: function() {
         return 0;
@@ -272,15 +272,15 @@ const $member_Ord_32 = {
         };
     },
 };
-// /tmp/.tmp43FNeM
-// /tmp/.tmpl0SLY5
+// /tmp/.tmpxPK9tk
+// /tmp/.tmppY6nar
 var Core_Foldable_foldMap;
 Core_Foldable_foldMap = function(record0, record1, record2, ) {
     return function (param0) {
         return record0.foldr(param0, record1.default, (_0 => _1 => record2.concat(_0, _1)));
     };
 };
-// /tmp/.tmpfPtNCX
+// /tmp/.tmpmOphQ7
 var Data_Result_Error;
 var Data_Result_Ok;
 var Data_Result_ok;
@@ -377,7 +377,7 @@ const $member_Mappable_35 = {
         };
     },
 };
-// /tmp/.tmp5xk8o2
+// /tmp/.tmpvwR3Rq
 var Data_List_Nil;
 var Data_List_Cons;
 var Data_List_length;
@@ -601,7 +601,7 @@ const $member_Mappable_40 = {
         };
     },
 };
-// /tmp/.tmpeaH31X
+// /tmp/.tmp5TreYP
 var Data_Bool_not;
 Data_Bool_not = function(param2) {
     if (param2 instanceof Prim_True) {
@@ -632,7 +632,7 @@ function push(a, x) {
 function concatString(a, b) {
   return a + b.toString();
 }
-// /tmp/.tmpQdvt5V
+// /tmp/.tmpuscGu1
 var Js_Console_print;
 Js_Console_print = function(record0, ) {
     return function () {
@@ -654,7 +654,7 @@ function $member_Print_43(record0) {
         },
     };
 }
-// /tmp/.tmp80VY6q
+// /tmp/.tmpvVRmet
 var Js_DOM_createElement;
 var Js_DOM_Sym;
 Js_DOM_createElement = function(type0, ) {
@@ -669,7 +669,7 @@ Js_DOM_Sym = (function() {
     }
     return Sym;
 })();
-// /tmp/.tmpnRQCSh
+// /tmp/.tmpi8ZAlp
 var Js_toArray;
 Js_toArray = function(record0, ) {
     return function (param0) {
@@ -686,15 +686,15 @@ const $member_Concat_45 = {
         return concatString(param0, param1);
     },
 };
-// /tmp/.tmpOHhssd
+// /tmp/.tmpSKthFm
 var Main_main;
 Main_main = function() {
-    var $p7 = new Data_List_Cons(4, new Data_List_Cons(0, new Data_List_Cons(2, new Data_List_Cons(1, new Data_List_Cons(3, new Data_List_Cons(5, new Data_List_Nil()))))));
-    var $p10 = Data_List_reverse($member_Foldable_39)($p7);
-    var $p13 = $member_Index_38.index($p10, 3);
-    var $p16 = Data_List_length($p7);
-    var $p21 = Js_toArray($member_Foldable_39)(Data_List_sort($member_Ord_32)($p7));
-    return Js_Console_print($member_Print_43($member_Print_43($member_Print_43($member_Print_43($member_Print_43($member_Print_42))))))()($p7)($p10)($p13)($p16)($p21);
+    var $p8 = new Data_List_Cons(4, new Data_List_Cons(0, new Data_List_Cons(2, new Data_List_Cons(9, new Data_List_Cons(1, new Data_List_Cons(3, new Data_List_Cons(5, new Data_List_Nil())))))));
+    var $p11 = Data_List_reverse($member_Foldable_39)($p8);
+    var $p14 = $member_Index_38.index($p11, 3);
+    var $p17 = Data_List_length($p8);
+    var $p22 = Js_toArray($member_Foldable_39)(Data_List_sort($member_Ord_32)($p8));
+    return Js_Console_print($member_Print_43($member_Print_43($member_Print_43($member_Print_43($member_Print_43($member_Print_42))))))()($p8)($p11)($p14)($p17)($p22);
 };
 const $main = Main_main
 $main();

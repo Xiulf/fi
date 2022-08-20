@@ -63,7 +63,7 @@ pub fn read_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: &Path) -> Opt
 
     if let Ok(mut file) = File::open(metadata_dir) {
         let config = bincode::config::standard();
-        let mut meta: Metadata = bincode::serde::decode_from_std_read(&mut file, config).unwrap();
+        let mut meta: Metadata = bincode::serde::decode_from_std_read(&mut file, config).ok()?;
 
         meta.lib = lib;
 

@@ -42,6 +42,13 @@ impl Assembly {
         Self { lib, objects }
     }
 
+    pub fn dummy(lib: hir::Lib) -> Self {
+        Self {
+            lib,
+            objects: Vec::new(),
+        }
+    }
+
     pub fn path(&self, db: &dyn CodegenDatabase, target_dir: &Path) -> PathBuf {
         target_dir
             .join(format!("{}{}", self.prefix(db), self.lib.name(db.upcast())))
