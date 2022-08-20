@@ -138,12 +138,22 @@ impl Driver {
     pub fn check(&self) -> io::Result<bool> {
         let start = std::time::Instant::now();
         let db = &self.db;
+        let mut last_changed = false;
 
         for lib in hir::Lib::all(db) {
-            eprintln!("  \x1B[1;32m\x1B[1mChecking\x1B[0m {}", lib.name(db));
+            let changed = metadata::read_metadata(db, lib.into(), &db.target_dir(self.lib))
+                .map(|m| m.has_changed(db))
+                .unwrap_or(false);
 
-            if diagnostics::emit_diagnostics(db, lib, &mut io::stderr())? > 0 {
-                return Ok(false);
+            if changed || last_changed {
+                eprintln!("  \x1B[1;32m\x1B[1mChecking\x1B[0m {}", lib.name(db));
+
+                if diagnostics::emit_diagnostics(db, lib, &mut io::stderr())? > 0 {
+                    return Ok(false);
+                }
+
+                metadata::write_metadata(db, lib.into(), &db.target_dir(self.lib))?;
+                last_changed = true;
             }
         }
 
@@ -158,33 +168,31 @@ impl Driver {
         let start = std::time::Instant::now();
         let db = &self.db;
         let mut done = FxHashSet::default();
+        let mut last_changed = false;
 
         for lib in hir::Lib::all(db) {
             let changed = metadata::read_metadata(db, lib.into(), &db.target_dir(self.lib))
                 .map(|m| m.has_changed(db))
                 .unwrap_or(false);
 
-            if changed {
+            if changed || last_changed {
                 eprintln!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
-            }
+                let e = diagnostics::emit_diagnostics(db, lib, &mut io::stderr())?;
 
-            let e = diagnostics::emit_diagnostics(db, lib, &mut io::stderr())?;
+                if e == 1 {
+                    eprintln!("\x1B[1;31mAborting due to previous error\x1B[0m");
+                    return Ok(false);
+                } else if e > 1 {
+                    eprintln!("\x1B[1;31mAborting due to {} previous errors\x1B[0m", e);
+                    return Ok(false);
+                }
 
-            if e == 1 {
-                eprintln!("\x1B[1;31mAborting due to previous error\x1B[0m");
-                return Ok(false);
-            } else if e > 1 {
-                eprintln!("\x1B[1;31mAborting due to {} previous errors\x1B[0m", e);
-                return Ok(false);
-            }
-
-            if changed {
                 self.write_assembly(lib, &mut done)?;
+                metadata::write_metadata(db, lib.into(), &db.target_dir(self.lib))?;
+                last_changed = true;
             } else {
                 done.insert(lib);
             }
-
-            metadata::write_metadata(db, lib.into(), &db.target_dir(self.lib))?;
         }
 
         let elapsed = start.elapsed();

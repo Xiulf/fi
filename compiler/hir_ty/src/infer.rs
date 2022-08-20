@@ -142,10 +142,10 @@ pub struct InferenceContext<'a> {
     pub(crate) types: Types,
     pub(crate) type_vars: TypeVars,
     pub(crate) subst: unify::Substitution,
+    pub(crate) constraints: Vec<(CtntInfo, CtntExpected, CtntFound, Option<ClassEnvScope>)>,
     can_generalize: bool,
     class_env: ClassEnv,
     member_records: usize,
-    constraints: Vec<(CtntInfo, CtntExpected, CtntFound, Option<ClassEnvScope>)>,
 }
 
 struct BodyInferenceContext<'a> {
