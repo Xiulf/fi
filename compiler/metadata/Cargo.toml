@@ -1,0 +1,10 @@
+[package]
+name = "metadata"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hir = { path = "../hir" }
+rustc-hash = "1.1.0"
+serde = { version = "^1.0.123", features = ["derive"] }
+bincode = { version = "2.0.0-rc.1", features = ["serde"] }

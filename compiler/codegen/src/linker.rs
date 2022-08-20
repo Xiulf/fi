@@ -160,10 +160,10 @@ impl Linker for JsLinker {
     }
 
     fn add_object(&mut self, _kind: LibKind, path: &str) {
-        let mut path = Path::new(path).to_path_buf();
+        let mut path = Path::new(path).to_path_buf().with_extension("js");
 
         if !path.exists() {
-            path = self.rpath.join(path).with_extension("js");
+            path = self.rpath.join(path);
         }
 
         self.add_file(path);

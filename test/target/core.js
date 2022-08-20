@@ -1,5 +1,6 @@
 // /mnt/e/Language/fc/test/target/prim.js
-// /tmp/.tmp8Z0WUc
+// /tmp/.tmpXW6km1
+// /tmp/.tmpvE0ey8
 var Prim_Unit;
 var Prim_False;
 var Prim_True;
@@ -47,15 +48,14 @@ const $member_Termination_17 = {
         return 0;
     },
 };
-// /tmp/.tmpOzh75R
-// /tmp/.tmpRut230
-// /tmp/.tmpydJ0DX
+// /tmp/.tmpNEQgnC
+// /tmp/.tmpvLEo8a
 const $member_Default_18 = {
     default: function() {
         return "";
     },
 };
-// /tmp/.tmp03Gi6h
+// /tmp/.tmpx1LbNc
 var Data_Option_None;
 var Data_Option_Some;
 Data_Option_None = (function() {
@@ -126,8 +126,8 @@ const $member_Mappable_22 = {
         };
     },
 };
-// /tmp/.tmp4bsLe2
-// /tmp/.tmp3R6dEH
+// /tmp/.tmpGoYHkk
+// /tmp/.tmpkfHjB1
 var Core_Cmp_Lt;
 var Core_Cmp_Eq;
 var Core_Cmp_Gt;
@@ -206,15 +206,15 @@ const $member_Eq_23 = {
         };
     },
 };
-// /tmp/.tmp2pCeJI
-// /tmp/.tmpwQuK8Q
+// /tmp/.tmpUJ4z91
+// /tmp/.tmpvHPKHv
 var Core_Error_unwrap_unsafe;
 Core_Error_unwrap_unsafe = function(record0, ) {
     return function (param0) {
         return record0.unwrap(param0);
     };
 };
-// /tmp/.tmpGNbsJn
+// /tmp/.tmp5yr2db
 function $member_Default_24(record0, record1) {
     return {
         default: function() {
@@ -222,7 +222,7 @@ function $member_Default_24(record0, record1) {
         },
     };
 }
-// /tmp/.tmpYieoee
+// /tmp/.tmpnmuZJ8
 const $member_Default_25 = {
     default: function() {
         return 0;
@@ -270,15 +270,15 @@ const $member_Ord_32 = {
         };
     },
 };
-// /tmp/.tmpEgAqMS
-// /tmp/.tmpS52a3M
+// /tmp/.tmpQed86m
+// /tmp/.tmpeteTBR
 var Core_Foldable_foldMap;
 Core_Foldable_foldMap = function(record0, record1, record2, ) {
     return function (param0) {
         return record0.foldr(param0, record1.default, (_0 => _1 => record2.concat(_0, _1)));
     };
 };
-// /tmp/.tmpF1CaJ8
+// /tmp/.tmpYDkA5S
 var Data_Result_Error;
 var Data_Result_Ok;
 var Data_Result_ok;
@@ -375,7 +375,7 @@ const $member_Mappable_35 = {
         };
     },
 };
-// /tmp/.tmpG28kuL
+// /tmp/.tmpCIbpJd
 var Data_List_Nil;
 var Data_List_Cons;
 var Data_List_length;
@@ -599,7 +599,7 @@ const $member_Mappable_40 = {
         };
     },
 };
-// /tmp/.tmpo9TXyf
+// /tmp/.tmpYjItp7
 var Data_Bool_not;
 Data_Bool_not = function(param2) {
     if (param2 instanceof Prim_True) {
