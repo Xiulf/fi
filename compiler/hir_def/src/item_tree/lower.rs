@@ -4,6 +4,7 @@ use std::sync::Arc;
 use arena::{Idx, RawIdx};
 use base_db::input::FileId;
 use syntax::ast::{self, NameOwner};
+use syntax::ItemGroups;
 
 use crate::ast_id::AstIdMap;
 use crate::db::DefDatabase;
@@ -43,14 +44,16 @@ impl Ctx {
         }
     }
 
-    pub fn lower_modules(mut self, source_file: &ast::SourceFile) -> ItemTree {
-        self.tree.top_level = source_file.modules().map(|module| self.lower_items(&module)).collect();
+    pub fn lower_source_file(mut self, source_file: &ast::SourceFile) -> ItemTree {
+        self.tree.top_level = source_file
+            .module()
+            .map(|m| self.lower_items(m.item_groups()))
+            .unwrap_or_default();
         self.tree
     }
 
-    pub fn lower_items(&mut self, module: &ast::Module) -> Vec<Item> {
-        let items = module
-            .item_groups()
+    pub fn lower_items(&mut self, groups: ItemGroups) -> Vec<Item> {
+        let items = groups
             .flat_map(|(item, rest)| self.lower_item(&item, &rest))
             .flat_map(|item| item.0)
             .collect::<Vec<_>>();
@@ -93,6 +96,7 @@ impl Ctx {
     fn lower_item(&mut self, item: &ast::Item, rest: &[ast::Item]) -> Option<Items> {
         let attrs = RawAttrs::new(item);
         let items = match item {
+            | ast::Item::Module(ast) => self.lower_module(ast).map(Into::into),
             | ast::Item::Import(ast) => Some(Items(self.lower_import(ast).into_iter().map(Into::into).collect())),
             | ast::Item::Fixity(ast) => self.lower_fixity(ast).map(Into::into),
             | ast::Item::Fun(ast) => self
@@ -124,6 +128,14 @@ impl Ctx {
         }
 
         items
+    }
+
+    pub fn lower_module(&mut self, module: &ast::ItemModule) -> Option<LocalItemTreeId<Module>> {
+        let ast_id = self.ast_id_map.ast_id(module);
+        let name = module.name()?.as_name();
+        let items = self.lower_items(module.item_groups()).into_boxed_slice();
+
+        Some(id(self.tree.data.modules.alloc(Module { ast_id, name, items })))
     }
 
     fn lower_import(&mut self, import_item: &ast::ItemImport) -> Vec<LocalItemTreeId<Import>> {

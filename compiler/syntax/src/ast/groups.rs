@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use crate::ast::*;
 
-impl Module {
+impl ItemModule {
     pub fn item_groups(&self) -> ItemGroups {
         ItemGroups {
             items: self.items().peekable(),
@@ -36,6 +36,7 @@ pub struct AssocItemGroups {
 
 #[derive(Debug, Clone, Copy)]
 enum ItemGroupKind {
+    Module,
     Import,
     Fixity,
     Func(bool),
@@ -142,6 +143,7 @@ impl PartialEq for ItemGroupKind {
         use ItemGroupKind::*;
 
         match (self, other) {
+            | (Module, Module) => true,
             | (Import, Import) => true,
             | (Fixity, Fixity) => true,
             | (Func(true), Func(false)) => true,
@@ -186,6 +188,7 @@ impl Item {
 
     fn group_kind(&self) -> ItemGroupKind {
         match self {
+            | Item::Module(_) => ItemGroupKind::Module,
             | Item::Import(_) => ItemGroupKind::Import,
             | Item::Fixity(_) => ItemGroupKind::Fixity,
             | Item::Fun(it) if it.is_foreign() => ItemGroupKind::Func(false),

@@ -117,6 +117,7 @@ impl ItemTreeDiagnostic {
 
         fn ast_ptr_from_mod(db: &dyn DefDatabase, item_tree: &ItemTree, item: Item) -> SyntaxNodePtr {
             match item {
+                | Item::Module(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
                 | Item::Import(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
                 | Item::Fixity(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
                 | Item::Func(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),

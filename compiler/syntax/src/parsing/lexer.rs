@@ -46,6 +46,7 @@ struct Lexer<'src> {
 enum LayoutDelim {
     Root,
     ModuleHead,
+    ModuleBody,
     ClassHead,
     ClassBody,
     MemberHead,
@@ -70,9 +71,10 @@ enum LayoutDelim {
 impl LayoutDelim {
     fn is_indented(self) -> bool {
         match self {
-            | LayoutDelim::Where
+            | LayoutDelim::ModuleBody
             | LayoutDelim::ClassBody
             | LayoutDelim::MemberBody
+            | LayoutDelim::Where
             | LayoutDelim::Of
             | LayoutDelim::Do => true,
             | _ => false,
@@ -321,7 +323,7 @@ impl<'src> Lexer<'src> {
                 | [.., (_, LayoutDelim::ModuleHead)] => {
                     self.stack.pop().unwrap();
                     self.emit(EQUALS);
-                    self.insert_start(LayoutDelim::Where);
+                    self.insert_start(LayoutDelim::ModuleBody);
                 },
                 | [.., (_, LayoutDelim::ClassHead)] => {
                     self.stack.pop().unwrap();
@@ -905,8 +907,9 @@ impl<'src> Lexer<'src> {
 
     fn is_decl(&self, pos: (usize, usize)) -> bool {
         match self.stack[..] {
-            | [(_, LayoutDelim::Root), (start, LayoutDelim::Where)]
-            | [.., (start, LayoutDelim::ClassBody | LayoutDelim::MemberBody)] => start.1 == pos.1,
+            | [.., (start, LayoutDelim::ModuleBody | LayoutDelim::ClassBody | LayoutDelim::MemberBody)] => {
+                start.1 == pos.1
+            },
             | _ => false,
         }
     }
@@ -914,7 +917,7 @@ impl<'src> Lexer<'src> {
     fn is_def_start(&self, pos: (usize, usize)) -> bool {
         match self.stack[..] {
             | [(start, LayoutDelim::Root)] => start.1 == pos.1,
-            | [.., (start, LayoutDelim::Where)] => start.1 == pos.1,
+            | [.., (start, LayoutDelim::ModuleBody)] => start.1 == pos.1,
             | _ => false,
         }
     }
@@ -946,7 +949,7 @@ impl<'src> Lexer<'src> {
 
     fn insert_sep(&mut self, start: (usize, usize)) {
         match self.stack[..] {
-            | [.., (pos, LayoutDelim::Where), (_, LayoutDelim::TypeDecl | LayoutDelim::MemberHead | LayoutDelim::ClassHead)]
+            | [.., (pos, LayoutDelim::ModuleBody), (_, LayoutDelim::TypeDecl | LayoutDelim::MemberHead | LayoutDelim::ClassHead)]
                 if sep_p(start, pos) =>
             {
                 self.stack.pop().unwrap();

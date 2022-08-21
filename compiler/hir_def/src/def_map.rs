@@ -17,6 +17,7 @@ use crate::diagnostics::DefDiagnostic;
 use crate::id::{LocalModuleId, ModuleId};
 use crate::in_file::InFile;
 use crate::item_scope::{ItemExports, ItemScope};
+use crate::item_tree::{self, ItemTreeId};
 use crate::name::Name;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -33,12 +34,21 @@ pub struct ModuleData {
     pub scope: ItemScope,
     pub exports: ItemExports,
     pub origin: ModuleOrigin,
+    pub parent: Option<LocalModuleId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModuleOrigin {
-    Normal { declaration: AstId<ast::Module> },
-    Virtual { parent: LocalModuleId },
+    Normal {
+        declaration: AstId<ast::ItemModule>,
+    },
+    Inline {
+        def_id: ItemTreeId<item_tree::Module>,
+        def: AstId<ast::ItemModule>,
+    },
+    Virtual {
+        parent: LocalModuleId,
+    },
 }
 
 impl DefMap {
@@ -58,9 +68,10 @@ impl DefMap {
         }
     }
 
-    pub(crate) fn add_module(&mut self, name: Name) -> LocalModuleId {
+    pub(crate) fn add_module(&mut self, name: Name, parent: Option<LocalModuleId>) -> LocalModuleId {
         let local_id = self.modules.alloc(ModuleData {
             name: name.clone(),
+            parent,
             ..ModuleData::default()
         });
 
@@ -129,6 +140,7 @@ impl ModuleOrigin {
     pub fn file_id(&self, def_map: &DefMap) -> FileId {
         match *self {
             | ModuleOrigin::Normal { declaration } => declaration.file_id,
+            | ModuleOrigin::Inline { def, .. } => def.file_id,
             | ModuleOrigin::Virtual { parent } => def_map[parent].origin.file_id(def_map),
         }
     }
@@ -137,13 +149,21 @@ impl ModuleOrigin {
         matches!(self, ModuleOrigin::Virtual { .. })
     }
 
-    pub fn declaration(&self, db: &dyn DefDatabase, def_map: &DefMap) -> InFile<ast::Module> {
+    pub fn declaration(&self, db: &dyn DefDatabase, def_map: &DefMap) -> InFile<ast::ItemModule> {
         match self {
             | ModuleOrigin::Normal { declaration } => {
                 let value = declaration.to_node(db);
 
                 InFile {
                     file_id: declaration.file_id,
+                    value,
+                }
+            },
+            | ModuleOrigin::Inline { def, .. } => {
+                let value = def.to_node(db);
+
+                InFile {
+                    file_id: def.file_id,
                     value,
                 }
             },

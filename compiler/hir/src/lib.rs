@@ -59,6 +59,7 @@ impl Lib {
 
         def_map
             .modules()
+            .filter(|(_, m)| m.parent.is_none())
             .map(|(id, _)| Module {
                 id: def_map.module_id(id),
             })
@@ -96,6 +97,12 @@ impl Module {
         def_map[self.id.local_id].origin.file_id(&def_map)
     }
 
+    pub fn parent(self, db: &dyn HirDatabase) -> Option<Module> {
+        let def_map = db.def_map(self.id.lib);
+
+        def_map[self.id.local_id].parent.map(|p| def_map.module_id(p).into())
+    }
+
     pub fn is_virtual(self, db: &dyn HirDatabase) -> bool {
         let def_map = db.def_map(self.id.lib);
 
@@ -103,10 +110,18 @@ impl Module {
     }
 
     pub fn path_to_name(self, db: &dyn HirDatabase, name: Name) -> Path {
-        self.name(db)
-            .to_string()
-            .split(Path::SEPARATOR)
-            .map(|s| s.as_name())
+        std::iter::successors(Some(self), |m| m.parent(db))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|m| {
+                m.name(db)
+                    .as_ref()
+                    .split(Path::SEPARATOR)
+                    .map(|s| s.as_name())
+                    .collect::<Vec<_>>()
+            })
+            .rev()
+            .flatten()
             .chain(std::iter::once(name))
             .collect()
     }
@@ -121,6 +136,16 @@ impl Module {
         };
 
         vis == Some(Visibility::Public)
+    }
+
+    pub fn children(self, db: &dyn HirDatabase) -> Vec<Module> {
+        let def_map = db.def_map(self.id.lib);
+
+        def_map
+            .modules()
+            .filter(|(_, m)| m.parent == Some(self.id.local_id))
+            .map(|(id, _)| def_map.module_id(id).into())
+            .collect()
     }
 
     pub fn declarations(self, db: &dyn HirDatabase) -> Vec<ModuleDef> {

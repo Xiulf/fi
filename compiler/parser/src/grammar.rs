@@ -10,43 +10,17 @@ use crate::syntax_kind::*;
 use crate::token_set::TokenSet;
 
 pub(crate) fn root(p: &mut Parser) {
+    let s = p.start();
     let m = p.start();
 
-    while !p.at(EOF) {
-        let m = p.start();
-
+    while !p.at(EOF) && p.at(AT) {
+        attributes::attr(p);
         p.eat(LYT_SEP);
-
-        while !p.at(EOF) && p.at(AT) {
-            attributes::attr(p);
-            p.eat(LYT_SEP);
-        }
-
-        p.expect(MODULE_KW);
-        paths::module_name(p);
-
-        if p.at(L_PAREN) {
-            exports(p);
-        }
-
-        p.expect(EQUALS);
-        p.expect(LYT_START);
-        p.eat(LYT_SEP);
-
-        while !p.at(EOF) && !p.at(LYT_END) {
-            items::any_item(p);
-
-            if !p.at(LYT_END) && !p.at(EOF) {
-                p.expect(LYT_SEP);
-            }
-        }
-
-        p.eat(LYT_END);
-        p.expect(EOF);
-        m.complete(p, MODULE);
     }
 
-    m.complete(p, SOURCE_FILE);
+    items::module(p, m);
+    p.expect(EOF);
+    s.complete(p, SOURCE_FILE);
 }
 
 fn exports(p: &mut Parser) {

@@ -22,7 +22,7 @@ use crate::path::Path;
 #[derive(Debug, PartialEq, Eq)]
 pub struct ItemTree {
     pub(crate) file: FileId,
-    top_level: Vec<Vec<Item>>,
+    top_level: Vec<Item>,
     data: ItemTreeData,
     attrs: FxHashMap<AttrOwner, RawAttrs>,
     pub diagnostics: Vec<ItemTreeDiagnostic>,
@@ -30,6 +30,7 @@ pub struct ItemTree {
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct ItemTreeData {
+    modules: Arena<Module>,
     imports: Arena<Import>,
     fixities: Arena<Fixity>,
     funcs: Arena<Func>,
@@ -75,13 +76,13 @@ impl ItemTree {
     pub fn item_tree_query(db: &dyn DefDatabase, file_id: FileId) -> Arc<ItemTree> {
         let syntax = db.parse(file_id);
         let ctx = lower::Ctx::new(db, file_id);
-        let item_tree = ctx.lower_modules(&syntax.tree());
+        let item_tree = ctx.lower_source_file(&syntax.tree());
 
         Arc::new(item_tree)
     }
 
-    pub fn top_level(&self, module: usize) -> &[Item] {
-        &self.top_level[module]
+    pub fn top_level(&self) -> &[Item] {
+        &self.top_level
     }
 
     pub(crate) fn raw_attrs(&self, of: AttrOwner) -> &RawAttrs {
@@ -170,6 +171,7 @@ macro_rules! items {
 }
 
 items! {
+    Module in modules -> ast::ItemModule,
     Import in imports -> ast::ItemImport,
     Fixity in fixities -> ast::ItemFixity,
     Func in funcs -> ast::ItemFun,
@@ -179,6 +181,13 @@ items! {
     TypeCtor in type_ctors -> ast::ItemType,
     Class in classes -> ast::ItemClass,
     Member in members -> ast::ItemMember,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Module {
+    pub ast_id: FileAstId<ast::ItemModule>,
+    pub name: Name,
+    pub items: Box<[Item]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

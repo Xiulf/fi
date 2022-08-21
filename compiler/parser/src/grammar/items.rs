@@ -12,6 +12,9 @@ pub(crate) fn any_item(p: &mut Parser) {
     }
 
     match p.current() {
+        | MODULE_KW => {
+            module(p, m);
+        },
         | IMPORT_KW => {
             import(p, m);
         },
@@ -21,7 +24,6 @@ pub(crate) fn any_item(p: &mut Parser) {
         | FOREIGN_KW => {
             foreign(p, m);
         },
-        // | FN_KW => {
         | IDENT => {
             fun(p, m);
         },
@@ -49,6 +51,30 @@ pub(crate) fn any_item(p: &mut Parser) {
             }
         },
     }
+}
+
+pub(crate) fn module(p: &mut Parser, m: Marker) {
+    p.expect(MODULE_KW);
+    paths::module_name(p);
+
+    if p.at(L_PAREN) {
+        exports(p);
+    }
+
+    p.expect(EQUALS);
+    p.expect(LYT_START);
+    p.eat(LYT_SEP);
+
+    while !p.at(EOF) && !p.at(LYT_END) {
+        items::any_item(p);
+
+        if !p.at(LYT_END) && !p.at(EOF) {
+            p.expect(LYT_SEP);
+        }
+    }
+
+    p.expect(LYT_END);
+    m.complete(p, MODULE);
 }
 
 pub(crate) fn import(p: &mut Parser, m: Marker) {

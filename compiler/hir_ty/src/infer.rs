@@ -630,6 +630,7 @@ impl<'a> ProcessInfix for InferenceContext<'a> {
             src: match src.1 {
                 | TypeOrigin::ExprIdInfix(id, idx) => OperatorSource::ExprOrPat((id, idx).into()),
                 | TypeOrigin::ExprId(id) => OperatorSource::ExprOrPat(id.into()),
+                | TypeOrigin::PatId(id) => OperatorSource::ExprOrPat(id.into()),
                 | TypeOrigin::TypeRefId(id) => OperatorSource::TypeRef(self.owner, id.into()),
                 | _ => unreachable!(),
             },
@@ -642,6 +643,7 @@ impl<'a> ProcessInfix for InferenceContext<'a> {
             src: match src.1 {
                 | TypeOrigin::ExprIdInfix(id, idx) => OperatorSource::ExprOrPat((id, idx).into()),
                 | TypeOrigin::ExprId(id) => OperatorSource::ExprOrPat(id.into()),
+                | TypeOrigin::PatId(id) => OperatorSource::ExprOrPat(id.into()),
                 | TypeOrigin::TypeRefId(id) => OperatorSource::TypeRef(self.owner, id.into()),
                 | _ => unreachable!(),
             },

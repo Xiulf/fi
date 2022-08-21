@@ -46,7 +46,7 @@ impl<'a, 'b> SourceToDefCtx<'a, 'b> {
     fn container_to_def(&mut self, container: InFile<SyntaxNode>) -> Option<ChildContainer> {
         let cont = syntax::match_ast! {
             match (container.value) {
-                Module(it) => self.module_to_def(container.with_value(it))?.into(),
+                ItemModule(it) => self.module_to_def(container.with_value(it))?.into(),
                 ItemFun(it) => self.func_to_def(container.with_value(it))?.into(),
                 _ => return None,
             }
@@ -55,7 +55,7 @@ impl<'a, 'b> SourceToDefCtx<'a, 'b> {
         Some(cont)
     }
 
-    fn module_to_def(&mut self, src: InFile<ast::Module>) -> Option<ModuleId> {
+    fn module_to_def(&mut self, src: InFile<ast::ItemModule>) -> Option<ModuleId> {
         let lib = self.db.file_lib(src.file_id);
         let def_map = self.db.def_map(lib);
         let mut modules = def_map.modules_for_file(src.file_id);

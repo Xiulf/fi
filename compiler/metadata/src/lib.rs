@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Metadata {
+    version: usize,
+
     #[serde(skip, default)]
     lib: LibId,
     files: FxHashMap<String, SystemTime>,
@@ -18,6 +20,10 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn has_changed(&self, db: &dyn HirDatabase) -> bool {
+        if self.version != 0 {
+            return true;
+        }
+
         let source_root = db.lib_source_root(self.lib);
         let source_root = db.source_root(source_root);
 

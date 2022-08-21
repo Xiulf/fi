@@ -68,28 +68,8 @@ impl Iterator for CommentIter {
 }
 
 impl SourceFile {
-    pub fn modules(&self) -> AstChildren<Module> {
-        support::children(&self.0)
-    }
-}
-
-impl AttrsOwner for Module {
-}
-
-impl NameOwner for Module {
-}
-
-impl Module {
-    pub fn exports(&self) -> Option<Exports> {
+    pub fn module(&self) -> Option<ItemModule> {
         support::child(&self.0)
-    }
-
-    pub fn imports(&self) -> AstChildren<ItemImport> {
-        support::children(&self.0)
-    }
-
-    pub fn items(&self) -> AstChildren<Item> {
-        support::children(&self.0)
     }
 }
 
@@ -173,6 +153,26 @@ impl AttrArgCall {
 
     pub fn args(&self) -> Option<AstChildren<AttrArg>> {
         support::child(&self.0).map(|c: AttrArgs| support::children(&c.0))
+    }
+}
+
+impl AttrsOwner for ItemModule {
+}
+
+impl NameOwner for ItemModule {
+}
+
+impl ItemModule {
+    pub fn exports(&self) -> Option<Exports> {
+        support::child(&self.0)
+    }
+
+    pub fn imports(&self) -> AstChildren<ItemImport> {
+        support::children(&self.0)
+    }
+
+    pub fn items(&self) -> AstChildren<Item> {
+        support::children(&self.0)
     }
 }
 

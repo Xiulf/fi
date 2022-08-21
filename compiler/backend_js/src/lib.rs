@@ -70,8 +70,13 @@ impl<'a> Ctx<'a> {
     }
 
     pub fn codegen(&mut self, module: hir::Module) -> io::Result<()> {
+        let modules = module.children(self.db);
         let decls = module.declarations(self.db);
         let members = module.members(self.db);
+
+        for module in modules {
+            self.codegen(module)?;
+        }
 
         for &def in &decls {
             self.register_def(def)?;

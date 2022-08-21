@@ -1,5 +1,6 @@
+use hir::id::HasModule;
 use hir::ty::{TyKind, TypeVar};
-use hir::Literal;
+use hir::{Literal, TypeCtor};
 
 use crate::expr::{Arg, JsExpr};
 use crate::BodyCtx;
@@ -72,7 +73,7 @@ impl BodyCtx<'_, '_> {
             | "imul" => self.intrinsic_binop("*", args, block),
             | "idiv" => self.intrinsic_binop("/", args, block),
             | "irem" => self.intrinsic_binop("%", args, block),
-            | "ieq" => self.intrinsic_binop("==", args, block),
+            | "ieq" => self.intrinsic_ieq(args, block),
             | "icmp" => self.intrinsic_icmp(args, block),
             | _ => {
                 log::warn!(target: "lower_intrinsic", "todo: {:?}", name);
@@ -88,6 +89,30 @@ impl BodyCtx<'_, '_> {
         let rhs = Box::new(self.lower_arg(rhs, block));
 
         JsExpr::BinOp { op, lhs, rhs }
+    }
+
+    fn intrinsic_ieq(&mut self, mut args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {
+        let rhs = args.remove(1);
+        let lhs = args.remove(0);
+        let lhs = Box::new(self.lower_arg(lhs, block));
+        let rhs = Box::new(self.lower_arg(rhs, block));
+        let lib = self.owner.module(self.db.upcast()).lib;
+        let bool = self.db.lang_item(lib, "bool-type".into()).unwrap();
+        let bool = TypeCtor::from(bool.as_type_ctor().unwrap());
+        let true_ = self.mangle((bool.ctors(self.db)[1].path(self.db).to_string(), true));
+        let false_ = self.mangle((bool.ctors(self.db)[0].path(self.db).to_string(), true));
+
+        JsExpr::If {
+            cond: Box::new(JsExpr::BinOp { op: "==", lhs, rhs }),
+            then: Box::new(JsExpr::UnOp {
+                op: "new ",
+                rhs: Box::new(JsExpr::Ident { name: true_ }),
+            }),
+            else_: Some(Box::new(JsExpr::UnOp {
+                op: "new ",
+                rhs: Box::new(JsExpr::Ident { name: false_ }),
+            })),
+        }
     }
 
     fn intrinsic_icmp(&mut self, mut args: Vec<Arg>, block: &mut Vec<JsExpr>) -> JsExpr {

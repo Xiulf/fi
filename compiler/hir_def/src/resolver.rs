@@ -296,7 +296,12 @@ impl Resolver {
     }
 
     fn push_module_scope(self, def_map: Arc<DefMap>, module_id: LocalModuleId) -> Self {
-        self.push_scope(Scope::ModuleScope(ModuleItemMap { def_map, module_id }))
+        std::iter::successors(Some(module_id), |&id| def_map[id].parent).fold(self, |this, module_id| {
+            this.push_scope(Scope::ModuleScope(ModuleItemMap {
+                def_map: def_map.clone(),
+                module_id,
+            }))
+        })
     }
 
     fn push_expr_scope(self, owner: DefWithBodyId, expr_scopes: Arc<ExprScopes>, scope_id: ExprScopeId) -> Self {

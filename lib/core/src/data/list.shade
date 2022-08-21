@@ -48,22 +48,23 @@ sortBy list cmp =
         x : Nil -> x
         _ -> recur (mergePairs list)
 
-    mergeAll (sequences cmp list)
+    mergeAll (SortBy.sequences cmp list)
 
-descending cmp = fn a la lb -> case lb of
-    b : bs if a `cmp` b == Gt -> descending cmp b (a:la) bs
-    _ -> (a:la) : sequences cmp lb
+module SortBy =
+    descending cmp = fn a la lb -> case lb of
+        b : bs if a `cmp` b == Gt -> descending cmp b (a:la) bs
+        _ -> (a:la) : sequences cmp lb
 
-ascending cmp = fn a la lb -> case lb of
-    b : bs if a `cmp` b != Gt -> ascending cmp b (fn ys -> la (a : ys)) bs
-    _ -> la (a:Nil) : sequences cmp lb
+    ascending cmp = fn a la lb -> case lb of
+        b : bs if a `cmp` b != Gt -> ascending cmp b (fn ys -> la (a : ys)) bs
+        _ -> la (a:Nil) : sequences cmp lb
 
-sequences :: forall a. (a -> a -> Ordering) -> List a -> List (List a)
-sequences cmp = fn list -> case list of
-    a : b : xs
-        if a `cmp` b == Gt -> descending cmp b (a:Nil) xs
-        else               -> ascending cmp b (fn x -> a:x) xs
-    _ -> list : Nil
+    sequences :: forall a. (a -> a -> Ordering) -> List a -> List (List a)
+    sequences cmp = fn list -> case list of
+        a : b : xs
+            if a `cmp` b == Gt -> descending cmp b (a:Nil) xs
+            else               -> ascending cmp b (fn x -> a:x) xs
+        _ -> list : Nil
 
 member (List a) of Default =
     default = Nil

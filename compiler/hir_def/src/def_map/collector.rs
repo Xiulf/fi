@@ -108,12 +108,12 @@ impl<'a> DefCollector<'a> {
         let source_root = self.db.source_root(source_root);
         let mut modules = Vec::new();
 
-        let mut seed = |this: &mut DefCollector, file_id, module: ast::Module, index: usize| -> Option<()> {
+        let mut seed = |this: &mut DefCollector, file_id, module: ast::ItemModule| -> Option<()> {
             let name = module.name()?.as_name();
             let exports = module.exports();
             let item_tree = this.db.item_tree(file_id);
             let ast_id_map = this.db.ast_id_map(file_id);
-            let module_id = this.def_map.add_module(name.clone());
+            let module_id = this.def_map.add_module(name.clone(), None);
             let declaration = ast_id_map.ast_id(&module).with_file_id(file_id);
 
             this.def_map.modules[module_id].origin = super::ModuleOrigin::Normal { declaration };
@@ -127,7 +127,7 @@ impl<'a> DefCollector<'a> {
             };
 
             mcoll.collect_exports(exports);
-            modules.push((file_id, module_id, index, mcoll.export_all));
+            modules.push((file_id, module_id, mcoll.export_all));
 
             Some(())
         };
@@ -135,12 +135,12 @@ impl<'a> DefCollector<'a> {
         for file in source_root.files() {
             let source_file = self.db.parse(file).tree();
 
-            for (i, module) in source_file.modules().enumerate() {
-                let _ = seed(self, file, module, i);
+            if let Some(module) = source_file.module() {
+                seed(self, file, module);
             }
         }
 
-        for (file_id, module_id, index, export_all) in modules {
+        for (file_id, module_id, export_all) in modules {
             let item_tree = self.db.item_tree(file_id);
             let mut mcoll = ModCollector {
                 def_collector: self,
@@ -150,7 +150,7 @@ impl<'a> DefCollector<'a> {
                 export_all,
             };
 
-            mcoll.collect(item_tree.top_level(index));
+            mcoll.collect(item_tree.top_level());
         }
     }
 
@@ -418,7 +418,7 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                                     todo!();
                                 }
                             } else if let Some(name) = path.as_ident() {
-                                let module_id = def_map.add_module(name.clone());
+                                let module_id = def_map.add_module(name.clone(), Some(self.module_id));
                                 let entry = self.def_collector.reexports.entry(module_id).or_default();
 
                                 entry.insert(self.module_id);
@@ -492,6 +492,39 @@ impl<'a, 'b> ModCollector<'a, 'b> {
             let mut def = None;
 
             match item {
+                | Item::Module(id) => {
+                    let it = &self.item_tree[id];
+                    let ast_map = self.def_collector.db.ast_id_map(self.file_id);
+                    let parsed = self.def_collector.db.parse(self.file_id);
+                    let node = ast_map.get(it.ast_id).to_node(&parsed.syntax_node());
+                    let exports = node.exports();
+                    let module_id = self
+                        .def_collector
+                        .def_map
+                        .add_module(it.name.clone(), Some(self.module_id));
+
+                    self.def_collector.def_map.modules[module_id].origin = super::ModuleOrigin::Inline {
+                        def_id: InFile::new(self.file_id, id),
+                        def: it.ast_id.with_file_id(self.file_id),
+                    };
+
+                    let mut mcoll = ModCollector {
+                        def_collector: self.def_collector,
+                        item_tree: self.item_tree,
+                        module_id,
+                        file_id: self.file_id,
+                        export_all: false,
+                    };
+
+                    mcoll.collect_exports(exports);
+                    mcoll.collect(&it.items);
+
+                    def = Some(DefData {
+                        id: ModuleDefId::ModuleId(self.def_collector.def_map.module_id(module_id)),
+                        name: &it.name,
+                        visibility: Visibility::Module(module),
+                    });
+                },
                 | Item::Import(id) => {
                     let it = &self.item_tree[id];
 
@@ -505,7 +538,10 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                                 | _ => unreachable!(),
                             })
                             .unwrap_or_else(|| {
-                                let module_id = self.def_collector.def_map.add_module(qual.clone());
+                                let module_id = self
+                                    .def_collector
+                                    .def_map
+                                    .add_module(qual.clone(), Some(self.module_id));
 
                                 self.def_collector.def_map.modules[module_id].exports.export_all = true;
                                 self.def_collector.def_map.modules[module_id].origin =

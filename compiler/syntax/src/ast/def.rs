@@ -3,7 +3,6 @@ use parser::syntax_kind::*;
 use crate::ast_node;
 
 ast_node!(SourceFile, SOURCE_FILE);
-ast_node!(Module, MODULE);
 ast_node!(Exports, EXPORTS);
 
 ast_node!(Export {
@@ -28,6 +27,7 @@ ast_node!(AttrArg {
 });
 
 ast_node!(Item {
+    Module(ItemModule, MODULE),
     Import(ItemImport, IMPORT),
     Fixity(ItemFixity, ITEM_FIXITY),
     Fun(ItemFun, ITEM_FUN),
