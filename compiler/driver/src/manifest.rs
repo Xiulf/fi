@@ -82,9 +82,9 @@ pub fn load_project(
     path: &Path,
 ) -> Result<LibId> {
     let mut root = if *roots == 0 {
-        SourceRoot::new_local()
+        SourceRoot::new_local(Some(path.to_path_buf()))
     } else {
-        SourceRoot::new_library()
+        SourceRoot::new_library(Some(path.to_path_buf()))
     };
 
     let manifest = Manifest::load(path)?;
@@ -104,7 +104,7 @@ pub fn load_project(
 
     let src_dir = path.join(&manifest.project.src);
 
-    load_dir(rdb, &mut root, root_id, lib, files, &src_dir, &src_dir)?;
+    load_dir(rdb, &mut root, root_id, lib, files, path, &src_dir)?;
 
     for dep in manifest.dep_dirs(path) {
         let dep = load_project(rdb, libs, roots, files, &dep)?;
@@ -127,7 +127,7 @@ pub fn load_normal(
     kind: LibKind,
 ) -> Result<LibId> {
     let name = path.file_stem().unwrap().to_str().unwrap();
-    let mut root = SourceRoot::new_local();
+    let mut root = SourceRoot::new_local(Some(path.to_path_buf()));
     let root_id = SourceRootId(*roots);
     let (lib, _) = libs.add_lib(name, kind, root_id, Vec::new());
 

@@ -1,7 +1,7 @@
 use std::hash::{Hash, Hasher};
 
 use arena::Idx;
-use base_db::libs::LibId;
+pub use base_db::libs::LibId;
 
 use crate::db::DefDatabase;
 use crate::def_map::ModuleData;

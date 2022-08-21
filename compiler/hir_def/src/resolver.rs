@@ -6,6 +6,7 @@ use crate::db::DefDatabase;
 use crate::def_map::DefMap;
 use crate::expr::ExprId;
 use crate::id::*;
+use crate::name::Name;
 use crate::pat::PatId;
 use crate::path::Path;
 use crate::per_ns::PerNs;
@@ -158,13 +159,13 @@ impl Resolver {
         }
     }
 
-    pub fn iter_values(&self) -> impl Iterator<Item = ValueNs> + '_ {
+    pub fn iter_values<'a>(&'a self) -> impl Iterator<Item = (&'a Name, ValueNs)> + 'a {
         self.scopes.iter().rev().flat_map(|scope| match scope {
             | Scope::ExprScope(scope) => scope
                 .expr_scopes
                 .entries(scope.scope_id)
                 .iter()
-                .map(|entry| ValueNs::Local(entry.pat()))
+                .map(|entry| (entry.name(), ValueNs::Local(entry.pat())))
                 .collect::<Vec<_>>(),
             | Scope::ModuleScope(scope) => scope.values(),
             | Scope::TypeScope(_) => Vec::new(),
@@ -330,13 +331,13 @@ impl ModuleItemMap {
         Some((res, vis, idx))
     }
 
-    fn values(&self) -> Vec<ValueNs> {
+    fn values(&self) -> Vec<(&Name, ValueNs)> {
         self.def_map[self.module_id]
             .scope
             .entries()
-            .map(|(_, ns)| ns)
-            .filter_map(to_value_ns)
-            .map(|(ns, _)| ns)
+            .map(|(name, ns)| (name, ns))
+            .filter_map(|(n, ns)| Some((n, to_value_ns(ns)?)))
+            .map(|(n, (ns, _))| (n, ns))
             .collect()
     }
 

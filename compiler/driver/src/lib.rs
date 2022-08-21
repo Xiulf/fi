@@ -2,9 +2,12 @@ pub mod db;
 pub mod diagnostics;
 pub mod manifest;
 
+use std::{fs, io};
+
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::{SourceDatabase, SourceDatabaseExt};
+use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
 use rustc_hash::FxHashSet;
@@ -70,7 +73,7 @@ impl Driver {
 
     pub fn interactive() -> (Self, LibId, FileId) {
         let mut driver = Driver::default();
-        let mut root = SourceRoot::new_local();
+        let mut root = SourceRoot::new_local(None);
         let root_id = SourceRootId(0);
         let root_file = FileId(0);
         let (lib, _) = driver
@@ -96,20 +99,25 @@ impl Driver {
     }
 
     pub fn load(&mut self, input: &str) -> Option<LibId> {
-        let path = std::path::PathBuf::from(input);
+        let path = std::path::Path::new(input);
 
         match manifest::load_project(
             &mut self.db,
             &mut self.libs,
             &mut self.lib_count,
             &mut self.file_count,
-            &path,
+            path,
         ) {
             | Ok(lib) => {
-                let target_dir = path.join("target");
-
                 for lib in self.libs.iter() {
-                    self.db.set_target_dir(lib, target_dir.clone());
+                    let source_root = self.db.lib_source_root(lib);
+                    let source_root = self.db.source_root(source_root);
+
+                    if let Some(dir) = &source_root.dir {
+                        let target_dir = dir.join("target");
+
+                        self.db.set_target_dir(lib, target_dir.clone());
+                    }
                 }
 
                 self.db.set_libs(self.libs.clone().into());
@@ -128,59 +136,79 @@ impl Driver {
         self.db.set_libs(self.libs.clone().into());
     }
 
-    pub fn check(&self) {
+    pub fn check(&self) -> io::Result<bool> {
         let start = std::time::Instant::now();
         let db = &self.db;
+        let mut last_changed = false;
 
         for lib in hir::Lib::all(db) {
-            println!("  \x1B[1;32m\x1B[1mChecking\x1B[0m {}", lib.name(db));
+            let id = lib.into();
+            let target_dir = db.target_dir(id);
+            let changed = metadata::read_metadata(db, id, &target_dir)
+                .map(|m| m.has_changed(db))
+                .unwrap_or(false);
 
-            diagnostics::emit_diagnostics(db, lib, &mut std::io::stderr()).unwrap();
-        }
+            if changed || last_changed {
+                eprintln!("  \x1B[1;32m\x1B[1mChecking\x1B[0m {}", lib.name(db));
 
-        let elapsed = start.elapsed();
+                if diagnostics::emit_diagnostics(db, lib, &mut io::stderr())? > 0 {
+                    return Ok(false);
+                }
 
-        println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
-    }
-
-    pub fn build(&self) -> bool {
-        let start = std::time::Instant::now();
-        let db = &self.db;
-        let mut errors = 0;
-
-        for lib in hir::Lib::all(db) {
-            println!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
-
-            if let Ok(e) = diagnostics::emit_diagnostics(db, lib, &mut std::io::stderr()) {
-                errors += e;
-            }
-        }
-
-        if errors == 1 {
-            eprintln!("\x1B[1;31mAborting due to previous error\x1B[0m");
-            return false;
-        } else if errors > 1 {
-            eprintln!("\x1B[1;31mAborting due to {} previous errors\x1B[0m", errors);
-            return false;
-        } else {
-            std::fs::create_dir_all(self.db.target_dir(self.lib)).unwrap();
-
-            let mut done = FxHashSet::default();
-
-            for lib in hir::Lib::all(db) {
-                self.write_assembly(lib, &mut done).unwrap();
+                metadata::write_metadata(db, id, &target_dir)?;
+                last_changed = true;
             }
         }
 
         let elapsed = start.elapsed();
 
-        println!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
-
-        true
+        eprintln!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
+        Ok(true)
     }
 
-    pub fn run<'a>(&self, _lib: LibId, _args: impl Iterator<Item = &'a std::ffi::OsStr>) -> bool {
-        if self.build() {
+    pub fn build(&self) -> io::Result<bool> {
+        fs::create_dir_all(self.db.target_dir(self.lib))?;
+        let start = std::time::Instant::now();
+        let db = &self.db;
+        let target_dir = db.target_dir(self.lib);
+        let mut done = FxHashSet::default();
+        let mut last_changed = false;
+
+        for lib in hir::Lib::all(db) {
+            let id = lib.into();
+            let changed = metadata::read_metadata(db, id, &target_dir)
+                .map(|m| m.has_changed(db))
+                .unwrap_or(false);
+            let changed = changed || !Assembly::dummy(lib).path(db, &target_dir).exists();
+
+            if changed || last_changed {
+                eprintln!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
+                let e = diagnostics::emit_diagnostics(db, lib, &mut io::stderr())?;
+
+                if e == 1 {
+                    eprintln!("\x1B[1;31mAborting due to previous error\x1B[0m");
+                    return Ok(false);
+                } else if e > 1 {
+                    eprintln!("\x1B[1;31mAborting due to {} previous errors\x1B[0m", e);
+                    return Ok(false);
+                }
+
+                self.write_assembly(lib, &mut done)?;
+                metadata::write_metadata(db, id, &target_dir)?;
+                last_changed = true;
+            } else {
+                done.insert(lib);
+            }
+        }
+
+        let elapsed = start.elapsed();
+
+        eprintln!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {:?}", elapsed);
+        Ok(true)
+    }
+
+    pub fn run<'a>(&self, _lib: LibId, _args: impl Iterator<Item = &'a std::ffi::OsStr>) -> io::Result<bool> {
+        if self.build()? {
             // let asm = self.db.lib_assembly(lib.into());
             // let path = asm.path(&self.db, &self.db.target_dir(lib));
             // let mut cmd = std::process::Command::new(path);
@@ -188,13 +216,13 @@ impl Driver {
             // cmd.args(args);
             // println!("    \x1B[1;32m\x1B[1mRunning\x1B[0m {:?}", cmd);
             // cmd.status().unwrap().success()
-            true
+            Ok(true)
         } else {
-            false
+            Ok(false)
         }
     }
 
-    fn write_assembly(&self, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> std::io::Result<bool> {
+    fn write_assembly(&self, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> io::Result<bool> {
         if done.contains(&lib) {
             return Ok(false);
         }
@@ -205,8 +233,11 @@ impl Driver {
         });
 
         let asm = self.db.lib_assembly(lib);
+        let source_root = self.db.lib_source_root(lib.into());
+        let source_root = self.db.source_root(source_root);
+        let path = source_root.dir.as_ref().unwrap();
 
-        asm.link(&self.db, deps, &self.db.target_dir(lib.into()));
+        asm.link(&self.db, deps, path, &self.db.target_dir(self.lib));
         done.insert(lib);
 
         Ok(true)

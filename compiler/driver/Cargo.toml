@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 diagnostics = { path = "../diagnostics" }
 codegen = { path = "../codegen" }
+metadata = { path = "../metadata" }
 hir = { path = "../hir" }
 hir_def = { path = "../hir_def" }
 syntax = { path = "../syntax" }

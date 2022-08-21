@@ -7,6 +7,7 @@ members = [
     "compiler/backend_js",
     "compiler/codegen",
     # "compiler/lower",
+    "compiler/metadata",
     "compiler/hir",
     "compiler/hir_ty",
     "compiler/hir_def",

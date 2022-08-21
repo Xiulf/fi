@@ -1,6 +1,5 @@
 pub mod input;
 pub mod libs;
-pub mod metadata;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -45,9 +44,6 @@ pub trait SourceDatabaseExt: SourceDatabase {
     fn target_dir(&self, lib: libs::LibId) -> PathBuf;
 
     fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
-
-    #[salsa::invoke(metadata::read_metadata)]
-    fn metadata(&self, lib: libs::LibId) -> Arc<metadata::Metadata>;
 }
 
 fn parse(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::SourceFile> {
