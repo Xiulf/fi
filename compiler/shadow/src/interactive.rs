@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use base_db::input::{FileId, LineCol};
 use base_db::libs::LibId;
 use base_db::SourceDatabaseExt as _;
@@ -14,7 +16,7 @@ pub fn run() {
     Interactive {
         repl: Repl::new((), ()),
         imports: Vec::new(),
-        lines: vec![String::new()],
+        lines: vec![Cow::Borrowed("()")],
         driver,
         lib,
         file,
@@ -29,7 +31,7 @@ struct Interactive {
     file: FileId,
 
     imports: Vec<String>,
-    lines: Vec<String>,
+    lines: Vec<Cow<'static, str>>,
 }
 
 impl Interactive {
@@ -46,7 +48,7 @@ impl Interactive {
                         },
                         | Some(".reset") => {
                             self.imports.clear();
-                            self.lines = vec![String::new()];
+                            self.lines = vec![Cow::Borrowed("()")];
                         },
                         | Some(".code") => {
                             println!("{}", self.text());
@@ -73,16 +75,34 @@ impl Interactive {
     fn load(&mut self, text: &str) {
         if let Some(lib) = self.driver.load(text) {
             self.driver.add_dep(self.lib, lib);
+        } else {
+            println!("cannot load {}", text);
         }
+    }
+
+    fn report(&mut self) -> bool {
+        self.driver.db.set_file_text(self.file, self.text().into());
+        driver::diagnostics::emit_diagnostics(&self.driver.db, self.lib.into(), &mut std::io::stderr())
+            .map(|n| n > 0)
+            .unwrap()
     }
 
     fn add_import(&mut self, text: &str) {
         self.imports.push(text.to_string());
+
+        if self.report() {
+            self.imports.pop().unwrap();
+        }
     }
 
     fn add_let(&mut self, text: &str) {
-        *self.lines.last_mut().unwrap() = format!("let {}", text);
-        self.lines.push(String::new());
+        *self.lines.last_mut().unwrap() = Cow::Owned(format!("let {}", text));
+        self.lines.push(Cow::Borrowed("()"));
+
+        if self.report() {
+            self.lines.pop().unwrap();
+            *self.lines.last_mut().unwrap() = Cow::Borrowed("()");
+        }
     }
 
     fn resolve(&mut self, text: &str) {
@@ -90,7 +110,7 @@ impl Interactive {
             return;
         }
 
-        *self.lines.last_mut().unwrap() = format!("let _ = _ `{}` _", text);
+        *self.lines.last_mut().unwrap() = Cow::Owned(format!("let _ = _ `{}` _", text));
         self.driver.db.set_file_text(self.file, self.text().into());
 
         let sema = Semantics::new(&self.db);
@@ -118,7 +138,7 @@ impl Interactive {
             return;
         }
 
-        *self.lines.last_mut().unwrap() = format!("let _ = {}", text);
+        *self.lines.last_mut().unwrap() = Cow::Owned(format!("let _ = {}", text));
         self.driver.db.set_file_text(self.file, self.text().into());
 
         let sema = Semantics::new(&self.db);
@@ -143,7 +163,7 @@ impl Interactive {
             return;
         }
 
-        *self.lines.last_mut().unwrap() = format!("let _ = _ :: {}", text);
+        *self.lines.last_mut().unwrap() = Cow::Owned(format!("let _ = _ :: {}", text));
         self.driver.db.set_file_text(self.file, self.text().into());
 
         let sema = Semantics::new(&self.db);
@@ -168,7 +188,7 @@ impl Interactive {
             return;
         }
 
-        *self.lines.last_mut().unwrap() = text.to_string();
+        *self.lines.last_mut().unwrap() = Cow::Owned(text.to_string());
         self.driver.db.set_file_text(self.file, self.text().into());
     }
 
