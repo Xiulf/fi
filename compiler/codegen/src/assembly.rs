@@ -42,6 +42,13 @@ impl Assembly {
         Self { lib, objects }
     }
 
+    pub fn dummy(lib: hir::Lib) -> Self {
+        Self {
+            lib,
+            objects: Vec::new(),
+        }
+    }
+
     pub fn path(&self, db: &dyn CodegenDatabase, target_dir: &Path) -> PathBuf {
         target_dir
             .join(format!("{}{}", self.prefix(db), self.lib.name(db.upcast())))
@@ -52,6 +59,7 @@ impl Assembly {
         &self,
         db: &dyn CodegenDatabase,
         deps: impl Iterator<Item = hir::Lib>,
+        project_dir: &Path,
         target_dir: &Path,
     ) -> PathBuf {
         let mut linker = crate::linker::create(db.target());
@@ -65,6 +73,9 @@ impl Assembly {
             for dep in deps {
                 add_deps(linker, db, dep.dependencies(db).into_iter().map(|d| d.lib).collect());
 
+                // let dir = db.target_dir(dep.into());
+                // let name = dir.join(dep.name(db).to_string());
+                // let name = name.to_str().unwrap();
                 let name = dep.name(db).to_string();
 
                 linker.add_object(db.libs()[dep.into()].kind, &name);
@@ -72,7 +83,13 @@ impl Assembly {
         }
 
         for link in &db.libs()[self.lib.into()].links {
-            linker.add_object(base_db::libs::LibKind::Dynamic, link);
+            let mut path = std::borrow::Cow::Borrowed(Path::new(link));
+
+            if path.is_relative() {
+                path = std::borrow::Cow::Owned(project_dir.join(path));
+            }
+
+            linker.add_object(base_db::libs::LibKind::Dynamic, path.to_str().unwrap());
         }
 
         for obj in self.objects.iter() {

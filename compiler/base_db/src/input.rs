@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use relative_path::{RelativePath, RelativePathBuf};
 use rustc_hash::FxHashMap;
 use syntax::TextSize;
@@ -11,6 +13,7 @@ pub struct SourceRootId(pub u32);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRoot {
     pub is_lib: bool,
+    pub dir: Option<PathBuf>,
     files: FxHashMap<FileId, RelativePathBuf>,
 }
 
@@ -26,16 +29,18 @@ pub struct LineCol {
 }
 
 impl SourceRoot {
-    pub fn new_local() -> Self {
+    pub fn new_local(dir: Option<PathBuf>) -> Self {
         SourceRoot {
             is_lib: false,
+            dir,
             files: FxHashMap::default(),
         }
     }
 
-    pub fn new_library() -> Self {
+    pub fn new_library(dir: Option<PathBuf>) -> Self {
         SourceRoot {
             is_lib: true,
+            dir,
             files: FxHashMap::default(),
         }
     }

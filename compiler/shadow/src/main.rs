@@ -2,11 +2,13 @@
 
 mod interactive;
 
+use std::io;
+
 use base_db::libs::LibKind;
 use clap::clap_app;
 use driver::{Driver, Opts};
 
-fn main() {
+fn main() -> io::Result<()> {
     let matches = clap_app!(shadow =>
         (@setting VersionlessSubcommands)
         (@arg file: +takes_value)
@@ -54,7 +56,7 @@ fn main() {
             input,
             ..Opts::default()
         }) {
-            driver.check();
+            driver.check()?;
         }
     } else if let Some(matches) = matches.subcommand_matches("build") {
         let input = matches.value_of("input").unwrap();
@@ -65,7 +67,7 @@ fn main() {
             target,
             ..Opts::default()
         }) {
-            driver.build();
+            driver.build()?;
         }
     } else if let Some(matches) = matches.subcommand_matches("run") {
         let input = matches.value_of("input").unwrap();
@@ -80,7 +82,7 @@ fn main() {
                 driver.run(lib, args.into_iter())
             } else {
                 driver.run(lib, std::iter::empty())
-            };
+            }?;
 
             if status {
                 std::process::exit(0);
@@ -98,9 +100,11 @@ fn main() {
         });
 
         if let Some((driver, _)) = Driver::init_no_manifest(Opts { input, target, output }) {
-            driver.build();
+            driver.build()?;
         }
     } else {
         interactive::run();
     }
+
+    Ok(())
 }
