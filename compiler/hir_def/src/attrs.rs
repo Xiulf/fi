@@ -4,6 +4,7 @@ use std::sync::Arc;
 use either::Either;
 use syntax::ast;
 
+use crate::cfg::Cfg;
 use crate::db::DefDatabase;
 use crate::expr::Literal;
 use crate::id::{AttrDefId, Lookup};
@@ -53,6 +54,10 @@ impl Attrs {
 
     pub fn by_key(&self, key: &'static str) -> AttrQuery<'_> {
         AttrQuery { attrs: self, key }
+    }
+
+    pub fn cfg(&self) -> Option<Cfg> {
+        Cfg::parse(self)
     }
 }
 
@@ -113,6 +118,10 @@ impl<'a> AttrQuery<'a> {
 
     pub fn exists(self) -> bool {
         self.attrs().next().is_some()
+    }
+
+    pub fn groups(self) -> impl Iterator<Item = &'a AttrInputGroup> + Clone {
+        self.attrs().filter_map(Attr::group)
     }
 
     pub fn attrs(self) -> impl Iterator<Item = &'a Attr> + Clone {
@@ -251,6 +260,10 @@ impl AttrInputGroup {
 
     pub fn string(&self) -> Option<&str> {
         self.0.iter().find_map(AttrInput::string)
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a AttrInput> {
+        self.0.iter()
     }
 }
 

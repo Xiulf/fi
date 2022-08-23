@@ -14,3 +14,6 @@ main =
     let e = sort a .toArray
     
     print a b c d e :: ()
+
+@cfg(test)
+test = 10

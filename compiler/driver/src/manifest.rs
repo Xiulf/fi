@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 
@@ -8,7 +7,9 @@ use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::SourceDatabaseExt;
 use path_slash::PathExt as _;
 use relative_path::RelativePath;
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
+pub use toml::Value as TomlValue;
 
 use crate::db::RootDatabase;
 
@@ -17,8 +18,13 @@ pub struct Manifest {
     pub project: Project,
 
     #[serde(default)]
-    pub dependencies: HashMap<String, Dependency>,
+    pub cfg: Cfg,
+
+    #[serde(default)]
+    pub dependencies: FxHashMap<String, Dependency>,
 }
+
+pub type Cfg = FxHashMap<String, toml::Value>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Project {

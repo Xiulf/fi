@@ -2,6 +2,7 @@ use base_db::input::FileId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use syntax::{ast, NameOwner};
 
+use crate::cfg::CfgOptions;
 use crate::db::DefDatabase;
 use crate::def_map::path_resolution::{FixPoint, ResolveMode};
 use crate::def_map::DefMap;
@@ -19,8 +20,10 @@ use crate::visibility::Visibility;
 const GLOBAL_RECURSION_LIMIT: usize = 100;
 
 pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
+    let cfg_opts = CfgOptions::default();
     let mut collector = DefCollector {
         db,
+        cfg_opts: &cfg_opts,
         def_map,
         glob_imports: FxHashMap::default(),
         reexports: FxHashMap::default(),
@@ -46,6 +49,7 @@ pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
 
 struct DefCollector<'a> {
     db: &'a dyn DefDatabase,
+    cfg_opts: &'a CfgOptions,
     def_map: DefMap,
     glob_imports: FxHashMap<LocalModuleId, FxHashSet<LocalModuleId>>,
     reexports: FxHashMap<LocalModuleId, FxHashSet<LocalModuleId>>,
@@ -490,6 +494,13 @@ impl<'a, 'b> ModCollector<'a, 'b> {
 
         for &item in items {
             let mut def = None;
+            let attrs = self.item_tree.attrs(item.into());
+
+            if let Some(cfg) = attrs.cfg() {
+                if !cfg.is_enabled(self.def_collector.cfg_opts) {
+                    continue;
+                }
+            }
 
             match item {
                 | Item::Module(id) => {

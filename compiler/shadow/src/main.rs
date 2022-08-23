@@ -6,6 +6,7 @@ use std::io;
 
 use base_db::libs::LibKind;
 use clap::clap_app;
+use driver::manifest::{Cfg, TomlValue};
 use driver::{Driver, Opts};
 
 fn main() -> io::Result<()> {
@@ -14,6 +15,7 @@ fn main() -> io::Result<()> {
         (@arg file: +takes_value)
         (@arg target: --target +takes_value)
         (@arg output: --output +takes_value)
+        (@arg cfg: --cfg +takes_value +global +multiple)
         (@subcommand check =>
             (@arg input: +takes_value default_value("."))
         )
@@ -49,11 +51,17 @@ fn main() -> io::Result<()> {
         eprintln!("\x1B[31mInternal Compiler Error\x1B[0m: '{}' at {}", msg, loc);
     }));
 
+    let cfg: Cfg = matches
+        .values_of("cfg")
+        .map(|v| v.filter_map(parse_cfg).collect())
+        .unwrap_or_default();
+
     if let Some(matches) = matches.subcommand_matches("check") {
         let input = matches.value_of("input").unwrap();
 
         if let Some((driver, _)) = Driver::init(Opts {
             input,
+            cfg,
             ..Opts::default()
         }) {
             driver.check()?;
@@ -65,6 +73,7 @@ fn main() -> io::Result<()> {
         if let Some((driver, _)) = Driver::init(Opts {
             input,
             target,
+            cfg,
             ..Opts::default()
         }) {
             driver.build()?;
@@ -76,6 +85,7 @@ fn main() -> io::Result<()> {
         if let Some((driver, lib)) = Driver::init(Opts {
             input,
             target,
+            cfg,
             ..Opts::default()
         }) {
             let status = if let Some(args) = matches.values_of_os("args") {
@@ -99,7 +109,12 @@ fn main() -> io::Result<()> {
             | _ => panic!("invalid output kind '{}'", o),
         });
 
-        if let Some((driver, _)) = Driver::init_no_manifest(Opts { input, target, output }) {
+        if let Some((driver, _)) = Driver::init_no_manifest(Opts {
+            input,
+            target,
+            output,
+            cfg,
+        }) {
             driver.build()?;
         }
     } else {
@@ -107,4 +122,20 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn parse_cfg(s: &str) -> Option<(String, TomlValue)> {
+    if let Some((key, value)) = s.split_once('=') {
+        let value = if let Ok(i) = value.parse::<i64>() {
+            TomlValue::Integer(i)
+        } else if let Ok(f) = value.parse::<f64>() {
+            TomlValue::Float(f)
+        } else {
+            TomlValue::String(value.into())
+        };
+
+        Some((key.into(), value))
+    } else {
+        Some((s.into(), TomlValue::Boolean(true)))
+    }
 }

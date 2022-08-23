@@ -4,6 +4,9 @@ version = "0.1.0"
 entry = "src/main.shade"
 output = "executable"
 
+[cfg]
+test = true
+
 [dependencies]
 core = { path = "../lib/core" }
 js = { path = "../lib/js" }

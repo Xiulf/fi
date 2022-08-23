@@ -10,6 +10,7 @@ use base_db::{SourceDatabase, SourceDatabaseExt};
 use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
+use manifest::Cfg;
 use rustc_hash::FxHashSet;
 
 #[derive(Default)]
@@ -17,6 +18,7 @@ pub struct Opts<'a> {
     pub input: &'a str,
     pub target: Option<&'a str>,
     pub output: Option<LibKind>,
+    pub cfg: Cfg,
 }
 
 #[derive(Default)]
