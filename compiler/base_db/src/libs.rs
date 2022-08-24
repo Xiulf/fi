@@ -3,6 +3,7 @@ use std::ops::Index;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::cfg::CfgOptions;
 use crate::input::SourceRootId;
 
 #[derive(Debug, Clone)]
@@ -11,8 +12,8 @@ pub struct LibData {
     pub name: String,
     pub kind: LibKind,
     pub deps: Vec<LibId>,
-    pub dependent: Vec<LibId>,
     pub links: Vec<String>,
+    pub cfg_options: CfgOptions,
     pub source_root: SourceRootId,
 }
 
@@ -42,16 +43,19 @@ impl LibSet {
         &mut self,
         name: impl Into<String>,
         kind: LibKind,
-        source_root: SourceRootId,
         links: Vec<String>,
+        cfg_options: CfgOptions,
+        source_root: SourceRootId,
     ) -> (LibId, bool) {
         let name = name.into();
 
-        if let Some(id) = self
-            .libs
-            .iter()
-            .find_map(|(id, data)| if data.name == name { Some(*id) } else { None })
-        {
+        if let Some(id) = self.libs.iter().find_map(|(id, data)| {
+            if data.name == name && data.cfg_options == cfg_options {
+                Some(*id)
+            } else {
+                None
+            }
+        }) {
             (id, true)
         } else {
             let id = LibId(self.libs.len() as u32);
@@ -59,10 +63,10 @@ impl LibSet {
                 id,
                 name,
                 kind,
-                source_root,
                 links,
+                cfg_options,
+                source_root,
                 deps: Vec::new(),
-                dependent: Vec::new(),
             };
 
             self.libs.insert(id, data);
@@ -80,7 +84,6 @@ impl LibSet {
         }
 
         self.libs.get_mut(&from).unwrap().deps.push(to);
-        self.libs.get_mut(&to).unwrap().dependent.push(from);
 
         Ok(())
     }
@@ -95,6 +98,27 @@ impl LibSet {
 
     pub fn find(&self, name: &str) -> Option<&LibData> {
         self.libs.values().find(|l| l.name == name)
+    }
+
+    pub fn all_deps(&self, lib: LibId) -> Vec<LibId> {
+        let mut res = Vec::new();
+        let mut visited = FxHashSet::default();
+
+        go(self, &mut visited, &mut res, lib);
+
+        return res;
+
+        fn go(libs: &LibSet, visited: &mut FxHashSet<LibId>, res: &mut Vec<LibId>, source: LibId) {
+            if !visited.insert(source) {
+                return;
+            }
+
+            for &dep in libs[source].deps.iter() {
+                go(libs, visited, res, dep);
+            }
+
+            res.push(source);
+        }
     }
 
     pub fn toposort(&self) -> Vec<LibId> {
@@ -113,29 +137,6 @@ impl LibSet {
             }
 
             for &dep in libs[source].deps.iter() {
-                go(libs, visited, res, dep);
-            }
-
-            res.push(source);
-        }
-    }
-
-    pub fn dependant(&self, _lib: LibId) -> Vec<LibId> {
-        let mut res = Vec::new();
-        let mut visited = FxHashSet::default();
-
-        for &lib in self.libs.keys() {
-            go(self, &mut visited, &mut res, lib);
-        }
-
-        return res;
-
-        fn go(libs: &LibSet, visited: &mut FxHashSet<LibId>, res: &mut Vec<LibId>, source: LibId) {
-            if !visited.insert(source) {
-                return;
-            }
-
-            for &dep in libs[source].dependent.iter() {
                 go(libs, visited, res, dep);
             }
 

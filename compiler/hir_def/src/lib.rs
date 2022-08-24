@@ -1,7 +1,6 @@
 pub mod ast_id;
 pub mod attrs;
 pub mod body;
-pub mod cfg;
 pub mod child_by_source;
 pub mod data;
 pub mod db;

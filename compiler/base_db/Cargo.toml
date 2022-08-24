@@ -7,5 +7,6 @@ edition = "2021"
 [dependencies]
 syntax = { path = "../syntax" }
 salsa = "0.16.0"
+smol_str = "0.1.17"
 rustc-hash = "1.1.0"
 relative-path = { version = "1.7.2", features = ["serde"] }

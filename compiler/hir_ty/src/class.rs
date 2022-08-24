@@ -81,7 +81,7 @@ impl Members {
         let mut members = Vec::new();
         let mut priority = FxHashMap::default();
 
-        for lib in db.libs().dependant(loc.module.lib) {
+        for lib in db.libs().all_deps(loc.module.lib) {
             for (_, module) in db.def_map(lib).modules() {
                 for inst in module.scope.members() {
                     let lower = db.lower_member(inst);

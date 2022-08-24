@@ -1,7 +1,7 @@
+pub mod cfg;
 pub mod input;
 pub mod libs;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fmt, panic};
 
@@ -35,13 +35,7 @@ pub trait SourceDatabaseExt: SourceDatabase {
     fn file_lib(&self, file_id: FileId) -> libs::LibId;
 
     #[salsa::input]
-    fn lib_source_root(&self, lib: libs::LibId) -> SourceRootId;
-
-    #[salsa::input]
     fn source_root(&self, id: SourceRootId) -> Arc<SourceRoot>;
-
-    #[salsa::input]
-    fn target_dir(&self, lib: libs::LibId) -> PathBuf;
 
     fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
 }

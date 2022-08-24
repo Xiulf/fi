@@ -25,7 +25,7 @@ impl Metadata {
             return true;
         }
 
-        let source_root = db.lib_source_root(self.lib);
+        let source_root = db.libs()[self.lib].source_root;
         let source_root = db.source_root(source_root);
 
         if let Some(dir) = &source_root.dir {
@@ -76,8 +76,8 @@ impl Metadata {
     }
 }
 
-pub fn read_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: &Path) -> Option<Arc<Metadata>> {
-    let metadata_dir = target_dir.join(&db.libs()[lib].name).with_extension("metadata");
+pub fn read_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: Option<&Path>) -> Option<Arc<Metadata>> {
+    let metadata_dir = target_dir?.join(&db.libs()[lib].name).with_extension("metadata");
 
     if let Ok(mut file) = File::open(metadata_dir) {
         let config = bincode::config::standard();
@@ -92,7 +92,7 @@ pub fn read_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: &Path) -> Opt
 }
 
 pub fn write_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: &Path) -> io::Result<()> {
-    let source_root = db.lib_source_root(lib);
+    let source_root = db.libs()[lib].source_root;
     let source_root = db.source_root(source_root);
 
     if let Some(dir) = &source_root.dir {

@@ -2,6 +2,7 @@ use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use base_db::cfg::{CfgOptions, CfgValue};
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::SourceDatabaseExt;
@@ -82,6 +83,7 @@ impl Dependency {
 
 pub fn load_project(
     rdb: &mut RootDatabase,
+    cfg: &CfgOptions,
     libs: &mut LibSet,
     roots: &mut u32,
     files: &mut u32,
@@ -95,11 +97,13 @@ pub fn load_project(
 
     let manifest = Manifest::load(path)?;
     let root_id = SourceRootId(*roots);
+    let cfg_opts = parse_cfg(&manifest.cfg).ok_or(anyhow::anyhow!("invalid cfg in manifest"))?;
     let (lib, exists) = libs.add_lib(
         manifest.project.name.clone(),
         manifest.project.output,
-        root_id,
         manifest.project.link_with().map(|l| l.display().to_string()).collect(),
+        cfg.merge(&cfg_opts),
+        root_id,
     );
 
     if exists {
@@ -113,12 +117,11 @@ pub fn load_project(
     load_dir(rdb, &mut root, root_id, lib, files, path, &src_dir)?;
 
     for dep in manifest.dep_dirs(path) {
-        let dep = load_project(rdb, libs, roots, files, &dep)?;
+        let dep = load_project(rdb, cfg, libs, roots, files, &dep)?;
 
         libs.add_dep(lib, dep)?;
     }
 
-    rdb.set_lib_source_root(lib, root_id);
     rdb.set_source_root(root_id, root.into());
 
     Ok(lib)
@@ -126,6 +129,7 @@ pub fn load_project(
 
 pub fn load_normal(
     rdb: &mut RootDatabase,
+    cfg: CfgOptions,
     libs: &mut LibSet,
     roots: &mut u32,
     files: &mut u32,
@@ -135,13 +139,12 @@ pub fn load_normal(
     let name = path.file_stem().unwrap().to_str().unwrap();
     let mut root = SourceRoot::new_local(Some(path.to_path_buf()));
     let root_id = SourceRootId(*roots);
-    let (lib, _) = libs.add_lib(name, kind, root_id, Vec::new());
+    let (lib, _) = libs.add_lib(name, kind, Vec::new(), cfg, root_id);
 
     *roots += 1;
 
     load_dir(rdb, &mut root, root_id, lib, files, path, path)?;
 
-    rdb.set_lib_source_root(lib, root_id);
     rdb.set_source_root(root_id, root.into());
 
     Ok(lib)
@@ -191,6 +194,21 @@ fn load_file(
     *files += 1;
 
     Ok(())
+}
+
+pub(crate) fn parse_cfg(cfg: &Cfg) -> Option<CfgOptions> {
+    let mut opts = CfgOptions::default();
+
+    for (key, value) in cfg {
+        match value {
+            | TomlValue::Boolean(true) => opts.enable(key),
+            | TomlValue::Integer(i) => opts.set(key, CfgValue::Int(*i as i128)),
+            | TomlValue::String(s) => opts.set(key, CfgValue::String(s.into())),
+            | _ => return None,
+        }
+    }
+
+    Some(opts)
 }
 
 mod lib_kind {

@@ -1,8 +1,8 @@
+use base_db::cfg::CfgOptions;
 use base_db::input::FileId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use syntax::{ast, NameOwner};
 
-use crate::cfg::CfgOptions;
 use crate::db::DefDatabase;
 use crate::def_map::path_resolution::{FixPoint, ResolveMode};
 use crate::def_map::DefMap;
@@ -20,10 +20,10 @@ use crate::visibility::Visibility;
 const GLOBAL_RECURSION_LIMIT: usize = 100;
 
 pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
-    let cfg_opts = CfgOptions::default();
+    let lib_data = db.libs();
     let mut collector = DefCollector {
         db,
-        cfg_opts: &cfg_opts,
+        cfg_opts: &lib_data[def_map.lib].cfg_options,
         def_map,
         glob_imports: FxHashMap::default(),
         reexports: FxHashMap::default(),
@@ -108,7 +108,7 @@ impl PartialResolvedImport {
 
 impl<'a> DefCollector<'a> {
     fn seed_with_items(&mut self) {
-        let source_root = self.db.lib_source_root(self.def_map.lib);
+        let source_root = self.db.libs()[self.def_map.lib].source_root;
         let source_root = self.db.source_root(source_root);
         let mut modules = Vec::new();
 
@@ -694,6 +694,14 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                     };
 
                     for (i, local_id) in it.ctors.clone().enumerate() {
+                        let attrs = self.item_tree.attrs(local_id.into());
+
+                        if let Some(cfg) = attrs.cfg() {
+                            if !cfg.is_enabled(self.def_collector.cfg_opts) {
+                                continue;
+                            }
+                        }
+
                         let data = &self.item_tree[local_id];
                         let id = CtorId {
                             parent: new_id,
@@ -729,8 +737,21 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                     let data = self.def_collector.db.class_data(new_id);
                     let visibility = self.resolve_visibility(&it.name, ExportNs::Types);
 
-                    for (name, id) in data.items.iter() {
-                        let id = match *id {
+                    for &(ref name, id) in data.items.iter() {
+                        let it = match id {
+                            | AssocItemId::FuncId(id) => Item::Func(id.lookup(self.def_collector.db).id.value),
+                            | AssocItemId::StaticId(id) => Item::Static(id.lookup(self.def_collector.db).id.value),
+                        };
+
+                        let attrs = self.item_tree.attrs(it.into());
+
+                        if let Some(cfg) = attrs.cfg() {
+                            if !cfg.is_enabled(self.def_collector.cfg_opts) {
+                                continue;
+                            }
+                        }
+
+                        let id = match id {
                             | AssocItemId::FuncId(id) => ModuleDefId::FuncId(id),
                             | AssocItemId::StaticId(id) => ModuleDefId::StaticId(id),
                         };

@@ -1,10 +1,10 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
+use base_db::cfg::{Cfg, CfgAtom, CfgValue};
 use either::Either;
 use syntax::ast;
 
-use crate::cfg::Cfg;
 use crate::db::DefDatabase;
 use crate::expr::Literal;
 use crate::id::{AttrDefId, Lookup};
@@ -57,7 +57,7 @@ impl Attrs {
     }
 
     pub fn cfg(&self) -> Option<Cfg> {
-        Cfg::parse(self)
+        cfg_parse(self)
     }
 }
 
@@ -292,6 +292,45 @@ fn collect_attrs(owner: &dyn ast::AttrsOwner) -> impl Iterator<Item = Either<ast
         .map(Either::Right);
 
     docs.chain(attrs)
+}
+
+fn cfg_parse(attrs: &Attrs) -> Option<Cfg> {
+    let mut cfgs = attrs.by_key("cfg").groups().map(cfg_parse_attr);
+    let a = cfgs.next()?;
+
+    match cfgs.next() {
+        | Some(b) => Some(Cfg::All([a, b].into_iter().chain(cfgs).collect())),
+        | None => Some(a),
+    }
+}
+
+fn cfg_parse_attr(group: &AttrInputGroup) -> Cfg {
+    group.iter().find_map(cfg_parse_expr).unwrap_or(Cfg::Invalid)
+}
+
+fn cfg_parse_expr(input: &AttrInput) -> Option<Cfg> {
+    match input {
+        | AttrInput::Ident(name) => Some(Cfg::Atom(CfgAtom::Flag(name.into()))),
+        | AttrInput::Field(name, value) => match &**value {
+            | AttrInput::Group(g) => match name.as_ref() {
+                | "not" => Some(Cfg::Not(Box::new(cfg_parse_attr(g)))),
+                | "any" => Some(Cfg::Any(g.iter().filter_map(cfg_parse_expr).collect())),
+                | "all" => Some(Cfg::All(g.iter().filter_map(cfg_parse_expr).collect())),
+                | _ => None,
+            },
+            | AttrInput::Literal(l) => {
+                let value = match l {
+                    | Literal::Int(i) => CfgValue::Int(*i),
+                    | Literal::String(s) => CfgValue::String(s.into()),
+                    | _ => return None,
+                };
+
+                Some(Cfg::Atom(CfgAtom::Key(name.into(), value)))
+            },
+            | _ => None,
+        },
+        | _ => None,
+    }
 }
 
 impl Deref for RawAttrs {

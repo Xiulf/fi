@@ -16,4 +16,4 @@ main =
     print a b c d e :: ()
 
 @cfg(test)
-test = 10
+test _ = 10

@@ -4,6 +4,7 @@ pub mod manifest;
 
 use std::{fs, io};
 
+use base_db::cfg::CfgOptions;
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::{SourceDatabase, SourceDatabaseExt};
@@ -24,6 +25,7 @@ pub struct Opts<'a> {
 #[derive(Default)]
 pub struct Driver {
     pub db: db::RootDatabase,
+    cfg: CfgOptions,
     lib: LibId,
     libs: LibSet,
     lib_count: u32,
@@ -33,6 +35,7 @@ pub struct Driver {
 impl Driver {
     pub fn init(opts: Opts) -> Option<(Self, LibId)> {
         let mut driver = Driver::default();
+        driver.cfg = manifest::parse_cfg(&opts.cfg)?;
         let lib = driver.load(opts.input)?;
 
         driver.lib = lib;
@@ -49,8 +52,10 @@ impl Driver {
     pub fn init_no_manifest(opts: Opts) -> Option<(Self, LibId)> {
         let mut driver = Driver::default();
         let path = std::path::Path::new(opts.input);
+        let cfg = manifest::parse_cfg(&opts.cfg)?;
         let lib = manifest::load_normal(
             &mut driver.db,
+            cfg,
             &mut driver.libs,
             &mut driver.lib_count,
             &mut driver.file_count,
@@ -60,7 +65,6 @@ impl Driver {
         .ok()?;
 
         driver.lib = lib;
-        driver.db.set_target_dir(lib, path.parent().unwrap().join("target"));
         driver.db.set_target(match opts.target {
             | Some("javascript") => CompilerTarget::Javascript,
             // | Some(target) => Arc::new(target.parse().unwrap()),
@@ -78,9 +82,13 @@ impl Driver {
         let mut root = SourceRoot::new_local(None);
         let root_id = SourceRootId(0);
         let root_file = FileId(0);
-        let (lib, _) = driver
-            .libs
-            .add_lib("<interactive>", Default::default(), root_id, Vec::new());
+        let (lib, _) = driver.libs.add_lib(
+            "<interactive>",
+            Default::default(),
+            Vec::new(),
+            Default::default(),
+            root_id,
+        );
 
         root.insert_file(root_file, "<interactive>");
 
@@ -88,7 +96,6 @@ impl Driver {
         driver.db.set_target(CompilerTarget::Javascript);
         driver.db.set_libs(driver.libs.clone().into());
         driver.db.set_source_root(root_id, root.into());
-        driver.db.set_lib_source_root(lib, root_id);
         driver.db.set_file_source_root(root_file, root_id);
         driver
             .db
@@ -105,25 +112,14 @@ impl Driver {
 
         match manifest::load_project(
             &mut self.db,
+            &self.cfg,
             &mut self.libs,
             &mut self.lib_count,
             &mut self.file_count,
             path,
         ) {
             | Ok(lib) => {
-                for lib in self.libs.iter() {
-                    let source_root = self.db.lib_source_root(lib);
-                    let source_root = self.db.source_root(source_root);
-
-                    if let Some(dir) = &source_root.dir {
-                        let target_dir = dir.join("target");
-
-                        self.db.set_target_dir(lib, target_dir.clone());
-                    }
-                }
-
                 self.db.set_libs(self.libs.clone().into());
-
                 Some(lib)
             },
             | Err(e) => {
@@ -145,10 +141,11 @@ impl Driver {
 
         for lib in hir::Lib::all(db) {
             let id = lib.into();
-            let target_dir = db.target_dir(id);
-            let changed = metadata::read_metadata(db, id, &target_dir)
+            let source_root = db.libs()[id].source_root;
+            let target_dir = db.source_root(source_root).dir.as_ref().map(|dir| dir.join("target"));
+            let changed = metadata::read_metadata(db, id, target_dir.as_deref())
                 .map(|m| m.has_changed(db))
-                .unwrap_or(false);
+                .unwrap_or(true);
 
             if changed || last_changed {
                 eprintln!("  \x1B[1;32m\x1B[1mChecking\x1B[0m {}", lib.name(db));
@@ -157,7 +154,10 @@ impl Driver {
                     return Ok(false);
                 }
 
-                metadata::write_metadata(db, id, &target_dir)?;
+                if let Some(dir) = target_dir {
+                    metadata::write_metadata(db, id, &dir)?;
+                }
+
                 last_changed = true;
             }
         }
@@ -169,18 +169,19 @@ impl Driver {
     }
 
     pub fn build(&self) -> io::Result<bool> {
-        fs::create_dir_all(self.db.target_dir(self.lib))?;
-        let start = std::time::Instant::now();
         let db = &self.db;
-        let target_dir = db.target_dir(self.lib);
+        let source_root = db.source_root(db.libs()[self.lib].source_root);
+        let target_dir = source_root.dir.as_ref().map(|dir| dir.join("target")).unwrap();
+        fs::create_dir_all(&target_dir)?;
+        let start = std::time::Instant::now();
         let mut done = FxHashSet::default();
         let mut last_changed = false;
 
         for lib in hir::Lib::all(db) {
             let id = lib.into();
-            let changed = metadata::read_metadata(db, id, &target_dir)
+            let changed = metadata::read_metadata(db, id, Some(&target_dir))
                 .map(|m| m.has_changed(db))
-                .unwrap_or(false);
+                .unwrap_or(true);
             let changed = changed || !Assembly::dummy(lib).path(db, &target_dir).exists();
 
             if changed || last_changed {
@@ -195,7 +196,7 @@ impl Driver {
                     return Ok(false);
                 }
 
-                self.write_assembly(lib, &mut done)?;
+                self.write_assembly(lib, &mut done, &target_dir)?;
                 metadata::write_metadata(db, id, &target_dir)?;
                 last_changed = true;
             } else {
@@ -224,22 +225,27 @@ impl Driver {
         }
     }
 
-    fn write_assembly(&self, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> io::Result<bool> {
+    fn write_assembly(
+        &self,
+        lib: hir::Lib,
+        done: &mut FxHashSet<hir::Lib>,
+        target_dir: &std::path::Path,
+    ) -> io::Result<bool> {
         if done.contains(&lib) {
             return Ok(false);
         }
 
         let deps = lib.dependencies(&self.db).into_iter().map(|dep| {
-            let _ = self.write_assembly(dep.lib, done);
+            let _ = self.write_assembly(dep.lib, done, target_dir);
             dep.lib
         });
 
         let asm = self.db.lib_assembly(lib);
-        let source_root = self.db.lib_source_root(lib.into());
+        let source_root = self.db.libs()[lib.into()].source_root;
         let source_root = self.db.source_root(source_root);
         let path = source_root.dir.as_ref().unwrap();
 
-        asm.link(&self.db, deps, path, &self.db.target_dir(self.lib));
+        asm.link(&self.db, deps, path, target_dir);
         done.insert(lib);
 
         Ok(true)
