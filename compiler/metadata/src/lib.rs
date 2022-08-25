@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use hir::cfg::CfgOptions;
 use hir::db::HirDatabase;
 use hir::id::LibId;
 use relative_path::RelativePath;
@@ -20,6 +21,8 @@ pub struct Metadata {
 }
 
 impl Metadata {
+    const EXTENSION: &'static str = "metadata";
+
     pub fn has_changed(&self, db: &dyn HirDatabase) -> bool {
         if self.version != 0 {
             return true;
@@ -77,7 +80,7 @@ impl Metadata {
 }
 
 pub fn read_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: Option<&Path>) -> Option<Arc<Metadata>> {
-    let metadata_dir = target_dir?.join(&db.libs()[lib].name).with_extension("metadata");
+    let metadata_dir = target_dir?.join(metadata_name(db, lib));
 
     if let Ok(mut file) = File::open(metadata_dir) {
         let config = bincode::config::standard();
@@ -96,7 +99,7 @@ pub fn write_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: &Path) -> io
     let source_root = db.source_root(source_root);
 
     if let Some(dir) = &source_root.dir {
-        let metadata_dir = target_dir.join(&db.libs()[lib].name).with_extension("metadata");
+        let metadata_dir = target_dir.join(metadata_name(db, lib));
         let mut metadata = Metadata::default();
 
         {
@@ -129,4 +132,28 @@ pub fn write_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: &Path) -> io
     }
 
     Ok(())
+}
+
+fn metadata_name(db: &dyn HirDatabase, lib: LibId) -> String {
+    let libs = db.libs();
+    let data = &libs[lib];
+    let cfg_hash = hash_cfg(&data.cfg_options);
+
+    format!("{}-{:X}.{}", data.name, cfg_hash, Metadata::EXTENSION)
+}
+
+fn hash_cfg(cfg: &CfgOptions) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = rustc_hash::FxHasher::default();
+
+    for flag in cfg.flags().iter() {
+        flag.hash(&mut hasher);
+    }
+
+    for (key, value) in cfg.keys().iter() {
+        key.hash(&mut hasher);
+        value.hash(&mut hasher);
+    }
+
+    hasher.finish()
 }

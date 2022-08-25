@@ -7,7 +7,7 @@ use syntax::NameOwner;
 
 use crate::db::DefDatabase;
 use crate::id::*;
-use crate::item_tree::{AssocItem, AttrOwner, Item, ItemTreeId};
+use crate::item_tree::{AssocItem, Item, ItemTreeId};
 pub use crate::item_tree::{FixityKind, FunDep};
 use crate::name::{AsName, Name};
 use crate::path::Path;

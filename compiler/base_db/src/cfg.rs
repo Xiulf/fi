@@ -22,7 +22,7 @@ pub enum CfgAtom {
     Key(SmolStr, CfgValue),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CfgValue {
     Int(i128),
     String(SmolStr),
@@ -34,6 +34,14 @@ impl CfgOptions {
             | CfgAtom::Flag(flag) => self.flags.contains(flag),
             | CfgAtom::Key(key, value) => self.keys.get(key).map(|v| v == value).unwrap_or(false),
         })
+    }
+
+    pub fn flags(&self) -> &FxHashSet<SmolStr> {
+        &self.flags
+    }
+
+    pub fn keys(&self) -> &FxHashMap<SmolStr, CfgValue> {
+        &self.keys
     }
 
     pub fn enable(&mut self, flag: impl Into<SmolStr>) {
