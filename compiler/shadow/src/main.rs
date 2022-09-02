@@ -3,34 +3,82 @@
 mod interactive;
 
 use std::io;
+use std::path::Path;
 
-use base_db::libs::LibKind;
-use clap::clap_app;
+use base_db::libs::{LibId, LibKind};
+use clap::{Args, Parser, Subcommand};
 use driver::manifest::{Cfg, TomlValue};
 use driver::{Driver, Opts};
 
-fn main() -> io::Result<()> {
-    let matches = clap_app!(shadow =>
-        (@setting VersionlessSubcommands)
-        (@arg file: +takes_value)
-        (@arg target: --target +takes_value)
-        (@arg output: --output +takes_value)
-        (@arg cfg: --cfg +takes_value +global +multiple)
-        (@subcommand check =>
-            (@arg input: +takes_value default_value("."))
-        )
-        (@subcommand build =>
-            (@arg target: --target +takes_value)
-            (@arg input: +takes_value default_value("."))
-        )
-        (@subcommand run =>
-            (@setting TrailingVarArg)
-            (@arg target: --target +takes_value)
-            (@arg input: +takes_value default_value("."))
-            (@arg args: ...)
-        )
-    )
-    .get_matches();
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+struct Cli {
+    #[clap(flatten)]
+    args: CliArgs,
+
+    #[clap(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Args, Debug)]
+struct CliArgs {
+    #[clap(value_hint = clap::ValueHint::FilePath)]
+    file: Option<String>,
+
+    #[clap(long)]
+    target: Option<String>,
+
+    #[clap(long, value_parser = parse_output)]
+    output: Option<LibKind>,
+
+    #[clap(long, global = true, value_parser = parse_cfg)]
+    cfg: Vec<(String, TomlValue)>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum BasicCommands {
+    Check(CheckArgs),
+    Build(BuildArgs),
+
+    #[clap(trailing_var_arg = true)]
+    Run(RunArgs),
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[clap(flatten)]
+    Basic(BasicCommands),
+    Watch(WatchArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+struct CheckArgs {
+    #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    input: String,
+}
+
+#[derive(Args, Debug, Clone)]
+struct BuildArgs {
+    #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    input: String,
+}
+
+#[derive(Args, Debug, Clone)]
+struct RunArgs {
+    #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    input: String,
+    args: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+struct WatchArgs {
+    #[clap(subcommand)]
+    command: BasicCommands,
+}
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
 
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
@@ -51,80 +99,116 @@ fn main() -> io::Result<()> {
         eprintln!("\x1B[31mInternal Compiler Error\x1B[0m: '{}' at {}", msg, loc);
     }));
 
-    let cfg: Cfg = matches
-        .values_of("cfg")
-        .map(|v| v.filter_map(parse_cfg).collect())
-        .unwrap_or_default();
+    run_cli(cli)
+}
 
-    if let Some(matches) = matches.subcommand_matches("check") {
-        let input = matches.value_of("input").unwrap();
+fn run_cli(cli: Cli) -> anyhow::Result<()> {
+    let Cli { args, command } = cli;
 
-        if let Some((driver, _)) = Driver::init(Opts {
-            input,
-            cfg,
-            ..Opts::default()
-        }) {
-            driver.check()?;
-        }
-    } else if let Some(matches) = matches.subcommand_matches("build") {
-        let input = matches.value_of("input").unwrap();
-        let target = matches.value_of("target");
+    match command {
+        | Some(command) => match command {
+            | Commands::Basic(command) => match setup_basic(args, &command) {
+                | Some((driver, lib)) => run_basic(&driver, lib, &command).map(|_| ()).map_err(Into::into),
+                | None => Ok(()),
+            },
+            | Commands::Watch(watch) => run_watch(args, watch),
+        },
+        | None => match args.file.clone() {
+            | Some(file) => run_file(args, file).map_err(Into::into),
+            | None => {
+                interactive::run();
+                Ok(())
+            },
+        },
+    }
+}
 
-        if let Some((driver, _)) = Driver::init(Opts {
-            input,
-            target,
-            cfg,
-            ..Opts::default()
-        }) {
-            driver.build()?;
-        }
-    } else if let Some(matches) = matches.subcommand_matches("run") {
-        let input = matches.value_of("input").unwrap();
-        let target = matches.value_of("target");
+fn setup_basic(cli: CliArgs, command: &BasicCommands) -> Option<(Driver, LibId)> {
+    let cfg: Cfg = cli.cfg.into_iter().collect();
+    let input = match &command {
+        | BasicCommands::Check(args) => &args.input,
+        | BasicCommands::Build(args) => &args.input,
+        | BasicCommands::Run(args) => &args.input,
+    };
 
-        if let Some((driver, lib)) = Driver::init(Opts {
-            input,
-            target,
-            cfg,
-            ..Opts::default()
-        }) {
-            let status = if let Some(args) = matches.values_of_os("args") {
-                driver.run(lib, args.into_iter())
-            } else {
-                driver.run(lib, std::iter::empty())
-            }?;
+    Driver::init(Opts {
+        target: cli.target.as_deref(),
+        input,
+        cfg,
+        ..Opts::default()
+    })
+}
 
-            if status {
-                std::process::exit(0);
-            } else {
-                std::process::exit(1);
-            }
-        }
-    } else if let Some(input) = matches.value_of("file") {
-        let target = matches.value_of("target");
-        let output = matches.value_of("output").map(|o| match o {
-            | "dynamic" => LibKind::Dynamic,
-            | "static" => LibKind::Static,
-            | "executable" => LibKind::Executable,
-            | _ => panic!("invalid output kind '{}'", o),
-        });
+fn run_basic(driver: &Driver, lib: LibId, command: &BasicCommands) -> io::Result<bool> {
+    match command {
+        | BasicCommands::Check(_) => driver.check(),
+        | BasicCommands::Build(_) => driver.build(),
+        | BasicCommands::Run(args) => driver.run(lib, args.args.iter()),
+    }
+}
 
-        if let Some((driver, _)) = Driver::init_no_manifest(Opts {
-            input,
-            target,
-            output,
-            cfg,
-        }) {
-            driver.build()?;
-        }
-    } else {
-        interactive::run();
+fn run_file(cli: CliArgs, input: String) -> io::Result<()> {
+    let cfg: Cfg = cli.cfg.into_iter().collect();
+
+    if let Some((driver, _)) = Driver::init_no_manifest(Opts {
+        input: &input,
+        target: cli.target.as_deref(),
+        output: cli.output,
+        cfg,
+    }) {
+        driver.build()?;
     }
 
     Ok(())
 }
 
-fn parse_cfg(s: &str) -> Option<(String, TomlValue)> {
+fn run_watch(cli: CliArgs, args: WatchArgs) -> anyhow::Result<()> {
+    use notify::event::{CreateKind, EventKind, RemoveKind};
+    use notify::Watcher;
+
+    if let Some((driver, lib)) = setup_basic(cli, &args.command) {
+        let input = match &args.command {
+            | BasicCommands::Check(args) => &args.input,
+            | BasicCommands::Build(args) => &args.input,
+            | BasicCommands::Run(args) => &args.input,
+        };
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut watcher = notify::recommended_watcher(tx)?;
+
+        watcher.watch(Path::new(input), notify::RecursiveMode::Recursive)?;
+
+        for res in rx {
+            if let Ok(event) = res {
+                match event.kind {
+                    | EventKind::Create(CreateKind::File) => {
+                        log::debug!("added: {:?}", event.paths);
+                    },
+                    | EventKind::Remove(RemoveKind::File) => {
+                        log::debug!("removed: {:?}", event.paths);
+                    },
+                    | EventKind::Modify(_) => {
+                        log::debug!("modified: {:?}", event.paths);
+                    },
+                    | _ => continue,
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn parse_output(s: &str) -> Result<LibKind, String> {
+    match s {
+        | "dynamic" => Ok(LibKind::Dynamic),
+        | "static" => Ok(LibKind::Static),
+        | "executable" => Ok(LibKind::Executable),
+        | _ => Err(format!("invalid output kind '{}'", s)),
+    }
+}
+
+fn parse_cfg(s: &str) -> Result<(String, TomlValue), String> {
     if let Some((key, value)) = s.split_once('=') {
         let value = if let Ok(i) = value.parse::<i64>() {
             TomlValue::Integer(i)
@@ -134,8 +218,8 @@ fn parse_cfg(s: &str) -> Option<(String, TomlValue)> {
             TomlValue::String(value.into())
         };
 
-        Some((key.into(), value))
+        Ok((key.into(), value))
     } else {
-        Some((s.into(), TomlValue::Boolean(true)))
+        Ok((s.into(), TomlValue::Boolean(true)))
     }
 }

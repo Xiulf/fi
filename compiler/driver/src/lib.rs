@@ -210,7 +210,7 @@ impl Driver {
         Ok(true)
     }
 
-    pub fn run<'a>(&self, _lib: LibId, _args: impl Iterator<Item = &'a std::ffi::OsStr>) -> io::Result<bool> {
+    pub fn run(&self, _lib: LibId, _args: impl Iterator<Item = impl AsRef<std::ffi::OsStr>>) -> io::Result<bool> {
         if self.build()? {
             // let asm = self.db.lib_assembly(lib.into());
             // let path = asm.path(&self.db, &self.db.target_dir(lib));

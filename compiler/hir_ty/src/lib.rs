@@ -1,5 +1,4 @@
 #![feature(once_cell)]
-#![feature(label_break_value)]
 
 pub mod class;
 mod convert;
