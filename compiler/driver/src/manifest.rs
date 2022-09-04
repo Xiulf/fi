@@ -6,11 +6,13 @@ use base_db::cfg::{CfgOptions, CfgValue};
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::SourceDatabaseExt;
+use metadata::InputPaths;
 use path_slash::PathExt as _;
 use relative_path::RelativePath;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 pub use toml::Value as TomlValue;
+use tracing::trace;
 
 use crate::db::RootDatabase;
 
@@ -52,6 +54,7 @@ pub enum Dependency {
 impl Manifest {
     pub fn load(path: &Path) -> Result<Self> {
         let manifest_path = path.join("shadow.toml");
+        trace!("{}", manifest_path.display());
         let manifest_src = std::fs::read_to_string(&manifest_path)
             .with_context(|| format!("Failed to read manifest from {}", manifest_path.display()))?;
 
@@ -83,6 +86,7 @@ impl Dependency {
 
 pub fn load_project(
     rdb: &mut RootDatabase,
+    paths: &mut InputPaths,
     cfg: &CfgOptions,
     libs: &mut LibSet,
     roots: &mut u32,
@@ -90,9 +94,9 @@ pub fn load_project(
     path: &Path,
 ) -> Result<LibId> {
     let mut root = if *roots == 0 {
-        SourceRoot::new_local(Some(path.to_path_buf()))
+        SourceRoot::new_local()
     } else {
-        SourceRoot::new_library(Some(path.to_path_buf()))
+        SourceRoot::new_library()
     };
 
     let manifest = Manifest::load(path)?;
@@ -111,13 +115,14 @@ pub fn load_project(
     }
 
     *roots += 1;
+    paths.source_roots.insert(root_id, path.to_path_buf());
 
     let src_dir = path.join(&manifest.project.src);
 
     load_dir(rdb, &mut root, root_id, lib, files, path, &src_dir)?;
 
     for dep in manifest.dep_dirs(path) {
-        let dep = load_project(rdb, cfg, libs, roots, files, &dep)?;
+        let dep = load_project(rdb, paths, cfg, libs, roots, files, &dep)?;
 
         libs.add_dep(lib, dep)?;
     }
@@ -129,6 +134,7 @@ pub fn load_project(
 
 pub fn load_normal(
     rdb: &mut RootDatabase,
+    paths: &mut InputPaths,
     cfg: CfgOptions,
     libs: &mut LibSet,
     roots: &mut u32,
@@ -137,11 +143,12 @@ pub fn load_normal(
     kind: LibKind,
 ) -> Result<LibId> {
     let name = path.file_stem().unwrap().to_str().unwrap();
-    let mut root = SourceRoot::new_local(Some(path.to_path_buf()));
+    let mut root = SourceRoot::new_local();
     let root_id = SourceRootId(*roots);
     let (lib, _) = libs.add_lib(name, kind, Vec::new(), cfg, root_id);
 
     *roots += 1;
+    paths.source_roots.insert(root_id, path.to_path_buf());
 
     load_dir(rdb, &mut root, root_id, lib, files, path, path)?;
 

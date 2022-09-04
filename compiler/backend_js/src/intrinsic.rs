@@ -1,6 +1,7 @@
 use hir::id::HasModule;
 use hir::ty::{TyKind, TypeVar};
 use hir::{Literal, TypeCtor};
+use tracing::warn;
 
 use crate::expr::{Arg, JsExpr};
 use crate::BodyCtx;
@@ -76,7 +77,7 @@ impl BodyCtx<'_, '_> {
             | "ieq" => self.intrinsic_ieq(args, block),
             | "icmp" => self.intrinsic_icmp(args, block),
             | _ => {
-                log::warn!(target: "lower_intrinsic", "todo: {:?}", name);
+                warn!(target: "lower_intrinsic", "todo: {:?}", name);
                 JsExpr::Undefined
             },
         }

@@ -1,4 +1,5 @@
 use hir_def::id::TypeVarOwner;
+use tracing::trace;
 
 use super::{InferenceContext, InferenceDiagnostic};
 use crate::info::{ToInfo, TyId, TyInfo, TySource};
@@ -6,7 +7,7 @@ use crate::info::{ToInfo, TyId, TyInfo, TySource};
 impl InferenceContext<'_> {
     /// Infer the kind of the type
     pub fn infer_kind(&mut self, ty: TyId) -> TyId {
-        log::trace!("infer_kind({:?})", ty);
+        trace!("infer_kind({:?})", ty);
         let ty = self.subst_type(ty);
         let src = self.types.source(ty);
 

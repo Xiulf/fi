@@ -4,6 +4,7 @@ use hir_def::expr::Literal;
 use hir_def::infix::ProcessInfix;
 use hir_def::pat::{Pat, PatId};
 use hir_def::resolver::ValueNs;
+use tracing::trace;
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, InferenceDiagnostic};
@@ -13,7 +14,7 @@ use crate::lower::LowerCtx;
 impl BodyInferenceContext<'_> {
     pub fn infer_pat(&mut self, pat: PatId) -> TyId {
         self.db.check_canceled();
-        log::trace!("infer_pat({:?})", pat);
+        trace!("infer_pat({:?})", pat);
 
         let body = Arc::clone(&self.body);
         let src = self.source(pat);

@@ -73,7 +73,7 @@ impl Interactive {
     }
 
     fn load(&mut self, text: &str) {
-        if let Some(lib) = self.driver.load(text) {
+        if let Some(lib) = self.driver.load(std::path::Path::new(text)) {
             self.driver.add_dep(self.lib, lib);
         } else {
             println!("cannot load {}", text);

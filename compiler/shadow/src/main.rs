@@ -3,12 +3,13 @@
 mod interactive;
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use base_db::libs::{LibId, LibKind};
 use clap::{Args, Parser, Subcommand};
 use driver::manifest::{Cfg, TomlValue};
 use driver::{Driver, Opts};
+use tracing::{debug, Level};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -24,7 +25,7 @@ struct Cli {
 #[derive(Args, Debug)]
 struct CliArgs {
     #[clap(value_hint = clap::ValueHint::FilePath)]
-    file: Option<String>,
+    file: Option<PathBuf>,
 
     #[clap(long)]
     target: Option<String>,
@@ -34,6 +35,9 @@ struct CliArgs {
 
     #[clap(long, global = true, value_parser = parse_cfg)]
     cfg: Vec<(String, TomlValue)>,
+
+    #[clap(short = 'v', long, global = true, action = clap::ArgAction::Count)]
+    verbose: u8,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -50,24 +54,25 @@ enum Commands {
     #[clap(flatten)]
     Basic(BasicCommands),
     Watch(WatchArgs),
+    Lsp(LspArgs),
 }
 
 #[derive(Args, Debug, Clone)]
 struct CheckArgs {
     #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
-    input: String,
+    input: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
 struct BuildArgs {
     #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
-    input: String,
+    input: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
 struct RunArgs {
     #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
-    input: String,
+    input: PathBuf,
     args: Vec<String>,
 }
 
@@ -77,13 +82,23 @@ struct WatchArgs {
     command: BasicCommands,
 }
 
+#[derive(Args, Debug)]
+struct LspArgs {
+    #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    input: PathBuf,
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Debug)
-        .filter_module("salsa", log::LevelFilter::Off)
-        .format_timestamp(None)
+    tracing_subscriber::fmt()
+        .without_time()
+        .with_max_level(match cli.args.verbose {
+            | 0 => Level::WARN,
+            | 1 => Level::INFO,
+            | 2 => Level::DEBUG,
+            | _ => Level::TRACE,
+        })
         .init();
 
     std::panic::set_hook(Box::new(|info| {
@@ -112,6 +127,7 @@ fn run_cli(cli: Cli) -> anyhow::Result<()> {
                 | None => Ok(()),
             },
             | Commands::Watch(watch) => run_watch(args, watch),
+            | Commands::Lsp(lsp) => run_lsp(args, lsp),
         },
         | None => match args.file.clone() {
             | Some(file) => run_file(args, file).map_err(Into::into),
@@ -147,7 +163,7 @@ fn run_basic(driver: &Driver, lib: LibId, command: &BasicCommands) -> io::Result
     }
 }
 
-fn run_file(cli: CliArgs, input: String) -> io::Result<()> {
+fn run_file(cli: CliArgs, input: PathBuf) -> io::Result<()> {
     let cfg: Cfg = cli.cfg.into_iter().collect();
 
     if let Some((driver, _)) = Driver::init_no_manifest(Opts {
@@ -162,11 +178,15 @@ fn run_file(cli: CliArgs, input: String) -> io::Result<()> {
     Ok(())
 }
 
+fn run_lsp(_cli: CliArgs, _args: LspArgs) -> anyhow::Result<()> {
+    language_server::run()
+}
+
 fn run_watch(cli: CliArgs, args: WatchArgs) -> anyhow::Result<()> {
     use notify::event::{CreateKind, EventKind, RemoveKind};
     use notify::Watcher;
 
-    if let Some((driver, lib)) = setup_basic(cli, &args.command) {
+    if let Some((_driver, _lib)) = setup_basic(cli, &args.command) {
         let input = match &args.command {
             | BasicCommands::Check(args) => &args.input,
             | BasicCommands::Build(args) => &args.input,
@@ -182,13 +202,13 @@ fn run_watch(cli: CliArgs, args: WatchArgs) -> anyhow::Result<()> {
             if let Ok(event) = res {
                 match event.kind {
                     | EventKind::Create(CreateKind::File) => {
-                        log::debug!("added: {:?}", event.paths);
+                        debug!("added: {:?}", event.paths);
                     },
                     | EventKind::Remove(RemoveKind::File) => {
-                        log::debug!("removed: {:?}", event.paths);
+                        debug!("removed: {:?}", event.paths);
                     },
                     | EventKind::Modify(_) => {
-                        log::debug!("modified: {:?}", event.paths);
+                        debug!("modified: {:?}", event.paths);
                     },
                     | _ => continue,
                 }

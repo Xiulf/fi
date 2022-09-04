@@ -12,11 +12,11 @@ use hir::db::HirDatabase;
 use hir::id::{DefWithBodyId, HasModule};
 use hir::ty::{Ty, TyKind};
 
-#[no_mangle]
-pub fn init(logger: &'static dyn log::Log, max_level: log::LevelFilter) {
-    log::set_logger(logger).unwrap();
-    log::set_max_level(max_level);
-}
+// #[no_mangle]
+// pub fn init(logger: &'static dyn log::Log, max_level: log::LevelFilter) {
+//     log::set_logger(logger).unwrap();
+//     log::set_max_level(max_level);
+// }
 
 #[no_mangle]
 pub fn codegen(db: &dyn HirDatabase, module: hir::Module, file: &mut dyn Write) {

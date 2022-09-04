@@ -5,6 +5,7 @@ use hir::id::HasModule;
 use hir::{
     Const, Ctor, Expr, Func, HasResolver, Literal, MethodSource, Path, Resolver, Static, Stmt, TypeCtor, ValueNs,
 };
+use tracing::warn;
 
 use crate::indent::IndentWriter;
 use crate::BodyCtx;
@@ -462,7 +463,7 @@ impl BodyCtx<'_, '_> {
             },
             | Expr::Case { pred, ref arms } => self.lower_case(expr, pred, arms, block),
             | ref e => {
-                log::warn!(target: "lower_expr", "not yet implemented: {:?}", e);
+                warn!(target: "lower_expr", "not yet implemented: {:?}", e);
                 JsExpr::Undefined
             },
         }

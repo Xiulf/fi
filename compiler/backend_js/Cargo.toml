@@ -11,4 +11,4 @@ crate-type = ["dylib"]
 arena = { path = "../arena" }
 hir = { path = "../hir" }
 rustc-hash = "1.1.0"
-log = "0.4.17"
+tracing = "^0.1"

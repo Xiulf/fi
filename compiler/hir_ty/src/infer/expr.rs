@@ -5,6 +5,7 @@ use hir_def::id::{FixityId, TypeVarOwner};
 use hir_def::infix::ProcessInfix;
 use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
+use tracing::trace;
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, ExprOrPatId, InferenceContext, InferenceDiagnostic};
@@ -14,7 +15,7 @@ use crate::lower::LowerCtx;
 impl BodyInferenceContext<'_> {
     pub fn infer_expr(&mut self, expr: ExprId) -> TyId {
         self.db.check_canceled();
-        log::trace!("infer_expr({:?})", expr);
+        trace!("infer_expr({:?})", expr);
 
         let body = Arc::clone(&self.body);
         let src = self.source(expr);

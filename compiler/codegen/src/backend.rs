@@ -26,7 +26,7 @@ impl PartialEq for Backend {
 impl Eq for Backend {
 }
 
-type InitFn = fn(&'static dyn log::Log, log::LevelFilter);
+// type InitFn = fn(&'static dyn log::Log, log::LevelFilter);
 type CodegenFn = fn(&dyn HirDatabase, hir::Module, &mut dyn io::Write);
 
 pub fn backend(db: &dyn CodegenDatabase) -> Backend {
@@ -38,10 +38,10 @@ pub fn backend(db: &dyn CodegenDatabase) -> Backend {
 
     let lib = std::env::current_exe().unwrap().parent().unwrap().join(lib);
     let lib = unsafe { Library::new(lib).unwrap() };
-    let init = unsafe { lib.get::<InitFn>(b"init").unwrap() };
+    // let init = unsafe { lib.get::<InitFn>(b"init").unwrap() };
     let codegen = unsafe { std::mem::transmute(lib.get::<CodegenFn>(b"codegen").unwrap()) };
 
-    init(log::logger(), log::LevelFilter::Debug);
+    // init(log::logger(), log::LevelFilter::Debug);
 
     Backend(Arc::new(BackendInner { lib, codegen }))
 }
