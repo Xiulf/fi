@@ -1,14 +1,17 @@
-use std::path::{Component, Path, PathBuf, Prefix};
+use std::path::{Component, Path, Prefix};
 use std::str::FromStr;
 
 use base_db::input::{FileId, LineCol, LineIndex};
 use lsp_types::Url;
+use paths::AbsPathBuf;
 use syntax::{TextRange, TextSize};
 
 use crate::state::LspStateSnapshot;
 
-pub fn file_path(uri: &Url) -> anyhow::Result<PathBuf> {
-    uri.to_file_path().map_err(|_| anyhow::anyhow!("invalid uri: {uri}"))
+pub fn file_path(uri: &Url) -> anyhow::Result<AbsPathBuf> {
+    uri.to_file_path()
+        .map(AbsPathBuf::assert)
+        .map_err(|_| anyhow::anyhow!("invalid uri: {uri}"))
 }
 
 pub fn offset(line_index: &LineIndex, pos: lsp_types::Position) -> TextSize {
@@ -45,9 +48,9 @@ pub fn lsp_position(line_index: &LineIndex, offset: TextSize) -> lsp_types::Posi
 
 pub fn uri(snapshot: &LspStateSnapshot, file: FileId) -> anyhow::Result<Url> {
     let vfs = snapshot.vfs.read();
-    let path = vfs.file_path(vfs::FileId(file.0));
+    let path = vfs.file_path(file);
 
-    uri_from_path(path)
+    uri_from_path(path.as_path().unwrap())
 }
 
 fn uri_from_path(path: impl AsRef<Path>) -> anyhow::Result<Url> {

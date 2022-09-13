@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+base_db = { path = "../base_db" }
 vfs = { path = "../vfs" }
 cfg = { path = "../cfg" }
 paths = { path = "../paths" }
@@ -13,3 +14,4 @@ smol_str = "0.1.17"
 serde = { version = "^1.0.123", features = ["derive"] }
 toml = "0.5.8"
 anyhow = "1.0.38"
+tracing = "^0.1"

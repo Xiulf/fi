@@ -1,6 +1,8 @@
+use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use base_db::libs::LibKind;
 use cfg::{CfgOptions, CfgValue};
 use paths::{AbsPath, AbsPathBuf};
 use rustc_hash::FxHashMap;
@@ -10,12 +12,9 @@ use vfs::{FileId, VfsPath, VirtualFileSystem};
 
 use crate::{Package, Workspace};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Manifest {
     pub project: Project,
-
-    #[serde(default)]
-    pub cfg: Cfg,
 
     #[serde(default)]
     pub dependencies: FxHashMap<String, Dependency>,
@@ -23,7 +22,7 @@ pub struct Manifest {
 
 pub type Cfg = FxHashMap<String, toml::Value>;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
     pub name: String,
     pub version: String,
@@ -35,27 +34,19 @@ pub struct Project {
     pub link: Vec<PathBuf>,
 
     #[serde(default)]
-    #[serde(with = "output_kind")]
-    pub output: OutputKind,
+    #[serde(with = "lib_kind")]
+    pub output: LibKind,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Dependency {
-    Path { path: PathBuf },
-}
+    Path {
+        path: PathBuf,
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OutputKind {
-    Executable,
-    StaticLib,
-    DynamicLib,
-}
-
-impl Default for OutputKind {
-    fn default() -> Self {
-        Self::DynamicLib
-    }
+        #[serde(default)]
+        cfg: Cfg,
+    },
 }
 
 impl Manifest {
@@ -67,6 +58,10 @@ impl Manifest {
 
     pub fn dep_dirs<'a>(&'a self, proj_dir: &'a AbsPath) -> impl Iterator<Item = AbsPathBuf> + 'a {
         self.dependencies.values().map(move |d| d.get_dir(proj_dir))
+    }
+
+    pub fn dep_cfg_opts<'a>(&'a self) -> impl Iterator<Item = &'a Cfg> + 'a {
+        self.dependencies.values().map(|d| d.get_cfg())
     }
 }
 
@@ -83,7 +78,13 @@ impl Project {
 impl Dependency {
     pub fn get_dir(&self, proj_dir: &AbsPath) -> AbsPathBuf {
         match self {
-            | Dependency::Path { path } => proj_dir.join(path),
+            | Dependency::Path { path, .. } => proj_dir.join(path),
+        }
+    }
+
+    pub fn get_cfg(&self) -> &Cfg {
+        match self {
+            | Dependency::Path { cfg, .. } => cfg,
         }
     }
 }
@@ -112,22 +113,23 @@ fn load_manifest(
         return Ok(package);
     }
 
-    let cfg_opts = parse_cfg(&manifest.cfg).ok_or(anyhow::anyhow!("invalid cfg in manifest"))?;
-    let package = workspace.alloc_package(manifest, path.join(Manifest::FILE_NAME));
     let src_dir = path.join(&manifest.project.src);
+    let first_file = load_dir(vfs, &src_dir)?.ok_or_else(|| anyhow::anyhow!("empty source folder"))?;
+    let package = workspace.alloc_package(manifest, path.join(Manifest::FILE_NAME), first_file);
 
-    load_dir(vfs, &src_dir)?;
-
-    for dep in manifest.dep_dirs(path) {
+    for (dep, cfg_opts) in manifest.dep_dirs(path).zip(manifest.dep_cfg_opts()) {
         let dep = load_project(workspace, vfs, cfg, &dep)?;
+        let cfg_opts = parse_cfg(cfg_opts).ok_or(anyhow::anyhow!("invalid cfg in manifest"))?;
 
-        workspace.add_dependency(package, crate::Dependency { package: dep });
+        workspace.add_dependency(package, crate::Dependency { package: dep, cfg_opts });
     }
 
     Ok(package)
 }
 
-fn load_dir(vfs: &mut VirtualFileSystem, path: &AbsPath) -> Result<()> {
+fn load_dir(vfs: &mut VirtualFileSystem, path: &AbsPath) -> Result<Option<FileId>> {
+    let mut first_file = None;
+
     for entry in path
         .as_ref()
         .read_dir()
@@ -139,20 +141,22 @@ fn load_dir(vfs: &mut VirtualFileSystem, path: &AbsPath) -> Result<()> {
 
         if meta.is_file() {
             if path.extension().and_then(|o| o.to_str()) == Some("shade") {
-                load_file(vfs, path)?;
+                first_file.get_or_insert(load_file(vfs, path)?);
             }
         } else {
             load_dir(vfs, &path)?;
         }
     }
 
-    Ok(())
+    Ok(first_file)
 }
 
 fn load_file(vfs: &mut VirtualFileSystem, path: AbsPathBuf) -> Result<FileId> {
-    let text =
-        std::fs::read_to_string(&path).with_context(|| anyhow::anyhow!("failed to load file: {}", path.display()))?;
-    let (file, _) = vfs.set_file_content(VfsPath::from(path), Some(text.into_bytes().into_boxed_slice()));
+    let text = fs::read_to_string(&path).with_context(|| anyhow::anyhow!("failed to load file: {}", path.display()))?;
+    let (file, _) = vfs.set_file_content(
+        VfsPath::from(path.normalize()),
+        Some(text.into_bytes().into_boxed_slice()),
+    );
 
     Ok(file)
 }
@@ -172,29 +176,28 @@ pub fn parse_cfg(cfg: &Cfg) -> Option<CfgOptions> {
     Some(opts)
 }
 
-mod output_kind {
+mod lib_kind {
+    use base_db::libs::LibKind;
     use serde::de::{Deserialize, Deserializer, Error, Unexpected};
     use serde::ser::{Serialize, Serializer};
 
-    use super::OutputKind;
-
-    pub fn serialize<S: Serializer>(output_kind: &OutputKind, serializer: S) -> Result<S::Ok, S::Error> {
-        let s = match output_kind {
-            | OutputKind::Executable => "executable",
-            | OutputKind::StaticLib => "static",
-            | OutputKind::DynamicLib => "dynamic",
+    pub fn serialize<S: Serializer>(lib_kind: &LibKind, serializer: S) -> Result<S::Ok, S::Error> {
+        let s = match lib_kind {
+            | LibKind::Executable => "executable",
+            | LibKind::Static => "static",
+            | LibKind::Dynamic => "dynamic",
         };
 
         s.serialize(serializer)
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<OutputKind, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LibKind, D::Error> {
         let s = <&str>::deserialize(deserializer)?;
 
         match s {
-            | "executable" => Ok(OutputKind::Executable),
-            | "static" => Ok(OutputKind::StaticLib),
-            | "dynamic" => Ok(OutputKind::DynamicLib),
+            | "executable" => Ok(LibKind::Executable),
+            | "static" => Ok(LibKind::Static),
+            | "dynamic" => Ok(LibKind::Dynamic),
             | _ => Err(Error::invalid_value(
                 Unexpected::Str(s),
                 &"dynamic, static or executable",

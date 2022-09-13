@@ -4,17 +4,19 @@ pub mod workspace;
 
 use std::sync::Arc;
 
-use base_db::libs::LibId;
-use base_db::manifest::Manifest;
-use base_db::paths::AbsolutePathBuf;
+use base_db::input::SourceRoot;
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use dispatcher::NotificationDispatcher;
 use lsp_server::{ErrorCode, Message, Notification, ReqQueue, Request, Response};
 use lsp_types::notification::{self, DidChangeTextDocument, DidOpenTextDocument, Notification as _};
 use lsp_types::request::Shutdown;
 use parking_lot::RwLock;
+use paths::AbsPathBuf;
+use project::Workspace;
+use rustc_hash::FxHashSet;
 use threadpool::ThreadPool;
-use vfs::VirtualFileSystem;
+use vfs::file_set::FileSetConfig;
+use vfs::{FileId, VirtualFileSystem};
 
 use self::dispatcher::RequestDispatcher;
 use crate::analysis::{Analysis, AnalysisChange, AnalysisSnapshot};
@@ -41,8 +43,9 @@ pub struct LspState {
     pub task_sender: Sender<Task>,
     pub task_receiver: Receiver<Task>,
     pub analysis: Analysis,
-    pub manifests: Vec<Manifest>,
-    pub libs: Arc<Vec<LibId>>,
+    pub open_files: FxHashSet<FileId>,
+    pub workspaces: Arc<Vec<Workspace>>,
+    pub file_sets: FileSetConfig,
     pub vfs: Arc<RwLock<VirtualFileSystem>>,
     pub shutdown_requested: bool,
 }
@@ -50,12 +53,12 @@ pub struct LspState {
 pub struct LspStateSnapshot {
     pub analysis: AnalysisSnapshot,
     pub vfs: Arc<RwLock<VirtualFileSystem>>,
-    pub libs: Arc<Vec<LibId>>,
+    pub workspaces: Arc<Vec<Workspace>>,
 }
 
 #[derive(Default)]
 pub struct Config {
-    pub workspaces: Vec<AbsolutePathBuf>,
+    pub workspaces: Vec<AbsPathBuf>,
 }
 
 impl LspState {
@@ -68,11 +71,12 @@ impl LspState {
             task_sender,
             task_receiver,
             analysis: Default::default(),
-            manifests: Vec::new(),
-            libs: Default::default(),
+            open_files: Default::default(),
+            workspaces: Default::default(),
+            file_sets: Default::default(),
             vfs: Default::default(),
-            thread_pool: ThreadPool::default(),
-            request_queue: ReqQueue::default(),
+            thread_pool: Default::default(),
+            request_queue: Default::default(),
             shutdown_requested: false,
         }
     }
@@ -81,7 +85,7 @@ impl LspState {
         LspStateSnapshot {
             analysis: self.analysis.snapshot(),
             vfs: self.vfs.clone(),
-            libs: self.libs.clone(),
+            workspaces: self.workspaces.clone(),
         }
     }
 
@@ -121,7 +125,7 @@ impl LspState {
         let state_changed = self.process_vfs_changes();
 
         if state_changed {
-            self.push_diagnostics();
+            self.publish_diagnostics();
         }
 
         Ok(())
@@ -223,7 +227,10 @@ impl LspState {
         }
 
         if has_created_or_deleted_entries {
-            tracing::warn!("TODO: recompute source roots");
+            let file_sets = self.file_sets.partition(&vfs);
+            let roots = file_sets.into_iter().map(SourceRoot::new).collect();
+
+            change.set_roots(roots);
         }
 
         self.analysis.apply_change(change);

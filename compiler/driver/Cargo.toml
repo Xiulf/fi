@@ -14,6 +14,8 @@ syntax = { path = "../syntax" }
 base_db = { path = "../base_db" }
 paths = { path = "../paths" }
 vfs = { path = "../vfs" }
+cfg = { path = "../cfg" }
+project = { path = "../project" }
 salsa = "0.16.0"
 ariadne = { git = "https://github.com/Cyberduc-k/ariadne.git" }
 serde = { version = "^1.0.123", features = ["derive"] }

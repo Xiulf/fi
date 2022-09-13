@@ -69,7 +69,7 @@ impl LspDatabase {
             for (idx, root) in roots.into_iter().enumerate() {
                 let root_id = SourceRootId(idx as u32);
 
-                for file_id in root.files() {
+                for file_id in root.iter() {
                     self.set_file_source_root(file_id, root_id);
                 }
 

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod analysis;
 mod db;
 mod diagnostics;
@@ -7,9 +9,9 @@ mod util;
 #[cfg(test)]
 mod tests;
 
-use base_db::paths::AbsolutePathBuf;
 use lsp_server::Connection;
 use lsp_types::{ClientCapabilities, InitializeParams, ServerCapabilities};
+use paths::AbsPathBuf;
 use state::Config;
 
 pub fn run() -> anyhow::Result<()> {
@@ -45,8 +47,8 @@ fn init(connection: &Connection) -> anyhow::Result<Config> {
 fn config(params: &InitializeParams) -> anyhow::Result<Config> {
     let mut config = Config::default();
     let root_dir = match &params.root_uri {
-        | Some(uri) => AbsolutePathBuf::try_from(uri.to_file_path().unwrap()).unwrap(),
-        | None => AbsolutePathBuf::try_from(std::env::current_dir()?).unwrap(),
+        | Some(uri) => AbsPathBuf::assert(uri.to_file_path().unwrap()),
+        | None => AbsPathBuf::assert(std::env::current_dir()?),
     };
 
     let workspaces = params
@@ -55,7 +57,7 @@ fn config(params: &InitializeParams) -> anyhow::Result<Config> {
         .map(|ws| {
             ws.iter()
                 .filter_map(|it| it.uri.to_file_path().ok())
-                .filter_map(|path| AbsolutePathBuf::try_from(path).ok())
+                .filter_map(|path| AbsPathBuf::try_from(path).ok())
                 .collect::<Vec<_>>()
         })
         .filter(|ws| !ws.is_empty())

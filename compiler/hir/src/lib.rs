@@ -5,7 +5,6 @@ pub mod semantics;
 pub mod source_analyzer;
 mod source_to_def;
 
-pub use base_db::cfg;
 use base_db::input::FileId;
 use base_db::libs::LibId;
 pub use hir_def::body::Body;

@@ -5,10 +5,10 @@ mod interactive;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use base_db::libs::{LibId, LibKind};
-use base_db::manifest::{Cfg, TomlValue};
+use base_db::libs::LibKind;
 use clap::{Args, Parser, Subcommand};
 use driver::{Driver, Opts};
+use project::manifest::{Cfg, TomlValue};
 use tracing::{debug, Level};
 
 #[derive(Parser, Debug)]
@@ -122,24 +122,22 @@ fn run_cli(cli: Cli) -> anyhow::Result<()> {
 
     match command {
         | Some(command) => match command {
-            | Commands::Basic(command) => match setup_basic(args, &command) {
-                | Some((driver, lib)) => run_basic(&driver, lib, &command).map(|_| ()).map_err(Into::into),
-                | None => Ok(()),
+            | Commands::Basic(command) => {
+                let driver = setup_basic(args, &command)?;
+                run_basic(&driver, &command).map(|_| ())?;
+                Ok(())
             },
             | Commands::Watch(watch) => run_watch(args, watch),
             | Commands::Lsp(lsp) => run_lsp(args, lsp),
         },
-        | None => match args.file.clone() {
-            | Some(file) => run_file(args, file).map_err(Into::into),
-            | None => {
-                interactive::run();
-                Ok(())
-            },
+        | None => {
+            interactive::run();
+            Ok(())
         },
     }
 }
 
-fn setup_basic(cli: CliArgs, command: &BasicCommands) -> Option<(Driver, LibId)> {
+fn setup_basic(cli: CliArgs, command: &BasicCommands) -> anyhow::Result<Driver> {
     let cfg: Cfg = cli.cfg.into_iter().collect();
     let input = match &command {
         | BasicCommands::Check(args) => &args.input,
@@ -155,27 +153,12 @@ fn setup_basic(cli: CliArgs, command: &BasicCommands) -> Option<(Driver, LibId)>
     })
 }
 
-fn run_basic(driver: &Driver, lib: LibId, command: &BasicCommands) -> io::Result<bool> {
+fn run_basic(driver: &Driver, command: &BasicCommands) -> io::Result<bool> {
     match command {
         | BasicCommands::Check(_) => driver.check(),
         | BasicCommands::Build(_) => driver.build(),
-        | BasicCommands::Run(args) => driver.run(lib, args.args.iter()),
+        | BasicCommands::Run(args) => driver.run(args.args.iter()),
     }
-}
-
-fn run_file(cli: CliArgs, input: PathBuf) -> io::Result<()> {
-    let cfg: Cfg = cli.cfg.into_iter().collect();
-
-    if let Some((driver, _)) = Driver::init_no_manifest(Opts {
-        input: &input,
-        target: cli.target.as_deref(),
-        output: cli.output,
-        cfg,
-    }) {
-        driver.build()?;
-    }
-
-    Ok(())
 }
 
 fn run_lsp(_cli: CliArgs, _args: LspArgs) -> anyhow::Result<()> {
@@ -186,7 +169,7 @@ fn run_watch(cli: CliArgs, args: WatchArgs) -> anyhow::Result<()> {
     use notify::event::{CreateKind, EventKind, RemoveKind};
     use notify::Watcher;
 
-    if let Some((_driver, _lib)) = setup_basic(cli, &args.command) {
+    if let Ok(_driver) = setup_basic(cli, &args.command) {
         let input = match &args.command {
             | BasicCommands::Check(args) => &args.input,
             | BasicCommands::Build(args) => &args.input,

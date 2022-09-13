@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::fmt;
 
 use paths::{AbsPath, AbsPathBuf};
 use serde::{Deserialize, Serialize};
@@ -179,6 +180,21 @@ impl VirtualPath {
                 | (None | Some(""), Some(_)) => Some((file_name, None)),
                 | (Some(file_stem), extension) => Some((file_stem, extension)),
             }
+        }
+    }
+}
+
+impl Into<String> for VirtualPath {
+    fn into(self) -> String {
+        self.0
+    }
+}
+
+impl fmt::Display for VfsPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            | Self::PathBuf(p) => p.display().fmt(f),
+            | Self::Virtual(p) => p.0.fmt(f),
         }
     }
 }

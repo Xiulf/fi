@@ -8,6 +8,7 @@ edition = "2021"
 arena = { path = "../arena" }
 syntax = { path = "../syntax" }
 base_db = { path = "../base_db" }
+cfg = { path = "../cfg" }
 rustc-hash = "1.1.0"
 smol_str = "0.1.17"
 either = "1.6.1"

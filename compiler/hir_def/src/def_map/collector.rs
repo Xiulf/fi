@@ -1,5 +1,5 @@
-use base_db::cfg::CfgOptions;
 use base_db::input::FileId;
+use cfg::CfgOptions;
 use rustc_hash::{FxHashMap, FxHashSet};
 use syntax::{ast, NameOwner};
 
@@ -136,7 +136,7 @@ impl<'a> DefCollector<'a> {
             Some(())
         };
 
-        for file in source_root.iter() {
+        for file in source_root.source_files() {
             let source_file = self.db.parse(file).tree();
 
             if let Some(module) = source_file.module() {

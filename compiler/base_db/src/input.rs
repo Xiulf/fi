@@ -38,6 +38,19 @@ impl SourceRoot {
     pub fn iter(&self) -> impl Iterator<Item = FileId> + '_ {
         self.file_set.iter()
     }
+
+    pub fn source_files(&self) -> impl Iterator<Item = FileId> + '_ {
+        self.file_set.iter().filter_map(|file_id| {
+            let path = self.file_set.path_for_file(file_id)?;
+            let ext = path.name_and_extension()?.1?;
+
+            if ext == "shade" {
+                Some(file_id)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 impl LineIndex {

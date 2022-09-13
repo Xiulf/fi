@@ -3,7 +3,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use hir::cfg::CfgOptions;
+use cfg::CfgOptions;
 use hir::db::HirDatabase;
 use hir::id::LibId;
 use paths::AbsPath;

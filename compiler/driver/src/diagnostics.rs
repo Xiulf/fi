@@ -6,8 +6,10 @@ use base_db::{SourceDatabase, SourceDatabaseExt};
 use diagnostics::{DiagnosticForWith, Level};
 use hir::db::HirDatabase;
 use hir::diagnostic::{Diagnostic, DiagnosticSink};
+use paths::AbsPathBuf;
 use rustc_hash::FxHashMap;
 use syntax::SyntaxError;
+use vfs::VfsPath;
 
 use crate::db::RootDatabase;
 
@@ -147,8 +149,20 @@ impl<'db> Cache<FileId> for DbCache<'db> {
     fn display<'a>(&self, id: &'a FileId) -> Option<Box<dyn std::fmt::Display + 'a>> {
         let source_root = self.db.file_source_root(*id);
         let source_root = self.db.source_root(source_root);
-        let path = source_root.relative_path(*id);
+        let path = match source_root.path_for_file(*id).unwrap() {
+            | VfsPath::PathBuf(p) => {
+                let curr_dir = AbsPathBuf::assert(std::env::current_dir().unwrap());
 
-        Some(Box::new(path.to_relative_path_buf()))
+                p.normalize()
+                    .strip_prefix(&curr_dir)
+                    .unwrap()
+                    .as_ref()
+                    .to_string_lossy()
+                    .into_owned()
+            },
+            | VfsPath::Virtual(p) => p.clone().into(),
+        };
+
+        Some(Box::new(path))
     }
 }

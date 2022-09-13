@@ -1,5 +1,6 @@
 use std::fmt;
 use std::ops::Index;
+use std::path::PathBuf;
 
 use cfg::CfgOptions;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -11,7 +12,7 @@ pub struct LibData {
     pub name: String,
     pub kind: LibKind,
     pub deps: Vec<LibId>,
-    pub links: Vec<String>,
+    pub links: Vec<PathBuf>,
     pub cfg_options: CfgOptions,
 
     /// Shade projects don't have a root file
@@ -46,42 +47,27 @@ impl LibSet {
         &mut self,
         name: impl Into<String>,
         kind: LibKind,
-        links: Vec<String>,
+        links: Vec<PathBuf>,
         cfg_options: CfgOptions,
-    ) -> (LibId, bool) {
+        root_file: FileId,
+    ) -> LibId {
         let name = name.into();
+        let id = LibId(self.libs.len() as u32);
+        let data = LibData {
+            id,
+            name,
+            kind,
+            links,
+            cfg_options,
+            root_file,
+            deps: Vec::new(),
+        };
 
-        if let Some(id) = self.libs.iter().find_map(|(id, data)| {
-            if data.name == name && data.cfg_options == cfg_options {
-                Some(*id)
-            } else {
-                None
-            }
-        }) {
-            (id, true)
-        } else {
-            let id = LibId(self.libs.len() as u32);
-            let data = LibData {
-                id,
-                name,
-                kind,
-                links,
-                cfg_options,
-                root_file: FileId(u32::MAX),
-                deps: Vec::new(),
-            };
-
-            self.libs.insert(id, data);
-
-            (id, false)
-        }
+        self.libs.insert(id, data);
+        id
     }
 
-    pub fn set_root_file(&mut self, lib: LibId, file: FileId) {
-        self.libs.get_mut(&lib).unwrap().root_file = file;
-    }
-
-    pub fn add_dep(&mut self, from: LibId, to: LibId) -> Result<(), CyclicDependenciesError> {
+    pub fn add_dep(&mut self, from: LibId, to: LibId, cfg: &CfgOptions) -> Result<(), CyclicDependenciesError> {
         if self.dfs_find(from, to, &mut FxHashSet::default()) {
             return Err(CyclicDependenciesError {
                 from: (from, self[from].name.clone()),
@@ -91,7 +77,15 @@ impl LibSet {
 
         self.libs.get_mut(&from).unwrap().deps.push(to);
 
+        let to = self.libs.get_mut(&to).unwrap();
+
+        to.cfg_options = to.cfg_options.merge(cfg);
+
         Ok(())
+    }
+
+    pub fn extend(&mut self, other: LibSet) {
+        self.libs.extend(other.libs);
     }
 
     pub fn is_empty(&self) -> bool {

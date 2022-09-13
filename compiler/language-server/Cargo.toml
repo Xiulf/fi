@@ -9,6 +9,8 @@ hir = { path = "../hir" }
 hir_def = { path = "../hir_def" }
 syntax = { path = "../syntax" }
 base_db = { path = "../base_db" }
+project = { path = "../project" }
+paths = { path = "../paths" }
 vfs = { path = "../vfs" }
 salsa = "0.16.0"
 lsp-server = "^0.6"

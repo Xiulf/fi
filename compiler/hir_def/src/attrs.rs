@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use base_db::cfg::{Cfg, CfgAtom, CfgValue};
+use cfg::{Cfg, CfgAtom, CfgValue};
 use either::Either;
 use syntax::ast;
 

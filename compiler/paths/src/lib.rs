@@ -69,8 +69,10 @@ impl AbsPathBuf {
     /// # Panics
     ///
     /// Panics if `path` is not absolute.
+    #[track_caller]
     pub fn assert(path: PathBuf) -> AbsPathBuf {
-        AbsPathBuf::try_from(path).unwrap_or_else(|path| panic!("expected absolute path, got {}", path.display()))
+        assert!(path.is_absolute(), "expected absolute path, got {}", path.display());
+        AbsPathBuf(path)
     }
 
     /// Coerces to an `AbsPath` slice.
@@ -124,8 +126,9 @@ impl AbsPath {
     /// # Panics
     ///
     /// Panics if `path` is not absolute.
+    #[track_caller]
     pub fn assert(path: &Path) -> &AbsPath {
-        assert!(path.is_absolute());
+        assert!(path.is_absolute(), "expected absolute path, got {}", path.display());
         unsafe { &*(path as *const Path as *const AbsPath) }
     }
 
@@ -136,7 +139,7 @@ impl AbsPath {
 
     /// Equivalent of [`Path::join`] for `AbsPath`.
     pub fn join(&self, path: impl AsRef<Path>) -> AbsPathBuf {
-        self.as_ref().join(path).try_into().unwrap()
+        AbsPathBuf::try_from(self.as_ref().join(path)).unwrap().normalize()
     }
 
     /// Normalize the given path:
@@ -166,9 +169,11 @@ impl AbsPath {
     pub fn strip_prefix(&self, base: &AbsPath) -> Option<&RelPath> {
         self.0.strip_prefix(base).ok().map(RelPath::new_unchecked)
     }
+
     pub fn starts_with(&self, base: &AbsPath) -> bool {
         self.0.starts_with(&base.0)
     }
+
     pub fn ends_with(&self, suffix: &RelPath) -> bool {
         self.0.ends_with(&suffix.0)
     }

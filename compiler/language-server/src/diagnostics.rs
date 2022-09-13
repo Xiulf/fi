@@ -21,70 +21,62 @@ pub struct Diagnostic {
 }
 
 impl LspState {
-    pub fn push_diagnostics(&self) {
+    pub fn publish_diagnostics(&self) {
+        let open_files = self.open_files.clone();
         let snapshot = self.snapshot();
         let task_sender = self.task_sender.clone();
 
         self.thread_pool.execute(move || {
-            let _ = snapshot.handle_diagnostics(task_sender);
+            for file_id in open_files {
+                let _ = snapshot.handle_diagnostics(&task_sender, file_id);
+            }
         });
     }
 }
 
 impl LspStateSnapshot {
-    fn handle_diagnostics(self, sender: Sender<Task>) -> anyhow::Result<()> {
-        let libs = self.analysis.db.libs();
+    fn handle_diagnostics(&self, sender: &Sender<Task>, file_id: FileId) -> anyhow::Result<()> {
+        let line_index = self.analysis.db.line_index(file_id);
+        let uri = util::uri(&self, file_id)?;
+        let diagnostics = self.analysis.diagnostics(file_id)?;
+        let mut lsp_diagnostics = Vec::with_capacity(diagnostics.len());
 
-        for &lib in self.libs.iter() {
-            let source_root = self.analysis.db.source_root(libs[lib].source_root);
+        for d in diagnostics {
+            lsp_diagnostics.push(lsp_types::Diagnostic {
+                range: util::lsp_range(&line_index, d.range),
+                severity: Some(d.severity),
+                message: d.message,
+                related_information: {
+                    let mut annotations = Vec::with_capacity(d.secondary.len());
 
-            for file in source_root.files() {
-                let line_index = self.analysis.db.line_index(file);
-                let uri = util::uri(&self, file)?;
-                let diagnostics = self.analysis.diagnostics(file)?;
-                let mut lsp_diagnostics = Vec::with_capacity(diagnostics.len());
+                    for a in d.secondary {
+                        annotations.push(DiagnosticRelatedInformation {
+                            location: lsp_types::Location {
+                                uri: util::uri(&self, a.range.file_id)?,
+                                range: util::lsp_range(&self.analysis.db.line_index(a.range.file_id), a.range.value),
+                            },
+                            message: a.message,
+                        });
+                    }
 
-                for d in diagnostics {
-                    lsp_diagnostics.push(lsp_types::Diagnostic {
-                        range: util::lsp_range(&line_index, d.range),
-                        severity: Some(d.severity),
-                        message: d.message,
-                        related_information: {
-                            let mut annotations = Vec::with_capacity(d.secondary.len());
-
-                            for a in d.secondary {
-                                annotations.push(DiagnosticRelatedInformation {
-                                    location: lsp_types::Location {
-                                        uri: util::uri(&self, a.range.file_id)?,
-                                        range: util::lsp_range(
-                                            &self.analysis.db.line_index(a.range.file_id),
-                                            a.range.value,
-                                        ),
-                                    },
-                                    message: a.message,
-                                });
-                            }
-
-                            if annotations.is_empty() {
-                                None
-                            } else {
-                                Some(annotations)
-                            }
-                        },
-                        ..Default::default()
-                    });
-                }
-
-                sender.send(Task::Notify(Notification {
-                    method: PublishDiagnostics::METHOD.into(),
-                    params: serde_json::to_value(PublishDiagnosticsParams {
-                        uri,
-                        diagnostics: lsp_diagnostics,
-                        version: None,
-                    })?,
-                }))?;
-            }
+                    if annotations.is_empty() {
+                        None
+                    } else {
+                        Some(annotations)
+                    }
+                },
+                ..Default::default()
+            });
         }
+
+        sender.send(Task::Notify(Notification {
+            method: PublishDiagnostics::METHOD.into(),
+            params: serde_json::to_value(PublishDiagnosticsParams {
+                uri,
+                diagnostics: lsp_diagnostics,
+                version: None,
+            })?,
+        }))?;
 
         Ok(())
     }

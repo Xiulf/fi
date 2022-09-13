@@ -1,9 +1,14 @@
 use std::ops::Index;
+use std::path::PathBuf;
 
 use arena::{Arena, Idx};
-use manifest::{Manifest, OutputKind};
+use base_db::libs::{LibKind, LibSet};
+use cfg::CfgOptions;
+use manifest::Manifest;
 use paths::AbsPathBuf;
-use vfs::VirtualFileSystem;
+use rustc_hash::FxHashMap;
+use vfs::file_set::FileSetConfig;
+use vfs::{FileId, VfsPath, VirtualFileSystem};
 
 pub mod manifest;
 
@@ -19,15 +24,18 @@ pub type Package = Idx<PackageData>;
 pub struct PackageData {
     pub name: String,
     pub version: String,
-    pub output: OutputKind,
+    pub output: LibKind,
+    pub links: Vec<PathBuf>,
     pub dependencies: Vec<Dependency>,
 
+    pub root_file: FileId,
     pub manifest_path: AbsPathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dependency {
     pub package: Package,
+    pub cfg_opts: CfgOptions,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -71,6 +79,48 @@ impl Workspace {
             .collect()
     }
 
+    pub fn file_sets(workspaces: &[Self]) -> FileSetConfig {
+        let mut fs = FileSetConfig::builder();
+
+        for root in workspaces.iter().flat_map(|ws| ws.to_roots()) {
+            let file_set = root.include.iter().cloned().map(VfsPath::from).collect();
+
+            fs.add_file_set(file_set);
+        }
+
+        fs.build()
+    }
+
+    pub fn to_libs(&self, cfg_opts: &CfgOptions) -> LibSet {
+        let mut libs = LibSet::default();
+        let mut map = FxHashMap::default();
+
+        for (id, data) in self.packages.iter() {
+            let lib = libs.add_lib(
+                data.name.clone(),
+                data.output,
+                data.links.clone(),
+                cfg_opts.clone(),
+                data.root_file,
+            );
+
+            map.insert(id, lib);
+        }
+
+        for (id, data) in self.packages.iter() {
+            for dep in data.dependencies.iter() {
+                let from = map[&id];
+                let to = map[&dep.package];
+
+                if let Err(e) = libs.add_dep(from, to, &dep.cfg_opts) {
+                    tracing::error!("{}", e);
+                }
+            }
+        }
+
+        libs
+    }
+
     fn package_for_name(&self, name: &str) -> Option<Package> {
         self.packages
             .iter()
@@ -78,13 +128,15 @@ impl Workspace {
             .map(|(id, _)| id)
     }
 
-    fn alloc_package(&mut self, manifest: &Manifest, manifest_path: AbsPathBuf) -> Package {
+    fn alloc_package(&mut self, manifest: &Manifest, manifest_path: AbsPathBuf, root_file: FileId) -> Package {
         self.packages.alloc(PackageData {
             name: manifest.project.name.clone(),
             version: manifest.project.version.clone(),
             output: manifest.project.output,
+            links: manifest.project.link.clone(),
             dependencies: Vec::new(),
             manifest_path,
+            root_file,
         })
     }
 

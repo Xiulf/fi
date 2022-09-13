@@ -134,7 +134,11 @@ impl fst::Automaton for PrefixOf<'_> {
     }
 
     fn is_match(&self, state: &Self::State) -> bool {
-        *state != 0
+        *state != !0
+    }
+
+    fn can_match(&self, state: &Self::State) -> bool {
+        *state != !0
     }
 
     fn accept(&self, state: &Self::State, byte: u8) -> Self::State {

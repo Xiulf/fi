@@ -1,5 +1,6 @@
 use base_db::input::LineIndex;
 use lsp_types::{DidChangeTextDocumentParams, DidOpenTextDocumentParams, TextDocumentContentChangeEvent};
+use vfs::VfsPath;
 
 use super::LspState;
 use crate::util;
@@ -12,16 +13,17 @@ pub enum Progress {
 
 impl LspState {
     pub fn on_did_open_text_document(&mut self, params: DidOpenTextDocumentParams) -> anyhow::Result<()> {
-        let path = util::file_path(&params.text_document.uri)?;
+        let path = VfsPath::from(util::file_path(&params.text_document.uri)?);
 
         self.vfs
             .write()
-            .set_file_content(&path, Some(params.text_document.text.into_bytes().into()));
+            .set_file_content(path, Some(params.text_document.text.into_bytes().into()));
+
         Ok(())
     }
 
     pub fn on_did_change_text_document(&mut self, params: DidChangeTextDocumentParams) -> anyhow::Result<()> {
-        let path = util::file_path(&params.text_document.uri)?;
+        let path = VfsPath::from(util::file_path(&params.text_document.uri)?);
         let mut vfs = self.vfs.write();
         let file_id = vfs.file_id(&path).unwrap();
         let mut text = vfs
@@ -30,7 +32,8 @@ impl LspState {
             .unwrap();
 
         apply_document_changes(&mut text, params.content_changes);
-        vfs.set_file_content(&path, Some(text.into_bytes().into()));
+        vfs.set_file_content(path, Some(text.into_bytes().into()));
+
         Ok(())
     }
 
