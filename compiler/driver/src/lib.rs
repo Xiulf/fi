@@ -1,20 +1,20 @@
 pub mod db;
 pub mod diagnostics;
-pub mod manifest;
 
 use std::path::Path;
 use std::{fs, io};
 
 use base_db::cfg::CfgOptions;
-use base_db::input::{FileId, SourceRoot, SourceRootId};
+use base_db::input::{FileId, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
+use base_db::manifest::{self, Cfg};
 use base_db::{SourceDatabase, SourceDatabaseExt};
 use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
-use manifest::Cfg;
-use metadata::InputPaths;
+use paths::AbsPathBuf;
 use rustc_hash::FxHashSet;
+use vfs::VfsPath;
 
 pub struct Opts<'a> {
     pub input: &'a Path,
@@ -23,15 +23,13 @@ pub struct Opts<'a> {
     pub cfg: Cfg,
 }
 
-#[derive(Default)]
 pub struct Driver {
     pub db: db::RootDatabase,
-    paths: InputPaths,
+    target_dir: AbsPathBuf,
     cfg: CfgOptions,
     lib: LibId,
     libs: LibSet,
-    lib_count: u32,
-    file_count: u32,
+    vfs: vfs::VirtualFileSystem,
 }
 
 impl Default for Opts<'_> {
@@ -45,10 +43,31 @@ impl Default for Opts<'_> {
     }
 }
 
+impl Default for Driver {
+    fn default() -> Self {
+        Self {
+            db: db::RootDatabase::default(),
+            target_dir: AbsPathBuf::assert("".into()),
+            cfg: CfgOptions::default(),
+            lib: LibId::default(),
+            libs: LibSet::default(),
+            vfs: vfs::VirtualFileSystem::default(),
+        }
+    }
+}
+
+fn input_dir(input: &Path) -> AbsPathBuf {
+    if input.is_absolute() {
+        AbsPathBuf::assert(input.into())
+    } else {
+        AbsPathBuf::assert(std::env::current_dir().unwrap().join(input))
+    }
+}
+
 impl Driver {
     pub fn init(opts: Opts) -> Option<(Self, LibId)> {
         let mut driver = Driver::default();
-        driver.paths.target_dir = opts.input.join("target");
+        driver.target_dir = input_dir(opts.input).join("target");
         driver.cfg = manifest::parse_cfg(&opts.cfg)?;
         let lib = driver.load(opts.input)?;
 
@@ -65,17 +84,22 @@ impl Driver {
 
     pub fn init_no_manifest(opts: Opts) -> Option<(Self, LibId)> {
         let mut driver = Driver::default();
-        let path = std::path::Path::new(opts.input);
+        let path = input_dir(opts.input);
         let cfg = manifest::parse_cfg(&opts.cfg)?;
         let lib = manifest::load_normal(
             &mut driver.db,
-            &mut driver.paths,
             cfg,
             &mut driver.libs,
-            &mut driver.lib_count,
-            &mut driver.file_count,
-            path,
+            &path,
             opts.output.unwrap_or(LibKind::Executable),
+            &mut |db, path| {
+                let text = fs::read_to_string(&path)?;
+                let (file, _) = driver.vfs.set_file_content(VfsPath::from(path), None);
+
+                db.set_file_text(file, text.into());
+
+                Ok(Some(file))
+            },
         )
         .ok()?;
 
@@ -94,52 +118,53 @@ impl Driver {
 
     pub fn interactive() -> (Self, LibId, FileId) {
         let mut driver = Driver::default();
-        let mut root = SourceRoot::new_local();
-        let root_id = SourceRootId(0);
-        let root_file = FileId(0);
-        let (lib, _) = driver.libs.add_lib(
-            "<interactive>",
-            Default::default(),
-            Vec::new(),
-            Default::default(),
-            root_id,
-        );
+        let (root_file, _) = driver
+            .vfs
+            .set_file_content(VfsPath::new_virtual("/<interactive>".into()), None);
+        let (lib, _) = driver
+            .libs
+            .add_lib("<interactive>", Default::default(), Vec::new(), Default::default());
 
-        root.insert_file(root_file, "<interactive>");
-
+        driver.libs.set_root_file(lib, root_file);
         driver.lib = lib;
         driver.db.set_target(CompilerTarget::Javascript);
         driver.db.set_libs(driver.libs.clone().into());
-        driver.db.set_source_root(root_id, root.into());
-        driver.db.set_file_source_root(root_file, root_id);
         driver
             .db
             .set_file_text(root_file, String::from("module INTERACTIVE").into());
-        driver.db.set_file_lib(root_file, lib);
-        driver.lib_count = 1;
-        driver.file_count = 1;
+        driver.set_source_roots();
 
         (driver, lib, root_file)
     }
 
     pub fn load(&mut self, input: &Path) -> Option<LibId> {
-        match manifest::load_project(
-            &mut self.db,
-            &mut self.paths,
-            &self.cfg,
-            &mut self.libs,
-            &mut self.lib_count,
-            &mut self.file_count,
-            input,
-        ) {
+        let input = input_dir(input);
+
+        match manifest::load_project(&mut self.db, &self.cfg, &mut self.libs, &input, &mut |db, path| {
+            let text = fs::read_to_string(&path)?;
+            let (file, _) = self.vfs.set_file_content(VfsPath::from(path), None);
+
+            db.set_file_text(file, text.into());
+
+            Ok(Some(file))
+        }) {
             | Ok(lib) => {
                 self.db.set_libs(self.libs.clone().into());
+                self.set_source_roots();
                 Some(lib)
             },
             | Err(e) => {
                 eprintln!("{}", e);
                 None
             },
+        }
+    }
+
+    fn set_source_roots(&mut self) {
+        for (idx, root) in self.roots.clone().into_iter().enumerate() {
+            let root_id = SourceRootId(idx as u32);
+
+            self.db.set_source_root(root_id, root.into());
         }
     }
 
@@ -155,8 +180,8 @@ impl Driver {
 
         for lib in hir::Lib::all(db) {
             let id = lib.into();
-            let changed = metadata::read_metadata(db, id, &self.paths)
-                .map(|m| m.has_changed(db, &self.paths))
+            let changed = metadata::read_metadata(db, id, &self.target_dir)
+                .map(|m| m.has_changed(db))
                 .unwrap_or(true);
 
             if changed || last_changed {
@@ -166,7 +191,7 @@ impl Driver {
                     return Ok(false);
                 }
 
-                metadata::write_metadata(db, id, &self.paths)?;
+                metadata::write_metadata(db, id, &self.target_dir)?;
                 last_changed = true;
             }
         }
@@ -179,17 +204,17 @@ impl Driver {
 
     pub fn build(&self) -> io::Result<bool> {
         let db = &self.db;
-        fs::create_dir_all(&self.paths.target_dir)?;
+        fs::create_dir_all(&self.target_dir)?;
         let start = std::time::Instant::now();
         let mut done = FxHashSet::default();
         let mut last_changed = false;
 
         for lib in hir::Lib::all(db) {
             let id = lib.into();
-            let changed = metadata::read_metadata(db, id, &self.paths)
-                .map(|m| m.has_changed(db, &self.paths))
+            let changed = metadata::read_metadata(db, id, &self.target_dir)
+                .map(|m| m.has_changed(db))
                 .unwrap_or(true);
-            let changed = changed || !Assembly::dummy(lib).path(db, &self.paths.target_dir).exists();
+            let changed = changed || !Assembly::dummy(lib).path(db, self.target_dir.as_ref()).exists();
 
             if changed || last_changed {
                 eprintln!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
@@ -204,7 +229,7 @@ impl Driver {
                 }
 
                 self.write_assembly(lib, &mut done)?;
-                metadata::write_metadata(db, id, &self.paths)?;
+                metadata::write_metadata(db, id, &self.target_dir)?;
                 last_changed = true;
             } else {
                 done.insert(lib);
@@ -243,10 +268,10 @@ impl Driver {
         });
 
         let asm = self.db.lib_assembly(lib);
-        let source_root = self.db.libs()[lib.into()].source_root;
-        let path = &self.paths.source_roots[&source_root];
+        // let source_root = self.db.libs()[lib.into()].source_root;
+        // let path = &self.paths.source_roots[&source_root];
 
-        asm.link(&self.db, deps, path, &self.paths.target_dir);
+        asm.link(&self.db, deps, Path::new(""), self.target_dir.as_ref());
         done.insert(lib);
 
         Ok(true)

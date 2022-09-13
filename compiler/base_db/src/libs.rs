@@ -1,10 +1,9 @@
 use std::fmt;
 use std::ops::Index;
 
+use cfg::CfgOptions;
 use rustc_hash::{FxHashMap, FxHashSet};
-
-use crate::cfg::CfgOptions;
-use crate::input::SourceRootId;
+use vfs::FileId;
 
 #[derive(Debug, Clone)]
 pub struct LibData {
@@ -14,7 +13,11 @@ pub struct LibData {
     pub deps: Vec<LibId>,
     pub links: Vec<String>,
     pub cfg_options: CfgOptions,
-    pub source_root: SourceRootId,
+
+    /// Shade projects don't have a root file
+    /// However, source roots are only created after loading projects
+    /// so this is used to identify the project's source root.
+    pub root_file: FileId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -45,7 +48,6 @@ impl LibSet {
         kind: LibKind,
         links: Vec<String>,
         cfg_options: CfgOptions,
-        source_root: SourceRootId,
     ) -> (LibId, bool) {
         let name = name.into();
 
@@ -65,7 +67,7 @@ impl LibSet {
                 kind,
                 links,
                 cfg_options,
-                source_root,
+                root_file: FileId(u32::MAX),
                 deps: Vec::new(),
             };
 
@@ -73,6 +75,10 @@ impl LibSet {
 
             (id, false)
         }
+    }
+
+    pub fn set_root_file(&mut self, lib: LibId, file: FileId) {
+        self.libs.get_mut(&lib).unwrap().root_file = file;
     }
 
     pub fn add_dep(&mut self, from: LibId, to: LibId) -> Result<(), CyclicDependenciesError> {

@@ -1,9 +1,23 @@
-use std::time::Instant;
+mod dispatcher;
+mod notifications;
+pub mod workspace;
 
+use std::sync::Arc;
+
+use base_db::libs::LibId;
+use base_db::manifest::Manifest;
+use base_db::paths::AbsolutePathBuf;
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
-use lsp_server::{Message, Notification, ReqQueue, Request, Response};
-use lsp_types::notification::{self, Notification as _};
+use dispatcher::NotificationDispatcher;
+use lsp_server::{ErrorCode, Message, Notification, ReqQueue, Request, Response};
+use lsp_types::notification::{self, DidChangeTextDocument, DidOpenTextDocument, Notification as _};
+use lsp_types::request::Shutdown;
+use parking_lot::RwLock;
 use threadpool::ThreadPool;
+use vfs::VirtualFileSystem;
+
+use self::dispatcher::RequestDispatcher;
+use crate::analysis::{Analysis, AnalysisChange, AnalysisSnapshot};
 
 #[derive(Debug)]
 pub enum Task {
@@ -20,29 +34,60 @@ pub enum Event {
 pub type RequestHandler = fn(&mut LspState, Response);
 
 pub struct LspState {
+    pub config: Config,
     pub sender: Sender<Message>,
     pub request_queue: ReqQueue<(), RequestHandler>,
     pub thread_pool: ThreadPool,
     pub task_sender: Sender<Task>,
     pub task_receiver: Receiver<Task>,
+    pub analysis: Analysis,
+    pub manifests: Vec<Manifest>,
+    pub libs: Arc<Vec<LibId>>,
+    pub vfs: Arc<RwLock<VirtualFileSystem>>,
     pub shutdown_requested: bool,
 }
 
+pub struct LspStateSnapshot {
+    pub analysis: AnalysisSnapshot,
+    pub vfs: Arc<RwLock<VirtualFileSystem>>,
+    pub libs: Arc<Vec<LibId>>,
+}
+
+#[derive(Default)]
+pub struct Config {
+    pub workspaces: Vec<AbsolutePathBuf>,
+}
+
 impl LspState {
-    pub fn new(sender: Sender<Message>) -> Self {
+    pub fn new(sender: Sender<Message>, config: Config) -> Self {
         let (task_sender, task_receiver) = unbounded();
 
         Self {
+            config,
             sender,
             task_sender,
             task_receiver,
+            analysis: Default::default(),
+            manifests: Vec::new(),
+            libs: Default::default(),
+            vfs: Default::default(),
             thread_pool: ThreadPool::default(),
             request_queue: ReqQueue::default(),
             shutdown_requested: false,
         }
     }
 
+    pub fn snapshot(&self) -> LspStateSnapshot {
+        LspStateSnapshot {
+            analysis: self.analysis.snapshot(),
+            vfs: self.vfs.clone(),
+            libs: self.libs.clone(),
+        }
+    }
+
     pub fn run(mut self, receiver: Receiver<Message>) -> anyhow::Result<()> {
+        self.fetch_workspaces()?;
+
         while let Some(event) = self.next_event(&receiver) {
             if let Event::Lsp(Message::Notification(not)) = &event {
                 if not.method == notification::Exit::METHOD {
@@ -64,15 +109,19 @@ impl LspState {
     }
 
     fn handle_event(&mut self, event: Event) -> anyhow::Result<()> {
-        let start_time = Instant::now();
-
         match event {
             | Event::Task(task) => self.handle_task(task)?,
             | Event::Lsp(msg) => match msg {
-                | Message::Request(req) => self.handle_request(req, start_time)?,
+                | Message::Request(req) => self.handle_request(req)?,
                 | Message::Response(res) => self.complete_request(res),
                 | Message::Notification(not) => self.handle_notification(not)?,
             },
+        }
+
+        let state_changed = self.process_vfs_changes();
+
+        if state_changed {
+            self.push_diagnostics();
         }
 
         Ok(())
@@ -85,8 +134,28 @@ impl LspState {
         }
     }
 
-    fn handle_request(&mut self, req: Request, time: Instant) -> anyhow::Result<()> {
+    fn handle_request(&mut self, req: Request) -> anyhow::Result<()> {
+        self.register_request(&req);
+
+        if self.shutdown_requested {
+            return self.respond(Response::new_err(
+                req.id,
+                ErrorCode::InvalidRequest as i32,
+                "shutdown was requested".into(),
+            ));
+        }
+
+        RequestDispatcher::new(self, req)
+            .on_sync::<Shutdown>(|state, _| {
+                state.shutdown_requested = true;
+                Ok(())
+            })?
+            .finish();
         Ok(())
+    }
+
+    fn register_request(&mut self, req: &Request) {
+        self.request_queue.incoming.register(req.id.clone(), ());
     }
 
     fn complete_request(&mut self, res: Response) {
@@ -96,6 +165,10 @@ impl LspState {
     }
 
     fn handle_notification(&mut self, not: Notification) -> anyhow::Result<()> {
+        NotificationDispatcher::new(self, not)
+            .on::<DidOpenTextDocument>(Self::on_did_open_text_document)?
+            .on::<DidChangeTextDocument>(Self::on_did_change_text_document)?
+            .finish();
         Ok(())
     }
 
@@ -104,12 +177,57 @@ impl LspState {
         Ok(())
     }
 
-    fn respond(&mut self, res: Response) -> anyhow::Result<()> {
+    fn send_request<R: lsp_types::request::Request>(
+        &mut self,
+        params: R::Params,
+        handler: RequestHandler,
+    ) -> anyhow::Result<()> {
+        let req = self.request_queue.outgoing.register(R::METHOD.into(), params, handler);
+
+        self.send(Message::Request(req))
+    }
+
+    fn send_notification<N: lsp_types::notification::Notification>(&mut self, params: N::Params) -> anyhow::Result<()> {
+        let not = Notification::new(N::METHOD.into(), params);
+        self.send(Message::Notification(not))
+    }
+
+    pub fn respond(&mut self, res: Response) -> anyhow::Result<()> {
         if let Some(()) = self.request_queue.incoming.complete(res.id.clone()) {
-            self.send(res.into());
+            self.send(res.into()).unwrap();
         }
 
         Ok(())
+    }
+
+    fn process_vfs_changes(&mut self) -> bool {
+        let changed_files = self.vfs.write().take_changes();
+
+        if changed_files.is_empty() {
+            return false;
+        }
+
+        let vfs = self.vfs.read();
+        let mut change = AnalysisChange::default();
+        let mut has_created_or_deleted_entries = false;
+
+        for file in changed_files {
+            if file.is_created_or_deleted() {
+                has_created_or_deleted_entries = true;
+            }
+
+            let bytes = vfs.file_content(file.file_id).map(Vec::from).unwrap_or_default();
+            let text = String::from_utf8(bytes).ok().map(Arc::from);
+
+            change.change_file(base_db::input::FileId(file.file_id.0), text);
+        }
+
+        if has_created_or_deleted_entries {
+            tracing::warn!("TODO: recompute source roots");
+        }
+
+        self.analysis.apply_change(change);
+        true
     }
 }
 

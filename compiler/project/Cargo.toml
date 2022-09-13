@@ -1,12 +1,15 @@
 [package]
-name = "vfs"
+name = "project"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+vfs = { path = "../vfs" }
+cfg = { path = "../cfg" }
 paths = { path = "../paths" }
-fst = "^0.4"
-indexmap = "^1.9"
+arena = { path = "../arena" }
 rustc-hash = "1.1.0"
-ra_ap_stdx = "^0.0"
+smol_str = "0.1.17"
 serde = { version = "^1.0.123", features = ["derive"] }
+toml = "0.5.8"
+anyhow = "1.0.38"

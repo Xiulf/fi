@@ -257,6 +257,11 @@ impl BodyInferenceContext<'_> {
 
     pub fn infer_block(&mut self, stmts: &[Stmt], expr: ExprId) -> TyId {
         let src = self.source(expr);
+
+        if stmts.is_empty() {
+            return self.fresh_type(src);
+        }
+
         let def = self.resolver.body_owner().unwrap();
         let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
         let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
@@ -587,6 +592,10 @@ impl BodyInferenceContext<'_> {
     }
 
     pub fn check_block(&mut self, stmts: &[Stmt], expected: TyId, expr: ExprId) {
+        if stmts.is_empty() {
+            return;
+        }
+
         let src = self.source(expr);
         let def = self.resolver.body_owner().unwrap();
         let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);

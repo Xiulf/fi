@@ -15,6 +15,9 @@ members = [
     "compiler/syntax",
     "compiler/parser",
     "compiler/arena",
+    "compiler/cfg",
+    "compiler/project",
+    "compiler/paths",
     "compiler/vfs",
     "compiler/language-server",
 ]

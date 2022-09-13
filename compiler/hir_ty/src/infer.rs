@@ -279,11 +279,9 @@ impl<'a> InferenceContext<'a> {
     }
 
     pub(crate) fn type_kind(&mut self, src: TySource) -> TyId {
-        let module = self.owner.module(self.db.upcast());
-        let ty = self.db.lang_item(module.lib, "type-kind".into()).unwrap();
-        let ty = ty.as_type_ctor().unwrap();
+        let type_ctor = self.lang_ctor("type-kind");
 
-        self.types.insert(TyInfo::Ctor(ty), src)
+        self.types.insert(TyInfo::Ctor(type_ctor), src)
     }
 
     pub(crate) fn lang_class(&self, name: &'static str) -> ClassId {

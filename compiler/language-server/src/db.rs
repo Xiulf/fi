@@ -10,15 +10,14 @@ use rustc_hash::FxHashSet;
     base_db::SourceDatabaseExtStorage,
     hir::db::InternDatabaseStorage,
     hir::db::DefDatabaseStorage,
-    hir::db::HirDatabaseStorage,
-    codegen::db::CodegenDatabaseStorage
+    hir::db::HirDatabaseStorage
 )]
 #[derive(Default)]
-pub struct RootDatabase {
+pub struct LspDatabase {
     storage: salsa::Storage<Self>,
 }
 
-impl salsa::Database for RootDatabase {
+impl salsa::Database for LspDatabase {
     fn on_propagated_panic(&self) -> ! {
         Canceled::throw()
     }
@@ -33,15 +32,15 @@ impl salsa::Database for RootDatabase {
     }
 }
 
-impl salsa::ParallelDatabase for RootDatabase {
+impl salsa::ParallelDatabase for LspDatabase {
     fn snapshot(&self) -> salsa::Snapshot<Self> {
-        salsa::Snapshot::new(RootDatabase {
+        salsa::Snapshot::new(Self {
             storage: self.storage.snapshot(),
         })
     }
 }
 
-impl FileLoader for RootDatabase {
+impl FileLoader for LspDatabase {
     fn file_text(&self, file_id: FileId) -> Arc<str> {
         FileLoaderDelegate(self).file_text(file_id)
     }
@@ -51,26 +50,20 @@ impl FileLoader for RootDatabase {
     }
 }
 
-impl Upcast<dyn base_db::SourceDatabase + 'static> for RootDatabase {
+impl Upcast<dyn base_db::SourceDatabase + 'static> for LspDatabase {
     fn upcast(&self) -> &(dyn base_db::SourceDatabase + 'static) {
         self
     }
 }
 
-impl Upcast<dyn hir::db::DefDatabase + 'static> for RootDatabase {
+impl Upcast<dyn hir::db::DefDatabase + 'static> for LspDatabase {
     fn upcast(&self) -> &(dyn hir::db::DefDatabase + 'static) {
         self
     }
 }
 
-impl Upcast<dyn hir::db::HirDatabase + 'static> for RootDatabase {
+impl Upcast<dyn hir::db::HirDatabase + 'static> for LspDatabase {
     fn upcast(&self) -> &(dyn hir::db::HirDatabase + 'static) {
-        self
-    }
-}
-
-impl Upcast<dyn codegen::db::CodegenDatabase + 'static> for RootDatabase {
-    fn upcast(&self) -> &(dyn codegen::db::CodegenDatabase + 'static) {
         self
     }
 }

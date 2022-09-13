@@ -108,7 +108,7 @@ impl PartialResolvedImport {
 
 impl<'a> DefCollector<'a> {
     fn seed_with_items(&mut self) {
-        let source_root = self.db.libs()[self.def_map.lib].source_root;
+        let source_root = self.db.file_source_root(self.db.libs()[self.def_map.lib].root_file);
         let source_root = self.db.source_root(source_root);
         let mut modules = Vec::new();
 
@@ -136,7 +136,7 @@ impl<'a> DefCollector<'a> {
             Some(())
         };
 
-        for file in source_root.files() {
+        for file in source_root.iter() {
             let source_file = self.db.parse(file).tree();
 
             if let Some(module) = source_file.module() {
@@ -513,6 +513,10 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         .def_collector
                         .def_map
                         .add_module(it.name.clone(), Some(self.module_id));
+
+                    self.def_collector.def_map.modules[self.module_id]
+                        .children
+                        .insert(it.name.clone(), module_id);
 
                     self.def_collector.def_map.modules[module_id].origin = super::ModuleOrigin::Inline {
                         def_id: InFile::new(self.file_id, id),

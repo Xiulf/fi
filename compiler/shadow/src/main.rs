@@ -6,8 +6,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use base_db::libs::{LibId, LibKind};
+use base_db::manifest::{Cfg, TomlValue};
 use clap::{Args, Parser, Subcommand};
-use driver::manifest::{Cfg, TomlValue};
 use driver::{Driver, Opts};
 use tracing::{debug, Level};
 

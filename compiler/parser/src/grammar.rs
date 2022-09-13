@@ -13,6 +13,8 @@ pub(crate) fn root(p: &mut Parser) {
     let s = p.start();
     let m = p.start();
 
+    p.eat(LYT_SEP);
+
     while !p.at(EOF) && p.at(AT) {
         attributes::attr(p);
         p.eat(LYT_SEP);

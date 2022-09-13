@@ -1,7 +1,6 @@
 [project]
 name = "test"
 version = "0.1.0"
-entry = "src/main.shade"
 output = "executable"
 
 [dependencies]

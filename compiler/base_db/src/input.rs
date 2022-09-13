@@ -1,17 +1,14 @@
-use relative_path::{RelativePath, RelativePathBuf};
-use rustc_hash::FxHashMap;
 use syntax::TextSize;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FileId(pub u32);
+use vfs::file_set::FileSet;
+pub use vfs::FileId;
+use vfs::VfsPath;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SourceRootId(pub u32);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRoot {
-    pub is_lib: bool,
-    files: FxHashMap<FileId, RelativePathBuf>,
+    file_set: FileSet,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,38 +23,20 @@ pub struct LineCol {
 }
 
 impl SourceRoot {
-    pub fn new_local() -> Self {
-        SourceRoot {
-            is_lib: false,
-            files: FxHashMap::default(),
-        }
+    pub fn new(file_set: FileSet) -> Self {
+        Self { file_set }
     }
 
-    pub fn new_library() -> Self {
-        SourceRoot {
-            is_lib: true,
-            files: FxHashMap::default(),
-        }
+    pub fn path_for_file(&self, file: FileId) -> Option<&VfsPath> {
+        self.file_set.path_for_file(file)
     }
 
-    pub fn insert_file(&mut self, file_id: FileId, path: impl AsRef<RelativePath>) {
-        self.files.insert(file_id, path.as_ref().to_relative_path_buf());
+    pub fn file_for_path(&self, path: &VfsPath) -> Option<FileId> {
+        self.file_set.file_for_path(path)
     }
 
-    pub fn remove_file(&mut self, file_id: FileId) -> bool {
-        self.files.remove(&file_id).is_some()
-    }
-
-    pub fn relative_path(&self, file_id: FileId) -> &RelativePath {
-        &self.files[&file_id]
-    }
-
-    pub fn files(&self) -> impl Iterator<Item = FileId> + '_ {
-        self.files.keys().copied()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (FileId, &RelativePath)> + '_ {
-        self.files.iter().map(|(k, v)| (*k, v.as_relative_path()))
+    pub fn iter(&self) -> impl Iterator<Item = FileId> + '_ {
+        self.file_set.iter()
     }
 }
 
@@ -101,11 +80,5 @@ impl LineIndex {
 
     pub fn line_offset(&self, line: u32) -> usize {
         self.newlines[line as usize].into()
-    }
-}
-
-impl std::fmt::Display for FileId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "file{}", self.0)
     }
 }

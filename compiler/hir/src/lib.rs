@@ -94,8 +94,13 @@ impl Module {
 
     pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
         let def_map = db.def_map(self.id.lib);
+        let mut local_id = self.id.local_id;
 
-        def_map[self.id.local_id].origin.file_id(&def_map)
+        while let Some(parent) = def_map[local_id].parent {
+            local_id = parent;
+        }
+
+        def_map[local_id].origin.file_id().unwrap()
     }
 
     pub fn parent(self, db: &dyn HirDatabase) -> Option<Module> {

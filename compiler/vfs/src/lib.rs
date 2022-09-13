@@ -1,6 +1,11 @@
-use std::path::{Path, PathBuf};
+pub mod file_set;
+mod vfs_path;
 
-use rustc_hash::FxHashMap;
+use std::hash::BuildHasherDefault;
+
+use indexmap::IndexSet;
+use rustc_hash::FxHasher;
+pub use vfs_path::VfsPath;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FileId(pub u32);
@@ -27,8 +32,7 @@ pub enum ChangeKind {
 
 #[derive(Default)]
 struct PathInterner {
-    path_to_id: FxHashMap<PathBuf, FileId>,
-    id_to_path: Vec<PathBuf>,
+    map: IndexSet<VfsPath, BuildHasherDefault<FxHasher>>,
 }
 
 impl ChangedFile {
@@ -46,11 +50,11 @@ impl VirtualFileSystem {
         std::mem::take(&mut self.changes)
     }
 
-    pub fn file_id(&self, path: &Path) -> Option<FileId> {
+    pub fn file_id(&self, path: &VfsPath) -> Option<FileId> {
         self.interner.get(path).filter(|&file_id| self.get(file_id).is_some())
     }
 
-    pub fn file_path(&self, file_id: FileId) -> &Path {
+    pub fn file_path(&self, file_id: FileId) -> &VfsPath {
         self.interner.lookup(file_id)
     }
 
@@ -58,7 +62,7 @@ impl VirtualFileSystem {
         self.get(file_id).as_deref()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (FileId, &Path)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (FileId, &VfsPath)> + '_ {
         self.file_contents
             .iter()
             .enumerate()
@@ -71,22 +75,23 @@ impl VirtualFileSystem {
             })
     }
 
-    pub fn set_file_content(&mut self, path: &Path, content: Option<Box<[u8]>>) -> bool {
+    pub fn set_file_content(&mut self, path: VfsPath, content: Option<Box<[u8]>>) -> (FileId, bool) {
         let file_id = self.alloc_file_id(path);
         let kind = match (self.get(file_id), &content) {
-            | (None, None) => return false,
+            | (None, None) => return (file_id, false),
             | (None, Some(_)) => ChangeKind::Create,
             | (Some(_), None) => ChangeKind::Delete,
-            | (Some(old), Some(new)) if old == new => return false,
+            | (Some(old), Some(new)) if old == new => return (file_id, false),
             | (Some(_), Some(_)) => ChangeKind::Modify,
         };
 
         *self.get_mut(file_id) = content;
         self.changes.push(ChangedFile { file_id, kind });
-        true
+
+        (file_id, true)
     }
 
-    fn alloc_file_id(&mut self, path: &Path) -> FileId {
+    pub fn alloc_file_id(&mut self, path: VfsPath) -> FileId {
         let file_id = self.interner.intern(path);
         let idx = file_id.0 as usize;
         let len = self.file_contents.len().max(idx + 1);
@@ -105,23 +110,20 @@ impl VirtualFileSystem {
 }
 
 impl PathInterner {
-    fn get(&self, path: &Path) -> Option<FileId> {
-        self.path_to_id.get(path).copied()
+    fn get(&self, path: &VfsPath) -> Option<FileId> {
+        self.map.get_index_of(path).map(|i| FileId(i as u32))
     }
 
-    fn intern(&mut self, path: &Path) -> FileId {
-        if let Some(id) = self.get(path) {
-            return id;
-        }
+    fn intern(&mut self, path: VfsPath) -> FileId {
+        let (id, _) = self.map.insert_full(path);
 
-        let id = FileId(self.id_to_path.len() as u32);
-
-        self.path_to_id.insert(path.to_path_buf(), id);
-        self.id_to_path.push(path.to_path_buf());
-        id
+        FileId(id as u32)
     }
 
-    fn lookup(&self, id: FileId) -> &Path {
-        &self.id_to_path[id.0 as usize]
+    fn lookup(&self, id: FileId) -> &VfsPath {
+        self.map.get_index(id.0 as usize).unwrap()
     }
+}
+
+impl ra_ap_stdx::hash::NoHashHashable for FileId {
 }
