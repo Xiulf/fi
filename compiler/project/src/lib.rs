@@ -24,6 +24,7 @@ pub struct LocalProject {
     lib_name: String,
     lib_output: LibKind,
     lib_links: Vec<PathBuf>,
+    lib_deps: Vec<Dependency>,
 
     files: Vec<FileId>,
 }
@@ -62,7 +63,7 @@ impl Workspace {
             root_dir: root_dir.clone(),
         };
 
-        let cfg = cfg::CfgOptions::default();
+        let cfg = CfgOptions::default();
 
         manifest::load_project(&mut workspace, vfs, &cfg, &root_dir)?;
 
@@ -85,19 +86,25 @@ impl Workspace {
 
         let mut workspace = Workspace {
             local: Some(LocalProject {
+                files,
                 lib_name,
                 lib_output,
                 lib_links,
-                files,
+                lib_deps: Vec::new(),
             }),
             packages: Arena::default(),
             root_dir,
         };
 
-        let cfg = cfg::CfgOptions::default();
+        let cfg = CfgOptions::default();
 
         for dep in dependencies {
-            manifest::load_project(&mut workspace, vfs, &cfg, &dep)?;
+            let pkg = manifest::load_project(&mut workspace, vfs, &cfg, &dep)?;
+
+            workspace.local.as_mut().unwrap().lib_deps.push(Dependency {
+                package: pkg,
+                cfg_opts: CfgOptions::default(),
+            });
         }
 
         Ok(workspace)
@@ -146,16 +153,6 @@ impl Workspace {
         let mut libs = LibSet::default();
         let mut map = FxHashMap::default();
 
-        if let Some(local) = &self.local {
-            libs.add_lib(
-                local.lib_name.clone(),
-                local.lib_output,
-                local.lib_links.clone(),
-                cfg_opts.clone(),
-                local.files[0],
-            );
-        }
-
         for (id, data) in self.packages.iter() {
             let lib = libs.add_lib(
                 data.name.clone(),
@@ -174,6 +171,24 @@ impl Workspace {
                 let to = map[&dep.package];
 
                 if let Err(e) = libs.add_dep(from, to, &dep.cfg_opts) {
+                    tracing::error!("{}", e);
+                }
+            }
+        }
+
+        if let Some(local) = &self.local {
+            let lib = libs.add_lib(
+                local.lib_name.clone(),
+                local.lib_output,
+                local.lib_links.clone(),
+                cfg_opts.clone(),
+                local.files[0],
+            );
+
+            for dep in local.lib_deps.iter() {
+                let to = map[&dep.package];
+
+                if let Err(e) = libs.add_dep(lib, to, &dep.cfg_opts) {
                     tracing::error!("{}", e);
                 }
             }

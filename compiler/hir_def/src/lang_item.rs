@@ -23,7 +23,7 @@ pub const BOOL_TYPE: &'static str = "bool-type";
 pub const PROXY_TYPE: &'static str = "proxy-type";
 pub const PAIR_TYPE: &'static str = "pair-type";
 
-pub const INTEGER_CLASS: &'static str = "integer-clss";
+pub const INTEGER_CLASS: &'static str = "integer-class";
 pub const DECIMAL_CLASS: &'static str = "decimal-class";
 pub const TERMINATION_CLASS: &'static str = "termination-class";
 pub const TRY_CLASS: &'static str = "try-class";
