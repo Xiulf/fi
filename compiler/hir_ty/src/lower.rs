@@ -4,6 +4,7 @@ use arena::ArenaMap;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::id::*;
 use hir_def::infix::ProcessInfix;
+use hir_def::lang_item;
 use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, TypeNs};
 use hir_def::type_ref::{LocalTypeRefId, TypeMap, TypeRef};
@@ -144,9 +145,9 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
             | TypeRef::Record(fields, tail) => {
                 let row = self.lower_row(fields, *tail, ty);
-                let record_ty = self.lang_type("record-type", src);
+                let record_ty = self.lang_type(lang_item::RECORD_TYPE, src);
                 let type_kind = self.type_kind(src);
-                let row_kind = self.lang_type("row-kind", src);
+                let row_kind = self.lang_type(lang_item::ROW_KIND, src);
                 let row_kind = self.icx.types.insert(TyInfo::App(row_kind, [type_kind].into()), src);
 
                 self.check_kind(row, row_kind);
@@ -220,7 +221,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             })
             .collect();
 
-        let row_kind = self.lang_type("row-kind", src);
+        let row_kind = self.lang_type(lang_item::ROW_KIND, src);
         let row_kind = self.icx.types.insert(TyInfo::App(row_kind, [elem_kind].into()), src);
         let tail = tail.map(|t| {
             let ty = self.lower_ty(t);

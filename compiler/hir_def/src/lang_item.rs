@@ -7,6 +7,29 @@ use smol_str::SmolStr;
 use crate::db::DefDatabase;
 use crate::id::{AttrDefId, ClassId, FixityId, FuncId, ModuleDefId, StaticId, TypeAliasId, TypeCtorId};
 
+pub const TYPE_KIND: &'static str = "type-kind";
+pub const FIGURE_KIND: &'static str = "figure-kind";
+pub const SYMBOL_KIND: &'static str = "symbol-kind";
+pub const ROW_KIND: &'static str = "row-kind";
+
+pub const NEVER_TYPE: &'static str = "never-type";
+pub const CHAR_TYPE: &'static str = "char-type";
+pub const STR_TYPE: &'static str = "str-type";
+pub const FN_TYPE: &'static str = "fn-type";
+pub const ARRAY_TYPE: &'static str = "array-type";
+pub const RECORD_TYPE: &'static str = "record-type";
+pub const UNIT_TYPE: &'static str = "unit-type";
+pub const BOOL_TYPE: &'static str = "bool-type";
+pub const PROXY_TYPE: &'static str = "proxy-type";
+pub const PAIR_TYPE: &'static str = "pair-type";
+
+pub const INTEGER_CLASS: &'static str = "integer-clss";
+pub const DECIMAL_CLASS: &'static str = "decimal-class";
+pub const TERMINATION_CLASS: &'static str = "termination-class";
+pub const TRY_CLASS: &'static str = "try-class";
+
+pub const PAIR_OPERATOR: &'static str = "pair-operator";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LangItem {
     FixityId(FixityId),
@@ -92,9 +115,9 @@ impl LangItems {
         Arc::new(lang_items)
     }
 
-    pub(crate) fn lang_item_query(db: &dyn DefDatabase, lib: LibId, item: SmolStr) -> Option<LangItem> {
+    pub(crate) fn lang_item_query(db: &dyn DefDatabase, lib: LibId, item: &'static str) -> Option<LangItem> {
         let lang_items = db.lib_lang_items(lib);
-        let target = lang_items.items.get(&item);
+        let target = lang_items.items.get(item);
 
         if let Some(target) = target {
             return Some(*target);

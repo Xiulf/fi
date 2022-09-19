@@ -369,7 +369,7 @@ fn for_each_type_var(
 ) -> io::Result<Ty> {
     if let TyKind::ForAll(kinds, inner, _) = ty.lookup(db) {
         let lib = owner.module(db.upcast()).lib;
-        let symbol_ctor = db.lang_item(lib, "symbol-kind".into()).unwrap();
+        let symbol_ctor = db.lang_item(lib, "symbol-kind").unwrap();
         let symbol_ctor = symbol_ctor.as_type_ctor().unwrap();
 
         for kind in kinds.iter() {

@@ -1,4 +1,5 @@
 use hir_def::id::TypeVarOwner;
+use hir_def::lang_item;
 use tracing::trace;
 
 use super::{InferenceContext, InferenceDiagnostic};
@@ -20,11 +21,11 @@ impl InferenceContext<'_> {
             },
             | TyInfo::Skolem(_, kind) => kind,
             | TyInfo::TypeVar(var) => self.type_vars.var_kinds(var.scope())[var.idx() as usize],
-            | TyInfo::Figure(_) => self.lang_type("figure-kind", src),
-            | TyInfo::Symbol(_) => self.lang_type("symbol-kind", src),
+            | TyInfo::Figure(_) => self.lang_type(lang_item::FIGURE_KIND, src),
+            | TyInfo::Symbol(_) => self.lang_type(lang_item::SYMBOL_KIND, src),
             | TyInfo::Row(fields, tail) => {
                 let elem_kind = self.fresh_type(src);
-                let row_kind = self.lang_type("row-kind", src);
+                let row_kind = self.lang_type(lang_item::ROW_KIND, src);
                 let kind = self.types.insert(TyInfo::App(row_kind, [elem_kind].into()), src);
 
                 for field in fields.iter() {
@@ -73,7 +74,7 @@ impl InferenceContext<'_> {
                 self.type_vars.push_scope(scope);
                 self.check_kind_type(inner);
                 self.type_vars.pop_scope();
-                self.lang_type("type-kind", src)
+                self.type_kind(src)
             },
         };
 
@@ -85,8 +86,8 @@ impl InferenceContext<'_> {
         let ty = self.subst_type(ty);
 
         match self.types[ty] {
-            | TyInfo::Ctor(id) if id == self.lang_ctor("unit-type") => {
-                if let Some(_) = kind.match_ctor(&self.types, self.lang_ctor("row-kind")) {
+            | TyInfo::Ctor(id) if id == self.lang_ctor(lang_item::UNIT_TYPE) => {
+                if let Some(_) = kind.match_ctor(&self.types, self.lang_ctor(lang_item::ROW_KIND)) {
                     return;
                 }
             },
@@ -111,7 +112,7 @@ impl InferenceContext<'_> {
     /// Check that `ty` has kind `Type`
     pub fn check_kind_type(&mut self, ty: TyId) {
         let src = self.types.source(ty);
-        let type_kind = self.lang_type("type-kind", src);
+        let type_kind = self.type_kind(src);
 
         self.check_kind(ty, type_kind);
     }

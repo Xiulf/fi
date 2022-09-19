@@ -3,6 +3,7 @@ use std::sync::Arc;
 use hir_def::expr::{CaseArm, CaseValue, Expr, ExprId, Literal, Stmt};
 use hir_def::id::{FixityId, TypeVarOwner};
 use hir_def::infix::ProcessInfix;
+use hir_def::lang_item;
 use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, ValueNs};
 use tracing::trace;
@@ -44,7 +45,7 @@ impl BodyInferenceContext<'_> {
             | Expr::Path { path } => return self.icx.infer_path(path, self.resolver.clone(), expr, None),
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
-                    let integer = self.lang_class("integer-class");
+                    let integer = self.lang_class(lang_item::INTEGER_CLASS);
                     let ty = self.fresh_type(src);
 
                     self.constrain(
@@ -59,7 +60,7 @@ impl BodyInferenceContext<'_> {
                     ty
                 },
                 | Literal::Float(_) => {
-                    let decimal = self.lang_class("decimal-class");
+                    let decimal = self.lang_class(lang_item::DECIMAL_CLASS);
                     let ty = self.fresh_type(src);
 
                     self.constrain(
@@ -73,8 +74,8 @@ impl BodyInferenceContext<'_> {
 
                     ty
                 },
-                | Literal::Char(_) => self.lang_type("char-type", src),
-                | Literal::String(_) => self.lang_type("str-type", src),
+                | Literal::Char(_) => self.lang_type(lang_item::CHAR_TYPE, src),
+                | Literal::String(_) => self.lang_type(lang_item::STR_TYPE, src),
             },
             | Expr::Infix { exprs, ops } => {
                 let exprs = exprs.iter().map(|&e| self.infer_expr(e)).collect::<Vec<_>>();
@@ -97,9 +98,9 @@ impl BodyInferenceContext<'_> {
                 self.infer_app(base_ty, *arg, expr)
             },
             | Expr::Field { base, field } => {
-                let row_kind = self.lang_type("row-kind", src);
-                let type_kind = self.lang_type("type-kind", src);
-                let record_type = self.lang_type("record-type", src);
+                let row_kind = self.lang_type(lang_item::ROW_KIND, src);
+                let type_kind = self.type_kind(src);
+                let record_type = self.lang_type(lang_item::RECORD_TYPE, src);
                 let kind = self.types.insert(TyInfo::App(row_kind, [type_kind].into()), src);
                 let tail = self.fresh_type_with_kind(kind, src);
                 let res = self.fresh_type(src);
@@ -116,7 +117,7 @@ impl BodyInferenceContext<'_> {
                 res
             },
             | Expr::Record { fields } => {
-                let record_type = self.lang_type("record-type", src);
+                let record_type = self.lang_type(lang_item::RECORD_TYPE, src);
                 let fields = fields
                     .iter()
                     .map(|f| FieldInfo {
@@ -130,7 +131,7 @@ impl BodyInferenceContext<'_> {
                 self.types.insert(TyInfo::App(record_type, [row].into()), src)
             },
             | Expr::Array { exprs } => {
-                let array_type = self.lang_type("array-type", src);
+                let array_type = self.lang_type(lang_item::ARRAY_TYPE, src);
                 let len = self.types.insert(TyInfo::Figure(exprs.len() as i128), src);
                 let elem_ty = self.fresh_type(src);
 
@@ -162,7 +163,7 @@ impl BodyInferenceContext<'_> {
             | Expr::If { cond, then, else_, .. } => {
                 let then_src = self.source(*then);
                 let cond_src = self.source(*cond);
-                let bool_type = self.lang_type("bool-type", cond_src);
+                let bool_type = self.lang_type(lang_item::BOOL_TYPE, cond_src);
 
                 self.check_expr(*cond, bool_type);
 
@@ -172,7 +173,7 @@ impl BodyInferenceContext<'_> {
                     let then_ty = self.subst_type(then_ty);
                     let else_ty = self.infer_expr(*else_);
                     let else_ty = self.subst_type(else_ty);
-                    let never_ty = self.lang_type("never-type", then_src);
+                    let never_ty = self.lang_type(lang_item::NEVER_TYPE, then_src);
 
                     if then_ty == never_ty {
                         else_ty
@@ -199,7 +200,7 @@ impl BodyInferenceContext<'_> {
                 let ret = self.ret_type;
 
                 self.check_expr(*inner, ret);
-                self.lang_type("never-type", src)
+                self.lang_type(lang_item::NEVER_TYPE, src)
             },
             | e => unimplemented!("{:?}", e),
         };
@@ -232,7 +233,7 @@ impl BodyInferenceContext<'_> {
                     for &guard in guards.iter() {
                         self.with_expr_scope(guard, |ctx| {
                             let bool_src = ctx.source(guard);
-                            let bool_ty = ctx.lang_type("bool-type", bool_src);
+                            let bool_ty = ctx.lang_type(lang_item::BOOL_TYPE, bool_src);
 
                             ctx.check_expr(guard, bool_ty);
                         });
@@ -266,7 +267,7 @@ impl BodyInferenceContext<'_> {
         let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
         let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
         let last = stmts.len() - 1;
-        let never_ty = self.lang_type("never-type", src);
+        let never_ty = self.lang_type(lang_item::NEVER_TYPE, src);
         let mut diverges = false;
 
         for (i, stmt) in stmts.iter().enumerate() {
@@ -309,12 +310,12 @@ impl BodyInferenceContext<'_> {
         let def = self.resolver.body_owner().unwrap();
         let new_resolver = Resolver::for_expr(self.db.upcast(), def, expr);
         let old_resolver = std::mem::replace(&mut self.resolver, new_resolver);
-        let try_class = self.lang_class("try-class");
+        let try_class = self.lang_class(lang_item::TRY_CLASS);
         let ty_kind = self.type_kind(src);
         let kind = self.fn_type([ty_kind], ty_kind, src);
         let try_container = self.fresh_type_with_kind(kind, src);
         let last = stmts.len() - 1;
-        let never_ty = self.lang_type("never-type", src);
+        let never_ty = self.lang_type(lang_item::NEVER_TYPE, src);
         let mut diverges = false;
 
         self.constrain(
@@ -488,7 +489,7 @@ impl BodyInferenceContext<'_> {
                 },
             },
             | (Expr::Lit { lit: Literal::Int(_) }, _) => {
-                let integer = self.lang_class("integer-class");
+                let integer = self.lang_class(lang_item::INTEGER_CLASS);
 
                 self.constrain(
                     CtntExpected::ExprOrPat(expr.into()),
@@ -500,7 +501,7 @@ impl BodyInferenceContext<'_> {
                 );
             },
             | (Expr::Lit { lit: Literal::Float(_) }, _) => {
-                let decimal = self.lang_class("decimal-class");
+                let decimal = self.lang_class(lang_item::DECIMAL_CLASS);
 
                 self.constrain(
                     CtntExpected::ExprOrPat(expr.into()),
@@ -533,7 +534,7 @@ impl BodyInferenceContext<'_> {
 
     pub fn infer_app(&mut self, base_ty: TyId, arg: ExprId, expr: ExprId) -> TyId {
         let base_ty = self.subst_type(base_ty);
-        let func_ty = self.lang_ctor("fn-type");
+        let func_ty = self.lang_ctor(lang_item::FN_TYPE);
 
         if let Some(&[arg_ty, ret_ty]) = base_ty.match_ctor(&self.types, func_ty).as_deref() {
             self.check_expr(arg, arg_ty);

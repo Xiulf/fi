@@ -1,3 +1,5 @@
+use hir_def::lang_item;
+
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{ExprOrPatId, InferenceContext};
 use crate::info::{TyId, TyInfo};
@@ -13,7 +15,7 @@ impl InferenceContext<'_> {
         let t1 = self.subst_type(t1);
         let t2 = self.subst_type(t2);
         let src = self.source(origin);
-        let never = self.lang_type("never-type", src);
+        let never = self.lang_type(lang_item::NEVER_TYPE, src);
 
         if self.types[t1] == self.types[never] {
             return true;

@@ -484,7 +484,7 @@ impl BodyCtx<'_, '_> {
 
     pub fn is_true(&self, expr: JsExpr) -> JsExpr {
         let lib = self.owner.module(self.db.upcast()).lib;
-        let bool = self.db.lang_item(lib, "bool-type".into()).unwrap();
+        let bool = self.db.lang_item(lib, "bool-type").unwrap();
         let bool = TypeCtor::from(bool.as_type_ctor().unwrap());
         let true_ = self.mangle((bool.ctors(self.db)[1].path(self.db).to_string(), true));
 
@@ -794,12 +794,7 @@ impl BodyCtx<'_, '_> {
         } else {
             use hir::id::Lookup;
             let lib = id.lookup(self.db.upcast()).module(self.db.upcast()).lib;
-            let func_ctor = self
-                .db
-                .lang_item(lib, "fn-type".into())
-                .unwrap()
-                .as_type_ctor()
-                .unwrap();
+            let func_ctor = self.db.lang_item(lib, "fn-type").unwrap().as_type_ctor().unwrap();
             let mut params = 0;
 
             while let Some([_, ret]) = ty.match_ctor(self.db, func_ctor).as_deref() {

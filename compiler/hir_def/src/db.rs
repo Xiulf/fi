@@ -3,7 +3,6 @@ use std::sync::Arc;
 use base_db::input::FileId;
 use base_db::libs::LibId;
 use base_db::{SourceDatabase, Upcast};
-use smol_str::SmolStr;
 
 use crate::ast_id::AstIdMap;
 use crate::attrs::AttrsWithOwner;
@@ -96,5 +95,5 @@ pub trait DefDatabase: InternDatabase + Upcast<dyn SourceDatabase> {
     fn lib_lang_items(&self, lib: LibId) -> Arc<LangItems>;
 
     #[salsa::invoke(LangItems::lang_item_query)]
-    fn lang_item(&self, lib: LibId, item: SmolStr) -> Option<LangItem>;
+    fn lang_item(&self, lib: LibId, item: &'static str) -> Option<LangItem>;
 }

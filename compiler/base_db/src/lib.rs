@@ -118,3 +118,39 @@ impl fmt::Display for Canceled {
 
 impl std::error::Error for Canceled {
 }
+
+#[derive(Debug)]
+pub struct ICE(pub std::borrow::Cow<'static, str>);
+
+impl ICE {
+    pub fn throw(msg: impl Into<std::borrow::Cow<'static, str>>) -> ! {
+        panic::panic_any(Self(msg.into()))
+    }
+}
+
+impl fmt::Display for ICE {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "internal compiler error: '{}'", self.0)
+    }
+}
+
+impl std::error::Error for ICE {
+}
+
+#[derive(Debug)]
+pub struct Error(pub std::borrow::Cow<'static, str>);
+
+impl Error {
+    pub fn throw(msg: impl Into<std::borrow::Cow<'static, str>>) -> ! {
+        panic::panic_any(Self(msg.into()))
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error: '{}'", self.0)
+    }
+}
+
+impl std::error::Error for Error {
+}
