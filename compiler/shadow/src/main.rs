@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use base_db::libs::LibKind;
 use clap::{Args, Parser, Subcommand};
-use driver::{Driver, Opts};
+use driver::{Driver, InitNoManifestOpts, InitOpts};
 use project::manifest::{Cfg, TomlValue};
 use tracing::{debug, Level};
 
@@ -24,14 +24,23 @@ struct Cli {
 
 #[derive(Args, Debug)]
 struct CliArgs {
-    #[clap(value_hint = clap::ValueHint::FilePath)]
-    file: Option<PathBuf>,
+    #[clap(requires = "name", value_hint = clap::ValueHint::FilePath)]
+    files: Vec<PathBuf>,
 
-    #[clap(long)]
+    #[clap(long, short, requires = "files")]
+    name: Option<String>,
+
+    #[clap(long, requires = "files")]
     target: Option<String>,
 
-    #[clap(long, value_parser = parse_output)]
+    #[clap(long, requires = "files", value_parser = parse_output)]
     output: Option<LibKind>,
+
+    #[clap(long = "link", short, requires = "files")]
+    links: Vec<PathBuf>,
+
+    #[clap(long = "dep", short, requires = "files")]
+    dependencies: Vec<PathBuf>,
 
     #[clap(long, global = true, value_parser = parse_cfg)]
     cfg: Vec<(String, TomlValue)>,
@@ -73,6 +82,8 @@ struct BuildArgs {
 struct RunArgs {
     #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
     input: PathBuf,
+
+    #[clap(last = true)]
     args: Vec<String>,
 }
 
@@ -130,6 +141,7 @@ fn run_cli(cli: Cli) -> anyhow::Result<()> {
             | Commands::Watch(watch) => run_watch(args, watch),
             | Commands::Lsp(lsp) => run_lsp(args, lsp),
         },
+        | None if !args.files.is_empty() => run_files(args),
         | None => {
             interactive::run();
             Ok(())
@@ -145,11 +157,11 @@ fn setup_basic(cli: CliArgs, command: &BasicCommands) -> anyhow::Result<Driver> 
         | BasicCommands::Run(args) => &args.input,
     };
 
-    Driver::init(Opts {
+    Driver::init(InitOpts {
         target: cli.target.as_deref(),
         input,
         cfg,
-        ..Opts::default()
+        ..InitOpts::default()
     })
 }
 
@@ -159,6 +171,24 @@ fn run_basic(driver: &Driver, command: &BasicCommands) -> io::Result<bool> {
         | BasicCommands::Build(_) => driver.build(),
         | BasicCommands::Run(args) => driver.run(args.args.iter()),
     }
+}
+
+fn run_files(cli: CliArgs) -> anyhow::Result<()> {
+    let cfg: Cfg = cli.cfg.into_iter().collect();
+    let name = cli.name.unwrap();
+    let output = cli.output.unwrap_or_default();
+    let driver = Driver::init_without_manifest(InitNoManifestOpts {
+        name: &name,
+        target: cli.target.as_deref(),
+        files: cli.files.iter().map(|p| p.as_path()).collect(),
+        links: cli.links.iter().map(|p| p.as_path()).collect(),
+        dependencies: cli.dependencies.iter().map(|p| p.as_path()).collect(),
+        output,
+        cfg,
+    })?;
+
+    driver.build()?;
+    Ok(())
 }
 
 fn run_lsp(_cli: CliArgs, _args: LspArgs) -> anyhow::Result<()> {

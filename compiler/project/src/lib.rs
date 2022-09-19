@@ -7,15 +7,25 @@ use cfg::CfgOptions;
 use manifest::Manifest;
 use paths::AbsPathBuf;
 use rustc_hash::FxHashMap;
-use vfs::file_set::FileSetConfig;
+use vfs::file_set::{FileSet, FileSetConfig};
 use vfs::{FileId, VfsPath, VirtualFileSystem};
 
 pub mod manifest;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
+    local: Option<LocalProject>,
     packages: Arena<PackageData>,
     root_dir: AbsPathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalProject {
+    lib_name: String,
+    lib_output: LibKind,
+    lib_links: Vec<PathBuf>,
+
+    files: Vec<FileId>,
 }
 
 pub type Package = Idx<PackageData>;
@@ -47,6 +57,7 @@ pub struct PackageRoot {
 impl Workspace {
     pub fn load(root_dir: AbsPathBuf, vfs: &mut VirtualFileSystem) -> anyhow::Result<Self> {
         let mut workspace = Workspace {
+            local: None,
             packages: Arena::default(),
             root_dir: root_dir.clone(),
         };
@@ -58,14 +69,52 @@ impl Workspace {
         Ok(workspace)
     }
 
+    pub fn local_files(
+        vfs: &mut VirtualFileSystem,
+        root_dir: AbsPathBuf,
+        files: Vec<AbsPathBuf>,
+        lib_name: String,
+        lib_output: LibKind,
+        lib_links: Vec<PathBuf>,
+        dependencies: Vec<AbsPathBuf>,
+    ) -> anyhow::Result<Self> {
+        let files = files
+            .into_iter()
+            .map(|path| manifest::load_file(vfs, path))
+            .collect::<anyhow::Result<_>>()?;
+
+        let mut workspace = Workspace {
+            local: Some(LocalProject {
+                lib_name,
+                lib_output,
+                lib_links,
+                files,
+            }),
+            packages: Arena::default(),
+            root_dir,
+        };
+
+        let cfg = cfg::CfgOptions::default();
+
+        for dep in dependencies {
+            manifest::load_project(&mut workspace, vfs, &cfg, &dep)?;
+        }
+
+        Ok(workspace)
+    }
+
     pub fn packages(&self) -> impl Iterator<Item = Package> + ExactSizeIterator + '_ {
         self.packages.iter().map(|(id, _)| id)
     }
 
     pub fn to_roots(&self) -> Vec<PackageRoot> {
-        self.packages
+        self.local
             .iter()
-            .map(|(_, data)| {
+            .map(|_| PackageRoot {
+                include: vec![self.root_dir.clone()],
+                exclude: Vec::new(),
+            })
+            .chain(self.packages.iter().map(|(_, data)| {
                 let mut root = PackageRoot::default();
                 let package_root = data.manifest_path.parent().unwrap().to_owned();
 
@@ -75,11 +124,11 @@ impl Workspace {
                 root.exclude.push(package_root.join("target"));
 
                 root
-            })
+            }))
             .collect()
     }
 
-    pub fn file_sets(workspaces: &[Self]) -> FileSetConfig {
+    pub fn file_sets(workspaces: &[Self], vfs: &VirtualFileSystem) -> Vec<FileSet> {
         let mut fs = FileSetConfig::builder();
 
         for root in workspaces.iter().flat_map(|ws| ws.to_roots()) {
@@ -88,12 +137,24 @@ impl Workspace {
             fs.add_file_set(file_set);
         }
 
-        fs.build()
+        let config = fs.build();
+
+        config.partition(vfs)
     }
 
     pub fn to_libs(&self, cfg_opts: &CfgOptions) -> LibSet {
         let mut libs = LibSet::default();
         let mut map = FxHashMap::default();
+
+        if let Some(local) = &self.local {
+            libs.add_lib(
+                local.lib_name.clone(),
+                local.lib_output,
+                local.lib_links.clone(),
+                cfg_opts.clone(),
+                local.files[0],
+            );
+        }
 
         for (id, data) in self.packages.iter() {
             let lib = libs.add_lib(

@@ -16,11 +16,21 @@ use project::manifest::{self, Cfg};
 use project::Workspace;
 use rustc_hash::FxHashSet;
 
-pub struct Opts<'a> {
+pub struct InitOpts<'a> {
     pub input: &'a Path,
     pub target: Option<&'a str>,
     pub output: Option<LibKind>,
     pub cfg: Cfg,
+}
+
+pub struct InitNoManifestOpts<'a> {
+    pub files: Vec<&'a Path>,
+    pub name: &'a str,
+    pub target: Option<&'a str>,
+    pub output: LibKind,
+    pub cfg: Cfg,
+    pub links: Vec<&'a Path>,
+    pub dependencies: Vec<&'a Path>,
 }
 
 pub struct Driver {
@@ -31,7 +41,7 @@ pub struct Driver {
     vfs: vfs::VirtualFileSystem,
 }
 
-impl Default for Opts<'_> {
+impl Default for InitOpts<'_> {
     fn default() -> Self {
         Self {
             input: Path::new("."),
@@ -63,12 +73,46 @@ fn input_dir(input: &Path) -> AbsPathBuf {
 }
 
 impl Driver {
-    pub fn init(opts: Opts) -> anyhow::Result<Self> {
+    pub fn init(opts: InitOpts) -> anyhow::Result<Self> {
         let mut driver = Driver::default();
 
         driver.target_dir = input_dir(opts.input).join("target");
         driver.cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
         driver.load(opts.input)?;
+
+        driver.db.set_target(match opts.target {
+            | Some("javascript") => CompilerTarget::Javascript,
+            // | Some(target) => Arc::new(target.parse().unwrap()),
+            // | None => Arc::new(target_lexicon::Triple::host()),
+            | _ => CompilerTarget::Javascript,
+        });
+
+        Ok(driver)
+    }
+
+    pub fn init_without_manifest(opts: InitNoManifestOpts) -> anyhow::Result<Self> {
+        let mut driver = Driver::default();
+        let current_dir = AbsPathBuf::assert(std::env::current_dir().unwrap());
+
+        driver.target_dir = current_dir.join("target");
+        driver.cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
+
+        let files = opts.files.into_iter().map(|p| input_dir(p)).collect();
+        let links = opts.links.into_iter().map(|l| l.to_path_buf()).collect();
+        let dependencies = opts.dependencies.into_iter().map(|d| input_dir(d)).collect();
+
+        driver.workspaces.push(Workspace::local_files(
+            &mut driver.vfs,
+            current_dir,
+            files,
+            opts.name.to_string(),
+            opts.output,
+            links,
+            dependencies,
+        )?);
+
+        driver.set_libs();
+        driver.set_source_roots();
 
         driver.db.set_target(match opts.target {
             | Some("javascript") => CompilerTarget::Javascript,
@@ -123,7 +167,7 @@ impl Driver {
     }
 
     fn set_source_roots(&mut self) {
-        let file_sets = Workspace::file_sets(&self.workspaces).partition(&self.vfs);
+        let file_sets = Workspace::file_sets(&self.workspaces, &self.vfs);
 
         for (idx, file_set) in file_sets.into_iter().enumerate() {
             let root_id = SourceRootId(idx as u32);

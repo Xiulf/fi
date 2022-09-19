@@ -89,7 +89,7 @@ impl Dependency {
     }
 }
 
-pub fn load_project(
+pub(crate) fn load_project(
     workspace: &mut Workspace,
     vfs: &mut VirtualFileSystem,
     cfg: &CfgOptions,
@@ -151,7 +151,7 @@ fn load_dir(vfs: &mut VirtualFileSystem, path: &AbsPath) -> Result<Option<FileId
     Ok(first_file)
 }
 
-fn load_file(vfs: &mut VirtualFileSystem, path: AbsPathBuf) -> Result<FileId> {
+pub(crate) fn load_file(vfs: &mut VirtualFileSystem, path: AbsPathBuf) -> Result<FileId> {
     let text = fs::read_to_string(&path).with_context(|| anyhow::anyhow!("failed to load file: {}", path.display()))?;
     let (file, _) = vfs.set_file_content(
         VfsPath::from(path.normalize()),
