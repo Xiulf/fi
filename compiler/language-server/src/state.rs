@@ -8,7 +8,9 @@ use base_db::input::SourceRoot;
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use dispatcher::NotificationDispatcher;
 use lsp_server::{ErrorCode, Message, Notification, ReqQueue, Request, Response};
-use lsp_types::notification::{self, DidChangeTextDocument, DidOpenTextDocument, Notification as _};
+use lsp_types::notification::{
+    self, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
+};
 use lsp_types::request::Shutdown;
 use parking_lot::RwLock;
 use paths::AbsPathBuf;
@@ -171,6 +173,7 @@ impl LspState {
     fn handle_notification(&mut self, not: Notification) -> anyhow::Result<()> {
         NotificationDispatcher::new(self, not)
             .on::<DidOpenTextDocument>(Self::on_did_open_text_document)?
+            .on::<DidCloseTextDocument>(Self::on_did_close_text_document)?
             .on::<DidChangeTextDocument>(Self::on_did_change_text_document)?
             .finish();
         Ok(())

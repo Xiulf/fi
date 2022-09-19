@@ -1,5 +1,7 @@
 use base_db::input::LineIndex;
-use lsp_types::{DidChangeTextDocumentParams, DidOpenTextDocumentParams, TextDocumentContentChangeEvent};
+use lsp_types::{
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams, TextDocumentContentChangeEvent,
+};
 use vfs::VfsPath;
 
 use super::LspState;
@@ -14,10 +16,21 @@ pub enum Progress {
 impl LspState {
     pub fn on_did_open_text_document(&mut self, params: DidOpenTextDocumentParams) -> anyhow::Result<()> {
         let path = VfsPath::from(util::file_path(&params.text_document.uri)?);
-
-        self.vfs
+        let (file_id, _) = self
+            .vfs
             .write()
             .set_file_content(path, Some(params.text_document.text.into_bytes().into()));
+
+        self.open_files.insert(file_id);
+
+        Ok(())
+    }
+
+    pub fn on_did_close_text_document(&mut self, params: DidCloseTextDocumentParams) -> anyhow::Result<()> {
+        let path = VfsPath::from(util::file_path(&params.text_document.uri)?);
+        let file_id = self.vfs.read().file_id(&path).unwrap();
+
+        self.open_files.remove(&file_id);
 
         Ok(())
     }
