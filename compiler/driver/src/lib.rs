@@ -73,12 +73,13 @@ fn input_dir(input: &Path) -> AbsPathBuf {
 }
 
 impl Driver {
-    pub fn init(opts: InitOpts) -> anyhow::Result<Self> {
+    pub fn init(opts: InitOpts) -> anyhow::Result<(Self, usize)> {
         let mut driver = Driver::default();
 
         driver.target_dir = input_dir(opts.input).join("target");
         driver.cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
-        driver.load(opts.input)?;
+
+        let ws = driver.load(opts.input)?;
 
         driver.db.set_target(match opts.target {
             | Some("javascript") => CompilerTarget::Javascript,
@@ -87,10 +88,10 @@ impl Driver {
             | _ => CompilerTarget::Javascript,
         });
 
-        Ok(driver)
+        Ok((driver, ws))
     }
 
-    pub fn init_without_manifest(opts: InitNoManifestOpts) -> anyhow::Result<Self> {
+    pub fn init_without_manifest(opts: InitNoManifestOpts) -> anyhow::Result<(Self, usize)> {
         let mut driver = Driver::default();
         let current_dir = AbsPathBuf::assert(std::env::current_dir().unwrap());
 
@@ -121,7 +122,9 @@ impl Driver {
             | _ => CompilerTarget::Javascript,
         });
 
-        Ok(driver)
+        let ws = driver.workspaces.len() - 1;
+
+        Ok((driver, ws))
     }
 
     pub fn interactive() -> (Self, LibId, FileId) {
@@ -144,14 +147,14 @@ impl Driver {
         todo!()
     }
 
-    pub fn load(&mut self, input: &Path) -> anyhow::Result<()> {
+    pub fn load(&mut self, input: &Path) -> anyhow::Result<usize> {
         let input = input_dir(input);
 
         self.workspaces.push(Workspace::load(input, &mut self.vfs)?);
         self.set_libs();
         self.set_source_roots();
 
-        Ok(())
+        Ok(self.workspaces.len() - 1)
     }
 
     fn set_libs(&mut self) {
@@ -216,19 +219,25 @@ impl Driver {
         Ok(true)
     }
 
-    pub fn build(&self) -> io::Result<bool> {
+    pub fn build(&self, ws: usize) -> io::Result<bool> {
         let db = &self.db;
         fs::create_dir_all(&self.target_dir)?;
         let start = std::time::Instant::now();
         let mut done = FxHashSet::default();
         let mut last_changed = false;
+        let ws = &self.workspaces[ws];
+        let libs = db.libs();
 
         for lib in hir::Lib::all(db) {
+            if ws.find_file_package(libs[lib.into()].root_file).is_none() {
+                continue;
+            }
+
             let id = lib.into();
             let changed = metadata::read_metadata(db, id, &self.target_dir)
                 .map(|m| m.has_changed(db))
                 .unwrap_or(true);
-            let changed = changed || !Assembly::dummy(lib).path(db, self.target_dir.as_ref()).exists();
+            let changed = changed || fs::metadata(Assembly::dummy(lib).path(db, self.target_dir.as_ref())).is_err();
 
             if changed || last_changed {
                 eprintln!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
@@ -242,7 +251,7 @@ impl Driver {
                     return Ok(false);
                 }
 
-                self.write_assembly(lib, &mut done)?;
+                self.write_assembly(ws, lib, &mut done)?;
                 metadata::write_metadata(db, id, &self.target_dir)?;
                 last_changed = true;
             } else {
@@ -256,8 +265,8 @@ impl Driver {
         Ok(true)
     }
 
-    pub fn run(&self, _args: impl Iterator<Item = impl AsRef<std::ffi::OsStr>>) -> io::Result<bool> {
-        if self.build()? {
+    pub fn run(&self, ws: usize, _args: impl Iterator<Item = impl AsRef<std::ffi::OsStr>>) -> io::Result<bool> {
+        if self.build(ws)? {
             // let asm = self.db.lib_assembly(lib.into());
             // let path = asm.path(&self.db, &self.db.target_dir(lib));
             // let mut cmd = std::process::Command::new(path);
@@ -271,21 +280,18 @@ impl Driver {
         }
     }
 
-    fn write_assembly(&self, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> io::Result<bool> {
+    fn write_assembly(&self, ws: &Workspace, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> io::Result<bool> {
         if done.contains(&lib) {
             return Ok(false);
         }
 
-        let deps = lib.dependencies(&self.db).into_iter().map(|dep| {
-            let _ = self.write_assembly(dep.lib, done);
-            dep.lib
-        });
+        for dep in lib.dependencies(&self.db) {
+            self.write_assembly(ws, dep.lib, done)?;
+        }
 
         let asm = self.db.lib_assembly(lib);
-        // let source_root = self.db.libs()[lib.into()].source_root;
-        // let path = &self.paths.source_roots[&source_root];
 
-        asm.link(&self.db, deps, Path::new(""), self.target_dir.as_ref());
+        asm.link(&self.db, ws, &self.target_dir);
         done.insert(lib);
 
         Ok(true)

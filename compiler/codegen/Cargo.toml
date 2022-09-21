@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 hir = { path = "../hir" }
 base_db = { path = "../base_db" }
+project = { path = "../project" }
+paths = { path = "../paths" }
 target-lexicon = "0.12.0"
 libloading = "0.7.0"
 tempfile = "3.2.0"

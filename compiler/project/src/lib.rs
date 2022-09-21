@@ -5,7 +5,7 @@ use arena::{Arena, Idx};
 use base_db::libs::{LibKind, LibSet};
 use cfg::CfgOptions;
 use manifest::Manifest;
-use paths::AbsPathBuf;
+use paths::{AbsPath, AbsPathBuf};
 use rustc_hash::FxHashMap;
 use vfs::file_set::{FileSet, FileSetConfig};
 use vfs::{FileId, VfsPath, VirtualFileSystem};
@@ -21,12 +21,12 @@ pub struct Workspace {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalProject {
-    lib_name: String,
-    lib_output: LibKind,
-    lib_links: Vec<PathBuf>,
-    lib_deps: Vec<Dependency>,
+    pub lib_name: String,
+    pub lib_output: LibKind,
+    pub lib_links: Vec<PathBuf>,
+    pub lib_deps: Vec<Dependency>,
 
-    files: Vec<FileId>,
+    pub files: Vec<FileId>,
 }
 
 pub type Package = Idx<PackageData>;
@@ -110,8 +110,32 @@ impl Workspace {
         Ok(workspace)
     }
 
+    pub fn root_dir(&self) -> &AbsPath {
+        &self.root_dir
+    }
+
+    pub fn local_project(&self) -> Option<&LocalProject> {
+        self.local.as_ref()
+    }
+
     pub fn packages(&self) -> impl Iterator<Item = Package> + ExactSizeIterator + '_ {
         self.packages.iter().map(|(id, _)| id)
+    }
+
+    pub fn find_file_package(&self, file_id: FileId) -> Option<Option<Package>> {
+        if let Some(local) = &self.local {
+            if local.files.contains(&file_id) {
+                return Some(None);
+            }
+        }
+
+        for (pkg, data) in self.packages.iter() {
+            if data.root_file == file_id {
+                return Some(Some(pkg));
+            }
+        }
+
+        None
     }
 
     pub fn to_roots(&self) -> Vec<PackageRoot> {

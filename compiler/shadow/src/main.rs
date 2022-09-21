@@ -146,8 +146,8 @@ fn run_cli(cli: Cli) -> anyhow::Result<()> {
     match command {
         | Some(command) => match command {
             | Commands::Basic(command) => {
-                let driver = setup_basic(args, &command)?;
-                run_basic(&driver, &command).map(|_| ())?;
+                let (driver, ws) = setup_basic(args, &command)?;
+                run_basic(&driver, ws, &command).map(|_| ())?;
                 Ok(())
             },
             | Commands::Watch(watch) => run_watch(args, watch),
@@ -161,7 +161,7 @@ fn run_cli(cli: Cli) -> anyhow::Result<()> {
     }
 }
 
-fn setup_basic(cli: CliArgs, command: &BasicCommands) -> anyhow::Result<Driver> {
+fn setup_basic(cli: CliArgs, command: &BasicCommands) -> anyhow::Result<(Driver, usize)> {
     let cfg: Cfg = cli.cfg.into_iter().collect();
     let input = match &command {
         | BasicCommands::Check(args) => &args.input,
@@ -177,11 +177,11 @@ fn setup_basic(cli: CliArgs, command: &BasicCommands) -> anyhow::Result<Driver> 
     })
 }
 
-fn run_basic(driver: &Driver, command: &BasicCommands) -> io::Result<bool> {
+fn run_basic(driver: &Driver, ws: usize, command: &BasicCommands) -> io::Result<bool> {
     match command {
         | BasicCommands::Check(_) => driver.check(),
-        | BasicCommands::Build(_) => driver.build(),
-        | BasicCommands::Run(args) => driver.run(args.args.iter()),
+        | BasicCommands::Build(_) => driver.build(ws),
+        | BasicCommands::Run(args) => driver.run(ws, args.args.iter()),
     }
 }
 
@@ -189,7 +189,7 @@ fn run_files(cli: CliArgs) -> anyhow::Result<()> {
     let cfg: Cfg = cli.cfg.into_iter().collect();
     let name = cli.name.unwrap();
     let output = cli.output.unwrap_or_default();
-    let driver = Driver::init_without_manifest(InitNoManifestOpts {
+    let (driver, ws) = Driver::init_without_manifest(InitNoManifestOpts {
         name: &name,
         target: cli.target.as_deref(),
         files: cli.files.iter().map(|p| p.as_path()).collect(),
@@ -199,7 +199,7 @@ fn run_files(cli: CliArgs) -> anyhow::Result<()> {
         cfg,
     })?;
 
-    driver.build()?;
+    driver.build(ws)?;
     Ok(())
 }
 

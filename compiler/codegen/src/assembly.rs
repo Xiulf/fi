@@ -1,7 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
-// use base_db::libs::LibKind;
+use paths::{AbsPath, AbsPathBuf};
+use project::Workspace;
 use tempfile::NamedTempFile;
 
 use crate::db::CodegenDatabase;
@@ -37,6 +38,16 @@ impl ObjectFile {
     }
 }
 
+fn is_local_link(path: &Path) -> bool {
+    let mut components = path.components();
+
+    if let Some(std::path::Component::CurDir) = components.next() {
+        return true;
+    }
+
+    components.count() > 0 && path.is_relative()
+}
+
 impl Assembly {
     pub fn new(lib: hir::Lib, objects: Vec<Arc<ObjectFile>>) -> Self {
         Self { lib, objects }
@@ -49,25 +60,30 @@ impl Assembly {
         }
     }
 
-    pub fn path(&self, db: &dyn CodegenDatabase, target_dir: &Path) -> PathBuf {
+    pub fn path(&self, db: &dyn CodegenDatabase, target_dir: &AbsPath) -> AbsPathBuf {
         target_dir
             .join(format!("{}{}", self.prefix(db), self.lib.name(db.upcast())))
             .with_extension(self.extension(db))
     }
 
-    pub fn link<'a>(
-        &self,
-        db: &dyn CodegenDatabase,
-        deps: impl Iterator<Item = hir::Lib>,
-        project_dir: &Path,
-        target_dir: &Path,
-    ) -> PathBuf {
+    pub fn link(&self, db: &dyn CodegenDatabase, ws: &Workspace, target_dir: &AbsPath) -> AbsPathBuf {
         let mut linker = crate::linker::create(db.target());
         let out = self.path(db, target_dir);
+        let libs = db.libs();
+        let lib = &libs[self.lib.into()];
+        let pkg = ws.find_file_package(lib.root_file).unwrap();
+        let pkg_root = match pkg {
+            | Some(pkg) => ws[pkg].manifest_path.parent().unwrap(),
+            | None => ws.root_dir(),
+        };
 
-        linker.runtime_path(target_dir);
+        linker.runtime_path(target_dir.as_ref());
 
-        add_deps(&mut *linker, db.upcast(), deps.collect());
+        add_deps(
+            &mut *linker,
+            db.upcast(),
+            lib.deps.iter().map(|&id| id.into()).collect(),
+        );
 
         fn add_deps(linker: &mut dyn crate::linker::Linker, db: &dyn hir::db::HirDatabase, deps: Vec<hir::Lib>) {
             for dep in deps {
@@ -85,8 +101,8 @@ impl Assembly {
         for link in &db.libs()[self.lib.into()].links {
             let mut path = std::borrow::Cow::Borrowed(Path::new(link));
 
-            if path.is_relative() {
-                path = std::borrow::Cow::Owned(project_dir.join(path));
+            if is_local_link(&path) {
+                path = std::borrow::Cow::Owned(pkg_root.join(path).into());
             }
 
             linker.add_object(base_db::libs::LibKind::Dynamic, path.to_str().unwrap());
@@ -97,7 +113,7 @@ impl Assembly {
         }
 
         linker.out_kind(db.libs()[self.lib.into()].kind);
-        linker.build(&out);
+        linker.build(out.as_ref());
         linker.run().unwrap();
 
         out

@@ -142,6 +142,13 @@ impl AbsPath {
         AbsPathBuf::try_from(self.as_ref().join(path)).unwrap().normalize()
     }
 
+    /// Equivalent of [`Path::with_extension`] for `AbsPath`.
+    pub fn with_extension(&self, extension: impl AsRef<OsStr>) -> AbsPathBuf {
+        AbsPathBuf::try_from(self.as_ref().with_extension(extension))
+            .unwrap()
+            .normalize()
+    }
+
     /// Normalize the given path:
     /// - Removes repeated separators: `/a//b` becomes `/a/b`
     /// - Removes occurrences of `.` and resolves `..`.
