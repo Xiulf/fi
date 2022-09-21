@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use base_db::libs::LibId;
 use base_db::Upcast;
 use hir_def::db::DefDatabase;
 use hir_def::id::{ClassId, CtorId, DefWithBodyId, MemberId, TypeAliasId, TypeCtorId, ValueTyDefId};
@@ -40,5 +41,5 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     fn lower_member(&self, id: MemberId) -> Arc<MemberLowerResult<Ty, Constraint>>;
 
     #[salsa::invoke(Members::members_query)]
-    fn members(&self, id: ClassId) -> Arc<Members>;
+    fn members(&self, lib: LibId, id: ClassId) -> Arc<Members>;
 }

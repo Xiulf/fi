@@ -4,5 +4,7 @@ import Core
 import Js.Console
 
 @main
-main =
-    print 0 :: ()
+main = try
+    x <- Some 0
+    print x :: ()
+    ret ()

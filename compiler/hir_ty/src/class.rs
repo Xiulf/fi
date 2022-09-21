@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use arena::{Arena, Idx};
-use hir_def::id::{ClassId, Lookup, MemberId};
+use base_db::libs::LibId;
+use hir_def::id::{ClassId, MemberId};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::db::HirDatabase;
@@ -75,13 +76,12 @@ enum Matched<T> {
 }
 
 impl Members {
-    pub(crate) fn members_query(db: &dyn HirDatabase, class: ClassId) -> Arc<Members> {
-        let loc = class.lookup(db.upcast());
+    pub(crate) fn members_query(db: &dyn HirDatabase, lib: LibId, class: ClassId) -> Arc<Members> {
         let lower = db.lower_class(class);
         let mut members = Vec::new();
         let mut priority = FxHashMap::default();
 
-        for lib in db.libs().all_deps(loc.module.lib) {
+        for lib in db.libs().all_deps(lib) {
             for (_, module) in db.def_map(lib).modules() {
                 for inst in module.scope.members() {
                     let lower = db.lower_member(inst);
@@ -106,12 +106,13 @@ impl Members {
         db: &dyn HirDatabase,
         types: &mut Types,
         type_vars: &mut TypeVars,
+        lib: LibId,
         constraint: &CtntInfo,
         src: TySource,
     ) -> Option<Arc<MemberMatchResult>> {
-        let members = db.members(constraint.class);
+        let members = db.members(lib, constraint.class);
 
-        // log::debug!(
+        // tracing::debug!(
         //     "solve {}{}",
         //     db.class_data(constraint.class).name,
         //     constraint
@@ -119,10 +120,12 @@ impl Members {
         //         .iter()
         //         .map(|t| format!(" ({})", t.display(db, types)))
         //         .collect::<Vec<_>>()
-        //         .join("")
+        //         .join(""),
         // );
 
-        members.matches(db, types, type_vars, constraint, src).map(Arc::new)
+        members
+            .matches(db, types, type_vars, lib, constraint, src)
+            .map(Arc::new)
     }
 
     pub(crate) fn matches(
@@ -130,12 +133,13 @@ impl Members {
         db: &dyn HirDatabase,
         types: &mut Types,
         type_vars: &mut TypeVars,
+        lib: LibId,
         ctnt: &CtntInfo,
         src: TySource,
     ) -> Option<MemberMatchResult> {
         self.matchers
             .iter()
-            .find_map(|m| m.member.matches(db, types, type_vars, &ctnt, &self.deps, src))
+            .find_map(|m| m.member.matches(db, types, type_vars, lib, &ctnt, &self.deps, src))
     }
 }
 
@@ -166,6 +170,7 @@ impl Member<Ty, Constraint> {
         db: &dyn HirDatabase,
         types: &mut Types,
         type_vars: &mut TypeVars,
+        lib: LibId,
         ctnt: &CtntInfo,
         deps: &[FunDep],
         src: TySource,
@@ -182,7 +187,7 @@ impl Member<Ty, Constraint> {
             })
             .collect::<Vec<_>>();
 
-        // log::debug!("{:?}, {}", matches, verify(&matches, deps));
+        // tracing::debug!("{:?}, {}", matches, verify(&matches, deps));
 
         if !verify(&matches, deps) || matches.iter().all(|m| matches!(m, Matched::Apart)) {
             return None;
@@ -206,7 +211,7 @@ impl Member<Ty, Constraint> {
                     .collect(),
             };
 
-            match Members::solve_constraint(db, types, type_vars, &ctnt, src) {
+            match Members::solve_constraint(db, types, type_vars, lib, &ctnt, src) {
                 | None => return None,
                 | Some(solution) => {
                     constraints.push(solution.clone());
