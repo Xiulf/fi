@@ -134,9 +134,11 @@ class Try self =
     ret :: forall output. output -> self output
     bind :: forall a b. self a -> (a -> self b) -> self b
 
+type ExitCode = | ExitCode Int32
+
 @lang = "termination-class"
 class Termination t =
-    report :: t -> Int32
+    report :: t -> ExitCode
 
 member Unit of Termination =
-    report _ = 0
+    report _ = ExitCode 0

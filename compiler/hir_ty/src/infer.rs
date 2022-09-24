@@ -60,6 +60,10 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let src = lcx.source(TypeOrigin::Def(id.into()));
             let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
+            if db.attrs(id.into()).by_key("main").exists() {
+                lcx.main_fn(ty, db.body(id.into()).body_expr());
+            }
+
             lcx.check_kind_type(ty);
             (ty, data.name.clone())
         }),
@@ -411,6 +415,19 @@ impl<'a> InferenceContext<'a> {
             .collect();
 
         self.type_vars.add_scope(vars);
+    }
+
+    pub(crate) fn main_fn(&mut self, ann: TyId, body: ExprId) {
+        let termination = self.lang_class(lang_item::TERMINATION_CLASS);
+
+        self.constrain(
+            CtntExpected::ExprOrPat(body.into()),
+            CtntFound::ExprOrPat(body.into()),
+            CtntInfo {
+                class: termination,
+                types: Box::new([ann]),
+            },
+        );
     }
 
     pub(crate) fn class_item(&mut self, class: ClassId, ann: TyId) -> TyId {

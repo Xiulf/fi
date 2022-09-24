@@ -112,16 +112,16 @@ impl Members {
     ) -> Option<Arc<MemberMatchResult>> {
         let members = db.members(lib, constraint.class);
 
-        // tracing::debug!(
-        //     "solve {}{}",
-        //     db.class_data(constraint.class).name,
-        //     constraint
-        //         .types
-        //         .iter()
-        //         .map(|t| format!(" ({})", t.display(db, types)))
-        //         .collect::<Vec<_>>()
-        //         .join(""),
-        // );
+        tracing::debug!(
+            "solve {}{}",
+            db.class_data(constraint.class).name,
+            constraint
+                .types
+                .iter()
+                .map(|t| format!(" ({})", t.display(db, types)))
+                .collect::<Vec<_>>()
+                .join(""),
+        );
 
         members
             .matches(db, types, type_vars, lib, constraint, src)
@@ -187,7 +187,7 @@ impl Member<Ty, Constraint> {
             })
             .collect::<Vec<_>>();
 
-        // tracing::debug!("{:?}, {}", matches, verify(&matches, deps));
+        tracing::debug!("{:?}, {}", matches, verify(&matches, deps));
 
         if !verify(&matches, deps) || matches.iter().all(|m| matches!(m, Matched::Apart)) {
             return None;
@@ -402,6 +402,7 @@ fn verify(matches: &[Matched<()>], deps: &[FunDep]) -> bool {
     until_fixed_point(deps, initial_set) == expected
 }
 
+#[tracing::instrument(skip_all)]
 fn match_type(
     db: &dyn HirDatabase,
     types: &mut Types,
@@ -432,7 +433,7 @@ fn match_type_inner(
     subst: &mut FxHashMap<Unknown, TyId>,
     vars: &mut FxHashMap<TypeVar, TyId>,
 ) -> Matched<()> {
-    // log::debug!("{} == {}", ty.display(db, types), with.display(db, types));
+    tracing::trace!("{} == {}", ty.display(db, types), with.display(db, types));
     match (types[ty].clone(), types[with].clone()) {
         | (_, TyInfo::Unknown(_)) => unreachable!(),
         | (TyInfo::Error, _) | (_, TyInfo::Error) => Matched::Match(()),
@@ -466,6 +467,20 @@ fn match_type_inner(
                     .map(|(a2, b2)| match_type_inner(db, types, *a2, *b2, ty_skolems, with_skolems, subst, vars))
                     .fold(Matched::Match(()), Matched::then),
             )
+        },
+        | (TyInfo::App(_, a2), TyInfo::App(b1, b2)) if a2.len() < b2.len() => {
+            let src = types.source(with);
+            let c1 = types.insert(TyInfo::App(b1, b2[..a2.len()].into()), src);
+            let c2 = types.insert(TyInfo::App(c1, b2[a2.len()..].into()), src);
+
+            match_type_inner(db, types, ty, c2, ty_skolems, with_skolems, subst, vars)
+        },
+        | (TyInfo::App(a1, a2), TyInfo::App(_, b2)) if a2.len() > b2.len() => {
+            let src = types.source(ty);
+            let c1 = types.insert(TyInfo::App(a1, a2[..b2.len()].into()), src);
+            let c2 = types.insert(TyInfo::App(c1, a2[b2.len()..].into()), src);
+
+            match_type_inner(db, types, c2, with, ty_skolems, with_skolems, subst, vars)
         },
         | (TyInfo::ForAll(ref v1, a1, s1), TyInfo::ForAll(ref v2, a2, s2)) if v1.len() == v2.len() => {
             let mut matched = Matched::Match(());

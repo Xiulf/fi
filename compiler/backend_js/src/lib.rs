@@ -158,7 +158,7 @@ impl<'a> Ctx<'a> {
         }
 
         if self.db.attrs(id.into()).by_key("main").exists() {
-            writeln!(self, "const $main = {}", self.mangle(func.link_name(self.db)))?;
+            self.codegen_main_shim(func)?;
         }
 
         Ok(())
@@ -341,6 +341,25 @@ impl<'a> Ctx<'a> {
     pub fn codegen_body_expr(&mut self, owner: DefWithBodyId) -> io::Result<()> {
         let mut bcx = BodyCtx::new(self, owner);
         bcx.lower(false)
+    }
+
+    pub fn codegen_main_shim(&mut self, main_func: hir::Func) -> io::Result<()> {
+        let mut bcx = BodyCtx::new(self, hir::id::FuncId::from(main_func).into());
+        let infer = bcx.infer.clone();
+        let mut methods = infer.methods[&(bcx.body.body_expr(), 0)].iter().copied();
+        let b = match methods.next().unwrap() {
+            | hir::MethodSource::Member(id) => bcx.member_ref(id.into(), &mut methods),
+            | hir::MethodSource::Record(idx) => bcx.records[idx].clone(),
+        };
+
+        let report = expr::JsExpr::Field {
+            base: Box::new(b),
+            field: bcx.mangle(("report", true)),
+        };
+
+        write!(bcx, "const $main = () => ")?;
+        report.write(&mut bcx.ctx.out, false)?;
+        writeln!(self, "({}());", self.mangle(main_func.link_name(self.db)))
     }
 }
 

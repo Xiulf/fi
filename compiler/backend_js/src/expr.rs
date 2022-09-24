@@ -100,7 +100,8 @@ impl JsExpr {
             | Self::UnOp { rhs, .. } => rhs.is_inline(),
             | Self::New { args, .. } => args.iter().any(Self::is_inline),
             | Self::Call { base, args } => base.is_inline() || args.iter().any(Self::is_inline),
-            | Self::Block { exprs } => exprs.len() <= 1,
+            | Self::Block { exprs } if exprs.len() == 1 => exprs[0].is_inline(),
+            | Self::Block { exprs } => exprs.is_empty(),
             | _ => false,
         }
     }
@@ -391,7 +392,14 @@ impl BodyCtx<'_, '_> {
             | Expr::Hole => unreachable!(),
             | Expr::Typed { expr, .. } => self.lower_expr(expr, block),
             | Expr::Lit { ref lit } => JsExpr::Literal { lit: lit.clone() },
-            | Expr::Unit => JsExpr::Undefined,
+            | Expr::Unit => {
+                let lib = self.owner.module(self.db.upcast()).lib;
+                let unit = self.db.lang_item(lib, "unit-type").unwrap();
+                let unit = TypeCtor::from(unit.as_type_ctor().unwrap());
+                let unit = self.mangle((unit.ctors(self.db)[0].path(self.db).to_string(), true));
+
+                JsExpr::Ident { name: unit }
+            },
             | Expr::Path { ref path } => self.lower_path(
                 &Resolver::for_expr(self.db.upcast(), self.owner, expr),
                 (expr, 0),

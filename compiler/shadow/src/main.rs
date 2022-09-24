@@ -11,7 +11,6 @@ use clap::{Args, Parser, Subcommand};
 use driver::{Driver, InitNoManifestOpts, InitOpts};
 use project::manifest::{Cfg, TomlValue};
 use tracing::{debug, Level};
-use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -111,8 +110,7 @@ fn main() -> anyhow::Result<()> {
             | 2 => Level::DEBUG,
             | _ => Level::TRACE,
         })
-        .finish()
-        .set_default();
+        .init();
 
     std::panic::set_hook(Box::new(|info| {
         let loc = info.location().unwrap();

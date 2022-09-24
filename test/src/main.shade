@@ -5,6 +5,6 @@ import Js.Console
 
 @main
 main = try
-    x <- Some 0
+    x <- Some 22
     print x :: ()
     ret ()

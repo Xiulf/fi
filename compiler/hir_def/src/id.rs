@@ -537,3 +537,13 @@ impl From<TypeVarOwner> for TypedDefId {
         }
     }
 }
+
+impl From<DefWithBodyId> for AttrDefId {
+    fn from(id: DefWithBodyId) -> Self {
+        match id {
+            | DefWithBodyId::FuncId(id) => Self::FuncId(id),
+            | DefWithBodyId::StaticId(id) => Self::StaticId(id),
+            | DefWithBodyId::ConstId(id) => Self::ConstId(id),
+        }
+    }
+}
