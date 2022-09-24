@@ -11,6 +11,7 @@ use clap::{Args, Parser, Subcommand};
 use driver::{Driver, InitNoManifestOpts, InitOpts};
 use project::manifest::{Cfg, TomlValue};
 use tracing::{debug, Level};
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -102,8 +103,7 @@ struct LspArgs {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .without_time()
         .with_max_level(match cli.args.verbose {
             | 0 => Level::WARN,
@@ -111,7 +111,8 @@ fn main() -> anyhow::Result<()> {
             | 2 => Level::DEBUG,
             | _ => Level::TRACE,
         })
-        .init();
+        .finish()
+        .set_default();
 
     std::panic::set_hook(Box::new(|info| {
         let loc = info.location().unwrap();

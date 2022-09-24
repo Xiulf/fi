@@ -5,7 +5,6 @@ use hir::id::HasModule;
 use hir::{
     Const, Ctor, Expr, Func, HasResolver, Literal, MethodSource, Path, Resolver, Static, Stmt, TypeCtor, ValueNs,
 };
-use tracing::warn;
 
 use crate::indent::IndentWriter;
 use crate::BodyCtx;
@@ -286,7 +285,16 @@ impl JsExpr {
                     write!(out, "{} => ", param)?;
                 }
 
-                body.write_inner(out, false)?;
+                if body.is_inline() {
+                    body.write_inner(out, false)?;
+                } else {
+                    writeln!(out, "{{")?;
+                    out.indent();
+                    body.write_inner(out, true)?;
+                    out.dedent();
+                    write!(out, ";\n}}")?;
+                }
+
                 write!(out, ")")
             },
             | JsExpr::Lambda {
@@ -392,6 +400,7 @@ impl BodyCtx<'_, '_> {
                 block,
             ),
             | Expr::Do { ref stmts } => self.lower_block(stmts, block),
+            | Expr::Try { ref stmts } => self.lower_try(expr, stmts, block),
             | Expr::App { mut base, arg } => {
                 let mut args = vec![Arg::ExprId(arg)];
 
@@ -463,7 +472,7 @@ impl BodyCtx<'_, '_> {
             },
             | Expr::Case { pred, ref arms } => self.lower_case(expr, pred, arms, block),
             | ref e => {
-                warn!(target: "lower_expr", "not yet implemented: {:?}", e);
+                tracing::warn!(target: "lower_expr", "not yet implemented: {:?}", e);
                 JsExpr::Undefined
             },
         }
@@ -663,22 +672,79 @@ impl BodyCtx<'_, '_> {
                 | Stmt::Let { pat, val } => {
                     let expr = self.lower_expr(val, exprs);
 
-                    if expr.is_place() {
-                        self.lower_pat(pat, expr, exprs);
-                    } else if self.pat_is_ignored(pat) {
+                    if self.pat_is_ignored(pat) {
                         exprs.push(expr);
                     } else {
-                        let ident = format!("$p{}", u32::from(val.into_raw()));
+                        let expr = self.placed(val, expr, exprs);
 
-                        exprs.push(JsExpr::Var {
-                            name: ident.clone(),
-                            expr: Some(Box::new(expr)),
-                        });
-
-                        self.lower_pat(pat, JsExpr::Ident { name: ident }, exprs);
+                        self.lower_pat(pat, expr, exprs);
                     }
                 },
                 | Stmt::Bind { .. } => unreachable!(),
+            }
+        }
+
+        JsExpr::Undefined
+    }
+
+    pub fn lower_try(&mut self, expr_id: hir::ExprId, stmts: &[Stmt], exprs: &mut Vec<JsExpr>) -> JsExpr {
+        let infer = self.infer.clone();
+        let mut methods = infer.methods[&(expr_id, 0)].iter().copied();
+        let b = match methods.next().unwrap() {
+            | MethodSource::Member(id) => self.member_ref(id.into(), &mut methods),
+            | MethodSource::Record(idx) => self.records[idx].clone(),
+        };
+
+        let bind = JsExpr::Field {
+            base: Box::new(b),
+            field: self.mangle(("bind", true)),
+        };
+
+        for (i, stmt) in stmts.iter().enumerate() {
+            match *stmt {
+                | Stmt::Expr { expr } if i == stmts.len() - 1 => {
+                    return self.lower_expr(expr, exprs);
+                },
+                | Stmt::Expr { expr } => {
+                    let res = self.lower_expr(expr, exprs);
+
+                    exprs.push(res);
+                },
+                | Stmt::Let { pat, val } => {
+                    let expr = self.lower_expr(val, exprs);
+
+                    if self.pat_is_ignored(pat) {
+                        exprs.push(expr);
+                    } else {
+                        let expr = self.placed(val, expr, exprs);
+
+                        self.lower_pat(pat, expr, exprs);
+                    }
+                },
+                | Stmt::Bind { pat, val } => {
+                    let mut body = Vec::new();
+                    let expr = self.lower_expr(val, exprs);
+                    let param = format!(
+                        "try_{}_bind_{}",
+                        u32::from(expr_id.into_raw()),
+                        u32::from(pat.into_raw())
+                    );
+
+                    self.lower_pat(pat, JsExpr::Ident { name: param.clone() }, &mut body);
+                    let rest = self.lower_try(expr_id, &stmts[i + 1..], &mut body);
+                    body.push(JsExpr::Return { expr: Box::new(rest) });
+                    let body = JsExpr::Block { exprs: body };
+                    let lam = JsExpr::Lambda {
+                        name: None,
+                        params: vec![param],
+                        body: Box::new(body),
+                    };
+
+                    return JsExpr::Call {
+                        base: Box::new(bind.clone()),
+                        args: vec![expr, lam],
+                    };
+                },
             }
         }
 

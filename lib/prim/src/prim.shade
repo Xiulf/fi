@@ -127,6 +127,8 @@ member (BufPtrSentinel t s) t of Pointer
 class Unsafe
 class Partial
 
+class Warn msg where msg :: Symbol
+
 @lang = "try-class"
 class Try self =
     ret :: forall output. output -> self output

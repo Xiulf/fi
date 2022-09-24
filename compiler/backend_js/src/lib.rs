@@ -11,12 +11,39 @@ use arena::ArenaMap;
 use hir::db::HirDatabase;
 use hir::id::{DefWithBodyId, HasModule};
 use hir::ty::{Ty, TyKind};
+use tracing::Level;
 
-// #[no_mangle]
-// pub fn init(logger: &'static dyn log::Log, max_level: log::LevelFilter) {
-//     log::set_logger(logger).unwrap();
-//     log::set_max_level(max_level);
-// }
+#[no_mangle]
+pub fn init_logging(max_level: Level) {
+    tracing_subscriber::fmt()
+        .without_time()
+        .with_max_level(max_level)
+        .init();
+
+    std::panic::set_hook(Box::new(|info| {
+        let loc = info.location().unwrap();
+
+        // if let Some(ice) = info.payload().downcast_ref::<ICE>() {
+        //     eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", ice.0, loc);
+        //     return;
+        // }
+
+        // if let Some(err) = info.payload().downcast_ref::<Error>() {
+        //     eprintln!("\x1B[31mError:\x1B[0m '{}'", err.0);
+        //     return;
+        // }
+
+        let msg = match info.payload().downcast_ref::<&'static str>() {
+            | Some(s) => *s,
+            | None => match info.payload().downcast_ref::<String>() {
+                | Some(s) => &s[..],
+                | None => "...",
+            },
+        };
+
+        eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", msg, loc);
+    }));
+}
 
 #[no_mangle]
 pub fn codegen(db: &dyn HirDatabase, module: hir::Module, file: &mut dyn Write) {
