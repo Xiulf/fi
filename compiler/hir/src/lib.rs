@@ -402,7 +402,7 @@ impl Func {
         // let data = db.func_data(self.id);
         // let body = db.body(self.id.into());
 
-        // if data.name.as_ref() == "sequences" {
+        // if data.name.as_ref() == "into" {
         //     // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
         //     eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 

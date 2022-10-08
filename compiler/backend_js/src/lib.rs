@@ -105,16 +105,16 @@ impl<'a> Ctx<'a> {
             self.codegen(module)?;
         }
 
+        for member in members {
+            self.codegen_member(member)?;
+        }
+
         for &def in &decls {
             self.register_def(def)?;
         }
 
         for def in decls {
             self.codegen_def(def)?;
-        }
-
-        for member in members {
-            self.codegen_member(member)?;
         }
 
         self.flush()

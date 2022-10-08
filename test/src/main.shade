@@ -4,7 +4,23 @@ import Core
 import Js.Console
 
 @main
-main = try
-    x <- Some 22
-    print x :: ()
-    ret ()
+main = ()
+
+
+class Into a b =
+    into :: a -> b
+
+class From a b =
+    from :: b -> a
+
+member a a of Into =
+    into x = x
+
+member a b of Into where From b a =
+    into x = from x
+
+member a a of From =
+    from x = x
+
+member a b of From where Into b a =
+    from x = into x
