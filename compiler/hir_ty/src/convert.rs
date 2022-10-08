@@ -47,9 +47,11 @@ impl ToInfo for Ty {
         });
 
         return ty.everywhere(true, types, &mut |types, t| match types[t].clone() {
-            | TyInfo::TypeVar(tv) if scopes.contains_key(&tv.scope()) => {
-                types.update(t, TyInfo::TypeVar(TypeVar::new(tv.idx(), scopes[&tv.scope()])), true)
-            },
+            | TyInfo::TypeVar(tv) if scopes.contains_key(&tv.scope()) => types.update(
+                t,
+                TyInfo::TypeVar(TypeVar::new(tv.idx(), scopes[&tv.scope()], tv.src())),
+                true,
+            ),
             | TyInfo::ForAll(kinds, inner, scope) => {
                 let scope = scopes[&scope];
 

@@ -224,7 +224,7 @@ impl Linker for JsLinker {
         }
 
         if self.emit_main {
-            out.write_all(b"$main();\n")?;
+            out.write_all(b"console.log($main());\n")?;
         }
 
         Ok(())

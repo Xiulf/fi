@@ -155,10 +155,18 @@ impl<'a, W: fmt::Write> fmt::Write for Indent<'a, W> {
 
 impl HirDisplay for TypeVar {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
-        let scope: u32 = self.scope().into_raw().into();
-        let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+        if let Some(src) = self.src() {
+            src.owner.with_type_map(f.db.upcast(), |map| {
+                let name = &map.type_vars()[src.local_id].name;
 
-        write!(f, "{}{}", scope, self.idx())
+                write!(f, "{name}")
+            })
+        } else {
+            let scope: u32 = self.scope().into_raw().into();
+            let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+
+            write!(f, "{}{}", scope, self.idx())
+        }
     }
 }
 

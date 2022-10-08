@@ -16,7 +16,8 @@ use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
 use hir_def::id::{
-    AssocItemId, ClassId, ContainerId, DefWithBodyId, FixityId, HasModule, MemberId, TypeCtorId, TypeVarOwner,
+    AssocItemId, ClassId, ContainerId, DefWithBodyId, FixityId, HasModule, MemberId, TypeCtorId, TypeVarId,
+    TypeVarOwner, TypedDefId,
 };
 use hir_def::infix::ProcessInfix;
 use hir_def::lang_item::{self, LangItem};
@@ -432,10 +433,26 @@ impl<'a> InferenceContext<'a> {
 
     pub(crate) fn class_item(&mut self, class: ClassId, ann: TyId) -> TyId {
         let src = self.source(TypeOrigin::Def(class.into()));
+        let data = self.db.class_data(class);
         let lower = self.db.lower_class(class);
         let scope = self.type_vars.top_scope();
-        let types = (0..lower.class.vars.len() as u32)
-            .map(|i| self.types.insert(TyInfo::TypeVar(TypeVar::new(i, scope)), src))
+        let types = data
+            .type_vars
+            .iter()
+            .enumerate()
+            .map(|(i, &var)| {
+                self.types.insert(
+                    TyInfo::TypeVar(TypeVar::new(
+                        i as u32,
+                        scope,
+                        Some(TypeVarId {
+                            owner: TypedDefId::ClassId(class).into(),
+                            local_id: var,
+                        }),
+                    )),
+                    src,
+                )
+            })
             .collect::<List<_>>();
 
         let kinds = lower

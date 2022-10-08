@@ -400,7 +400,7 @@ impl TyId {
     pub fn rescope(self, types: &mut Types, scope: TypeVarScopeId, new: TypeVarScopeId) -> TyId {
         self.everywhere(true, types, &mut |types, t| match types[t] {
             | TyInfo::TypeVar(tv) if tv.scope() == scope => {
-                types.update(t, TyInfo::TypeVar(TypeVar::new(tv.idx(), new)), true)
+                types.update(t, TyInfo::TypeVar(TypeVar::new(tv.idx(), new, tv.src())), true)
             },
             | _ => t,
         })

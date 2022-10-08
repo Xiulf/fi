@@ -4,7 +4,11 @@ import Core
 import Js.Console
 
 @main
-main = ()
+main = try
+    a <- Some { a = 23, b = 24, c = 25 }
+    ; b <- None
+    print a :: ()
+    ret ()
 
 
 class Into a b =
@@ -21,6 +25,3 @@ member a b of Into where From b a =
 
 member a a of From =
     from x = x
-
-member a b of From where Into b a =
-    from x = into x

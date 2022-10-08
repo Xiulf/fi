@@ -549,8 +549,8 @@ fn match_type_inner(
             let mut matched = Matched::Match(());
 
             for (i, (k1, k2)) in v1.iter().zip(v2.iter()).enumerate() {
-                ty_skolems.insert(TypeVar::new(i as u32, s1));
-                with_skolems.insert(TypeVar::new(i as u32, s2));
+                ty_skolems.insert(TypeVar::new(i as u32, s1, None));
+                with_skolems.insert(TypeVar::new(i as u32, s2, None));
                 matched = matched.then(match_type_inner(
                     db,
                     types,
@@ -575,8 +575,8 @@ fn match_type_inner(
             ));
 
             for i in 0..v1.len() as u32 {
-                ty_skolems.remove(&TypeVar::new(i, s1));
-                with_skolems.remove(&TypeVar::new(i, s2));
+                ty_skolems.remove(&TypeVar::new(i, s1, None));
+                with_skolems.remove(&TypeVar::new(i, s2, None));
             }
 
             matched

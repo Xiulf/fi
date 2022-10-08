@@ -2,6 +2,7 @@ pub mod db;
 pub mod diagnostics;
 
 use std::path::Path;
+use std::process::Command;
 use std::{fs, io};
 
 use base_db::input::{FileId, SourceRoot, SourceRootId};
@@ -265,16 +266,45 @@ impl Driver {
         Ok(true)
     }
 
-    pub fn run(&self, ws: usize, _args: impl Iterator<Item = impl AsRef<std::ffi::OsStr>>) -> io::Result<bool> {
+    pub fn run(&self, ws: usize, args: impl Iterator<Item = impl AsRef<std::ffi::OsStr>>) -> io::Result<bool> {
         if self.build(ws)? {
-            // let asm = self.db.lib_assembly(lib.into());
-            // let path = asm.path(&self.db, &self.db.target_dir(lib));
-            // let mut cmd = std::process::Command::new(path);
+            let ws = &self.workspaces[ws];
+            let libs = self.db.libs();
+            let lib = hir::Lib::all(&self.db)
+                .into_iter()
+                .filter(|&lib| ws.find_file_package(libs[lib.into()].root_file).is_some())
+                .find(|&lib| libs[lib.into()].kind == LibKind::Executable)
+                .unwrap();
 
-            // cmd.args(args);
-            // println!("    \x1B[1;32m\x1B[1mRunning\x1B[0m {:?}", cmd);
-            // cmd.status().unwrap().success()
-            Ok(true)
+            let asm = self.db.lib_assembly(lib.into());
+            let path = asm.path(&self.db, &self.target_dir);
+
+            let mut cmd = if self.db.target() == CompilerTarget::Javascript {
+                if !program_exists("node") {
+                    base_db::Error::throw("node must be insalled to run a javascript targeted program");
+                }
+
+                let mut cmd = Command::new("node");
+
+                cmd.arg(path.as_path().as_ref());
+                cmd
+            } else {
+                Command::new(path.as_path().as_ref())
+            };
+
+            cmd.args(args);
+
+            print!(
+                "    \x1B[1;32m\x1B[1mRunning\x1B[0m `{}",
+                cmd.get_program().to_string_lossy()
+            );
+
+            for arg in cmd.get_args() {
+                print!(" {}", arg.to_string_lossy());
+            }
+
+            println!("`");
+            cmd.status().map(|s| s.success())
         } else {
             Ok(false)
         }
@@ -295,5 +325,16 @@ impl Driver {
         done.insert(lib);
 
         Ok(true)
+    }
+}
+
+fn program_exists(program: impl AsRef<std::ffi::OsStr>) -> bool {
+    match Command::new(program).spawn() {
+        | Ok(mut c) => {
+            let _ = c.kill();
+            true
+        },
+        | Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+        | Err(_) => true,
     }
 }

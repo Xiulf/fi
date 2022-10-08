@@ -164,7 +164,7 @@ impl InferenceContext<'_> {
         let scope = self.type_vars.add_scope(unknowns.values().copied().collect());
 
         for (i, (&u, _)) in unknowns.iter().enumerate() {
-            let tv = TypeVar::new(i as u32, scope);
+            let tv = TypeVar::new(i as u32, scope, None);
             let ty = self.types.insert(TyInfo::TypeVar(tv), src);
 
             self.solve_type(u, ty);
