@@ -202,6 +202,9 @@ impl IntoIterator for ImportItems {
     }
 }
 
+impl AttrsOwner for AssocItem {
+}
+
 impl AttrsOwner for Item {
 }
 

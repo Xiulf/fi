@@ -11,12 +11,12 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for DuplicateDeclaration<'db,
     }
 
     fn range(&self) -> TextRange {
-        item_name(self.diag.second, &self.db.parse(self.diag.file))
+        item_name(self.diag.second.syntax_node_ptr(), &self.db.parse(self.diag.file))
     }
 
     fn primary_annotation(&self) -> Option<SourceAnnotation> {
         Some(SourceAnnotation {
-            range: item_name(self.diag.second, &self.db.parse(self.diag.file)),
+            range: item_name(self.diag.second.syntax_node_ptr(), &self.db.parse(self.diag.file)),
             message: format!("`{}` redefined here", self.diag.name),
         })
     }
@@ -25,7 +25,7 @@ impl<'db, 'd, DB: hir::db::HirDatabase> Diagnostic for DuplicateDeclaration<'db,
         vec![SecondaryAnnotation {
             range: InFile::new(
                 self.diag.file,
-                item_name(self.diag.first, &self.db.parse(self.diag.file)),
+                item_name(self.diag.first.syntax_node_ptr(), &self.db.parse(self.diag.file)),
             ),
             message: format!("previous definition of `{}` here", self.diag.name),
         }]

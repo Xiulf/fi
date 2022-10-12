@@ -509,7 +509,8 @@ fn match_type_inner(
         {
             Matched::Match(())
         },
-        | (_, TyInfo::TypeVar(tv)) if !vars.contains_key(&tv) => {
+        // | (_, TyInfo::TypeVar(tv)) if !vars.contains_key(&tv) => {
+        | (_, TyInfo::TypeVar(tv)) => {
             vars.insert(tv, ty);
             Matched::Match(())
         },

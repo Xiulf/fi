@@ -378,19 +378,6 @@ impl<'a> DefCollector<'a> {
                 depth + 1,
             );
         }
-
-        // let reexports = self
-        //     .reexports
-        //     .get(&module_id)
-        //     .into_iter()
-        //     .flat_map(|v| v.iter())
-        //     .flat_map(|m| self.glob_imports.get(m).into_iter().flat_map(|v| v.iter()))
-        //     .copied()
-        //     .collect::<Vec<_>>();
-        //
-        // for m in reexports {
-        //     self.update_recursive(m, resolutions, visibility, ImportType::Glob, depth + 1);
-        // }
     }
 }
 
@@ -789,13 +776,33 @@ impl<'a, 'b> ModCollector<'a, 'b> {
             }
 
             if let Some(DefData { id, name, visibility }) = def {
+                let perns = PerNs::from(id);
+                let prev = self.def_collector.def_map.modules[self.module_id].scope.get(&name);
+
+                match (prev.types, prev.values, perns.types, perns.values) {
+                    | (Some((prev, _)), _, Some(new), None) | (_, Some((prev, _)), None, Some(new)) => {
+                        let ast_id_map = self.def_collector.db.ast_id_map(self.file_id);
+                        let prev = prev.source(self.def_collector.db);
+                        let prev = prev.map(|p| ast_id_map.ast_id(&p));
+                        let new = new.source(self.def_collector.db);
+                        let new = new.map(|n| ast_id_map.ast_id(&n));
+
+                        self.def_collector
+                            .def_map
+                            .diagnostics
+                            .push(DefDiagnostic::duplicate_declaration(
+                                self.module_id,
+                                name.clone(),
+                                prev,
+                                new,
+                            ));
+                    },
+                    | _ => {},
+                }
+
                 self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
-                self.def_collector.update(
-                    self.module_id,
-                    &[(name.clone(), PerNs::from(id))],
-                    visibility,
-                    ImportType::Named,
-                );
+                self.def_collector
+                    .update(self.module_id, &[(name.clone(), perns)], visibility, ImportType::Named);
             }
         }
     }

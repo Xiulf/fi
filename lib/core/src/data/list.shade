@@ -74,7 +74,7 @@ member List of FromFoldable =
 
 member (List a) i a of Index where Integer i  =
     index (x: _) 0   = x
-    index (_:xs) idx = index xs (idx - 1)
+    index (_:xs) idx = index xs (idx - (1 :: i))
     index Nil    _   = partial (crash "index out of range")
 
 member List of Foldable =

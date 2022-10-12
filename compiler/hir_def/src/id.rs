@@ -418,6 +418,27 @@ impl<N: ItemTreeNode> HasSource for ItemLoc<N> {
     }
 }
 
+impl HasSource for ModuleDefId {
+    type Value = syntax::ast::Item;
+
+    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
+        match self {
+            | Self::ModuleId(id) => {
+                let def_map = db.def_map(id.lib);
+                def_map[id.local_id].origin.declaration(db, &def_map).map(Into::into)
+            },
+            | Self::FixityId(id) => id.lookup(db).source(db).map(Into::into),
+            | Self::FuncId(id) => id.lookup(db).source(db).map(Into::into),
+            | Self::StaticId(id) => id.lookup(db).source(db).map(Into::into),
+            | Self::ConstId(id) => id.lookup(db).source(db).map(Into::into),
+            | Self::TypeAliasId(id) => id.lookup(db).source(db).map(Into::into),
+            | Self::TypeCtorId(id) => id.lookup(db).source(db).map(Into::into),
+            | Self::CtorId(id) => id.parent.lookup(db).source(db).map(Into::into),
+            | Self::ClassId(id) => id.lookup(db).source(db).map(Into::into),
+        }
+    }
+}
+
 impl HasSource for TypedDefId {
     type Value = syntax::ast::Item;
 

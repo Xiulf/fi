@@ -6,7 +6,13 @@ import Js
 @link_name = "console.log"
 foreign log :: forall a. a -> Unit
 
-print = print' (new "Array")
+@link_name = "console.error"
+foreign error :: forall a. a -> Unit
+
+@link_name = "console.warn"
+foreign warn :: forall a. a -> Unit
+
+print = print' default
 
 class Print t =
     print' :: JsArray -> t

@@ -1,0 +1,27 @@
+module Core.Convert =
+
+import Core
+
+class Into a b =
+    into :: a -> b
+
+class From a b =
+    from :: b -> a
+
+class TryInto a b err | a b -> err =
+    try_into :: a -> Result err b
+
+class TryFrom a b err | a b -> err =
+    try_from :: b -> Result err a
+
+member a a of Into =
+    into x = x
+
+member a b of Into where From b a =
+    into x = from x
+
+member a a of From =
+    from x = x
+
+member a b err of TryInto where TryFrom b a err =
+    try_into x = try_from x

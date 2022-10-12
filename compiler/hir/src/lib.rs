@@ -170,13 +170,7 @@ impl Module {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
-        let file = self.file_id(db);
-        let item_tree = db.item_tree(file);
         let def_map = db.def_map(self.id.lib);
-
-        for diag in &item_tree.diagnostics {
-            diag.add_to(db.upcast(), &item_tree, sink);
-        }
 
         for diag in def_map.diagnostics() {
             diag.add_to(db.upcast(), self.id.local_id, sink);

@@ -3,25 +3,15 @@ module Main =
 import Core
 import Js.Console
 
+@cfg(target = "javascript")
+test = 0
+
+@cfg(not(target = "javascript"))
+test = 1
+
 @main
 main = try
     a <- Some { a = 23, b = 24, c = 25 }
     ; b <- None
-    print a :: ()
+    print a test :: ()
     ret ()
-
-
-class Into a b =
-    into :: a -> b
-
-class From a b =
-    from :: b -> a
-
-member a a of Into =
-    into x = x
-
-member a b of Into where From b a =
-    into x = from x
-
-member a a of From =
-    from x = x

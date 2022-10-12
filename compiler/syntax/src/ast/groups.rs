@@ -63,7 +63,7 @@ impl Iterator for ItemGroups {
         let mut kind = item.group_kind();
 
         while let Some(next) = self.items.peek() {
-            if name_eq(&next.group_name(), &name) && rest.len() != kind.max() {
+            if next.attrs().next().is_none() && name_eq(&next.group_name(), &name) && rest.len() != kind.max() {
                 let kind2 = next.group_kind();
 
                 if kind == kind2 {
@@ -91,7 +91,7 @@ impl Iterator for AssocItemGroups {
         let mut kind = item.group_kind();
 
         while let Some(next) = self.items.peek() {
-            if name_eq(&next.group_name(), &name) && rest.len() != kind.max() {
+            if next.attrs().next().is_none() && name_eq(&next.group_name(), &name) && rest.len() != kind.max() {
                 let kind2 = next.group_kind();
 
                 if kind == kind2 {
@@ -235,7 +235,7 @@ impl ItemFun {
         std::iter::successors(Some(self.clone()), move |it| {
             let next = it.syntax().next_sibling().and_then(Self::cast)?;
 
-            if name_eq(&next.name(), &name) {
+            if next.attrs().next().is_none() && name_eq(&next.name(), &name) {
                 Some(next)
             } else {
                 None
@@ -249,7 +249,7 @@ impl ItemStatic {
         self.syntax()
             .next_sibling()
             .and_then(Self::cast)
-            .filter(|n| name_eq(&n.name(), &self.name()))
+            .filter(|n| n.attrs().next().is_none() && name_eq(&n.name(), &self.name()))
     }
 }
 
@@ -258,7 +258,7 @@ impl ItemConst {
         self.syntax()
             .next_sibling()
             .and_then(Self::cast)
-            .filter(|n| name_eq(&n.name(), &self.name()))
+            .filter(|n| n.attrs().next().is_none() && name_eq(&n.name(), &self.name()))
     }
 }
 
@@ -267,6 +267,6 @@ impl ItemType {
         self.syntax()
             .next_sibling()
             .and_then(Self::cast)
-            .filter(|n| name_eq(&n.name(), &self.name()))
+            .filter(|n| n.attrs().next().is_none() && name_eq(&n.name(), &self.name()))
     }
 }

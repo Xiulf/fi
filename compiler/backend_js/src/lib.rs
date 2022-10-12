@@ -182,6 +182,8 @@ impl<'a> Ctx<'a> {
 
     pub fn codegen_ctor(&mut self, ctor: hir::Ctor) -> io::Result<()> {
         let types = ctor.types(self.db);
+        let name = ctor.name(self.db);
+
         writeln!(
             self,
             "{} = (function() {{",
@@ -189,7 +191,7 @@ impl<'a> Ctx<'a> {
         )?;
 
         self.out.indent();
-        writeln!(self, "class {} {{", ctor.name(self.db))?;
+        writeln!(self, "class {} {{", name)?;
         self.out.indent();
         write!(self, "constructor(")?;
 
@@ -210,9 +212,29 @@ impl<'a> Ctx<'a> {
 
         self.out.dedent();
         writeln!(self, "}}")?;
+        writeln!(self, "toString() {{")?;
+        self.out.indent();
+        write!(self, "return `{}", name)?;
+
+        if !types.is_empty() {
+            write!(self, "(")?;
+
+            for i in 0..types.len() {
+                if i != 0 {
+                    write!(self, ", ")?;
+                }
+
+                write!(self, "{{this.field{}}}", i)?;
+            }
+
+            write!(self, ")")?;
+        }
+
+        self.out.dedent();
+        writeln!(self, "`;\n}}")?;
         self.out.dedent();
         writeln!(self, "}}")?;
-        writeln!(self, "return {};", ctor.name(self.db))?;
+        writeln!(self, "return {};", name)?;
         self.out.dedent();
         writeln!(self, "}})();")
     }

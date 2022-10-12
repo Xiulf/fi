@@ -889,7 +889,7 @@ impl BodyCtx<'_, '_> {
         block: &mut Vec<JsExpr>,
     ) -> JsExpr {
         let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
-        let (base, params) = match resolved {
+        let (mut base, params) = match resolved {
             | ValueNs::Local(id) => (self.locals[id].clone(), 1),
             | ValueNs::Fixity(id) => {
                 let resolver = id.resolver(self.db.upcast());
@@ -920,18 +920,20 @@ impl BodyCtx<'_, '_> {
             | _ => (self.lower_path(resolver, expr, path, false, block), args.len()),
         };
 
-        let args2 = args
-            .drain(..params)
-            .map(|a| match a {
-                | Arg::ExprId(id) => self.lower_expr(id, block),
-                | Arg::JsExpr(expr) => expr,
-            })
-            .collect();
+        if params > 0 {
+            let args2 = args
+                .drain(..params)
+                .map(|a| match a {
+                    | Arg::ExprId(id) => self.lower_expr(id, block),
+                    | Arg::JsExpr(expr) => expr,
+                })
+                .collect();
 
-        let base = JsExpr::Call {
-            base: Box::new(base),
-            args: args2,
-        };
+            base = JsExpr::Call {
+                base: Box::new(base),
+                args: args2,
+            };
+        }
 
         if !args.is_empty() {
             self.lower_app(Arg::JsExpr(base), args, block)
@@ -998,21 +1000,24 @@ impl BodyCtx<'_, '_> {
                     };
                 }
 
-                if is_arg {
-                    let params = self.func_params(id);
+                let params = self.func_params(id);
 
-                    if params > 1 {
-                        let params = (0..params).map(|i| format!("_{}", i)).collect::<Vec<_>>();
+                if params == 0 {
+                    base = JsExpr::Call {
+                        base: Box::new(base),
+                        args: Vec::new(),
+                    };
+                } else if is_arg {
+                    let params = (0..params).map(|i| format!("_{}", i)).collect::<Vec<_>>();
 
-                        base = JsExpr::Lambda {
-                            name: None,
-                            params: params.clone(),
-                            body: Box::new(JsExpr::Call {
-                                base: Box::new(base),
-                                args: params.into_iter().map(|p| JsExpr::Ident { name: p }).collect(),
-                            }),
-                        };
-                    }
+                    base = JsExpr::Lambda {
+                        name: None,
+                        params: params.clone(),
+                        body: Box::new(JsExpr::Call {
+                            base: Box::new(base),
+                            args: params.into_iter().map(|p| JsExpr::Ident { name: p }).collect(),
+                        }),
+                    };
                 }
 
                 base

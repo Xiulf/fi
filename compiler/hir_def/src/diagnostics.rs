@@ -1,15 +1,14 @@
 use std::any::Any;
 
 use base_db::input::FileId;
+use syntax::ast;
 use syntax::ptr::{AstPtr, SyntaxNodePtr};
-use syntax::{ast, AstNode};
 
 use crate::ast_id::AstId;
 use crate::db::DefDatabase;
 use crate::diagnostic::{Diagnostic, DiagnosticSink};
 use crate::id::LocalModuleId;
 use crate::in_file::InFile;
-use crate::item_tree::{Item, ItemTree};
 use crate::name::Name;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -20,16 +19,34 @@ pub struct DefDiagnostic {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum DefDiagnosticKind {
-    UnresolvedImport { ast: AstId<ast::ItemImport>, index: usize },
-    PrivateImport { ast: AstId<ast::ItemImport>, index: usize },
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum ItemTreeDiagnostic {
-    DuplicateDeclaration { name: Name, first: Item, second: Item },
+    DuplicateDeclaration {
+        name: Name,
+        first: AstId<ast::Item>,
+        second: AstId<ast::Item>,
+    },
+    UnresolvedImport {
+        ast: AstId<ast::ItemImport>,
+        index: usize,
+    },
+    PrivateImport {
+        ast: AstId<ast::ItemImport>,
+        index: usize,
+    },
 }
 
 impl DefDiagnostic {
+    pub fn duplicate_declaration(
+        container: LocalModuleId,
+        name: Name,
+        first: AstId<ast::Item>,
+        second: AstId<ast::Item>,
+    ) -> Self {
+        DefDiagnostic {
+            in_module: container,
+            kind: DefDiagnosticKind::DuplicateDeclaration { name, first, second },
+        }
+    }
+
     pub fn unresolved_import(container: LocalModuleId, ast: AstId<ast::ItemImport>, index: usize) -> Self {
         DefDiagnostic {
             in_module: container,
@@ -50,6 +67,12 @@ impl DefDiagnostic {
         }
 
         match &self.kind {
+            | DefDiagnosticKind::DuplicateDeclaration { name, first, second } => sink.push(DuplicateDeclaration {
+                file: first.file_id,
+                name: name.to_string(),
+                first: AstPtr::new(&first.to_node(db)),
+                second: AstPtr::new(&second.to_node(db)),
+            }),
             | DefDiagnosticKind::UnresolvedImport { ast, index } => {
                 let item = ast.to_node(db);
                 let mut curr = 0;
@@ -104,34 +127,6 @@ impl DefDiagnostic {
     }
 }
 
-impl ItemTreeDiagnostic {
-    pub fn add_to(&self, db: &dyn DefDatabase, item_tree: &ItemTree, sink: &mut DiagnosticSink) {
-        match self {
-            | Self::DuplicateDeclaration { name, first, second } => sink.push(DuplicateDeclaration {
-                file: item_tree.file,
-                name: name.to_string(),
-                first: ast_ptr_from_mod(db, item_tree, *first),
-                second: ast_ptr_from_mod(db, item_tree, *second),
-            }),
-        }
-
-        fn ast_ptr_from_mod(db: &dyn DefDatabase, item_tree: &ItemTree, item: Item) -> SyntaxNodePtr {
-            match item {
-                | Item::Module(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::Import(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::Fixity(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::Func(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::Static(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::Const(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::TypeCtor(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::TypeAlias(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::Class(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-                | Item::Member(it) => SyntaxNodePtr::new(item_tree.source(db, it).syntax()),
-            }
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct UnresolvedImport {
     pub file: FileId,
@@ -176,8 +171,8 @@ impl Diagnostic for PrivateImport {
 pub struct DuplicateDeclaration {
     pub file: FileId,
     pub name: String,
-    pub first: SyntaxNodePtr,
-    pub second: SyntaxNodePtr,
+    pub first: AstPtr<ast::Item>,
+    pub second: AstPtr<ast::Item>,
 }
 
 impl Diagnostic for DuplicateDeclaration {
@@ -186,7 +181,7 @@ impl Diagnostic for DuplicateDeclaration {
     }
 
     fn display_source(&self) -> InFile<SyntaxNodePtr> {
-        InFile::new(self.file, self.second)
+        InFile::new(self.file, self.second.syntax_node_ptr())
     }
 
     fn as_any(&self) -> &(dyn Any + Send + 'static) {

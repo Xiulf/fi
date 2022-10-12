@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -182,7 +183,7 @@ impl Linker for JsLinker {
     fn run(&mut self) -> io::Result<()> {
         use std::io::{BufRead, Write};
         std::fs::create_dir_all(self.out_file.parent().unwrap())?;
-        let mut emitted = Vec::new();
+        let mut emitted = HashSet::new();
         let mut out = std::fs::File::create(&self.out_file)?;
 
         for filename in self.files.drain(..) {
@@ -190,7 +191,7 @@ impl Linker for JsLinker {
                 continue;
             }
 
-            writeln!(out, "// {}", filename.display())?;
+            writeln!(out, "//- {}", filename.display())?;
             let file = std::fs::File::open(&filename)?;
             let mut file = std::io::BufReader::new(file);
             let mut line = String::new();
@@ -201,7 +202,7 @@ impl Linker for JsLinker {
                     break;
                 }
 
-                if line.starts_with("// ") {
+                if line.starts_with("//- ") {
                     skip = false;
 
                     if emitted.iter().any(|e| e == Path::new(&line[3..])) {
@@ -209,7 +210,7 @@ impl Linker for JsLinker {
                         line.clear();
                         continue;
                     } else {
-                        emitted.push(Path::new(&line[3..]).to_path_buf());
+                        emitted.insert(Path::new(&line[3..]).to_path_buf());
                     }
                 }
 
@@ -220,7 +221,7 @@ impl Linker for JsLinker {
                 line.clear();
             }
 
-            emitted.push(filename);
+            emitted.insert(filename);
         }
 
         if self.emit_main {

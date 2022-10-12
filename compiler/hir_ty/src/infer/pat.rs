@@ -74,8 +74,8 @@ impl BodyInferenceContext<'_> {
             | Pat::App { base, args } => {
                 let ret = self.fresh_type(src);
                 let args = args.iter().map(|&a| self.infer_pat(a)).collect::<Vec<_>>();
-                let base_src = self.source(*base);
-                let ty = self.fn_type(args, ret, base_src);
+                // let base_src = self.source(*base);
+                let ty = self.fn_type(args, ret, src);
 
                 self.check_pat(*base, ty);
                 ret

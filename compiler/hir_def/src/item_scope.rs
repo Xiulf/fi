@@ -75,7 +75,7 @@ impl ItemScope {
         keys.into_iter().map(move |name| (name, self.get(name)))
     }
 
-    pub fn declarations(&self) -> impl Iterator<Item = ModuleDefId> + '_ {
+    pub fn declarations(&self) -> impl Iterator<Item = ModuleDefId> + ExactSizeIterator + '_ {
         self.defs.iter().copied()
     }
 
