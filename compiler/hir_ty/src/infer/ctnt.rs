@@ -55,7 +55,7 @@ impl InferenceContext<'_> {
 
         let lib = self.owner.module(self.db.upcast()).lib;
 
-        if let Some(res) = self.class_env.solve(self.db, &mut self.types, ctnt.clone(), scope) {
+        if let Some(res) = self.class_env.solve(self.db, &mut self.types, &ctnt, scope) {
             for (&u, &ty) in res.subst.iter() {
                 self.solve_type(u, ty);
             }
@@ -70,9 +70,15 @@ impl InferenceContext<'_> {
             }
 
             true
-        } else if let Some(res) =
-            Members::solve_constraint(self.db, &mut self.types, &mut self.type_vars, lib, &ctnt, src)
-        {
+        } else if let Some(res) = Members::solve_constraint(
+            self.db,
+            &self.class_env,
+            &mut self.types,
+            &mut self.type_vars,
+            lib,
+            &ctnt,
+            src,
+        ) {
             res.apply(ctnt, self);
             self.record_solve(found, MethodSource::Member(res.member));
 

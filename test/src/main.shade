@@ -1,17 +1,33 @@
 module Main =
 
 import Core
+import Core.Ops (Concat, concat)
 import Js.Console
-
-@if(target = "javascript")
-test = 0
-
-@if(not(target = "javascript"))
-test = 1
 
 @main
 main = try
     a <- Some { a = 23, b = 24, c = 25 }
-    ; b <- None
-    print a test :: ()
+    print a :: ()
     ret ()
+
+
+class Write w m | m -> w where Try m = 
+    write :: w -> m ()
+
+type Writer w a = | Writer (a, w)
+
+member w (Writer w) of Write where Default w, Concat w w =
+    write x = Writer ((), x)
+
+member (Writer w) of Try where Default w, Concat w w =
+    ret x = Writer (x, default)
+    
+    bind (Writer (a, w)) f =
+        let (a', w') = runWriter (f a)
+        Writer (a', concat w w')
+
+writer :: forall w a. (a, w) -> Writer w a
+writer x = Writer x
+
+runWriter :: forall w a. Writer w a -> (a, w)
+runWriter (Writer x) = x

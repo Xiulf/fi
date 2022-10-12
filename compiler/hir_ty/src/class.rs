@@ -6,6 +6,7 @@ use hir_def::id::{ClassId, MemberId};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::db::HirDatabase;
+use crate::display::HirDisplay;
 use crate::infer::{ExprOrPatId, InferenceContext};
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVars, Types, Unknown};
 use crate::lower::MemberLowerResult;
@@ -104,6 +105,7 @@ impl Members {
 
     pub(crate) fn solve_constraint(
         db: &dyn HirDatabase,
+        env: &ClassEnv,
         types: &mut Types,
         type_vars: &mut TypeVars,
         lib: LibId,
@@ -122,11 +124,13 @@ impl Members {
                 .join(""),
         );
 
-        Self::solve_constraint_cyclic(db, types, type_vars, &mut cycles, lib, ctnt, src)
+        Self::solve_constraint_cyclic(db, env, types, type_vars, &mut cycles, lib, ctnt, src)
     }
 
+    #[tracing::instrument(name = "solve", skip_all)]
     fn solve_constraint_cyclic(
         db: &dyn HirDatabase,
+        env: &ClassEnv,
         types: &mut Types,
         type_vars: &mut TypeVars,
         cycles: &mut FxHashSet<CtntInfo>,
@@ -138,10 +142,20 @@ impl Members {
             return None;
         }
 
+        tracing::debug!(
+            "solve {}{}",
+            db.class_data(ctnt.class).name,
+            ctnt.types
+                .iter()
+                .map(|t| format!(" ({})", t.display(db, types)))
+                .collect::<Vec<_>>()
+                .join(""),
+        );
+
         let members = db.members(lib, ctnt.class);
         let _ = cycles.insert(ctnt.clone());
         let res = members
-            .matches(db, types, type_vars, cycles, lib, ctnt, src)
+            .matches(db, env, types, type_vars, cycles, lib, ctnt, src)
             .map(Arc::new);
 
         cycles.remove(ctnt);
@@ -151,6 +165,7 @@ impl Members {
     fn matches(
         &self,
         db: &dyn HirDatabase,
+        env: &ClassEnv,
         types: &mut Types,
         type_vars: &mut TypeVars,
         cycles: &mut FxHashSet<CtntInfo>,
@@ -160,7 +175,7 @@ impl Members {
     ) -> Option<MemberMatchResult> {
         self.matchers.iter().find_map(|m| {
             m.member
-                .matches(db, types, type_vars, cycles, lib, &ctnt, &self.deps, src)
+                .matches(db, env, types, type_vars, cycles, lib, &ctnt, &self.deps, src)
         })
     }
 }
@@ -190,6 +205,7 @@ impl Member<Ty, Constraint> {
     fn matches(
         &self,
         db: &dyn HirDatabase,
+        env: &ClassEnv,
         types: &mut Types,
         type_vars: &mut TypeVars,
         cycles: &mut FxHashSet<CtntInfo>,
@@ -209,6 +225,15 @@ impl Member<Ty, Constraint> {
                 match_type(db, types, ty, with, &mut subst, &mut vars)
             })
             .collect::<Vec<_>>();
+
+        tracing::debug!(
+            "member{}",
+            self.types
+                .iter()
+                .map(|t| format!(" ({})", t.display(db)))
+                .collect::<Vec<_>>()
+                .join(""),
+        );
 
         tracing::debug!("{:?}, {}", matches, verify(&matches, deps));
 
@@ -234,7 +259,11 @@ impl Member<Ty, Constraint> {
                     .collect(),
             };
 
-            match Members::solve_constraint_cyclic(db, types, type_vars, cycles, lib, &ctnt, src) {
+            if let Some(res) = env.solve(db, types, &ctnt, env.current()) {
+                tracing::debug!("{:?}", res);
+            }
+
+            match Members::solve_constraint_cyclic(db, env, types, type_vars, cycles, lib, &ctnt, src) {
                 | None => return None,
                 | Some(solution) => {
                     constraints.push(solution.clone());
@@ -324,7 +353,7 @@ impl ClassEnv {
         &self,
         db: &dyn HirDatabase,
         types: &mut Types,
-        ctnt: CtntInfo,
+        ctnt: &CtntInfo,
         scope: Option<ClassEnvScope>,
     ) -> Option<ClassEnvMatchResult> {
         self.in_scope(scope).find_map(|scope| {
