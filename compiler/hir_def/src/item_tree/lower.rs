@@ -53,44 +53,10 @@ impl Ctx {
     }
 
     pub fn lower_items(&mut self, groups: ItemGroups) -> Vec<Item> {
-        let items = groups
+        groups
             .flat_map(|(item, rest)| self.lower_item(&item, &rest))
             .flat_map(|item| item.0)
-            .collect::<Vec<_>>();
-
-        let mut values = FxHashMap::<Name, Item>::default();
-        let mut types = FxHashMap::<Name, Item>::default();
-        let mut diagnostics = Vec::new();
-
-        for &item in &items {
-            let (name, is_type) = match item {
-                | Item::Fixity(it) => (Some(&self.tree[it].name), false),
-                | Item::Func(it) => (Some(&self.tree[it].name), false),
-                | Item::Static(it) => (Some(&self.tree[it].name), false),
-                | Item::Const(it) => (Some(&self.tree[it].name), false),
-                | Item::TypeCtor(it) => (Some(&self.tree[it].name), true),
-                | Item::TypeAlias(it) => (Some(&self.tree[it].name), true),
-                | Item::Class(it) => (Some(&self.tree[it].name), true),
-                | _ => (None, false),
-            };
-
-            if let Some(name) = name {
-                let set = if is_type { &mut types } else { &mut values };
-
-                if let Some(first_item) = set.get(name) {
-                    diagnostics.push(ItemTreeDiagnostic::DuplicateDeclaration {
-                        name: name.clone(),
-                        first: *first_item,
-                        second: item,
-                    });
-                } else {
-                    set.insert(name.clone(), item);
-                }
-            }
-        }
-
-        self.tree.diagnostics.append(&mut diagnostics);
-        items
+            .collect::<Vec<_>>()
     }
 
     fn lower_item(&mut self, item: &ast::Item, rest: &[ast::Item]) -> Option<Items> {

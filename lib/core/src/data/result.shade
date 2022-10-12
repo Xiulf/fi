@@ -1,8 +1,9 @@
 module Data.Result =
 
-import Data.Option (Some, None)
 import Core.Error (Try, Unwrap)
 import Core.Mappable
+import Data.Option (Some, None)
+import Prim (ExitCode, Termination, report)
 import Intrinsics (crash)
 
 type Result e t =
@@ -17,6 +18,10 @@ err (Ok _) = None
 
 unwrap_err (Error e) = e
 unwrap_err (Ok _) = crash "cannot unwrap_err an ok value"
+
+member (Result e t) of Termination where Termination t =
+    report (Ok v) = report v
+    report (Error e) = ExitCode 1
 
 member (Result e) of Try =
     ret x = Ok x

@@ -7,7 +7,7 @@ use syntax::NameOwner;
 
 use crate::db::DefDatabase;
 use crate::id::*;
-use crate::item_tree::{AssocItem, ItemTreeId};
+use crate::item_tree::{AssocItem, Item, ItemTreeId};
 pub use crate::item_tree::{FixityKind, FunDep};
 use crate::name::{AsName, Name};
 use crate::path::Path;
@@ -264,6 +264,7 @@ impl TypeCtorData {
     pub fn query(db: &dyn DefDatabase, id: TypeCtorId) -> Arc<Self> {
         let loc = id.lookup(db);
         let src = loc.source(db);
+        let libs = db.libs();
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
         let mut type_builder = TypeMap::builder();
@@ -285,7 +286,13 @@ impl TypeCtorData {
             .map(|it| it.ctors())
             .unwrap_or_else(|| src.value.ctors());
 
-        for ctor in it_ctors {
+        for (ctor, ctor_id) in it_ctors.zip(it.ctors.clone()) {
+            if let Some(cfg) = item_tree.attrs(ctor_id.into()).cfg() {
+                if !cfg.is_enabled(&libs[loc.module.lib].cfg_options) {
+                    continue;
+                }
+            }
+
             ctors.alloc(CtorData {
                 name: ctor.name().unwrap().as_name(),
                 types: ctor.types().map(|t| type_builder.alloc_type_ref(t)).collect(),
@@ -411,10 +418,23 @@ fn collect_assoc_items(
     assoc_items: impl Iterator<Item = AssocItem>,
     container: ContainerId,
 ) -> Vec<(Name, AssocItemId)> {
+    let lib = container.module(db).lib;
+    let libs = db.libs();
     let item_tree = db.item_tree(file_id);
     let mut items = Vec::new();
 
     for item in assoc_items {
+        let it = match item {
+            | AssocItem::Func(id) => Item::Func(id),
+            | AssocItem::Static(id) => Item::Static(id),
+        };
+
+        if let Some(cfg) = item_tree.attrs(it.into()).cfg() {
+            if !cfg.is_enabled(&libs[lib].cfg_options) {
+                continue;
+            }
+        }
+
         match item {
             | AssocItem::Func(id) => {
                 let it = &item_tree[id];

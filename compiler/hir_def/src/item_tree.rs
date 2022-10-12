@@ -14,7 +14,6 @@ use syntax::ast::{self, AstNode};
 use crate::ast_id::FileAstId;
 use crate::attrs::{Attrs, RawAttrs};
 use crate::db::DefDatabase;
-use crate::diagnostics::ItemTreeDiagnostic;
 use crate::in_file::InFile;
 use crate::name::Name;
 use crate::path::Path;
@@ -25,7 +24,6 @@ pub struct ItemTree {
     top_level: Vec<Item>,
     data: ItemTreeData,
     attrs: FxHashMap<AttrOwner, RawAttrs>,
-    pub diagnostics: Vec<ItemTreeDiagnostic>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -69,7 +67,6 @@ impl ItemTree {
             top_level: Vec::new(),
             data: ItemTreeData::default(),
             attrs: FxHashMap::default(),
-            diagnostics: Vec::new(),
         }
     }
 

@@ -1,139 +1,209 @@
 pub mod db;
 pub mod diagnostics;
-pub mod manifest;
 
+use std::path::Path;
+use std::process::Command;
 use std::{fs, io};
 
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::{SourceDatabase, SourceDatabaseExt};
+use cfg::{CfgOptions, CfgValue};
 use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
+pub use codegen::Optimization;
+use paths::AbsPathBuf;
+use project::manifest::{self, Cfg};
+use project::Workspace;
 use rustc_hash::FxHashSet;
 
-#[derive(Default)]
-pub struct Opts<'a> {
-    pub input: &'a str,
+pub struct InitOpts<'a> {
+    pub input: &'a Path,
     pub target: Option<&'a str>,
     pub output: Option<LibKind>,
+    pub optimization: Optimization,
+    pub cfg: Cfg,
 }
 
-#[derive(Default)]
+pub struct InitNoManifestOpts<'a> {
+    pub files: Vec<&'a Path>,
+    pub name: &'a str,
+    pub target: Option<&'a str>,
+    pub output: LibKind,
+    pub optimization: Optimization,
+    pub cfg: Cfg,
+    pub links: Vec<&'a Path>,
+    pub dependencies: Vec<&'a Path>,
+}
+
 pub struct Driver {
     pub db: db::RootDatabase,
-    lib: LibId,
-    libs: LibSet,
-    lib_count: u32,
-    file_count: u32,
+    workspaces: Vec<Workspace>,
+    target_dir: AbsPathBuf,
+    cfg: CfgOptions,
+    vfs: vfs::VirtualFileSystem,
+}
+
+impl Default for InitOpts<'_> {
+    fn default() -> Self {
+        Self {
+            input: Path::new("."),
+            target: None,
+            output: None,
+            optimization: Optimization::None,
+            cfg: Cfg::default(),
+        }
+    }
+}
+
+impl Default for Driver {
+    fn default() -> Self {
+        Self {
+            db: db::RootDatabase::default(),
+            workspaces: Vec::new(),
+            target_dir: AbsPathBuf::assert("/".into()),
+            cfg: CfgOptions::default(),
+            vfs: vfs::VirtualFileSystem::default(),
+        }
+    }
+}
+
+fn input_dir(input: &Path) -> AbsPathBuf {
+    if input.is_absolute() {
+        AbsPathBuf::assert(input.into())
+    } else {
+        AbsPathBuf::assert(std::env::current_dir().unwrap().join(input))
+    }
 }
 
 impl Driver {
-    pub fn init(opts: Opts) -> Option<(Self, LibId)> {
+    pub fn init(opts: InitOpts) -> anyhow::Result<(Self, usize)> {
         let mut driver = Driver::default();
-        let lib = driver.load(opts.input)?;
-
-        driver.lib = lib;
-        driver.db.set_target(match opts.target {
+        let cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
+        let target = match opts.target {
             | Some("javascript") => CompilerTarget::Javascript,
             // | Some(target) => Arc::new(target.parse().unwrap()),
             // | None => Arc::new(target_lexicon::Triple::host()),
             | _ => CompilerTarget::Javascript,
-        });
+        };
 
-        Some((driver, lib))
+        driver.init_cfg(target);
+        driver.target_dir = input_dir(opts.input).join("target");
+        driver.cfg = driver.cfg.merge(&cfg);
+        driver.db.set_target(target);
+
+        let ws = driver.load(opts.input)?;
+
+        Ok((driver, ws))
     }
 
-    pub fn init_no_manifest(opts: Opts) -> Option<(Self, LibId)> {
+    pub fn init_without_manifest(opts: InitNoManifestOpts) -> anyhow::Result<(Self, usize)> {
         let mut driver = Driver::default();
-        let path = std::path::Path::new(opts.input);
-        let lib = manifest::load_normal(
-            &mut driver.db,
-            &mut driver.libs,
-            &mut driver.lib_count,
-            &mut driver.file_count,
-            path,
-            opts.output.unwrap_or(LibKind::Executable),
-        )
-        .ok()?;
-
-        driver.lib = lib;
-        driver.db.set_target_dir(lib, path.parent().unwrap().join("target"));
-        driver.db.set_target(match opts.target {
+        let current_dir = AbsPathBuf::assert(std::env::current_dir().unwrap());
+        let cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
+        let target = match opts.target {
             | Some("javascript") => CompilerTarget::Javascript,
             // | Some(target) => Arc::new(target.parse().unwrap()),
             // | None => Arc::new(target_lexicon::Triple::host()),
             | _ => CompilerTarget::Javascript,
-        });
+        };
 
-        driver.db.set_libs(driver.libs.clone().into());
+        driver.init_cfg(target);
+        driver.target_dir = current_dir.join("target");
+        driver.cfg = driver.cfg.merge(&cfg);
 
-        Some((driver, lib))
+        let files = opts.files.into_iter().map(|p| input_dir(p)).collect();
+        let links = opts.links.into_iter().map(|l| l.to_path_buf()).collect();
+        let dependencies = opts.dependencies.into_iter().map(|d| input_dir(d)).collect();
+
+        driver.workspaces.push(Workspace::local_files(
+            &mut driver.vfs,
+            &driver.cfg,
+            current_dir,
+            files,
+            opts.name.to_string(),
+            opts.output,
+            links,
+            dependencies,
+        )?);
+
+        driver.set_libs();
+        driver.set_source_roots();
+        driver.db.set_target(target);
+
+        let ws = driver.workspaces.len() - 1;
+
+        Ok((driver, ws))
     }
 
     pub fn interactive() -> (Self, LibId, FileId) {
-        let mut driver = Driver::default();
-        let mut root = SourceRoot::new_local(None);
-        let root_id = SourceRootId(0);
-        let root_file = FileId(0);
-        let (lib, _) = driver
-            .libs
-            .add_lib("<interactive>", Default::default(), root_id, Vec::new());
+        // let mut driver = Driver::default();
+        // let mut libs = LibSet::default();
+        // let (root_file, _) = driver
+        //     .vfs
+        //     .set_file_content(VfsPath::new_virtual("/<interactive>".into()), None);
+        // let lib = libs.add_lib("<interactive>", Default::default(), Vec::new(), Default::default());
 
-        root.insert_file(root_file, "<interactive>");
+        // libs.set_root_file(lib, root_file);
+        // driver.lib = lib;
+        // driver.db.set_target(CompilerTarget::Javascript);
+        // driver.db.set_libs(libs.into());
+        // driver
+        //     .db
+        //     .set_file_text(root_file, String::from("module INTERACTIVE").into());
 
-        driver.lib = lib;
-        driver.db.set_target(CompilerTarget::Javascript);
-        driver.db.set_libs(driver.libs.clone().into());
-        driver.db.set_source_root(root_id, root.into());
-        driver.db.set_lib_source_root(lib, root_id);
-        driver.db.set_file_source_root(root_file, root_id);
-        driver
-            .db
-            .set_file_text(root_file, String::from("module INTERACTIVE").into());
-        driver.db.set_file_lib(root_file, lib);
-        driver.lib_count = 1;
-        driver.file_count = 1;
-
-        (driver, lib, root_file)
+        // (driver, lib, root_file)
+        todo!()
     }
 
-    pub fn load(&mut self, input: &str) -> Option<LibId> {
-        let path = std::path::Path::new(input);
+    pub fn load(&mut self, input: &Path) -> anyhow::Result<usize> {
+        let input = input_dir(input);
 
-        match manifest::load_project(
-            &mut self.db,
-            &mut self.libs,
-            &mut self.lib_count,
-            &mut self.file_count,
-            path,
-        ) {
-            | Ok(lib) => {
-                for lib in self.libs.iter() {
-                    let source_root = self.db.lib_source_root(lib);
-                    let source_root = self.db.source_root(source_root);
+        self.workspaces.push(Workspace::load(input, &mut self.vfs, &self.cfg)?);
+        self.set_libs();
+        self.set_source_roots();
 
-                    if let Some(dir) = &source_root.dir {
-                        let target_dir = dir.join("target");
+        Ok(self.workspaces.len() - 1)
+    }
 
-                        self.db.set_target_dir(lib, target_dir.clone());
-                    }
+    fn set_libs(&mut self) {
+        let mut libs = LibSet::default();
+
+        for ws in &self.workspaces {
+            let set = ws.to_libs(&self.cfg);
+
+            libs.extend(set);
+        }
+
+        self.db.set_libs(libs.into());
+    }
+
+    fn set_source_roots(&mut self) {
+        let file_sets = Workspace::file_sets(&self.workspaces, &self.vfs);
+
+        for (idx, file_set) in file_sets.into_iter().enumerate() {
+            let root_id = SourceRootId(idx as u32);
+            let root = SourceRoot::new(file_set);
+
+            for file_id in root.iter() {
+                if let Some(bytes) = self.vfs.file_content(file_id) {
+                    let text = String::from_utf8_lossy(bytes);
+
+                    self.db.set_file_text(file_id, text.into());
                 }
 
-                self.db.set_libs(self.libs.clone().into());
+                self.db.set_file_source_root(file_id, root_id);
+            }
 
-                Some(lib)
-            },
-            | Err(e) => {
-                eprintln!("{}", e);
-                None
-            },
+            self.db.set_source_root(root_id, root.into());
         }
     }
 
-    pub fn add_dep(&mut self, lib: LibId, dep: LibId) {
-        self.libs.add_dep(lib, dep).unwrap();
-        self.db.set_libs(self.libs.clone().into());
+    fn init_cfg(&mut self, target: CompilerTarget) {
+        self.cfg.set("target", match target {
+            | CompilerTarget::Javascript => CfgValue::String("javascript".into()),
+        });
     }
 
     pub fn check(&self) -> io::Result<bool> {
@@ -143,10 +213,9 @@ impl Driver {
 
         for lib in hir::Lib::all(db) {
             let id = lib.into();
-            let target_dir = db.target_dir(id);
-            let changed = metadata::read_metadata(db, id, &target_dir)
+            let changed = metadata::read_metadata(db, id, &self.target_dir)
                 .map(|m| m.has_changed(db))
-                .unwrap_or(false);
+                .unwrap_or(true);
 
             if changed || last_changed {
                 eprintln!("  \x1B[1;32m\x1B[1mChecking\x1B[0m {}", lib.name(db));
@@ -155,7 +224,7 @@ impl Driver {
                     return Ok(false);
                 }
 
-                metadata::write_metadata(db, id, &target_dir)?;
+                metadata::write_metadata(db, id, &self.target_dir)?;
                 last_changed = true;
             }
         }
@@ -166,20 +235,25 @@ impl Driver {
         Ok(true)
     }
 
-    pub fn build(&self) -> io::Result<bool> {
-        fs::create_dir_all(self.db.target_dir(self.lib))?;
-        let start = std::time::Instant::now();
+    pub fn build(&self, ws: usize) -> io::Result<bool> {
         let db = &self.db;
-        let target_dir = db.target_dir(self.lib);
+        fs::create_dir_all(&self.target_dir)?;
+        let start = std::time::Instant::now();
         let mut done = FxHashSet::default();
         let mut last_changed = false;
+        let ws = &self.workspaces[ws];
+        let libs = db.libs();
 
         for lib in hir::Lib::all(db) {
+            if ws.find_file_package(libs[lib.into()].root_file).is_none() {
+                continue;
+            }
+
             let id = lib.into();
-            let changed = metadata::read_metadata(db, id, &target_dir)
+            let changed = metadata::read_metadata(db, id, &self.target_dir)
                 .map(|m| m.has_changed(db))
-                .unwrap_or(false);
-            let changed = changed || !Assembly::dummy(lib).path(db, &target_dir).exists();
+                .unwrap_or(true);
+            let changed = changed || fs::metadata(Assembly::dummy(lib).path(db, self.target_dir.as_ref())).is_err();
 
             if changed || last_changed {
                 eprintln!("  \x1B[1;32m\x1B[1mCompiling\x1B[0m {}", lib.name(db));
@@ -193,8 +267,8 @@ impl Driver {
                     return Ok(false);
                 }
 
-                self.write_assembly(lib, &mut done)?;
-                metadata::write_metadata(db, id, &target_dir)?;
+                self.write_assembly(ws, lib, &mut done)?;
+                metadata::write_metadata(db, id, &self.target_dir)?;
                 last_changed = true;
             } else {
                 done.insert(lib);
@@ -207,39 +281,75 @@ impl Driver {
         Ok(true)
     }
 
-    pub fn run<'a>(&self, _lib: LibId, _args: impl Iterator<Item = &'a std::ffi::OsStr>) -> io::Result<bool> {
-        if self.build()? {
-            // let asm = self.db.lib_assembly(lib.into());
-            // let path = asm.path(&self.db, &self.db.target_dir(lib));
-            // let mut cmd = std::process::Command::new(path);
+    pub fn run(&self, ws: usize, args: impl Iterator<Item = impl AsRef<std::ffi::OsStr>>) -> io::Result<bool> {
+        if self.build(ws)? {
+            let ws = &self.workspaces[ws];
+            let libs = self.db.libs();
+            let lib = hir::Lib::all(&self.db)
+                .into_iter()
+                .filter(|&lib| ws.find_file_package(libs[lib.into()].root_file).is_some())
+                .find(|&lib| libs[lib.into()].kind == LibKind::Executable)
+                .unwrap();
 
-            // cmd.args(args);
-            // println!("    \x1B[1;32m\x1B[1mRunning\x1B[0m {:?}", cmd);
-            // cmd.status().unwrap().success()
-            Ok(true)
+            let asm = self.db.lib_assembly(lib.into());
+            let path = asm.path(&self.db, &self.target_dir);
+
+            let mut cmd = if self.db.target() == CompilerTarget::Javascript {
+                if !program_exists("node") {
+                    base_db::Error::throw("node must be insalled to run a javascript targeted program");
+                }
+
+                let mut cmd = Command::new("node");
+
+                cmd.arg(path.as_path().as_ref());
+                cmd
+            } else {
+                Command::new(path.as_path().as_ref())
+            };
+
+            cmd.args(args);
+
+            print!(
+                "    \x1B[1;32m\x1B[1mRunning\x1B[0m `{}",
+                cmd.get_program().to_string_lossy()
+            );
+
+            for arg in cmd.get_args() {
+                print!(" {}", arg.to_string_lossy());
+            }
+
+            println!("`");
+            cmd.status().map(|s| s.success())
         } else {
             Ok(false)
         }
     }
 
-    fn write_assembly(&self, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> io::Result<bool> {
+    fn write_assembly(&self, ws: &Workspace, lib: hir::Lib, done: &mut FxHashSet<hir::Lib>) -> io::Result<bool> {
         if done.contains(&lib) {
             return Ok(false);
         }
 
-        let deps = lib.dependencies(&self.db).into_iter().map(|dep| {
-            let _ = self.write_assembly(dep.lib, done);
-            dep.lib
-        });
+        for dep in lib.dependencies(&self.db) {
+            self.write_assembly(ws, dep.lib, done)?;
+        }
 
         let asm = self.db.lib_assembly(lib);
-        let source_root = self.db.lib_source_root(lib.into());
-        let source_root = self.db.source_root(source_root);
-        let path = source_root.dir.as_ref().unwrap();
 
-        asm.link(&self.db, deps, path, &self.db.target_dir(self.lib));
+        asm.link(&self.db, ws, &self.target_dir);
         done.insert(lib);
 
         Ok(true)
+    }
+}
+
+fn program_exists(program: impl AsRef<std::ffi::OsStr>) -> bool {
+    match Command::new(program).spawn() {
+        | Ok(mut c) => {
+            let _ = c.kill();
+            true
+        },
+        | Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+        | Err(_) => true,
     }
 }

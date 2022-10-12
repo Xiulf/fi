@@ -1,3 +1,5 @@
+use hir_def::id::HasModule;
+
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{ExprOrPatId, InferenceContext, InferenceDiagnostic, MethodSource};
 use crate::class::{ClassEnvScope, Members};
@@ -51,6 +53,8 @@ impl InferenceContext<'_> {
             | CtntFound::Member(id) => self.source(TypeOrigin::Def(id.into())),
         };
 
+        let lib = self.owner.module(self.db.upcast()).lib;
+
         if let Some(res) = self.class_env.solve(self.db, &mut self.types, ctnt.clone(), scope) {
             for (&u, &ty) in res.subst.iter() {
                 self.solve_type(u, ty);
@@ -66,7 +70,9 @@ impl InferenceContext<'_> {
             }
 
             true
-        } else if let Some(res) = Members::solve_constraint(self.db, &mut self.types, &mut self.type_vars, &ctnt, src) {
+        } else if let Some(res) =
+            Members::solve_constraint(self.db, &mut self.types, &mut self.type_vars, lib, &ctnt, src)
+        {
             res.apply(ctnt, self);
             self.record_solve(found, MethodSource::Member(res.member));
 

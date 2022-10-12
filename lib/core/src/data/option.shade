@@ -3,6 +3,7 @@ module Data.Option =
 import Core
 import Core.Error (Try, Unwrap)
 import Core.Mappable
+import Prim (ExitCode, Termination, report)
 import Intrinsics (crash)
 
 type Option t =
@@ -11,6 +12,10 @@ type Option t =
 
 member (Option t) of Default =
     default = None
+
+member (Option t) of Termination where Termination t =
+    report (Some v) = report v
+    report None = ExitCode 1
 
 member Option of Try =
     ret x = Some x

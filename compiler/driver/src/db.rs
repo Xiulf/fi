@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use base_db::input::FileId;
+use base_db::libs::LibId;
 use base_db::{Canceled, CheckCanceled, FileLoader, FileLoaderDelegate, Upcast};
+use rustc_hash::FxHashSet;
 
 #[salsa::database(
     base_db::SourceDatabaseStorage,
@@ -40,8 +42,12 @@ impl salsa::ParallelDatabase for RootDatabase {
 }
 
 impl FileLoader for RootDatabase {
-    fn file_text(&self, file_id: FileId) -> Arc<String> {
+    fn file_text(&self, file_id: FileId) -> Arc<str> {
         FileLoaderDelegate(self).file_text(file_id)
+    }
+
+    fn relevant_libs(&self, file_id: FileId) -> Arc<FxHashSet<LibId>> {
+        FileLoaderDelegate(self).relevant_libs(file_id)
     }
 }
 

@@ -11,11 +11,38 @@ use arena::ArenaMap;
 use hir::db::HirDatabase;
 use hir::id::{DefWithBodyId, HasModule};
 use hir::ty::{Ty, TyKind};
+use tracing::Level;
 
 #[no_mangle]
-pub fn init(logger: &'static dyn log::Log, max_level: log::LevelFilter) {
-    log::set_logger(logger).unwrap();
-    log::set_max_level(max_level);
+pub fn init_logging(max_level: Level) {
+    tracing_subscriber::fmt()
+        .without_time()
+        .with_max_level(max_level)
+        .init();
+
+    std::panic::set_hook(Box::new(|info| {
+        let loc = info.location().unwrap();
+
+        // if let Some(ice) = info.payload().downcast_ref::<ICE>() {
+        //     eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", ice.0, loc);
+        //     return;
+        // }
+
+        // if let Some(err) = info.payload().downcast_ref::<Error>() {
+        //     eprintln!("\x1B[31mError:\x1B[0m '{}'", err.0);
+        //     return;
+        // }
+
+        let msg = match info.payload().downcast_ref::<&'static str>() {
+            | Some(s) => *s,
+            | None => match info.payload().downcast_ref::<String>() {
+                | Some(s) => &s[..],
+                | None => "...",
+            },
+        };
+
+        eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", msg, loc);
+    }));
 }
 
 #[no_mangle]
@@ -78,16 +105,16 @@ impl<'a> Ctx<'a> {
             self.codegen(module)?;
         }
 
+        for member in members {
+            self.codegen_member(member)?;
+        }
+
         for &def in &decls {
             self.register_def(def)?;
         }
 
         for def in decls {
             self.codegen_def(def)?;
-        }
-
-        for member in members {
-            self.codegen_member(member)?;
         }
 
         self.flush()
@@ -131,7 +158,7 @@ impl<'a> Ctx<'a> {
         }
 
         if self.db.attrs(id.into()).by_key("main").exists() {
-            writeln!(self, "const $main = {}", self.mangle(func.link_name(self.db)))?;
+            self.codegen_main_shim(func)?;
         }
 
         Ok(())
@@ -155,6 +182,8 @@ impl<'a> Ctx<'a> {
 
     pub fn codegen_ctor(&mut self, ctor: hir::Ctor) -> io::Result<()> {
         let types = ctor.types(self.db);
+        let name = ctor.name(self.db);
+
         writeln!(
             self,
             "{} = (function() {{",
@@ -162,7 +191,7 @@ impl<'a> Ctx<'a> {
         )?;
 
         self.out.indent();
-        writeln!(self, "class {} {{", ctor.name(self.db))?;
+        writeln!(self, "class {} {{", name)?;
         self.out.indent();
         write!(self, "constructor(")?;
 
@@ -183,9 +212,29 @@ impl<'a> Ctx<'a> {
 
         self.out.dedent();
         writeln!(self, "}}")?;
+        writeln!(self, "toString() {{")?;
+        self.out.indent();
+        write!(self, "return `{}", name)?;
+
+        if !types.is_empty() {
+            write!(self, "(")?;
+
+            for i in 0..types.len() {
+                if i != 0 {
+                    write!(self, ", ")?;
+                }
+
+                write!(self, "{{this.field{}}}", i)?;
+            }
+
+            write!(self, ")")?;
+        }
+
+        self.out.dedent();
+        writeln!(self, "`;\n}}")?;
         self.out.dedent();
         writeln!(self, "}}")?;
-        writeln!(self, "return {};", ctor.name(self.db))?;
+        writeln!(self, "return {};", name)?;
         self.out.dedent();
         writeln!(self, "}})();")
     }
@@ -315,6 +364,25 @@ impl<'a> Ctx<'a> {
         let mut bcx = BodyCtx::new(self, owner);
         bcx.lower(false)
     }
+
+    pub fn codegen_main_shim(&mut self, main_func: hir::Func) -> io::Result<()> {
+        let mut bcx = BodyCtx::new(self, hir::id::FuncId::from(main_func).into());
+        let infer = bcx.infer.clone();
+        let mut methods = infer.methods[&(bcx.body.body_expr(), 0)].iter().copied();
+        let b = match methods.next().unwrap() {
+            | hir::MethodSource::Member(id) => bcx.member_ref(id.into(), &mut methods),
+            | hir::MethodSource::Record(idx) => bcx.records[idx].clone(),
+        };
+
+        let report = expr::JsExpr::Field {
+            base: Box::new(b),
+            field: bcx.mangle(("report", true)),
+        };
+
+        write!(bcx, "const $main = () => ")?;
+        report.write(&mut bcx.ctx.out, false)?;
+        writeln!(self, "({}());", self.mangle(main_func.link_name(self.db)))
+    }
 }
 
 impl<'a, 'b> BodyCtx<'a, 'b> {
@@ -369,7 +437,7 @@ fn for_each_type_var(
 ) -> io::Result<Ty> {
     if let TyKind::ForAll(kinds, inner, _) = ty.lookup(db) {
         let lib = owner.module(db.upcast()).lib;
-        let symbol_ctor = db.lang_item(lib, "symbol-kind".into()).unwrap();
+        let symbol_ctor = db.lang_item(lib, "symbol-kind").unwrap();
         let symbol_ctor = symbol_ctor.as_type_ctor().unwrap();
 
         for kind in kinds.iter() {

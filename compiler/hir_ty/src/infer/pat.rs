@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use hir_def::expr::Literal;
 use hir_def::infix::ProcessInfix;
+use hir_def::lang_item;
 use hir_def::pat::{Pat, PatId};
 use hir_def::resolver::ValueNs;
+use tracing::trace;
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, InferenceDiagnostic};
@@ -13,7 +15,7 @@ use crate::lower::LowerCtx;
 impl BodyInferenceContext<'_> {
     pub fn infer_pat(&mut self, pat: PatId) -> TyId {
         self.db.check_canceled();
-        log::trace!("infer_pat({:?})", pat);
+        trace!("infer_pat({:?})", pat);
 
         let body = Arc::clone(&self.body);
         let src = self.source(pat);
@@ -72,8 +74,8 @@ impl BodyInferenceContext<'_> {
             | Pat::App { base, args } => {
                 let ret = self.fresh_type(src);
                 let args = args.iter().map(|&a| self.infer_pat(a)).collect::<Vec<_>>();
-                let base_src = self.source(*base);
-                let ty = self.fn_type(args, ret, base_src);
+                // let base_src = self.source(*base);
+                let ty = self.fn_type(args, ret, src);
 
                 self.check_pat(*base, ty);
                 ret
@@ -109,8 +111,8 @@ impl BodyInferenceContext<'_> {
             } => self.infer_pat(*subpat),
             | Pat::Record { fields, has_rest } => {
                 let tail = if *has_rest {
-                    let row_kind = self.lang_type("row-kind", src);
-                    let type_kind = self.lang_type("type-kind", src);
+                    let row_kind = self.lang_type(lang_item::ROW_KIND, src);
+                    let type_kind = self.type_kind(src);
                     let kind = self.types.insert(TyInfo::App(row_kind, [type_kind].into()), src);
 
                     Some(self.fresh_type_with_kind(kind, src))
@@ -118,7 +120,7 @@ impl BodyInferenceContext<'_> {
                     None
                 };
 
-                let record_type = self.lang_type("record-type", src);
+                let record_type = self.lang_type(lang_item::RECORD_TYPE, src);
                 let fields = fields
                     .iter()
                     .map(|f| FieldInfo {
@@ -133,7 +135,7 @@ impl BodyInferenceContext<'_> {
             },
             | Pat::Lit { lit } => match lit {
                 | Literal::Int(_) => {
-                    let integer = self.lang_class("integer-class");
+                    let integer = self.lang_class(lang_item::INTEGER_CLASS);
                     let ty = self.fresh_type(src);
 
                     self.constrain(
@@ -148,7 +150,7 @@ impl BodyInferenceContext<'_> {
                     ty
                 },
                 | Literal::Float(_) => {
-                    let decimal = self.lang_class("decimal-class");
+                    let decimal = self.lang_class(lang_item::DECIMAL_CLASS);
                     let ty = self.fresh_type(src);
 
                     self.constrain(
@@ -162,8 +164,8 @@ impl BodyInferenceContext<'_> {
 
                     ty
                 },
-                | Literal::Char(_) => self.lang_type("char-type", src),
-                | Literal::String(_) => self.lang_type("str-type", src),
+                | Literal::Char(_) => self.lang_type(lang_item::CHAR_TYPE, src),
+                | Literal::String(_) => self.lang_type(lang_item::STR_TYPE, src),
             },
         };
 

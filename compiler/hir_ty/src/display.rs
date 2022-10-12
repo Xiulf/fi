@@ -153,12 +153,20 @@ impl<'a, W: fmt::Write> fmt::Write for Indent<'a, W> {
     }
 }
 
-impl fmt::Display for TypeVar {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let scope: u32 = self.scope().into_raw().into();
-        let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+impl HirDisplay for TypeVar {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
+        if let Some(src) = self.src() {
+            src.owner.with_type_map(f.db.upcast(), |map| {
+                let name = &map.type_vars()[src.local_id].name;
 
-        write!(f, "{}{}", scope, self.idx())
+                write!(f, "{name}")
+            })
+        } else {
+            let scope: u32 = self.scope().into_raw().into();
+            let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+
+            write!(f, "{}{}", scope, self.idx())
+        }
     }
 }
 
@@ -281,7 +289,7 @@ impl HirDisplay for Ty {
         match self.lookup(f.db) {
             | TyKind::Error(Reason::Error) => write!(f, "{{error}}"),
             | TyKind::Error(Reason::Unknown) => write!(f, "{{unknown}}"),
-            | TyKind::TypeVar(t) => write!(f, "{}", t),
+            | TyKind::TypeVar(t) => t.hir_fmt(f),
             | TyKind::Figure(i) => write!(f, "{}", i),
             | TyKind::Symbol(s) => write!(f, "{:?}", s),
             | TyKind::Row(fields, tail) => {
@@ -400,13 +408,13 @@ impl HirDisplay for Class<Ty, Constraint> {
 impl HirDisplay for FunDep {
     fn hir_fmt(&self, f: &mut HirFormatter) -> fmt::Result {
         for var in self.determiners.iter() {
-            write!(f, "{} ", var)?;
+            write!(f, "{} ", var.display(f.db))?;
         }
 
         write!(f, "->")?;
 
         for var in self.determined.iter() {
-            write!(f, " {}", var)?;
+            write!(f, " {}", var.display(f.db))?;
         }
 
         Ok(())

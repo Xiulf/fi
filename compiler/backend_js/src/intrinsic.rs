@@ -1,6 +1,7 @@
 use hir::id::HasModule;
 use hir::ty::{TyKind, TypeVar};
 use hir::{Literal, TypeCtor};
+use tracing::warn;
 
 use crate::expr::{Arg, JsExpr};
 use crate::BodyCtx;
@@ -76,7 +77,7 @@ impl BodyCtx<'_, '_> {
             | "ieq" => self.intrinsic_ieq(args, block),
             | "icmp" => self.intrinsic_icmp(args, block),
             | _ => {
-                log::warn!(target: "lower_intrinsic", "todo: {:?}", name);
+                warn!(target: "lower_intrinsic", "todo: {:?}", name);
                 JsExpr::Undefined
             },
         }
@@ -97,7 +98,7 @@ impl BodyCtx<'_, '_> {
         let lhs = Box::new(self.lower_arg(lhs, block));
         let rhs = Box::new(self.lower_arg(rhs, block));
         let lib = self.owner.module(self.db.upcast()).lib;
-        let bool = self.db.lang_item(lib, "bool-type".into()).unwrap();
+        let bool = self.db.lang_item(lib, "bool-type").unwrap();
         let bool = TypeCtor::from(bool.as_type_ctor().unwrap());
         let true_ = self.mangle((bool.ctors(self.db)[1].path(self.db).to_string(), true));
         let false_ = self.mangle((bool.ctors(self.db)[0].path(self.db).to_string(), true));

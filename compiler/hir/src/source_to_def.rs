@@ -4,8 +4,9 @@ use hir_def::dyn_map::DynMap;
 use hir_def::id::{DefWithBodyId, FuncId, ModuleId};
 use hir_def::in_file::InFile;
 use hir_def::keys::{self, Key};
+use hir_def::name::AsName;
 use rustc_hash::FxHashMap;
-use syntax::{ast, AstNode, SyntaxNode};
+use syntax::{ast, AstNode, NameOwner, SyntaxNode};
 
 use crate::db::HirDatabase;
 
@@ -23,22 +24,26 @@ pub(super) enum ChildContainer {
 }
 
 impl<'a, 'b> SourceToDefCtx<'a, 'b> {
-    pub fn file_to_def(&mut self, file: FileId) -> Option<ModuleId> {
-        let lib = self.db.file_lib(file);
-        let def_map = self.db.def_map(lib);
-        let module = def_map.modules_for_file(file).next()?;
+    pub fn file_to_def(&mut self, file: FileId) -> Vec<ModuleId> {
+        let mut modules = Vec::with_capacity(1);
 
-        Some(def_map.module_id(module))
+        for &lib in self.db.relevant_libs(file).iter() {
+            let def_map = self.db.def_map(lib);
+
+            modules.extend(def_map.modules_for_file(file).map(|id| def_map.module_id(id)));
+        }
+
+        modules
     }
 
     pub fn find_container(&mut self, src: InFile<&SyntaxNode>) -> Option<ChildContainer> {
-        for node in src.value.ancestors().skip(1) {
-            if let Some(res) = self.container_to_def(InFile::new(src.file_id, node)) {
+        for container in src.ancestors() {
+            if let Some(res) = self.container_to_def(container) {
                 return Some(res);
             }
         }
 
-        let def = self.file_to_def(src.file_id)?;
+        let def = self.file_to_def(src.file_id).get(0).copied()?;
 
         Some(def.into())
     }
@@ -56,11 +61,21 @@ impl<'a, 'b> SourceToDefCtx<'a, 'b> {
     }
 
     fn module_to_def(&mut self, src: InFile<ast::ItemModule>) -> Option<ModuleId> {
-        let lib = self.db.file_lib(src.file_id);
-        let def_map = self.db.def_map(lib);
-        let mut modules = def_map.modules_for_file(src.file_id);
+        let parent_decl = src
+            .syntax()
+            .ancestors()
+            .find_map(|it| it.map(ast::ItemModule::cast).transpose());
 
-        modules.next().map(|id| def_map.module_id(id))
+        let parent_module = match parent_decl {
+            | Some(parent) => self.module_to_def(parent)?,
+            | None => return self.file_to_def(src.file_id).get(0).copied(),
+        };
+
+        let def_map = self.db.def_map(parent_module.lib);
+        let child_name = src.value.name()?.as_name();
+        let child_id = *def_map[parent_module.local_id].children.get(&child_name)?;
+
+        Some(def_map.module_id(child_id))
     }
 
     fn func_to_def(&mut self, src: InFile<ast::ItemFun>) -> Option<FuncId> {

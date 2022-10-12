@@ -1,7 +1,7 @@
 [project]
 name = "js"
 version = "0.1.0"
-link = ["../../lib/js/include/js.js"]
+link = ["include/js.js"]
 
 [dependencies]
 core = { path = "../core" }

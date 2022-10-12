@@ -78,7 +78,7 @@ impl<'a> ExprCollector<'a> {
                 let comma = {
                     let id = self
                         .db
-                        .lang_item(self.def_map.lib(), "pair-operator".into())
+                        .lang_item(self.def_map.lib(), "pair-operator")
                         .unwrap()
                         .as_fixity()
                         .unwrap();

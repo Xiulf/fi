@@ -21,3 +21,6 @@ toArray list = foldl list (new "Array") fn arr x -> push arr x
 
 member Str a of Concat =
     concat a b = concatString a b
+
+member JsArray of Default =
+    default = new "Array"

@@ -1,4 +1,4 @@
-use hir_def::id::{ClassId, TypeAliasId, TypeCtorId};
+use hir_def::id::{ClassId, TypeAliasId, TypeCtorId, TypeVarId};
 use hir_def::name::Name;
 
 use crate::db::HirDatabase;
@@ -60,7 +60,7 @@ pub struct Constraint {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeVar(u32, TypeVarScopeId);
+pub struct TypeVar(u32, TypeVarScopeId, Option<TypeVarId>);
 
 impl Ty {
     pub fn lookup(self, db: &dyn HirDatabase) -> TyKind {
@@ -104,8 +104,8 @@ impl Constraint {
 }
 
 impl TypeVar {
-    pub const fn new(idx: u32, scope: TypeVarScopeId) -> Self {
-        Self(idx, scope)
+    pub const fn new(idx: u32, scope: TypeVarScopeId, src: Option<TypeVarId>) -> Self {
+        Self(idx, scope, src)
     }
 
     pub fn to_ty(self, db: &dyn HirDatabase) -> Ty {
@@ -118,6 +118,10 @@ impl TypeVar {
 
     pub fn scope(self) -> TypeVarScopeId {
         self.1
+    }
+
+    pub fn src(self) -> Option<TypeVarId> {
+        self.2
     }
 }
 

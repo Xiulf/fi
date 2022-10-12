@@ -6,6 +6,7 @@ use hir_def::pat::PatId;
 use hir_def::type_ref::{LocalTypeRefId, LocalTypeVarId};
 
 use crate::db::HirDatabase;
+use crate::display::HirDisplay;
 use crate::infer::ExprOrPatId;
 use crate::ty::{List, TypeVar, WhereClause};
 
@@ -399,7 +400,7 @@ impl TyId {
     pub fn rescope(self, types: &mut Types, scope: TypeVarScopeId, new: TypeVarScopeId) -> TyId {
         self.everywhere(true, types, &mut |types, t| match types[t] {
             | TyInfo::TypeVar(tv) if tv.scope() == scope => {
-                types.update(t, TyInfo::TypeVar(TypeVar::new(tv.idx(), new)), true)
+                types.update(t, TyInfo::TypeVar(TypeVar::new(tv.idx(), new, tv.src())), true)
             },
             | _ => t,
         })
@@ -575,8 +576,8 @@ impl std::fmt::Display for TyDisplay<'_> {
         match self.types[self.ty] {
             | TyInfo::Error => f.write_str("{error}"),
             | TyInfo::Unknown(u) => u.fmt(f),
-            | TyInfo::Skolem(tv, k) => write!(f, "({} :: {})", tv, self.with_ty(k, false)),
-            | TyInfo::TypeVar(tv) => tv.fmt(f),
+            | TyInfo::Skolem(tv, k) => write!(f, "({} :: {})", tv.display(self.db), self.with_ty(k, false)),
+            | TyInfo::TypeVar(tv) => tv.display(self.db).fmt(f),
             | TyInfo::Figure(i) => i.fmt(f),
             | TyInfo::Symbol(ref s) => std::fmt::Debug::fmt(s, f),
             | TyInfo::Row(ref fields, Some(tail)) => {

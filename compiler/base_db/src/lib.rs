@@ -1,11 +1,12 @@
 pub mod input;
 pub mod libs;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fmt, panic};
 
 use input::{FileId, LineIndex, SourceRoot, SourceRootId};
+use libs::LibId;
+use rustc_hash::FxHashSet;
 use syntax::{ast, Parsed};
 
 pub trait Upcast<T: ?Sized> {
@@ -16,32 +17,22 @@ pub trait Upcast<T: ?Sized> {
 pub trait SourceDatabase: CheckCanceled + FileLoader {
     fn parse(&self, file_id: FileId) -> Parsed<ast::SourceFile>;
 
-    fn parse_path(&self, file_id: FileId) -> Parsed<ast::Path>;
-    fn parse_type(&self, file_id: FileId) -> Parsed<ast::Type>;
-
     #[salsa::input]
     fn libs(&self) -> Arc<libs::LibSet>;
-}
-
-#[salsa::query_group(SourceDatabaseExtStorage)]
-pub trait SourceDatabaseExt: SourceDatabase {
-    #[salsa::input]
-    fn file_text(&self, file_id: FileId) -> Arc<String>;
 
     #[salsa::input]
     fn file_source_root(&self, file_id: FileId) -> SourceRootId;
 
     #[salsa::input]
-    fn file_lib(&self, file_id: FileId) -> libs::LibId;
-
-    #[salsa::input]
-    fn lib_source_root(&self, lib: libs::LibId) -> SourceRootId;
-
-    #[salsa::input]
     fn source_root(&self, id: SourceRootId) -> Arc<SourceRoot>;
+}
 
+#[salsa::query_group(SourceDatabaseExtStorage)]
+pub trait SourceDatabaseExt: SourceDatabase {
     #[salsa::input]
-    fn target_dir(&self, lib: libs::LibId) -> PathBuf;
+    fn file_text(&self, file_id: FileId) -> Arc<str>;
+
+    fn source_root_libs(&self, id: SourceRootId) -> Arc<FxHashSet<LibId>>;
 
     fn line_index(&self, file_id: FileId) -> Arc<LineIndex>;
 }
@@ -52,16 +43,14 @@ fn parse(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::SourceFile> {
     ast::SourceFile::parse(&*text)
 }
 
-fn parse_path(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Path> {
-    let text = db.file_text(file_id);
+fn source_root_libs(db: &dyn SourceDatabaseExt, id: SourceRootId) -> Arc<FxHashSet<LibId>> {
+    let libs = db.libs();
 
-    Parsed::<ast::Path>::parse(&*text)
-}
-
-fn parse_type(db: &dyn SourceDatabase, file_id: FileId) -> Parsed<ast::Type> {
-    let text = db.file_text(file_id);
-
-    Parsed::<ast::Type>::parse(&*text)
+    Arc::new(
+        libs.iter()
+            .filter(|&lib| db.file_source_root(libs[lib].root_file) == id)
+            .collect(),
+    )
 }
 
 fn line_index(db: &dyn SourceDatabaseExt, file_id: FileId) -> Arc<LineIndex> {
@@ -71,14 +60,21 @@ fn line_index(db: &dyn SourceDatabaseExt, file_id: FileId) -> Arc<LineIndex> {
 }
 
 pub trait FileLoader {
-    fn file_text(&self, file_id: FileId) -> Arc<String>;
+    fn file_text(&self, file_id: FileId) -> Arc<str>;
+    fn relevant_libs(&self, file_id: FileId) -> Arc<FxHashSet<LibId>>;
 }
 
 pub struct FileLoaderDelegate<T>(pub T);
 
 impl<T: SourceDatabaseExt> FileLoader for FileLoaderDelegate<&'_ T> {
-    fn file_text(&self, file_id: FileId) -> Arc<String> {
+    fn file_text(&self, file_id: FileId) -> Arc<str> {
         SourceDatabaseExt::file_text(self.0, file_id)
+    }
+
+    fn relevant_libs(&self, file_id: FileId) -> Arc<FxHashSet<LibId>> {
+        let source_root = self.0.file_source_root(file_id);
+
+        self.0.source_root_libs(source_root)
     }
 }
 
@@ -121,4 +117,40 @@ impl fmt::Display for Canceled {
 }
 
 impl std::error::Error for Canceled {
+}
+
+#[derive(Debug)]
+pub struct ICE(pub std::borrow::Cow<'static, str>);
+
+impl ICE {
+    pub fn throw(msg: impl Into<std::borrow::Cow<'static, str>>) -> ! {
+        panic::panic_any(Self(msg.into()))
+    }
+}
+
+impl fmt::Display for ICE {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "internal compiler error: '{}'", self.0)
+    }
+}
+
+impl std::error::Error for ICE {
+}
+
+#[derive(Debug)]
+pub struct Error(pub std::borrow::Cow<'static, str>);
+
+impl Error {
+    pub fn throw(msg: impl Into<std::borrow::Cow<'static, str>>) -> ! {
+        panic::panic_any(Self(msg.into()))
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error: '{}'", self.0)
+    }
+}
+
+impl std::error::Error for Error {
 }

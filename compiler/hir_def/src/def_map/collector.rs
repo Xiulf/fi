@@ -1,4 +1,5 @@
 use base_db::input::FileId;
+use cfg::CfgOptions;
 use rustc_hash::{FxHashMap, FxHashSet};
 use syntax::{ast, NameOwner};
 
@@ -19,8 +20,10 @@ use crate::visibility::Visibility;
 const GLOBAL_RECURSION_LIMIT: usize = 100;
 
 pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
+    let lib_data = db.libs();
     let mut collector = DefCollector {
         db,
+        cfg_opts: &lib_data[def_map.lib].cfg_options,
         def_map,
         glob_imports: FxHashMap::default(),
         reexports: FxHashMap::default(),
@@ -46,6 +49,7 @@ pub fn collect_defs(db: &dyn DefDatabase, def_map: DefMap) -> DefMap {
 
 struct DefCollector<'a> {
     db: &'a dyn DefDatabase,
+    cfg_opts: &'a CfgOptions,
     def_map: DefMap,
     glob_imports: FxHashMap<LocalModuleId, FxHashSet<LocalModuleId>>,
     reexports: FxHashMap<LocalModuleId, FxHashSet<LocalModuleId>>,
@@ -104,7 +108,7 @@ impl PartialResolvedImport {
 
 impl<'a> DefCollector<'a> {
     fn seed_with_items(&mut self) {
-        let source_root = self.db.lib_source_root(self.def_map.lib);
+        let source_root = self.db.file_source_root(self.db.libs()[self.def_map.lib].root_file);
         let source_root = self.db.source_root(source_root);
         let mut modules = Vec::new();
 
@@ -132,7 +136,7 @@ impl<'a> DefCollector<'a> {
             Some(())
         };
 
-        for file in source_root.files() {
+        for file in source_root.source_files() {
             let source_file = self.db.parse(file).tree();
 
             if let Some(module) = source_file.module() {
@@ -374,19 +378,6 @@ impl<'a> DefCollector<'a> {
                 depth + 1,
             );
         }
-
-        // let reexports = self
-        //     .reexports
-        //     .get(&module_id)
-        //     .into_iter()
-        //     .flat_map(|v| v.iter())
-        //     .flat_map(|m| self.glob_imports.get(m).into_iter().flat_map(|v| v.iter()))
-        //     .copied()
-        //     .collect::<Vec<_>>();
-        //
-        // for m in reexports {
-        //     self.update_recursive(m, resolutions, visibility, ImportType::Glob, depth + 1);
-        // }
     }
 }
 
@@ -490,6 +481,13 @@ impl<'a, 'b> ModCollector<'a, 'b> {
 
         for &item in items {
             let mut def = None;
+            let attrs = self.item_tree.attrs(item.into());
+
+            if let Some(cfg) = attrs.cfg() {
+                if !cfg.is_enabled(self.def_collector.cfg_opts) {
+                    continue;
+                }
+            }
 
             match item {
                 | Item::Module(id) => {
@@ -502,6 +500,10 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                         .def_collector
                         .def_map
                         .add_module(it.name.clone(), Some(self.module_id));
+
+                    self.def_collector.def_map.modules[self.module_id]
+                        .children
+                        .insert(it.name.clone(), module_id);
 
                     self.def_collector.def_map.modules[module_id].origin = super::ModuleOrigin::Inline {
                         def_id: InFile::new(self.file_id, id),
@@ -683,6 +685,14 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                     };
 
                     for (i, local_id) in it.ctors.clone().enumerate() {
+                        let attrs = self.item_tree.attrs(local_id.into());
+
+                        if let Some(cfg) = attrs.cfg() {
+                            if !cfg.is_enabled(self.def_collector.cfg_opts) {
+                                continue;
+                            }
+                        }
+
                         let data = &self.item_tree[local_id];
                         let id = CtorId {
                             parent: new_id,
@@ -718,8 +728,21 @@ impl<'a, 'b> ModCollector<'a, 'b> {
                     let data = self.def_collector.db.class_data(new_id);
                     let visibility = self.resolve_visibility(&it.name, ExportNs::Types);
 
-                    for (name, id) in data.items.iter() {
-                        let id = match *id {
+                    for &(ref name, id) in data.items.iter() {
+                        let it = match id {
+                            | AssocItemId::FuncId(id) => Item::Func(id.lookup(self.def_collector.db).id.value),
+                            | AssocItemId::StaticId(id) => Item::Static(id.lookup(self.def_collector.db).id.value),
+                        };
+
+                        let attrs = self.item_tree.attrs(it.into());
+
+                        if let Some(cfg) = attrs.cfg() {
+                            if !cfg.is_enabled(self.def_collector.cfg_opts) {
+                                continue;
+                            }
+                        }
+
+                        let id = match id {
                             | AssocItemId::FuncId(id) => ModuleDefId::FuncId(id),
                             | AssocItemId::StaticId(id) => ModuleDefId::StaticId(id),
                         };
@@ -753,13 +776,33 @@ impl<'a, 'b> ModCollector<'a, 'b> {
             }
 
             if let Some(DefData { id, name, visibility }) = def {
+                let perns = PerNs::from(id);
+                let prev = self.def_collector.def_map.modules[self.module_id].scope.get(&name);
+
+                match (prev.types, prev.values, perns.types, perns.values) {
+                    | (Some((prev, _)), _, Some(new), None) | (_, Some((prev, _)), None, Some(new)) => {
+                        let ast_id_map = self.def_collector.db.ast_id_map(self.file_id);
+                        let prev = prev.source(self.def_collector.db);
+                        let prev = prev.map(|p| ast_id_map.ast_id(&p));
+                        let new = new.source(self.def_collector.db);
+                        let new = new.map(|n| ast_id_map.ast_id(&n));
+
+                        self.def_collector
+                            .def_map
+                            .diagnostics
+                            .push(DefDiagnostic::duplicate_declaration(
+                                self.module_id,
+                                name.clone(),
+                                prev,
+                                new,
+                            ));
+                    },
+                    | _ => {},
+                }
+
                 self.def_collector.def_map.modules[self.module_id].scope.define_def(id);
-                self.def_collector.update(
-                    self.module_id,
-                    &[(name.clone(), PerNs::from(id))],
-                    visibility,
-                    ImportType::Named,
-                );
+                self.def_collector
+                    .update(self.module_id, &[(name.clone(), perns)], visibility, ImportType::Named);
             }
         }
     }

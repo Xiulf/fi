@@ -10,14 +10,17 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 use arena::ArenaMap;
+use base_db::Error;
 use diagnostics::InferenceDiagnostic;
 use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
 use hir_def::id::{
-    AssocItemId, ClassId, ContainerId, DefWithBodyId, FixityId, HasModule, MemberId, TypeCtorId, TypeVarOwner,
+    AssocItemId, ClassId, ContainerId, DefWithBodyId, FixityId, HasModule, MemberId, TypeCtorId, TypeVarId,
+    TypeVarOwner, TypedDefId,
 };
 use hir_def::infix::ProcessInfix;
+use hir_def::lang_item::{self, LangItem};
 use hir_def::name::Name;
 use hir_def::pat::PatId;
 use hir_def::path::Path;
@@ -57,6 +60,10 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
             let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
+
+            if db.attrs(id.into()).by_key("main").exists() {
+                lcx.main_fn(ty, db.body(id.into()).body_expr());
+            }
 
             lcx.check_kind_type(ty);
             (ty, data.name.clone())
@@ -263,38 +270,41 @@ impl<'a> InferenceContext<'a> {
         Ty::from_info(self.db, &self.types, ty)
     }
 
-    pub(crate) fn lang_type(&mut self, name: &'static str, src: TySource) -> TyId {
+    fn lang_item(&self, name: &'static str) -> LangItem {
         let module = self.owner.module(self.db.upcast());
-        let ty = self.db.lang_item(module.lib, name.into()).expect(name);
-        let ty = ty.as_type_ctor().unwrap();
+
+        match self.db.lang_item(module.lib, name) {
+            | Some(item) => item,
+            | None => Error::throw(format!("missing language item '{}'", name)),
+        }
+    }
+
+    pub(crate) fn lang_type(&mut self, name: &'static str, src: TySource) -> TyId {
+        let ty = self.lang_ctor(name);
 
         self.types.insert(TyInfo::Ctor(ty), src)
     }
 
     pub(crate) fn lang_ctor(&self, name: &'static str) -> TypeCtorId {
-        let module = self.owner.module(self.db.upcast());
-        let ty = self.db.lang_item(module.lib, name.into()).expect(name);
-
-        ty.as_type_ctor().unwrap()
-    }
-
-    pub(crate) fn type_kind(&mut self, src: TySource) -> TyId {
-        let module = self.owner.module(self.db.upcast());
-        let ty = self.db.lang_item(module.lib, "type-kind".into()).unwrap();
-        let ty = ty.as_type_ctor().unwrap();
-
-        self.types.insert(TyInfo::Ctor(ty), src)
+        match self.lang_item(name).as_type_ctor() {
+            | Some(it) => it,
+            | None => Error::throw(format!("language item '{}' must be a type constructor", name)),
+        }
     }
 
     pub(crate) fn lang_class(&self, name: &'static str) -> ClassId {
-        let module = self.owner.module(self.db.upcast());
-        let id = self.db.lang_item(module.lib, name.into()).expect(name);
+        match self.lang_item(name).as_class() {
+            | Some(it) => it,
+            | None => Error::throw(format!("language item '{}' must be a type class", name)),
+        }
+    }
 
-        id.as_class().unwrap()
+    pub(crate) fn type_kind(&mut self, src: TySource) -> TyId {
+        self.lang_type(lang_item::TYPE_KIND, src)
     }
 
     pub(crate) fn fn_args(&self, mut ty: TyId, mut max_args: usize) -> (List<TyId>, TyId) {
-        let fn_ctor = self.lang_ctor("fn-type");
+        let fn_ctor = self.lang_ctor(lang_item::FN_TYPE);
         let mut args = Vec::new();
 
         while let Some(a) = ty.match_ctor(&self.types, fn_ctor) {
@@ -315,7 +325,7 @@ impl<'a> InferenceContext<'a> {
         I: IntoIterator<Item = TyId>,
         I::IntoIter: DoubleEndedIterator,
     {
-        let fn_type = self.lang_type("fn-type", src);
+        let fn_type = self.lang_type(lang_item::FN_TYPE, src);
 
         args.into_iter()
             .rev()
@@ -354,7 +364,7 @@ impl<'a> InferenceContext<'a> {
     }
 
     pub(crate) fn unit(&mut self, src: TySource) -> TyId {
-        self.lang_type("unit-type", src)
+        self.lang_type(lang_item::UNIT_TYPE, src)
     }
 
     pub(crate) fn source(&self, origin: impl Into<TypeOrigin>) -> TySource {
@@ -408,12 +418,41 @@ impl<'a> InferenceContext<'a> {
         self.type_vars.add_scope(vars);
     }
 
+    pub(crate) fn main_fn(&mut self, ann: TyId, body: ExprId) {
+        let termination = self.lang_class(lang_item::TERMINATION_CLASS);
+
+        self.constrain(
+            CtntExpected::ExprOrPat(body.into()),
+            CtntFound::ExprOrPat(body.into()),
+            CtntInfo {
+                class: termination,
+                types: Box::new([ann]),
+            },
+        );
+    }
+
     pub(crate) fn class_item(&mut self, class: ClassId, ann: TyId) -> TyId {
         let src = self.source(TypeOrigin::Def(class.into()));
+        let data = self.db.class_data(class);
         let lower = self.db.lower_class(class);
         let scope = self.type_vars.top_scope();
-        let types = (0..lower.class.vars.len() as u32)
-            .map(|i| self.types.insert(TyInfo::TypeVar(TypeVar::new(i, scope)), src))
+        let types = data
+            .type_vars
+            .iter()
+            .enumerate()
+            .map(|(i, &var)| {
+                self.types.insert(
+                    TyInfo::TypeVar(TypeVar::new(
+                        i as u32,
+                        scope,
+                        Some(TypeVarId {
+                            owner: TypedDefId::ClassId(class).into(),
+                            local_id: var,
+                        }),
+                    )),
+                    src,
+                )
+            })
             .collect::<List<_>>();
 
         let kinds = lower

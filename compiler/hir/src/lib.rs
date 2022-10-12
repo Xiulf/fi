@@ -93,8 +93,13 @@ impl Module {
 
     pub fn file_id(self, db: &dyn HirDatabase) -> FileId {
         let def_map = db.def_map(self.id.lib);
+        let mut local_id = self.id.local_id;
 
-        def_map[self.id.local_id].origin.file_id(&def_map)
+        while let Some(parent) = def_map[local_id].parent {
+            local_id = parent;
+        }
+
+        def_map[local_id].origin.file_id().unwrap()
     }
 
     pub fn parent(self, db: &dyn HirDatabase) -> Option<Module> {
@@ -165,13 +170,7 @@ impl Module {
     }
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
-        let file = self.file_id(db);
-        let item_tree = db.item_tree(file);
         let def_map = db.def_map(self.id.lib);
-
-        for diag in &item_tree.diagnostics {
-            diag.add_to(db.upcast(), &item_tree, sink);
-        }
 
         for diag in def_map.diagnostics() {
             diag.add_to(db.upcast(), self.id.local_id, sink);
@@ -397,7 +396,7 @@ impl Func {
         // let data = db.func_data(self.id);
         // let body = db.body(self.id.into());
 
-        // if data.name.as_ref() == "sequences" {
+        // if data.name.as_ref() == "into" {
         //     // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
         //     eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 

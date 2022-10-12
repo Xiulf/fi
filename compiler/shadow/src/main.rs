@@ -3,108 +3,279 @@
 mod interactive;
 
 use std::io;
+use std::path::{Path, PathBuf};
 
 use base_db::libs::LibKind;
-use clap::clap_app;
-use driver::{Driver, Opts};
+use base_db::{Error, ICE};
+use clap::{Args, Parser, Subcommand};
+use driver::{Driver, InitNoManifestOpts, InitOpts, Optimization};
+use project::manifest::{Cfg, TomlValue};
+use tracing::{debug, Level};
 
-fn main() -> io::Result<()> {
-    let matches = clap_app!(shadow =>
-        (@setting VersionlessSubcommands)
-        (@arg file: +takes_value)
-        (@arg target: --target +takes_value)
-        (@arg output: --output +takes_value)
-        (@subcommand check =>
-            (@arg input: +takes_value default_value("."))
-        )
-        (@subcommand build =>
-            (@arg target: --target +takes_value)
-            (@arg input: +takes_value default_value("."))
-        )
-        (@subcommand run =>
-            (@setting TrailingVarArg)
-            (@arg target: --target +takes_value)
-            (@arg input: +takes_value default_value("."))
-            (@arg args: ...)
-        )
-    )
-    .get_matches();
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+struct Cli {
+    #[clap(flatten)]
+    args: CliArgs,
 
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Debug)
-        .filter_module("salsa", log::LevelFilter::Off)
-        .format_timestamp(None)
+    #[clap(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Args, Debug)]
+struct CliArgs {
+    #[clap(requires = "name", value_hint = clap::ValueHint::FilePath)]
+    files: Vec<PathBuf>,
+
+    #[clap(long, short, requires = "files")]
+    name: Option<String>,
+
+    #[clap(long, requires = "files")]
+    target: Option<String>,
+
+    #[clap(long, requires = "files", value_parser = parse_output)]
+    output: Option<LibKind>,
+
+    #[clap(short = 'O', value_parser = parse_optimization)]
+    optimization: Option<Optimization>,
+
+    #[clap(long = "link", short, requires = "files")]
+    links: Vec<PathBuf>,
+
+    #[clap(long = "dep", short, requires = "files")]
+    dependencies: Vec<PathBuf>,
+
+    #[clap(long, global = true, value_parser = parse_cfg)]
+    cfg: Vec<(String, TomlValue)>,
+
+    #[clap(short = 'v', long, global = true, action = clap::ArgAction::Count)]
+    verbose: u8,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum BasicCommands {
+    Check(CheckArgs),
+    Build(BuildArgs),
+
+    #[clap(trailing_var_arg = true)]
+    Run(RunArgs),
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[clap(flatten)]
+    Basic(BasicCommands),
+    Watch(WatchArgs),
+    Lsp(LspArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+struct CheckArgs {
+    #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    input: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+struct BuildArgs {
+    #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    input: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+struct RunArgs {
+    #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    input: PathBuf,
+
+    #[clap(last = true)]
+    args: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+struct WatchArgs {
+    #[clap(subcommand)]
+    command: BasicCommands,
+}
+
+#[derive(Args, Debug)]
+struct LspArgs {
+    #[clap(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    input: PathBuf,
+}
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    let _ = tracing_subscriber::fmt()
+        .without_time()
+        .with_max_level(match cli.args.verbose {
+            | 0 => Level::WARN,
+            | 1 => Level::INFO,
+            | 2 => Level::DEBUG,
+            | _ => Level::TRACE,
+        })
         .init();
 
     std::panic::set_hook(Box::new(|info| {
         let loc = info.location().unwrap();
+
+        if let Some(ice) = info.payload().downcast_ref::<ICE>() {
+            eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", ice.0, loc);
+            return;
+        }
+
+        if let Some(err) = info.payload().downcast_ref::<Error>() {
+            eprintln!("\x1B[31mError:\x1B[0m '{}'", err.0);
+            return;
+        }
+
         let msg = match info.payload().downcast_ref::<&'static str>() {
             | Some(s) => *s,
             | None => match info.payload().downcast_ref::<String>() {
                 | Some(s) => &s[..],
-                | None => "Box<Any>",
+                | None => "...",
             },
         };
 
-        eprintln!("\x1B[31mInternal Compiler Error\x1B[0m: '{}' at {}", msg, loc);
+        eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", msg, loc);
     }));
 
-    if let Some(matches) = matches.subcommand_matches("check") {
-        let input = matches.value_of("input").unwrap();
+    run_cli(cli)
+}
 
-        if let Some((driver, _)) = Driver::init(Opts {
-            input,
-            ..Opts::default()
-        }) {
-            driver.check()?;
-        }
-    } else if let Some(matches) = matches.subcommand_matches("build") {
-        let input = matches.value_of("input").unwrap();
-        let target = matches.value_of("target");
+fn run_cli(cli: Cli) -> anyhow::Result<()> {
+    let Cli { args, command } = cli;
 
-        if let Some((driver, _)) = Driver::init(Opts {
-            input,
-            target,
-            ..Opts::default()
-        }) {
-            driver.build()?;
-        }
-    } else if let Some(matches) = matches.subcommand_matches("run") {
-        let input = matches.value_of("input").unwrap();
-        let target = matches.value_of("target");
+    match command {
+        | Some(command) => match command {
+            | Commands::Basic(command) => {
+                let (driver, ws) = setup_basic(args, &command)?;
+                run_basic(&driver, ws, &command).map(|_| ())?;
+                Ok(())
+            },
+            | Commands::Watch(watch) => run_watch(args, watch),
+            | Commands::Lsp(lsp) => run_lsp(args, lsp),
+        },
+        | None if !args.files.is_empty() => run_files(args),
+        | None => {
+            interactive::run();
+            Ok(())
+        },
+    }
+}
 
-        if let Some((driver, lib)) = Driver::init(Opts {
-            input,
-            target,
-            ..Opts::default()
-        }) {
-            let status = if let Some(args) = matches.values_of_os("args") {
-                driver.run(lib, args.into_iter())
-            } else {
-                driver.run(lib, std::iter::empty())
-            }?;
+fn setup_basic(cli: CliArgs, command: &BasicCommands) -> anyhow::Result<(Driver, usize)> {
+    let cfg: Cfg = cli.cfg.into_iter().collect();
+    let input = match &command {
+        | BasicCommands::Check(args) => &args.input,
+        | BasicCommands::Build(args) => &args.input,
+        | BasicCommands::Run(args) => &args.input,
+    };
 
-            if status {
-                std::process::exit(0);
-            } else {
-                std::process::exit(1);
+    Driver::init(InitOpts {
+        target: cli.target.as_deref(),
+        input,
+        cfg,
+        ..InitOpts::default()
+    })
+}
+
+fn run_basic(driver: &Driver, ws: usize, command: &BasicCommands) -> io::Result<bool> {
+    match command {
+        | BasicCommands::Check(_) => driver.check(),
+        | BasicCommands::Build(_) => driver.build(ws),
+        | BasicCommands::Run(args) => driver.run(ws, args.args.iter()),
+    }
+}
+
+fn run_files(cli: CliArgs) -> anyhow::Result<()> {
+    let cfg: Cfg = cli.cfg.into_iter().collect();
+    let name = cli.name.unwrap();
+    let output = cli.output.unwrap_or_default();
+    let optimization = cli.optimization.unwrap_or_default();
+    let (driver, ws) = Driver::init_without_manifest(InitNoManifestOpts {
+        name: &name,
+        target: cli.target.as_deref(),
+        files: cli.files.iter().map(|p| p.as_path()).collect(),
+        links: cli.links.iter().map(|p| p.as_path()).collect(),
+        dependencies: cli.dependencies.iter().map(|p| p.as_path()).collect(),
+        optimization,
+        output,
+        cfg,
+    })?;
+
+    driver.build(ws)?;
+    Ok(())
+}
+
+fn run_lsp(_cli: CliArgs, _args: LspArgs) -> anyhow::Result<()> {
+    language_server::run()
+}
+
+fn run_watch(cli: CliArgs, args: WatchArgs) -> anyhow::Result<()> {
+    use notify::event::{CreateKind, EventKind, RemoveKind};
+    use notify::Watcher;
+
+    if let Ok(_driver) = setup_basic(cli, &args.command) {
+        let input = match &args.command {
+            | BasicCommands::Check(args) => &args.input,
+            | BasicCommands::Build(args) => &args.input,
+            | BasicCommands::Run(args) => &args.input,
+        };
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut watcher = notify::recommended_watcher(tx)?;
+
+        watcher.watch(Path::new(input), notify::RecursiveMode::Recursive)?;
+
+        for res in rx {
+            if let Ok(event) = res {
+                match event.kind {
+                    | EventKind::Create(CreateKind::File) => {
+                        debug!("added: {:?}", event.paths);
+                    },
+                    | EventKind::Remove(RemoveKind::File) => {
+                        debug!("removed: {:?}", event.paths);
+                    },
+                    | EventKind::Modify(_) => {
+                        debug!("modified: {:?}", event.paths);
+                    },
+                    | _ => continue,
+                }
             }
         }
-    } else if let Some(input) = matches.value_of("file") {
-        let target = matches.value_of("target");
-        let output = matches.value_of("output").map(|o| match o {
-            | "dynamic" => LibKind::Dynamic,
-            | "static" => LibKind::Static,
-            | "executable" => LibKind::Executable,
-            | _ => panic!("invalid output kind '{}'", o),
-        });
-
-        if let Some((driver, _)) = Driver::init_no_manifest(Opts { input, target, output }) {
-            driver.build()?;
-        }
-    } else {
-        interactive::run();
     }
 
     Ok(())
+}
+
+fn parse_output(s: &str) -> Result<LibKind, String> {
+    match s {
+        | "dynamic" => Ok(LibKind::Dynamic),
+        | "static" => Ok(LibKind::Static),
+        | "executable" => Ok(LibKind::Executable),
+        | _ => Err(format!("invalid output kind '{}'", s)),
+    }
+}
+
+fn parse_optimization(s: &str) -> Result<Optimization, String> {
+    match s.to_lowercase().as_str() {
+        | "0" | "none" => Ok(Optimization::None),
+        | _ => Err(format!("`{}` isn't a valid optimization", s)),
+    }
+}
+
+fn parse_cfg(s: &str) -> Result<(String, TomlValue), String> {
+    if let Some((key, value)) = s.split_once('=') {
+        let value = if let Ok(i) = value.parse::<i64>() {
+            TomlValue::Integer(i)
+        } else if let Ok(f) = value.parse::<f64>() {
+            TomlValue::Float(f)
+        } else {
+            TomlValue::String(value.into())
+        };
+
+        Ok((key.into(), value))
+    } else {
+        Ok((s.into(), TomlValue::Boolean(true)))
+    }
 }

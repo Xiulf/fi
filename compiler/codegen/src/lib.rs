@@ -12,6 +12,12 @@ pub enum CompilerTarget {
     Javascript,
 }
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Optimization {
+    #[default]
+    None,
+}
+
 pub(crate) fn build_assembly(db: &dyn db::CodegenDatabase, lib: hir::Lib) -> Arc<assembly::Assembly> {
     let mut objects = Vec::new();
 

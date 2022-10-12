@@ -1,6 +1,7 @@
 use base_db::input::FileId;
 use base_db::SourceDatabase;
 use syntax::syntax_node::SyntaxNode;
+use syntax::AstNode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InFile<T> {
@@ -42,5 +43,19 @@ impl<T> InFile<Option<T>> {
             file_id: self.file_id,
             value: self.value?,
         })
+    }
+}
+
+impl<N: AstNode> InFile<N> {
+    pub fn syntax(&self) -> InFile<&SyntaxNode> {
+        self.with_value(self.value.syntax())
+    }
+}
+
+impl InFile<&SyntaxNode> {
+    pub fn ancestors(self) -> impl Iterator<Item = InFile<SyntaxNode>> {
+        let succ = move |node: &InFile<SyntaxNode>| Some(node.with_value(node.value.parent()?));
+
+        std::iter::successors(succ(&self.cloned()), succ)
     }
 }

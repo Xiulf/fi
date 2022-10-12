@@ -139,7 +139,7 @@ impl BodyCtx<'_, '_> {
 
             match resolved {
                 | ValueNs::Fixity(id) => match db.fixity_data(id).kind {
-                    | hir::FixityKind::Infix { assoc, prec } => ((id, assoc, prec)),
+                    | hir::FixityKind::Infix { assoc, prec } => (id, assoc, prec),
                     | _ => unreachable!(),
                 },
                 | _ => unreachable!(),

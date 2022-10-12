@@ -5,4 +5,4 @@ authors = ["Cyberduc-k <tttymo@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-log = "0.4.17"
+tracing = "^0.1"

@@ -35,6 +35,7 @@ pub struct ModuleData {
     pub exports: ItemExports,
     pub origin: ModuleOrigin,
     pub parent: Option<LocalModuleId>,
+    pub children: FxHashMap<Name, LocalModuleId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,7 +87,7 @@ impl DefMap {
     pub fn modules_for_file(&self, file_id: FileId) -> impl Iterator<Item = LocalModuleId> + '_ {
         self.modules
             .iter()
-            .filter(move |(_, data)| data.origin.file_id(self) == file_id)
+            .filter(move |(_, data)| data.origin.file_id() == Some(file_id))
             .map(|(id, _)| id)
     }
 
@@ -137,11 +138,10 @@ impl Default for ModuleOrigin {
 }
 
 impl ModuleOrigin {
-    pub fn file_id(&self, def_map: &DefMap) -> FileId {
+    pub fn file_id(&self) -> Option<FileId> {
         match *self {
-            | ModuleOrigin::Normal { declaration } => declaration.file_id,
-            | ModuleOrigin::Inline { def, .. } => def.file_id,
-            | ModuleOrigin::Virtual { parent } => def_map[parent].origin.file_id(def_map),
+            | ModuleOrigin::Normal { declaration } => Some(declaration.file_id),
+            | _ => None,
         }
     }
 

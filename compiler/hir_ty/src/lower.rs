@@ -4,6 +4,7 @@ use arena::ArenaMap;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::id::*;
 use hir_def::infix::ProcessInfix;
+use hir_def::lang_item;
 use hir_def::path::Path;
 use hir_def::resolver::{HasResolver, Resolver, TypeNs};
 use hir_def::type_ref::{LocalTypeRefId, TypeMap, TypeRef};
@@ -144,9 +145,9 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             },
             | TypeRef::Record(fields, tail) => {
                 let row = self.lower_row(fields, *tail, ty);
-                let record_ty = self.lang_type("record-type", src);
+                let record_ty = self.lang_type(lang_item::RECORD_TYPE, src);
                 let type_kind = self.type_kind(src);
-                let row_kind = self.lang_type("row-kind", src);
+                let row_kind = self.lang_type(lang_item::ROW_KIND, src);
                 let row_kind = self.icx.types.insert(TyInfo::App(row_kind, [type_kind].into()), src);
 
                 self.check_kind(row, row_kind);
@@ -220,7 +221,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
             })
             .collect();
 
-        let row_kind = self.lang_type("row-kind", src);
+        let row_kind = self.lang_type(lang_item::ROW_KIND, src);
         let row_kind = self.icx.types.insert(TyInfo::App(row_kind, [elem_kind].into()), src);
         let tail = tail.map(|t| {
             let ty = self.lower_ty(t);
@@ -276,7 +277,7 @@ impl InferenceContext<'_> {
             | TypeNs::TypeVar(id) => {
                 let (idx, depth) = self.resolver.type_var_index(id).unwrap();
                 let scope = self.type_vars.scope_at(depth);
-                let type_var = TypeVar::new(idx as u32, scope);
+                let type_var = TypeVar::new(idx as u32, scope, Some(id));
 
                 self.types.insert(TyInfo::TypeVar(type_var), src)
             },
@@ -475,7 +476,7 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
             .map(|i| {
                 ctx.icx
                     .types
-                    .insert(TyInfo::TypeVar(TypeVar::new(i as u32, *scope)), src)
+                    .insert(TyInfo::TypeVar(TypeVar::new(i as u32, *scope, None)), src)
             })
             .collect::<Vec<_>>();
 
@@ -629,7 +630,14 @@ pub(crate) fn lower_class_query(db: &dyn HirDatabase, id: ClassId) -> Arc<ClassL
         .iter()
         .enumerate()
         .map(|(i, &var)| {
-            let type_var = TypeVar::new(i as u32, scope);
+            let type_var = TypeVar::new(
+                i as u32,
+                scope,
+                Some(TypeVarId {
+                    owner: TypeVarOwner::TypedDefId(id.into()),
+                    local_id: var,
+                }),
+            );
 
             (&type_map[var].name, type_var)
         })
@@ -714,7 +722,7 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
             .types
             .iter()
             .zip(lower.class.vars.iter())
-            .map(|(&ty, kind)| {
+            .map(|(&ty, &kind)| {
                 let src = ctx.source(ty);
                 let kind = kind.to_info(db, &mut ctx.icx.types, &mut ctx.icx.type_vars, src);
                 let ty_ = ctx.lower_ty(ty);
@@ -807,9 +815,9 @@ pub fn verify_member(db: &dyn HirDatabase, id: MemberId) -> Vec<InferenceDiagnos
     ctx.finish().diagnostics
 }
 
-fn var_kinds(ctx: &mut LowerCtx, vars: Vec<TyId>, src: TySource) -> Box<[TyId]> {
+fn var_kinds(ctx: &mut LowerCtx, kinds: Vec<TyId>, src: TySource) -> Box<[TyId]> {
     let type_kind = std::cell::OnceCell::new();
-    let vars = vars
+    let vars = kinds
         .into_iter()
         .map(|kind| {
             let kind = ctx.subst_type(kind);

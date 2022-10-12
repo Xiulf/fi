@@ -1,6 +1,7 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
+use cfg::{Cfg, CfgAtom, CfgValue};
 use either::Either;
 use syntax::ast;
 
@@ -10,6 +11,8 @@ use crate::id::{AttrDefId, Lookup};
 use crate::in_file::InFile;
 use crate::item_tree::{ItemTreeId, ItemTreeNode};
 use crate::name::{AsName, Name};
+
+const CFG_ATTR: &'static str = "if";
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Attrs(pub(crate) RawAttrs);
@@ -53,6 +56,10 @@ impl Attrs {
 
     pub fn by_key(&self, key: &'static str) -> AttrQuery<'_> {
         AttrQuery { attrs: self, key }
+    }
+
+    pub fn cfg(&self) -> Option<Cfg> {
+        cfg_parse(self)
     }
 }
 
@@ -113,6 +120,10 @@ impl<'a> AttrQuery<'a> {
 
     pub fn exists(self) -> bool {
         self.attrs().next().is_some()
+    }
+
+    pub fn groups(self) -> impl Iterator<Item = &'a AttrInputGroup> + Clone {
+        self.attrs().filter_map(Attr::group)
     }
 
     pub fn attrs(self) -> impl Iterator<Item = &'a Attr> + Clone {
@@ -252,6 +263,10 @@ impl AttrInputGroup {
     pub fn string(&self) -> Option<&str> {
         self.0.iter().find_map(AttrInput::string)
     }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a AttrInput> {
+        self.0.iter()
+    }
 }
 
 impl Literal {
@@ -279,6 +294,45 @@ fn collect_attrs(owner: &dyn ast::AttrsOwner) -> impl Iterator<Item = Either<ast
         .map(Either::Right);
 
     docs.chain(attrs)
+}
+
+fn cfg_parse(attrs: &Attrs) -> Option<Cfg> {
+    let mut cfgs = attrs.by_key(CFG_ATTR).groups().map(cfg_parse_attr);
+    let a = cfgs.next()?;
+
+    match cfgs.next() {
+        | Some(b) => Some(Cfg::All([a, b].into_iter().chain(cfgs).collect())),
+        | None => Some(a),
+    }
+}
+
+fn cfg_parse_attr(group: &AttrInputGroup) -> Cfg {
+    group.iter().find_map(cfg_parse_expr).unwrap_or(Cfg::Invalid)
+}
+
+fn cfg_parse_expr(input: &AttrInput) -> Option<Cfg> {
+    match input {
+        | AttrInput::Ident(name) => Some(Cfg::Atom(CfgAtom::Flag(name.into()))),
+        | AttrInput::Field(name, value) => match &**value {
+            | AttrInput::Group(g) => match name.as_ref() {
+                | "not" => Some(Cfg::Not(Box::new(cfg_parse_attr(g)))),
+                | "any" => Some(Cfg::Any(g.iter().filter_map(cfg_parse_expr).collect())),
+                | "all" => Some(Cfg::All(g.iter().filter_map(cfg_parse_expr).collect())),
+                | _ => None,
+            },
+            | AttrInput::Literal(l) => {
+                let value = match l {
+                    | Literal::Int(i) => CfgValue::Int(*i),
+                    | Literal::String(s) => CfgValue::String(s.into()),
+                    | _ => return None,
+                };
+
+                Some(Cfg::Atom(CfgAtom::Key(name.into(), value)))
+            },
+            | _ => None,
+        },
+        | _ => None,
+    }
 }
 
 impl Deref for RawAttrs {

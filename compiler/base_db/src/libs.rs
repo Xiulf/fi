@@ -1,9 +1,10 @@
 use std::fmt;
 use std::ops::Index;
+use std::path::PathBuf;
 
+use cfg::CfgOptions;
 use rustc_hash::{FxHashMap, FxHashSet};
-
-use crate::input::SourceRootId;
+use vfs::FileId;
 
 #[derive(Debug, Clone)]
 pub struct LibData {
@@ -11,9 +12,13 @@ pub struct LibData {
     pub name: String,
     pub kind: LibKind,
     pub deps: Vec<LibId>,
-    pub dependent: Vec<LibId>,
-    pub links: Vec<String>,
-    pub source_root: SourceRootId,
+    pub links: Vec<PathBuf>,
+    pub cfg_options: CfgOptions,
+
+    /// Shade projects don't have a root file
+    /// However, source roots are only created after loading projects
+    /// so this is used to identify the project's source root.
+    pub root_file: FileId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -42,36 +47,27 @@ impl LibSet {
         &mut self,
         name: impl Into<String>,
         kind: LibKind,
-        source_root: SourceRootId,
-        links: Vec<String>,
-    ) -> (LibId, bool) {
+        links: Vec<PathBuf>,
+        cfg_options: CfgOptions,
+        root_file: FileId,
+    ) -> LibId {
         let name = name.into();
+        let id = LibId(self.libs.len() as u32);
+        let data = LibData {
+            id,
+            name,
+            kind,
+            links,
+            cfg_options,
+            root_file,
+            deps: Vec::new(),
+        };
 
-        if let Some(id) = self
-            .libs
-            .iter()
-            .find_map(|(id, data)| if data.name == name { Some(*id) } else { None })
-        {
-            (id, true)
-        } else {
-            let id = LibId(self.libs.len() as u32);
-            let data = LibData {
-                id,
-                name,
-                kind,
-                source_root,
-                links,
-                deps: Vec::new(),
-                dependent: Vec::new(),
-            };
-
-            self.libs.insert(id, data);
-
-            (id, false)
-        }
+        self.libs.insert(id, data);
+        id
     }
 
-    pub fn add_dep(&mut self, from: LibId, to: LibId) -> Result<(), CyclicDependenciesError> {
+    pub fn add_dep(&mut self, from: LibId, to: LibId, cfg: &CfgOptions) -> Result<(), CyclicDependenciesError> {
         if self.dfs_find(from, to, &mut FxHashSet::default()) {
             return Err(CyclicDependenciesError {
                 from: (from, self[from].name.clone()),
@@ -80,9 +76,16 @@ impl LibSet {
         }
 
         self.libs.get_mut(&from).unwrap().deps.push(to);
-        self.libs.get_mut(&to).unwrap().dependent.push(from);
+
+        let to = self.libs.get_mut(&to).unwrap();
+
+        to.cfg_options = to.cfg_options.merge(cfg);
 
         Ok(())
+    }
+
+    pub fn extend(&mut self, other: LibSet) {
+        self.libs.extend(other.libs);
     }
 
     pub fn is_empty(&self) -> bool {
@@ -95,6 +98,27 @@ impl LibSet {
 
     pub fn find(&self, name: &str) -> Option<&LibData> {
         self.libs.values().find(|l| l.name == name)
+    }
+
+    pub fn all_deps(&self, lib: LibId) -> Vec<LibId> {
+        let mut res = Vec::new();
+        let mut visited = FxHashSet::default();
+
+        go(self, &mut visited, &mut res, lib);
+
+        return res;
+
+        fn go(libs: &LibSet, visited: &mut FxHashSet<LibId>, res: &mut Vec<LibId>, source: LibId) {
+            if !visited.insert(source) {
+                return;
+            }
+
+            for &dep in libs[source].deps.iter() {
+                go(libs, visited, res, dep);
+            }
+
+            res.push(source);
+        }
     }
 
     pub fn toposort(&self) -> Vec<LibId> {
@@ -113,29 +137,6 @@ impl LibSet {
             }
 
             for &dep in libs[source].deps.iter() {
-                go(libs, visited, res, dep);
-            }
-
-            res.push(source);
-        }
-    }
-
-    pub fn dependant(&self, _lib: LibId) -> Vec<LibId> {
-        let mut res = Vec::new();
-        let mut visited = FxHashSet::default();
-
-        for &lib in self.libs.keys() {
-            go(self, &mut visited, &mut res, lib);
-        }
-
-        return res;
-
-        fn go(libs: &LibSet, visited: &mut FxHashSet<LibId>, res: &mut Vec<LibId>, source: LibId) {
-            if !visited.insert(source) {
-                return;
-            }
-
-            for &dep in libs[source].dependent.iter() {
                 go(libs, visited, res, dep);
             }
 

@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use base_db::input::FileId;
 use base_db::libs::LibId;
-use base_db::{SourceDatabase, SourceDatabaseExt, Upcast};
-use smol_str::SmolStr;
+use base_db::{SourceDatabase, Upcast};
 
 use crate::ast_id::AstIdMap;
 use crate::attrs::AttrsWithOwner;
@@ -16,7 +15,7 @@ use crate::lang_item::{LangItem, LangItems};
 use crate::scope::{ExprScopes, TypeScopes};
 
 #[salsa::query_group(InternDatabaseStorage)]
-pub trait InternDatabase: SourceDatabaseExt {
+pub trait InternDatabase: SourceDatabase {
     #[salsa::interned]
     fn intern_fixity(&self, loc: FixityLoc) -> FixityId;
 
@@ -96,5 +95,5 @@ pub trait DefDatabase: InternDatabase + Upcast<dyn SourceDatabase> {
     fn lib_lang_items(&self, lib: LibId) -> Arc<LangItems>;
 
     #[salsa::invoke(LangItems::lang_item_query)]
-    fn lang_item(&self, lib: LibId, item: SmolStr) -> Option<LangItem>;
+    fn lang_item(&self, lib: LibId, item: &'static str) -> Option<LangItem>;
 }
