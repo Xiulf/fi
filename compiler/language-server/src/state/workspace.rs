@@ -15,11 +15,12 @@ impl LspState {
     pub fn fetch_workspaces(&mut self) -> anyhow::Result<()> {
         self.report_progress("projects scanned", Progress::Begin, None, None)?;
         let mut vfs = self.vfs.write();
+        let cfg = Default::default();
         let workspaces = self
             .config
             .workspaces
             .iter()
-            .filter_map(|path| Workspace::load(path.clone(), &mut vfs).ok())
+            .filter_map(|path| Workspace::load(path.clone(), &mut vfs, &cfg).ok())
             .collect::<Vec<_>>();
 
         if workspaces == *self.workspaces {

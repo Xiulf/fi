@@ -8,10 +8,11 @@ use std::{fs, io};
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
 use base_db::{SourceDatabase, SourceDatabaseExt};
-use cfg::CfgOptions;
+use cfg::{CfgOptions, CfgValue};
 use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
+pub use codegen::Optimization;
 use paths::AbsPathBuf;
 use project::manifest::{self, Cfg};
 use project::Workspace;
@@ -21,6 +22,7 @@ pub struct InitOpts<'a> {
     pub input: &'a Path,
     pub target: Option<&'a str>,
     pub output: Option<LibKind>,
+    pub optimization: Optimization,
     pub cfg: Cfg,
 }
 
@@ -29,6 +31,7 @@ pub struct InitNoManifestOpts<'a> {
     pub name: &'a str,
     pub target: Option<&'a str>,
     pub output: LibKind,
+    pub optimization: Optimization,
     pub cfg: Cfg,
     pub links: Vec<&'a Path>,
     pub dependencies: Vec<&'a Path>,
@@ -48,6 +51,7 @@ impl Default for InitOpts<'_> {
             input: Path::new("."),
             target: None,
             output: None,
+            optimization: Optimization::None,
             cfg: Cfg::default(),
         }
     }
@@ -76,18 +80,20 @@ fn input_dir(input: &Path) -> AbsPathBuf {
 impl Driver {
     pub fn init(opts: InitOpts) -> anyhow::Result<(Self, usize)> {
         let mut driver = Driver::default();
-
-        driver.target_dir = input_dir(opts.input).join("target");
-        driver.cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
-
-        let ws = driver.load(opts.input)?;
-
-        driver.db.set_target(match opts.target {
+        let cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
+        let target = match opts.target {
             | Some("javascript") => CompilerTarget::Javascript,
             // | Some(target) => Arc::new(target.parse().unwrap()),
             // | None => Arc::new(target_lexicon::Triple::host()),
             | _ => CompilerTarget::Javascript,
-        });
+        };
+
+        driver.init_cfg(target);
+        driver.target_dir = input_dir(opts.input).join("target");
+        driver.cfg = driver.cfg.merge(&cfg);
+        driver.db.set_target(target);
+
+        let ws = driver.load(opts.input)?;
 
         Ok((driver, ws))
     }
@@ -95,9 +101,17 @@ impl Driver {
     pub fn init_without_manifest(opts: InitNoManifestOpts) -> anyhow::Result<(Self, usize)> {
         let mut driver = Driver::default();
         let current_dir = AbsPathBuf::assert(std::env::current_dir().unwrap());
+        let cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
+        let target = match opts.target {
+            | Some("javascript") => CompilerTarget::Javascript,
+            // | Some(target) => Arc::new(target.parse().unwrap()),
+            // | None => Arc::new(target_lexicon::Triple::host()),
+            | _ => CompilerTarget::Javascript,
+        };
 
+        driver.init_cfg(target);
         driver.target_dir = current_dir.join("target");
-        driver.cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
+        driver.cfg = driver.cfg.merge(&cfg);
 
         let files = opts.files.into_iter().map(|p| input_dir(p)).collect();
         let links = opts.links.into_iter().map(|l| l.to_path_buf()).collect();
@@ -105,6 +119,7 @@ impl Driver {
 
         driver.workspaces.push(Workspace::local_files(
             &mut driver.vfs,
+            &driver.cfg,
             current_dir,
             files,
             opts.name.to_string(),
@@ -115,13 +130,7 @@ impl Driver {
 
         driver.set_libs();
         driver.set_source_roots();
-
-        driver.db.set_target(match opts.target {
-            | Some("javascript") => CompilerTarget::Javascript,
-            // | Some(target) => Arc::new(target.parse().unwrap()),
-            // | None => Arc::new(target_lexicon::Triple::host()),
-            | _ => CompilerTarget::Javascript,
-        });
+        driver.db.set_target(target);
 
         let ws = driver.workspaces.len() - 1;
 
@@ -151,7 +160,7 @@ impl Driver {
     pub fn load(&mut self, input: &Path) -> anyhow::Result<usize> {
         let input = input_dir(input);
 
-        self.workspaces.push(Workspace::load(input, &mut self.vfs)?);
+        self.workspaces.push(Workspace::load(input, &mut self.vfs, &self.cfg)?);
         self.set_libs();
         self.set_source_roots();
 
@@ -189,6 +198,12 @@ impl Driver {
 
             self.db.set_source_root(root_id, root.into());
         }
+    }
+
+    fn init_cfg(&mut self, target: CompilerTarget) {
+        self.cfg.set("target", match target {
+            | CompilerTarget::Javascript => CfgValue::String("javascript".into()),
+        });
     }
 
     pub fn check(&self) -> io::Result<bool> {

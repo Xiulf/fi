@@ -56,14 +56,12 @@ pub struct PackageRoot {
 }
 
 impl Workspace {
-    pub fn load(root_dir: AbsPathBuf, vfs: &mut VirtualFileSystem) -> anyhow::Result<Self> {
+    pub fn load(root_dir: AbsPathBuf, vfs: &mut VirtualFileSystem, cfg: &CfgOptions) -> anyhow::Result<Self> {
         let mut workspace = Workspace {
             local: None,
             packages: Arena::default(),
             root_dir: root_dir.clone(),
         };
-
-        let cfg = CfgOptions::default();
 
         manifest::load_project(&mut workspace, vfs, &cfg, &root_dir)?;
 
@@ -72,6 +70,7 @@ impl Workspace {
 
     pub fn local_files(
         vfs: &mut VirtualFileSystem,
+        cfg: &CfgOptions,
         root_dir: AbsPathBuf,
         files: Vec<AbsPathBuf>,
         lib_name: String,
@@ -95,8 +94,6 @@ impl Workspace {
             packages: Arena::default(),
             root_dir,
         };
-
-        let cfg = CfgOptions::default();
 
         for dep in dependencies {
             let pkg = manifest::load_project(&mut workspace, vfs, &cfg, &dep)?;

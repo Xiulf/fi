@@ -12,6 +12,8 @@ use crate::in_file::InFile;
 use crate::item_tree::{ItemTreeId, ItemTreeNode};
 use crate::name::{AsName, Name};
 
+const CFG_ATTR: &'static str = "if";
+
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Attrs(pub(crate) RawAttrs);
 
@@ -295,7 +297,7 @@ fn collect_attrs(owner: &dyn ast::AttrsOwner) -> impl Iterator<Item = Either<ast
 }
 
 fn cfg_parse(attrs: &Attrs) -> Option<Cfg> {
-    let mut cfgs = attrs.by_key("cfg").groups().map(cfg_parse_attr);
+    let mut cfgs = attrs.by_key(CFG_ATTR).groups().map(cfg_parse_attr);
     let a = cfgs.next()?;
 
     match cfgs.next() {

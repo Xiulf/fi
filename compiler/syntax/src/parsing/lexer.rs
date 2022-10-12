@@ -349,6 +349,10 @@ impl<'src> Lexer<'src> {
             },
             | '@' if !is_op_char(self.peek()) => {
                 self.insert_default(start, AT);
+
+                if self.is_decl(start) {
+                    self.stack.push((start, LayoutDelim::Prop));
+                }
             },
             | '|' if !is_op_char(self.peek()) => {
                 let mut c = Collapse::new(self.tokens.len());

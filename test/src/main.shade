@@ -3,10 +3,10 @@ module Main =
 import Core
 import Js.Console
 
-@cfg(target = "javascript")
+@if(target = "javascript")
 test = 0
 
-@cfg(not(target = "javascript"))
+@if(not(target = "javascript"))
 test = 1
 
 @main

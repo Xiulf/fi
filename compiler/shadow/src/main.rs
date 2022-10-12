@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use base_db::libs::LibKind;
 use base_db::{Error, ICE};
 use clap::{Args, Parser, Subcommand};
-use driver::{Driver, InitNoManifestOpts, InitOpts};
+use driver::{Driver, InitNoManifestOpts, InitOpts, Optimization};
 use project::manifest::{Cfg, TomlValue};
 use tracing::{debug, Level};
 
@@ -36,6 +36,9 @@ struct CliArgs {
 
     #[clap(long, requires = "files", value_parser = parse_output)]
     output: Option<LibKind>,
+
+    #[clap(short = 'O', value_parser = parse_optimization)]
+    optimization: Option<Optimization>,
 
     #[clap(long = "link", short, requires = "files")]
     links: Vec<PathBuf>,
@@ -188,12 +191,14 @@ fn run_files(cli: CliArgs) -> anyhow::Result<()> {
     let cfg: Cfg = cli.cfg.into_iter().collect();
     let name = cli.name.unwrap();
     let output = cli.output.unwrap_or_default();
+    let optimization = cli.optimization.unwrap_or_default();
     let (driver, ws) = Driver::init_without_manifest(InitNoManifestOpts {
         name: &name,
         target: cli.target.as_deref(),
         files: cli.files.iter().map(|p| p.as_path()).collect(),
         links: cli.links.iter().map(|p| p.as_path()).collect(),
         dependencies: cli.dependencies.iter().map(|p| p.as_path()).collect(),
+        optimization,
         output,
         cfg,
     })?;
@@ -249,6 +254,13 @@ fn parse_output(s: &str) -> Result<LibKind, String> {
         | "static" => Ok(LibKind::Static),
         | "executable" => Ok(LibKind::Executable),
         | _ => Err(format!("invalid output kind '{}'", s)),
+    }
+}
+
+fn parse_optimization(s: &str) -> Result<Optimization, String> {
+    match s.to_lowercase().as_str() {
+        | "0" | "none" => Ok(Optimization::None),
+        | _ => Err(format!("`{}` isn't a valid optimization", s)),
     }
 }
 
