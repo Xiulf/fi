@@ -5,11 +5,17 @@ import Core.Ops (Concat, concat)
 import Js.Console
 
 @main
+main :: Option ()
 main = try
     a <- Some { a = 23, b = 24, c = 25 }
-    print a :: ()
-    ret ()
+    ret $ print a test
 
+test :: Writer Str ()
+test = try
+    write "abc"
+    write "def"
+    write "ghi"
+    ret ()
 
 class Write w m | m -> w where Try m = 
     write :: w -> m ()
@@ -25,9 +31,6 @@ member (Writer w) of Try where Default w, Concat w w =
     bind (Writer (a, w)) f =
         let (a', w') = runWriter (f a)
         Writer (a', concat w w')
-
-writer :: forall w a. (a, w) -> Writer w a
-writer x = Writer x
 
 runWriter :: forall w a. Writer w a -> (a, w)
 runWriter (Writer x) = x

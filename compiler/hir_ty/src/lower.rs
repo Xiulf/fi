@@ -790,6 +790,13 @@ pub fn verify_member(db: &dyn HirDatabase, id: MemberId) -> Vec<InferenceDiagnos
         })
         .collect::<List<_>>();
 
+    for ctnt in lower.member.where_clause.constraints.iter() {
+        let src = ctx.source(TypeOrigin::Def(id.into()));
+        let info = ctnt.clone().to_info(db, &mut ctx.types, &mut ctx.type_vars, src);
+
+        ctx.class_env.push(info, false);
+    }
+
     for (i, ctnt) in class.class.where_clause.constraints.iter().enumerate() {
         let ctnt = CtntInfo {
             class: ctnt.class,

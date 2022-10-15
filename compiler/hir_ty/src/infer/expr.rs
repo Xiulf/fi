@@ -339,9 +339,13 @@ impl BodyInferenceContext<'_> {
                     return app;
                 },
                 | Stmt::Expr { expr } => {
-                    self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+                    let src = self.source(expr);
+                    let ty = self.fresh_type(src);
+                    let app = self.types.insert(TyInfo::App(try_container, [ty].into()), src);
 
-                    let ty = self.infer_expr(expr);
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
+                    self.check_expr(expr, app);
+
                     let ty = self.subst_type(ty);
 
                     if self.types[ty] == self.types[never_ty] {

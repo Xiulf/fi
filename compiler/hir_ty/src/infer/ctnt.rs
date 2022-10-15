@@ -2,7 +2,7 @@ use hir_def::id::HasModule;
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{ExprOrPatId, InferenceContext, InferenceDiagnostic, MethodSource};
-use crate::class::{ClassEnvScope, Members};
+use crate::class::{ClassEnvScope, MatchConstraint, Members};
 use crate::info::{CtntInfo, TypeOrigin};
 
 impl InferenceContext<'_> {
@@ -64,8 +64,10 @@ impl InferenceContext<'_> {
             let class = self.db.class_data(entry.ctnt().class);
 
             if !class.items.is_empty() {
-                if self.record_solve(found, MethodSource::Record(self.member_records)) {
-                    self.member_records += 1;
+                let idx = self.class_env.index(res.scope);
+
+                if self.record_solve(found, MethodSource::Record(idx)) {
+                    // self.member_records += 1;
                 }
             }
 
@@ -82,8 +84,17 @@ impl InferenceContext<'_> {
             res.apply(ctnt, self);
             self.record_solve(found, MethodSource::Member(res.member));
 
-            for ctnt in &res.constraints {
-                self.record_solve(found, MethodSource::Member(ctnt.member));
+            for ctnt in res.constraints.iter() {
+                let source = match ctnt {
+                    | MatchConstraint::Member(m) => MethodSource::Member(*m),
+                    | MatchConstraint::Env(e) => {
+                        let idx = self.class_env.index(*e);
+                        // self.member_records = self.member_records.max(idx) + 1;
+                        MethodSource::Record(idx)
+                    },
+                };
+
+                self.record_solve(found, source);
             }
 
             true

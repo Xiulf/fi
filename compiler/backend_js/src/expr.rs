@@ -714,9 +714,21 @@ impl BodyCtx<'_, '_> {
                     return self.lower_expr(expr, exprs);
                 },
                 | Stmt::Expr { expr } => {
+                    let mut body = Vec::new();
                     let res = self.lower_expr(expr, exprs);
+                    let rest = self.lower_try(expr_id, &stmts[i + 1..], &mut body);
+                    body.push(JsExpr::Return { expr: Box::new(rest) });
+                    let body = JsExpr::Block { exprs: body };
+                    let lam = JsExpr::Lambda {
+                        name: None,
+                        params: vec![String::from("_")],
+                        body: Box::new(body),
+                    };
 
-                    exprs.push(res);
+                    return JsExpr::Call {
+                        base: Box::new(bind.clone()),
+                        args: vec![res, lam],
+                    };
                 },
                 | Stmt::Let { pat, val } => {
                     let expr = self.lower_expr(val, exprs);

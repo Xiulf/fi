@@ -151,7 +151,7 @@ pub struct InferenceContext<'a> {
     pub(crate) subst: unify::Substitution,
     pub(crate) constraints: Vec<(CtntInfo, CtntExpected, CtntFound, Option<ClassEnvScope>)>,
     can_generalize: bool,
-    class_env: ClassEnv,
+    pub(crate) class_env: ClassEnv,
     member_records: usize,
 }
 

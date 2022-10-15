@@ -45,7 +45,13 @@ pub struct Members {
 pub struct MemberMatchResult {
     pub member: MemberId,
     pub subst: Box<[TyId]>,
-    pub constraints: Vec<Arc<MemberMatchResult>>,
+    pub constraints: Box<[MatchConstraint]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchConstraint {
+    Member(MemberId),
+    Env(ClassEnvScope),
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -260,16 +266,18 @@ impl Member<Ty, Constraint> {
             };
 
             if let Some(res) = env.solve(db, types, &ctnt, env.current()) {
-                tracing::debug!("{:?}", res);
+                constraints.push(MatchConstraint::Env(res.scope));
+                continue;
             }
 
-            match Members::solve_constraint_cyclic(db, env, types, type_vars, cycles, lib, &ctnt, src) {
-                | None => return None,
-                | Some(solution) => {
-                    constraints.push(solution.clone());
-                    constraints.extend(solution.constraints.iter().cloned());
-                },
+            if let Some(solution) = Members::solve_constraint_cyclic(db, env, types, type_vars, cycles, lib, &ctnt, src)
+            {
+                constraints.push(MatchConstraint::Member(solution.member));
+                constraints.extend(solution.constraints.iter().copied());
+                continue;
             }
+
+            return None;
         }
 
         let subst = self
@@ -302,7 +310,7 @@ impl Member<Ty, Constraint> {
         Some(MemberMatchResult {
             member: self.id,
             subst,
-            constraints,
+            constraints: constraints.into_boxed_slice(),
         })
     }
 
@@ -343,6 +351,10 @@ impl ClassEnv {
 
     pub fn current(&self) -> Option<ClassEnvScope> {
         self.current
+    }
+
+    pub fn index(&self, scope: ClassEnvScope) -> usize {
+        self.in_scope(Some(scope)).count() - 1
     }
 
     fn in_scope(&self, scope: Option<ClassEnvScope>) -> impl Iterator<Item = ClassEnvScope> + '_ {
