@@ -1,0 +1,19 @@
+module Monad.Reader =
+
+import Core
+
+class Read r m | m -> r =
+    read :: m r
+
+type Reader r a = | Reader (r -> a)
+
+member r (Reader r) of Read =
+    read = Reader (fn x -> x)
+
+member (Reader r) of Try =
+    ret x = Reader (fn _ -> x)
+    
+    bind (Reader r) f = Reader (fn x -> runReader (f (r x)) x)
+
+runReader :: forall r a. Reader r a -> r -> a
+runReader (Reader r) x = r x

@@ -1,14 +1,21 @@
 module Main =
 
 import Core
-import Core.Ops (Concat, concat)
+import Data.List (first)
+import Monad.Writer
+import Monad.Reader
+import Monad.State
 import Js.Console
+
 
 @main
 main :: Option ()
 main = try
     a <- Some { a = 23, b = 24, c = 25 }
-    ret $ print a test
+    let _, b = runWriter test
+    let c = runReader test2 ("a":"b":Nil)
+    let d = runState test3 234
+    ret $ print a b c d
 
 test :: Writer Str ()
 test = try
@@ -17,20 +24,14 @@ test = try
     write "ghi"
     ret ()
 
-class Write w m | m -> w where Try m = 
-    write :: w -> m ()
+test2 :: forall a. Reader (List a) (Option a)
+test2 = try
+    a <- read
+    ret $ first a
 
-type Writer w a = | Writer (a, w)
-
-member w (Writer w) of Write where Default w, Concat w w =
-    write x = Writer ((), x)
-
-member (Writer w) of Try where Default w, Concat w w =
-    ret x = Writer (x, default)
-    
-    bind (Writer (a, w)) f =
-        let (a', w') = runWriter (f a)
-        Writer (a', concat w w')
-
-runWriter :: forall w a. Writer w a -> (a, w)
-runWriter (Writer x) = x
+test3 :: State Int ()
+test3 = try
+    a <- get
+    put 12
+    let _ = print a :: ()
+    ret ()

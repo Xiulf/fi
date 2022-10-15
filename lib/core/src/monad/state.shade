@@ -1,0 +1,22 @@
+module Monad.State =
+
+import Core
+
+class MonadState s m | m -> s =
+    get :: m s
+    put :: s -> m ()
+
+type State s a = | State (s -> (a, s))
+
+member s (State s) of MonadState =
+    get = State (fn s -> s, s)
+    put s = State (fn _ -> (), s)
+
+member (State s) of Try =
+    ret x = State (fn s -> x, s)
+    bind (State x) f = State (fn s -> do
+        let v, s' = x s
+        runState (f v) s')
+
+runState :: forall s a. State s a -> s -> (a, s)
+runState (State f) s = f s
