@@ -13,7 +13,7 @@ use rustc_hash::FxHashMap;
 use crate::class::{Class, FunDep, Member};
 use crate::db::HirDatabase;
 use crate::infer::diagnostics::{ClassSource, CtntExpected, CtntFound, InferenceDiagnostic, WhereSource};
-use crate::infer::InferenceContext;
+use crate::infer::{InferenceContext, MethodSource};
 use crate::info::{CtntInfo, FieldInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin};
 use crate::ty::{Constraint, List, Ty, TyAndSrc, TypeVar, WhereClause};
 
@@ -39,6 +39,12 @@ pub struct ClassLowerResult<T, C> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct MemberLowerResult<T, C> {
     pub member: Member<T, C>,
+    pub diagnostics: Vec<InferenceDiagnostic<Ty, Constraint>>,
+}
+
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct MemberVerifyResult {
+    pub constraints: Vec<MethodSource>,
     pub diagnostics: Vec<InferenceDiagnostic<Ty, Constraint>>,
 }
 
@@ -753,11 +759,11 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
     })
 }
 
-pub fn verify_member(db: &dyn HirDatabase, id: MemberId) -> Vec<InferenceDiagnostic<Ty, Constraint>> {
+pub(crate) fn verify_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<MemberVerifyResult> {
     let lower = db.lower_member(id);
 
     if lower.member.class == ClassId::dummy() {
-        return Vec::new();
+        return Default::default();
     }
 
     let class = db.lower_class(lower.member.class);
@@ -819,7 +825,12 @@ pub fn verify_member(db: &dyn HirDatabase, id: MemberId) -> Vec<InferenceDiagnos
     }
 
     ctx.solve_constraints();
-    ctx.finish().diagnostics
+    let res = ctx.finish();
+
+    Arc::new(MemberVerifyResult {
+        constraints: res.constraints,
+        diagnostics: res.diagnostics,
+    })
 }
 
 fn var_kinds(ctx: &mut LowerCtx, kinds: Vec<TyId>, src: TySource) -> Box<[TyId]> {
@@ -856,6 +867,12 @@ impl ClassLowerResult<Ty, Constraint> {
 }
 
 impl MemberLowerResult<Ty, Constraint> {
+    pub fn add_diagnostics(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
+        self.diagnostics.iter().for_each(|it| it.add_to(db, owner, sink));
+    }
+}
+
+impl MemberVerifyResult {
     pub fn add_diagnostics(&self, db: &dyn HirDatabase, owner: TypeVarOwner, sink: &mut DiagnosticSink) {
         self.diagnostics.iter().for_each(|it| it.add_to(db, owner, sink));
     }

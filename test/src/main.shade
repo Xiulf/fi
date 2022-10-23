@@ -9,13 +9,12 @@ import Js.Console
 
 
 @main
-main :: Option ()
-main = try
-    a <- Some { a = 23, b = 24, c = 25 }
-    let _, b = runWriter test
-    let c = runReader test2 ("a":"b":Nil)
-    let d = runState test3 234
-    ret $ print a b c d
+main :: Effect ()
+main =
+    let _, a = runWriter test
+    let b = runReader test2 ("a":"b":Nil)
+    let c = runState test3 234
+    print a b c
 
 test :: Writer Str ()
 test = try
@@ -29,9 +28,9 @@ test2 = try
     a <- read
     ret $ first a
 
-test3 :: State Int ()
+test3 :: forall m. m () where MonadState Int m
 test3 = try
     a <- get
     put 12
-    let _ = print a :: ()
+    let _ = print a :: Effect ()
     ret ()

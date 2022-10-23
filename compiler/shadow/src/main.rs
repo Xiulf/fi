@@ -11,6 +11,7 @@ use clap::{Args, Parser, Subcommand};
 use driver::{Driver, InitNoManifestOpts, InitOpts, Optimization};
 use project::manifest::{Cfg, TomlValue};
 use tracing::{debug, Level};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -51,6 +52,9 @@ struct CliArgs {
 
     #[clap(short = 'v', long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
+
+    #[clap(long = "log-filter", global = true)]
+    log_filter: Option<String>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -105,15 +109,23 @@ struct LspArgs {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let _ = tracing_subscriber::fmt()
-        .without_time()
-        .with_max_level(match cli.args.verbose {
-            | 0 => Level::WARN,
-            | 1 => Level::INFO,
-            | 2 => Level::DEBUG,
-            | _ => Level::TRACE,
-        })
-        .init();
+    let filter = cli
+        .args
+        .log_filter
+        .as_ref()
+        .map(|s| EnvFilter::from(s))
+        .unwrap_or_default()
+        .add_directive(
+            match cli.args.verbose {
+                | 0 => Level::WARN,
+                | 1 => Level::INFO,
+                | 2 => Level::DEBUG,
+                | _ => Level::TRACE,
+            }
+            .into(),
+        );
+
+    let _ = tracing_subscriber::fmt().without_time().with_env_filter(filter).init();
 
     std::panic::set_hook(Box::new(|info| {
         let loc = info.location().unwrap();

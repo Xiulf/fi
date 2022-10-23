@@ -2,7 +2,7 @@ module Monad.State =
 
 import Core
 
-class MonadState s m | m -> s =
+class MonadState s m | m -> s where Try m =
     get :: m s
     put :: s -> m ()
 

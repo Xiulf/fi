@@ -11,14 +11,12 @@ use arena::ArenaMap;
 use hir::db::HirDatabase;
 use hir::id::{DefWithBodyId, HasModule};
 use hir::ty::{Ty, TyKind};
-use tracing::Level;
+use rustc_hash::FxHashMap;
+use tracing_subscriber::EnvFilter;
 
 #[no_mangle]
-pub fn init_logging(max_level: Level) {
-    tracing_subscriber::fmt()
-        .without_time()
-        .with_max_level(max_level)
-        .init();
+pub fn init_logging(filter: EnvFilter) {
+    tracing_subscriber::fmt().without_time().with_env_filter(filter).init();
 
     std::panic::set_hook(Box::new(|info| {
         let loc = info.location().unwrap();
@@ -66,6 +64,7 @@ struct BodyCtx<'a, 'b> {
     type_vars: Vec<expr::JsExpr>,
     records: Vec<expr::JsExpr>,
     in_lambda: Vec<String>,
+    member_refs: FxHashMap<(hir::Member, Vec<expr::JsExpr>), expr::JsExpr>,
 }
 
 impl<'a> Ctx<'a> {
@@ -105,16 +104,20 @@ impl<'a> Ctx<'a> {
             self.codegen(module)?;
         }
 
-        for member in members {
-            self.codegen_member(member)?;
-        }
-
         for &def in &decls {
             self.register_def(def)?;
         }
 
+        for &member in &members {
+            self.register_member(member)?;
+        }
+
         for def in decls {
             self.codegen_def(def)?;
+        }
+
+        for member in members {
+            self.codegen_member(member)?;
         }
 
         self.flush()
@@ -136,6 +139,10 @@ impl<'a> Ctx<'a> {
             },
             | _ => Ok(()),
         }
+    }
+
+    pub fn register_member(&mut self, def: hir::Member) -> io::Result<()> {
+        writeln!(self, "var {};", self.mangle((def.link_name(self.db), true)))
     }
 
     pub fn codegen_def(&mut self, def: hir::ModuleDef) -> io::Result<()> {
@@ -251,10 +258,12 @@ impl<'a> Ctx<'a> {
                 .iter()
                 .any(|c| !self.db.class_data(c.class).items.is_empty());
 
+            write!(self, "{} = ", self.mangle((member.link_name(self.db), true)))?;
+
             if !has_constraints {
-                writeln!(self, "const {} = {{", member.link_name(self.db))?;
+                writeln!(self, "{{")?;
             } else {
-                write!(self, "function {}(", member.link_name(self.db))?;
+                write!(self, "function(")?;
                 let mut i = 0;
 
                 for c in lower.member.where_clause.constraints.iter() {
@@ -274,6 +283,31 @@ impl<'a> Ctx<'a> {
             }
 
             self.out.indent();
+
+            let verify = self.db.verify_member(member.into());
+            let mut ctnts = verify.constraints.iter().copied();
+            let mut i = 0;
+
+            while let Some(c) = ctnts.next() {
+                write!(self, "constraint{}: () => ", i)?;
+
+                match c {
+                    | hir::MethodSource::Member(id) => {
+                        let member = hir::Member::from(id);
+                        write!(self, "{}", self.mangle((member.link_name(self.db), true)))?;
+                    },
+                    | hir::MethodSource::Record(idx, p) => {
+                        write!(self, "record{}", idx)?;
+
+                        for i in p.iter() {
+                            write!(self, ".constraint{}", i)?;
+                        }
+                    },
+                }
+
+                writeln!(self, ",")?;
+                i += 1;
+            }
 
             for item in items {
                 write!(self, "{}: ", self.mangle((item.name(self.db), true)))?;
@@ -367,11 +401,12 @@ impl<'a> Ctx<'a> {
 
     pub fn codegen_main_shim(&mut self, main_func: hir::Func) -> io::Result<()> {
         let mut bcx = BodyCtx::new(self, hir::id::FuncId::from(main_func).into());
+        let mut block = Vec::new();
         let infer = bcx.infer.clone();
         let mut methods = infer.methods[&(bcx.body.body_expr(), 0)].iter().copied();
         let b = match methods.next().unwrap() {
-            | hir::MethodSource::Member(id) => bcx.member_ref(id.into(), &mut methods),
-            | hir::MethodSource::Record(idx) => bcx.records[idx].clone(),
+            | hir::MethodSource::Member(id) => bcx.member_ref(id.into(), &mut methods, &mut block),
+            | hir::MethodSource::Record(idx, _) => bcx.records[idx].clone(),
         };
 
         let report = expr::JsExpr::Field {
@@ -379,9 +414,19 @@ impl<'a> Ctx<'a> {
             field: bcx.mangle(("report", true)),
         };
 
-        write!(bcx, "const $main = () => ")?;
-        report.write(&mut bcx.ctx.out, false)?;
-        writeln!(self, "({}());", self.mangle(main_func.link_name(self.db)))
+        writeln!(bcx, "const $main = () => {{")?;
+        bcx.out.indent();
+
+        for var in block {
+            var.write(&mut bcx.ctx.out, true)?;
+            writeln!(bcx, ";")?;
+        }
+
+        write!(bcx, "return ")?;
+        report.write(&mut bcx.ctx.out, true)?;
+        writeln!(self, "({}());", self.mangle(main_func.link_name(self.db)))?;
+        self.out.dedent();
+        writeln!(self, "}};")
     }
 }
 
@@ -394,6 +439,7 @@ impl<'a, 'b> BodyCtx<'a, 'b> {
             type_vars: Vec::new(),
             records: Vec::new(),
             in_lambda: Vec::new(),
+            member_refs: FxHashMap::default(),
             owner,
             ctx,
         }

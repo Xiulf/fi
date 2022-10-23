@@ -3,14 +3,15 @@ use std::io::{self, Write};
 
 use hir::id::HasModule;
 use hir::{
-    Const, Ctor, Expr, Func, HasResolver, Literal, MethodSource, Path, Resolver, Static, Stmt, TypeCtor, ValueNs,
+    ClassEnvPath, Const, Ctor, Expr, Func, HasResolver, Literal, MethodSource, Path, Resolver, Static, Stmt, TypeCtor,
+    ValueNs,
 };
 
 use crate::indent::IndentWriter;
 use crate::BodyCtx;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum JsExpr {
     Undefined,
     Ident {
@@ -699,8 +700,8 @@ impl BodyCtx<'_, '_> {
         let infer = self.infer.clone();
         let mut methods = infer.methods[&(expr_id, 0)].iter().copied();
         let b = match methods.next().unwrap() {
-            | MethodSource::Member(id) => self.member_ref(id.into(), &mut methods),
-            | MethodSource::Record(idx) => self.records[idx].clone(),
+            | MethodSource::Member(id) => self.member_ref(id.into(), &mut methods, exprs),
+            | MethodSource::Record(idx, p) => self.record_ref(idx, p),
         };
 
         let bind = JsExpr::Field {
@@ -771,7 +772,12 @@ impl BodyCtx<'_, '_> {
         JsExpr::Undefined
     }
 
-    pub fn member_ref(&mut self, member: hir::Member, sources: &mut dyn Iterator<Item = MethodSource>) -> JsExpr {
+    pub fn member_ref(
+        &mut self,
+        member: hir::Member,
+        sources: &mut dyn Iterator<Item = MethodSource>,
+        exprs: &mut Vec<JsExpr>,
+    ) -> JsExpr {
         let lower = self.db.lower_member(member.into());
         let record = JsExpr::Ident {
             name: self.mangle((member.link_name(self.db), true)),
@@ -790,27 +796,48 @@ impl BodyCtx<'_, '_> {
                 .into_iter()
                 .filter_map(|s| {
                     if s {
-                        sources.next().unwrap();
+                        // sources.next().unwrap();
                         None
                     } else {
                         Some(match sources.next().unwrap() {
-                            | MethodSource::Member(m) => self.member_ref(m.into(), sources),
-                            | MethodSource::Record(r) => self.records[r].clone(),
+                            | MethodSource::Member(m) => self.member_ref(m.into(), sources, exprs),
+                            | MethodSource::Record(r, p) => self.record_ref(r, p),
                         })
                     }
                 })
-                .collect();
+                .collect::<Vec<_>>();
 
-            return JsExpr::Call {
-                base: Box::new(record),
-                args,
-            };
+            if let Some(e) = self.member_refs.get(&(member, args.clone())) {
+                return e.clone();
+            }
+
+            let var = format!("member_ref_{}", self.member_refs.len());
+
+            exprs.push(JsExpr::Var {
+                name: var.clone(),
+                expr: Some(Box::new(JsExpr::Call {
+                    base: Box::new(record),
+                    args: args.clone(),
+                })),
+            });
+
+            self.member_refs
+                .insert((member, args), JsExpr::Ident { name: var.clone() });
+
+            return JsExpr::Ident { name: var };
         }
 
-        for s in skip {
-            if s {
-                sources.next().unwrap();
-            }
+        record
+    }
+
+    pub fn record_ref(&mut self, idx: usize, path: ClassEnvPath) -> JsExpr {
+        let mut record = self.records[idx].clone();
+
+        for i in path.iter() {
+            record = JsExpr::Field {
+                base: Box::new(record),
+                field: format!("constraint{i}()"),
+            };
         }
 
         record
@@ -974,8 +1001,8 @@ impl BodyCtx<'_, '_> {
                 let mut base = if is_method {
                     let methods = methods.as_mut().unwrap();
                     let b = match methods.next().unwrap() {
-                        | MethodSource::Member(id) => self.member_ref(id.into(), methods),
-                        | MethodSource::Record(idx) => self.records[idx].clone(),
+                        | MethodSource::Member(id) => self.member_ref(id.into(), methods, block),
+                        | MethodSource::Record(idx, p) => self.record_ref(idx, p),
                     };
 
                     JsExpr::Field {
@@ -997,10 +1024,10 @@ impl BodyCtx<'_, '_> {
                                 let lower = self.db.lower_member(id);
 
                                 if !self.db.class_data(lower.member.class).items.is_empty() {
-                                    args.push(self.member_ref(id.into(), &mut methods));
+                                    args.push(self.member_ref(id.into(), &mut methods, block));
                                 }
                             },
-                            | MethodSource::Record(idx) => args.push(self.records[idx].clone()),
+                            | MethodSource::Record(idx, p) => args.push(self.record_ref(idx, p)),
                         }
                     }
                 }

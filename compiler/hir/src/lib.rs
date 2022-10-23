@@ -21,6 +21,7 @@ pub use hir_def::path::Path;
 pub use hir_def::resolver::{HasResolver, Resolver, TypeNs, ValueNs};
 use hir_def::visibility::Visibility;
 pub use hir_def::{attrs, id};
+pub use hir_ty::class::ClassEnvPath;
 use hir_ty::db::HirDatabase;
 pub use hir_ty::display::HirDisplay;
 pub use hir_ty::infer::{InferenceResult, MethodSource};
@@ -396,13 +397,13 @@ impl Func {
         // let data = db.func_data(self.id);
         // let body = db.body(self.id.into());
 
-        // if data.name.as_ref() == "into" {
-        //     // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-        //     eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
+        // if data.name.as_ref() == "test3" {
+        // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
+        // eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
-        //     for ((id, i), method) in &infer.methods {
-        //         eprintln!("{:?}#{} -> {:?}", id, i, method);
-        //     }
+        // for ((id, i), method) in &infer.methods {
+        // eprintln!("{:?}#{} -> {:?}", id, i, method);
+        // }
 
         //     eprintln!();
 
@@ -782,11 +783,11 @@ impl Member {
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let lower = db.lower_member(self.id);
-        let diags = hir_ty::lower::verify_member(db, self.id);
+        let diags = db.verify_member(self.id);
         let owner = TypeVarOwner::TypedDefId(self.id.into());
 
         lower.add_diagnostics(db, owner, sink);
-        diags.iter().for_each(|d| d.add_to(db, owner, sink));
+        diags.add_diagnostics(db, owner, sink);
 
         for item in self.items(db) {
             item.diagnostics(db, sink);

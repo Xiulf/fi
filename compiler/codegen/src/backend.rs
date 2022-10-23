@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use hir::db::HirDatabase;
 use libloading::{Library, Symbol};
+use tracing_subscriber::EnvFilter;
 
 use crate::db::CodegenDatabase;
 use crate::CompilerTarget;
@@ -26,7 +27,7 @@ impl PartialEq for Backend {
 impl Eq for Backend {
 }
 
-type InitLoggingFn = fn(tracing::Level);
+type InitLoggingFn = fn(EnvFilter);
 type CodegenFn = fn(&dyn HirDatabase, hir::Module, &mut dyn io::Write);
 
 pub fn backend(db: &dyn CodegenDatabase) -> Backend {
@@ -41,7 +42,7 @@ pub fn backend(db: &dyn CodegenDatabase) -> Backend {
     let init_logging = unsafe { lib.get::<InitLoggingFn>(b"init_logging").unwrap() };
     let codegen = unsafe { std::mem::transmute(lib.get::<CodegenFn>(b"codegen").unwrap()) };
 
-    init_logging(tracing::Level::WARN);
+    init_logging(EnvFilter::default().add_directive(tracing::Level::DEBUG.into()));
 
     Backend(Arc::new(BackendInner { lib, codegen }))
 }

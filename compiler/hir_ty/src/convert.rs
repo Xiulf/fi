@@ -276,6 +276,7 @@ impl FromInfo for InferenceResult<Ty, Constraint> {
                 .map(|(id, tys)| (id, tys.into_iter().map(|t| Ty::from_info(db, types, t)).collect()))
                 .collect(),
             methods: input.methods,
+            constraints: input.constraints,
             diagnostics: input
                 .diagnostics
                 .into_iter()

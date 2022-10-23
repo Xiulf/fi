@@ -24,3 +24,15 @@ member Str a of Concat =
 
 member JsArray of Default =
     default = new "Array"
+
+
+foreign pureEffect :: forall e. e -> Effect e
+foreign bindEffect :: forall a b. Effect a -> (a -> Effect b) -> Effect b
+foreign reportEffect :: forall e. Effect e -> ExitCode where Termination e
+
+member Effect of Try =
+    ret x = pureEffect x
+    bind x f = bindEffect x f
+
+member (Effect e) of Termination where Termination e =
+    report e = reportEffect e

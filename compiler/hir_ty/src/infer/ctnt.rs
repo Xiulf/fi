@@ -2,7 +2,7 @@ use hir_def::id::HasModule;
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{ExprOrPatId, InferenceContext, InferenceDiagnostic, MethodSource};
-use crate::class::{ClassEnvScope, MatchConstraint, Members};
+use crate::class::{ClassEnvPath, ClassEnvScope, MatchConstraint, Members};
 use crate::info::{CtntInfo, TypeOrigin};
 
 impl InferenceContext<'_> {
@@ -23,14 +23,36 @@ impl InferenceContext<'_> {
             unsolved = std::mem::replace(&mut self.constraints, Vec::with_capacity(n_constraints));
         }
 
+        unsolved.sort_by_key(|c| c.0.class);
+
+        let mut prev = None;
+
         for (ctnt, expected, found, scope) in unsolved {
+            if Some(&ctnt) == prev.as_ref() {
+                if self.can_generalize && ctnt.can_be_generalized(&self.types) {
+                    if !self.db.class_data(ctnt.class).items.is_empty() {
+                        self.record_solve(
+                            found,
+                            MethodSource::Record(self.member_records - 1, ClassEnvPath::default()),
+                        );
+                    }
+                }
+
+                continue;
+            }
+
+            prev = Some(ctnt.clone());
+
             if self.can_generalize && ctnt.can_be_generalized(&self.types) {
                 let class = self.db.class_data(ctnt.class);
 
                 self.constraints.push((ctnt, expected, found, scope));
 
                 if !class.items.is_empty() {
-                    if self.record_solve(found, MethodSource::Record(self.member_records)) {
+                    if self.record_solve(
+                        found,
+                        MethodSource::Record(self.member_records, ClassEnvPath::default()),
+                    ) {
                         self.member_records += 1;
                     }
                 }
@@ -55,7 +77,10 @@ impl InferenceContext<'_> {
 
         let lib = self.owner.module(self.db.upcast()).lib;
 
-        if let Some(res) = self.class_env.solve(self.db, &mut self.types, &ctnt, scope) {
+        if let Some(res) = self
+            .class_env
+            .solve(self.db, &mut self.types, &mut self.type_vars, &ctnt, scope, src)
+        {
             for (&u, &ty) in res.subst.iter() {
                 self.solve_type(u, ty);
             }
@@ -66,7 +91,7 @@ impl InferenceContext<'_> {
             if !class.items.is_empty() {
                 let idx = self.class_env.index(res.scope);
 
-                if self.record_solve(found, MethodSource::Record(idx)) {
+                if self.record_solve(found, MethodSource::Record(idx, res.path)) {
                     // self.member_records += 1;
                 }
             }
@@ -90,7 +115,7 @@ impl InferenceContext<'_> {
                     | MatchConstraint::Env(e) => {
                         let idx = self.class_env.index(*e);
                         // self.member_records = self.member_records.max(idx) + 1;
-                        MethodSource::Record(idx)
+                        MethodSource::Record(idx, ClassEnvPath::default())
                     },
                 };
 
@@ -114,7 +139,10 @@ impl InferenceContext<'_> {
                 self.result.methods.entry((expr, idx)).or_default().push(method);
                 true
             },
-            | _ => false,
+            | _ => {
+                self.result.constraints.push(method);
+                false
+            },
         }
     }
 }

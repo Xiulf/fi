@@ -171,9 +171,6 @@ impl InferenceContext<'_> {
         }
 
         if !self.constraints.is_empty() {
-            self.constraints.sort_by_key(|c| c.0.class);
-            self.constraints.dedup_by_key(|c| c.0.clone());
-
             let subst = &self.subst;
             let types = &mut self.types;
             let where_ = WhereClause {

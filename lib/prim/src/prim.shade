@@ -5,6 +5,8 @@ module Prim =
 @lang = "symbol-kind" foreign type Symbol :: Type
 @lang = "row-kind"    foreign type Row    :: Type -> Type
 
+foreign type Effect :: Type -> Type
+
 @lang = "never-type"
 @repr(uninhabited)
 foreign type Never :: Type

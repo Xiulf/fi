@@ -7,7 +7,7 @@ use hir_def::id::{ClassId, CtorId, DefWithBodyId, MemberId, TypeAliasId, TypeCto
 
 use crate::class::Members;
 use crate::infer::InferenceResult;
-use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult};
+use crate::lower::{ClassLowerResult, LowerResult, MemberLowerResult, MemberVerifyResult};
 use crate::ty::{Constraint, Ty, TyAndSrc, TyKind};
 
 #[salsa::query_group(HirDatabaseStorage)]
@@ -39,6 +39,9 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
 
     #[salsa::invoke(crate::lower::lower_member_query)]
     fn lower_member(&self, id: MemberId) -> Arc<MemberLowerResult<Ty, Constraint>>;
+
+    #[salsa::invoke(crate::lower::verify_member_query)]
+    fn verify_member(&self, id: MemberId) -> Arc<MemberVerifyResult>;
 
     #[salsa::invoke(Members::members_query)]
     fn members(&self, lib: LibId, id: ClassId) -> Arc<Members>;

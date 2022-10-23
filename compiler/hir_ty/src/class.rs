@@ -72,8 +72,13 @@ pub type ClassEnvScope = Idx<ClassEnvEntry>;
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClassEnvMatchResult {
     pub scope: ClassEnvScope,
+    pub path: ClassEnvPath,
     pub subst: FxHashMap<Unknown, TyId>,
 }
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct ClassEnvPath(u128);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Matched<T> {
@@ -265,14 +270,22 @@ impl Member<Ty, Constraint> {
                     .collect(),
             };
 
-            if let Some(res) = env.solve(db, types, &ctnt, env.current()) {
-                constraints.push(MatchConstraint::Env(res.scope));
+            let add = !db.class_data(ctnt.class).items.is_empty();
+
+            if let Some(res) = env.solve(db, types, type_vars, &ctnt, env.current(), src) {
+                if add {
+                    constraints.push(MatchConstraint::Env(res.scope));
+                }
+
                 continue;
             }
 
             if let Some(solution) = Members::solve_constraint_cyclic(db, env, types, type_vars, cycles, lib, &ctnt, src)
             {
-                constraints.push(MatchConstraint::Member(solution.member));
+                if add {
+                    constraints.push(MatchConstraint::Member(solution.member));
+                }
+
                 constraints.extend(solution.constraints.iter().copied());
                 continue;
             }
@@ -365,20 +378,43 @@ impl ClassEnv {
         &self,
         db: &dyn HirDatabase,
         types: &mut Types,
+        type_vars: &mut TypeVars,
         ctnt: &CtntInfo,
         scope: Option<ClassEnvScope>,
+        src: TySource,
     ) -> Option<ClassEnvMatchResult> {
+        tracing::debug!(
+            "solve env {}{}",
+            db.class_data(ctnt.class).name,
+            ctnt.types
+                .iter()
+                .map(|t| format!(" ({})", t.display(db, types)))
+                .collect::<Vec<_>>()
+                .join(""),
+        );
+
         self.in_scope(scope).find_map(|scope| {
             let entry = &self.entries[scope];
 
-            if entry.ctnt().class != ctnt.class {
-                return None;
+            if entry.ctnt.class != ctnt.class {
+                return self.solve_constraints(
+                    db,
+                    types,
+                    type_vars,
+                    ctnt,
+                    &entry.ctnt,
+                    scope,
+                    &mut ClassEnvPath(0),
+                    src,
+                );
             }
 
             tracing::debug!(
-                "solve {}{}",
-                db.class_data(ctnt.class).name,
-                ctnt.types
+                "member env {}{}",
+                db.class_data(entry.ctnt.class).name,
+                entry
+                    .ctnt
+                    .types
                     .iter()
                     .map(|t| format!(" ({})", t.display(db, types)))
                     .collect::<Vec<_>>()
@@ -387,15 +423,99 @@ impl ClassEnv {
 
             let mut subst = FxHashMap::default();
             let mut vars = FxHashMap::default();
+            let matches = ctnt
+                .types
+                .iter()
+                .zip(entry.ctnt.types.iter())
+                .map(|(&ty, &with)| match_type_env(db, types, ty, with, &mut subst, &mut vars))
+                .collect::<Vec<_>>();
 
-            for (&ty, &with) in ctnt.types.iter().zip(entry.ctnt.types.iter()) {
-                if match_type_env(db, types, ty, with, &mut subst, &mut vars) != Matched::Match(()) {
-                    return None;
+            tracing::debug!("{:?}", matches);
+
+            if matches.iter().any(|m| matches!(m, Matched::Apart)) {
+                return None;
+            }
+
+            Some(ClassEnvMatchResult {
+                scope,
+                subst,
+                path: ClassEnvPath(0),
+            })
+        })
+    }
+
+    #[tracing::instrument(skip_all)]
+    fn solve_constraints(
+        &self,
+        db: &dyn HirDatabase,
+        types: &mut Types,
+        type_vars: &mut TypeVars,
+        ctnt: &CtntInfo,
+        of: &CtntInfo,
+        scope: ClassEnvScope,
+        path: &mut ClassEnvPath,
+        src: TySource,
+    ) -> Option<ClassEnvMatchResult> {
+        let info = db.lower_class(of.class);
+        path.new_layer();
+
+        for c in info.class.where_clause.constraints.iter() {
+            let ci = CtntInfo {
+                class: c.class,
+                types: c
+                    .types
+                    .iter()
+                    .map(|t| {
+                        let ty = t.to_info(db, types, type_vars, src);
+
+                        ty.everywhere(true, types, &mut |types, ty| match types[ty] {
+                            | TyInfo::TypeVar(tv) if tv.scope() == type_vars.top_scope() => of.types[tv.idx() as usize],
+                            | _ => ty,
+                        })
+                    })
+                    .collect(),
+            };
+
+            if c.class != ctnt.class {
+                if let Some(r) = self.solve_constraints(db, types, type_vars, ctnt, &ci, scope, path, src) {
+                    return Some(r);
                 }
             }
 
-            Some(ClassEnvMatchResult { scope, subst })
-        })
+            tracing::debug!(
+                "where {}{}",
+                db.class_data(ci.class).name,
+                ci.types
+                    .iter()
+                    .map(|t| format!(" ({})", t.display(db, types)))
+                    .collect::<Vec<_>>()
+                    .join(""),
+            );
+
+            let mut subst = FxHashMap::default();
+            let mut vars = FxHashMap::default();
+            let matches = ctnt
+                .types
+                .iter()
+                .zip(ci.types.iter())
+                .map(|(&ty, &with)| match_type_env(db, types, ty, with, &mut subst, &mut vars))
+                .collect::<Vec<_>>();
+
+            tracing::debug!("{:?}", matches);
+
+            if matches.iter().any(|m| matches!(m, Matched::Apart)) {
+                path.inc_last();
+                continue;
+            }
+
+            return Some(ClassEnvMatchResult {
+                scope,
+                subst,
+                path: *path,
+            });
+        }
+
+        None
     }
 }
 
@@ -433,6 +553,45 @@ impl TyId {
             | TyInfo::Unknown(_) => true,
             | _ => false,
         }
+    }
+}
+
+impl ClassEnvPath {
+    const LEN_MASK: u128 = 0x1111;
+
+    pub fn len(self) -> usize {
+        (self.0 & Self::LEN_MASK) as usize
+    }
+
+    pub fn iter(self) -> ClassEnvPathIter {
+        ClassEnvPathIter(self, 0)
+    }
+
+    fn new_layer(&mut self) {
+        assert!(self.0 & Self::LEN_MASK < 14);
+        self.0 += 1;
+    }
+
+    fn inc_last(&mut self) {
+        self.0 += 1 << (self.len() * 8);
+    }
+}
+
+pub struct ClassEnvPathIter(ClassEnvPath, usize);
+
+impl Iterator for ClassEnvPathIter {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<usize> {
+        if self.1 >= self.0.len() {
+            return None;
+        }
+
+        let val = ((self.0).0 >> ((self.1 + 1) * 8)) & 0x11111111;
+
+        self.1 += 1;
+
+        Some(val as usize)
     }
 }
 

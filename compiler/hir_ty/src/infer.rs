@@ -30,7 +30,7 @@ use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 use self::diagnostics::{CtntExpected, CtntFound};
-use crate::class::{ClassEnv, ClassEnvScope};
+use crate::class::{ClassEnv, ClassEnvPath, ClassEnvScope};
 use crate::db::HirDatabase;
 use crate::infer::diagnostics::OperatorSource;
 use crate::info::{CtntInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVarScopeId, TypeVars, Types};
@@ -120,6 +120,7 @@ pub(crate) fn infer_recover(
         kind_of_ty: ArenaMap::default(),
         instances: FxHashMap::default(),
         methods: FxHashMap::default(),
+        constraints: Vec::default(),
         diagnostics,
     })
 }
@@ -132,13 +133,14 @@ pub struct InferenceResult<T, C> {
     pub kind_of_ty: ArenaMap<LocalTypeRefId, T>,
     pub instances: FxHashMap<ExprId, Vec<T>>,
     pub methods: FxHashMap<(ExprId, usize), SmallVec<[MethodSource; 1]>>,
+    pub constraints: Vec<MethodSource>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic<T, C>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MethodSource {
     Member(MemberId),
-    Record(usize),
+    Record(usize, ClassEnvPath),
 }
 
 pub struct InferenceContext<'a> {
@@ -205,6 +207,7 @@ impl<'a> InferenceContext<'a> {
                 kind_of_ty: ArenaMap::default(),
                 instances: FxHashMap::default(),
                 methods: FxHashMap::default(),
+                constraints: Vec::new(),
                 diagnostics: Vec::new(),
             },
             can_generalize,
@@ -238,6 +241,7 @@ impl<'a> InferenceContext<'a> {
             kind_of_ty: ArenaMap::default(),
             instances: FxHashMap::default(),
             methods: FxHashMap::default(),
+            constraints: Vec::new(),
             diagnostics: Vec::new(),
         });
 

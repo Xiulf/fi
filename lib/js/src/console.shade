@@ -17,8 +17,8 @@ print = print' default
 class Print t =
     print' :: JsArray -> t
 
-member () of Print =
-    print' s = log $ spread s
+member (Effect ()) of Print =
+    print' s = ret $ log $ spread s
 
 member (a -> r) of Print where Print r =
     print' s = fn x -> print' (push s x)
