@@ -2,12 +2,12 @@ module Monad.Reader =
 
 import Core
 
-class Read r m | m -> r =
+class MonadRead r m | m -> r where Try m =
     read :: m r
 
 type Reader r a = | Reader (r -> a)
 
-member r (Reader r) of Read =
+member r (Reader r) of MonadRead =
     read = Reader (fn x -> x)
 
 member (Reader r) of Try =

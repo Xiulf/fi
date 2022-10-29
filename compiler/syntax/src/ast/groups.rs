@@ -67,6 +67,12 @@ impl Iterator for ItemGroups {
                 let kind2 = next.group_kind();
 
                 if kind == kind2 {
+                    if let Item::Fun(f) = next {
+                        if f.args().next().is_none() && matches!(kind, ItemGroupKind::Func(false)) {
+                            break;
+                        }
+                    }
+
                     kind = kind2;
                     rest.push(self.items.next()?);
                 } else {
@@ -95,6 +101,12 @@ impl Iterator for AssocItemGroups {
                 let kind2 = next.group_kind();
 
                 if kind == kind2 {
+                    if let AssocItem::Fun(f) = next {
+                        if f.args().next().is_none() && matches!(kind, AssocItemGroupKind::Func(false)) {
+                            break;
+                        }
+                    }
+
                     kind = kind2;
                     rest.push(self.items.next()?);
                 } else {
@@ -235,7 +247,11 @@ impl ItemFun {
         std::iter::successors(Some(self.clone()), move |it| {
             let next = it.syntax().next_sibling().and_then(Self::cast)?;
 
-            if next.attrs().next().is_none() && name_eq(&next.name(), &name) {
+            if next.attrs().next().is_none() && name_eq(&next.name(), &name) && next.ty().is_none() {
+                if next.args().next().is_none() && it.ty().is_none() {
+                    return None;
+                }
+
                 Some(next)
             } else {
                 None

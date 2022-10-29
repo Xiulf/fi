@@ -28,7 +28,7 @@ test2 = try
     a <- read
     ret $ first a
 
-test3 :: forall m. m () where MonadState Int m
+test3 :: State Int ()
 test3 = try
     a <- get
     put 12

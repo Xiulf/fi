@@ -3,12 +3,12 @@ module Monad.Writer =
 import Core
 import Core.Ops (Concat, concat)
 
-class Write w m | m -> w where Try m = 
+class MonadWrite w m | m -> w where Try m = 
     write :: w -> m ()
 
 type Writer w a = | Writer (a, w)
 
-member w (Writer w) of Write where Default w, Concat w w =
+member w (Writer w) of MonadWrite where Default w, Concat w w =
     write x = Writer ((), x)
 
 member (Writer w) of Try where Default w, Concat w w =
