@@ -8,6 +8,7 @@ members = [
     "compiler/codegen",
     # "compiler/lower",
     "compiler/metadata",
+    "compiler/mir",
     "compiler/hir",
     "compiler/hir_ty",
     "compiler/hir_def",

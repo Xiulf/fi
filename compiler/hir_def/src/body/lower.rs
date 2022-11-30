@@ -4,6 +4,7 @@ use arena::Arena;
 use base_db::input::FileId;
 use syntax::{ast, AstPtr};
 
+use super::BodyArm;
 use crate::body::{Body, BodySourceMap, ExprPtr, ExprSource, PatPtr, PatSource, SyntheticSyntax};
 use crate::db::DefDatabase;
 use crate::def_map::DefMap;
@@ -90,7 +91,7 @@ impl<'a> ExprCollector<'a> {
                     Path::from_segments([def_map[module.local_id].name.clone(), data.name.clone()])
                 };
 
-                for (params, expr) in params.into_iter().zip(exprs) {
+                for (params, arm) in params.into_iter().zip(exprs) {
                     let pats = params.into_iter().map(|p| self.collect_pat(p)).collect::<Box<[_]>>();
 
                     if arms.is_empty() {
@@ -107,8 +108,25 @@ impl<'a> ExprCollector<'a> {
                         })
                     };
 
-                    let expr = self.collect_expr(expr);
-                    let value = CaseValue::Normal(expr);
+                    let value = match arm {
+                        | BodyArm::Expr(expr) => CaseValue::Normal(self.collect_expr(expr)),
+                        | BodyArm::Guarded(guarded) => {
+                            let mut guards = Vec::new();
+                            let mut exprs = Vec::new();
+
+                            for g in guarded.guards() {
+                                if g.is_else() {
+                                    exprs.push(self.collect_expr_opt(g.guard()));
+                                    break;
+                                }
+
+                                guards.push(self.collect_expr_opt(g.guard()));
+                                exprs.push(self.collect_expr_opt(g.value()));
+                            }
+
+                            CaseValue::Guarded(guards.into(), exprs.into())
+                        },
+                    };
 
                     arms.push(CaseArm { pat, value });
                 }

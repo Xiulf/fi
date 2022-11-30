@@ -8,6 +8,7 @@ edition = "2021"
 diagnostics = { path = "../diagnostics" }
 codegen = { path = "../codegen" }
 metadata = { path = "../metadata" }
+mir = { path = "../mir" }
 hir = { path = "../hir" }
 hir_def = { path = "../hir_def" }
 syntax = { path = "../syntax" }

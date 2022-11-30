@@ -11,6 +11,7 @@ use rustc_hash::FxHashSet;
     hir::db::InternDatabaseStorage,
     hir::db::DefDatabaseStorage,
     hir::db::HirDatabaseStorage,
+    mir::db::MirDatabaseStorage,
     codegen::db::CodegenDatabaseStorage
 )]
 #[derive(Default)]

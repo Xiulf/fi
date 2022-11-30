@@ -568,3 +568,13 @@ impl From<DefWithBodyId> for AttrDefId {
         }
     }
 }
+
+impl From<DefWithBodyId> for ValueTyDefId {
+    fn from(id: DefWithBodyId) -> Self {
+        match id {
+            | DefWithBodyId::FuncId(id) => Self::FuncId(id),
+            | DefWithBodyId::StaticId(id) => Self::StaticId(id),
+            | DefWithBodyId::ConstId(id) => Self::ConstId(id),
+        }
+    }
+}

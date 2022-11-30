@@ -609,7 +609,7 @@ impl BodyCtx<'_, '_> {
             }),
         };
 
-        for arm in arms {
+        for (i, arm) in arms.iter().enumerate() {
             let check = self.lower_pat(arm.pat, pred.clone(), block);
             let (check, then) = match arm.value {
                 | hir::CaseValue::Normal(expr) => (check, self.lower_expr_inline(expr)),
@@ -649,6 +649,12 @@ impl BodyCtx<'_, '_> {
                     (check, then)
                 },
             };
+
+            // assume all cases are matched
+            if i == arms.len() - 1 {
+                else_ = then;
+                break;
+            }
 
             if let Some(check) = check {
                 checks.push((check, then));

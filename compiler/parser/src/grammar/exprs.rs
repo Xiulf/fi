@@ -378,28 +378,28 @@ fn case_value(p: &mut Parser) {
         return;
     }
 
-    case_guard(p);
+    case_guard(p, ARROW);
 
     while p.at_ts(IF_KW | ELSE_KW) {
-        case_guard(p);
+        case_guard(p, ARROW);
     }
 
     m.complete(p, CASE_GUARDED);
 }
 
-fn case_guard(p: &mut Parser) {
+pub(crate) fn case_guard(p: &mut Parser, sep: SyntaxKind) {
     let m = p.start();
 
     if p.eat(ELSE_KW) {
-        p.expect(ARROW);
+        p.expect(sep);
         expr(p);
         m.complete(p, CASE_GUARD);
         return;
     }
 
     p.bump(IF_KW);
-    expr_(p, true, ARROW);
-    p.expect(ARROW);
+    expr_(p, true, sep);
+    p.expect(sep);
     expr(p);
     m.complete(p, CASE_GUARD);
 }

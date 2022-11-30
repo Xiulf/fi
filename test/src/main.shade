@@ -5,32 +5,15 @@ import Data.List (first)
 import Monad.Writer
 import Monad.Reader
 import Monad.State
-import Js.Console
+; import Js.Console
 
 
-@main
-main :: Effect ()
-main =
-    let _, a = runWriter test
-    let b = runReader test2 ("a":"b":Nil)
-    let c = runState test3 234
-    print a b c
+; @main
+; main :: Effect ()
+; main =
+    ; print "test"
 
-test :: Writer Str ()
-test = try
-    write "abc"
-    write "def"
-    write "ghi"
-    ret ()
+main = 22
 
-test2 :: forall a. Reader (List a) (Option a)
-test2 = try
-    a <- read
-    ret $ first a
-
-test3 :: State Int ()
-test3 = try
-    a <- get
-    put 12
-    let _ = print a :: Effect ()
-    ret ()
+test x if x == 0 = 10
+       else      = 20

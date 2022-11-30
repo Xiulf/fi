@@ -43,9 +43,16 @@ pub struct BodySourceMap {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SyntheticSyntax(pub DefWithBodyId);
 
+#[derive(Debug)]
 enum BodyExpr {
     Single(ast::Expr),
-    Case(Vec<ast::Expr>),
+    Case(Vec<BodyArm>),
+}
+
+#[derive(Debug)]
+enum BodyArm {
+    Expr(ast::Expr),
+    Guarded(ast::CaseValueGuarded),
 }
 
 impl Body {
@@ -58,15 +65,34 @@ impl Body {
                 let src = f.source(db);
                 let group = src.value.group().collect::<Vec<_>>();
                 let expr = if group.len() == 1 || (group.len() == 2 && group[0].ty().is_some()) {
-                    group.last().and_then(|it| it.body()).map(BodyExpr::Single)
+                    group.last().and_then(|it| {
+                        it.body()
+                            .map(BodyExpr::Single)
+                            .or_else(|| it.guarded().map(|g| BodyExpr::Case(vec![BodyArm::Guarded(g)])))
+                    })
                 } else {
-                    Some(BodyExpr::Case(group.iter().filter_map(|it| it.body()).collect()))
+                    Some(BodyExpr::Case(
+                        group
+                            .iter()
+                            .filter_map(|it| {
+                                it.body()
+                                    .map(BodyArm::Expr)
+                                    .or_else(|| it.guarded().map(BodyArm::Guarded))
+                            })
+                            .collect(),
+                    ))
                 };
 
                 params = Some(
                     group
                         .iter()
-                        .filter_map(|it| if it.body().is_some() { Some(it.args()) } else { None })
+                        .filter_map(|it| {
+                            if it.body().is_some() || it.guarded().is_some() {
+                                Some(it.args())
+                            } else {
+                                None
+                            }
+                        })
                         .collect::<Vec<_>>(),
                 );
 

@@ -155,7 +155,9 @@ impl Ctx {
     ) -> Option<LocalItemTreeId<Func>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
-        let has_body = item.body().is_some() || rest.any(|i| i.body().is_some());
+        let has_body = item.body().is_some()
+            || item.guarded().is_some()
+            || rest.any(|i| i.body().is_some() || i.guarded().is_some());
         let is_foreign = item.is_foreign();
 
         Some(id(self.tree.data.funcs.alloc(Func {

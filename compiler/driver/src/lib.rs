@@ -13,6 +13,8 @@ use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
 pub use codegen::Optimization;
+use hir::HirDisplay;
+use mir::db::MirDatabase;
 use paths::AbsPathBuf;
 use project::manifest::{self, Cfg};
 use project::Workspace;
@@ -334,12 +336,31 @@ impl Driver {
             self.write_assembly(ws, dep.lib, done)?;
         }
 
+        self.debug_mir(lib);
+
         let asm = self.db.lib_assembly(lib);
 
         asm.link(&self.db, ws, &self.target_dir);
         done.insert(lib);
 
         Ok(true)
+    }
+
+    fn debug_mir(&self, lib: hir::Lib) {
+        for module in lib.modules(&self.db) {
+            for def in module.declarations(&self.db) {
+                match def {
+                    | hir::ModuleDef::Func(f) => {
+                        let id = hir::id::FuncId::from(f);
+                        let body = self.db.body_mir(id.into());
+                        let mir = self.db.lookup_intern_body(body);
+
+                        eprintln!("{}", mir.display(&self.db));
+                    },
+                    | _ => {},
+                }
+            }
+        }
     }
 }
 

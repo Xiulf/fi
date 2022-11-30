@@ -121,9 +121,14 @@ impl LibSet {
         }
     }
 
-    pub fn toposort(&self) -> Vec<LibId> {
+    pub fn toposort(&self, start: Option<LibId>) -> Vec<LibId> {
         let mut res = Vec::new();
         let mut visited = FxHashSet::default();
+
+        if let Some(start) = start {
+            go(self, &mut visited, &mut res, start);
+            return res;
+        }
 
         for &lib in self.libs.keys() {
             go(self, &mut visited, &mut res, lib);

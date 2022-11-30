@@ -5,4 +5,4 @@ output = "executable"
 
 [dependencies]
 core = { path = "../lib/core" }
-js = { path = "../lib/js" }
+# js = { path = "../lib/js" }

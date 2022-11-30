@@ -1,0 +1,14 @@
+[package]
+name = "mir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hir = { path = "../hir" }
+hir_ty = { path = "../hir_ty" }
+hir_def = { path = "../hir_def" }
+base_db = { path = "../base_db" }
+arena = { path = "../arena" }
+rustc-hash = "1.1.0"
+salsa = "0.16.0"
+tracing = "^0.1"

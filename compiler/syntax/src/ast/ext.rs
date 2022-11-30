@@ -294,6 +294,10 @@ impl ItemFun {
         support::child(&self.0)
     }
 
+    pub fn guarded(&self) -> Option<CaseValueGuarded> {
+        support::child(&self.0)
+    }
+
     pub fn ty(&self) -> Option<Type> {
         support::child(&self.0)
     }

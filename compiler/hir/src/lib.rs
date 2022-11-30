@@ -72,7 +72,7 @@ impl Lib {
     }
 
     pub fn all(db: &dyn HirDatabase) -> Vec<Lib> {
-        db.libs().toposort().into_iter().map(|id| Lib { id }).collect()
+        db.libs().toposort(None).into_iter().map(|id| Lib { id }).collect()
     }
 }
 
@@ -207,6 +207,13 @@ pub enum ModuleDef {
     Class(Class),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DefWithBody {
+    Func(Func),
+    Static(Static),
+    Const(Const),
+}
+
 impl ModuleDef {
     pub fn module(self, db: &dyn HirDatabase) -> Option<Module> {
         match self {
@@ -256,6 +263,39 @@ impl ModuleDef {
             | ModuleDef::TypeCtor(it) => it.diagnostics(db, sink),
             | ModuleDef::Ctor(it) => it.diagnostics(db, sink),
             | ModuleDef::Class(it) => it.diagnostics(db, sink),
+        }
+    }
+}
+
+impl DefWithBody {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        match self {
+            | DefWithBody::Func(it) => it.module(db),
+            | DefWithBody::Static(it) => it.module(db),
+            | DefWithBody::Const(it) => it.module(db),
+        }
+    }
+
+    pub fn path(self, db: &dyn HirDatabase) -> Path {
+        let name = self.name(db);
+        let module = self.module(db);
+
+        module.path_to_name(db, name)
+    }
+
+    pub fn name(self, db: &dyn HirDatabase) -> Name {
+        match self {
+            | DefWithBody::Func(it) => it.name(db),
+            | DefWithBody::Static(it) => it.name(db),
+            | DefWithBody::Const(it) => it.name(db),
+        }
+    }
+
+    pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
+        match self {
+            | DefWithBody::Func(it) => it.diagnostics(db, sink),
+            | DefWithBody::Static(it) => it.diagnostics(db, sink),
+            | DefWithBody::Const(it) => it.diagnostics(db, sink),
         }
     }
 }
@@ -394,30 +434,30 @@ impl Func {
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let infer = db.infer(self.id.into());
-        // let data = db.func_data(self.id);
-        // let body = db.body(self.id.into());
+        let data = db.func_data(self.id);
+        let body = db.body(self.id.into());
 
-        // if data.name.as_ref() == "test3" {
-        // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-        // eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
+        // if data.name.as_ref() == "test" {
+        eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
+        eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
-        // for ((id, i), method) in &infer.methods {
-        // eprintln!("{:?}#{} -> {:?}", id, i, method);
-        // }
+        for ((id, i), method) in &infer.methods {
+            eprintln!("{:?}#{} -> {:?}", id, i, method);
+        }
 
-        //     eprintln!();
+        eprintln!();
 
-        //     for (expr, ty) in infer.type_of_expr.iter() {
-        //         eprintln!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
-        //     }
+        for (expr, ty) in infer.type_of_expr.iter() {
+            eprintln!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
+        }
 
-        //     eprintln!();
+        eprintln!();
 
-        //     for (pat, ty) in infer.type_of_pat.iter() {
-        //         eprintln!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
-        //     }
+        for (pat, ty) in infer.type_of_pat.iter() {
+            eprintln!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
+        }
 
-        //     eprintln!();
+        eprintln!();
         // }
 
         infer.add_diagnostics(db, self.id.into(), sink);
@@ -915,5 +955,26 @@ macro_rules! impl_from {
     };
 }
 
+impl Into<DefWithBodyId> for DefWithBody {
+    fn into(self) -> DefWithBodyId {
+        match self {
+            | Self::Func(f) => DefWithBodyId::FuncId(f.id),
+            | Self::Static(f) => DefWithBodyId::StaticId(f.id),
+            | Self::Const(f) => DefWithBodyId::ConstId(f.id),
+        }
+    }
+}
+
+impl From<DefWithBodyId> for DefWithBody {
+    fn from(id: DefWithBodyId) -> Self {
+        match id {
+            | DefWithBodyId::FuncId(id) => DefWithBody::Func(Func { id }),
+            | DefWithBodyId::StaticId(id) => DefWithBody::Static(Static { id }),
+            | DefWithBodyId::ConstId(id) => DefWithBody::Const(Const { id }),
+        }
+    }
+}
+
 impl_from!(Fixity, Func, Static, Const, TypeAlias, TypeCtor, Ctor, Class for ModuleDef);
+impl_from!(Func, Static, Const for DefWithBody);
 impl_from!(Func, Static for AssocItem);
