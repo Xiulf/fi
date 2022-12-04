@@ -30,13 +30,18 @@ ast_node!(Item {
     Module(ItemModule, MODULE),
     Import(ItemImport, IMPORT),
     Fixity(ItemFixity, ITEM_FIXITY),
-    Fun(ItemFun, ITEM_FUN),
+    Func(ItemFunc, ITEM_FUNC),
     Static(ItemStatic, ITEM_STATIC),
     Const(ItemConst, ITEM_CONST),
     Type(ItemType, ITEM_TYPE),
     Class(ItemClass, ITEM_CLASS),
     Member(ItemMember, ITEM_MEMBER),
 });
+
+ast_node!(OneFunc, ONE_FUNC);
+ast_node!(OneStatic, ONE_STATIC);
+ast_node!(OneConst, ONE_CONST);
+ast_node!(OneType, ONE_TYPE);
 
 ast_node!(ImportItems, IMPORT_ITEMS);
 ast_node!(Ctor, ITEM_CTOR);
@@ -49,7 +54,7 @@ ast_node!(Constraint, CONSTRAINT);
 ast_node!(TypeVarKind, TYPE_VAR_KIND);
 
 ast_node!(@ AssocItem {
-    Fun(ItemFun, ITEM_FUN),
+    Func(ItemFunc, ITEM_FUNC),
     Static(ItemStatic, ITEM_STATIC),
 });
 

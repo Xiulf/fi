@@ -28,9 +28,6 @@ pub enum TyKind {
     Alias(TypeAliasId),
     App(Ty, List<Ty>),
 
-    Tuple(List<Ty>),
-    Func(List<Ty>, Ty),
-
     Where(WhereClause<Constraint>, Ty),
     ForAll(List<Ty>, Ty, TypeVarScopeId),
     TypeVar(TypeVar),

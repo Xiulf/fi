@@ -1,5 +1,7 @@
+pub mod attrs;
 pub mod db;
 pub mod diagnostic;
+pub mod display;
 mod from_id;
 pub mod semantics;
 pub mod source_analyzer;
@@ -7,10 +9,12 @@ mod source_to_def;
 
 use base_db::input::FileId;
 use base_db::libs::LibId;
+pub use hir_def::attrs::Documentation;
 pub use hir_def::body::Body;
 pub use hir_def::data::FixityKind;
 use hir_def::diagnostic::DiagnosticSink;
 pub use hir_def::expr::{CaseArm, CaseValue, Expr, ExprId, Literal, Stmt};
+pub use hir_def::id;
 use hir_def::id::*;
 pub use hir_def::in_file::InFile;
 use hir_def::item_scope::ExportNs;
@@ -20,13 +24,12 @@ pub use hir_def::pat::{Pat, PatId};
 pub use hir_def::path::Path;
 pub use hir_def::resolver::{HasResolver, Resolver, TypeNs, ValueNs};
 use hir_def::visibility::Visibility;
-pub use hir_def::{attrs, id};
 pub use hir_ty::class::ClassEnvPath;
 use hir_ty::db::HirDatabase;
 pub use hir_ty::display::HirDisplay;
 pub use hir_ty::infer::{InferenceResult, MethodSource};
+pub use hir_ty::ty;
 use hir_ty::ty::Ty;
-pub use hir_ty::{display, ty};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Lib {
@@ -434,30 +437,30 @@ impl Func {
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let infer = db.infer(self.id.into());
-        let data = db.func_data(self.id);
-        let body = db.body(self.id.into());
+        // let data = db.func_data(self.id);
+        // let body = db.body(self.id.into());
 
         // if data.name.as_ref() == "test" {
-        eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-        eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
+        // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
+        // eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
-        for ((id, i), method) in &infer.methods {
-            eprintln!("{:?}#{} -> {:?}", id, i, method);
-        }
+        // for ((id, i), method) in &infer.methods {
+        //     eprintln!("{:?}#{} -> {:?}", id, i, method);
+        // }
 
-        eprintln!();
+        // eprintln!();
 
-        for (expr, ty) in infer.type_of_expr.iter() {
-            eprintln!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
-        }
+        // for (expr, ty) in infer.type_of_expr.iter() {
+        //     eprintln!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
+        // }
 
-        eprintln!();
+        // eprintln!();
 
-        for (pat, ty) in infer.type_of_pat.iter() {
-            eprintln!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
-        }
+        // for (pat, ty) in infer.type_of_pat.iter() {
+        //     eprintln!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
+        // }
 
-        eprintln!();
+        // eprintln!();
         // }
 
         infer.add_diagnostics(db, self.id.into(), sink);
@@ -910,6 +913,10 @@ pub struct Local {
 }
 
 impl Local {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        self.parent.module(db.upcast()).into()
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         let body = db.body(self.parent);
 
@@ -920,12 +927,22 @@ impl Local {
     }
 }
 
+impl From<(DefWithBodyId, PatId)> for Local {
+    fn from((parent, pat_id): (DefWithBodyId, PatId)) -> Self {
+        Self { parent, pat_id }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeVar {
     pub(crate) id: TypeVarId,
 }
 
 impl TypeVar {
+    pub fn module(self, db: &dyn HirDatabase) -> Module {
+        self.id.owner.module(db.upcast()).into()
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         match self.id.owner {
             | TypeVarOwner::DefWithBodyId(id) => db.body(id).type_map()[self.id.local_id].name.clone(),

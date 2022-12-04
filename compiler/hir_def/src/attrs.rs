@@ -13,6 +13,7 @@ use crate::item_tree::{ItemTreeId, ItemTreeNode};
 use crate::name::{AsName, Name};
 
 const CFG_ATTR: &'static str = "if";
+const DOC_ATTR: &'static str = "doc";
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Attrs(pub(crate) RawAttrs);
@@ -51,6 +52,9 @@ pub struct AttrQuery<'a> {
     key: &'static str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Documentation(String);
+
 impl Attrs {
     pub const EMPTY: Self = Self(RawAttrs::EMPTY);
 
@@ -60,6 +64,35 @@ impl Attrs {
 
     pub fn cfg(&self) -> Option<Cfg> {
         cfg_parse(self)
+    }
+
+    pub fn docs(&self) -> Option<Documentation> {
+        let docs = self.by_key(DOC_ATTR).attrs().filter_map(|attr| attr.string_value());
+        let indent = doc_indent(self);
+        let mut buf = String::new();
+
+        for doc in docs {
+            if !doc.is_empty() {
+                buf.extend(
+                    doc.lines()
+                        .map(|line| {
+                            line.char_indices()
+                                .nth(indent)
+                                .map_or(line, |(offset, _)| &line[offset..])
+                                .trim_end()
+                        })
+                        .intersperse("\n"),
+                );
+            }
+        }
+
+        buf.pop();
+
+        if buf.is_empty() {
+            None
+        } else {
+            Some(Documentation::new(buf))
+        }
     }
 }
 
@@ -277,6 +310,34 @@ impl Literal {
             | ast::Literal::Char(i) => Some(Literal::Char(i.value()?)),
             | ast::Literal::String(i) => Some(Literal::String(i.value()?)),
         }
+    }
+}
+
+impl Documentation {
+    pub fn new(s: String) -> Self {
+        Self(s)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+fn doc_indent(attrs: &Attrs) -> usize {
+    attrs
+        .by_key(DOC_ATTR)
+        .attrs()
+        .filter_map(|attr| attr.string_value())
+        .flat_map(|s| s.lines())
+        .filter(|line| !line.chars().all(|c| c.is_whitespace()))
+        .map(|line| line.chars().take_while(|c| c.is_whitespace()).count())
+        .min()
+        .unwrap_or(0)
+}
+
+impl From<Documentation> for String {
+    fn from(d: Documentation) -> Self {
+        d.0
     }
 }
 

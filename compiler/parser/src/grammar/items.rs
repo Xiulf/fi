@@ -25,16 +25,16 @@ pub(crate) fn any_item(p: &mut Parser) {
             foreign(p, m);
         },
         | IDENT => {
-            fun(p, m);
+            funcs(p, m, true);
         },
         | STATIC_KW => {
-            static_(p, m);
+            statics(p, m, true);
         },
         | CONST_KW => {
-            const_(p, m);
+            consts(p, m, true);
         },
         | TYPE_KW => {
-            type_(p, m);
+            types(p, m, true);
         },
         | CLASS_KW => {
             class(p, m);
@@ -131,10 +131,9 @@ pub(crate) fn foreign(p: &mut Parser, m: Marker) {
     p.expect(FOREIGN_KW);
 
     match p.current() {
-        // | FN_KW => fun(p, m),
-        | IDENT => fun(p, m),
-        | STATIC_KW => static_(p, m),
-        | TYPE_KW => type_(p, m),
+        | IDENT => funcs(p, m, false),
+        | STATIC_KW => statics(p, m, false),
+        | TYPE_KW => types(p, m, false),
         | _ => {
             p.error("expected 'fn', 'static' or 'type'");
             m.abandon(p);
@@ -143,13 +142,30 @@ pub(crate) fn foreign(p: &mut Parser, m: Marker) {
     }
 }
 
-pub(crate) fn fun(p: &mut Parser, m: Marker) {
-    // p.expect(FN_KW);
+pub(crate) fn funcs(p: &mut Parser, m: Marker, multiple: bool) {
+    let name = p.current_text().to_string();
+    let f = p.start();
+
+    func(p, f);
+
+    if multiple {
+        while p.at(LYT_SEP) && p.nth_at(1, IDENT) && !p.nth_at(2, DBL_COLON) && p.nth_text(1) == name {
+            p.bump(LYT_SEP);
+            let f = p.start();
+
+            func(p, f);
+        }
+    }
+
+    m.complete(p, ITEM_FUNC);
+}
+
+pub(crate) fn func(p: &mut Parser, m: Marker) {
     paths::name(p);
 
     if p.eat(DBL_COLON) {
         types::ty(p);
-        m.complete(p, ITEM_FUN);
+        m.complete(p, ONE_FUNC);
     } else {
         while !p.at_ts(TokenSet::new(&[EOF, LYT_SEP, LYT_END, EQUALS, IF_KW])) {
             patterns::atom(p);
@@ -160,7 +176,7 @@ pub(crate) fn fun(p: &mut Parser, m: Marker) {
 
             exprs::block(p, false);
             body.complete(p, EXPR_DO);
-        } else {
+        } else if p.at(IF_KW) {
             let guarded = p.start();
 
             exprs::case_guard(p, EQUALS);
@@ -172,8 +188,31 @@ pub(crate) fn fun(p: &mut Parser, m: Marker) {
             guarded.complete(p, CASE_GUARDED);
         }
 
-        m.complete(p, ITEM_FUN);
+        m.complete(p, ONE_FUNC);
     }
+}
+
+pub(crate) fn statics(p: &mut Parser, m: Marker, multiple: bool) {
+    let name = p.nth_text(1).to_string();
+    let f = p.start();
+
+    static_(p, f);
+
+    if multiple {
+        while p.at(LYT_SEP)
+            && p.nth_at(1, STATIC_KW)
+            && p.nth_at(2, IDENT)
+            && !p.nth_at(3, DBL_COLON)
+            && p.nth_text(2) == name
+        {
+            p.bump(LYT_SEP);
+            let f = p.start();
+
+            static_(p, f);
+        }
+    }
+
+    m.complete(p, ITEM_STATIC);
 }
 
 pub(crate) fn static_(p: &mut Parser, m: Marker) {
@@ -182,12 +221,35 @@ pub(crate) fn static_(p: &mut Parser, m: Marker) {
 
     if p.eat(DBL_COLON) {
         types::ty(p);
-        m.complete(p, ITEM_STATIC);
+        m.complete(p, ONE_STATIC);
     } else {
         p.expect(EQUALS);
         exprs::expr(p);
-        m.complete(p, ITEM_STATIC);
+        m.complete(p, ONE_STATIC);
     }
+}
+
+pub(crate) fn consts(p: &mut Parser, m: Marker, multiple: bool) {
+    let name = p.nth_text(1).to_string();
+    let f = p.start();
+
+    const_(p, f);
+
+    if multiple {
+        while p.at(LYT_SEP)
+            && p.nth_at(1, CONST_KW)
+            && p.nth_at(2, IDENT)
+            && !p.nth_at(3, DBL_COLON)
+            && p.nth_text(2) == name
+        {
+            p.bump(LYT_SEP);
+            let f = p.start();
+
+            const_(p, f);
+        }
+    }
+
+    m.complete(p, ITEM_CONST);
 }
 
 pub(crate) fn const_(p: &mut Parser, m: Marker) {
@@ -196,12 +258,35 @@ pub(crate) fn const_(p: &mut Parser, m: Marker) {
 
     if p.eat(DBL_COLON) {
         types::ty(p);
-        m.complete(p, ITEM_CONST);
+        m.complete(p, ONE_CONST);
     } else {
         p.expect(EQUALS);
         exprs::expr(p);
-        m.complete(p, ITEM_CONST);
+        m.complete(p, ONE_CONST);
     }
+}
+
+pub(crate) fn types(p: &mut Parser, m: Marker, multiple: bool) {
+    let name = p.nth_text(1).to_string();
+    let f = p.start();
+
+    type_(p, f);
+
+    if multiple {
+        while p.at(LYT_SEP)
+            && p.nth_at(1, TYPE_KW)
+            && p.nth_at(2, IDENT)
+            && !p.nth_at(3, DBL_COLON)
+            && p.nth_text(2) == name
+        {
+            p.bump(LYT_SEP);
+            let f = p.start();
+
+            type_(p, f);
+        }
+    }
+
+    m.complete(p, ITEM_TYPE);
 }
 
 pub(crate) fn type_(p: &mut Parser, m: Marker) {
@@ -229,7 +314,7 @@ pub(crate) fn type_(p: &mut Parser, m: Marker) {
         }
     }
 
-    m.complete(p, ITEM_TYPE);
+    m.complete(p, ONE_TYPE);
 }
 
 pub(crate) fn ctor(p: &mut Parser, m: Marker) {
@@ -379,7 +464,7 @@ pub(crate) fn assoc_item(p: &mut Parser) {
 
     match p.current() {
         // | FN_KW => fun(p, m),
-        | IDENT => fun(p, m),
+        | IDENT => func(p, m),
         | STATIC_KW => static_(p, m),
         | _ => {
             p.error("expected an associated item");

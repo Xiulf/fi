@@ -1,10 +1,15 @@
+mod classify;
+mod hover;
+
 use std::panic::UnwindSafe;
 use std::sync::Arc;
 
-use base_db::input::{FileId, SourceRoot, SourceRootId};
+use base_db::input::{FileId, LineIndex, SourceRoot, SourceRootId};
 use base_db::libs::LibSet;
 use base_db::{Canceled, CheckCanceled, SourceDatabase, SourceDatabaseExt};
+use hir::InFile;
 use salsa::ParallelDatabase;
+use syntax::{TextRange, TextSize};
 
 use crate::db::LspDatabase;
 use crate::diagnostics::{self, Diagnostic};
@@ -18,11 +23,17 @@ pub struct AnalysisSnapshot {
     pub db: salsa::Snapshot<LspDatabase>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct AnalysisChange {
     libs: Option<LibSet>,
     roots: Option<Vec<SourceRoot>>,
     files_changed: Vec<(FileId, Option<Arc<str>>)>,
+}
+
+#[derive(Debug)]
+pub struct RangeInfo<T> {
+    pub range: TextRange,
+    pub info: T,
 }
 
 impl Analysis {
@@ -33,11 +44,23 @@ impl Analysis {
     pub fn apply_change(&mut self, change: AnalysisChange) {
         self.db.apply_change(change);
     }
+
+    pub fn request_cancellation(&mut self) {
+        self.db.request_cancellation();
+    }
 }
 
 impl AnalysisSnapshot {
     pub fn diagnostics(&self, file_id: FileId) -> Result<Vec<Diagnostic>, Canceled> {
         self.with_db(|db| diagnostics::file_diagnostics(db, file_id))
+    }
+
+    pub fn line_index(&self, file_id: FileId) -> Result<Arc<LineIndex>, Canceled> {
+        self.with_db(|db| db.line_index(file_id))
+    }
+
+    pub fn hover(&self, file_offset: InFile<TextSize>) -> Result<Option<RangeInfo<hover::HoverInfo>>, Canceled> {
+        self.with_db(|db| hover::hover(db, file_offset))
     }
 
     fn with_db<T>(&self, f: impl FnOnce(&LspDatabase) -> T + UnwindSafe) -> Result<T, Canceled> {

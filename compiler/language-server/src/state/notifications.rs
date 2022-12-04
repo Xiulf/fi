@@ -23,6 +23,10 @@ impl LspState {
 
         self.open_files.insert(file_id);
 
+        if !self.vfs.read().has_changes() {
+            self.publish_diagnostics();
+        }
+
         Ok(())
     }
 

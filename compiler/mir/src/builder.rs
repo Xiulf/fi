@@ -84,7 +84,7 @@ impl Builder {
         self.block().term = Term::Jump(target.into());
     }
 
-    pub fn switch(&mut self, discr: impl Into<Operand>, values: Vec<u128>, targets: impl Into<Vec<JumpTarget>>) {
+    pub fn switch(&mut self, discr: impl Into<Operand>, values: Vec<i128>, targets: impl Into<Vec<JumpTarget>>) {
         self.block().term = Term::Switch {
             discr: discr.into(),
             values,
@@ -143,6 +143,16 @@ impl Place {
 
     pub fn deref(mut self) -> Self {
         self.projection.push(Projection::Deref);
+        self
+    }
+
+    pub fn field(mut self, index: usize) -> Self {
+        self.projection.push(Projection::Field(index));
+        self
+    }
+
+    pub fn downcast(mut self, ctor: Ctor) -> Self {
+        self.projection.push(Projection::Downcast(ctor));
         self
     }
 }

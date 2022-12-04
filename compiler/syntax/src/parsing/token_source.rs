@@ -14,8 +14,19 @@ impl<'t> TokenSource for TextTokenSource<'t> {
         self.curr.0
     }
 
+    fn current_text(&self) -> &str {
+        self.lookahead_text(0)
+    }
+
     fn lookahead_nth(&self, n: usize) -> parser::Token {
         mk_token(self.curr.1 + n, &self.token_offset_pairs)
+    }
+
+    fn lookahead_text(&self, n: usize) -> &str {
+        self.token_offset_pairs
+            .get(self.curr.1 + n)
+            .map(|(token, offset)| &self.text[TextRange::at(*offset, token.len)])
+            .unwrap_or_default()
     }
 
     fn bump(&mut self) {

@@ -1,3 +1,5 @@
+#![feature(iter_intersperse)]
+
 pub mod ast_id;
 pub mod attrs;
 pub mod body;

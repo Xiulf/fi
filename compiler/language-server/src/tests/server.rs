@@ -3,12 +3,12 @@ use std::fs;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use base_db::paths::AbsolutePathBuf;
 use crossbeam_channel::{after, select};
 use lsp_server::{Connection, Message, Notification, Request};
 use lsp_types::notification::Exit;
 use lsp_types::request::Shutdown;
 use lsp_types::{ProgressParams, ProgressParamsValue, Url, WorkDoneProgress};
+use paths::AbsPathBuf;
 use serde_json::Value;
 
 use crate::state::Config;
@@ -37,7 +37,7 @@ impl<'a> Project<'a> {
             fs::write(path, text).unwrap();
         }
 
-        let tmp_dir_path: AbsolutePathBuf = tmp_dir.path().to_path_buf().try_into().unwrap();
+        let tmp_dir_path: AbsPathBuf = tmp_dir.path().to_path_buf().try_into().unwrap();
         let roots = vec![tmp_dir_path.clone()];
         let workspaces = crate::state::workspace::discover_all(&roots);
         let config = Config {

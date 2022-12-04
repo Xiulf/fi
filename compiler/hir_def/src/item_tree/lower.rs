@@ -4,7 +4,6 @@ use std::sync::Arc;
 use arena::{Idx, RawIdx};
 use base_db::input::FileId;
 use syntax::ast::{self, NameOwner};
-use syntax::ItemGroups;
 
 use crate::ast_id::AstIdMap;
 use crate::db::DefDatabase;
@@ -47,42 +46,28 @@ impl Ctx {
     pub fn lower_source_file(mut self, source_file: &ast::SourceFile) -> ItemTree {
         self.tree.top_level = source_file
             .module()
-            .map(|m| self.lower_items(m.item_groups()))
+            .map(|m| self.lower_items(m.items()))
             .unwrap_or_default();
         self.tree
     }
 
-    pub fn lower_items(&mut self, groups: ItemGroups) -> Vec<Item> {
-        groups
-            .flat_map(|(item, rest)| self.lower_item(&item, &rest))
+    pub fn lower_items(&mut self, items: ast::AstChildren<ast::Item>) -> Vec<Item> {
+        items
+            .flat_map(|item| self.lower_item(&item))
             .flat_map(|item| item.0)
             .collect::<Vec<_>>()
     }
 
-    fn lower_item(&mut self, item: &ast::Item, rest: &[ast::Item]) -> Option<Items> {
+    fn lower_item(&mut self, item: &ast::Item) -> Option<Items> {
         let attrs = RawAttrs::new(item);
         let items = match item {
             | ast::Item::Module(ast) => self.lower_module(ast).map(Into::into),
             | ast::Item::Import(ast) => Some(Items(self.lower_import(ast).into_iter().map(Into::into).collect())),
             | ast::Item::Fixity(ast) => self.lower_fixity(ast).map(Into::into),
-            | ast::Item::Fun(ast) => self
-                .lower_fun(
-                    ast,
-                    rest.iter().map(|it| match it {
-                        | ast::Item::Fun(it) => it.clone(),
-                        | _ => unreachable!(),
-                    }),
-                )
-                .map(Into::into),
+            | ast::Item::Func(ast) => self.lower_func(ast).map(Into::into),
             | ast::Item::Static(ast) => self.lower_static(ast).map(Into::into),
             | ast::Item::Const(ast) => self.lower_const(ast).map(Into::into),
-            | ast::Item::Type(ast) => self.lower_type(
-                ast,
-                rest.first().map(|it| match it {
-                    | ast::Item::Type(it) => it,
-                    | _ => unreachable!(),
-                }),
-            ),
+            | ast::Item::Type(ast) => self.lower_type(ast),
             | ast::Item::Class(ast) => self.lower_class(ast).map(Into::into),
             | ast::Item::Member(ast) => self.lower_member(ast).map(Into::into),
         };
@@ -99,7 +84,7 @@ impl Ctx {
     pub fn lower_module(&mut self, module: &ast::ItemModule) -> Option<LocalItemTreeId<Module>> {
         let ast_id = self.ast_id_map.ast_id(module);
         let name = module.name()?.as_name();
-        let items = self.lower_items(module.item_groups()).into_boxed_slice();
+        let items = self.lower_items(module.items()).into_boxed_slice();
 
         Some(id(self.tree.data.modules.alloc(Module { ast_id, name, items })))
     }
@@ -148,16 +133,14 @@ impl Ctx {
         })))
     }
 
-    fn lower_fun(
-        &mut self,
-        item: &ast::ItemFun,
-        mut rest: impl Iterator<Item = ast::ItemFun>,
-    ) -> Option<LocalItemTreeId<Func>> {
+    fn lower_func(&mut self, item: &ast::ItemFunc) -> Option<LocalItemTreeId<Func>> {
+        let mut iter = item.iter();
+        let first = iter.next()?;
         let ast_id = self.ast_id_map.ast_id(item);
-        let name = item.name()?.as_name();
-        let has_body = item.body().is_some()
-            || item.guarded().is_some()
-            || rest.any(|i| i.body().is_some() || i.guarded().is_some());
+        let name = first.name()?.as_name();
+        let has_body = first.body().is_some()
+            || first.guarded().is_some()
+            || iter.any(|i| i.body().is_some() || i.guarded().is_some());
         let is_foreign = item.is_foreign();
 
         Some(id(self.tree.data.funcs.alloc(Func {
@@ -169,8 +152,10 @@ impl Ctx {
     }
 
     fn lower_static(&mut self, item: &ast::ItemStatic) -> Option<LocalItemTreeId<Static>> {
+        let mut iter = item.iter();
+        let first = iter.next()?;
         let ast_id = self.ast_id_map.ast_id(item);
-        let name = item.name()?.as_name();
+        let name = first.name()?.as_name();
         let is_foreign = item.is_foreign();
 
         Some(id(self.tree.data.statics.alloc(Static {
@@ -181,23 +166,28 @@ impl Ctx {
     }
 
     fn lower_const(&mut self, item: &ast::ItemConst) -> Option<LocalItemTreeId<Const>> {
+        let mut iter = item.iter();
+        let first = iter.next()?;
         let ast_id = self.ast_id_map.ast_id(item);
-        let name = item.name()?.as_name();
+        let name = first.name()?.as_name();
 
         Some(id(self.tree.data.consts.alloc(Const { name, ast_id })))
     }
 
-    fn lower_type(&mut self, item: &ast::ItemType, next: Option<&ast::ItemType>) -> Option<Items> {
+    fn lower_type(&mut self, item: &ast::ItemType) -> Option<Items> {
+        let mut iter = item.iter();
+        let first = iter.next()?;
+        let next = iter.next();
         let ast_id = self.ast_id_map.ast_id(item);
-        let name = item.name()?.as_name();
+        let name = first.name()?.as_name();
 
-        if let Some(_) = item.alias().or_else(|| next?.alias()) {
+        if let Some(_) = first.alias().or_else(|| next.as_ref()?.alias()) {
             let talias = TypeAlias { ast_id, name };
 
             Some(id(self.tree.data.type_aliases.alloc(talias)).into())
         } else {
             let start = self.next_ctor_idx();
-            let ctors = next.map(|it| it.ctors()).unwrap_or_else(|| item.ctors());
+            let ctors = next.as_ref().map(|it| it.ctors()).unwrap_or_else(|| first.ctors());
 
             for ctor in ctors {
                 self.lower_ctor(&ctor);
@@ -229,10 +219,7 @@ impl Ctx {
         let ast_id = self.ast_id_map.ast_id(item);
         let name = item.name()?.as_name();
         let fundeps = item.fundeps().filter_map(|f| self.lower_fun_dep(f)).collect();
-        let items = item
-            .item_groups()
-            .filter_map(|(item, group)| self.lower_assoc_item(item, group))
-            .collect();
+        let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
 
         Some(id(self.tree.data.classes.alloc(Class {
             name,
@@ -259,25 +246,14 @@ impl Ctx {
     fn lower_member(&mut self, item: &ast::ItemMember) -> Option<LocalItemTreeId<Member>> {
         let ast_id = self.ast_id_map.ast_id(item);
         let class = Path::lower(item.class()?);
-        let items = item
-            .item_groups()
-            .filter_map(|(item, group)| self.lower_assoc_item(item, group))
-            .collect();
+        let items = item.items().filter_map(|item| self.lower_assoc_item(item)).collect();
 
         Some(id(self.tree.data.members.alloc(Member { ast_id, class, items })))
     }
 
-    fn lower_assoc_item(&mut self, item: ast::AssocItem, group: Vec<ast::AssocItem>) -> Option<AssocItem> {
+    fn lower_assoc_item(&mut self, item: ast::AssocItem) -> Option<AssocItem> {
         match item {
-            | ast::AssocItem::Fun(it) => self
-                .lower_fun(
-                    &it,
-                    group.into_iter().map(|it| match it {
-                        | ast::AssocItem::Fun(it) => it,
-                        | _ => unreachable!(),
-                    }),
-                )
-                .map(AssocItem::Func),
+            | ast::AssocItem::Func(it) => self.lower_func(&it).map(AssocItem::Func),
             | ast::AssocItem::Static(it) => self.lower_static(&it).map(AssocItem::Static),
         }
     }

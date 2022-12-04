@@ -16,8 +16,10 @@ pub struct Token {
 
 pub trait TokenSource {
     fn current(&self) -> Token;
+    fn current_text(&self) -> &str;
 
     fn lookahead_nth(&self, n: usize) -> Token;
+    fn lookahead_text(&self, n: usize) -> &str;
 
     fn bump(&mut self);
 

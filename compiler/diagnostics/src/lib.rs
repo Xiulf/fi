@@ -108,7 +108,8 @@ impl<'d> Diagnostic for GenericDiagnostic<'d> {
 
 fn item_name(ptr: SyntaxNodePtr, parse: &Parsed<ast::SourceFile>) -> TextRange {
     match ptr.kind() {
-        | SyntaxKind::ITEM_FUN => ast::ItemFun::cast(ptr.to_node(parse.tree().syntax()))
+        | SyntaxKind::ITEM_FUNC => ast::ItemFunc::cast(ptr.to_node(parse.tree().syntax()))
+            .and_then(|i| i.iter().next())
             .and_then(|i| Some(i.name()?.syntax().text_range()))
             .unwrap_or_else(|| ptr.range()),
         | _ => ptr.range(),

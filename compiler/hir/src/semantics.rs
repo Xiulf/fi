@@ -10,8 +10,8 @@ use syntax::{ast, AstNode as _, SyntaxNode, TextSize};
 
 use crate::db::HirDatabase;
 use crate::source_analyzer::SourceAnalyzer;
-use crate::source_to_def::{ChildContainer, SourceToDefCache, SourceToDefCtx};
-use crate::PathResolution;
+use crate::source_to_def::{ChildContainer, SourceToDefCache, SourceToDefCtx, ToDef};
+use crate::{ModuleDef, PathResolution};
 
 pub struct Semantics<'db, DB> {
     pub db: &'db DB,
@@ -49,6 +49,10 @@ impl<'db, DB: HirDatabase> Semantics<'db, DB> {
         self.imp.resolve_path(path)
     }
 
+    pub fn resolve_ident(&self, name_ref: &ast::NameRef) -> Option<PathResolution> {
+        self.imp.resolve_ident(name_ref)
+    }
+
     pub fn type_of_expr(&self, expr: &ast::Expr) -> Option<Ty> {
         self.imp.type_of_expr(expr)
     }
@@ -59,6 +63,15 @@ impl<'db, DB: HirDatabase> Semantics<'db, DB> {
 
     pub fn kind_of(&self, ty: &ast::Type) -> Option<Ty> {
         self.imp.kind_of(ty)
+    }
+
+    pub fn to_def<T: ToDef>(&self, src: &T) -> Option<T::Def> {
+        let src = self.imp.find_file(src.syntax().clone()).with_value(src).cloned();
+        T::to_def(&self.imp, src)
+    }
+
+    pub fn resolve_bind_pat_to_const(&self, pat: &ast::PatBind) -> Option<ModuleDef> {
+        self.imp.resolve_bind_pat_to_const(pat)
     }
 }
 
@@ -86,6 +99,10 @@ impl<'db> SemanticsImpl<'db> {
         self.analyze(path.syntax()).resolve_path(self.db, path)
     }
 
+    fn resolve_ident(&self, name_ref: &ast::NameRef) -> Option<PathResolution> {
+        self.analyze(name_ref.syntax()).resolve_ident(self.db, name_ref)
+    }
+
     fn type_of_expr(&self, expr: &ast::Expr) -> Option<Ty> {
         self.analyze(expr.syntax()).type_of_expr(expr)
     }
@@ -96,6 +113,10 @@ impl<'db> SemanticsImpl<'db> {
 
     fn kind_of(&self, ty: &ast::Type) -> Option<Ty> {
         self.analyze(ty.syntax()).kind_of(self.db, ty)
+    }
+
+    fn resolve_bind_pat_to_const(&self, pat: &ast::PatBind) -> Option<ModuleDef> {
+        self.analyze(pat.syntax()).resolve_bind_pat_to_const(self.db, pat)
     }
 
     fn with_ctx<T>(&self, f: impl FnOnce(&mut SourceToDefCtx) -> T) -> T {
@@ -153,4 +174,22 @@ impl<'db> SemanticsImpl<'db> {
 
 fn find_root(node: &SyntaxNode) -> SyntaxNode {
     node.ancestors().last().unwrap()
+}
+
+macro_rules! impl_to_def {
+    ($(($def:path, $ast:path, $method:ident)),* ,) => {$(
+        impl ToDef for $ast {
+            type Def = $def;
+
+            fn to_def(sema: &SemanticsImpl, src: InFile<Self>) -> Option<Self::Def> {
+                sema.with_ctx(|ctx| ctx.$method(src)).map(<$def>::from)
+            }
+        }
+    )*};
+}
+
+impl_to_def! {
+    (crate::Module, ast::ItemModule, module_to_def),
+    (crate::Func, ast::ItemFunc, func_to_def),
+    (crate::Local, ast::PatBind, pat_bind_to_def),
 }

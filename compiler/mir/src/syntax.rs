@@ -97,7 +97,7 @@ pub enum Term {
     /// switch over the given discriminant value.
     Switch {
         discr: Operand,
-        values: Vec<u128>,
+        values: Vec<i128>,
         targets: Vec<JumpTarget>,
     },
 }

@@ -127,7 +127,7 @@ macro_rules! match_ast {
     };
 
     (match ($node:expr) {
-        $($ast:ident($it:ident) => $res:expr, )*
+        $($ast:ident($it:pat) => $res:expr, )*
         _ => $catch_all:expr $(,)?
     }) => {{
         use $crate::ast::AstNode;

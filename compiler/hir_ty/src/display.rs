@@ -179,10 +179,8 @@ impl fmt::Display for Unknown {
 impl Ty {
     fn needs_paren(self, db: &dyn HirDatabase, mode: ParenMode) -> bool {
         match (self.lookup(db), mode) {
-            | (TyKind::Tuple(tys), ParenMode::Arg | ParenMode::App) => !tys.is_empty(),
             | (TyKind::App(..), ParenMode::App) => true,
-            | (TyKind::Func(..) | TyKind::ForAll(..) | TyKind::Where(..), ParenMode::Arg | ParenMode::App) => true,
-            | (TyKind::ForAll(..) | TyKind::Where(..), ParenMode::Where) => true,
+            | (TyKind::ForAll(..) | TyKind::Where(..), _) => true,
             | _ => false,
         }
     }
@@ -305,8 +303,6 @@ impl HirDisplay for Ty {
             },
             | TyKind::Ctor(id) => write!(f, "{}", f.db.type_ctor_data(id).name),
             | TyKind::Alias(id) => write!(f, "{}", f.db.type_alias_data(id).name),
-            | TyKind::Tuple(tys) if tys.is_empty() => f.write_str("()"),
-            | TyKind::Tuple(tys) => f.write_joined(tys.iter(), ", "),
             | TyKind::App(base, args) => {
                 TyParens(base, ParenMode::App).hir_fmt(f)?;
 
@@ -316,15 +312,6 @@ impl HirDisplay for Ty {
                 }
 
                 Ok(())
-            },
-            | TyKind::Func(args, ret) => {
-                if !args.is_empty() {
-                    f.write_joined(args.iter().map(|&a| TyParens(a, ParenMode::Arg)), ", ")?;
-                    f.write_str(" ")?;
-                }
-
-                write!(f, "-> ")?;
-                ret.hir_fmt(f)
             },
             | TyKind::Where(where_, ty) => {
                 TyParens(ty, ParenMode::Where).hir_fmt(f)?;

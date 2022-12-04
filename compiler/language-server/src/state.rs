@@ -4,14 +4,15 @@ pub mod workspace;
 
 use std::sync::Arc;
 
-use base_db::input::SourceRoot;
+use base_db::input::{LineIndex, SourceRoot};
+use base_db::Canceled;
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use dispatcher::NotificationDispatcher;
 use lsp_server::{ErrorCode, Message, Notification, ReqQueue, Request, Response};
 use lsp_types::notification::{
     self, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
 };
-use lsp_types::request::Shutdown;
+use lsp_types::request::{HoverRequest, Shutdown};
 use parking_lot::RwLock;
 use paths::AbsPathBuf;
 use project::Workspace;
@@ -66,13 +67,19 @@ pub struct Config {
 impl LspState {
     pub fn new(sender: Sender<Message>, config: Config) -> Self {
         let (task_sender, task_receiver) = unbounded();
+        let mut analysis = Analysis::default();
+        let mut change = AnalysisChange::default();
+
+        change.set_libs(Default::default());
+        change.set_roots(Default::default());
+        analysis.apply_change(change);
 
         Self {
             config,
             sender,
             task_sender,
             task_receiver,
-            analysis: Default::default(),
+            analysis,
             open_files: Default::default(),
             workspaces: Default::default(),
             file_sets: Default::default(),
@@ -156,6 +163,7 @@ impl LspState {
                 state.shutdown_requested = true;
                 Ok(())
             })?
+            .on::<HoverRequest>(crate::handlers::handle_hover)?
             .finish();
         Ok(())
     }
@@ -243,6 +251,13 @@ impl LspState {
 
 impl Drop for LspState {
     fn drop(&mut self) {
+        self.analysis.request_cancellation();
         self.thread_pool.join();
+    }
+}
+
+impl LspStateSnapshot {
+    pub fn line_index(&self, file_id: FileId) -> Result<Arc<LineIndex>, Canceled> {
+        self.analysis.line_index(file_id)
     }
 }

@@ -279,13 +279,41 @@ pub enum Prec {
     Nine,
 }
 
-impl AttrsOwner for ItemFun {
+impl std::fmt::Display for Prec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Write;
+        match self {
+            | Self::Zero => f.write_char('0'),
+            | Self::One => f.write_char('1'),
+            | Self::Two => f.write_char('2'),
+            | Self::Three => f.write_char('3'),
+            | Self::Four => f.write_char('4'),
+            | Self::Five => f.write_char('5'),
+            | Self::Six => f.write_char('6'),
+            | Self::Seven => f.write_char('7'),
+            | Self::Eight => f.write_char('8'),
+            | Self::Nine => f.write_char('9'),
+        }
+    }
 }
 
-impl NameOwner for ItemFun {
+impl AttrsOwner for ItemFunc {
 }
 
-impl ItemFun {
+impl NameOwner for OneFunc {
+}
+
+impl ItemFunc {
+    pub fn iter(&self) -> AstChildren<OneFunc> {
+        support::children(&self.0)
+    }
+
+    pub fn is_foreign(&self) -> bool {
+        support::token(&self.0, FOREIGN_KW).is_some()
+    }
+}
+
+impl OneFunc {
     pub fn args(&self) -> AstChildren<Pat> {
         support::children(&self.0)
     }
@@ -301,19 +329,25 @@ impl ItemFun {
     pub fn ty(&self) -> Option<Type> {
         support::child(&self.0)
     }
+}
+
+impl AttrsOwner for ItemStatic {
+}
+
+impl NameOwner for OneStatic {
+}
+
+impl ItemStatic {
+    pub fn iter(&self) -> AstChildren<OneStatic> {
+        support::children(&self.0)
+    }
 
     pub fn is_foreign(&self) -> bool {
         support::token(&self.0, FOREIGN_KW).is_some()
     }
 }
 
-impl AttrsOwner for ItemStatic {
-}
-
-impl NameOwner for ItemStatic {
-}
-
-impl ItemStatic {
+impl OneStatic {
     pub fn value(&self) -> Option<Expr> {
         support::child(&self.0)
     }
@@ -321,19 +355,21 @@ impl ItemStatic {
     pub fn ty(&self) -> Option<Type> {
         support::child(&self.0)
     }
-
-    pub fn is_foreign(&self) -> bool {
-        support::token(&self.0, FOREIGN_KW).is_some()
-    }
 }
 
 impl AttrsOwner for ItemConst {
 }
 
-impl NameOwner for ItemConst {
+impl NameOwner for OneConst {
 }
 
 impl ItemConst {
+    pub fn iter(&self) -> AstChildren<OneConst> {
+        support::children(&self.0)
+    }
+}
+
+impl OneConst {
     pub fn value(&self) -> Option<Expr> {
         support::child(&self.0)
     }
@@ -346,10 +382,20 @@ impl ItemConst {
 impl AttrsOwner for ItemType {
 }
 
-impl NameOwner for ItemType {
+impl NameOwner for OneType {
 }
 
 impl ItemType {
+    pub fn iter(&self) -> AstChildren<OneType> {
+        support::children(&self.0)
+    }
+
+    pub fn is_foreign(&self) -> bool {
+        support::token(&self.0, FOREIGN_KW).is_some()
+    }
+}
+
+impl OneType {
     pub fn vars(&self) -> Option<TypeVars> {
         support::child(&self.0)
     }
@@ -366,10 +412,6 @@ impl ItemType {
 
     pub fn ctors(&self) -> AstChildren<Ctor> {
         support::children(&self.0)
-    }
-
-    pub fn is_foreign(&self) -> bool {
-        support::token(&self.0, FOREIGN_KW).is_some()
     }
 }
 
@@ -1056,6 +1098,10 @@ impl Path {
 impl PathSegment {
     pub fn name_ref(&self) -> Option<NameRef> {
         support::child(&self.0)
+    }
+
+    pub fn parent_path(&self) -> Option<Path> {
+        self.syntax().parent().and_then(Path::cast)
     }
 }
 

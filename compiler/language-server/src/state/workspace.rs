@@ -6,6 +6,8 @@ use base_db::libs::LibSet;
 use paths::{AbsPath, AbsPathBuf};
 use project::manifest::Manifest;
 use project::Workspace;
+use vfs::file_set::FileSetConfig;
+use vfs::VfsPath;
 
 use super::notifications::Progress;
 use super::LspState;
@@ -42,16 +44,41 @@ impl LspState {
 
         drop(vfs);
 
+        self.recompute_source_roots();
         self.process_vfs_changes();
         self.report_progress("projects scanned", Progress::End, None, None)?;
 
         Ok(())
     }
+
+    fn recompute_source_roots(&mut self) {
+        let mut fs = FileSetConfig::builder();
+
+        for root in self.workspaces.iter().flat_map(|ws| ws.to_roots()) {
+            let file_set = root.include.iter().cloned().map(VfsPath::from).collect();
+
+            fs.add_file_set(file_set);
+        }
+
+        self.file_sets = fs.build();
+    }
 }
 
 pub fn discover(path: &AbsPath) -> Option<AbsPathBuf> {
     if path.file_name().unwrap_or_default() == Manifest::FILE_NAME {
-        return Some(path.to_owned());
+        return Some(path.parent().unwrap().to_path_buf());
+    }
+
+    if let Ok(read_dir) = path.as_ref().read_dir() {
+        for entry in read_dir {
+            if let Ok(entry) = entry {
+                let file = entry.path().join(Manifest::FILE_NAME);
+
+                if fs::metadata(&file).is_ok() {
+                    return entry.path().try_into().ok();
+                }
+            }
+        }
     }
 
     let mut curr = Some(path);
@@ -60,7 +87,7 @@ pub fn discover(path: &AbsPath) -> Option<AbsPathBuf> {
         let file = path.join(Manifest::FILE_NAME);
 
         if fs::metadata(&file).is_ok() {
-            return Some(file);
+            return Some(path.to_path_buf());
         }
 
         curr = path.parent();

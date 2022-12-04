@@ -2,9 +2,11 @@ use std::path::{Component, Path, Prefix};
 use std::str::FromStr;
 
 use base_db::input::{FileId, LineCol, LineIndex};
-use lsp_types::Url;
+use hir::InFile;
+use lsp_types::{TextDocumentPositionParams, Url};
 use paths::AbsPathBuf;
 use syntax::{TextRange, TextSize};
+use vfs::VfsPath;
 
 use crate::state::LspStateSnapshot;
 
@@ -12,6 +14,13 @@ pub fn file_path(uri: &Url) -> anyhow::Result<AbsPathBuf> {
     uri.to_file_path()
         .map(AbsPathBuf::assert)
         .map_err(|_| anyhow::anyhow!("invalid uri: {uri}"))
+}
+
+pub fn file_id(snap: &LspStateSnapshot, uri: &Url) -> anyhow::Result<FileId> {
+    snap.vfs
+        .read()
+        .file_id(&VfsPath::PathBuf(file_path(uri)?))
+        .ok_or_else(|| anyhow::anyhow!("unknown file: {uri}"))
 }
 
 pub fn offset(line_index: &LineIndex, pos: lsp_types::Position) -> TextSize {
@@ -28,6 +37,14 @@ pub fn text_range(line_index: &LineIndex, range: lsp_types::Range) -> TextRange 
     let end = offset(line_index, range.end);
 
     TextRange::new(start, end)
+}
+
+pub fn file_offset(snap: &LspStateSnapshot, tdpp: TextDocumentPositionParams) -> anyhow::Result<InFile<TextSize>> {
+    let file_id = file_id(snap, &tdpp.text_document.uri)?;
+    let line_index = snap.line_index(file_id)?;
+    let offset = offset(&line_index, tdpp.position);
+
+    Ok(InFile::new(file_id, offset))
 }
 
 pub fn lsp_range(line_index: &LineIndex, range: TextRange) -> lsp_types::Range {

@@ -143,7 +143,7 @@ impl FuncData {
         let loc = id.lookup(db);
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
-        let src = loc.source(db);
+        let src = loc.source(db).map(|v| v.iter().next().unwrap());
         let mut type_builder = TypeMap::builder();
         let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
         let (type_map, type_source_map) = type_builder.finish();
@@ -173,8 +173,10 @@ impl StaticData {
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
         let src = loc.source(db);
+        let mut iter = src.value.iter();
+        let first = iter.next().unwrap();
         let mut type_builder = TypeMap::builder();
-        let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
+        let ty = first.ty().map(|t| type_builder.alloc_type_ref(t));
         let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(StaticData {
@@ -201,8 +203,10 @@ impl ConstData {
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
         let src = loc.source(db);
+        let mut iter = src.value.iter();
+        let first = iter.next().unwrap();
         let mut type_builder = TypeMap::builder();
-        let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
+        let ty = first.ty().map(|t| type_builder.alloc_type_ref(t));
         let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(ConstData {
@@ -226,10 +230,13 @@ impl TypeAliasData {
     pub fn query(db: &dyn DefDatabase, id: TypeAliasId) -> Arc<Self> {
         let loc = id.lookup(db);
         let src = loc.source(db);
+        let mut iter = src.value.iter();
+        let first = iter.next().unwrap();
+        let next = iter.next();
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
         let mut type_builder = TypeMap::builder();
-        let type_vars = src.value.vars().or_else(|| src.value.next()?.vars());
+        let type_vars = first.vars().or_else(|| next.as_ref()?.vars());
         let type_vars = match type_vars {
             | Some(vars) => vars
                 .type_vars()
@@ -238,7 +245,7 @@ impl TypeAliasData {
             | None => Box::new([]),
         };
 
-        let alias = src.value.alias().or_else(|| src.value.next()?.alias());
+        let alias = first.alias().or_else(|| next.as_ref()?.alias());
         let alias = type_builder.alloc_type_ref_opt(alias);
         let (type_map, type_source_map) = type_builder.finish();
 
@@ -264,14 +271,17 @@ impl TypeCtorData {
     pub fn query(db: &dyn DefDatabase, id: TypeCtorId) -> Arc<Self> {
         let loc = id.lookup(db);
         let src = loc.source(db);
+        let mut iter = src.value.iter();
+        let first = iter.next().unwrap();
+        let next = iter.next();
         let libs = db.libs();
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
         let mut type_builder = TypeMap::builder();
         let mut ctors = Arena::new();
-        let kind = src.value.kind().or_else(|| src.value.next()?.kind());
+        let kind = first.kind().or_else(|| next.as_ref()?.kind());
         let kind = kind.map(|k| type_builder.alloc_type_ref(k));
-        let type_vars = src.value.vars().or_else(|| src.value.next()?.vars());
+        let type_vars = first.vars().or_else(|| next.as_ref()?.vars());
         let type_vars = match type_vars {
             | Some(vars) => vars
                 .type_vars()
@@ -280,11 +290,7 @@ impl TypeCtorData {
             | None => Box::new([]),
         };
 
-        let it_ctors = src
-            .value
-            .next()
-            .map(|it| it.ctors())
-            .unwrap_or_else(|| src.value.ctors());
+        let it_ctors = next.as_ref().map(|it| it.ctors()).unwrap_or_else(|| first.ctors());
 
         for (ctor, ctor_id) in it_ctors.zip(it.ctors.clone()) {
             if let Some(cfg) = item_tree.attrs(ctor_id.into()).cfg() {

@@ -63,7 +63,7 @@ impl Body {
             | DefWithBodyId::FuncId(f) => {
                 let f = f.lookup(db);
                 let src = f.source(db);
-                let group = src.value.group().collect::<Vec<_>>();
+                let group = src.value.iter().collect::<Vec<_>>();
                 let expr = if group.len() == 1 || (group.len() == 2 && group[0].ty().is_some()) {
                     group.last().and_then(|it| {
                         it.body()
@@ -101,10 +101,11 @@ impl Body {
             | DefWithBodyId::ConstId(c) => {
                 let c = c.lookup(db);
                 let src = c.source(db);
-                let expr = src
-                    .value
+                let mut iter = src.value.iter();
+                let first = iter.next().unwrap();
+                let expr = first
                     .value()
-                    .or_else(|| src.value.next().and_then(|it| it.value()))
+                    .or_else(|| iter.next().and_then(|it| it.value()))
                     .map(BodyExpr::Single);
 
                 (src.file_id, c.module(db), expr)
@@ -112,10 +113,11 @@ impl Body {
             | DefWithBodyId::StaticId(s) => {
                 let s = s.lookup(db);
                 let src = s.source(db);
-                let expr = src
-                    .value
+                let mut iter = src.value.iter();
+                let first = iter.next().unwrap();
+                let expr = first
                     .value()
-                    .or_else(|| src.value.next().and_then(|it| it.value()))
+                    .or_else(|| iter.next().and_then(|it| it.value()))
                     .map(BodyExpr::Single);
 
                 (src.file_id, s.module(db), expr)

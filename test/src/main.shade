@@ -2,9 +2,9 @@ module Main =
 
 import Core
 import Data.List (first)
-import Monad.Writer
-import Monad.Reader
-import Monad.State
+; import Monad.Writer
+; import Monad.Reader
+; import Monad.State
 ; import Js.Console
 
 
@@ -13,7 +13,7 @@ import Monad.State
 ; main =
     ; print "test"
 
-main = 22
+main = test 22
 
-test x if x == 0 = 10
-       else      = 20
+test 0 = 10
+test _ = 20

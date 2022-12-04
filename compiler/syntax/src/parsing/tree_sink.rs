@@ -140,7 +140,7 @@ fn n_attached_trivias<'t>(kind: SyntaxKind, trivias: impl Iterator<Item = (Synta
     match kind {
         | SyntaxKind::IMPORT
         | SyntaxKind::ITEM_FIXITY
-        | SyntaxKind::ITEM_FUN
+        | SyntaxKind::ITEM_FUNC
         | SyntaxKind::ITEM_STATIC
         | SyntaxKind::ITEM_CONST
         | SyntaxKind::ITEM_TYPE

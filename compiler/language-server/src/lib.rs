@@ -3,6 +3,7 @@
 mod analysis;
 mod db;
 mod diagnostics;
+mod handlers;
 mod state;
 mod util;
 

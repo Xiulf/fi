@@ -5,7 +5,8 @@ use hir_def::body::{Body, BodySourceMap};
 use hir_def::expr::ExprId;
 use hir_def::id::DefWithBodyId;
 use hir_def::in_file::InFile;
-use hir_def::pat::PatId;
+use hir_def::name::AsName;
+use hir_def::pat::{Pat, PatId};
 use hir_def::path::Path;
 use hir_def::resolver::{Resolver, TypeNs, ValueNs};
 use hir_def::scope::{ExprScopeId, ExprScopes};
@@ -15,7 +16,7 @@ use hir_ty::ty::{Constraint, Ty};
 use syntax::{ast, AstNode, SyntaxNode, TextRange, TextSize};
 
 use crate::db::HirDatabase;
-use crate::{Class, Const, Ctor, Fixity, Func, Local, PathResolution, Static, TypeAlias, TypeCtor};
+use crate::{Class, Const, Ctor, Fixity, Func, Local, ModuleDef, PathResolution, Static, TypeAlias, TypeCtor};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -81,6 +82,13 @@ impl SourceAnalyzer {
         resolve_hir_path_(db, &self.resolver, &hir_path, prefer_value_ns)
     }
 
+    pub fn resolve_ident(&self, db: &dyn HirDatabase, name_ref: &ast::NameRef) -> Option<PathResolution> {
+        let name = name_ref.as_name();
+        let hir_path = Path::from(name);
+
+        resolve_hir_path_(db, &self.resolver, &hir_path, true)
+    }
+
     pub fn type_of_expr(&self, expr: &ast::Expr) -> Option<Ty> {
         let expr_id = self.expr_id(expr)?;
         let infer = self.infer.as_ref()?;
@@ -110,6 +118,22 @@ impl SourceAnalyzer {
         let kind = infer_ctx.convert_ty(kind);
 
         Some(kind)
+    }
+
+    pub fn resolve_bind_pat_to_const(&self, db: &dyn HirDatabase, pat: &ast::PatBind) -> Option<ModuleDef> {
+        let pat_id = self.pat_id(&pat.clone().into())?;
+        let body = self.body.as_ref()?;
+        let path = match &body[pat_id] {
+            | Pat::Path { path } => path,
+            | _ => return None,
+        };
+
+        let res = resolve_hir_path_(db, &self.resolver, path, true)?;
+
+        match res {
+            | PathResolution::Def(def) => Some(def),
+            | _ => None,
+        }
     }
 
     fn expr_id(&self, expr: &ast::Expr) -> Option<ExprId> {

@@ -106,7 +106,7 @@ pub fn write_metadata(db: &dyn HirDatabase, lib: LibId, target_dir: &AbsPath) ->
     match bincode::serde::encode_into_std_write(&metadata, &mut file, config) {
         | Ok(_) => Ok(()),
         | Err(e) => match e {
-            | bincode::error::EncodeError::Io { error, .. } => Err(error),
+            | bincode::error::EncodeError::Io { inner, .. } => Err(inner),
             | _ => panic!("write_metadata: {}", e),
         },
     }

@@ -105,7 +105,6 @@ impl ToInfo for Ty {
                     TyInfo::ForAll(vars, ret, scope)
                 },
                 | TyKind::TypeVar(tv) => TyInfo::TypeVar(tv),
-                | _ => unimplemented!(),
             };
 
             types.insert(info, src)

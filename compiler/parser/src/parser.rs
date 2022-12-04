@@ -23,8 +23,16 @@ impl<'t> Parser<'t> {
         self.nth(0)
     }
 
+    pub(crate) fn current_text(&self) -> &str {
+        self.token_source.current_text()
+    }
+
     pub(crate) fn nth(&self, n: usize) -> SyntaxKind {
         self.token_source.lookahead_nth(n).kind
+    }
+
+    pub(crate) fn nth_text(&self, n: usize) -> &str {
+        self.token_source.lookahead_text(n)
     }
 
     pub(crate) fn at(&self, kind: SyntaxKind) -> bool {

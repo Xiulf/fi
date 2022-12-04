@@ -91,13 +91,18 @@ pub enum SyntaxKind {
     IMPORT_ITEMS,
 
     ITEM_FIXITY,
-    ITEM_FUN,
+    ITEM_FUNC,
     ITEM_STATIC,
     ITEM_CONST,
     ITEM_CLASS,
     ITEM_MEMBER,
     ITEM_TYPE,
     ITEM_CTOR,
+
+    ONE_FUNC,
+    ONE_STATIC,
+    ONE_CONST,
+    ONE_TYPE,
 
     TYPE_VARS,
     FUN_DEP,
@@ -188,6 +193,16 @@ impl SyntaxKind {
     pub fn is_trivia(self) -> bool {
         match self {
             | WHITESPACE | COMMENT => true,
+            | _ => false,
+        }
+    }
+
+    pub fn is_keyword(self) -> bool {
+        match self {
+            | MODULE_KW | IMPORT_KW | TYPE_KW | FOREIGN_KW | FN_KW | STATIC_KW | CONST_KW | CLASS_KW | MEMBER_KW
+            | DERIVE_KW | INFIX_KW | INFIXL_KW | INFIXR_KW | POSTFIX_KW | PREFIX_KW | WHERE_KW | FORALL_KW
+            | AS_KW | DO_KW | TRY_KW | IF_KW | THEN_KW | ELSE_KW | CASE_KW | OF_KW | LET_KW | RECUR_KW
+            | RETURN_KW => true,
             | _ => false,
         }
     }

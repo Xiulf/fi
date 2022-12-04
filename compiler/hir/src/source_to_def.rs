@@ -5,10 +5,12 @@ use hir_def::id::{DefWithBodyId, FuncId, ModuleId};
 use hir_def::in_file::InFile;
 use hir_def::keys::{self, Key};
 use hir_def::name::AsName;
+use hir_def::pat::PatId;
 use rustc_hash::FxHashMap;
 use syntax::{ast, AstNode, NameOwner, SyntaxNode};
 
 use crate::db::HirDatabase;
+use crate::semantics::SemanticsImpl;
 
 pub(super) type SourceToDefCache = FxHashMap<(ChildContainer, FileId), DynMap>;
 
@@ -21,6 +23,12 @@ pub(super) struct SourceToDefCtx<'a, 'b> {
 pub(super) enum ChildContainer {
     DefwithBodyId(DefWithBodyId),
     ModuleId(ModuleId),
+}
+
+pub trait ToDef: AstNode + Clone {
+    type Def;
+
+    fn to_def(sema: &SemanticsImpl, src: InFile<Self>) -> Option<Self::Def>;
 }
 
 impl<'a, 'b> SourceToDefCtx<'a, 'b> {
@@ -52,7 +60,7 @@ impl<'a, 'b> SourceToDefCtx<'a, 'b> {
         let cont = syntax::match_ast! {
             match (container.value) {
                 ItemModule(it) => self.module_to_def(container.with_value(it))?.into(),
-                ItemFun(it) => self.func_to_def(container.with_value(it))?.into(),
+                ItemFunc(it) => self.func_to_def(container.with_value(it))?.into(),
                 _ => return None,
             }
         };
@@ -60,7 +68,7 @@ impl<'a, 'b> SourceToDefCtx<'a, 'b> {
         Some(cont)
     }
 
-    fn module_to_def(&mut self, src: InFile<ast::ItemModule>) -> Option<ModuleId> {
+    pub(super) fn module_to_def(&mut self, src: InFile<ast::ItemModule>) -> Option<ModuleId> {
         let parent_decl = src
             .syntax()
             .ancestors()
@@ -78,8 +86,21 @@ impl<'a, 'b> SourceToDefCtx<'a, 'b> {
         Some(def_map.module_id(child_id))
     }
 
-    fn func_to_def(&mut self, src: InFile<ast::ItemFun>) -> Option<FuncId> {
+    pub(super) fn func_to_def(&mut self, src: InFile<ast::ItemFunc>) -> Option<FuncId> {
         self.to_def(src, keys::FUNC)
+    }
+
+    pub(super) fn pat_bind_to_def(&mut self, src: InFile<ast::PatBind>) -> Option<(DefWithBodyId, PatId)> {
+        let container = self.find_pat_container(src.syntax())?;
+        let (body, source_map) = self.db.body_source_map(container);
+        let src = src.map(ast::Pat::from);
+        let pat_id = source_map.node_pat(src.as_ref())?;
+
+        if let crate::Pat::Bind { .. } = body[pat_id] {
+            Some((container, pat_id))
+        } else {
+            None
+        }
     }
 
     fn to_def<N: AstNode + 'static, ID: Copy + 'static>(&mut self, src: InFile<N>, key: Key<N, ID>) -> Option<ID> {
@@ -98,6 +119,26 @@ impl<'a, 'b> SourceToDefCtx<'a, 'b> {
         self.cache
             .entry((container, file_id))
             .or_insert_with(|| container.child_by_source(db, file_id))
+    }
+
+    fn find_pat_container(&mut self, src: InFile<&SyntaxNode>) -> Option<DefWithBodyId> {
+        for InFile { file_id, value } in src.ancestors() {
+            let item = match ast::Item::cast(value) {
+                | Some(it) => it,
+                | None => continue,
+            };
+
+            let res: DefWithBodyId = match item {
+                | ast::Item::Func(it) => self.func_to_def(InFile::new(file_id, it))?.into(),
+                // | ast::Item::Static(it) => self.static_to_def(InFile::new(file_id, it))?.into(),
+                // | ast::Item::Const(it) => self.const_to_def(InFile::new(file_id, it))?.into(),
+                | _ => continue,
+            };
+
+            return Some(res);
+        }
+
+        None
     }
 }
 

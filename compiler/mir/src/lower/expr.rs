@@ -1,5 +1,5 @@
 use hir::id::{AssocItemId, DefWithBodyId, HasModule};
-use hir::{CaseValue, Expr, HasResolver, Literal, MethodSource, Resolver, ValueNs};
+use hir::{Expr, HasResolver, Literal, MethodSource, Resolver, ValueNs};
 
 use super::*;
 
@@ -36,7 +36,7 @@ impl BodyLowerCtx<'_> {
                 }
 
                 args.reverse();
-                self.lower_app(Arg::ExprId(base), args)
+                self.lower_app(expr, Arg::ExprId(base), args)
             },
             | Expr::Infix { ref exprs, ref ops } => self.lower_infix_expr(expr, exprs, ops),
             | Expr::Case { pred, ref arms } => self.lower_case(expr, pred, arms),
@@ -68,73 +68,12 @@ impl BodyLowerCtx<'_> {
         Operand::Const(Const::Unit)
     }
 
-    pub fn lower_case(&mut self, expr: hir::ExprId, discr: hir::ExprId, arms: &[hir::CaseArm]) -> Operand {
-        let res = self.builder.add_local(LocalKind::Tmp, self.infer.type_of_expr[expr]);
-        let exit_block = self.builder.create_block();
-        let discr_ty = self.infer.type_of_expr[discr];
-        let discr = self.lower_expr(discr);
-        let discr = self.place_op(discr, discr_ty);
-
-        for (i, arm) in arms.iter().enumerate() {
-            let check = self.lower_pat(arm.pat, discr.clone());
-
-            match arm.value {
-                | CaseValue::Normal(e) if i == arms.len() - 1 => {
-                    if let Some(check) = check {
-                        let block = self.builder.create_block();
-                        self.builder.switch(check, vec![0], [exit_block.into(), block.into()]);
-                        self.builder.switch_block(block);
-                        let res = self.lower_expr(e);
-                        self.builder.jump((exit_block, [res]));
-                    } else {
-                        let res = self.lower_expr(e);
-                        self.builder.jump((exit_block, [res]));
-                    }
-                },
-                | CaseValue::Normal(e) => todo!(),
-                | CaseValue::Guarded(ref gs, ref es) if gs.len() == es.len() => todo!(),
-                | CaseValue::Guarded(ref gs, ref es) => {
-                    let mut guard_block = if let Some(check) = check {
-                        let guard_block = self.builder.create_block();
-                        self.builder
-                            .switch(check, vec![0], [exit_block.into(), guard_block.into()]);
-                        guard_block
-                    } else {
-                        self.builder.current_block()
-                    };
-
-                    for (&g, &e) in gs.iter().zip(es.iter()) {
-                        self.builder.switch_block(guard_block);
-                        let g = self.lower_expr(g);
-                        let expr_block = self.builder.create_block();
-                        let next_guard_block = self.builder.create_block();
-                        self.builder
-                            .switch(g, vec![0], [next_guard_block.into(), expr_block.into()]);
-                        self.builder.switch_block(expr_block);
-                        let res = self.lower_expr(e);
-                        self.builder.jump((exit_block, [res]));
-                        guard_block = next_guard_block;
-                    }
-
-                    self.builder.switch_block(guard_block);
-                    let res = self.lower_expr(*es.last().unwrap());
-                    self.builder.jump((exit_block, [res]));
-                },
-            }
-        }
-
-        self.builder.add_block_param(exit_block, res);
-        self.builder.switch_block(exit_block);
-
-        Operand::Move(Place::new(res))
-    }
-
-    pub fn lower_app(&mut self, base: Arg, args: Vec<Arg>) -> Operand {
-        if let Arg::ExprId(expr) = base {
+    pub fn lower_app(&mut self, expr: hir::ExprId, base: Arg, args: Vec<Arg>) -> Operand {
+        if let Arg::ExprId(base) = base {
             let body = self.body.clone();
 
-            if let Expr::Path { ref path } = body[expr] {
-                let resolver = Resolver::for_expr(self.db.upcast(), self.builder.origin().def, expr);
+            if let Expr::Path { ref path } = body[base] {
+                let resolver = Resolver::for_expr(self.db.upcast(), self.builder.origin().def, base);
 
                 return self.lower_path_app(&resolver, (expr, 0), path, args);
             }
@@ -184,7 +123,7 @@ impl BodyLowerCtx<'_> {
         }
 
         if !args.is_empty() {
-            self.lower_app(Arg::Op(base), args)
+            self.lower_app(expr.0, Arg::Op(base), args)
         } else {
             base
         }
@@ -221,7 +160,7 @@ impl BodyLowerCtx<'_> {
                         | MethodSource::Record(_idx, _p) => todo!(),
                     }
                 } else {
-                    let ty = self.infer.type_of_expr[expr.0];
+                    let ty = self.db.value_ty(id.into()).ty;
                     let res = self.builder.add_local(LocalKind::Tmp, ty);
 
                     self.builder.def_ref(Place::new(res), func.into());
@@ -307,7 +246,7 @@ impl BodyLowerCtx<'_> {
         }
     }
 
-    fn place_op(&mut self, op: Operand, ty: Ty) -> Place {
+    pub(super) fn place_op(&mut self, op: Operand, ty: Ty) -> Place {
         match op {
             | Operand::Move(p) | Operand::Copy(p) => p,
             | _ => {
@@ -327,27 +266,27 @@ impl BodyLowerCtx<'_> {
     }
 
     fn func_params(&self, id: hir::id::FuncId) -> usize {
-        let infer = self.db.infer(id.into());
-        let mut ty = infer.self_type.ty;
-
-        loop {
-            match ty.lookup(self.db.upcast()) {
-                | hir::ty::TyKind::ForAll(_, inner, _) => {
-                    ty = inner;
-                },
-                | hir::ty::TyKind::Where(_, inner) => {
-                    ty = inner;
-                },
-                | _ => break,
-            }
-        }
-
         if self.db.func_data(id).has_body {
             let body = self.db.body(id.into());
 
             body.params().len()
         } else {
             use hir::id::Lookup;
+            let infer = self.db.infer(id.into());
+            let mut ty = infer.self_type.ty;
+
+            loop {
+                match ty.lookup(self.db.upcast()) {
+                    | hir::ty::TyKind::ForAll(_, inner, _) => {
+                        ty = inner;
+                    },
+                    | hir::ty::TyKind::Where(_, inner) => {
+                        ty = inner;
+                    },
+                    | _ => break,
+                }
+            }
+
             let lib = id.lookup(self.db.upcast()).module(self.db.upcast()).lib;
             let func_ctor = self.db.lang_item(lib, "fn-type").unwrap().as_type_ctor().unwrap();
             let mut params = 0;

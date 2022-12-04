@@ -67,7 +67,7 @@ impl Iterator for ItemGroups {
                 let kind2 = next.group_kind();
 
                 if kind == kind2 {
-                    if let Item::Fun(f) = next {
+                    if let Item::Func(f) = next {
                         if f.args().next().is_none() && matches!(kind, ItemGroupKind::Func(false)) {
                             break;
                         }
@@ -101,7 +101,7 @@ impl Iterator for AssocItemGroups {
                 let kind2 = next.group_kind();
 
                 if kind == kind2 {
-                    if let AssocItem::Fun(f) = next {
+                    if let AssocItem::Func(f) = next {
                         if f.args().next().is_none() && matches!(kind, AssocItemGroupKind::Func(false)) {
                             break;
                         }
@@ -190,7 +190,7 @@ impl PartialEq for AssocItemGroupKind {
 impl Item {
     fn group_name(&self) -> Option<Name> {
         match self {
-            | Item::Fun(it) => it.name(),
+            | Item::Func(it) => it.name(),
             | Item::Static(it) => it.name(),
             | Item::Const(it) => it.name(),
             | Item::Type(it) => it.name(),
@@ -203,9 +203,9 @@ impl Item {
             | Item::Module(_) => ItemGroupKind::Module,
             | Item::Import(_) => ItemGroupKind::Import,
             | Item::Fixity(_) => ItemGroupKind::Fixity,
-            | Item::Fun(it) if it.is_foreign() => ItemGroupKind::Func(false),
-            | Item::Fun(it) if it.ty().is_some() => ItemGroupKind::Func(true),
-            | Item::Fun(_) => ItemGroupKind::Func(false),
+            | Item::Func(it) if it.is_foreign() => ItemGroupKind::Func(false),
+            | Item::Func(it) if it.ty().is_some() => ItemGroupKind::Func(true),
+            | Item::Func(_) => ItemGroupKind::Func(false),
             | Item::Static(it) if it.is_foreign() => ItemGroupKind::Static(false),
             | Item::Static(it) if it.ty().is_some() => ItemGroupKind::Static(true),
             | Item::Static(_) => ItemGroupKind::Static(false),
@@ -222,16 +222,16 @@ impl Item {
 impl AssocItem {
     fn group_name(&self) -> Option<Name> {
         match self {
-            | AssocItem::Fun(it) => it.name(),
+            | AssocItem::Func(it) => it.name(),
             | AssocItem::Static(it) => it.name(),
         }
     }
 
     fn group_kind(&self) -> AssocItemGroupKind {
         match self {
-            | AssocItem::Fun(it) if it.is_foreign() => AssocItemGroupKind::Func(false),
-            | AssocItem::Fun(it) if it.ty().is_some() => AssocItemGroupKind::Func(true),
-            | AssocItem::Fun(_) => AssocItemGroupKind::Func(false),
+            | AssocItem::Func(it) if it.is_foreign() => AssocItemGroupKind::Func(false),
+            | AssocItem::Func(it) if it.ty().is_some() => AssocItemGroupKind::Func(true),
+            | AssocItem::Func(_) => AssocItemGroupKind::Func(false),
             | AssocItem::Static(it) if it.is_foreign() => AssocItemGroupKind::Static(false),
             | AssocItem::Static(it) if it.ty().is_some() => AssocItemGroupKind::Static(true),
             | AssocItem::Static(_) => AssocItemGroupKind::Static(false),
@@ -239,7 +239,7 @@ impl AssocItem {
     }
 }
 
-impl ItemFun {
+impl ItemFunc {
     /// Returns an iterator of all items in this groups, including self
     pub fn group(&self) -> impl Iterator<Item = Self> {
         let name = self.name();

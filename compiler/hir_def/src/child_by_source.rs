@@ -55,7 +55,7 @@ impl ChildBySource for ItemScope {
             if loc.id.file_id == file_id {
                 let src = loc.source(db);
 
-                map[keys::INST].insert(src, inst);
+                map[keys::MEMBER].insert(src, inst);
             }
         }
     }

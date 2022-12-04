@@ -171,7 +171,7 @@ items! {
     Module in modules -> ast::ItemModule,
     Import in imports -> ast::ItemImport,
     Fixity in fixities -> ast::ItemFixity,
-    Func in funcs -> ast::ItemFun,
+    Func in funcs -> ast::ItemFunc,
     Static in statics -> ast::ItemStatic,
     Const in consts -> ast::ItemConst,
     TypeAlias in type_aliases -> ast::ItemType,
@@ -216,7 +216,7 @@ pub use ast::{Assoc, Prec};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Func {
-    pub ast_id: FileAstId<ast::ItemFun>,
+    pub ast_id: FileAstId<ast::ItemFunc>,
     pub name: Name,
     pub has_body: bool,
     pub is_foreign: bool,

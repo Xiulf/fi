@@ -17,6 +17,12 @@ pub struct LspDatabase {
     storage: salsa::Storage<Self>,
 }
 
+impl LspDatabase {
+    pub fn request_cancellation(&mut self) {
+        self.storage.salsa_runtime_mut().synthetic_write(salsa::Durability::LOW);
+    }
+}
+
 impl salsa::Database for LspDatabase {
     fn on_propagated_panic(&self) -> ! {
         Canceled::throw()

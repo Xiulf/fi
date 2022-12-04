@@ -9,8 +9,8 @@ use crate::in_file::InFile;
 
 pub type Key<K, V> = crate::dyn_map::Key<InFile<K>, V, AstPtrPolicy<K, V>>;
 
-pub const FUNC: Key<ast::ItemFun, FuncId> = Key::new();
-pub const INST: Key<ast::ItemMember, MemberId> = Key::new();
+pub const FUNC: Key<ast::ItemFunc, FuncId> = Key::new();
+pub const MEMBER: Key<ast::ItemMember, MemberId> = Key::new();
 
 pub struct AstPtrPolicy<AST, ID> {
     _marker: PhantomData<(AST, ID)>,
