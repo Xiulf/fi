@@ -1,7 +1,6 @@
 use std::io;
 use std::sync::Arc;
 
-use hir::db::HirDatabase;
 use libloading::{Library, Symbol};
 use tracing_subscriber::EnvFilter;
 
@@ -28,13 +27,16 @@ impl Eq for Backend {
 }
 
 type InitLoggingFn = fn(EnvFilter);
-type CodegenFn = fn(&dyn HirDatabase, hir::Module, &mut dyn io::Write);
+type CodegenFn = fn(&dyn CodegenDatabase, hir::Module, &mut dyn io::Write);
 
 pub fn backend(db: &dyn CodegenDatabase) -> Backend {
     let lib = match db.target() {
         | CompilerTarget::Javascript if cfg!(target_os = "windows") => "shade_backend_js.dll",
         | CompilerTarget::Javascript if cfg!(target_os = "macos") => "libshade_backend_js.dylib",
         | CompilerTarget::Javascript => "libshade_backend_js.so",
+        | CompilerTarget::Native(_) if cfg!(target_os = "windows") => "shade_backend_llvm.dll",
+        | CompilerTarget::Native(_) if cfg!(target_os = "macos") => "libshade_backend_llvm.dylib",
+        | CompilerTarget::Native(_) => "libshade_backend_llvm.so",
     };
 
     let lib = std::env::current_exe().unwrap().parent().unwrap().join(lib);
@@ -49,6 +51,6 @@ pub fn backend(db: &dyn CodegenDatabase) -> Backend {
 
 impl Backend {
     pub fn invoke(&self, db: &dyn CodegenDatabase, module: hir::Module, file: &mut dyn io::Write) {
-        (self.0.codegen)(db.upcast(), module, file);
+        (self.0.codegen)(db, module, file);
     }
 }

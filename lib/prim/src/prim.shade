@@ -144,3 +144,6 @@ class Termination t =
 
 member Unit of Termination =
     report _ = ExitCode 0
+
+member ExitCode of Termination =
+    report code = code

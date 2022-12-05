@@ -1,9 +1,10 @@
 use arena::{Arena, Idx};
 use hir::id::DefWithBodyId;
 use hir::{Ctor, DefWithBody, ExprId, Func};
-use hir_ty::ty::Ty;
 use rustc_hash::FxHashMap;
 use salsa::{InternId, InternKey};
+
+use crate::repr::Repr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
@@ -59,7 +60,7 @@ pub struct Local(pub Idx<LocalData>);
 pub struct LocalData {
     pub id: Local,
     pub kind: LocalKind,
-    pub ty: Ty,
+    pub repr: Repr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -160,7 +161,7 @@ pub enum Operand {
     Move(Place),
 
     /// A constant value.
-    Const(Const),
+    Const(Const, Repr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

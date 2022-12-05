@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use base_db::Upcast;
-use hir::db::HirDatabase;
+use mir::db::MirDatabase;
 
 use crate::assembly::{Assembly, ObjectFile};
 use crate::backend::Backend;
 use crate::CompilerTarget;
 
 #[salsa::query_group(CodegenDatabaseStorage)]
-pub trait CodegenDatabase: HirDatabase + Upcast<dyn HirDatabase> {
+pub trait CodegenDatabase: MirDatabase + Upcast<dyn MirDatabase> {
     #[salsa::input]
     fn target(&self) -> CompilerTarget;
 

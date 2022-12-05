@@ -1,6 +1,6 @@
-use hir::ty::Ty;
 use hir::{Ctor, DefWithBody};
 
+use crate::repr::Repr;
 use crate::syntax::*;
 
 pub struct Builder {
@@ -22,6 +22,10 @@ impl Builder {
 
     pub fn build(self) -> BodyData {
         self.body
+    }
+
+    pub fn body(&self) -> &BodyData {
+        &self.body
     }
 
     pub fn origin(&self) -> BodyOrigin {
@@ -53,10 +57,10 @@ impl Builder {
         self.body.blocks[block.0].params.push(param);
     }
 
-    pub fn add_local(&mut self, kind: LocalKind, ty: Ty) -> Local {
+    pub fn add_local(&mut self, kind: LocalKind, repr: Repr) -> Local {
         let id = Local(self.body.locals.next_id());
 
-        self.body.locals.alloc(LocalData { id, kind, ty });
+        self.body.locals.alloc(LocalData { id, kind, repr });
         id
     }
 
@@ -157,9 +161,9 @@ impl Place {
     }
 }
 
-impl From<Const> for Operand {
-    fn from(c: Const) -> Self {
-        Self::Const(c)
+impl From<(Const, Repr)> for Operand {
+    fn from((c, r): (Const, Repr)) -> Self {
+        Self::Const(c, r)
     }
 }
 

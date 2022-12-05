@@ -3,13 +3,16 @@ pub mod backend;
 pub mod db;
 pub mod linker;
 
+use std::str::FromStr;
 use std::sync::Arc;
 
+use target_lexicon::Triple;
 use tempfile::NamedTempFile;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompilerTarget {
     Javascript,
+    Native(Triple),
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,4 +42,21 @@ pub(crate) fn codegen_module(db: &dyn db::CodegenDatabase, module: hir::Module) 
     backend.invoke(db, module, &mut file);
 
     Arc::new(assembly::ObjectFile::new(file))
+}
+
+impl Default for CompilerTarget {
+    fn default() -> Self {
+        Self::Native(Triple::host())
+    }
+}
+
+impl FromStr for CompilerTarget {
+    type Err = target_lexicon::ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            | "js" | "javascript" => Ok(Self::Javascript),
+            | _ => Triple::from_str(s).map(Self::Native),
+        }
+    }
 }

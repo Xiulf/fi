@@ -4,5 +4,6 @@ version = "0.1.0"
 output = "executable"
 
 [dependencies]
-core = { path = "../lib/core" }
+prim = { path = "../lib/prim" }
+# core = { path = "../lib/core" }
 # js = { path = "../lib/js" }

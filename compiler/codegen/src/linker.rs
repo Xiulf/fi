@@ -10,12 +10,13 @@ use crate::CompilerTarget;
 pub fn create(target: CompilerTarget) -> Box<dyn Linker> {
     match target {
         | CompilerTarget::Javascript => Box::new(JsLinker::new()),
+        | CompilerTarget::Native(_) => Box::new(CcLinker::new()),
     }
-    // Box::new(CcLinker::new())
 }
 
 pub trait Linker {
     fn runtime_path(&mut self, rpath: &Path);
+    fn add_path(&mut self, path: &Path);
     fn add_module(&mut self, path: &Path);
     fn add_object(&mut self, kind: LibKind, path: &str);
     fn out_kind(&mut self, kind: LibKind);
@@ -39,6 +40,11 @@ impl Linker for LdLinker {
     fn runtime_path(&mut self, rpath: &Path) {
         self.cmd.arg("-rpath");
         self.cmd.arg(rpath);
+    }
+
+    fn add_path(&mut self, path: &Path) {
+        self.cmd.arg("-L");
+        self.cmd.arg(path);
     }
 
     fn add_module(&mut self, path: &Path) {
@@ -90,6 +96,11 @@ impl Linker for CcLinker {
     fn runtime_path(&mut self, rpath: &Path) {
         self.cmd.arg("-Wl,-rpath");
         self.cmd.arg(rpath);
+    }
+
+    fn add_path(&mut self, path: &Path) {
+        self.cmd.arg("-L");
+        self.cmd.arg(path);
     }
 
     fn add_module(&mut self, path: &Path) {
@@ -154,6 +165,9 @@ impl JsLinker {
 impl Linker for JsLinker {
     fn runtime_path(&mut self, rpath: &Path) {
         self.rpath = rpath.to_path_buf();
+    }
+
+    fn add_path(&mut self, _path: &Path) {
     }
 
     fn add_module(&mut self, path: &Path) {

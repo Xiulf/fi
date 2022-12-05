@@ -464,8 +464,8 @@ pub(crate) fn assoc_item(p: &mut Parser) {
 
     match p.current() {
         // | FN_KW => fun(p, m),
-        | IDENT => func(p, m),
-        | STATIC_KW => static_(p, m),
+        | IDENT => funcs(p, m, true),
+        | STATIC_KW => statics(p, m, true),
         | _ => {
             p.error("expected an associated item");
             m.abandon(p);

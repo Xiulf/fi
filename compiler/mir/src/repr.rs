@@ -1,9 +1,10 @@
 use std::ops::RangeInclusive;
 
 use hir::attrs::{AttrInput, AttrInputGroup};
-use hir::id::{CtorId, LocalCtorId, TypeCtorId};
+use hir::id::{CtorId, DefWithBodyId, LocalCtorId, TypeCtorId, TypeVarId};
 use hir::ty::{Ty, TyKind};
 use hir_def::data::CtorData;
+use hir_def::lang_item;
 
 use crate::db::MirDatabase;
 
@@ -49,6 +50,12 @@ pub struct Signature {
     pub ret: Repr,
 }
 
+impl Repr {
+    pub fn unit() -> Self {
+        Self::Struct(Box::new([]))
+    }
+}
+
 pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
     match ty.lookup(db.upcast()) {
         | TyKind::Error(_) => Repr::Opaque,
@@ -57,6 +64,7 @@ pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
             | TyKind::Ctor(ctor) => repr_of_ctor(db, ctor, &args),
             | _ => unreachable!(),
         },
+        | TyKind::Where(_, ty) => repr_of_query(db, ty),
         | k => todo!("{:?}", k),
     }
 }
@@ -98,10 +106,16 @@ fn repr_of_variant(db: &dyn MirDatabase, local_id: LocalCtorId, ctor: &CtorData,
         .iter()
         .map(|&t| {
             let ty = lower.types[t];
-            let ty = args
-                .iter()
-                .zip(data.type_vars.iter())
-                .fold(ty, |r, (&t, &v)| r.replace_var(db.upcast(), v, t));
+            let ty = args.iter().zip(data.type_vars.iter()).fold(ty, |r, (&t, &v)| {
+                r.replace_var(
+                    db.upcast(),
+                    TypeVarId {
+                        owner: hir::id::TypedDefId::TypeCtorId(id).into(),
+                        local_id: v,
+                    },
+                    t,
+                )
+            });
 
             db.repr_of(ty)
         })
@@ -188,8 +202,47 @@ fn primitive_from_attr(attr: &str) -> Primitive {
         | "f32" => Primitive::Float,
         | "f64" => Primitive::Double,
         | "ptr" => Primitive::Pointer,
-        | "ptr_sized_uint" => Primitive::Int(Integer::Int, false),
-        | "ptr_sized_int" => Primitive::Int(Integer::Int, true),
-        | _ => panic!("invalid scalar repr"),
+        | "usize" => Primitive::Int(Integer::Int, false),
+        | "isize" => Primitive::Int(Integer::Int, true),
+        | _ => panic!("invalid scalar repr '{}'", attr),
     }
+}
+
+pub fn func_signature_query(db: &dyn MirDatabase, func: hir::Func) -> Signature {
+    let hir_db: &dyn hir::db::HirDatabase = db.upcast();
+    let infer = db.infer(DefWithBodyId::FuncId(func.into()));
+    let lib = func.lib(hir_db).into();
+    let func_ctor = db.lang_item(lib, lang_item::FN_TYPE).unwrap().as_type_ctor().unwrap();
+    let mut ret = infer.self_type.ty;
+    let mut args = Vec::new();
+
+    if func.has_body(hir_db) {
+        let body = db.body(DefWithBodyId::FuncId(func.into()));
+        let mut n = body.params().len();
+
+        while let Some(ty_args) = ret.match_ctor(hir_db, func_ctor) {
+            if n == 0 {
+                break;
+            }
+
+            args.push(ty_args[0]);
+            ret = ty_args[1];
+            n -= 1;
+        }
+    } else if func.is_foreign(hir_db) {
+        while let Some(ty_args) = ret.match_ctor(hir_db, func_ctor) {
+            args.push(ty_args[0]);
+            ret = ty_args[1];
+        }
+    } else {
+        if let Some(ty_args) = ret.match_ctor(hir_db, func_ctor) {
+            args.push(ty_args[0]);
+            ret = ty_args[1];
+        }
+    }
+
+    let params = args.into_iter().map(|a| db.repr_of(a)).collect();
+    let ret = db.repr_of(ret);
+
+    Signature { params, ret }
 }

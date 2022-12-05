@@ -1,19 +1,12 @@
 module Main =
 
-import Core
-import Data.List (first)
-; import Monad.Writer
-; import Monad.Reader
-; import Monad.State
-; import Js.Console
+import Prim
+import Intrinsics
 
+foreign puts :: Ptr Byte -> Int32
 
-; @main
-; main :: Effect ()
-; main =
-    ; print "test"
-
-main = test 22
-
-test 0 = 10
-test _ = 20
+@main
+main =
+    let ptr, _ = transmute "test" :: Ptr Byte, Uint
+    puts ptr
+    ExitCode 0

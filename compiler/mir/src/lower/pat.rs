@@ -48,10 +48,11 @@ impl BodyLowerCtx<'_> {
     }
 
     pub fn lower_case(&mut self, expr: hir::ExprId, discr: hir::ExprId, arms: &[hir::CaseArm]) -> Operand {
-        let res = self.builder.add_local(LocalKind::Tmp, self.infer.type_of_expr[expr]);
-        let discr_ty = self.infer.type_of_expr[discr];
+        let ty = self.infer.type_of_expr[expr];
+        let repr = self.db.repr_of(ty);
+        let res = self.builder.add_local(LocalKind::Tmp, repr);
         let discr = self.lower_expr(discr);
-        let discr = self.place_op(discr, discr_ty);
+        let discr = self.place_op(discr);
         let pmatch = self.compile_case(arms, discr);
         let exit_block = self.builder.create_block();
 

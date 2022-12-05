@@ -75,6 +75,54 @@ impl Ty {
             None
         }
     }
+
+    pub fn replace_var(self, db: &dyn HirDatabase, var: TypeVarId, with: Ty) -> Ty {
+        match self.lookup(db) {
+            | TyKind::TypeVar(tv) if tv.2 == Some(var) => with,
+            | TyKind::Row(fields, rest) => {
+                let fields = fields
+                    .iter()
+                    .map(|f| Field {
+                        name: f.name.clone(),
+                        ty: f.ty.replace_var(db, var, with),
+                    })
+                    .collect();
+
+                let rest = rest.map(|r| r.replace_var(db, var, with));
+
+                TyKind::Row(fields, rest).intern(db)
+            },
+            | TyKind::App(base, args) => {
+                let base = base.replace_var(db, var, with);
+                let args = args.iter().map(|a| a.replace_var(db, var, with)).collect();
+
+                TyKind::App(base, args).intern(db)
+            },
+            | TyKind::Where(clause, ty) => {
+                let clause = WhereClause {
+                    constraints: clause
+                        .constraints
+                        .iter()
+                        .map(|c| Constraint {
+                            class: c.class,
+                            types: c.types.iter().map(|t| t.replace_var(db, var, with)).collect(),
+                        })
+                        .collect(),
+                };
+
+                let ty = ty.replace_var(db, var, with);
+
+                TyKind::Where(clause, ty).intern(db)
+            },
+            | TyKind::ForAll(params, ty, scope) => {
+                let ty = ty.replace_var(db, var, with);
+                let params = params.iter().map(|p| p.replace_var(db, var, with)).collect();
+
+                TyKind::ForAll(params, ty, scope).intern(db)
+            },
+            | _ => self,
+        }
+    }
 }
 
 impl TyKind {

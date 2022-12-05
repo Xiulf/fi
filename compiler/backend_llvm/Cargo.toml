@@ -1,19 +1,26 @@
 [package]
-name = "codegen"
+name = "backend_llvm"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "shade_backend_llvm"
+crate-type = ["dylib"]
+
 [dependencies]
+arena = { path = "../arena" }
+codegen = { path = "../codegen" }
 mir = { path = "../mir" }
 hir = { path = "../hir" }
-base_db = { path = "../base_db" }
-project = { path = "../project" }
-paths = { path = "../paths" }
+rustc-hash = "1.1.0"
 target-lexicon = { version = "0.12.0", features = ["std"] }
-libloading = "0.7.0"
-tempfile = "3.2.0"
-salsa = "0.16.0"
+mangling = "0.2.3"
 tracing = "^0.1"
+
+[dependencies.inkwell]
+git = "https://github.com/TheDan64/inkwell"
+branch = "master"
+features = ["llvm11-0"]
 
 [dependencies.tracing-subscriber]
 version = "0.3.15"

@@ -2,6 +2,7 @@ use hir::id::{AssocItemId, DefWithBodyId, HasModule};
 use hir::{Expr, HasResolver, Literal, MethodSource, Resolver, ValueNs};
 
 use super::*;
+use crate::repr::Repr;
 
 pub enum Arg {
     ExprId(hir::ExprId),
@@ -14,12 +15,16 @@ impl BodyLowerCtx<'_> {
 
         match body[expr] {
             | Expr::Missing | Expr::Hole => unreachable!(),
-            | Expr::Unit => Operand::Const(Const::Unit),
-            | Expr::Lit { ref lit } => match *lit {
-                | Literal::Int(v) => Operand::Const(Const::Int(v)),
-                | Literal::Float(v) => Operand::Const(Const::Float(v)),
-                | Literal::Char(v) => Operand::Const(Const::Char(v)),
-                | Literal::String(ref v) => Operand::Const(Const::String(v.clone())),
+            | Expr::Unit => Operand::Const(Const::Unit, Repr::unit()),
+            | Expr::Lit { ref lit } => {
+                let repr = self.db.repr_of(self.infer.type_of_expr[expr]);
+
+                match *lit {
+                    | Literal::Int(v) => Operand::Const(Const::Int(v), repr),
+                    | Literal::Float(v) => Operand::Const(Const::Float(v), repr),
+                    | Literal::Char(v) => Operand::Const(Const::Char(v), repr),
+                    | Literal::String(ref v) => Operand::Const(Const::String(v.clone()), repr),
+                }
             },
             | Expr::Path { ref path } => self.lower_path(
                 &Resolver::for_expr(self.db.upcast(), self.builder.origin().def, expr),
@@ -55,7 +60,8 @@ impl BodyLowerCtx<'_> {
                 },
                 | hir::Stmt::Let { pat, val } => {
                     let ty = self.infer.type_of_pat[pat];
-                    let local = self.builder.add_local(LocalKind::Var, ty);
+                    let repr = self.db.repr_of(ty);
+                    let local = self.builder.add_local(LocalKind::Var, repr);
                     let op = self.lower_expr(val);
 
                     self.builder.assign(Place::new(local), op);
@@ -65,7 +71,7 @@ impl BodyLowerCtx<'_> {
             }
         }
 
-        Operand::Const(Const::Unit)
+        Operand::Const(Const::Unit, Repr::unit())
     }
 
     pub fn lower_app(&mut self, expr: hir::ExprId, base: Arg, args: Vec<Arg>) -> Operand {
@@ -79,7 +85,7 @@ impl BodyLowerCtx<'_> {
             }
         }
 
-        let base = self.lower_arg(base);
+        let _base = self.lower_arg(base);
 
         todo!()
     }
@@ -109,14 +115,33 @@ impl BodyLowerCtx<'_> {
 
                 (self.lower_path(resolver, expr, path), self.func_params(id))
             },
-            | ValueNs::Ctor(_id) => todo!(),
+            | ValueNs::Ctor(id) => {
+                let ty = self.infer.type_of_expr[expr.0];
+                let repr = self.db.repr_of(ty);
+                let res = self.builder.add_local(LocalKind::Tmp, repr);
+                self.builder.init(res);
+                let downcast = if self.db.type_ctor_data(id.parent).ctors.len() == 1 {
+                    Place::new(res)
+                } else {
+                    self.builder.set_discriminant(Place::new(res), id.into());
+                    Place::new(res).downcast(id.into())
+                };
+
+                for (i, arg) in args.into_iter().enumerate() {
+                    let arg = self.lower_arg(arg);
+                    self.builder.assign(downcast.clone().field(i), arg);
+                }
+
+                return Operand::Move(Place::new(res));
+            },
             | _ => (self.lower_path(resolver, expr, path), args.len()),
         };
 
         if params > 0 {
             let args2 = args.drain(..params).map(|a| self.lower_arg(a)).collect::<Vec<_>>();
             let ty = self.infer.type_of_expr[expr.0];
-            let res = self.builder.add_local(LocalKind::Tmp, ty);
+            let repr = self.db.repr_of(ty);
+            let res = self.builder.add_local(LocalKind::Tmp, repr);
 
             self.builder.call(Place::new(res), base, args2);
             base = Operand::Move(Place::new(res));
@@ -151,7 +176,8 @@ impl BodyLowerCtx<'_> {
                             };
 
                             let ty = self.db.value_ty(item.into()).ty;
-                            let res = self.builder.add_local(LocalKind::Tmp, ty);
+                            let repr = self.db.repr_of(ty);
+                            let res = self.builder.add_local(LocalKind::Tmp, repr);
 
                             self.builder.def_ref(Place::new(res), item.into());
 
@@ -161,7 +187,8 @@ impl BodyLowerCtx<'_> {
                     }
                 } else {
                     let ty = self.db.value_ty(id.into()).ty;
-                    let res = self.builder.add_local(LocalKind::Tmp, ty);
+                    let repr = self.db.repr_of(ty);
+                    let res = self.builder.add_local(LocalKind::Tmp, repr);
 
                     self.builder.def_ref(Place::new(res), func.into());
 
@@ -246,19 +273,19 @@ impl BodyLowerCtx<'_> {
         }
     }
 
-    pub(super) fn place_op(&mut self, op: Operand, ty: Ty) -> Place {
+    pub(super) fn place_op(&mut self, op: Operand) -> Place {
         match op {
             | Operand::Move(p) | Operand::Copy(p) => p,
-            | _ => {
-                let local = self.builder.add_local(LocalKind::Tmp, ty);
+            | Operand::Const(c, repr) => {
+                let local = self.builder.add_local(LocalKind::Tmp, repr.clone());
 
-                self.builder.assign(Place::new(local), op);
+                self.builder.assign(Place::new(local), Operand::Const(c, repr));
                 Place::new(local)
             },
         }
     }
 
-    fn lower_arg(&mut self, arg: Arg) -> Operand {
+    pub(super) fn lower_arg(&mut self, arg: Arg) -> Operand {
         match arg {
             | Arg::ExprId(e) => self.lower_expr(e),
             | Arg::Op(op) => op,

@@ -70,6 +70,12 @@ impl Upcast<dyn hir::db::HirDatabase + 'static> for RootDatabase {
     }
 }
 
+impl Upcast<dyn mir::db::MirDatabase + 'static> for RootDatabase {
+    fn upcast(&self) -> &(dyn mir::db::MirDatabase + 'static) {
+        self
+    }
+}
+
 impl Upcast<dyn codegen::db::CodegenDatabase + 'static> for RootDatabase {
     fn upcast(&self) -> &(dyn codegen::db::CodegenDatabase + 'static) {
         self

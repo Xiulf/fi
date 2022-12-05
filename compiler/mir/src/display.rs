@@ -4,10 +4,11 @@ use hir::display::HirFormatter;
 use hir::id::DefWithBodyId;
 use hir::{DefWithBody, HirDisplay};
 
+use crate::repr::{Integer, Primitive, Repr, Scalar, Signature};
 use crate::syntax::*;
 
 impl HirDisplay for Module {
-    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+    fn hir_fmt(&self, _f: &mut HirFormatter) -> std::fmt::Result {
         // write!(f, "module {}", self.name)?;
 
         // if !self.functions.is_empty() {
@@ -100,7 +101,7 @@ impl Display for Local {
 
 impl HirDisplay for LocalData {
     fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
-        write!(f, "{} {} :: {}", self.kind, self.id, self.ty.display(f.db))
+        write!(f, "{} {} :: {}", self.kind, self.id, self.repr.display(f.db))
     }
 }
 
@@ -229,7 +230,7 @@ impl HirDisplay for Operand {
         match self {
             | Self::Copy(p) => write!(f, "copy {}", p.display(f.db)),
             | Self::Move(p) => write!(f, "move {}", p.display(f.db)),
-            | Self::Const(c) => write!(f, "{c}"),
+            | Self::Const(c, r) => write!(f, "{c} [{}]", r.display(f.db)),
         }
     }
 }
@@ -266,6 +267,102 @@ impl Display for Const {
             | Self::Float(v) => Debug::fmt(&f64::from_bits(*v), f),
             | Self::Char(v) => Debug::fmt(v, f),
             | Self::String(v) => Debug::fmt(v, f),
+        }
+    }
+}
+
+impl HirDisplay for Repr {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> Result {
+        match self {
+            | Self::Opaque => f.write_str("{opaque}"),
+            | Self::ReprOf(ty) => write!(f, "repr_of({})", ty.display(f.db)),
+            | Self::Scalar(scalar) => write!(f, "{scalar}"),
+            | Self::Struct(fields) => {
+                write!(f, "struct {{ ")?;
+
+                for (i, field) in fields.iter().enumerate() {
+                    if i != 0 {
+                        f.write_str(", ")?;
+                    }
+
+                    field.hir_fmt(f)?;
+                }
+
+                write!(f, " }}")
+            },
+            | Self::Enum(fields) => {
+                write!(f, "enum {{ ")?;
+
+                for (i, field) in fields.iter().enumerate() {
+                    if i != 0 {
+                        f.write_str(", ")?;
+                    }
+
+                    field.hir_fmt(f)?;
+                }
+
+                write!(f, " }}")
+            },
+            | Self::Ptr(to) => write!(f, "*{}", to.display(f.db)),
+            | Self::Box(to) => write!(f, "box({})", to.display(f.db)),
+            | Self::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
+            | Self::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),
+        }
+    }
+}
+
+impl HirDisplay for Signature {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> Result {
+        f.write_char('(')?;
+
+        for (i, param) in self.params.iter().enumerate() {
+            if i != 0 {
+                f.write_str(", ")?;
+            }
+
+            param.hir_fmt(f)?;
+        }
+
+        write!(f, ") -> {}", self.ret.display(f.db))
+    }
+}
+
+impl Display for Scalar {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.valid_range == (0..=u128::MAX) {
+            Display::fmt(&self.value, f)
+        } else if *self.valid_range.end() == u128::MAX {
+            write!(f, "{} @ {}..", self.value, self.valid_range.start())
+        } else {
+            write!(
+                f,
+                "{} @ {}..={}",
+                self.value,
+                self.valid_range.start(),
+                self.valid_range.end()
+            )
+        }
+    }
+}
+
+impl Display for Primitive {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            | Self::Int(Integer::Int, false) => f.write_str("usize"),
+            | Self::Int(Integer::I8, false) => f.write_str("u8"),
+            | Self::Int(Integer::I16, false) => f.write_str("u16"),
+            | Self::Int(Integer::I32, false) => f.write_str("u32"),
+            | Self::Int(Integer::I64, false) => f.write_str("u64"),
+            | Self::Int(Integer::I128, false) => f.write_str("u218"),
+            | Self::Int(Integer::Int, true) => f.write_str("isize"),
+            | Self::Int(Integer::I8, true) => f.write_str("i8"),
+            | Self::Int(Integer::I16, true) => f.write_str("i16"),
+            | Self::Int(Integer::I32, true) => f.write_str("i32"),
+            | Self::Int(Integer::I64, true) => f.write_str("i64"),
+            | Self::Int(Integer::I128, true) => f.write_str("i218"),
+            | Self::Float => f.write_str("float"),
+            | Self::Double => f.write_str("double"),
+            | Self::Pointer => f.write_str("ptr"),
         }
     }
 }

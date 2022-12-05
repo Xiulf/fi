@@ -33,7 +33,8 @@ pub(crate) fn lower_body(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> B
 
     for &param in body.params() {
         let ty = infer.type_of_pat[param];
-        let local = bcx.builder.add_local(LocalKind::Arg, ty);
+        let repr = db.repr_of(ty);
+        let local = bcx.builder.add_local(LocalKind::Arg, repr);
 
         bcx.builder.add_block_param(entry, local);
         bcx.define_pat(param, Place::new(local));

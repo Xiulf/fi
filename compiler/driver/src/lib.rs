@@ -13,8 +13,6 @@ use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
 pub use codegen::Optimization;
-use hir::HirDisplay;
-use mir::db::MirDatabase;
 use paths::AbsPathBuf;
 use project::manifest::{self, Cfg};
 use project::Workspace;
@@ -83,14 +81,9 @@ impl Driver {
     pub fn init(opts: InitOpts) -> anyhow::Result<(Self, usize)> {
         let mut driver = Driver::default();
         let cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
-        let target = match opts.target {
-            | Some("javascript") => CompilerTarget::Javascript,
-            // | Some(target) => Arc::new(target.parse().unwrap()),
-            // | None => Arc::new(target_lexicon::Triple::host()),
-            | _ => CompilerTarget::Javascript,
-        };
+        let target = opts.target.map(|t| t.parse()).unwrap_or(Ok(Default::default()))?;
 
-        driver.init_cfg(target);
+        driver.init_cfg(&target);
         driver.target_dir = input_dir(opts.input).join("target");
         driver.cfg = driver.cfg.merge(&cfg);
         driver.db.set_target(target);
@@ -104,14 +97,9 @@ impl Driver {
         let mut driver = Driver::default();
         let current_dir = AbsPathBuf::assert(std::env::current_dir().unwrap());
         let cfg = manifest::parse_cfg(&opts.cfg).ok_or_else(|| anyhow::anyhow!("failed to parse cfg options"))?;
-        let target = match opts.target {
-            | Some("javascript") => CompilerTarget::Javascript,
-            // | Some(target) => Arc::new(target.parse().unwrap()),
-            // | None => Arc::new(target_lexicon::Triple::host()),
-            | _ => CompilerTarget::Javascript,
-        };
+        let target = opts.target.map(|t| t.parse()).unwrap_or(Ok(Default::default()))?;
 
-        driver.init_cfg(target);
+        driver.init_cfg(&target);
         driver.target_dir = current_dir.join("target");
         driver.cfg = driver.cfg.merge(&cfg);
 
@@ -202,9 +190,10 @@ impl Driver {
         }
     }
 
-    fn init_cfg(&mut self, target: CompilerTarget) {
+    fn init_cfg(&mut self, target: &CompilerTarget) {
         self.cfg.set("target", match target {
             | CompilerTarget::Javascript => CfgValue::String("javascript".into()),
+            | CompilerTarget::Native(triple) => CfgValue::String(triple.operating_system.to_string().into()),
         });
     }
 
@@ -336,31 +325,12 @@ impl Driver {
             self.write_assembly(ws, dep.lib, done)?;
         }
 
-        self.debug_mir(lib);
-
         let asm = self.db.lib_assembly(lib);
 
         asm.link(&self.db, ws, &self.target_dir);
         done.insert(lib);
 
         Ok(true)
-    }
-
-    fn debug_mir(&self, lib: hir::Lib) {
-        for module in lib.modules(&self.db) {
-            for def in module.declarations(&self.db) {
-                match def {
-                    | hir::ModuleDef::Func(f) => {
-                        let id = hir::id::FuncId::from(f);
-                        let body = self.db.body_mir(id.into());
-                        let mir = self.db.lookup_intern_body(body);
-
-                        eprintln!("{}", mir.display(&self.db));
-                    },
-                    | _ => {},
-                }
-            }
-        }
     }
 }
 
