@@ -21,13 +21,13 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         match repr {
             | Repr::Opaque => unreachable!(),
             | Repr::ReprOf(ty) => self.basic_type_for_repr(&self.db.repr_of(*ty)),
-            | Repr::Scalar(scalar) => self.basic_type_for_scalar(scalar),
+            | Repr::Scalar(scalar) => self.basic_type_for_scalar(scalar, None),
             | Repr::Func(sig, false) => self
                 .fn_type_for_signature(sig)
-                .ptr_type(AddressSpace::Global)
+                .ptr_type(AddressSpace::Generic)
                 .as_basic_type_enum(),
             | Repr::Func(_sig, true) => todo!(),
-            | Repr::Ptr(to) => self
+            | Repr::Ptr(to, _) => self
                 .basic_type_for_repr(to)
                 .ptr_type(AddressSpace::Generic)
                 .as_basic_type_enum(),
@@ -35,6 +35,18 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                 .basic_type_for_repr(to)
                 .ptr_type(AddressSpace::Generic)
                 .as_basic_type_enum(),
+            | Repr::Struct(fields) => {
+                let layout = crate::layout::layout_of(self.db, repr);
+
+                match layout.abi {
+                    | Abi::Scalar(_) => self.basic_type_for_repr(&fields[0]),
+                    | _ => {
+                        let fields = fields.iter().map(|f| self.basic_type_for_repr(f)).collect::<Vec<_>>();
+
+                        self.context.struct_type(&fields, false).as_basic_type_enum()
+                    },
+                }
+            },
             | _ => {
                 let layout = crate::layout::layout_of(self.db, repr);
                 self.basic_type_for_layout(&layout)
@@ -45,9 +57,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn basic_type_for_layout(&self, layout: &Layout) -> types::BasicTypeEnum<'ctx> {
         match &layout.abi {
             | Abi::Uninhabited => unreachable!(),
-            | Abi::Scalar(scalar) => self.basic_type_for_scalar(scalar),
+            | Abi::Scalar(scalar) => self.basic_type_for_scalar(scalar, layout.elem.as_ref()),
             | Abi::ScalarPair(a, b) => {
-                let fields = [self.basic_type_for_scalar(a), self.basic_type_for_scalar(b)];
+                let fields = [
+                    self.basic_type_for_scalar(a, layout.elem.as_ref()),
+                    self.basic_type_for_scalar(b, layout.elem.as_ref()),
+                ];
                 self.context.struct_type(&fields, false).as_basic_type_enum()
             },
             | Abi::Aggregate { sized: true } => match &layout.fields {
@@ -67,7 +82,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
-    pub fn basic_type_for_scalar(&self, scalar: &Scalar) -> types::BasicTypeEnum<'ctx> {
+    pub fn basic_type_for_scalar(&self, scalar: &Scalar, elem: Option<&Repr>) -> types::BasicTypeEnum<'ctx> {
         match scalar.value {
             | Primitive::Int(Integer::Int, _) => self
                 .context
@@ -80,10 +95,17 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | Primitive::Int(Integer::I128, _) => self.context.i128_type().as_basic_type_enum(),
             | Primitive::Float => self.context.f32_type().as_basic_type_enum(),
             | Primitive::Double => self.context.f64_type().as_basic_type_enum(),
-            | Primitive::Pointer => self
-                .context
-                .ptr_sized_int_type(&self.target_data, Some(AddressSpace::Generic))
-                .as_basic_type_enum(),
+            | Primitive::Pointer => elem
+                .map(|e| {
+                    self.basic_type_for_repr(e)
+                        .ptr_type(AddressSpace::Generic)
+                        .as_basic_type_enum()
+                })
+                .unwrap_or_else(|| {
+                    self.context
+                        .ptr_sized_int_type(&self.target_data, Some(AddressSpace::Generic))
+                        .as_basic_type_enum()
+                }),
         }
     }
 }

@@ -15,6 +15,7 @@ impl BodyLowerCtx<'_> {
 
         match body[expr] {
             | Expr::Missing | Expr::Hole => unreachable!(),
+            | Expr::Typed { expr, .. } => self.lower_expr(expr),
             | Expr::Unit => Operand::Const(Const::Unit, Repr::unit()),
             | Expr::Lit { ref lit } => {
                 let repr = self.db.repr_of(self.infer.type_of_expr[expr]);
@@ -64,6 +65,7 @@ impl BodyLowerCtx<'_> {
                     let local = self.builder.add_local(LocalKind::Var, repr);
                     let op = self.lower_expr(val);
 
+                    self.builder.init(local);
                     self.builder.assign(Place::new(local), op);
                     self.define_pat(pat, Place::new(local));
                 },
@@ -110,7 +112,7 @@ impl BodyLowerCtx<'_> {
                 let func = hir::Func::from(id);
 
                 if func.is_intrinsic(self.db.upcast()) {
-                    return self.lower_intrinsic(&func.name(self.db.upcast()).to_string(), args);
+                    return self.lower_intrinsic(expr.0, &func.name(self.db.upcast()).to_string(), args);
                 }
 
                 (self.lower_path(resolver, expr, path), self.func_params(id))
@@ -143,6 +145,7 @@ impl BodyLowerCtx<'_> {
             let repr = self.db.repr_of(ty);
             let res = self.builder.add_local(LocalKind::Tmp, repr);
 
+            self.builder.init(res);
             self.builder.call(Place::new(res), base, args2);
             base = Operand::Move(Place::new(res));
         }
@@ -179,6 +182,7 @@ impl BodyLowerCtx<'_> {
                             let repr = self.db.repr_of(ty);
                             let res = self.builder.add_local(LocalKind::Tmp, repr);
 
+                            self.builder.init(res);
                             self.builder.def_ref(Place::new(res), item.into());
 
                             Operand::Move(Place::new(res))
@@ -190,6 +194,7 @@ impl BodyLowerCtx<'_> {
                     let repr = self.db.repr_of(ty);
                     let res = self.builder.add_local(LocalKind::Tmp, repr);
 
+                    self.builder.init(res);
                     self.builder.def_ref(Place::new(res), func.into());
 
                     Operand::Move(Place::new(res))
@@ -279,6 +284,7 @@ impl BodyLowerCtx<'_> {
             | Operand::Const(c, repr) => {
                 let local = self.builder.add_local(LocalKind::Tmp, repr.clone());
 
+                self.builder.init(local);
                 self.builder.assign(Place::new(local), Operand::Const(c, repr));
                 Place::new(local)
             },

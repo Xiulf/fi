@@ -128,6 +128,10 @@ impl Builder {
         self.stmt(Stmt::Assign(res, Rvalue::Discriminant(place)));
     }
 
+    pub fn cast(&mut self, res: Place, op: Operand) {
+        self.stmt(Stmt::Assign(res, Rvalue::Cast(op)));
+    }
+
     pub fn body_ref(&mut self, res: Place, body: Body) {
         self.stmt(Stmt::Assign(res, Rvalue::BodyRef(body)));
     }

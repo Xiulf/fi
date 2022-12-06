@@ -7,6 +7,20 @@ pub use mir::repr::*;
 use target_lexicon::{PointerWidth, Triple};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ReprAndLayout {
+    pub repr: Repr,
+    pub layout: Arc<Layout>,
+}
+
+impl std::ops::Deref for ReprAndLayout {
+    type Target = Layout;
+
+    fn deref(&self) -> &Self::Target {
+        &self.layout
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Layout {
     pub size: Size,
     pub align: Align,
@@ -73,6 +87,12 @@ pub struct Niche {
     pub scalar: Scalar,
 }
 
+pub fn repr_and_layout(db: &dyn CodegenDatabase, repr: Repr) -> ReprAndLayout {
+    let layout = layout_of(db, &repr);
+
+    ReprAndLayout { repr, layout }
+}
+
 pub fn layout_of(db: &dyn CodegenDatabase, repr: &Repr) -> Arc<Layout> {
     let triple = match db.target() {
         | CompilerTarget::Native(triple) => triple,
@@ -91,8 +111,16 @@ pub fn _layout_of(db: &dyn CodegenDatabase, triple: &Triple, repr: &Repr) -> Arc
         },
         | Repr::Scalar(scalar) => Arc::new(Layout::scalar(scalar.clone(), &triple)),
         | Repr::ReprOf(ty) => _layout_of(db, triple, &db.repr_of(*ty)),
-        | Repr::Ptr(to) => {
+        | Repr::Ptr(to, false) => {
             let scalar = new_scalar(Primitive::Pointer, triple);
+            let mut layout = Layout::scalar(scalar, triple);
+            layout.elem = Some((**to).clone());
+            Arc::new(layout)
+        },
+
+        | Repr::Ptr(to, true) => {
+            let mut scalar = new_scalar(Primitive::Pointer, triple);
+            scalar.valid_range = 1..=*scalar.valid_range.end();
             let mut layout = Layout::scalar(scalar, triple);
             layout.elem = Some((**to).clone());
             Arc::new(layout)
@@ -375,8 +403,11 @@ impl Layout {
         }
     }
 
-    pub fn elem(&self, db: &dyn CodegenDatabase) -> Option<Arc<Self>> {
-        Some(layout_of(db, self.elem.as_ref()?))
+    pub fn elem(&self, db: &dyn CodegenDatabase) -> Option<ReprAndLayout> {
+        let elem = self.elem.clone()?;
+        let layout = layout_of(db, &elem);
+
+        Some(ReprAndLayout { repr: elem, layout })
     }
 
     pub fn field(&self, db: &dyn CodegenDatabase, field: usize) -> Option<Arc<Self>> {
@@ -384,7 +415,7 @@ impl Layout {
 
         match &self.fields {
             | Fields::Primitive => None,
-            | Fields::Array { .. } => self.elem(db),
+            | Fields::Array { .. } => self.elem(db).map(|r| r.layout),
             | Fields::Union { fields: types } => Some(types[field].clone()),
             | Fields::Arbitrary { fields } => Some(fields[field].1.clone()),
         }
@@ -626,7 +657,12 @@ pub fn primitive_align(prim: Primitive, triple: &Triple) -> Align {
 
 pub fn integer_size(int: Integer, triple: &Triple) -> Size {
     match int {
-        | Integer::Int => todo!(),
+        | Integer::Int => match triple.pointer_width() {
+            | Ok(PointerWidth::U16) => Size::from_bits(16),
+            | Ok(PointerWidth::U32) => Size::from_bits(32),
+            | Ok(PointerWidth::U64) => Size::from_bits(64),
+            | _ => Size::from_bits(32),
+        },
         | Integer::I8 => Size::from_bits(8),
         | Integer::I16 => Size::from_bits(16),
         | Integer::I32 => Size::from_bits(32),
@@ -635,6 +671,6 @@ pub fn integer_size(int: Integer, triple: &Triple) -> Size {
     }
 }
 
-pub fn integer_align(int: Integer, triple: &Triple) -> Align {
+pub fn _integer_align(int: Integer, triple: &Triple) -> Align {
     Align::from_bytes(integer_size(int, triple).bytes())
 }

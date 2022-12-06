@@ -3,6 +3,7 @@
 mod body;
 mod ctx;
 mod layout;
+mod operand;
 mod place;
 mod ty;
 mod value;

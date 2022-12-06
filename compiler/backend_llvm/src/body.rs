@@ -1,11 +1,11 @@
 use arena::Idx;
 use hir::HirDisplay;
-use inkwell::values::BasicValue;
+use inkwell::values::{BasicValue, BasicValueEnum, CallableValue};
 use mir::repr::Repr;
 use mir::syntax::{Block, BlockData, Const, LocalKind, Operand, Projection, Rvalue, Stmt, Term};
 
 use crate::ctx::BodyCtx;
-use crate::place::Place;
+use crate::place::PlaceRef;
 use crate::value::Value;
 
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
@@ -16,7 +16,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         for (local, data) in body.locals.iter() {
             let repr = data.repr.clone();
             let layout = crate::layout::layout_of(self.db, &repr);
-            let place = Place::new_uninit(self.cx, layout);
+            let place = PlaceRef::new_uninit(self.cx, layout);
 
             self.locals.insert(local, place);
         }
@@ -100,7 +100,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             | Stmt::Init(local) => {
-                let ty = self.basic_type_for_layout(&self.locals[local.0].layout);
+                let repr = &self.body.locals[local.0].repr;
+                let ty = self.basic_type_for_repr(repr);
                 let ptr = self.builder.build_alloca(ty, "");
 
                 self.locals[local.0].ptr = ptr;
@@ -115,11 +116,33 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 self.codegen_rvalue(place, rvalue)
             },
             | Stmt::SetDiscriminant(_, _) => todo!(),
-            | Stmt::Call { .. } => todo!(),
+            | Stmt::Call { place, func, args } => {
+                let place = self.codegen_place(place);
+                let func = self.codegen_operand(func).load(self.cx);
+                let func = match func {
+                    | BasicValueEnum::PointerValue(pv) => CallableValue::try_from(pv).unwrap(),
+                    | v => unreachable!("{}", v.to_string()),
+                };
+
+                let args = args
+                    .iter()
+                    .map(|a| self.codegen_operand(a).load(self.cx).into())
+                    .collect::<Vec<_>>();
+                let res = self
+                    .builder
+                    .build_call(func, &args, "")
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap();
+
+                let res = Value::new(place.layout.clone(), res);
+
+                place.store(self.cx, res);
+            },
         }
     }
 
-    pub fn codegen_rvalue(&mut self, place: Place<'ctx>, rvalue: &Rvalue) {
+    pub fn codegen_rvalue(&mut self, place: PlaceRef<'ctx>, rvalue: &Rvalue) {
         match rvalue {
             | Rvalue::Use(op) => {
                 let value = self.codegen_operand(op);
@@ -128,6 +151,24 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | Rvalue::Ref(pl) => {
                 let ptr = self.codegen_place(pl).ptr;
                 let value = Value::new(place.layout.clone(), ptr.as_basic_value_enum());
+
+                place.store(self.cx, value);
+            },
+            | Rvalue::Cast(op) => {
+                let value = self.codegen_operand(op);
+                let value = value.cast(self.cx, place.layout.clone());
+
+                place.store(self.cx, value);
+            },
+            | Rvalue::DefRef(def) => {
+                let value = match *def {
+                    | hir::DefWithBody::Func(func) => {
+                        self.cx.declare_func(func).as_global_value().as_basic_value_enum()
+                    },
+                    | _ => todo!(),
+                };
+
+                let value = Value::new(place.layout.clone(), value);
 
                 place.store(self.cx, value);
             },
@@ -142,7 +183,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         }
     }
 
-    pub fn codegen_place(&mut self, place: &mir::syntax::Place) -> Place<'ctx> {
+    pub fn codegen_place(&mut self, place: &mir::syntax::Place) -> PlaceRef<'ctx> {
         let mut res = self.locals[place.local.0].clone();
 
         for proj in place.projection.iter() {
@@ -167,9 +208,30 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 .const_float(f64::from_bits(f))
                 .as_basic_value_enum(),
             | Const::Char(c) => ty.into_int_type().const_int(c as u64, false).as_basic_value_enum(),
-            | Const::String(_) => todo!(),
+            | Const::String(ref s) => {
+                let name = self.alloc_const_name("str");
+                let ptr = self.builder.build_global_string_ptr(s, &name).as_basic_value_enum();
+                let len = self
+                    .context
+                    .ptr_sized_int_type(&self.target_data, None)
+                    .const_int(s.len() as u64, false)
+                    .as_basic_value_enum();
+
+                return Value::new_pair(layout, ptr, len);
+            },
         };
 
         Value::new(layout, value)
+    }
+
+    pub fn alloc_const_name(&self, prefix: &str) -> String {
+        use std::fmt::Write;
+        let id = self.consts.get();
+        let mut name = String::with_capacity(prefix.len() + 2);
+        name.push_str(prefix);
+        name.push('.');
+        write!(name, "{id}").unwrap();
+        self.consts.set(id + 1);
+        name
     }
 }

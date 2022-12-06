@@ -35,16 +35,7 @@ pub(super) enum Arg<'a> {
 
 impl BodyLowerCtx<'_> {
     pub fn define_pat(&mut self, pat: hir::PatId, place: Place) {
-        let body = self.body.clone();
-
-        match body[pat] {
-            | Pat::Missing => unreachable!(),
-            | Pat::Wildcard => {},
-            | Pat::Bind { subpat: None, .. } => {
-                self.locals.insert(pat, place);
-            },
-            | ref p => todo!("{:?}", p),
-        }
+        assert!(self.compile_pat(pat, place).is_none());
     }
 
     pub fn lower_case(&mut self, expr: hir::ExprId, discr: hir::ExprId, arms: &[hir::CaseArm]) -> Operand {
@@ -56,6 +47,7 @@ impl BodyLowerCtx<'_> {
         let pmatch = self.compile_case(arms, discr);
         let exit_block = self.builder.create_block();
 
+        self.builder.init(res);
         self.lower_pattern_match(&pmatch, exit_block);
         self.builder.add_block_param(exit_block, res);
         self.builder.switch_block(exit_block);
@@ -229,6 +221,7 @@ impl BodyLowerCtx<'_> {
                 },
                 | _ => unreachable!(),
             },
+            | Pat::Infix { ref pats, ref ops } => self.compile_pat_infix(pats, ops, place),
             | ref p => todo!("{:?}", p),
         }
     }
@@ -243,27 +236,114 @@ impl BodyLowerCtx<'_> {
         let (resolved, _) = resolver.resolve_value_fully(self.db.upcast(), path).unwrap();
 
         match resolved {
+            | ValueNs::Fixity(id) => {
+                let resolver = id.resolver(self.db.upcast());
+                let data = self.db.fixity_data(id);
+
+                return self.compile_pat_app(&resolver, &data.func, args, place);
+            },
             | ValueNs::Ctor(id) => {
                 let ctor = hir::Ctor::from(id);
                 let ctors = ctor.type_ctor().ctors(self.db.upcast());
-                let index = ctors.iter().position(|&c| c == ctor).unwrap();
-                let first = Pattern::Switch(place.clone(), index as i128);
-                let place = place.downcast(ctor);
-                let args = args.into_iter().enumerate().filter_map(|(i, arg)| {
-                    let place = place.clone().field(i);
-                    self.compile_arg(arg, place)
-                });
 
-                Some(args.fold(first, |lhs, rhs| Pattern::And(Box::new(lhs), Box::new(rhs))))
+                if ctors.len() == 1 {
+                    args.into_iter()
+                        .enumerate()
+                        .filter_map(|(i, arg)| {
+                            let place = place.clone().field(i);
+                            self.compile_pat_arg(arg, place)
+                        })
+                        .reduce(|lhs, rhs| Pattern::And(Box::new(lhs), Box::new(rhs)))
+                } else {
+                    let index = ctors.iter().position(|&c| c == ctor).unwrap();
+                    let first = Pattern::Switch(place.clone(), index as i128);
+                    let place = place.downcast(ctor);
+                    let args = args.into_iter().enumerate().filter_map(|(i, arg)| {
+                        let place = place.clone().field(i);
+                        self.compile_pat_arg(arg, place)
+                    });
+
+                    Some(args.fold(first, |lhs, rhs| Pattern::And(Box::new(lhs), Box::new(rhs))))
+                }
             },
             | _ => unreachable!(),
         }
     }
 
-    fn compile_arg(&mut self, arg: Arg, place: Place) -> Option<Pattern> {
+    fn compile_pat_arg(&mut self, arg: Arg, place: Place) -> Option<Pattern> {
         match arg {
             | Arg::PatId(pat) => self.compile_pat(pat, place),
             | Arg::Fn(f) => f(self, place),
+        }
+    }
+
+    fn compile_pat_infix(&mut self, pats: &[hir::PatId], ops: &[hir::Path], place: Place) -> Option<Pattern> {
+        use std::iter::{once, Peekable};
+        let pats = pats.iter().map(|p| Arg::PatId(*p));
+        let resolver = self.builder.origin().def.resolver(self.db.upcast());
+        let db = self.db;
+        let fixities = ops.iter().map(|op| {
+            let (resolved, _, _) = resolver.resolve_value(db.upcast(), op).unwrap();
+
+            match resolved {
+                | ValueNs::Fixity(id) => match db.fixity_data(id).kind {
+                    | hir::FixityKind::Infix { assoc, prec } => (id, assoc, prec),
+                    | _ => unreachable!(),
+                },
+                | _ => unreachable!(),
+            }
+        });
+
+        return go(self, fixities.peekable(), pats, ops.iter(), place, &resolver);
+
+        fn go<'a>(
+            ctx: &mut BodyLowerCtx,
+            mut fixities: Peekable<impl Iterator<Item = (hir::id::FixityId, hir::Assoc, hir::Prec)> + 'a>,
+            mut pats: impl Iterator<Item = Arg<'a>> + 'a,
+            mut ops: impl Iterator<Item = &'a hir::Path>,
+            place: Place,
+            resolver: &'a Resolver,
+        ) -> Option<Pattern> {
+            if let Some((fix, assoc, prec)) = fixities.next() {
+                let op = ops.next().unwrap();
+                let left = if let Some((fix2, _, prec2)) = fixities.peek() {
+                    if fix == *fix2 {
+                        match assoc {
+                            | hir::Assoc::Left => true,
+                            | hir::Assoc::Right => false,
+                            | hir::Assoc::None => true,
+                        }
+                    } else {
+                        prec >= *prec2
+                    }
+                } else {
+                    let lhs = pats.next().unwrap();
+                    let rhs = pats.next().unwrap();
+
+                    return ctx.compile_pat_app(resolver, op, vec![lhs, rhs], place);
+                };
+
+                if left {
+                    let lhs = pats.next().unwrap();
+                    let rhs = pats.next().unwrap();
+                    let pat = Arg::Fn(Box::new(move |ctx, place| {
+                        ctx.compile_pat_app(resolver, op, vec![lhs, rhs], place)
+                    }));
+
+                    let pats = once(pat).chain(pats).collect::<Vec<_>>();
+
+                    go(ctx, fixities, pats.into_iter(), ops, place, resolver)
+                } else {
+                    let lhs = pats.next().unwrap();
+                    let rhs = Arg::Fn(Box::new(move |ctx, place| {
+                        go(ctx, fixities, pats, ops, place.clone(), resolver)
+                    }));
+
+                    ctx.compile_pat_app(resolver, op, vec![lhs, rhs], place)
+                }
+            } else {
+                ctx.compile_pat_arg(pats.next().unwrap(), place)
+            }
         }
     }
 }

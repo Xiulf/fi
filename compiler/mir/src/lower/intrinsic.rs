@@ -4,16 +4,17 @@ use super::*;
 use crate::repr::Repr;
 
 impl BodyLowerCtx<'_> {
-    pub fn lower_intrinsic(&mut self, name: &str, args: Vec<Arg>) -> Operand {
+    pub fn lower_intrinsic(&mut self, expr: hir::ExprId, name: &str, args: Vec<Arg>) -> Operand {
         let mut args = args.into_iter();
 
         match name {
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap());
                 let place = self.place_op(place);
-                let repr = Repr::Ptr(Box::new(self.builder.body().locals[place.local.0].repr.clone()));
+                let repr = self.db.repr_of(self.infer.type_of_expr[expr]);
                 let res = self.builder.add_local(LocalKind::Tmp, repr);
 
+                self.builder.init(res);
                 self.builder.ref_(Place::new(res), place);
                 Operand::Move(Place::new(res))
             },
@@ -30,6 +31,15 @@ impl BodyLowerCtx<'_> {
 
                 self.builder.assign(place, op);
                 Operand::Const(Const::Unit, Repr::unit())
+            },
+            | "transmute" => {
+                let arg = self.lower_arg(args.next().unwrap());
+                let repr = self.db.repr_of(self.infer.type_of_expr[expr]);
+                let res = self.builder.add_local(LocalKind::Tmp, repr);
+
+                self.builder.init(res);
+                self.builder.cast(Place::new(res), arg);
+                Operand::Move(Place::new(res))
             },
             | _ => todo!("intrinsic '{name}'"),
         }

@@ -26,6 +26,13 @@ impl<'ctx> Value<'ctx> {
         }
     }
 
+    pub fn new_pair(layout: Arc<Layout>, a: values::BasicValueEnum<'ctx>, b: values::BasicValueEnum<'ctx>) -> Self {
+        Self {
+            layout,
+            kind: ValueKind::ValuePair(a, b),
+        }
+    }
+
     pub fn new_ref(layout: Arc<Layout>, value: values::PointerValue<'ctx>) -> Self {
         Self {
             layout,
@@ -33,11 +40,30 @@ impl<'ctx> Value<'ctx> {
         }
     }
 
+    pub fn cast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<Layout>) -> Self {
+        if self.layout == layout {
+            return self.clone();
+        }
+
+        Self {
+            layout,
+            kind: self.kind.clone(),
+        }
+        // let ty = ctx.basic_type_for_layout(&layout);
+        // let value = self.load(ctx);
+        // let value = ctx.builder.build_bitcast(value, ty, "");
+
+        // Self {
+        //     layout,
+        //     kind: ValueKind::Value(value),
+        // }
+    }
+
     pub fn deref(&self, ctx: &mut CodegenCtx<'_, 'ctx>) -> Self {
         let value = self.load(ctx).into_pointer_value();
         let layout = self.layout.elem(ctx.db).unwrap();
 
-        Self::new_ref(layout, value)
+        Self::new_ref(layout.layout, value)
     }
 
     pub fn field(&self, ctx: &mut CodegenCtx<'_, 'ctx>, field: usize) -> Self {

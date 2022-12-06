@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 
 use hir::attrs::{AttrInput, AttrInputGroup};
-use hir::id::{CtorId, DefWithBodyId, LocalCtorId, TypeCtorId, TypeVarId};
+use hir::id::{CtorId, DefWithBodyId, LocalCtorId, TypeAliasId, TypeCtorId, TypeVarId};
 use hir::ty::{Ty, TyKind};
 use hir_def::data::CtorData;
 use hir_def::lang_item;
@@ -14,7 +14,7 @@ pub enum Repr {
     Scalar(Scalar),
     Struct(Box<[Repr]>),
     Enum(Box<[Repr]>),
-    Ptr(Box<Repr>),
+    Ptr(Box<Repr>, bool),
     Box(Box<Repr>),
     Func(Box<Signature>, bool),
     ReprOf(Ty),
@@ -60,8 +60,10 @@ pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
     match ty.lookup(db.upcast()) {
         | TyKind::Error(_) => Repr::Opaque,
         | TyKind::Ctor(ctor) => repr_of_ctor(db, ctor, &[]),
+        | TyKind::Alias(alias) => repr_of_alias(db, alias, &[]),
         | TyKind::App(base, args) => match base.lookup(db.upcast()) {
             | TyKind::Ctor(ctor) => repr_of_ctor(db, ctor, &args),
+            | TyKind::Alias(alias) => repr_of_alias(db, alias, &args),
             | _ => unreachable!(),
         },
         | TyKind::Where(_, ty) => repr_of_query(db, ty),
@@ -71,6 +73,23 @@ pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
 
 pub fn repr_of_cycle(_db: &dyn MirDatabase, _cycle: &Vec<String>, ty: &Ty) -> Repr {
     Repr::ReprOf(*ty)
+}
+
+fn repr_of_alias(db: &dyn MirDatabase, id: TypeAliasId, args: &[Ty]) -> Repr {
+    let lower = db.type_for_alias(id);
+    let data = db.type_alias_data(id);
+    let ty = args.iter().zip(data.type_vars.iter()).fold(lower.ty.ty, |r, (&t, &v)| {
+        r.replace_var(
+            db.upcast(),
+            TypeVarId {
+                owner: hir::id::TypedDefId::TypeAliasId(id).into(),
+                local_id: v,
+            },
+            t,
+        )
+    });
+
+    db.repr_of(ty)
 }
 
 fn repr_of_ctor(db: &dyn MirDatabase, id: TypeCtorId, args: &[Ty]) -> Repr {
@@ -147,6 +166,8 @@ fn repr_from_attrs(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) ->
     }
 
     if let Some(ptr) = group.field("ptr").and_then(AttrInput::group) {
+        let nonnull = matches!(group.field("valid_range_start").and_then(AttrInput::int), Some(1..));
+
         if let Some(elem) = ptr.field("elem") {
             let elem = if let Some(idx) = elem.int() {
                 db.repr_of(args[idx as usize])
@@ -154,7 +175,7 @@ fn repr_from_attrs(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) ->
                 repr_from_attrs(db, elem.group().unwrap(), args)
             };
 
-            repr = Repr::Ptr(Box::new(elem));
+            repr = Repr::Ptr(Box::new(elem), nonnull);
         }
     }
 
@@ -182,6 +203,20 @@ fn repr_from_attrs(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) ->
                 )
             }
         }
+    }
+
+    if let Some(count) = group.field("fields").and_then(AttrInput::int) {
+        let mut fields = Vec::new();
+
+        for i in 0..count {
+            let name = format!("f{i}");
+
+            if let Some(group) = group.field(&name).and_then(AttrInput::group) {
+                fields.push(repr_from_attrs(db, group, args));
+            }
+        }
+
+        repr = Repr::Struct(fields.into_boxed_slice());
     }
 
     repr

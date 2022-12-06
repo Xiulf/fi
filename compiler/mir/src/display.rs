@@ -217,6 +217,7 @@ impl HirDisplay for Rvalue {
             | Self::Use(op) => op.hir_fmt(f),
             | Self::Ref(p) => write!(f, "&{}", p.display(f.db)),
             | Self::Discriminant(p) => write!(f, "discriminant {}", p.display(f.db)),
+            | Self::Cast(op) => write!(f, "cast {}", op.display(f.db)),
             | Self::BodyRef(b) => write!(f, "body_ref {b}"),
             | Self::DefRef(DefWithBody::Func(d)) => write!(f, "func_ref {}", d.link_name(f.db).0),
             | Self::DefRef(DefWithBody::Static(d)) => write!(f, "static_ref {}", d.link_name(f.db).0),
@@ -303,7 +304,7 @@ impl HirDisplay for Repr {
 
                 write!(f, " }}")
             },
-            | Self::Ptr(to) => write!(f, "*{}", to.display(f.db)),
+            | Self::Ptr(to, _) => write!(f, "*{}", to.display(f.db)),
             | Self::Box(to) => write!(f, "box({})", to.display(f.db)),
             | Self::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
             | Self::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),

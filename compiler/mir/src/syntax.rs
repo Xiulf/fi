@@ -144,6 +144,9 @@ pub enum Rvalue {
     /// Get the discriminant value of the place.
     Discriminant(Place),
 
+    /// Cast to a different type.
+    Cast(Operand),
+
     /// Create a reference to the given body.
     BodyRef(Body),
 

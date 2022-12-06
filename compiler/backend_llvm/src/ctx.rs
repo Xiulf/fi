@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::sync::Arc;
 
 use arena::{ArenaMap, Idx};
@@ -18,7 +19,7 @@ use inkwell::{values, OptimizationLevel};
 use mir::syntax::{BlockData, LocalData};
 use rustc_hash::FxHashMap;
 
-use crate::place::Place;
+use crate::place::PlaceRef;
 
 pub struct CodegenCtx<'a, 'ctx> {
     pub db: &'a dyn CodegenDatabase,
@@ -30,6 +31,7 @@ pub struct CodegenCtx<'a, 'ctx> {
     pub fpm: &'a PassManager<values::FunctionValue<'ctx>>,
     pub hir: hir::Module,
     pub funcs: FxHashMap<hir::Func, values::FunctionValue<'ctx>>,
+    pub consts: Cell<usize>,
 }
 
 pub struct BodyCtx<'a, 'b, 'ctx> {
@@ -37,7 +39,7 @@ pub struct BodyCtx<'a, 'b, 'ctx> {
     pub body: Arc<mir::syntax::BodyData>,
     pub func: values::FunctionValue<'ctx>,
     pub blocks: ArenaMap<Idx<BlockData>, BasicBlock<'ctx>>,
-    pub locals: ArenaMap<Idx<LocalData>, Place<'ctx>>,
+    pub locals: ArenaMap<Idx<LocalData>, PlaceRef<'ctx>>,
 }
 
 impl<'a, 'b, 'ctx> std::ops::Deref for BodyCtx<'a, 'b, 'ctx> {
@@ -97,6 +99,7 @@ pub fn with_codegen_ctx<T>(db: &dyn CodegenDatabase, hir: hir::Module, f: impl F
         context: &context,
         fpm: &fpm,
         funcs: FxHashMap::default(),
+        consts: Cell::new(0),
     };
 
     f(ctx)
