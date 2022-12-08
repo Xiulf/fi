@@ -7,6 +7,7 @@ use std::{fmt, panic};
 use input::{FileId, LineIndex, SourceRoot, SourceRootId};
 use libs::LibId;
 use rustc_hash::FxHashSet;
+pub use salsa::Cancelled;
 use syntax::{ast, Parsed};
 
 pub trait Upcast<T: ?Sized> {
@@ -14,7 +15,7 @@ pub trait Upcast<T: ?Sized> {
 }
 
 #[salsa::query_group(SourceDatabaseStorage)]
-pub trait SourceDatabase: CheckCanceled + FileLoader {
+pub trait SourceDatabase: FileLoader {
     fn parse(&self, file_id: FileId) -> Parsed<ast::SourceFile>;
 
     #[salsa::input]
@@ -76,47 +77,6 @@ impl<T: SourceDatabaseExt> FileLoader for FileLoaderDelegate<&'_ T> {
 
         self.0.source_root_libs(source_root)
     }
-}
-
-pub trait CheckCanceled {
-    fn check_canceled(&self);
-
-    fn catch_canceled<F, T>(&self, f: F) -> Result<T, Canceled>
-    where
-        Self: Sized + panic::RefUnwindSafe,
-        F: FnOnce(&Self) -> T + panic::UnwindSafe,
-    {
-        panic::catch_unwind(|| f(self)).map_err(|err| match err.downcast::<Canceled>() {
-            | Ok(canceled) => *canceled,
-            | Err(payload) => panic::resume_unwind(payload),
-        })
-    }
-}
-
-impl<T: salsa::Database> CheckCanceled for T {
-    fn check_canceled(&self) {
-        if self.salsa_runtime().is_current_revision_canceled() {
-            Canceled::throw()
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Canceled;
-
-impl Canceled {
-    pub fn throw() -> ! {
-        panic::resume_unwind(Box::new(Canceled))
-    }
-}
-
-impl fmt::Display for Canceled {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("canceled")
-    }
-}
-
-impl std::error::Error for Canceled {
 }
 
 #[derive(Debug)]

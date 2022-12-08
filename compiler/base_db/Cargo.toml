@@ -9,6 +9,6 @@ vfs = { path = "../vfs" }
 cfg = { path = "../cfg" }
 paths = { path = "../paths" }
 syntax = { path = "../syntax" }
-salsa = "0.16.0"
+salsa = "0.17.0-pre.2"
 smol_str = "0.1.17"
 rustc-hash = "1.1.0"

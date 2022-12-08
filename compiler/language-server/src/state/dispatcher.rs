@@ -1,3 +1,4 @@
+use base_db::Cancelled;
 use lsp_server::{ErrorCode, ExtractError, Notification, Request, RequestId, Response};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -153,6 +154,9 @@ where
 {
     match result {
         | Ok(res) => Response::new_ok(id, &res),
+        | Err(e) if e.downcast_ref::<Cancelled>().is_some() => {
+            Response::new_err(id, ErrorCode::ContentModified as i32, "content modified".to_string())
+        },
         | Err(e) => Response::new_err(id, ErrorCode::InternalError as i32, e.to_string()),
     }
 }

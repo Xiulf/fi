@@ -16,6 +16,9 @@ pub trait MirDatabase: HirDatabase + Upcast<dyn HirDatabase> {
     #[salsa::invoke(crate::lower::lower_body)]
     fn body_mir(&self, def: DefWithBodyId) -> Body;
 
+    #[salsa::invoke(crate::lower::mir_main_shim)]
+    fn mir_main_shim(&self, main_fn: hir::Func) -> Body;
+
     #[salsa::invoke(crate::repr::repr_of_query)]
     #[salsa::cycle(crate::repr::repr_of_cycle)]
     fn repr_of(&self, ty: Ty) -> Repr;

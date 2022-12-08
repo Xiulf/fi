@@ -175,7 +175,7 @@ impl<'a> DefCollector<'a> {
     }
 
     fn collect(&mut self) {
-        self.db.check_canceled();
+        self.db.unwind_if_cancelled();
         self.resolve_imports();
     }
 
@@ -321,7 +321,7 @@ impl<'a> DefCollector<'a> {
         visibility: Visibility,
         import_type: ImportType,
     ) {
-        self.db.check_canceled();
+        self.db.unwind_if_cancelled();
         self.update_recursive(module_id, resolutions, visibility, import_type, 0);
     }
 

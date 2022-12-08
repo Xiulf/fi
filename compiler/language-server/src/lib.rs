@@ -84,6 +84,7 @@ fn server_capabilities(_client_args: &ClientCapabilities) -> ServerCapabilities 
                 save: None,
             },
         )),
+        hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
         ..Default::default()
     }
 }

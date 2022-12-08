@@ -5,8 +5,7 @@ use arena::{ArenaMap, Idx};
 use codegen::db::CodegenDatabase;
 use codegen::CompilerTarget;
 use hir::attrs::HasAttrs;
-use hir::id::{AssocItemId, DefWithBodyId};
-use hir::AsName;
+use hir::id::DefWithBodyId;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -15,9 +14,8 @@ use inkwell::passes::PassManager;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
 };
-use inkwell::values::BasicValue;
 use inkwell::{values, OptimizationLevel};
-use mir::repr::{Integer, Primitive, Repr, Scalar};
+use mir::repr::{Repr, Signature};
 use mir::syntax::{BlockData, LocalData};
 use rustc_hash::FxHashMap;
 
@@ -190,57 +188,31 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             ctx.codegen();
 
             if func.attrs(self.db.upcast()).by_key("main").exists() {
-                self.codegen_main_shim(func, &abi, value);
+                self.codegen_main_shim(func);
             }
         }
     }
 
-    pub fn codegen_main_shim(
-        &mut self,
-        main_func: hir::Func,
-        main_abi: &FnAbi<'ctx>,
-        main_value: values::FunctionValue<'ctx>,
-    ) {
-        let int_type = self.context.i32_type();
-        let main_type = int_type.fn_type(&[int_type.into(), int_type.into()], false);
+    pub fn codegen_main_shim(&mut self, main_func: hir::Func) {
+        let sig = Signature {
+            params: vec![Repr::i32(), Repr::i32()].into_boxed_slice(),
+            ret: Repr::i32(),
+        };
+
+        let abi = self.compute_fn_abi(&sig);
+        let main_type = self.fn_type_for_abi(&abi);
         let value = self.module.add_function("main", main_type, None);
-        let entry = self.context.append_basic_block(value, "entry");
-        let infer = self.db.infer(DefWithBodyId::FuncId(main_func.into()));
-        let body = self.db.body(DefWithBodyId::FuncId(main_func.into()));
-        let mut methods = infer.methods[&(body.body_expr(), 0)].iter().copied();
-        let member = match methods.next().unwrap() {
-            | hir::MethodSource::Member(id) => id,
-            | hir::MethodSource::Record(..) => unreachable!(),
+        let main_shim = self.db.mir_main_shim(main_func);
+        let mut ctx = BodyCtx {
+            body: self.db.lookup_intern_body(main_shim),
+            func: value,
+            fn_abi: &abi,
+            ret_ptr: None,
+            blocks: ArenaMap::default(),
+            locals: ArenaMap::default(),
+            cx: self,
         };
 
-        let report = match self.db.member_data(member).item(&"report".as_name()).unwrap() {
-            | AssocItemId::FuncId(f) => f,
-            | _ => unreachable!(),
-        };
-
-        let (report, report_abi) = self.declare_func(report.into());
-
-        self.builder.position_at_end(entry);
-
-        // TODO: correctly pass/return the main value
-        let main_ret = PlaceRef::new_alloca(self, main_abi.ret.layout.clone());
-        let report_ret = PlaceRef::new_alloca(self, report_abi.ret.layout.clone());
-
-        self.builder
-            .build_call(main_value, &[main_ret.ptr.as_basic_value_enum().into()], "");
-
-        self.builder.build_call(
-            report,
-            &[
-                report_ret.ptr.as_basic_value_enum().into(),
-                main_ret.ptr.as_basic_value_enum().into(),
-            ],
-            "",
-        );
-
-        let exit_code = report_ret.field(self, 0).load_operand(self).load(self);
-
-        self.builder.build_return(Some(&exit_code));
-        value.verify(true);
+        ctx.codegen();
     }
 }

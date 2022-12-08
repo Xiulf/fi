@@ -297,7 +297,10 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 base = 1;
                 self.codegen_consume(&Place::new(place.local)).deref(self.cx)
             },
-            | LocalRef::Operand(_) => unreachable!(),
+            | LocalRef::Operand(_) => {
+                self.func.print_to_stderr();
+                unreachable!();
+            },
         };
 
         for proj in place.projection[base..].iter() {

@@ -17,7 +17,7 @@ paths = { path = "../paths" }
 vfs = { path = "../vfs" }
 cfg = { path = "../cfg" }
 project = { path = "../project" }
-salsa = "0.16.0"
+salsa = "0.17.0-pre.2"
 ariadne = { git = "https://github.com/Cyberduc-k/ariadne.git" }
 serde = { version = "^1.0.123", features = ["derive"] }
 toml = "0.5.8"

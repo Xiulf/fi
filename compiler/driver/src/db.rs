@@ -1,8 +1,9 @@
+use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
 use base_db::input::FileId;
 use base_db::libs::LibId;
-use base_db::{Canceled, CheckCanceled, FileLoader, FileLoaderDelegate, Upcast};
+use base_db::{FileLoader, FileLoaderDelegate, Upcast};
 use rustc_hash::FxHashSet;
 
 #[salsa::database(
@@ -16,28 +17,22 @@ use rustc_hash::FxHashSet;
 )]
 #[derive(Default)]
 pub struct RootDatabase {
-    storage: salsa::Storage<Self>,
+    storage: ManuallyDrop<salsa::Storage<Self>>,
+}
+
+impl Drop for RootDatabase {
+    fn drop(&mut self) {
+        unsafe { ManuallyDrop::drop(&mut self.storage) }
+    }
 }
 
 impl salsa::Database for RootDatabase {
-    fn on_propagated_panic(&self) -> ! {
-        Canceled::throw()
-    }
-
-    fn salsa_event(&self, event: salsa::Event) {
-        match event.kind {
-            | salsa::EventKind::DidValidateMemoizedValue { .. } | salsa::EventKind::WillExecute { .. } => {
-                self.check_canceled();
-            },
-            | _ => {},
-        }
-    }
 }
 
 impl salsa::ParallelDatabase for RootDatabase {
     fn snapshot(&self) -> salsa::Snapshot<Self> {
         salsa::Snapshot::new(RootDatabase {
-            storage: self.storage.snapshot(),
+            storage: ManuallyDrop::new(self.storage.snapshot()),
         })
     }
 }

@@ -54,6 +54,13 @@ impl Repr {
     pub fn unit() -> Self {
         Self::Struct(Box::new([]))
     }
+
+    pub fn i32() -> Self {
+        Self::Scalar(Scalar {
+            value: Primitive::Int(Integer::I32, true),
+            valid_range: 0..=u128::MAX,
+        })
+    }
 }
 
 pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {

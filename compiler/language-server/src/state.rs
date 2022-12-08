@@ -5,7 +5,7 @@ pub mod workspace;
 use std::sync::Arc;
 
 use base_db::input::{LineIndex, SourceRoot};
-use base_db::Canceled;
+use base_db::Cancelled;
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use dispatcher::NotificationDispatcher;
 use lsp_server::{ErrorCode, Message, Notification, ReqQueue, Request, Response};
@@ -257,7 +257,7 @@ impl Drop for LspState {
 }
 
 impl LspStateSnapshot {
-    pub fn line_index(&self, file_id: FileId) -> Result<Arc<LineIndex>, Canceled> {
+    pub fn line_index(&self, file_id: FileId) -> Result<Arc<LineIndex>, Cancelled> {
         self.analysis.line_index(file_id)
     }
 }

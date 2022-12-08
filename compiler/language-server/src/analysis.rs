@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use base_db::input::{FileId, LineIndex, SourceRoot, SourceRootId};
 use base_db::libs::LibSet;
-use base_db::{Canceled, CheckCanceled, SourceDatabase, SourceDatabaseExt};
+use base_db::{Cancelled, SourceDatabase, SourceDatabaseExt};
 use hir::InFile;
 use salsa::ParallelDatabase;
 use syntax::{TextRange, TextSize};
@@ -51,20 +51,20 @@ impl Analysis {
 }
 
 impl AnalysisSnapshot {
-    pub fn diagnostics(&self, file_id: FileId) -> Result<Vec<Diagnostic>, Canceled> {
+    pub fn diagnostics(&self, file_id: FileId) -> Result<Vec<Diagnostic>, Cancelled> {
         self.with_db(|db| diagnostics::file_diagnostics(db, file_id))
     }
 
-    pub fn line_index(&self, file_id: FileId) -> Result<Arc<LineIndex>, Canceled> {
+    pub fn line_index(&self, file_id: FileId) -> Result<Arc<LineIndex>, Cancelled> {
         self.with_db(|db| db.line_index(file_id))
     }
 
-    pub fn hover(&self, file_offset: InFile<TextSize>) -> Result<Option<RangeInfo<hover::HoverInfo>>, Canceled> {
+    pub fn hover(&self, file_offset: InFile<TextSize>) -> Result<Option<RangeInfo<hover::HoverInfo>>, Cancelled> {
         self.with_db(|db| hover::hover(db, file_offset))
     }
 
-    fn with_db<T>(&self, f: impl FnOnce(&LspDatabase) -> T + UnwindSafe) -> Result<T, Canceled> {
-        self.db.catch_canceled(f)
+    fn with_db<T>(&self, f: impl FnOnce(&LspDatabase) -> T + UnwindSafe) -> Result<T, Cancelled> {
+        Cancelled::catch(|| f(&self.db))
     }
 }
 
@@ -84,6 +84,8 @@ impl AnalysisChange {
 
 impl LspDatabase {
     fn apply_change(&mut self, change: AnalysisChange) {
+        self.request_cancellation();
+
         if let Some(libs) = change.libs {
             self.set_libs(Arc::new(libs));
         }

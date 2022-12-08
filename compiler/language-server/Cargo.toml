@@ -12,7 +12,7 @@ base_db = { path = "../base_db" }
 project = { path = "../project" }
 paths = { path = "../paths" }
 vfs = { path = "../vfs" }
-salsa = "0.16.0"
+salsa = "0.17.0-pre.2"
 lsp-server = "^0.6"
 lsp-types = "^0.93"
 rustc-hash = "1.1.0"

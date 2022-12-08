@@ -11,5 +11,5 @@ syntax = { path = "../syntax" }
 base_db = { path = "../base_db" }
 rustc-hash = "1.1.0"
 smallvec = "1.9.0"
-salsa = "0.16.0"
+salsa = "0.17.0-pre.2"
 tracing = "^0.1"

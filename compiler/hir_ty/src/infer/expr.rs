@@ -15,7 +15,7 @@ use crate::lower::LowerCtx;
 
 impl BodyInferenceContext<'_> {
     pub fn infer_expr(&mut self, expr: ExprId) -> TyId {
-        self.db.check_canceled();
+        self.db.unwind_if_cancelled();
         trace!("infer_expr({:?})", expr);
 
         let body = Arc::clone(&self.body);
