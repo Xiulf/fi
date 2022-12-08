@@ -1,8 +1,9 @@
-use inkwell::types::BasicTypeEnum;
+use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{self, BasicValue};
+use inkwell::AddressSpace;
 
 use crate::ctx::CodegenCtx;
-use crate::layout::ReprAndLayout;
+use crate::layout::{Abi, ReprAndLayout};
 use crate::place::PlaceRef;
 
 #[derive(Debug, Clone, Copy)]
@@ -52,7 +53,21 @@ impl<'ctx> OperandRef<'ctx> {
     pub fn immediate(self) -> values::BasicValueEnum<'ctx> {
         match self.val {
             | OperandValue::Imm(v) => v,
-            | _ => unreachable!(),
+            | v => unreachable!("{:?}", v),
+        }
+    }
+
+    pub fn by_ref(self) -> values::PointerValue<'ctx> {
+        match self.val {
+            | OperandValue::Ref(ptr) => ptr,
+            | v => unreachable!("{:?}", v),
+        }
+    }
+
+    pub fn load(self, ctx: &mut CodegenCtx<'_, 'ctx>) -> values::BasicValueEnum<'ctx> {
+        match self.val {
+            | OperandValue::Ref(ptr) => ctx.builder.build_load(ptr, ""),
+            | _ => self.immediate(),
         }
     }
 
@@ -63,10 +78,60 @@ impl<'ctx> OperandRef<'ctx> {
             | _ => unreachable!(),
         };
 
-        PlaceRef {
-            ptr,
-            layout: layout.layout,
+        PlaceRef { ptr, layout }
+    }
+
+    pub fn field(&self, ctx: &mut CodegenCtx<'_, 'ctx>, index: usize) -> Self {
+        let field = self.layout.field(ctx.db, index).unwrap();
+        let offset = self.layout.fields.offset(index);
+        let mut val = match (self.val, &self.layout.abi) {
+            | _ if field.is_zst() => {
+                return Self::new_zst(ctx, field);
+            },
+            | (OperandValue::Imm(_) | OperandValue::Pair(..), _) if field.size == self.layout.size => {
+                assert_eq!(offset.bytes(), 0);
+                self.val
+            },
+            | (OperandValue::Pair(a_val, b_val), Abi::ScalarPair(_, _)) => {
+                if offset.bytes() == 0 {
+                    OperandValue::Imm(a_val)
+                } else {
+                    OperandValue::Imm(b_val)
+                }
+            },
+            | _ => unreachable!(),
+        };
+
+        match (&mut val, &field.abi) {
+            | (OperandValue::Imm(val), _) => {
+                let ty = ctx.basic_type_for_repr(&field.repr);
+                *val = ctx.builder.build_bitcast(*val, ty, "");
+            },
+            | (OperandValue::Pair(a_val, b_val), Abi::ScalarPair(a, b)) => {
+                let a_ty = ctx.basic_type_for_scalar(a, None);
+                let b_ty = ctx.basic_type_for_scalar(b, None);
+                *a_val = ctx.builder.build_bitcast(*a_val, a_ty, "");
+                *b_val = ctx.builder.build_bitcast(*b_val, b_ty, "");
+            },
+            | (OperandValue::Pair(..), _) => unreachable!(),
+            | (OperandValue::Ref(..), _) => unreachable!(),
         }
+
+        Self { val, layout: field }
+    }
+
+    pub fn bitcast(self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
+        let ty = ctx.basic_type_for_repr(&layout.repr);
+        let val = match self.val {
+            | OperandValue::Imm(val) => OperandValue::Imm(ctx.builder.build_bitcast(val, ty, "")),
+            | OperandValue::Ref(ptr) => {
+                let ty = ty.ptr_type(AddressSpace::Generic);
+                OperandValue::Ref(ctx.builder.build_pointer_cast(ptr, ty, ""))
+            },
+            | OperandValue::Pair(a, b) => OperandValue::Pair(a, b),
+        };
+
+        Self { layout, val }
     }
 
     pub fn store(&self, ctx: &mut CodegenCtx<'_, 'ctx>, dest: PlaceRef<'ctx>) {

@@ -193,3 +193,9 @@ pub enum Const {
     Char(char),
     String(String),
 }
+
+impl Place {
+    pub fn has_deref(&self) -> bool {
+        self.projection.iter().any(|f| matches!(f, Projection::Deref))
+    }
+}

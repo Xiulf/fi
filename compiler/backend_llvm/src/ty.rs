@@ -1,20 +1,52 @@
 use inkwell::types::{self, BasicType};
 use inkwell::AddressSpace;
 use mir::repr::{Integer, Primitive, Repr, Scalar, Signature};
+use mir::syntax::{Operand, Place, Projection};
 
-use crate::ctx::CodegenCtx;
-use crate::layout::{Abi, Fields, Layout};
+use crate::abi::{FnAbi, PassMode};
+use crate::ctx::{BodyCtx, CodegenCtx};
+use crate::layout::{Abi, Fields, Layout, ReprAndLayout};
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
-    pub fn fn_type_for_signature(&self, signature: &Signature) -> types::FunctionType<'ctx> {
-        let ret = self.basic_type_for_repr(&signature.ret);
-        let args = signature
-            .params
-            .iter()
-            .map(|a| self.basic_type_for_repr(a).into())
-            .collect::<Vec<_>>();
+    pub fn fn_type_for_abi(&self, fn_abi: &FnAbi<'ctx>) -> types::FunctionType<'ctx> {
+        let mut args = Vec::new();
+        let ret = match fn_abi.ret.mode {
+            | PassMode::NoPass => Ok(self.context.void_type()),
+            | PassMode::ByVal(ty) => Err(ty),
+            | PassMode::ByValPair(_, _) => todo!(),
+            | PassMode::ByRef { size: Some(_) } => {
+                let ret_ty = self.basic_type_for_repr(&fn_abi.ret.layout.repr);
+                args.push(ret_ty.ptr_type(AddressSpace::Generic).as_basic_type_enum().into());
+                Ok(self.context.void_type())
+            },
+            | PassMode::ByRef { size: None } => todo!(),
+        };
 
-        ret.fn_type(&args, false)
+        for arg in fn_abi.args.iter() {
+            match arg.mode {
+                | PassMode::NoPass => {},
+                | PassMode::ByVal(ty) => args.push(ty.into()),
+                | PassMode::ByValPair(a, b) => {
+                    args.push(a.into());
+                    args.push(b.into());
+                },
+                | PassMode::ByRef { size: Some(_) } => {
+                    let ty = self.basic_type_for_repr(&arg.layout.repr);
+                    args.push(ty.ptr_type(AddressSpace::Generic).as_basic_type_enum().into());
+                },
+                | PassMode::ByRef { size: None } => todo!(),
+            }
+        }
+
+        match ret {
+            | Ok(ret) => ret.fn_type(&args, false),
+            | Err(ret) => ret.fn_type(&args, false),
+        }
+    }
+
+    pub fn fn_type_for_signature(&self, sig: &Signature) -> types::FunctionType<'ctx> {
+        let abi = self.compute_fn_abi(sig);
+        self.fn_type_for_abi(&abi)
     }
 
     pub fn basic_type_for_repr(&self, repr: &Repr) -> types::BasicTypeEnum<'ctx> {
@@ -106,6 +138,30 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                         .ptr_sized_int_type(&self.target_data, Some(AddressSpace::Generic))
                         .as_basic_type_enum()
                 }),
+        }
+    }
+}
+
+impl<'ctx> BodyCtx<'_, '_, 'ctx> {
+    pub fn place_layout(&self, place: &Place) -> ReprAndLayout {
+        let repr = self.body.locals[place.local.0].repr.clone();
+        let mut base = crate::layout::repr_and_layout(self.db, repr);
+
+        for proj in place.projection.iter() {
+            base = match *proj {
+                | Projection::Deref => base.elem(self.db).unwrap(),
+                | Projection::Field(i) => base.field(self.db, i).unwrap(),
+                | Projection::Downcast(_) => todo!(),
+            };
+        }
+
+        base
+    }
+
+    pub fn operand_layout(&self, operand: &Operand) -> ReprAndLayout {
+        match operand {
+            | Operand::Copy(p) | Operand::Move(p) => self.place_layout(p),
+            | Operand::Const(_, r) => crate::layout::repr_and_layout(self.db, r.clone()),
         }
     }
 }

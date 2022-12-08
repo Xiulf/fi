@@ -54,8 +54,8 @@ pub enum Abi {
 pub enum Fields {
     Primitive,
     Array { stride: Size, count: usize },
-    Union { fields: Vec<Arc<Layout>> },
-    Arbitrary { fields: Vec<(Size, Arc<Layout>)> },
+    Union { fields: Vec<ReprAndLayout> },
+    Arbitrary { fields: Vec<(Size, ReprAndLayout)> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -67,7 +67,7 @@ pub enum Variants {
         tag: Scalar,
         tag_encoding: TagEncoding,
         tag_field: usize,
-        variants: Vec<Arc<Layout>>,
+        variants: Vec<ReprAndLayout>,
     },
 }
 
@@ -139,14 +139,26 @@ pub fn _layout_of(db: &dyn CodegenDatabase, triple: &Triple, repr: &Repr) -> Arc
         },
         | Repr::Func(_, true) => todo!(),
         | Repr::Struct(fields) => {
-            let layouts = fields.iter().map(|f| _layout_of(db, triple, f)).collect();
+            let layouts = fields
+                .iter()
+                .map(|f| {
+                    let layout = _layout_of(db, triple, f);
+                    ReprAndLayout {
+                        layout,
+                        repr: f.clone(),
+                    }
+                })
+                .collect();
 
             Arc::new(struct_layout(layouts, triple))
         },
         | Repr::Enum(variants) => {
             let layouts = variants
                 .iter()
-                .map(|v| Arc::unwrap_or_clone(_layout_of(db, triple, v)))
+                .map(|v| {
+                    let layout = _layout_of(db, triple, v);
+                    (v.clone(), Arc::unwrap_or_clone(layout))
+                })
                 .collect();
 
             Arc::new(enum_layout(layouts, triple))
@@ -164,8 +176,15 @@ fn scalar_pair(a: Scalar, b: Scalar, triple: &Triple) -> Layout {
         .chain(Niche::from_scalar(triple, Size::ZERO, a.clone()))
         .max_by_key(|n| n.available(triple));
 
-    let a_lyt = Arc::new(Layout::scalar(a.clone(), triple));
-    let b_lyt = Arc::new(Layout::scalar(b.clone(), triple));
+    let a_lyt = ReprAndLayout {
+        repr: Repr::Scalar(a.clone()),
+        layout: Arc::new(Layout::scalar(a.clone(), triple)),
+    };
+
+    let b_lyt = ReprAndLayout {
+        repr: Repr::Scalar(b.clone()),
+        layout: Arc::new(Layout::scalar(b.clone(), triple)),
+    };
 
     Layout {
         size,
@@ -181,26 +200,26 @@ fn scalar_pair(a: Scalar, b: Scalar, triple: &Triple) -> Layout {
     }
 }
 
-fn struct_layout(lyts: Vec<Arc<Layout>>, triple: &Triple) -> Layout {
-    let mut abi = Abi::Aggregate { sized: true };
+fn struct_layout(lyts: Vec<ReprAndLayout>, triple: &Triple) -> Layout {
+    let abi = Abi::Aggregate { sized: true };
 
-    match (lyts.get(0), lyts.get(1), lyts.get(2)) {
-        | (Some(a), Some(b), None) => match (&a.abi, &b.abi) {
-            | (Abi::Scalar(a), Abi::Scalar(b)) => {
-                let pair = scalar_pair(a.clone(), b.clone(), triple);
+    // match (lyts.get(0), lyts.get(1), lyts.get(2)) {
+    //     | (Some(a), Some(b), None) => match (&a.abi, &b.abi) {
+    //         | (Abi::Scalar(a), Abi::Scalar(b)) => {
+    //             let pair = scalar_pair(a.clone(), b.clone(), triple);
 
-                abi = pair.abi;
-            },
-            | (_, _) => {},
-        },
-        | (Some(s), None, None) => match &s.abi {
-            | Abi::Scalar(_) | Abi::ScalarPair(_, _) => {
-                abi = s.abi.clone();
-            },
-            | _ => {},
-        },
-        | (_, _, _) => {},
-    }
+    //             abi = pair.abi;
+    //         },
+    //         | (_, _) => {},
+    //     },
+    //     | (Some(s), None, None) => match &s.abi {
+    //         | Abi::Scalar(_) | Abi::ScalarPair(_, _) => {
+    //             abi = s.abi.clone();
+    //         },
+    //         | _ => {},
+    //     },
+    //     | (_, _, _) => {},
+    // }
 
     let mut align = Align::ONE;
     let mut fields = lyts.iter().map(|lyt| (Size::ZERO, lyt.clone())).collect::<Vec<_>>();
@@ -234,25 +253,25 @@ fn struct_layout(lyts: Vec<Arc<Layout>>, triple: &Triple) -> Layout {
     }
 }
 
-fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
+fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
     if lyts.is_empty() {
         Layout::default()
     } else if lyts.len() == 1 {
-        lyts.pop().unwrap()
+        lyts.pop().unwrap().1
     } else {
         let largest_niche = lyts
             .iter()
-            .filter_map(|v| v.largest_niche.clone())
+            .filter_map(|v| v.1.largest_niche.clone())
             .max_by_key(|n| n.available(triple));
 
         for (i, lyt) in lyts.iter_mut().enumerate() {
-            lyt.variants = Variants::Single { index: i };
+            lyt.1.variants = Variants::Single { index: i };
         }
 
-        let largest = lyts.iter().max_by_key(|l| l.size).unwrap();
+        let largest = &lyts.iter().max_by_key(|l| l.1.size).unwrap().1;
         let align = largest.align;
         let mut size = largest.size;
-        let mut no_niche = |mut variants: Vec<Layout>| {
+        let mut no_niche = |mut variants: Vec<(Repr, Layout)>| {
             let tag_size = Size::from_bits(variants.len()).align_to(align);
             let tag = Scalar {
                 value: Primitive::Int(
@@ -268,7 +287,7 @@ fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
                 valid_range: 0..=variants.len() as u128 - 1,
             };
 
-            for variant in &mut variants {
+            for (_, variant) in &mut variants {
                 if let Fields::Arbitrary { fields } = &mut variant.fields {
                     for (offset, _) in fields {
                         *offset = *offset + tag_size;
@@ -276,7 +295,14 @@ fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
                 }
             }
 
-            let variants = variants.into_iter().map(Arc::new).collect::<Vec<_>>();
+            let variants = variants
+                .into_iter()
+                .map(|(repr, layout)| ReprAndLayout {
+                    repr,
+                    layout: Arc::new(layout),
+                })
+                .collect::<Vec<_>>();
+
             let tag_encoding = TagEncoding::Direct;
             let union_ = Layout {
                 size,
@@ -292,8 +318,14 @@ fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
             };
 
             let fields = vec![
-                (Size::ZERO, Arc::new(Layout::scalar(tag.clone(), triple))),
-                (tag_size, Arc::new(union_)),
+                (Size::ZERO, ReprAndLayout {
+                    repr: Repr::Scalar(tag.clone()),
+                    layout: Arc::new(Layout::scalar(tag.clone(), triple)),
+                }),
+                (tag_size, ReprAndLayout {
+                    repr: Repr::Opaque,
+                    layout: Arc::new(union_),
+                }),
             ];
 
             size = size + tag_size;
@@ -302,7 +334,10 @@ fn enum_layout(mut lyts: Vec<Layout>, triple: &Triple) -> Layout {
                 (
                     tag.clone(),
                     Fields::Arbitrary {
-                        fields: vec![(Size::ZERO, Arc::new(Layout::scalar(tag.clone(), triple)))],
+                        fields: vec![(Size::ZERO, ReprAndLayout {
+                            repr: Repr::Scalar(tag.clone()),
+                            layout: Arc::new(Layout::scalar(tag.clone(), triple)),
+                        })],
                     },
                     Variants::Multiple {
                         tag,
@@ -410,30 +445,33 @@ impl Layout {
         Some(ReprAndLayout { repr: elem, layout })
     }
 
-    pub fn field(&self, db: &dyn CodegenDatabase, field: usize) -> Option<Arc<Self>> {
+    pub fn field(&self, db: &dyn CodegenDatabase, field: usize) -> Option<ReprAndLayout> {
         assert!(field < self.fields.count());
 
         match &self.fields {
             | Fields::Primitive => None,
-            | Fields::Array { .. } => self.elem(db).map(|r| r.layout),
+            | Fields::Array { .. } => self.elem(db),
             | Fields::Union { fields: types } => Some(types[field].clone()),
             | Fields::Arbitrary { fields } => Some(fields[field].1.clone()),
         }
     }
+}
 
-    pub fn variant(self: &Arc<Layout>, variant: usize) -> Arc<Layout> {
+impl ReprAndLayout {
+    pub fn variant(&self, variant: usize) -> ReprAndLayout {
         match self.variants {
             | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self.clone(),
-            | Variants::Single { index } => Arc::new(Layout {
-                size: Size::ZERO,
-                stride: Size::ZERO,
-                align: Align::ONE,
-                elem: None,
-                abi: Abi::Uninhabited,
-                fields: Fields::Arbitrary { fields: Vec::new() },
-                variants: Variants::Single { index },
-                largest_niche: None,
-            }),
+            | Variants::Single { .. } => unreachable!(),
+            // | Variants::Single { index } => Arc::new(Layout {
+            //     size: Size::ZERO,
+            //     stride: Size::ZERO,
+            //     align: Align::ONE,
+            //     elem: None,
+            //     abi: Abi::Uninhabited,
+            //     fields: Fields::Arbitrary { fields: Vec::new() },
+            //     variants: Variants::Single { index },
+            //     largest_niche: None,
+            // }),
             | Variants::Multiple { ref variants, .. } => variants[variant].clone(),
         }
     }

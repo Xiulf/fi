@@ -37,7 +37,7 @@ impl Builder {
     }
 
     pub fn create_block(&mut self) -> Block {
-        let id = Block(self.body.blocks.next_id());
+        let id = Block(self.body.blocks.next_idx());
 
         self.body.blocks.alloc(BlockData {
             id,
@@ -58,7 +58,7 @@ impl Builder {
     }
 
     pub fn add_local(&mut self, kind: LocalKind, repr: Repr) -> Local {
-        let id = Local(self.body.locals.next_id());
+        let id = Local(self.body.locals.next_idx());
 
         self.body.locals.alloc(LocalData { id, kind, repr });
         id

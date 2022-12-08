@@ -15,10 +15,14 @@ use inkwell::passes::PassManager;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
 };
+use inkwell::values::BasicValue;
 use inkwell::{values, OptimizationLevel};
+use mir::repr::{Integer, Primitive, Repr, Scalar};
 use mir::syntax::{BlockData, LocalData};
 use rustc_hash::FxHashMap;
 
+use crate::abi::FnAbi;
+use crate::local::LocalRef;
 use crate::place::PlaceRef;
 
 pub struct CodegenCtx<'a, 'ctx> {
@@ -30,7 +34,7 @@ pub struct CodegenCtx<'a, 'ctx> {
     pub target_data: TargetData,
     pub fpm: &'a PassManager<values::FunctionValue<'ctx>>,
     pub hir: hir::Module,
-    pub funcs: FxHashMap<hir::Func, values::FunctionValue<'ctx>>,
+    pub funcs: FxHashMap<hir::Func, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
     pub consts: Cell<usize>,
 }
 
@@ -38,8 +42,10 @@ pub struct BodyCtx<'a, 'b, 'ctx> {
     pub cx: &'a mut CodegenCtx<'b, 'ctx>,
     pub body: Arc<mir::syntax::BodyData>,
     pub func: values::FunctionValue<'ctx>,
+    pub fn_abi: &'a FnAbi<'ctx>,
+    pub ret_ptr: Option<PlaceRef<'ctx>>,
     pub blocks: ArenaMap<Idx<BlockData>, BasicBlock<'ctx>>,
-    pub locals: ArenaMap<Idx<LocalData>, PlaceRef<'ctx>>,
+    pub locals: ArenaMap<Idx<LocalData>, LocalRef<'ctx>>,
 }
 
 impl<'a, 'b, 'ctx> std::ops::Deref for BodyCtx<'a, 'b, 'ctx> {
@@ -135,9 +141,9 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
-    pub fn declare_func(&mut self, func: hir::Func) -> values::FunctionValue<'ctx> {
+    pub fn declare_func(&mut self, func: hir::Func) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {
         if let Some(value) = self.funcs.get(&func) {
-            return *value;
+            return value.clone();
         }
 
         let linkage = if func.is_foreign(self.db.upcast()) || func.is_exported(self.db.upcast()) {
@@ -154,11 +160,13 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         };
 
         let sig = self.db.func_signature(func);
-        let ty = self.fn_type_for_signature(&sig);
+        let abi = self.compute_fn_abi(&sig);
+        let ty = self.fn_type_for_abi(&abi);
         let value = self.module.add_function(&name, ty, Some(linkage));
 
-        self.funcs.insert(func, value);
-        value
+        self.funcs.insert(func, (value, abi.clone()));
+
+        (value, abi)
     }
 
     pub fn codegen_func(&mut self, func: hir::Func) {
@@ -167,25 +175,32 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
 
         if func.has_body(self.db.upcast()) {
-            let value = self.declare_func(func);
+            let (value, abi) = self.declare_func(func);
             let body = self.db.body_mir(DefWithBodyId::FuncId(func.into()));
             let mut ctx = BodyCtx {
                 body: self.db.lookup_intern_body(body),
-                cx: self,
                 func: value,
+                fn_abi: &abi,
+                ret_ptr: None,
                 blocks: ArenaMap::default(),
                 locals: ArenaMap::default(),
+                cx: self,
             };
 
             ctx.codegen();
 
             if func.attrs(self.db.upcast()).by_key("main").exists() {
-                self.codegen_main_shim(func, value);
+                self.codegen_main_shim(func, &abi, value);
             }
         }
     }
 
-    pub fn codegen_main_shim(&mut self, main_func: hir::Func, main_value: values::FunctionValue<'ctx>) {
+    pub fn codegen_main_shim(
+        &mut self,
+        main_func: hir::Func,
+        main_abi: &FnAbi<'ctx>,
+        main_value: values::FunctionValue<'ctx>,
+    ) {
         let int_type = self.context.i32_type();
         let main_type = int_type.fn_type(&[int_type.into(), int_type.into()], false);
         let value = self.module.add_function("main", main_type, None);
@@ -203,23 +218,27 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | _ => unreachable!(),
         };
 
-        let report = self.declare_func(report.into());
+        let (report, report_abi) = self.declare_func(report.into());
 
         self.builder.position_at_end(entry);
 
-        let res = self
-            .builder
-            .build_call(main_value, &[], "")
-            .try_as_basic_value()
-            .left()
-            .unwrap();
+        // TODO: correctly pass/return the main value
+        let main_ret = PlaceRef::new_alloca(self, main_abi.ret.layout.clone());
+        let report_ret = PlaceRef::new_alloca(self, report_abi.ret.layout.clone());
 
-        let exit_code = self
-            .builder
-            .build_call(report, &[res.into()], "")
-            .try_as_basic_value()
-            .left()
-            .unwrap();
+        self.builder
+            .build_call(main_value, &[main_ret.ptr.as_basic_value_enum().into()], "");
+
+        self.builder.build_call(
+            report,
+            &[
+                report_ret.ptr.as_basic_value_enum().into(),
+                main_ret.ptr.as_basic_value_enum().into(),
+            ],
+            "",
+        );
+
+        let exit_code = report_ret.field(self, 0).load_operand(self).load(self);
 
         self.builder.build_return(Some(&exit_code));
         value.verify(true);
