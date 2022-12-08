@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use arena::Arena;
 use base_db::input::FileId;
+use either::Either;
 use syntax::{ast, AstPtr};
 
 use super::BodyArm;
@@ -176,21 +177,21 @@ impl<'a> ExprCollector<'a> {
 
     fn alloc_expr(&mut self, expr: Expr, ptr: ExprPtr) -> ExprId {
         let src = self.to_source(ptr);
-        let id = self.make_expr(expr, Ok(src.clone()));
+        let id = self.make_expr(expr, Either::Left(src.clone()));
 
         self.source_map.expr_map.insert(src, id);
         id
     }
 
     fn alloc_expr_desugared(&mut self, expr: Expr) -> ExprId {
-        self.make_expr(expr, Err(SyntheticSyntax(self.owner)))
+        self.make_expr(expr, Either::Right(SyntheticSyntax(self.owner)))
     }
 
     fn missing_expr(&mut self) -> ExprId {
         self.alloc_expr_desugared(Expr::Missing)
     }
 
-    fn make_expr(&mut self, expr: Expr, src: Result<ExprSource, SyntheticSyntax>) -> ExprId {
+    fn make_expr(&mut self, expr: Expr, src: Either<ExprSource, SyntheticSyntax>) -> ExprId {
         let id = self.body.exprs.alloc(expr);
 
         self.source_map.expr_map_back.insert(id, src);
@@ -199,21 +200,21 @@ impl<'a> ExprCollector<'a> {
 
     fn alloc_pat(&mut self, pat: Pat, ptr: PatPtr) -> PatId {
         let src = self.to_source(ptr);
-        let id = self.make_pat(pat, Ok(src.clone()));
+        let id = self.make_pat(pat, Either::Left(src.clone()));
 
         self.source_map.pat_map.insert(src, id);
         id
     }
 
     fn alloc_pat_desugared(&mut self, pat: Pat) -> PatId {
-        self.make_pat(pat, Err(SyntheticSyntax(self.owner)))
+        self.make_pat(pat, Either::Right(SyntheticSyntax(self.owner)))
     }
 
     fn missing_pat(&mut self) -> PatId {
         self.alloc_pat_desugared(Pat::Missing)
     }
 
-    fn make_pat(&mut self, pat: Pat, src: Result<PatSource, SyntheticSyntax>) -> PatId {
+    fn make_pat(&mut self, pat: Pat, src: Either<PatSource, SyntheticSyntax>) -> PatId {
         let id = self.body.pats.alloc(pat);
 
         self.source_map.pat_map_back.insert(id, src);

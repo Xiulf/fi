@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use arena::{Arena, ArenaMap};
 use base_db::input::FileId;
+use either::Either;
 use rustc_hash::FxHashMap;
 use syntax::{ast, AstPtr};
 
@@ -32,10 +33,10 @@ pub type PatSource = InFile<PatPtr>;
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct BodySourceMap {
     expr_map: FxHashMap<ExprSource, ExprId>,
-    expr_map_back: ArenaMap<ExprId, Result<ExprSource, SyntheticSyntax>>,
+    expr_map_back: ArenaMap<ExprId, Either<ExprSource, SyntheticSyntax>>,
 
     pat_map: FxHashMap<PatSource, PatId>,
-    pat_map_back: ArenaMap<PatId, Result<PatSource, SyntheticSyntax>>,
+    pat_map_back: ArenaMap<PatId, Either<PatSource, SyntheticSyntax>>,
 
     type_source_map: TypeSourceMap,
 }
@@ -162,7 +163,7 @@ impl Body {
 }
 
 impl BodySourceMap {
-    pub fn expr_syntax(&self, expr: ExprId) -> Result<ExprSource, SyntheticSyntax> {
+    pub fn expr_syntax(&self, expr: ExprId) -> Either<ExprSource, SyntheticSyntax> {
         self.expr_map_back[expr].clone()
     }
 
@@ -171,7 +172,7 @@ impl BodySourceMap {
         self.expr_map.get(&src).cloned()
     }
 
-    pub fn pat_syntax(&self, pat: PatId) -> Result<PatSource, SyntheticSyntax> {
+    pub fn pat_syntax(&self, pat: PatId) -> Either<PatSource, SyntheticSyntax> {
         self.pat_map_back[pat].clone()
     }
 

@@ -10,5 +10,6 @@ hir_def = { path = "../hir_def" }
 syntax = { path = "../syntax" }
 base_db = { path = "../base_db" }
 rustc-hash = "1.1.0"
+either = "1.6.1"
 salsa = "0.17.0-pre.2"
 tracing = "^0.1"

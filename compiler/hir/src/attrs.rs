@@ -23,6 +23,8 @@ impl_has_attrs! {
     (Module, ModuleId),
     (Func, FuncId),
     (Static, StaticId),
+    (TypeAlias, TypeAliasId),
+    (TypeCtor, TypeCtorId),
 }
 
 impl HasAttrs for AssocItem {

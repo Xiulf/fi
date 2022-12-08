@@ -743,6 +743,7 @@ impl InferenceResult<Ty, Constraint> {
 pub(crate) mod diagnostics {
     use std::sync::Arc;
 
+    use either::Either;
     use hir_def::diagnostic::DiagnosticSink;
     use hir_def::expr::ExprId;
     use hir_def::id::{ClassId, HasSource, Lookup, MemberId, TypeVarOwner};
@@ -908,12 +909,12 @@ pub(crate) mod diagnostics {
                     match id {
                         | ExprOrPatId::ExprIdInfix(id, _) | ExprOrPatId::ExprId(id) => match source_map.expr_syntax(id)
                         {
-                            | Ok(e) => e.map(|v| v.syntax_node_ptr()),
-                            | Err(e) => e.0.source(db.upcast()).map(|v| SyntaxNodePtr::new(v.syntax())),
+                            | Either::Left(e) => e.map(|v| v.syntax_node_ptr()),
+                            | Either::Right(e) => e.0.source(db.upcast()).map(|v| SyntaxNodePtr::new(v.syntax())),
                         },
                         | ExprOrPatId::PatId(id) => match source_map.pat_syntax(id) {
-                            | Ok(e) => e.map(|v| v.syntax_node_ptr()),
-                            | Err(e) => e.0.source(db.upcast()).map(|v| SyntaxNodePtr::new(v.syntax())),
+                            | Either::Left(e) => e.map(|v| v.syntax_node_ptr()),
+                            | Either::Right(e) => e.0.source(db.upcast()).map(|v| SyntaxNodePtr::new(v.syntax())),
                         },
                     }
                 },
@@ -947,7 +948,10 @@ pub(crate) mod diagnostics {
                     | TypeVarOwner::DefWithBodyId(owner) => {
                         let source_map = db.body_source_map(owner).1;
 
-                        source_map.expr_syntax(id).ok().map(|s| s.map(|v| v.syntax_node_ptr()))
+                        source_map
+                            .expr_syntax(id)
+                            .left()
+                            .map(|s| s.map(|v| v.syntax_node_ptr()))
                     },
                     | _ => None,
                 },
@@ -955,7 +959,7 @@ pub(crate) mod diagnostics {
                     | TypeVarOwner::DefWithBodyId(owner) => {
                         let source_map = db.body_source_map(owner).1;
 
-                        source_map.pat_syntax(id).ok().map(|s| s.map(|v| v.syntax_node_ptr()))
+                        source_map.pat_syntax(id).left().map(|s| s.map(|v| v.syntax_node_ptr()))
                     },
                     | _ => None,
                 },
@@ -1020,9 +1024,11 @@ pub(crate) mod diagnostics {
 
                             match id {
                                 | ExprOrPatId::ExprIdInfix(id, _) | ExprOrPatId::ExprId(id) => {
-                                    source_map.expr_syntax(id).unwrap().value.syntax_node_ptr()
+                                    source_map.expr_syntax(id).left().unwrap().value.syntax_node_ptr()
                                 },
-                                | ExprOrPatId::PatId(id) => source_map.pat_syntax(id).unwrap().value.syntax_node_ptr(),
+                                | ExprOrPatId::PatId(id) => {
+                                    source_map.pat_syntax(id).left().unwrap().value.syntax_node_ptr()
+                                },
                             }
                         },
                         | OperatorSource::TypeRef(owner, id) => owner.with_type_source_map(db.upcast(), |source_map| {
@@ -1072,9 +1078,11 @@ pub(crate) mod diagnostics {
 
                             match id {
                                 | ExprOrPatId::ExprIdInfix(id, _) | ExprOrPatId::ExprId(id) => {
-                                    source_map.expr_syntax(id).unwrap().value.syntax_node_ptr()
+                                    source_map.expr_syntax(id).left().unwrap().value.syntax_node_ptr()
                                 },
-                                | ExprOrPatId::PatId(id) => source_map.pat_syntax(id).unwrap().value.syntax_node_ptr(),
+                                | ExprOrPatId::PatId(id) => {
+                                    source_map.pat_syntax(id).left().unwrap().value.syntax_node_ptr()
+                                },
                             }
                         },
                         | OperatorSource::TypeRef(owner, id) => owner.with_type_source_map(db.upcast(), |source_map| {
@@ -1171,7 +1179,11 @@ pub(crate) mod diagnostics {
                     };
 
                     let source_map = db.body_source_map(owner).1;
-                    let src = source_map.expr_syntax(*id).unwrap().map(|ptr| ptr.syntax_node_ptr());
+                    let src = source_map
+                        .expr_syntax(*id)
+                        .left()
+                        .unwrap()
+                        .map(|ptr| ptr.syntax_node_ptr());
 
                     sink.push(ValueHole {
                         file: src.file_id,

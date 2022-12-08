@@ -181,7 +181,7 @@ fn scope_for_offset(
         .scopes_by_expr()
         .iter()
         .filter_map(|(id, scope)| {
-            let source = source_map.expr_syntax(*id).ok()?;
+            let source = source_map.expr_syntax(*id).left()?;
 
             if source.file_id != offset.file_id {
                 return None;
@@ -212,7 +212,7 @@ fn adjust(
         .scopes_by_expr()
         .iter()
         .filter_map(|(id, scope)| {
-            let source = source_map.expr_syntax(*id).ok()?;
+            let source = source_map.expr_syntax(*id).left()?;
 
             if source.file_id != offset.file_id {
                 return None;

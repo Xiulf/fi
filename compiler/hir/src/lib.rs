@@ -9,8 +9,10 @@ mod source_to_def;
 
 use base_db::input::FileId;
 use base_db::libs::LibId;
+use either::Either;
 pub use hir_def::attrs::Documentation;
 pub use hir_def::body::Body;
+use hir_def::body::{PatSource, SyntheticSyntax};
 pub use hir_def::data::FixityKind;
 use hir_def::diagnostic::DiagnosticSink;
 pub use hir_def::expr::{CaseArm, CaseValue, Expr, ExprId, Literal, Stmt};
@@ -652,6 +654,10 @@ impl TypeCtor {
         self.module(db).is_exported(db, self.name(db), ExportNs::Types)
     }
 
+    pub fn kind(self, db: &dyn HirDatabase) -> Ty {
+        db.kind_for_ctor(self.id).ty.ty
+    }
+
     pub fn ctors(self, db: &dyn HirDatabase) -> Vec<Ctor> {
         db.type_ctor_data(self.id)
             .ctors
@@ -924,6 +930,16 @@ impl Local {
             | Pat::Bind { name, .. } => name.clone(),
             | _ => unreachable!(),
         }
+    }
+
+    pub fn ty(self, db: &dyn HirDatabase) -> Ty {
+        let infer = db.infer(self.parent);
+        infer.type_of_pat[self.pat_id]
+    }
+
+    pub fn source(self, db: &dyn HirDatabase) -> Either<PatSource, SyntheticSyntax> {
+        let (_, source_map) = db.body_source_map(self.parent);
+        source_map.pat_syntax(self.pat_id)
     }
 }
 

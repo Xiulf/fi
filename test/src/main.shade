@@ -7,7 +7,6 @@ foreign puts :: Ptr Byte -> Int32
 
 @main
 main =
-    let str = "test"
-    let ptr, _ = transmute str :: Ptr Byte, Uint
+    let ptr, _ = transmute "test" :: Ptr Byte, Uint
     puts ptr
     ExitCode 0

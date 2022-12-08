@@ -17,6 +17,7 @@ clap = { version = "3.2.20", features = ["derive"] }
 notify = "5.0.0"
 anyhow = "1.0.38"
 tracing = "^0.1"
+tracing-appender = "^0.2.0"
 
 [dependencies.tracing-subscriber]
 version = "0.3.15"

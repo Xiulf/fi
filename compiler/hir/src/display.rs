@@ -42,3 +42,25 @@ impl HirDisplay for Func {
         write!(f, "{} :: {}", self.name(f.db), infer.self_type.ty.display(f.db))
     }
 }
+
+impl HirDisplay for TypeAlias {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+        let lower = f.db.type_for_alias(self.id);
+        let ty = lower.ty.ty.display(f.db);
+
+        write!(f, "type {} = {}", self.name(f.db), ty)
+    }
+}
+
+impl HirDisplay for TypeCtor {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+        let kind = f.db.kind_for_ctor(self.id);
+        let kind = kind.ty.ty.display(f.db);
+
+        if self.is_foreign(f.db) {
+            write!(f, "foreign ")?;
+        }
+
+        write!(f, "type {} :: {}", self.name(f.db), kind)
+    }
+}

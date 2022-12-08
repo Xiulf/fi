@@ -1,5 +1,6 @@
 use std::fmt::Write;
 
+use either::Either;
 use hir::attrs::HasAttrs;
 use hir::semantics::Semantics;
 use hir::HirDisplay;
@@ -13,10 +14,24 @@ pub fn symbol(db: &LspDatabase, symbol: Symbol) -> Option<String> {
     let (label, docs) = match symbol {
         | Symbol::Module(it) => label_and_docs(db, it),
         | Symbol::Func(it) => label_and_docs(db, it),
+        | Symbol::TypeAlias(it) => label_and_docs(db, it),
+        | Symbol::TypeCtor(it) => label_and_docs(db, it),
+        | Symbol::Local(it) => return local(db, it),
         | _ => return None,
     };
 
     markup(docs.map(Into::into), label, module)
+}
+
+fn local(db: &LspDatabase, it: hir::Local) -> Option<String> {
+    let ty = it.ty(db);
+    let ty = ty.display(db);
+    let desc = match it.source(db) {
+        | Either::Left(_) => format!("let {} :: {}", it.name(db), ty),
+        | Either::Right(_) => format!("let _ :: {}", ty),
+    };
+
+    markup(None, desc, None)
 }
 
 pub fn type_info(sema: &Semantics<LspDatabase>, expr_or_pat: &Result<ast::Expr, ast::Pat>) -> Option<String> {
