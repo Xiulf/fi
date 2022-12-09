@@ -189,7 +189,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
         src: WhereSource,
     ) -> WhereClause<CtntInfo> {
         for tv_kind in where_clause.type_var_kinds.iter() {
-            let var = self.lower_path(&tv_kind.type_var, tv_kind.kind);
+            let var = self.lower_ty(tv_kind.type_var);
             let kind = self.lower_ty(tv_kind.kind);
 
             self.check_kind(var, kind);

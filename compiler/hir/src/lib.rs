@@ -611,6 +611,19 @@ impl TypeAlias {
         self.module(db).path_to_name(db, self.name(db))
     }
 
+    pub fn type_vars(self, db: &dyn HirDatabase) -> Vec<TypeVar> {
+        db.type_alias_data(self.id)
+            .type_vars
+            .iter()
+            .map(|&local_id| TypeVar {
+                id: TypeVarId {
+                    owner: TypeVarOwner::TypedDefId(TypedDefId::TypeAliasId(self.id)),
+                    local_id,
+                },
+            })
+            .collect()
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let lower = db.type_for_alias(self.id);
 
@@ -656,6 +669,19 @@ impl TypeCtor {
 
     pub fn kind(self, db: &dyn HirDatabase) -> Ty {
         db.kind_for_ctor(self.id).ty.ty
+    }
+
+    pub fn type_vars(self, db: &dyn HirDatabase) -> Vec<TypeVar> {
+        db.type_ctor_data(self.id)
+            .type_vars
+            .iter()
+            .map(|&local_id| TypeVar {
+                id: TypeVarId {
+                    owner: TypeVarOwner::TypedDefId(TypedDefId::TypeCtorId(self.id)),
+                    local_id,
+                },
+            })
+            .collect()
     }
 
     pub fn ctors(self, db: &dyn HirDatabase) -> Vec<Ctor> {

@@ -16,11 +16,39 @@ pub fn symbol(db: &LspDatabase, symbol: Symbol) -> Option<String> {
         | Symbol::Func(it) => label_and_docs(db, it),
         | Symbol::TypeAlias(it) => label_and_docs(db, it),
         | Symbol::TypeCtor(it) => label_and_docs(db, it),
+        | Symbol::Ctor(it) => return ctor(db, it, module),
         | Symbol::Local(it) => return local(db, it),
         | _ => return None,
     };
 
     markup(docs.map(Into::into), label, module)
+}
+
+fn ctor(db: &LspDatabase, it: hir::Ctor, module: Option<String>) -> Option<String> {
+    let type_ctor = it.type_ctor();
+    let type_vars = type_ctor
+        .type_vars(db)
+        .into_iter()
+        .map(|tv| format!(" {}", tv.name(db)))
+        .collect::<Vec<_>>()
+        .join("");
+
+    let types = it
+        .types(db)
+        .into_iter()
+        .map(|ty| format!(" {}", ty.display(db)))
+        .collect::<Vec<_>>()
+        .join("");
+
+    let desc = format!(
+        "type {}{} =\n\t| {}{}",
+        type_ctor.name(db),
+        type_vars,
+        it.name(db),
+        types
+    );
+
+    markup(None, desc, module)
 }
 
 fn local(db: &LspDatabase, it: hir::Local) -> Option<String> {

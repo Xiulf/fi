@@ -45,7 +45,7 @@ pub struct Constraint {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeVarKind {
-    pub type_var: Path,
+    pub type_var: LocalTypeRefId,
     pub kind: LocalTypeRefId,
 }
 
@@ -278,7 +278,7 @@ impl TypeMapBuilder {
     }
 
     pub fn lower_type_var_kind(&mut self, tv_kind: ast::TypeVarKind) -> Option<TypeVarKind> {
-        let type_var = Path::from_segments([tv_kind.name_ref()?.as_name()]);
+        let type_var = self.alloc_type_ref_opt(tv_kind.type_var());
         let kind = self.alloc_type_ref_opt(tv_kind.kind());
 
         Some(TypeVarKind { type_var, kind })

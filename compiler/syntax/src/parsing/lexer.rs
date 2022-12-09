@@ -348,6 +348,10 @@ impl<'src> Lexer<'src> {
                 self.insert_default(start, TICK);
             },
             | '@' if !is_op_char(self.peek()) => {
+                if let [.., (_, LayoutDelim::DeclHead)] = self.stack[..] {
+                    self.stack.pop().unwrap();
+                }
+
                 self.insert_default(start, AT);
 
                 if self.is_decl(start) {

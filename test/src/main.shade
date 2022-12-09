@@ -1,12 +1,16 @@
 module Main =
 
 import Prim
-import Intrinsics
+import Intrinsics (transmute)
 
 foreign puts :: Ptr Byte -> Int32
 
+type Option a =
+    | None
+    | Some a
+
 @main
 main =
-    let ptr, _ = transmute "test" :: Ptr Byte, Uint
+    let ptr, _ = transmute "test" :: _, Uint
     puts ptr
     ExitCode 0

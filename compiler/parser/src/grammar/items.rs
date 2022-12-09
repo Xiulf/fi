@@ -380,7 +380,9 @@ pub(crate) fn where_clause_item(p: &mut Parser) {
     let m = p.start();
 
     if p.at(IDENT) && p.nth_at(1, DBL_COLON) {
-        paths::name_ref(p);
+        let t = p.start();
+        paths::path(p);
+        t.complete(p, TYPE_PATH);
         p.bump(DBL_COLON);
         types::infix(p, COMMA);
         m.complete(p, TYPE_VAR_KIND);

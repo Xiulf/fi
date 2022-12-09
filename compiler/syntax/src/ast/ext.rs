@@ -533,12 +533,12 @@ impl Constraint {
 }
 
 impl TypeVarKind {
-    pub fn name_ref(&self) -> Option<NameRef> {
+    pub fn type_var(&self) -> Option<Type> {
         support::child(&self.0)
     }
 
     pub fn kind(&self) -> Option<Type> {
-        support::child(&self.0)
+        support::children(&self.0).nth(1)
     }
 }
 
