@@ -11,6 +11,7 @@ type Option a =
 
 @main
 main =
+    let x = 0 :: forall a. a where Integer a
     let ptr, _ = transmute "test" :: _, Uint
     puts ptr
     ExitCode 0

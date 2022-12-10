@@ -1000,6 +1000,44 @@ impl TypeVar {
             },
         }
     }
+
+    pub fn kind(self, db: &dyn HirDatabase) -> Ty {
+        let def_with_body = |id: DefWithBodyId| {
+            let infer = db.infer(id);
+            infer.self_type.ty
+        };
+
+        match self.id.owner {
+            | TypeVarOwner::DefWithBodyId(id) => def_with_body(id),
+            | TypeVarOwner::TypedDefId(id) => match id {
+                | TypedDefId::FuncId(id) => def_with_body(id.into()),
+                | TypedDefId::StaticId(id) => def_with_body(id.into()),
+                | TypedDefId::ConstId(id) => def_with_body(id.into()),
+                | TypedDefId::TypeAliasId(id) => {
+                    let lower = db.type_for_alias(id);
+                    lower.ty.ty
+                },
+                | TypedDefId::TypeCtorId(id) => {
+                    let lower = db.kind_for_ctor(id);
+                    lower.ty.ty
+                },
+                | TypedDefId::CtorId(id) => {
+                    let lower = db.ctor_ty(id);
+                    lower.ty.ty
+                },
+                | TypedDefId::ClassId(id) => {
+                    let lower = db.lower_class(id);
+                    let idx = u32::from(self.id.local_id.into_raw());
+                    lower.class.vars[idx as usize]
+                },
+                | TypedDefId::MemberId(id) => {
+                    let lower = db.lower_member(id);
+                    let idx = u32::from(self.id.local_id.into_raw());
+                    lower.member.vars[idx as usize]
+                },
+            },
+        }
+    }
 }
 
 macro_rules! impl_from {

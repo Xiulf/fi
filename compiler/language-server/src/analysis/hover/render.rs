@@ -18,6 +18,7 @@ pub fn symbol(db: &LspDatabase, symbol: Symbol) -> Option<String> {
         | Symbol::TypeCtor(it) => label_and_docs(db, it),
         | Symbol::Ctor(it) => return ctor(db, it, module),
         | Symbol::Local(it) => return local(db, it),
+        | Symbol::TypeVar(it) => return type_var(db, it),
         | _ => return None,
     };
 
@@ -58,6 +59,12 @@ fn local(db: &LspDatabase, it: hir::Local) -> Option<String> {
         | Either::Left(_) => format!("let {} :: {}", it.name(db), ty),
         | Either::Right(_) => format!("let _ :: {}", ty),
     };
+
+    markup(None, desc, None)
+}
+
+fn type_var(db: &LspDatabase, it: hir::TypeVar) -> Option<String> {
+    let desc = it.display(db).to_string();
 
     markup(None, desc, None)
 }

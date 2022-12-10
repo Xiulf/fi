@@ -64,3 +64,12 @@ impl HirDisplay for TypeCtor {
         write!(f, "type {} :: {}", self.name(f.db), kind)
     }
 }
+
+impl HirDisplay for TypeVar {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+        let kind = self.kind(f.db);
+        let kind = kind.display(f.db);
+
+        write!(f, "type {} :: {}", self.name(f.db), kind)
+    }
+}
