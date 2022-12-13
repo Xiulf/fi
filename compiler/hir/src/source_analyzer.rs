@@ -10,10 +10,10 @@ use hir_def::pat::{Pat, PatId};
 use hir_def::path::Path;
 use hir_def::resolver::{Resolver, TypeNs, ValueNs};
 use hir_def::scope::{ExprScopeId, ExprScopes};
-use hir_def::type_ref::LocalTypeRefId;
+use hir_def::type_ref::{LocalTypeRefId, TypeSourceMap};
 use hir_ty::infer::InferenceResult;
 use hir_ty::ty::{Constraint, Ty};
-use syntax::{ast, AstNode, SyntaxNode, TextRange, TextSize};
+use syntax::{ast, AstNode, AstPtr, SyntaxNode, TextRange, TextSize};
 
 use crate::db::HirDatabase;
 use crate::{Class, Const, Ctor, Fixity, Func, Local, ModuleDef, PathResolution, Static, TypeAlias, TypeCtor};
@@ -50,13 +50,21 @@ impl SourceAnalyzer {
         offset: Option<TextSize>,
     ) -> Self {
         let (body, source_map) = db.body_source_map(def);
-        let scopes = db.expr_scopes(def);
-        let scope = match offset {
-            | None => scope_for(&scopes, &source_map, node),
-            | Some(offset) => scope_for_offset(db, &scopes, &source_map, node.with_value(offset)),
+        let type_ref = match offset {
+            | None => type_ref_for(&**source_map, node),
+            | Some(offset) => type_ref_for_offset(db, &**source_map, node.with_value(offset)),
         };
 
-        let resolver = Resolver::for_expr_scope(db.upcast(), def, scope);
+        let expr_scopes = db.expr_scopes(def);
+        let expr_scope = match offset {
+            | None => expr_scope_for(&expr_scopes, &source_map, node),
+            | Some(offset) => expr_scope_for_offset(db, &expr_scopes, &source_map, node.with_value(offset)),
+        };
+
+        let resolver = match type_ref {
+            | Some(tr) => Resolver::for_type_ref(db.upcast(), def.into(), tr),
+            | None => Resolver::for_expr_scope(db.upcast(), def, expr_scope),
+        };
 
         Self {
             resolver,
@@ -64,7 +72,7 @@ impl SourceAnalyzer {
             body_source_map: Some(source_map),
             body_owner: Some(def),
             infer: Some(db.infer(def)),
-            scopes: Some(scopes),
+            scopes: Some(expr_scopes),
             file_id: node.file_id,
         }
     }
@@ -163,7 +171,7 @@ pub(crate) fn _resolve_hir_path(db: &dyn HirDatabase, resolver: &Resolver, path:
     resolve_hir_path_(db, resolver, path, false)
 }
 
-fn scope_for(scopes: &ExprScopes, source_map: &BodySourceMap, node: InFile<&SyntaxNode>) -> Option<ExprScopeId> {
+fn expr_scope_for(scopes: &ExprScopes, source_map: &BodySourceMap, node: InFile<&SyntaxNode>) -> Option<ExprScopeId> {
     node.value
         .ancestors()
         .filter_map(ast::Expr::cast)
@@ -171,7 +179,7 @@ fn scope_for(scopes: &ExprScopes, source_map: &BodySourceMap, node: InFile<&Synt
         .find_map(|it| scopes.scope_for(it))
 }
 
-fn scope_for_offset(
+fn expr_scope_for_offset(
     db: &dyn HirDatabase,
     scopes: &ExprScopes,
     source_map: &BodySourceMap,
@@ -198,10 +206,10 @@ fn scope_for_offset(
                 expr_range.len(),
             )
         })
-        .map(|(expr_range, scope)| adjust(db, scopes, source_map, expr_range, offset).unwrap_or(*scope))
+        .map(|(expr_range, scope)| adjust_for_expr(db, scopes, source_map, expr_range, offset).unwrap_or(*scope))
 }
 
-fn adjust(
+fn adjust_for_expr(
     db: &dyn HirDatabase,
     scopes: &ExprScopes,
     source_map: &BodySourceMap,
@@ -234,6 +242,24 @@ fn adjust(
             }
         })
         .map(|(_, scope)| *scope)
+}
+
+fn type_ref_for(source_map: &TypeSourceMap, node: InFile<&SyntaxNode>) -> Option<LocalTypeRefId> {
+    node.value
+        .ancestors()
+        .filter_map(ast::Type::cast)
+        .find_map(|it| source_map.syntax_type_ref(AstPtr::new(&it)))
+}
+
+fn type_ref_for_offset(
+    db: &dyn HirDatabase,
+    source_map: &TypeSourceMap,
+    offset: InFile<TextSize>,
+) -> Option<LocalTypeRefId> {
+    let root = offset.file_syntax(db.upcast());
+    let node = root.token_at_offset(offset.value).next()?.parent();
+
+    type_ref_for(source_map, offset.with_value(&node))
 }
 
 fn resolve_hir_path_(

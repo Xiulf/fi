@@ -1,5 +1,6 @@
 pub mod input;
 pub mod libs;
+pub mod target;
 
 use std::sync::Arc;
 use std::{fmt, panic};
@@ -9,6 +10,7 @@ use libs::LibId;
 use rustc_hash::FxHashSet;
 pub use salsa::Cancelled;
 use syntax::{ast, Parsed};
+use target::CompilerTarget;
 
 pub trait Upcast<T: ?Sized> {
     fn upcast(&self) -> &T;
@@ -17,6 +19,9 @@ pub trait Upcast<T: ?Sized> {
 #[salsa::query_group(SourceDatabaseStorage)]
 pub trait SourceDatabase: FileLoader {
     fn parse(&self, file_id: FileId) -> Parsed<ast::SourceFile>;
+
+    #[salsa::input]
+    fn target(&self) -> CompilerTarget;
 
     #[salsa::input]
     fn libs(&self) -> Arc<libs::LibSet>;

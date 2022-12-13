@@ -20,9 +20,11 @@ impl Substitution {
     pub fn unsolved(&self, u: Unknown) -> &(UnkLevel, TyId) {
         &self.unsolved[&u]
     }
-}
 
-impl Substitution {
+    pub fn solutions(&self) -> impl Iterator<Item = (Unknown, TyId)> + '_ {
+        self.tys.iter().map(|(&u, &t)| (u, t))
+    }
+
     pub fn subst_type(&self, types: &mut Types, ty: TyId) -> TyId {
         ty.everywhere(true, types, &mut |types, ty| match types[ty] {
             | TyInfo::Unknown(u) => match self.tys.get(&u) {
@@ -176,8 +178,8 @@ impl InferenceContext<'_> {
             let where_ = WhereClause {
                 constraints: self
                     .constraints
-                    .iter()
-                    .map(|(ctnt, _, _, _)| subst.subst_ctnt(types, ctnt))
+                    .drain(..)
+                    .map(|(ctnt, _, _, _)| subst.subst_ctnt(types, &ctnt))
                     .collect(),
             };
 

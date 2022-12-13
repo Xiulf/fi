@@ -8,6 +8,18 @@ impl BodyLowerCtx<'_> {
         let mut args = args.into_iter();
 
         match name {
+            | "partial" => self.lower_arg(args.next().unwrap()),
+            | "unsafe" => self.lower_arg(args.next().unwrap()),
+            | "apply" => {
+                let base = args.next().unwrap();
+
+                self.lower_app(expr, base, args.collect())
+            },
+            | "crash" => {
+                let _msg = args.next().unwrap();
+                self.builder.abort();
+                Operand::Const(Const::Unit, Repr::unit())
+            },
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap());
                 let place = self.place_op(place);

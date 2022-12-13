@@ -2,8 +2,7 @@ use std::cell::Cell;
 use std::sync::Arc;
 
 use arena::{ArenaMap, Idx};
-use codegen::db::CodegenDatabase;
-use codegen::CompilerTarget;
+use base_db::target::CompilerTarget;
 use hir::attrs::HasAttrs;
 use hir::id::DefWithBodyId;
 use inkwell::basic_block::BasicBlock;
@@ -15,6 +14,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
 };
 use inkwell::{values, OptimizationLevel};
+use mir::db::MirDatabase;
 use mir::repr::{Repr, Signature};
 use mir::syntax::{BlockData, LocalData};
 use rustc_hash::FxHashMap;
@@ -24,7 +24,7 @@ use crate::local::LocalRef;
 use crate::place::PlaceRef;
 
 pub struct CodegenCtx<'a, 'ctx> {
-    pub db: &'a dyn CodegenDatabase,
+    pub db: &'a dyn MirDatabase,
     pub context: &'ctx Context,
     pub module: &'a Module<'ctx>,
     pub builder: &'a Builder<'ctx>,
@@ -54,7 +54,7 @@ impl<'a, 'b, 'ctx> std::ops::Deref for BodyCtx<'a, 'b, 'ctx> {
     }
 }
 
-pub fn with_codegen_ctx<T>(db: &dyn CodegenDatabase, hir: hir::Module, f: impl FnOnce(CodegenCtx) -> T) -> T {
+pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnce(CodegenCtx) -> T) -> T {
     Target::initialize_native(&InitializationConfig::default()).unwrap();
 
     let target_triple = match db.target() {

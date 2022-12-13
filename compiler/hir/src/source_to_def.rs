@@ -1,7 +1,7 @@
 use base_db::input::FileId;
 use hir_def::child_by_source::ChildBySource;
 use hir_def::dyn_map::DynMap;
-use hir_def::id::{DefWithBodyId, FuncId, ModuleId};
+use hir_def::id::{ClassId, DefWithBodyId, FuncId, ModuleId};
 use hir_def::in_file::InFile;
 use hir_def::keys::{self, Key};
 use hir_def::name::AsName;
@@ -88,6 +88,10 @@ impl<'a, 'b> SourceToDefCtx<'a, 'b> {
 
     pub(super) fn func_to_def(&mut self, src: InFile<ast::ItemFunc>) -> Option<FuncId> {
         self.to_def(src, keys::FUNC)
+    }
+
+    pub(super) fn class_to_def(&mut self, src: InFile<ast::ItemClass>) -> Option<ClassId> {
+        self.to_def(src, keys::CLASS)
     }
 
     pub(super) fn pat_bind_to_def(&mut self, src: InFile<ast::PatBind>) -> Option<(DefWithBodyId, PatId)> {

@@ -65,6 +65,12 @@ impl HirDisplay for TypeCtor {
     }
 }
 
+impl HirDisplay for Class {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+        write!(f, "class {}", self.name(f.db))
+    }
+}
+
 impl HirDisplay for TypeVar {
     fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
         let kind = self.kind(f.db);

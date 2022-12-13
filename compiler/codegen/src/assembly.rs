@@ -2,12 +2,12 @@ use std::path::Path;
 use std::sync::Arc;
 
 use base_db::libs::LibKind;
+use base_db::target::CompilerTarget;
 use paths::{AbsPath, AbsPathBuf};
 use project::Workspace;
 use tempfile::NamedTempFile;
 
 use crate::db::CodegenDatabase;
-use crate::CompilerTarget;
 
 #[derive(Debug)]
 pub struct ObjectFile {

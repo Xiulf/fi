@@ -1,4 +1,4 @@
-use codegen::CompilerTarget;
+use base_db::target::CompilerTarget;
 use inkwell::types;
 use mir::repr::Signature;
 

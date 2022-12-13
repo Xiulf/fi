@@ -1,8 +1,8 @@
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
-use codegen::db::CodegenDatabase;
-use codegen::CompilerTarget;
+use base_db::target::CompilerTarget;
+use mir::db::MirDatabase;
 pub use mir::repr::*;
 use target_lexicon::{PointerWidth, Triple};
 
@@ -87,13 +87,13 @@ pub struct Niche {
     pub scalar: Scalar,
 }
 
-pub fn repr_and_layout(db: &dyn CodegenDatabase, repr: Repr) -> ReprAndLayout {
+pub fn repr_and_layout(db: &dyn MirDatabase, repr: Repr) -> ReprAndLayout {
     let layout = layout_of(db, &repr);
 
     ReprAndLayout { repr, layout }
 }
 
-pub fn layout_of(db: &dyn CodegenDatabase, repr: &Repr) -> Arc<Layout> {
+pub fn layout_of(db: &dyn MirDatabase, repr: &Repr) -> Arc<Layout> {
     let triple = match db.target() {
         | CompilerTarget::Native(triple) => triple,
         | _ => unreachable!(),
@@ -102,7 +102,7 @@ pub fn layout_of(db: &dyn CodegenDatabase, repr: &Repr) -> Arc<Layout> {
     _layout_of(db, &triple, repr)
 }
 
-pub fn _layout_of(db: &dyn CodegenDatabase, triple: &Triple, repr: &Repr) -> Arc<Layout> {
+pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Layout> {
     match repr {
         | Repr::Opaque => {
             let mut layout = Layout::UNIT;
@@ -438,14 +438,14 @@ impl Layout {
         }
     }
 
-    pub fn elem(&self, db: &dyn CodegenDatabase) -> Option<ReprAndLayout> {
+    pub fn elem(&self, db: &dyn MirDatabase) -> Option<ReprAndLayout> {
         let elem = self.elem.clone()?;
         let layout = layout_of(db, &elem);
 
         Some(ReprAndLayout { repr: elem, layout })
     }
 
-    pub fn field(&self, db: &dyn CodegenDatabase, field: usize) -> Option<ReprAndLayout> {
+    pub fn field(&self, db: &dyn MirDatabase, field: usize) -> Option<ReprAndLayout> {
         assert!(field < self.fields.count());
 
         match &self.fields {

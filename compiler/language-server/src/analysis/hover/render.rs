@@ -16,6 +16,7 @@ pub fn symbol(db: &LspDatabase, symbol: Symbol) -> Option<String> {
         | Symbol::Func(it) => label_and_docs(db, it),
         | Symbol::TypeAlias(it) => label_and_docs(db, it),
         | Symbol::TypeCtor(it) => label_and_docs(db, it),
+        | Symbol::Class(it) => label_and_docs(db, it),
         | Symbol::Ctor(it) => return ctor(db, it, module),
         | Symbol::Local(it) => return local(db, it),
         | Symbol::TypeVar(it) => return type_var(db, it),

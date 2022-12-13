@@ -226,9 +226,11 @@ impl<'a> InferenceContext<'a> {
     pub fn finish_mut(&mut self) -> InferenceResult<Ty, Constraint> {
         self.solve_constraints();
 
-        if !self.can_generalize {
-            self.report_unknowns(self.result.self_type.ty);
+        if self.can_generalize {
+            self.result.self_type.ty = self.generalize(self.result.self_type.ty);
         }
+
+        self.report_unknowns();
 
         let self_type = self.types.insert(TyInfo::Error, (self.owner, TypeOrigin::Synthetic));
         let mut res = std::mem::replace(&mut self.result, InferenceResult {
@@ -244,10 +246,6 @@ impl<'a> InferenceContext<'a> {
             constraints: Vec::new(),
             diagnostics: Vec::new(),
         });
-
-        if self.can_generalize {
-            res.self_type.ty = self.generalize(res.self_type.ty);
-        }
 
         res.self_type.ty = res.self_type.ty.normalize(&mut self.types);
         self.result.self_type = res.self_type;
@@ -551,8 +549,13 @@ impl<'a> InferenceContext<'a> {
         item_ty
     }
 
-    fn report_unknowns(&mut self, ty: TyId) {
-        let ty = self.subst_type(ty);
+    fn report_unknowns(&mut self) {
+        let types = self
+            .subst
+            .solutions()
+            .map(|(_, s)| self.subst.subst_type(&mut self.types, s))
+            .collect::<Vec<_>>();
+
         let mut unknowns = FxHashMap::default();
         let mut find_unknowns = |ty: TyId| match self.types[ty] {
             | TyInfo::Unknown(u) if !unknowns.contains_key(&u) => {
@@ -561,7 +564,9 @@ impl<'a> InferenceContext<'a> {
             | _ => {},
         };
 
-        ty.everything(&self.types, &mut find_unknowns);
+        for ty in types {
+            ty.everything(&self.types, &mut find_unknowns);
+        }
 
         for (_, src) in unknowns {
             self.report(InferenceDiagnostic::UninferredType { src });

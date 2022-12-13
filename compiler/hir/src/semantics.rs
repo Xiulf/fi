@@ -191,5 +191,6 @@ macro_rules! impl_to_def {
 impl_to_def! {
     (crate::Module, ast::ItemModule, module_to_def),
     (crate::Func, ast::ItemFunc, func_to_def),
+    (crate::Class, ast::ItemClass, class_to_def),
     (crate::Local, ast::PatBind, pat_bind_to_def),
 }

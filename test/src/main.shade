@@ -1,9 +1,8 @@
 module Main =
 
 import Prim
-import Intrinsics (transmute)
+import Intrinsics (unsafe, transmute, ($))
 
-foreign puts :: Ptr Byte -> Int32
 
 type Option a =
     | None
@@ -11,7 +10,16 @@ type Option a =
 
 @main
 main =
-    let x = 0 :: forall a. a where Integer a
-    let ptr, _ = transmute "test" :: _, Uint
-    puts ptr
+    let x = None :: Option Int
+    
+    puts "test"
     ExitCode 0
+
+
+module C =
+    foreign puts :: Ptr Byte -> Int32
+
+puts :: Str -> Int32
+puts s =
+    let ptr, _ = unsafe (transmute s) :: _, Uint
+    C.puts ptr

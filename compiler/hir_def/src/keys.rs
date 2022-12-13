@@ -4,12 +4,13 @@ use rustc_hash::FxHashMap;
 use syntax::{ast, AstNode, AstPtr};
 
 use crate::dyn_map::Policy;
-use crate::id::{FuncId, MemberId};
+use crate::id::{ClassId, FuncId, MemberId};
 use crate::in_file::InFile;
 
 pub type Key<K, V> = crate::dyn_map::Key<InFile<K>, V, AstPtrPolicy<K, V>>;
 
 pub const FUNC: Key<ast::ItemFunc, FuncId> = Key::new();
+pub const CLASS: Key<ast::ItemClass, ClassId> = Key::new();
 pub const MEMBER: Key<ast::ItemMember, MemberId> = Key::new();
 
 pub struct AstPtrPolicy<AST, ID> {

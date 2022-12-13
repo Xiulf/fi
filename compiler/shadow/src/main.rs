@@ -125,19 +125,24 @@ fn main() -> anyhow::Result<()> {
             .into(),
         );
 
-    if let Some(Commands::Lsp(_)) = cli.command {
+    let _guard = if let Some(Commands::Lsp(_)) = cli.command {
         let tmp_dir = std::env::temp_dir();
+        eprintln!("logging to {}", tmp_dir.join("shadow-lsp.log").display());
         let appender = tracing_appender::rolling::never(tmp_dir, "shadow-lsp.log");
-        let (non_blocking, _guard) = tracing_appender::non_blocking(appender);
+        let (non_blocking, guard) = tracing_appender::non_blocking(appender);
 
         tracing_subscriber::fmt()
             .without_time()
+            .with_ansi(false)
             .with_env_filter(filter)
             .with_writer(non_blocking)
             .init();
+
+        Some(guard)
     } else {
         tracing_subscriber::fmt().without_time().with_env_filter(filter).init();
-    }
+        None
+    };
 
     std::panic::set_hook(Box::new(|info| {
         let loc = info.location().unwrap();

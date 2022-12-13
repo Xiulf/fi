@@ -97,6 +97,7 @@ where
         match parent {
             Item(it) => classify_item(sema, it),
             OneFunc(it) => classify_item_group(sema, it.syntax()),
+            TypeVars(_it) => None,
             PatBind(pat_bind) => classify_pat_bind(sema, pat_bind),
             _ => None,
         }
@@ -126,6 +127,7 @@ where
     let sym = match item {
         | ast::Item::Module(it) => Symbol::Module(sema.to_def(&it)?),
         | ast::Item::Func(it) => Symbol::Func(sema.to_def(&it)?),
+        | ast::Item::Class(it) => Symbol::Class(sema.to_def(&it)?),
         | _ => return None,
     };
 

@@ -7,12 +7,12 @@ use std::{fs, io};
 
 use base_db::input::{FileId, SourceRoot, SourceRootId};
 use base_db::libs::{LibId, LibKind, LibSet};
+use base_db::target::CompilerTarget;
+pub use base_db::target::Optimization;
 use base_db::{SourceDatabase, SourceDatabaseExt};
 use cfg::{CfgOptions, CfgValue};
 use codegen::assembly::Assembly;
 use codegen::db::CodegenDatabase;
-use codegen::CompilerTarget;
-pub use codegen::Optimization;
 use paths::AbsPathBuf;
 use project::manifest::{self, Cfg};
 use project::Workspace;

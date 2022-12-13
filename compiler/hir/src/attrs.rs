@@ -21,10 +21,14 @@ macro_rules! impl_has_attrs {
 
 impl_has_attrs! {
     (Module, ModuleId),
+    (Fixity, FixityId),
     (Func, FuncId),
     (Static, StaticId),
+    (Const, ConstId),
     (TypeAlias, TypeAliasId),
     (TypeCtor, TypeCtorId),
+    (Class, ClassId),
+    (Member, MemberId),
 }
 
 impl HasAttrs for AssocItem {
