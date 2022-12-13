@@ -134,7 +134,7 @@ impl<'ctx> OperandRef<'ctx> {
         Self { layout, val }
     }
 
-    pub fn store(&self, ctx: &mut CodegenCtx<'_, 'ctx>, dest: PlaceRef<'ctx>) {
+    pub fn store(&self, ctx: &mut CodegenCtx<'_, 'ctx>, dest: &PlaceRef<'ctx>) {
         if dest.layout.is_zst() {
             return;
         }

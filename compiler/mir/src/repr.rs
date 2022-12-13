@@ -258,6 +258,10 @@ pub fn func_signature_query(db: &dyn MirDatabase, func: hir::Func) -> Signature 
     let mut ret = infer.self_type.ty;
     let mut args = Vec::new();
 
+    while let TyKind::Where(_, ty) = ret.lookup(hir_db) {
+        ret = ty;
+    }
+
     if func.has_body(hir_db) {
         let body = db.body(DefWithBodyId::FuncId(func.into()));
         let mut n = body.params().len();

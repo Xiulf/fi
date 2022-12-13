@@ -68,7 +68,9 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         if self.func.verify(true) {
             self.fpm.run_on(&self.func);
         } else {
+            eprintln!();
             self.func.print_to_stderr();
+            eprintln!();
 
             unsafe {
                 self.func.delete();
@@ -116,7 +118,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     let ret_ptr = self.ret_ptr.clone().unwrap();
                     let op = self.codegen_operand(op);
 
-                    op.store(self.cx, ret_ptr);
+                    op.store(self.cx, &ret_ptr);
                     self.builder.build_return(None);
                 },
                 | PassMode::ByRef { size: None } => todo!(),
@@ -202,7 +204,9 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                                 | PassMode::ByVal(_) => Some(self.codegen_operand(arg).load(self.cx).into()),
                                 | PassMode::ByValPair(_, _) => todo!(),
                                 | PassMode::ByRef { size: Some(_) } => {
-                                    Some(self.codegen_operand(arg).by_ref().as_basic_value_enum().into())
+                                    let op = self.codegen_operand(arg);
+                                    let ptr = self.make_ref(op).ptr.as_basic_value_enum();
+                                    Some(ptr.into())
                                 },
                                 | PassMode::ByRef { size: None } => todo!(),
                             }),
@@ -226,12 +230,12 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn store_return(&mut self, place: &Place, op: OperandRef<'ctx>) {
         if !place.projection.is_empty() {
             let place = self.codegen_place(place);
-            op.store(self.cx, place);
+            op.store(self.cx, &place);
             return;
         }
 
         match self.locals[place.local.0].clone() {
-            | LocalRef::Place(place) => op.store(self.cx, place),
+            | LocalRef::Place(place) => op.store(self.cx, &place),
             | LocalRef::Operand(None) => self.locals[place.local.0] = LocalRef::Operand(Some(op)),
             | LocalRef::Operand(Some(_)) => unreachable!(),
         }
@@ -241,11 +245,11 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         match rvalue {
             | Rvalue::Use(op) => {
                 let value = self.codegen_operand(op);
-                value.store(self.cx, place);
+                value.store(self.cx, &place);
             },
             | _ => {
                 let op = self.codegen_rvalue_operand(place.layout.clone(), rvalue);
-                op.store(self.cx, place);
+                op.store(self.cx, &place);
             },
         }
     }
@@ -367,6 +371,17 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         };
 
         OperandRef::new_imm(layout, value)
+    }
+
+    pub fn make_ref(&mut self, op: OperandRef<'ctx>) -> PlaceRef<'ctx> {
+        match op.val {
+            | OperandValue::Ref(ptr) => PlaceRef::new(op.layout, ptr),
+            | _ => {
+                let place = PlaceRef::new_alloca(self.cx, op.layout.clone());
+                op.store(self.cx, &place);
+                place
+            },
+        }
     }
 
     pub fn alloc_const_name(&self, prefix: &str) -> String {

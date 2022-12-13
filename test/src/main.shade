@@ -10,16 +10,14 @@ type Option a =
 
 @main
 main =
-    let x = None :: Option Int
-    
-    puts "test"
+    puts "test\0"
     ExitCode 0
 
 
 module C =
-    foreign puts :: Ptr Byte -> Int32
+    foreign puts :: Ptr Byte -> Int32 where Unsafe
 
 puts :: Str -> Int32
 puts s =
     let ptr, _ = unsafe (transmute s) :: _, Uint
-    C.puts ptr
+    unsafe (C.puts ptr)
