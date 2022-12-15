@@ -395,6 +395,26 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
     }
 }
 
+impl ReprAndLayout {
+    pub fn variant(&self, variant: usize) -> ReprAndLayout {
+        match self.variants {
+            | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self.clone(),
+            | Variants::Single { .. } => unreachable!(),
+            // | Variants::Single { index } => Arc::new(Layout {
+            //     size: Size::ZERO,
+            //     stride: Size::ZERO,
+            //     align: Align::ONE,
+            //     elem: None,
+            //     abi: Abi::Uninhabited,
+            //     fields: Fields::Arbitrary { fields: Vec::new() },
+            //     variants: Variants::Single { index },
+            //     largest_niche: None,
+            // }),
+            | Variants::Multiple { ref variants, .. } => variants[variant].clone(),
+        }
+    }
+}
+
 impl Default for Layout {
     fn default() -> Self {
         Self::UNIT
@@ -438,6 +458,16 @@ impl Layout {
         }
     }
 
+    pub fn is_bool(&self) -> bool {
+        match self.abi {
+            | Abi::Scalar(ref s) => match s.value {
+                | Primitive::Int(_, _) => s.valid_range == (0..=1),
+                | _ => false,
+            },
+            | _ => false,
+        }
+    }
+
     pub fn elem(&self, db: &dyn MirDatabase) -> Option<ReprAndLayout> {
         let elem = self.elem.clone()?;
         let layout = layout_of(db, &elem);
@@ -453,26 +483,6 @@ impl Layout {
             | Fields::Array { .. } => self.elem(db),
             | Fields::Union { fields: types } => Some(types[field].clone()),
             | Fields::Arbitrary { fields } => Some(fields[field].1.clone()),
-        }
-    }
-}
-
-impl ReprAndLayout {
-    pub fn variant(&self, variant: usize) -> ReprAndLayout {
-        match self.variants {
-            | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self.clone(),
-            | Variants::Single { .. } => unreachable!(),
-            // | Variants::Single { index } => Arc::new(Layout {
-            //     size: Size::ZERO,
-            //     stride: Size::ZERO,
-            //     align: Align::ONE,
-            //     elem: None,
-            //     abi: Abi::Uninhabited,
-            //     fields: Fields::Arbitrary { fields: Vec::new() },
-            //     variants: Variants::Single { index },
-            //     largest_niche: None,
-            // }),
-            | Variants::Multiple { ref variants, .. } => variants[variant].clone(),
         }
     }
 }
@@ -579,6 +589,13 @@ impl Abi {
             | Abi::Aggregate { sized } => !sized,
         }
     }
+
+    pub fn is_uninhabited(&self) -> bool {
+        match self {
+            | Abi::Uninhabited => true,
+            | _ => false,
+        }
+    }
 }
 
 impl Fields {
@@ -601,6 +618,13 @@ impl Fields {
             },
             | Fields::Union { .. } => Size::ZERO,
             | Fields::Arbitrary { fields } => fields[idx].0,
+        }
+    }
+
+    pub fn min_offset(&self) -> Size {
+        match self {
+            | Fields::Arbitrary { fields } => fields.iter().map(|f| f.0).min().unwrap_or(Size::ZERO),
+            | _ => Size::ZERO,
         }
     }
 }

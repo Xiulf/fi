@@ -139,6 +139,27 @@ impl Builder {
     pub fn def_ref(&mut self, res: Place, def: DefWithBody) {
         self.stmt(Stmt::Assign(res, Rvalue::DefRef(def)));
     }
+
+    pub fn place_repr(&self, place: &Place) -> Repr {
+        let mut repr = self.body.locals[place.local.0].repr.clone();
+
+        for proj in place.projection.iter() {
+            match *proj {
+                | Projection::Deref => match repr {
+                    | Repr::Box(inner) => repr = *inner,
+                    | Repr::Ptr(inner, _) => repr = *inner,
+                    | _ => unreachable!(),
+                },
+                | Projection::Field(i) => match repr {
+                    | Repr::Struct(fields) => repr = fields[i].clone(),
+                    | _ => unreachable!(),
+                },
+                | Projection::Downcast(_) => todo!(),
+            }
+        }
+
+        repr
+    }
 }
 
 impl Place {

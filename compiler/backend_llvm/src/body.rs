@@ -2,7 +2,9 @@ use arena::Idx;
 use hir::HirDisplay;
 use inkwell::values::{BasicValue, BasicValueEnum, CallableValue};
 use mir::repr::Repr;
-use mir::syntax::{Block, BlockData, Const, Local, LocalKind, Operand, Place, Projection, Rvalue, Stmt, Term};
+use mir::syntax::{
+    Block, BlockData, Const, JumpTarget, Local, LocalKind, Operand, Place, Projection, Rvalue, Stmt, Term,
+};
 
 use crate::abi::PassMode;
 use crate::ctx::BodyCtx;
@@ -53,12 +55,37 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             }
         }
 
-        for (block, _) in body.blocks.iter() {
+        for (block, data) in body.blocks.iter() {
             let bb = self.context.append_basic_block(self.func, "");
+
             self.blocks.insert(block, bb);
+            self.builder.position_at_end(bb);
+
+            if block != first_block {
+                for param in data.params.iter() {
+                    let layout = crate::layout::repr_and_layout(self.db, body.locals[param.0].repr.clone());
+                    let value = if by_ref_locals.contains(&param) {
+                        if layout.abi.is_unsized() {
+                            todo!();
+                        } else {
+                            LocalRef::Place(PlaceRef::new_alloca(self.cx, layout))
+                        }
+                    } else {
+                        let ty = self.basic_type_for_repr(&layout.repr);
+                        let phi = self.builder.build_phi(ty, "");
+                        let phi = OperandRef::new_phi(layout, phi);
+
+                        LocalRef::Operand(Some(phi))
+                    };
+
+                    self.locals.insert(param.0, value);
+                }
+            }
         }
 
         let first_block = self.blocks[first_block];
+
+        self.builder.position_at_end(entry);
         self.builder.build_unconditional_branch(first_block);
 
         for (block, data) in body.blocks.iter() {
@@ -124,12 +151,81 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | PassMode::ByRef { size: None } => todo!(),
             },
             | Term::Jump(target) => {
+                self.codegen_jump_target(target);
                 let block = self.blocks[target.block.0];
                 self.builder.build_unconditional_branch(block);
             },
-            | Term::Switch { .. } => {
-                todo!();
+            | Term::Switch { discr, values, targets } => {
+                let mut targets = targets.iter();
+                let discr = self.codegen_operand(discr);
+                let discr_val = discr.load(self.cx).into_int_value();
+                let discr_ty = discr_val.get_type();
+
+                if values.len() == 1 {
+                    let val = discr_ty.const_int(values[0] as u64, false);
+                    let then = targets.next().unwrap();
+                    self.codegen_jump_target(then);
+                    let then = self.blocks[then.block.0];
+                    let else_ = targets.next().unwrap();
+                    self.codegen_jump_target(else_);
+                    let else_ = self.blocks[else_.block.0];
+
+                    if discr.layout.is_bool() {
+                        match values[0] {
+                            | 0 => self.builder.build_conditional_branch(discr_val, else_, then),
+                            | 1 => self.builder.build_conditional_branch(discr_val, then, else_),
+                            | _ => unreachable!(),
+                        }
+                    } else {
+                        let cmp = self
+                            .builder
+                            .build_int_compare(inkwell::IntPredicate::EQ, discr_val, val, "");
+                        self.builder.build_conditional_branch(cmp, then, else_)
+                    };
+
+                    return;
+                }
+
+                let cases = values
+                    .iter()
+                    .zip(&mut targets)
+                    .map(|(&val, target)| {
+                        let val = discr_ty.const_int(val as u64, false);
+                        self.codegen_jump_target(target);
+
+                        (val, self.blocks[target.block.0])
+                    })
+                    .collect::<Vec<_>>();
+
+                let else_ = targets.next().unwrap();
+                self.codegen_jump_target(else_);
+                let else_ = self.blocks[else_.block.0];
+
+                self.builder.build_switch(discr_val, else_, &cases);
             },
+        }
+    }
+
+    pub fn codegen_jump_target(&mut self, target: &JumpTarget) {
+        let body = self.body.clone();
+        let data = &body.blocks[target.block.0];
+        let block = self.builder.get_insert_block().unwrap();
+
+        for (param, arg) in data.params.iter().zip(target.args.iter()) {
+            let op = self.codegen_operand(arg);
+
+            match self.locals[param.0].clone() {
+                | LocalRef::Place(ref place) => {
+                    op.store(self.cx, place);
+                },
+                | LocalRef::Operand(Some(phi)) => {
+                    let phi = phi.phi();
+                    let val = op.load(self.cx);
+
+                    phi.add_incoming(&[(&val, block)]);
+                },
+                | LocalRef::Operand(None) => unreachable!(),
+            }
         }
     }
 
@@ -169,7 +265,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     self.codegen_rvalue(place, rvalue)
                 }
             },
-            | Stmt::SetDiscriminant(_, _) => todo!(),
+            | Stmt::SetDiscriminant(place, ctor) => {
+                let place = self.codegen_place(place);
+                let ctors = ctor.type_ctor().ctors(self.db.upcast());
+                let index = ctors.iter().position(|c| c == ctor).unwrap();
+
+                place.set_discr(self.cx, index);
+            },
             | Stmt::Call { place, func, args } => {
                 let func = self.codegen_operand(func);
                 let func_sig = match &func.layout.repr {
@@ -271,6 +373,14 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 } else {
                     todo!()
                 }
+            },
+            | Rvalue::Discriminant(place) => {
+                let place = self.codegen_place(place);
+                let repr = place.layout.repr.discr();
+                let layout = crate::layout::repr_and_layout(self.db, repr);
+                let discr = place.get_discr(self.cx, &layout);
+
+                OperandRef::new_imm(layout, discr.as_basic_value_enum())
             },
             | Rvalue::DefRef(def) => {
                 let value = match *def {

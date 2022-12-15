@@ -9,6 +9,7 @@ use crate::place::PlaceRef;
 #[derive(Debug, Clone, Copy)]
 pub enum OperandValue<'ctx> {
     Ref(values::PointerValue<'ctx>),
+    Phi(values::PhiValue<'ctx>),
     Imm(values::BasicValueEnum<'ctx>),
     Pair(values::BasicValueEnum<'ctx>, values::BasicValueEnum<'ctx>),
 }
@@ -43,6 +44,13 @@ impl<'ctx> OperandRef<'ctx> {
         }
     }
 
+    pub fn new_phi(layout: ReprAndLayout, phi: values::PhiValue<'ctx>) -> Self {
+        Self {
+            val: OperandValue::Phi(phi),
+            layout,
+        }
+    }
+
     pub fn new_pair(layout: ReprAndLayout, a: values::BasicValueEnum<'ctx>, b: values::BasicValueEnum<'ctx>) -> Self {
         Self {
             val: OperandValue::Pair(a, b),
@@ -53,21 +61,31 @@ impl<'ctx> OperandRef<'ctx> {
     pub fn immediate(self) -> values::BasicValueEnum<'ctx> {
         match self.val {
             | OperandValue::Imm(v) => v,
+            | OperandValue::Phi(p) => p.as_basic_value(),
             | v => unreachable!("{:?}", v),
         }
     }
 
-    pub fn by_ref(self) -> values::PointerValue<'ctx> {
+    pub fn phi(self) -> values::PhiValue<'ctx> {
+        match self.val {
+            | OperandValue::Phi(v) => v,
+            | v => unreachable!("{:?}", v),
+        }
+    }
+
+    pub fn _by_ref(self) -> values::PointerValue<'ctx> {
         match self.val {
             | OperandValue::Ref(ptr) => ptr,
             | v => unreachable!("{:?}", v),
         }
     }
 
-    pub fn load(self, ctx: &mut CodegenCtx<'_, 'ctx>) -> values::BasicValueEnum<'ctx> {
+    pub fn load(&self, ctx: &mut CodegenCtx<'_, 'ctx>) -> values::BasicValueEnum<'ctx> {
         match self.val {
             | OperandValue::Ref(ptr) => ctx.builder.build_load(ptr, ""),
-            | _ => self.immediate(),
+            | OperandValue::Phi(phi) => phi.as_basic_value(),
+            | OperandValue::Imm(imm) => imm,
+            | OperandValue::Pair(_, _) => todo!(),
         }
     }
 
@@ -115,6 +133,7 @@ impl<'ctx> OperandRef<'ctx> {
             },
             | (OperandValue::Pair(..), _) => unreachable!(),
             | (OperandValue::Ref(..), _) => unreachable!(),
+            | (OperandValue::Phi(..), _) => unreachable!(),
         }
 
         Self { val, layout: field }
@@ -128,6 +147,7 @@ impl<'ctx> OperandRef<'ctx> {
                 let ty = ty.ptr_type(AddressSpace::Generic);
                 OperandValue::Ref(ctx.builder.build_pointer_cast(ptr, ty, ""))
             },
+            | OperandValue::Phi(phi) => OperandValue::Phi(phi),
             | OperandValue::Pair(a, b) => OperandValue::Pair(a, b),
         };
 
@@ -151,6 +171,9 @@ impl<'ctx> OperandRef<'ctx> {
             },
             | OperandValue::Imm(val) => {
                 ctx.builder.build_store(dest.ptr, val);
+            },
+            | OperandValue::Phi(val) => {
+                ctx.builder.build_store(dest.ptr, val.as_basic_value());
             },
             | OperandValue::Pair(a, b) => {
                 let ptr = ctx.builder.build_struct_gep(dest.ptr, 0, "").unwrap();

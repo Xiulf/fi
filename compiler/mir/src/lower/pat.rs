@@ -42,17 +42,32 @@ impl BodyLowerCtx<'_> {
         let ty = self.infer.type_of_expr[expr];
         let repr = self.db.repr_of(ty);
         let res = self.builder.add_local(LocalKind::Tmp, repr);
-        let discr = self.lower_expr(discr);
+        let discr = self.lower_expr(discr, &mut None);
         let discr = self.place_op(discr);
         let pmatch = self.compile_case(arms, discr);
         let exit_block = self.builder.create_block();
 
-        self.builder.init(res);
         self.lower_pattern_match(&pmatch, exit_block);
         self.builder.add_block_param(exit_block, res);
         self.builder.switch_block(exit_block);
 
         Operand::Move(Place::new(res))
+    }
+
+    fn get_discr(&mut self, place: Place) -> Place {
+        let repr = self.builder.place_repr(&place);
+
+        if let Repr::Enum(_) = repr {
+            let discr = repr.discr();
+            let tmp = self.builder.add_local(LocalKind::Tmp, discr);
+
+            self.builder.init(tmp);
+            self.builder.discriminant(Place::new(tmp), place);
+
+            return Place::new(tmp);
+        }
+
+        place
     }
 
     fn lower_pattern_match(&mut self, pmatch: &PatternMatch, exit_block: Block) {
@@ -72,6 +87,7 @@ impl BodyLowerCtx<'_> {
                 values.sort_by_key(|v| v.1);
 
                 let discr = values[0].0.clone();
+                let discr = self.get_discr(discr);
                 let current_block = self.builder.current_block();
                 let mut blocks = values
                     .iter()
@@ -95,13 +111,15 @@ impl BodyLowerCtx<'_> {
 
                 match arm[0].pattern {
                     | Pattern::Switch(ref discr, value) => {
-                        self.builder.switch(Operand::Copy(discr.clone()), vec![value], [
+                        let discr = self.get_discr(discr.clone());
+
+                        self.builder.switch(Operand::Copy(discr), vec![value], [
                             then_block.into(),
                             next_block.into(),
                         ]);
                     },
                     | Pattern::Check(expr) => {
-                        let op = self.lower_expr(expr);
+                        let op = self.lower_expr(expr, &mut None);
                         self.builder.switch(op, vec![0], [next_block.into(), then_block.into()]);
                     },
                     | Pattern::And(ref _a, ref _b) => todo!(),
@@ -115,7 +133,7 @@ impl BodyLowerCtx<'_> {
         }
 
         if let Some(expr) = pmatch.fallback {
-            let op = self.lower_expr(expr);
+            let op = self.lower_expr(expr, &mut None);
             self.builder.jump((exit_block, [op]));
         }
     }
@@ -123,7 +141,7 @@ impl BodyLowerCtx<'_> {
     fn lower_match_value(&mut self, value: &MatchValue, exit_block: Block) {
         match *value {
             | MatchValue::Expr(expr) => {
-                let op = self.lower_expr(expr);
+                let op = self.lower_expr(expr, &mut None);
                 self.builder.jump((exit_block, [op]));
             },
             | MatchValue::Nested(ref inner) => self.lower_pattern_match(inner, exit_block),

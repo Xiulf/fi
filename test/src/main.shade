@@ -10,8 +10,16 @@ type Option a =
 
 @main
 main =
+    let a = None :: Option Int32
+    let r = unwrap_or a 0
+    
     puts "test\0"
-    ExitCode 0
+    ExitCode r
+
+
+unwrap_or :: Option Int32 -> Int32 -> Int32
+unwrap_or (Some x) _ = x
+unwrap_or None     x = x
 
 
 module C =

@@ -34,7 +34,7 @@ pub enum Primitive {
     Pointer,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Integer {
     Int,
     I8,
@@ -60,6 +60,38 @@ impl Repr {
             value: Primitive::Int(Integer::I32, true),
             valid_range: 0..=u128::MAX,
         })
+    }
+
+    pub fn discr(&self) -> Self {
+        match self {
+            | Repr::Enum(variants) if variants.len() > 1 => {
+                let value = Primitive::Int(self.align(), false);
+
+                Self::Scalar(Scalar {
+                    value,
+                    valid_range: 0..=variants.len() as u128 - 1,
+                })
+            },
+            | _ => unreachable!(),
+        }
+    }
+
+    fn align(&self) -> Integer {
+        match self {
+            | Repr::Opaque => Integer::Int,
+            | Repr::Scalar(s) => match s.value {
+                | Primitive::Int(i, _) => i,
+                | Primitive::Float => Integer::I32,
+                | Primitive::Double => Integer::I64,
+                | Primitive::Pointer => Integer::Int,
+            },
+            | Repr::Box(_) => Integer::Int,
+            | Repr::Ptr(_, _) => Integer::Int,
+            | Repr::Func(_, _) => Integer::Int,
+            | Repr::Struct(fs) => fs.iter().map(Self::align).max().unwrap_or(Integer::I8),
+            | Repr::Enum(vs) => vs.iter().map(Self::align).max().unwrap_or(Integer::I8),
+            | Repr::ReprOf(_) => todo!(),
+        }
     }
 }
 
@@ -111,7 +143,8 @@ fn repr_of_ctor(db: &dyn MirDatabase, id: TypeCtorId, args: &[Ty]) -> Repr {
 
     if data.ctors.is_empty() {
         Repr::Struct(Box::new([]))
-    } else if let Some((local_id, ctor)) = data.ctors.iter().next() {
+    } else if data.ctors.len() == 1 {
+        let (local_id, ctor) = data.ctors.iter().next().unwrap();
         repr_of_variant(db, local_id, ctor, id, args)
     } else {
         let variants = data

@@ -100,15 +100,38 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | Abi::Aggregate { sized: true } => match &layout.fields {
                 | Fields::Primitive => unreachable!(),
                 | Fields::Array { .. } => todo!(),
+                | Fields::Arbitrary { fields } if fields.is_empty() => {
+                    self.context.struct_type(&[], false).as_basic_type_enum()
+                },
                 | Fields::Arbitrary { fields } => {
-                    let fields = fields
-                        .iter()
-                        .map(|(_, f)| self.basic_type_for_layout(f))
+                    let min_offset = fields.iter().map(|f| f.0).min().unwrap();
+                    let padding = if min_offset.bytes() > 0 {
+                        Some(
+                            self.context
+                                .i8_type()
+                                .array_type(min_offset.bytes() as u32)
+                                .as_basic_type_enum(),
+                        )
+                    } else {
+                        None
+                    };
+
+                    let fields = padding
+                        .into_iter()
+                        .chain(fields.iter().map(|(_, f)| self.basic_type_for_layout(f)))
                         .collect::<Vec<_>>();
 
                     self.context.struct_type(&fields, false).as_basic_type_enum()
                 },
-                | Fields::Union { .. } => todo!(),
+                | Fields::Union { .. } => match layout.size.bytes() {
+                    | 0 => self.context.struct_type(&[], false).as_basic_type_enum(),
+                    | 1 => self.context.i8_type().as_basic_type_enum(),
+                    | 2 => self.context.i16_type().as_basic_type_enum(),
+                    | 4 => self.context.i32_type().as_basic_type_enum(),
+                    | 8 => self.context.i64_type().as_basic_type_enum(),
+                    | 16 => self.context.i128_type().as_basic_type_enum(),
+                    | s => self.context.i8_type().array_type(s as u32).as_basic_type_enum(),
+                },
             },
             | Abi::Aggregate { sized: false } => todo!(),
         }

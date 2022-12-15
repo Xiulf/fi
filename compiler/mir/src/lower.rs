@@ -71,7 +71,7 @@ pub(crate) fn lower_body(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> B
 
     bcx.builder.switch_block(entry);
 
-    let res = bcx.lower_expr(body.body_expr());
+    let res = bcx.lower_expr(body.body_expr(), &mut None);
 
     bcx.builder.return_(res);
     db.intern_body(Arc::new(bcx.cx.builder.build()))
