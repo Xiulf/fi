@@ -5,6 +5,7 @@ use arena::{ArenaMap, Idx};
 use base_db::target::CompilerTarget;
 use hir::attrs::HasAttrs;
 use hir::id::DefWithBodyId;
+use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -137,6 +138,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                 }
             }
         }
+
+        let mpm = PassManager::create(());
+
+        mpm.add_always_inliner_pass();
+        // mpm.add_function_inlining_pass();
+        mpm.run_on(self.module);
     }
 
     pub fn declare_func(&mut self, func: hir::Func) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {

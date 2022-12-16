@@ -73,6 +73,13 @@ impl<'ctx> OperandRef<'ctx> {
         }
     }
 
+    pub fn pair(self) -> (values::BasicValueEnum<'ctx>, values::BasicValueEnum<'ctx>) {
+        match self.val {
+            | OperandValue::Pair(a, b) => (a, b),
+            | v => unreachable!("{:?}", v),
+        }
+    }
+
     pub fn _by_ref(self) -> values::PointerValue<'ctx> {
         match self.val {
             | OperandValue::Ref(ptr) => ptr,

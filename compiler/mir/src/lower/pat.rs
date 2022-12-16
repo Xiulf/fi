@@ -135,6 +135,8 @@ impl BodyLowerCtx<'_> {
         if let Some(expr) = pmatch.fallback {
             let op = self.lower_expr(expr, &mut None);
             self.builder.jump((exit_block, [op]));
+        } else {
+            self.builder.unreachable();
         }
     }
 

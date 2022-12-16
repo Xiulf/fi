@@ -1,4 +1,4 @@
-module Main =
+module Main:Test =
 
 import Prim
 import Intrinsics (unsafe, transmute, ($))
@@ -19,13 +19,14 @@ main =
 
 unwrap_or :: Option Int32 -> Int32 -> Int32
 unwrap_or (Some x) _ = x
-unwrap_or None     x = x
+unwrap_or _        x = x
 
 
 module C =
     foreign puts :: Ptr Byte -> Int32 where Unsafe
 
+@inline
 puts :: Str -> Int32
 puts s =
     let ptr, _ = unsafe (transmute s) :: _, Uint
-    unsafe (C.puts ptr)
+    unsafe (C:puts ptr)

@@ -154,7 +154,7 @@ pub enum SyntaxKind {
     EXPR_APP,
     EXPR_FIELD,
     EXPR_METHOD,
-    EXPR_IDENT,
+    EXPR_PATH,
     EXPR_LITERAL,
     EXPR_UNIT,
     EXPR_PARENS,

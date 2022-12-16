@@ -102,7 +102,7 @@ ast_node!(Expr {
     App(ExprApp, EXPR_APP),
     Field(ExprField, EXPR_FIELD),
     Method(ExprMethod, EXPR_METHOD),
-    Ident(ExprIdent, EXPR_IDENT),
+    Path(ExprPath, EXPR_PATH),
     Lit(ExprLit, EXPR_LITERAL),
     Unit(ExprUnit, EXPR_UNIT),
     Parens(ExprParens, EXPR_PARENS),

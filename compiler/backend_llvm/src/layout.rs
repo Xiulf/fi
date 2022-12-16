@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
@@ -111,17 +113,18 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Lay
         },
         | Repr::Scalar(scalar) => Arc::new(Layout::scalar(scalar.clone(), &triple)),
         | Repr::ReprOf(ty) => _layout_of(db, triple, &db.repr_of(*ty)),
-        | Repr::Ptr(to, false) => {
-            let scalar = new_scalar(Primitive::Pointer, triple);
+        | Repr::Ptr(to, false, nonnull) => {
+            let mut scalar = new_scalar(Primitive::Pointer, triple);
+            scalar.valid_range = *nonnull as u128..=*scalar.valid_range.end();
             let mut layout = Layout::scalar(scalar, triple);
             layout.elem = Some((**to).clone());
             Arc::new(layout)
         },
-
-        | Repr::Ptr(to, true) => {
+        | Repr::Ptr(to, true, nonnull) => {
             let mut scalar = new_scalar(Primitive::Pointer, triple);
-            scalar.valid_range = 1..=*scalar.valid_range.end();
-            let mut layout = Layout::scalar(scalar, triple);
+            scalar.valid_range = *nonnull as u128..=*scalar.valid_range.end();
+            let meta = new_scalar(Primitive::Int(Integer::Int, false), triple);
+            let mut layout = scalar_pair(scalar, meta, triple);
             layout.elem = Some((**to).clone());
             Arc::new(layout)
         },
@@ -369,29 +372,29 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
 
         let stride = size.align_to(align);
 
-        if primitive_size(tag.value, triple) == size {
-            Layout {
-                size,
-                align,
-                stride,
-                elem: None,
-                abi: Abi::Scalar(tag),
-                fields,
-                variants,
-                largest_niche: None,
-            }
-        } else {
-            Layout {
-                size,
-                align,
-                stride,
-                elem: None,
-                abi: Abi::Aggregate { sized: true },
-                fields,
-                variants,
-                largest_niche: None,
-            }
+        // if primitive_size(tag.value, triple) == size {
+        //     Layout {
+        //         size,
+        //         align,
+        //         stride,
+        //         elem: None,
+        //         abi: Abi::Scalar(tag),
+        //         fields,
+        //         variants,
+        //         largest_niche: None,
+        //     }
+        // } else {
+        Layout {
+            size,
+            align,
+            stride,
+            elem: None,
+            abi: Abi::Aggregate { sized: true },
+            fields,
+            variants,
+            largest_niche: None,
         }
+        // }
     }
 }
 

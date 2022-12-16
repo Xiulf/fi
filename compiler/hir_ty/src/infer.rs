@@ -420,7 +420,11 @@ impl<'a> InferenceContext<'a> {
         self.type_vars.add_scope(vars);
     }
 
-    pub(crate) fn main_fn(&mut self, ann: TyId, body: ExprId) {
+    pub(crate) fn main_fn(&mut self, mut ty: TyId, body: ExprId) {
+        if let TyInfo::Where(_, t) = self.types[ty] {
+            ty = t;
+        }
+
         let termination = self.lang_class(lang_item::TERMINATION_CLASS);
 
         self.constrain(
@@ -428,7 +432,7 @@ impl<'a> InferenceContext<'a> {
             CtntFound::ExprOrPat(body.into()),
             CtntInfo {
                 class: termination,
-                types: Box::new([ann]),
+                types: Box::new([ty]),
             },
         );
     }

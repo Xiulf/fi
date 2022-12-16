@@ -114,7 +114,7 @@ where
         match parent {
             PathSegment(path_segment) => sema.resolve_path(&path_segment.parent_path()?).map(Into::into),
             ItemImport(_) => sema.resolve_ident(&name_ref).map(Into::into),
-            ExprIdent(_) => sema.resolve_ident(&name_ref).map(Into::into),
+            // ExprPath(_) => sema.resolve_ident(&name_ref).map(Into::into),
             _ => None,
         }
     }

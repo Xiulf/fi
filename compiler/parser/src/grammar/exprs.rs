@@ -69,10 +69,10 @@ pub(crate) fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<
 
     loop {
         match p.current() {
-            | PATH_SEP => {
+            | DOT => {
                 let expr = m.precede(p);
 
-                p.bump(PATH_SEP);
+                p.bump(DOT);
 
                 match p.current() {
                     | IDENT => {
@@ -121,8 +121,8 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
             Some(m.complete(p, EXPR_HOLE))
         },
         | IDENT | SYMBOL => {
-            paths::name_or_symbol_ref(p);
-            Some(m.complete(p, EXPR_IDENT))
+            paths::path(p);
+            Some(m.complete(p, EXPR_PATH))
         },
         | INT | FLOAT | CHAR | STRING => {
             literal(p);
@@ -163,8 +163,10 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                 | THEN_KW => {
                     p.bump(THEN_KW);
                     expr(p);
-                    p.expect(ELSE_KW);
-                    expr(p);
+
+                    if p.eat(ELSE_KW) {
+                        expr(p);
+                    }
                 },
                 | DO_KW => {
                     let do_expr = p.start();

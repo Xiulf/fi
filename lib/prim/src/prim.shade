@@ -16,11 +16,7 @@ foreign type Never :: Type
 foreign type Char :: Type
 
 @lang = "str-type"
-@repr(
-    fields = 2,
-    f0(ptr(elem(scalar = "u8")), valid_range_start = 1),
-    f1(scalar = "usize")
-)
+@repr(fatptr(elem(scalar = "u8")), valid_range_start = 1)
 foreign type Str :: Type
 
 @lang = "fn-type"
@@ -46,11 +42,7 @@ foreign type BufPtrSentinel :: Type -> Figure -> Type
 foreign type Array :: Figure -> Type -> Type
 
 @lang = "slice-type"
-@repr(
-    fields = 2,
-    f0(ptr(elem = 0), valid_range_start = 1),
-    f1(scalar = "usize")
-)
+@repr(fatptr(elem = 0), valid_range_start = 1)
 foreign type Slice :: Type -> Type
 
 @lang = "record-type"
@@ -128,6 +120,7 @@ member (BufPtrSentinel t s) t of Pointer
 
 class Unsafe
 class Partial
+class Effectful
 
 class Warn msg where msg :: Symbol
 

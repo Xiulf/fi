@@ -83,6 +83,9 @@ pub struct BlockData {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Term {
+    /// No terminator, must be replaced before codegen.
+    None,
+
     /// Indicates that this code path should never be reached.
     Unreachable,
 
@@ -187,15 +190,20 @@ pub enum Projection {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Const {
+    Undefined,
     Unit,
     Int(i128),
     Float(u64),
     Char(char),
     String(String),
+    Ctor(Ctor),
 }
 
 impl Place {
     pub fn has_deref(&self) -> bool {
-        self.projection.iter().any(|f| matches!(f, Projection::Deref))
+        self.projection
+            .first()
+            .map(|f| matches!(f, Projection::Deref))
+            .unwrap_or(false)
     }
 }

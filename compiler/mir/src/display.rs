@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display, Formatter, Result, Write};
+use std::fmt::{Display, Formatter, Result, Write};
 
 use hir::display::HirFormatter;
 use hir::id::DefWithBodyId;
@@ -150,6 +150,7 @@ impl HirDisplay for BlockData {
 impl HirDisplay for Term {
     fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
         match self {
+            | Self::None => f.write_str("<no terminator>"),
             | Self::Unreachable => f.write_str("unreachable"),
             | Self::Abort => f.write_str("abort"),
             | Self::Return(op) => write!(f, "return {}", op.display(f.db)),
@@ -231,7 +232,7 @@ impl HirDisplay for Operand {
         match self {
             | Self::Copy(p) => write!(f, "copy {}", p.display(f.db)),
             | Self::Move(p) => write!(f, "move {}", p.display(f.db)),
-            | Self::Const(c, r) => write!(f, "{c} [{}]", r.display(f.db)),
+            | Self::Const(c, r) => write!(f, "{} [{}]", c.display(f.db), r.display(f.db)),
         }
     }
 }
@@ -260,14 +261,16 @@ impl HirDisplay for Place {
     }
 }
 
-impl Display for Const {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+impl HirDisplay for Const {
+    fn hir_fmt(&self, f: &mut HirFormatter<'_>) -> Result {
         match self {
+            | Self::Undefined => f.write_str("undefined"),
             | Self::Unit => f.write_str("()"),
-            | Self::Int(v) => Display::fmt(v, f),
-            | Self::Float(v) => Debug::fmt(&f64::from_bits(*v), f),
-            | Self::Char(v) => Debug::fmt(v, f),
-            | Self::String(v) => Debug::fmt(v, f),
+            | Self::Int(v) => write!(f, "{}", v),
+            | Self::Float(v) => write!(f, "{}", f64::from_bits(*v)),
+            | Self::Char(v) => write!(f, "{:?}", v),
+            | Self::String(v) => write!(f, "{:?}", v),
+            | Self::Ctor(c) => write!(f, "{}", c.name(f.db)),
         }
     }
 }
@@ -304,7 +307,8 @@ impl HirDisplay for Repr {
 
                 write!(f, " }}")
             },
-            | Self::Ptr(to, _) => write!(f, "*{}", to.display(f.db)),
+            | Self::Ptr(to, true, _) => write!(f, "*fat {}", to.display(f.db)),
+            | Self::Ptr(to, false, _) => write!(f, "*{}", to.display(f.db)),
             | Self::Box(to) => write!(f, "box({})", to.display(f.db)),
             | Self::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
             | Self::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),

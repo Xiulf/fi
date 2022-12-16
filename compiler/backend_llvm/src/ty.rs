@@ -59,7 +59,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                 .ptr_type(AddressSpace::Generic)
                 .as_basic_type_enum(),
             | Repr::Func(_sig, true) => todo!(),
-            | Repr::Ptr(to, _) => self
+            | Repr::Ptr(to, false, _) => self
                 .basic_type_for_repr(to)
                 .ptr_type(AddressSpace::Generic)
                 .as_basic_type_enum(),

@@ -14,7 +14,7 @@ pub enum Repr {
     Scalar(Scalar),
     Struct(Box<[Repr]>),
     Enum(Box<[Repr]>),
-    Ptr(Box<Repr>, bool),
+    Ptr(Box<Repr>, bool, bool),
     Box(Box<Repr>),
     Func(Box<Signature>, bool),
     ReprOf(Ty),
@@ -86,7 +86,7 @@ impl Repr {
                 | Primitive::Pointer => Integer::Int,
             },
             | Repr::Box(_) => Integer::Int,
-            | Repr::Ptr(_, _) => Integer::Int,
+            | Repr::Ptr(_, _, _) => Integer::Int,
             | Repr::Func(_, _) => Integer::Int,
             | Repr::Struct(fs) => fs.iter().map(Self::align).max().unwrap_or(Integer::I8),
             | Repr::Enum(vs) => vs.iter().map(Self::align).max().unwrap_or(Integer::I8),
@@ -215,7 +215,21 @@ fn repr_from_attrs(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) ->
                 repr_from_attrs(db, elem.group().unwrap(), args)
             };
 
-            repr = Repr::Ptr(Box::new(elem), nonnull);
+            repr = Repr::Ptr(Box::new(elem), false, nonnull);
+        }
+    }
+
+    if let Some(ptr) = group.field("fatptr").and_then(AttrInput::group) {
+        let nonnull = matches!(group.field("valid_range_start").and_then(AttrInput::int), Some(1..));
+
+        if let Some(elem) = ptr.field("elem") {
+            let elem = if let Some(idx) = elem.int() {
+                db.repr_of(args[idx as usize])
+            } else {
+                repr_from_attrs(db, elem.group().unwrap(), args)
+            };
+
+            repr = Repr::Ptr(Box::new(elem), true, nonnull);
         }
     }
 

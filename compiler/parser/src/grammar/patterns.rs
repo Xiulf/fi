@@ -101,6 +101,7 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
         | _ => {
             p.error("expected a pattern");
             m.abandon(p);
+            p.bump_any();
             None
         },
     }

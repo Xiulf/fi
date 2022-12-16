@@ -1,12 +1,12 @@
 use arena::Idx;
 use hir::HirDisplay;
-use inkwell::values::{BasicValue, BasicValueEnum, CallableValue};
+use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
 use mir::repr::Repr;
 use mir::syntax::{
     Block, BlockData, Const, JumpTarget, Local, LocalKind, Operand, Place, Projection, Rvalue, Stmt, Term,
 };
 
-use crate::abi::PassMode;
+use crate::abi::{ArgAbi, EmptySinglePair, PassMode};
 use crate::ctx::BodyCtx;
 use crate::layout::ReprAndLayout;
 use crate::local::LocalRef;
@@ -121,6 +121,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_term(&mut self, term: &Term) {
         match term {
+            | Term::None => unreachable!(),
             | Term::Unreachable => {
                 self.builder.build_unreachable();
             },
@@ -133,10 +134,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 },
                 | PassMode::ByVal(_) => {
                     let op = self.codegen_operand(op);
-                    let value = match op.val {
-                        | OperandValue::Ref(ptr) => self.builder.build_load(ptr, ""),
-                        | _ => op.immediate(),
-                    };
+                    let value = op.load(self.cx);
 
                     self.builder.build_return(Some(&value));
                 },
@@ -171,6 +169,9 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     let else_ = self.blocks[else_.block.0];
 
                     if discr.layout.is_bool() {
+                        let i1_type = self.context.bool_type();
+                        let discr_val = self.builder.build_int_truncate(discr_val, i1_type, "");
+
                         match values[0] {
                             | 0 => self.builder.build_conditional_branch(discr_val, else_, then),
                             | 1 => self.builder.build_conditional_branch(discr_val, then, else_),
@@ -301,17 +302,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     .chain(
                         args.iter()
                             .zip(func_abi.args.iter())
-                            .filter_map(|(arg, abi)| match abi.mode {
-                                | PassMode::NoPass => None,
-                                | PassMode::ByVal(_) => Some(self.codegen_operand(arg).load(self.cx).into()),
-                                | PassMode::ByValPair(_, _) => todo!(),
-                                | PassMode::ByRef { size: Some(_) } => {
-                                    let op = self.codegen_operand(arg);
-                                    let ptr = self.make_ref(op).ptr.as_basic_value_enum();
-                                    Some(ptr.into())
-                                },
-                                | PassMode::ByRef { size: None } => todo!(),
-                            }),
+                            .flat_map(|(arg, abi)| self.pass_arg(arg, abi)),
                     )
                     .collect::<Vec<_>>();
 
@@ -326,6 +317,24 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     | _ => {},
                 }
             },
+        }
+    }
+
+    pub fn pass_arg(&mut self, arg: &Operand, abi: &ArgAbi) -> EmptySinglePair<values::BasicMetadataValueEnum<'ctx>> {
+        match abi.mode {
+            | PassMode::NoPass => EmptySinglePair::Empty,
+            | PassMode::ByVal(_) => EmptySinglePair::Single(self.codegen_operand(arg).load(self.cx).into()),
+            | PassMode::ByValPair(_, _) => {
+                let op = self.codegen_operand(arg);
+                let (a, b) = op.pair();
+                EmptySinglePair::Pair(a.into(), b.into())
+            },
+            | PassMode::ByRef { size: Some(_) } => {
+                let op = self.codegen_operand(arg);
+                let ptr = self.make_ref(op).ptr.as_basic_value_enum();
+                EmptySinglePair::Single(ptr.into())
+            },
+            | PassMode::ByRef { size: None } => todo!(),
         }
     }
 
@@ -460,6 +469,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         let layout = crate::layout::repr_and_layout(self.db, repr.clone());
         let ty = self.basic_type_for_repr(repr);
         let value = match *const_ {
+            | Const::Undefined => unreachable!(),
             | Const::Unit => todo!(),
             | Const::Int(i) => ty.into_int_type().const_int(i as u64, true).as_basic_value_enum(),
             | Const::Float(f) => ty
@@ -477,6 +487,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     .as_basic_value_enum();
 
                 return OperandRef::new_pair(layout, ptr, len);
+            },
+            | Const::Ctor(ctor) => {
+                let type_ctor = ctor.type_ctor();
+                let ctors = type_ctor.ctors(self.db.upcast());
+                let idx = ctors.iter().position(|&c| c == ctor).unwrap();
+
+                ty.into_int_type().const_int(idx as u64, false).as_basic_value_enum()
             },
         };
 

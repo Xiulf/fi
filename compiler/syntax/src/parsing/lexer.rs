@@ -262,15 +262,15 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 self.insert_default(start, DBL_DOT);
             },
-            | '.' if self.is_path_sep() => {
-                self.insert_default(start, PATH_SEP);
+            // | '.' if self.is_path_sep() => {
+            //     self.insert_default(start, PATH_SEP);
 
-                if let [.., (_, LayoutDelim::Forall)] = self.stack[..] {
-                    self.stack.pop().unwrap();
-                } else {
-                    self.stack.push((start, LayoutDelim::Prop));
-                }
-            },
+            //     if let [.., (_, LayoutDelim::Forall)] = self.stack[..] {
+            //         self.stack.pop().unwrap();
+            //     } else {
+            //         self.stack.push((start, LayoutDelim::Prop));
+            //     }
+            // },
             | '.' if matches!(self.stack[..], [.., (_, LayoutDelim::Forall)]) => {
                 self.insert_default(start, DOT);
                 self.stack.pop().unwrap();
@@ -285,6 +285,10 @@ impl<'src> Lexer<'src> {
                 if let [.., (_, LayoutDelim::DeclHead)] = self.stack[..] {
                     self.stack.pop().unwrap();
                 }
+            },
+            | ':' if self.is_path_sep() => {
+                self.insert_default(start, PATH_SEP);
+                self.stack.push((start, LayoutDelim::Prop));
             },
             | ':' if !is_op_char(self.peek()) => {
                 self.insert_default(start, COLON);
@@ -786,7 +790,8 @@ impl<'src> Lexer<'src> {
                 if let [.., (_, LayoutDelim::If)] = self.stack[..] {
                     self.emit(THEN_KW);
                     self.stack.pop().unwrap();
-                    self.stack.push((start, LayoutDelim::Then));
+                    let _ = LayoutDelim::Then;
+                    // self.stack.push((start, LayoutDelim::Then));
                 } else {
                     c.restore(&mut self.stack, &mut self.tokens);
 

@@ -1,7 +1,6 @@
 use base_db::target::CompilerTarget;
 use inkwell::types::BasicType;
 use inkwell::{values, AddressSpace};
-use mir::repr::Repr;
 
 use crate::ctx::CodegenCtx;
 use crate::layout::{primitive_align, primitive_size, Abi, ReprAndLayout, TagEncoding, Variants};

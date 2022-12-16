@@ -91,7 +91,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                         | _ => unreachable!(),
                     };
 
-                    let a_ty = self.basic_type_for_scalar(a, None);
+                    let a_ty = self.basic_type_for_scalar(a, layout.elem.as_ref());
                     let b_ty = self.basic_type_for_scalar(b, None);
 
                     if primitive_size(a.value, &triple).bits() == 128 && primitive_size(b.value, &triple).bits() == 128

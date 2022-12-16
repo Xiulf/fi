@@ -46,7 +46,25 @@ impl BodyLowerCtx<'_> {
                 self.lower_app(expr, Arg::ExprId(base), args, store_in)
             },
             | Expr::Infix { ref exprs, ref ops } => self.lower_infix_expr(expr, exprs, ops),
+            | Expr::If {
+                cond,
+                then,
+                else_: Some(else_),
+            } => self.lower_if_else(expr, cond, then, else_, store_in),
+            | Expr::If {
+                cond,
+                then,
+                else_: None,
+            } => self.lower_if(expr, cond, then),
             | Expr::Case { pred, ref arms } => self.lower_case(expr, pred, arms),
+            | Expr::Return { expr: e } => {
+                let repr = self.db.repr_of(self.infer.type_of_expr[expr]);
+                let val = self.lower_expr(e, &mut None);
+
+                self.builder.return_(val);
+
+                Operand::Const(Const::Undefined, repr)
+            },
             | ref e => todo!("{:?}", e),
         }
     }
@@ -79,6 +97,53 @@ impl BodyLowerCtx<'_> {
         }
 
         Operand::Const(Const::Unit, Repr::unit())
+    }
+
+    pub fn lower_if(&mut self, _expr: hir::ExprId, cond: hir::ExprId, then: hir::ExprId) -> Operand {
+        let cond = self.lower_expr(cond, &mut None);
+        let cond = self.place_op(cond);
+        let cond = self.get_discriminant(cond);
+        let then_block = self.builder.create_block();
+        let exit_block = self.builder.create_block();
+
+        self.builder
+            .switch(cond, vec![0], [exit_block.into(), then_block.into()]);
+        self.builder.switch_block(then_block);
+        self.lower_expr(then, &mut None);
+        self.builder.jump(exit_block);
+        self.builder.switch_block(exit_block);
+
+        Operand::Const(Const::Unit, Repr::unit())
+    }
+
+    pub fn lower_if_else(
+        &mut self,
+        expr: hir::ExprId,
+        cond: hir::ExprId,
+        then: hir::ExprId,
+        else_: hir::ExprId,
+        _store_in: &mut Option<Place>,
+    ) -> Operand {
+        let cond = self.lower_expr(cond, &mut None);
+        let cond = self.place_op(cond);
+        let cond = self.get_discriminant(cond);
+        let repr = self.db.repr_of(self.infer.type_of_expr[expr]);
+        let res = self.builder.add_local(LocalKind::Arg, repr);
+        let then_block = self.builder.create_block();
+        let else_block = self.builder.create_block();
+        let exit_block = self.builder.create_block();
+
+        self.builder
+            .switch(cond, vec![0], [else_block.into(), then_block.into()]);
+        self.builder.add_block_param(exit_block, res);
+        self.builder.switch_block(then_block);
+        let then = self.lower_expr(then, &mut None);
+        self.builder.jump((exit_block, [then]));
+        let else_ = self.lower_expr(else_, &mut None);
+        self.builder.jump((exit_block, [else_]));
+        self.builder.switch_block(exit_block);
+
+        Operand::Move(Place::new(res))
     }
 
     pub fn lower_app(&mut self, expr: hir::ExprId, base: Arg, args: Vec<Arg>, store_in: &mut Option<Place>) -> Operand {
@@ -189,6 +254,9 @@ impl BodyLowerCtx<'_> {
 
                 if ctor.types.is_empty() {
                     let ty = self.infer.type_of_expr[expr.0];
+                    // let repr = self.db.repr_of(ty);
+
+                    // return Operand::Const(Const::Ctor(id), repr);
                     let res = self.store_in(store_in, ty);
 
                     if ty_ctor.ctors.len() != 1 {
@@ -352,6 +420,15 @@ impl BodyLowerCtx<'_> {
                 Place::new(res)
             },
         }
+    }
+
+    pub fn get_discriminant(&mut self, place: Place) -> Operand {
+        let repr = self.builder.place_repr(&place).discr();
+        let local = self.builder.add_local(LocalKind::Tmp, repr);
+
+        self.builder.discriminant(Place::new(local), place);
+
+        Operand::Move(Place::new(local))
     }
 
     fn func_params(&self, id: hir::id::FuncId) -> usize {

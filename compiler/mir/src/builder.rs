@@ -43,7 +43,7 @@ impl Builder {
             id,
             params: Vec::new(),
             stmts: Vec::new(),
-            term: Term::Unreachable,
+            term: Term::None,
         });
 
         id
@@ -72,28 +72,36 @@ impl Builder {
         self.block().stmts.push(stmt);
     }
 
+    fn term(&mut self, term: Term) {
+        let block = self.block();
+
+        if let Term::None = block.term {
+            block.term = term;
+        }
+    }
+
     pub fn unreachable(&mut self) {
-        self.block().term = Term::Unreachable;
+        self.term(Term::Unreachable);
     }
 
     pub fn abort(&mut self) {
-        self.block().term = Term::Abort;
+        self.term(Term::Abort);
     }
 
     pub fn return_(&mut self, op: impl Into<Operand>) {
-        self.block().term = Term::Return(op.into());
+        self.term(Term::Return(op.into()));
     }
 
     pub fn jump(&mut self, target: impl Into<JumpTarget>) {
-        self.block().term = Term::Jump(target.into());
+        self.term(Term::Jump(target.into()));
     }
 
     pub fn switch(&mut self, discr: impl Into<Operand>, values: Vec<i128>, targets: impl Into<Vec<JumpTarget>>) {
-        self.block().term = Term::Switch {
+        self.term(Term::Switch {
             discr: discr.into(),
             values,
             targets: targets.into(),
-        };
+        });
     }
 
     pub fn init(&mut self, local: Local) {
@@ -147,7 +155,7 @@ impl Builder {
             match *proj {
                 | Projection::Deref => match repr {
                     | Repr::Box(inner) => repr = *inner,
-                    | Repr::Ptr(inner, _) => repr = *inner,
+                    | Repr::Ptr(inner, false, _) => repr = *inner,
                     | _ => unreachable!(),
                 },
                 | Projection::Field(i) => match repr {

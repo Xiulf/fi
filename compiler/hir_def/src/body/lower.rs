@@ -99,64 +99,70 @@ impl<'a> ExprCollector<'a> {
                         param_count = pats.len();
                     }
 
-                    let commas = vec![comma.clone(); param_count - 1];
-                    let pat = if param_count == 1 {
-                        pats[0]
+                    if param_count != 0 {
+                        let commas = vec![comma.clone(); param_count - 1];
+                        let pat = if param_count == 1 {
+                            pats[0]
+                        } else {
+                            self.alloc_pat_desugared(Pat::Infix {
+                                pats,
+                                ops: commas.into(),
+                            })
+                        };
+
+                        let value = match arm {
+                            | BodyArm::Expr(expr) => CaseValue::Normal(self.collect_expr(expr)),
+                            | BodyArm::Guarded(guarded) => {
+                                let mut guards = Vec::new();
+                                let mut exprs = Vec::new();
+
+                                for g in guarded.guards() {
+                                    if g.is_else() {
+                                        exprs.push(self.collect_expr_opt(g.guard()));
+                                        break;
+                                    }
+
+                                    guards.push(self.collect_expr_opt(g.guard()));
+                                    exprs.push(self.collect_expr_opt(g.value()));
+                                }
+
+                                CaseValue::Guarded(guards.into(), exprs.into())
+                            },
+                        };
+
+                        arms.push(CaseArm { pat, value });
+                    }
+                }
+
+                if param_count == 0 {
+                    self.body.body_expr = self.missing_expr();
+                } else {
+                    let exprs = (0..param_count)
+                        .map(|i| {
+                            let name = format!("$arg{}", i).as_name();
+                            let path = Path::from(name.clone());
+                            let expr = self.alloc_expr_desugared(Expr::Path { path });
+                            let pat = self.alloc_pat_desugared(Pat::Bind { name, subpat: None });
+
+                            self.body.params.push(pat);
+                            expr
+                        })
+                        .collect::<Box<[_]>>();
+
+                    let commas = vec![comma; exprs.len() - 1];
+                    let pred = if exprs.len() == 1 {
+                        exprs[0]
                     } else {
-                        self.alloc_pat_desugared(Pat::Infix {
-                            pats,
+                        self.alloc_expr_desugared(Expr::Infix {
+                            exprs,
                             ops: commas.into(),
                         })
                     };
 
-                    let value = match arm {
-                        | BodyArm::Expr(expr) => CaseValue::Normal(self.collect_expr(expr)),
-                        | BodyArm::Guarded(guarded) => {
-                            let mut guards = Vec::new();
-                            let mut exprs = Vec::new();
+                    let arms = arms.into();
 
-                            for g in guarded.guards() {
-                                if g.is_else() {
-                                    exprs.push(self.collect_expr_opt(g.guard()));
-                                    break;
-                                }
-
-                                guards.push(self.collect_expr_opt(g.guard()));
-                                exprs.push(self.collect_expr_opt(g.value()));
-                            }
-
-                            CaseValue::Guarded(guards.into(), exprs.into())
-                        },
-                    };
-
-                    arms.push(CaseArm { pat, value });
+                    self.body.body_expr = self.alloc_expr_desugared(Expr::Case { pred, arms });
                 }
-
-                let exprs = (0..param_count)
-                    .map(|i| {
-                        let name = format!("$arg{}", i).as_name();
-                        let path = Path::from(name.clone());
-                        let expr = self.alloc_expr_desugared(Expr::Path { path });
-                        let pat = self.alloc_pat_desugared(Pat::Bind { name, subpat: None });
-
-                        self.body.params.push(pat);
-                        expr
-                    })
-                    .collect::<Box<[_]>>();
-
-                let commas = vec![comma; exprs.len() - 1];
-                let pred = if exprs.len() == 1 {
-                    exprs[0]
-                } else {
-                    self.alloc_expr_desugared(Expr::Infix {
-                        exprs,
-                        ops: commas.into(),
-                    })
-                };
-
-                let arms = arms.into();
-
-                self.body.body_expr = self.alloc_expr_desugared(Expr::Case { pred, arms });
             },
             | None => {
                 self.body.body_expr = self.missing_expr();
@@ -242,7 +248,12 @@ impl<'a> ExprCollector<'a> {
 
                 self.alloc_expr(Expr::App { base, arg }, syntax_ptr)
             },
-            | ast::Expr::Field(e) => self.collect_expr_path(syntax_ptr, e),
+            | ast::Expr::Field(e) => {
+                let base = self.collect_expr_opt(e.base());
+                let field = e.field()?.as_name();
+
+                self.alloc_expr(Expr::Field { base, field }, syntax_ptr)
+            },
             | ast::Expr::Method(e) => {
                 let method = self.collect_expr_opt(e.method());
                 let base = self.collect_expr_opt(e.base());
@@ -255,8 +266,8 @@ impl<'a> ExprCollector<'a> {
                     syntax_ptr,
                 )
             },
-            | ast::Expr::Ident(e) => {
-                let path = Path::from(e.name_ref()?.as_name());
+            | ast::Expr::Path(e) => {
+                let path = Path::lower(e.path()?);
 
                 self.alloc_expr(Expr::Path { path }, syntax_ptr)
             },
@@ -392,57 +403,6 @@ impl<'a> ExprCollector<'a> {
         } else {
             self.missing_expr()
         }
-    }
-
-    fn collect_expr_path(&mut self, ptr: AstPtr<ast::Expr>, mut expr: ast::ExprField) -> ExprId {
-        let mut syntax_ptrs = vec![ptr];
-        let mut segments = vec![expr.field().map(|n| n.as_name())];
-
-        loop {
-            match expr.base() {
-                | Some(ref ep @ ast::Expr::Field(ref e)) => {
-                    syntax_ptrs.push(AstPtr::new(ep));
-                    segments.push(e.field().map(|n| n.as_name()));
-                    expr = e.clone();
-                },
-                | Some(ref ep @ ast::Expr::Ident(ref e)) => {
-                    syntax_ptrs.push(AstPtr::new(ep));
-                    segments.push(e.name_ref().map(|n| n.as_name()));
-
-                    for i in (0..segments.len()).rev() {
-                        let path = Path::from_segments(segments[i..].iter().filter_map(|n| n.clone()).rev());
-                        let (resolved, _) = self.def_map.resolve_path(self.db, self.module, &path);
-
-                        if resolved.values.is_some() {
-                            let base = self.alloc_expr(Expr::Path { path }, syntax_ptrs[i].clone());
-
-                            return segments
-                                .drain(..i)
-                                .zip(syntax_ptrs)
-                                .rfold(base, |base, (field, syntax_ptr)| {
-                                    field
-                                        .map(|field| self.alloc_expr(Expr::Field { base, field }, syntax_ptr))
-                                        .unwrap_or_else(|| self.missing_expr())
-                                });
-                        }
-                    }
-
-                    segments.pop().unwrap();
-                    syntax_ptrs.pop().unwrap();
-                    break;
-                },
-                | _ => break,
-            }
-        }
-
-        segments
-            .into_iter()
-            .zip(syntax_ptrs)
-            .rfold(self.collect_expr_opt(expr.base()), |base, (field, syntax_ptr)| {
-                field
-                    .map(|field| self.alloc_expr(Expr::Field { base, field }, syntax_ptr))
-                    .unwrap_or_else(|| self.missing_expr())
-            })
     }
 
     fn collect_stmt(&mut self, stmt: ast::Stmt) -> Stmt {
