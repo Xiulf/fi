@@ -44,7 +44,7 @@ impl SourceRoot {
             let path = self.file_set.path_for_file(file_id)?;
             let ext = path.name_and_extension()?.1?;
 
-            if ext == "shade" {
+            if ext == "fi" {
                 Some(file_id)
             } else {
                 None

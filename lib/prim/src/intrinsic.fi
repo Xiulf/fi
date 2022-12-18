@@ -13,8 +13,7 @@ infixl 1 applyFlipped as (.)
 @intrinsic foreign ieq  :: forall i. i -> i -> Bool where Integer i
 @intrinsic foreign icmp :: forall i. i -> i -> Int where Integer i
 
-; @intrinsic foreign iconvert :: a -> b where Integer a, Integer b
-@intrinsic foreign u32_to_u8 :: Uint32 -> Uint8
+@intrinsic foreign iconvert :: forall a b. a -> b where Integer a, Integer b
 
 @intrinsic foreign alloc   :: forall ptr to. Uint -> ptr where Pointer ptr to
 @intrinsic foreign dealloc :: forall ptr to. ptr -> Unit where Pointer ptr to

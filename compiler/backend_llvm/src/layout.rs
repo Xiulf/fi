@@ -471,6 +471,26 @@ impl Layout {
         }
     }
 
+    pub fn is_float(&self) -> bool {
+        match self.abi {
+            | Abi::Scalar(ref s) => match s.value {
+                | Primitive::Float | Primitive::Double => true,
+                | _ => false,
+            },
+            | _ => false,
+        }
+    }
+
+    pub fn is_signed(&self) -> bool {
+        match self.abi {
+            | Abi::Scalar(ref s) => match s.value {
+                | Primitive::Int(_, s) => s,
+                | _ => false,
+            },
+            | _ => false,
+        }
+    }
+
     pub fn elem(&self, db: &dyn MirDatabase) -> Option<ReprAndLayout> {
         let elem = self.elem.clone()?;
         let layout = layout_of(db, &elem);

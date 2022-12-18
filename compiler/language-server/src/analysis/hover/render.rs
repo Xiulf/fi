@@ -76,13 +76,13 @@ pub fn type_info(sema: &Semantics<LspDatabase>, expr_or_pat: &Result<ast::Expr, 
         | Result::Err(pat) => sema.type_of_pat(pat)?,
     };
 
-    Some(format!("```shade\n{}\n```", ty.display(sema.db)))
+    Some(format!("```fi\n{}\n```", ty.display(sema.db)))
 }
 
 pub fn kind_info(sema: &Semantics<LspDatabase>, ty: &ast::Type) -> Option<String> {
     let kind = sema.kind_of(ty)?;
 
-    Some(format!("```shade\n{}\n```", kind.display(sema.db)))
+    Some(format!("```fi\n{}\n```", kind.display(sema.db)))
 }
 
 fn label_and_docs<D>(db: &LspDatabase, def: D) -> (String, Option<hir::Documentation>)
@@ -100,11 +100,11 @@ fn markup(docs: Option<String>, desc: String, module: Option<String>) -> Option<
 
     if let Some(module) = module {
         if !module.is_empty() {
-            write!(buf, "```shade\nmodule {}\n```\n\n", module).ok()?;
+            write!(buf, "```fi\nmodule {}\n```\n\n", module).ok()?;
         }
     }
 
-    write!(buf, "```shade\n{}\n```", desc).ok()?;
+    write!(buf, "```fi\n{}\n```", desc).ok()?;
 
     if let Some(docs) = docs {
         write!(buf, "\n___\n\n{}", docs).ok()?;

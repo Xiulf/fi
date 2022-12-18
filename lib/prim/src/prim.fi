@@ -94,6 +94,7 @@ infixr 0 Pair as (,)
 @lang = "integer-class" class Integer t | -> t
 @lang = "decimal-class" class Decimal t | -> t
 @lang = "pointer-class" class Pointer t to | t -> to
+class FatPointer t to meta | t -> to, t -> meta
 
 @default
 member Int of Integer
@@ -117,6 +118,9 @@ member Float64 of Decimal
 member (Ptr t) t of Pointer
 member (BufPtr t) t of Pointer
 member (BufPtrSentinel t s) t of Pointer
+
+member Str Byte Uint of FatPointer
+member (Slice t) t Uint of FatPointer
 
 class Unsafe
 class Partial

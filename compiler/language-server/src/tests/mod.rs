@@ -9,7 +9,7 @@ use server::Project;
 fn initialization() {
     let project = Project::new()
         .with_file(
-            "shadow.toml",
+            "fi.toml",
             r#"
 [project]
 name = "test"
@@ -21,7 +21,7 @@ prim = { path = "/mnt/e/Language/fc/lib/prim" }
 "#,
         )
         .with_file(
-            "src/main.shade",
+            "src/main.fi",
             r#"
 module Main =
 
@@ -36,7 +36,7 @@ main = ()
 fn diagnostics() {
     let project = Project::new()
         .with_file(
-            "shadow.toml",
+            "fi.toml",
             r#"
 [project]
 name = "test"
@@ -48,7 +48,7 @@ prim = { path = "/mnt/e/Language/fc/lib/prim" }
 "#,
         )
         .with_file(
-            "src/main.shade",
+            "src/main.fi",
             r#"
 module Main =
 
@@ -60,8 +60,8 @@ main = ()
 
     server.notification::<DidOpenTextDocument>(DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
-            uri: server.doc_id("src/main.shade").uri,
-            language_id: "shade".into(),
+            uri: server.doc_id("src/main.fi").uri,
+            language_id: "fi".into(),
             version: 1,
             text: r#"
 module Main =

@@ -66,7 +66,7 @@ impl LspState {
             (f * 100.0) as u32
         });
 
-        let token = lsp_types::ProgressToken::String(format!("shade/{}", title));
+        let token = lsp_types::ProgressToken::String(format!("fi/{}", title));
         let progress = match state {
             | Progress::Begin => {
                 self.send_request::<lsp_types::request::WorkDoneProgressCreate>(

@@ -1,9 +1,10 @@
 use arena::Idx;
 use hir::HirDisplay;
-use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
+use inkwell::values::{self, AggregateValue, BasicValue, BasicValueEnum, CallableValue};
 use mir::repr::Repr;
 use mir::syntax::{
-    Block, BlockData, Const, JumpTarget, Local, LocalKind, Operand, Place, Projection, Rvalue, Stmt, Term,
+    BinOp, Block, BlockData, CastKind, Const, JumpTarget, Local, LocalKind, Operand, Place, Projection, Rvalue, Stmt,
+    Term,
 };
 
 use crate::abi::{ArgAbi, EmptySinglePair, PassMode};
@@ -138,7 +139,18 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
                     self.builder.build_return(Some(&value));
                 },
-                | PassMode::ByValPair(_, _) => todo!(),
+                | PassMode::ByValPair(_, _) => {
+                    let op = self.codegen_operand(op);
+                    let (a, b) = op.pair();
+                    let ty = self
+                        .basic_type_for_repr(&self.fn_abi.ret.layout.repr)
+                        .into_struct_type();
+                    let undef = ty.get_undef();
+
+                    undef.const_insert_value(a, &mut [0]);
+                    undef.const_insert_value(b, &mut [1]);
+                    self.builder.build_return(Some(&undef));
+                },
                 | PassMode::ByRef { size: Some(_) } => {
                     let ret_ptr = self.ret_ptr.clone().unwrap();
                     let op = self.codegen_operand(op);
@@ -313,7 +325,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                         let res = OperandRef::new_imm(func_abi.ret.layout, call.left().unwrap());
                         self.store_return(place, res);
                     },
-                    | PassMode::ByValPair(_, _) => todo!(),
+                    | PassMode::ByValPair(_, _) => {
+                        let val = call.left().unwrap().into_struct_value();
+                        let a = val.const_extract_value(&mut [0]);
+                        let b = val.const_extract_value(&mut [1]);
+                        let res = OperandRef::new_pair(func_abi.ret.layout, a, b);
+                        self.store_return(place, res);
+                    },
                     | _ => {},
                 }
             },
@@ -372,16 +390,19 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
                 OperandRef::new_imm(layout, ptr)
             },
-            | Rvalue::Cast(op) => {
+            | Rvalue::Cast(CastKind::Bitcast, op) => {
                 let value = self.codegen_operand(op);
+                assert_eq!(value.layout.size, layout.size);
+                value.bitcast(self.cx, layout)
+            },
+            | Rvalue::Cast(CastKind::IntToInt, op) => {
+                let ty = self.basic_type_for_repr(&layout.repr).into_int_type();
+                let value = self.codegen_operand(op);
+                let is_signed = value.layout.is_signed();
+                let value = value.load(self.cx).into_int_value();
+                let value = self.builder.build_int_cast_sign_flag(value, ty, is_signed, "");
 
-                if value.layout.layout == layout.layout {
-                    value
-                } else if value.layout.size == layout.size {
-                    value.bitcast(self.cx, layout)
-                } else {
-                    todo!()
-                }
+                OperandRef::new_imm(layout, value.as_basic_value_enum())
             },
             | Rvalue::Discriminant(place) => {
                 let place = self.codegen_place(place);
@@ -401,7 +422,45 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
                 OperandRef::new_imm(layout, value)
             },
+            | Rvalue::BinOp(op, lhs, rhs) => self.codegen_binop(layout, op, lhs, rhs),
             | _ => todo!(),
+        }
+    }
+
+    pub fn codegen_binop(
+        &mut self,
+        layout: ReprAndLayout,
+        op: &BinOp,
+        lhs: &Operand,
+        rhs: &Operand,
+    ) -> OperandRef<'ctx> {
+        let is_float = layout.is_float();
+        let is_signed = layout.is_signed();
+        let lhs = self.codegen_operand(lhs).load(self.cx);
+        let rhs = self.codegen_operand(rhs).load(self.cx);
+
+        match op {
+            | BinOp::Add => {
+                let value = if is_float {
+                    self.builder
+                        .build_float_add(lhs.into_float_value(), rhs.into_float_value(), "")
+                        .as_basic_value_enum()
+                } else {
+                    self.builder
+                        .build_int_add(lhs.into_int_value(), rhs.into_int_value(), "")
+                        .as_basic_value_enum()
+                };
+
+                OperandRef::new_imm(layout, value)
+            },
+            | BinOp::Offset => {
+                let lhs = lhs.into_pointer_value();
+                let rhs = rhs.into_int_value();
+                let value = unsafe { self.builder.build_gep(lhs, &[rhs], "") };
+
+                OperandRef::new_imm(layout, value.as_basic_value_enum())
+            },
+            | _ => todo!("{op:?}"),
         }
     }
 

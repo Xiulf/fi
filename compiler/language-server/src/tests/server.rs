@@ -87,7 +87,7 @@ impl Server {
                 matches!(n.clone().extract::<ProgressParams>("$/progress").unwrap(), ProgressParams {
                     token: lsp_types::ProgressToken::String(ref token),
                     value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(_)),
-                } if token == "shade/projects scanned")
+                } if token == "fi/projects scanned")
             },
             | _ => false,
         });

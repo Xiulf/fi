@@ -136,8 +136,8 @@ impl Builder {
         self.stmt(Stmt::Assign(res, Rvalue::Discriminant(place)));
     }
 
-    pub fn cast(&mut self, res: Place, op: Operand) {
-        self.stmt(Stmt::Assign(res, Rvalue::Cast(op)));
+    pub fn cast(&mut self, res: Place, kind: CastKind, op: Operand) {
+        self.stmt(Stmt::Assign(res, Rvalue::Cast(kind, op)));
     }
 
     pub fn body_ref(&mut self, res: Place, body: Body) {
@@ -146,6 +146,10 @@ impl Builder {
 
     pub fn def_ref(&mut self, res: Place, def: DefWithBody) {
         self.stmt(Stmt::Assign(res, Rvalue::DefRef(def)));
+    }
+
+    pub fn binop(&mut self, res: Place, op: BinOp, lhs: impl Into<Operand>, rhs: impl Into<Operand>) {
+        self.stmt(Stmt::Assign(res, Rvalue::BinOp(op, lhs.into(), rhs.into())));
     }
 
     pub fn place_repr(&self, place: &Place) -> Repr {

@@ -50,7 +50,7 @@ pub enum Dependency {
 }
 
 impl Manifest {
-    pub const FILE_NAME: &'static str = "shadow.toml";
+    pub const FILE_NAME: &'static str = "fi.toml";
 
     pub fn parse(text: &str) -> Result<Self> {
         toml::from_str(text).map_err(Into::into)
@@ -140,7 +140,7 @@ fn load_dir(vfs: &mut VirtualFileSystem, path: &AbsPath) -> Result<Option<FileId
         let path = AbsPathBuf::try_from(entry.path()).unwrap();
 
         if meta.is_file() {
-            if path.extension().and_then(|o| o.to_str()) == Some("shade") {
+            if path.extension().and_then(|o| o.to_str()) == Some("fi") {
                 first_file.get_or_insert(load_file(vfs, path)?);
             }
         } else {

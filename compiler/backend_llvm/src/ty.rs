@@ -13,7 +13,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let ret = match fn_abi.ret.mode {
             | PassMode::NoPass => Ok(self.context.void_type()),
             | PassMode::ByVal(ty) => Err(ty),
-            | PassMode::ByValPair(_, _) => todo!(),
+            | PassMode::ByValPair(a, b) => Err(self.context.struct_type(&[a, b], false).as_basic_type_enum()),
             | PassMode::ByRef { size: Some(_) } => {
                 let ret_ty = self.basic_type_for_repr(&fn_abi.ret.layout.repr);
                 args.push(ret_ty.ptr_type(AddressSpace::Generic).as_basic_type_enum().into());
@@ -51,7 +51,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
     pub fn basic_type_for_repr(&self, repr: &Repr) -> types::BasicTypeEnum<'ctx> {
         match repr {
-            | Repr::Opaque => unreachable!(),
+            | Repr::Opaque => self.context.i8_type().as_basic_type_enum(),
             | Repr::ReprOf(ty) => self.basic_type_for_repr(&self.db.repr_of(*ty)),
             | Repr::Scalar(scalar) => self.basic_type_for_scalar(scalar, None),
             | Repr::Func(sig, false) => self

@@ -105,7 +105,9 @@ pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
             | TyKind::Alias(alias) => repr_of_alias(db, alias, &args),
             | _ => unreachable!(),
         },
-        | TyKind::Where(_, ty) => repr_of_query(db, ty),
+        | TyKind::TypeVar(..) => Repr::Opaque,
+        | TyKind::Where(_, ty) => db.repr_of(ty),
+        | TyKind::ForAll(_, ty, _) => db.repr_of(ty),
         | k => todo!("{:?}", k),
     }
 }
@@ -306,6 +308,10 @@ pub fn func_signature_query(db: &dyn MirDatabase, func: hir::Func) -> Signature 
     let mut args = Vec::new();
 
     while let TyKind::Where(_, ty) = ret.lookup(hir_db) {
+        ret = ty;
+    }
+
+    while let TyKind::ForAll(_, ty, _) = ret.lookup(hir_db) {
         ret = ty;
     }
 

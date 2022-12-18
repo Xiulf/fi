@@ -1,0 +1,53 @@
+module Main:Test =
+
+import Prim
+import Intrinsics (unsafe, transmute, iconvert, iadd, ptr_offset, ($))
+
+
+type Option a =
+    | None
+    | Some a
+
+@main
+main =
+    let a = None :: Option Int32
+    let r = unwrap_or a 0
+    
+    puts "test"
+    ExitCode r
+
+
+unwrap_or :: Option Int32 -> Int32 -> Int32
+unwrap_or (Some x) _ = x
+unwrap_or _        x = x
+
+
+module C =
+    foreign puts :: Ptr Byte -> Int32 where Unsafe
+    foreign malloc :: forall t. Uint -> Ptr t
+    foreign memcpy :: forall t. Ptr t -> Ptr t -> Uint -> Ptr t
+
+
+@inline
+puts :: Str -> Int32
+puts s =
+    let ptr, _ = str_parts s
+    unsafe (C:puts ptr)
+
+concatstr :: Str -> Str -> Str
+concatstr a b =
+    let ap, al = str_parts a
+    let bp, bl = str_parts b
+    let len = iadd al bl
+    let ptr = C:malloc (len) :: Ptr Byte
+    C:memcpy ptr ap al
+    let al' = iconvert al
+    let ptr' = ptr_offset ptr al'
+    C:memcpy ptr' bp bl
+    unsafe (str_from_parts ptr len)
+
+str_parts :: Str -> (Ptr Byte, Uint)
+str_parts s = unsafe (transmute s)
+
+str_from_parts :: Ptr Byte -> Uint -> Str where Unsafe
+str_from_parts ptr len = transmute (ptr, len)

@@ -148,13 +148,51 @@ pub enum Rvalue {
     Discriminant(Place),
 
     /// Cast to a different type.
-    Cast(Operand),
+    Cast(CastKind, Operand),
 
     /// Create a reference to the given body.
     BodyRef(Body),
 
     /// Create a reference to the given def.
     DefRef(DefWithBody),
+
+    /// A binary operation (add, sub, mul, div, etc.).
+    BinOp(BinOp, Operand, Operand),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CastKind {
+    Bitcast,
+    Pointer,
+    IntToInt,
+    FloatToFloat,
+    IntToFloat,
+    FloatToInt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum BinOp {
+    Eq,
+    Ne,
+
+    Lt,
+    Le,
+    Gt,
+    Ge,
+
+    Lsh,
+    Rsh,
+    And,
+    Or,
+    Xor,
+
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+
+    Offset,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

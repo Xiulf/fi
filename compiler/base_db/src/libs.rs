@@ -15,7 +15,7 @@ pub struct LibData {
     pub links: Vec<PathBuf>,
     pub cfg_options: CfgOptions,
 
-    /// Shade projects don't have a root file
+    /// Fi projects don't have a root file
     /// However, source roots are only created after loading projects
     /// so this is used to identify the project's source root.
     pub root_file: FileId,

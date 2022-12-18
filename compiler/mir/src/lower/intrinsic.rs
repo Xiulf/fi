@@ -50,12 +50,38 @@ impl BodyLowerCtx<'_> {
                 self.builder.assign(place, op);
                 Operand::Const(Const::Unit, Repr::unit())
             },
+            | "ptr_offset" => {
+                let ptr = self.lower_arg(args.next().unwrap(), &mut None);
+                let offset = self.lower_arg(args.next().unwrap(), &mut None);
+                let ty = self.infer.type_of_expr[expr];
+                let res = self.store_in(store_in, ty);
+
+                self.builder.binop(res.clone(), BinOp::Offset, ptr, offset);
+                Operand::Move(res)
+            },
+            | "iadd" => {
+                let lhs = self.lower_arg(args.next().unwrap(), &mut None);
+                let rhs = self.lower_arg(args.next().unwrap(), &mut None);
+                let ty = self.infer.type_of_expr[expr];
+                let res = self.store_in(store_in, ty);
+
+                self.builder.binop(res.clone(), BinOp::Add, lhs, rhs);
+                Operand::Move(res)
+            },
+            | "iconvert" => {
+                let val = self.lower_arg(args.next().unwrap(), &mut None);
+                let ty = self.infer.type_of_expr[expr];
+                let res = self.store_in(store_in, ty);
+
+                self.builder.cast(res.clone(), CastKind::IntToInt, val);
+                Operand::Move(res)
+            },
             | "transmute" => {
                 let arg = self.lower_arg(args.next().unwrap(), &mut None);
                 let ty = self.infer.type_of_expr[expr];
                 let res = self.store_in(store_in, ty);
 
-                self.builder.cast(res.clone(), arg);
+                self.builder.cast(res.clone(), CastKind::Bitcast, arg);
                 Operand::Move(res)
             },
             | _ => todo!("intrinsic '{name}'"),

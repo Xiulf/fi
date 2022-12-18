@@ -218,12 +218,43 @@ impl HirDisplay for Rvalue {
             | Self::Use(op) => op.hir_fmt(f),
             | Self::Ref(p) => write!(f, "&{}", p.display(f.db)),
             | Self::Discriminant(p) => write!(f, "discriminant {}", p.display(f.db)),
-            | Self::Cast(op) => write!(f, "cast {}", op.display(f.db)),
+            | Self::Cast(kind, op) => write!(f, "cast {} ({:?})", op.display(f.db), kind),
             | Self::BodyRef(b) => write!(f, "body_ref {b}"),
             | Self::DefRef(DefWithBody::Func(d)) => write!(f, "func_ref {}", d.link_name(f.db).0),
             | Self::DefRef(DefWithBody::Static(d)) => write!(f, "static_ref {}", d.link_name(f.db).0),
             | Self::DefRef(DefWithBody::Const(d)) => write!(f, "const_ref {}", d.path(f.db)),
+            | Self::BinOp(op, lhs, rhs) => write!(f, "{} {} {}", lhs.display(f.db), op, rhs.display(f.db)),
         }
+    }
+}
+
+impl Display for BinOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let s = match self {
+            | Self::Eq => "==",
+            | Self::Ne => "!=",
+
+            | Self::Lt => "<",
+            | Self::Le => "<=",
+            | Self::Gt => ">",
+            | Self::Ge => "<=",
+
+            | Self::Lsh => "<<",
+            | Self::Rsh => ">>",
+            | Self::And => "&",
+            | Self::Or => "|",
+            | Self::Xor => "^",
+
+            | Self::Add => "+",
+            | Self::Sub => "-",
+            | Self::Mul => "*",
+            | Self::Div => "/",
+            | Self::Rem => "%",
+
+            | Self::Offset => "*+",
+        };
+
+        f.write_str(s)
     }
 }
 
