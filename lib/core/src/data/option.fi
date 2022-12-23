@@ -1,28 +1,37 @@
-module Data.Option =
+module Data:Option =
 
+@cfg(skip)
 import Core
-import Core.Error (Try, Unwrap)
-import Core.Mappable
+@cfg(skip)
+import Core:Error (Try, Unwrap)
+@cfg(skip)
+import Core:Mappable
+@cfg(skip)
 import Prim (ExitCode, Termination, report)
+@cfg(skip)
 import Intrinsics (crash)
 
 type Option t =
     | None
     | Some t
 
+@cfg(skip)
 member (Option t) of Default =
     default = None
 
+@cfg(skip)
 member (Option t) of Termination where Termination t =
     report (Some v) = report v
     report None = ExitCode 1
 
+@cfg(skip)
 member Option of Try =
     ret x = Some x
 
     bind (Some x) f = f x
     bind None _ = None
 
+@cfg(skip)
 member Option of Unwrap =
     unwrap (Some x) = x
     unwrap None = crash "cannot unwrap a none value"
@@ -30,6 +39,7 @@ member Option of Unwrap =
     unwrap_or (Some x) _ = x
     unwrap_or None def = def
 
+@cfg(skip)
 member Option of Mappable =
     map (Some x) f = Some (f x)
     map None _ = None

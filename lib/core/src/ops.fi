@@ -1,14 +1,22 @@
-module Core.Ops =
+module Core:Ops =
 
 import Prim ((->), Bool, True, False)
-import Data.Bool (not)
-import Core.Cmp
+import Data:Bool (not)
 
+@cfg(skip)
+import Core:Cmp
+
+@cfg(skip)
 infixl 4 eq as (==)
+@cfg(skip)
 infixl 4 ne as (!=)
+@cfg(skip)
 infixl 4 lt as (<)
+@cfg(skip)
 infixl 4 le as (<=)
+@cfg(skip)
 infixl 4 gt as (>)
+@cfg(skip)
 infixl 4 ge as (>=)
 
 infixl 6 add as (+)

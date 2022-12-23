@@ -459,6 +459,48 @@ impl TyId {
         }
     }
 
+    pub fn expand_aliases(self, db: &dyn HirDatabase, types: &mut Types, type_vars: &mut TypeVars) -> TyId {
+        self.everywhere(false, types, &mut |types, ty| match types[ty].clone() {
+            | TyInfo::Alias(id) => Self::expand_alias(db, types, type_vars, types.source(ty), id, &[]),
+            | TyInfo::App(base, args) => {
+                let args = args
+                    .iter()
+                    .map(|a| a.expand_aliases(db, types, type_vars))
+                    .collect::<Vec<_>>();
+                let base = match types[base] {
+                    | TyInfo::Alias(id) => {
+                        return Self::expand_alias(db, types, type_vars, types.source(base), id, &args)
+                    },
+                    | _ => base.expand_aliases(db, types, type_vars),
+                };
+
+                types.insert(TyInfo::App(base, args.into_boxed_slice()), types.source(ty))
+            },
+            | _ => ty,
+        })
+    }
+
+    pub fn expand_alias(
+        db: &dyn HirDatabase,
+        types: &mut Types,
+        type_vars: &mut TypeVars,
+        src: TySource,
+        alias: TypeAliasId,
+        args: &[TyId],
+    ) -> TyId {
+        let lower = db.type_for_alias(alias);
+        let ty = lower.ty.ty.to_info(db, types, type_vars, src);
+
+        ty.everywhere(true, types, &mut |types, ty| match types[ty] {
+            | TyInfo::ForAll(_, inner, scope) => {
+                let args = args.clone();
+
+                inner.replace_vars(types, &args, scope)
+            },
+            | _ => ty,
+        })
+    }
+
     pub fn to_row_list(self, types: &Types) -> (List<FieldInfo>, Option<TyId>) {
         match types[self] {
             | TyInfo::Row(ref fields, tail) => (fields.clone(), tail),

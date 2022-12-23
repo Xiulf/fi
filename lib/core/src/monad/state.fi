@@ -1,4 +1,5 @@
-module Monad.State =
+@cfg(skip)
+module Monad:State =
 
 import Core
 

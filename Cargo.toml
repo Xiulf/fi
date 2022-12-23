@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "compiler/shadow",
+    "compiler/fi",
     "compiler/driver",
     "compiler/markup",
     "compiler/diagnostics",
@@ -25,6 +25,7 @@ members = [
 
 [profile.dev]
 debug = false
+lto = false
 
 [profile.release]
 lto = true

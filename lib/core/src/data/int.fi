@@ -1,32 +1,33 @@
-module Data.Int =
+@cfg(skip)
+module Data:Int =
 
 import Core
-import Core.Ops
-import Core.Cmp
+import Core:Ops
+import Core:Cmp
 
 member i of Default where Integer i =
     default = 0
 
 member i i i of Add where Integer i =
-    add a b = Intrinsics.iadd a b
+    add a b = Intrinsics:iadd a b
 
 member i i i of Sub where Integer i =
-    sub a b = Intrinsics.isub a b
+    sub a b = Intrinsics:isub a b
 
 member i i i of Mul where Integer i =
-    mul a b = Intrinsics.imul a b
+    mul a b = Intrinsics:imul a b
 
 member i i i of Div where Integer i =
-    div a b = Intrinsics.idiv a b
+    div a b = Intrinsics:idiv a b
 
 member i i i of Rem where Integer i =
-    rem a b = Intrinsics.irem a b
+    rem a b = Intrinsics:irem a b
 
 member i i of Eq where Integer i =
-    eq a b = Intrinsics.ieq a b
+    eq a b = Intrinsics:ieq a b
 
 member i i of Ord where Integer i =
-    cmp a b = case Intrinsics.icmp a b of
+    cmp a b = case Intrinsics:icmp a b of
         0 -> Eq
         1 -> Gt
         _ -> Lt

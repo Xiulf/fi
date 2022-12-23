@@ -222,6 +222,9 @@ pub enum Projection {
     /// Get a reference to a specific field of this place.
     Field(usize),
 
+    /// Get a reference to a specific index of this place.
+    Index(Operand),
+
     /// Downcast the type of this place to the given variant.
     Downcast(Ctor),
 }

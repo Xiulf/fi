@@ -1,6 +1,6 @@
 use inkwell::types::{self, BasicType};
 use inkwell::AddressSpace;
-use mir::repr::{Integer, Primitive, Repr, Scalar, Signature};
+use mir::repr::{ArrayLen, Integer, Primitive, Repr, Scalar, Signature};
 use mir::syntax::{Operand, Place, Projection};
 
 use crate::abi::{FnAbi, PassMode};
@@ -16,7 +16,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | PassMode::ByValPair(a, b) => Err(self.context.struct_type(&[a, b], false).as_basic_type_enum()),
             | PassMode::ByRef { size: Some(_) } => {
                 let ret_ty = self.basic_type_for_repr(&fn_abi.ret.layout.repr);
-                args.push(ret_ty.ptr_type(AddressSpace::Generic).as_basic_type_enum().into());
+                args.push(ret_ty.ptr_type(AddressSpace::default()).as_basic_type_enum().into());
                 Ok(self.context.void_type())
             },
             | PassMode::ByRef { size: None } => todo!(),
@@ -32,7 +32,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                 },
                 | PassMode::ByRef { size: Some(_) } => {
                     let ty = self.basic_type_for_repr(&arg.layout.repr);
-                    args.push(ty.ptr_type(AddressSpace::Generic).as_basic_type_enum().into());
+                    args.push(ty.ptr_type(AddressSpace::default()).as_basic_type_enum().into());
                 },
                 | PassMode::ByRef { size: None } => todo!(),
             }
@@ -56,17 +56,21 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | Repr::Scalar(scalar) => self.basic_type_for_scalar(scalar, None),
             | Repr::Func(sig, false) => self
                 .fn_type_for_signature(sig)
-                .ptr_type(AddressSpace::Generic)
+                .ptr_type(AddressSpace::default())
                 .as_basic_type_enum(),
             | Repr::Func(_sig, true) => todo!(),
             | Repr::Ptr(to, false, _) => self
                 .basic_type_for_repr(to)
-                .ptr_type(AddressSpace::Generic)
+                .ptr_type(AddressSpace::default())
                 .as_basic_type_enum(),
             | Repr::Box(to) => self
                 .basic_type_for_repr(to)
-                .ptr_type(AddressSpace::Generic)
+                .ptr_type(AddressSpace::default())
                 .as_basic_type_enum(),
+            | Repr::Array(ArrayLen::Const(len), elem) => {
+                let elem = self.basic_type_for_repr(elem);
+                elem.array_type(*len as u32).as_basic_type_enum()
+            },
             | Repr::Struct(fields) => {
                 let layout = crate::layout::layout_of(self.db, repr);
 
@@ -99,7 +103,11 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             },
             | Abi::Aggregate { sized: true } => match &layout.fields {
                 | Fields::Primitive => unreachable!(),
-                | Fields::Array { .. } => todo!(),
+                | Fields::Array { count, .. } => {
+                    let elem = layout.elem.as_ref().unwrap();
+                    let elem = self.basic_type_for_repr(elem);
+                    elem.array_type(*count as u32).as_basic_type_enum()
+                },
                 | Fields::Arbitrary { fields } if fields.is_empty() => {
                     self.context.struct_type(&[], false).as_basic_type_enum()
                 },
@@ -153,12 +161,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | Primitive::Pointer => elem
                 .map(|e| {
                     self.basic_type_for_repr(e)
-                        .ptr_type(AddressSpace::Generic)
+                        .ptr_type(AddressSpace::default())
                         .as_basic_type_enum()
                 })
                 .unwrap_or_else(|| {
                     self.context
-                        .ptr_sized_int_type(&self.target_data, Some(AddressSpace::Generic))
+                        .ptr_sized_int_type(&self.target_data, Some(AddressSpace::default()))
                         .as_basic_type_enum()
                 }),
         }
@@ -174,6 +182,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             base = match *proj {
                 | Projection::Deref => base.elem(self.db).unwrap(),
                 | Projection::Field(i) => base.field(self.db, i).unwrap(),
+                | Projection::Index(_) => base.elem(self.db).unwrap(),
                 | Projection::Downcast(_) => todo!(),
             };
         }

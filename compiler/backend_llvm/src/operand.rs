@@ -8,7 +8,7 @@ use crate::place::PlaceRef;
 
 #[derive(Debug, Clone, Copy)]
 pub enum OperandValue<'ctx> {
-    Ref(values::PointerValue<'ctx>),
+    Ref(values::PointerValue<'ctx>, Option<values::BasicValueEnum<'ctx>>),
     Phi(values::PhiValue<'ctx>),
     Imm(values::BasicValueEnum<'ctx>),
     Pair(values::BasicValueEnum<'ctx>, values::BasicValueEnum<'ctx>),
@@ -58,6 +58,7 @@ impl<'ctx> OperandRef<'ctx> {
         }
     }
 
+    #[track_caller]
     pub fn immediate(self) -> values::BasicValueEnum<'ctx> {
         match self.val {
             | OperandValue::Imm(v) => v,
@@ -66,6 +67,7 @@ impl<'ctx> OperandRef<'ctx> {
         }
     }
 
+    #[track_caller]
     pub fn phi(self) -> values::PhiValue<'ctx> {
         match self.val {
             | OperandValue::Phi(v) => v,
@@ -73,6 +75,7 @@ impl<'ctx> OperandRef<'ctx> {
         }
     }
 
+    #[track_caller]
     pub fn pair(self) -> (values::BasicValueEnum<'ctx>, values::BasicValueEnum<'ctx>) {
         match self.val {
             | OperandValue::Pair(a, b) => (a, b),
@@ -80,16 +83,17 @@ impl<'ctx> OperandRef<'ctx> {
         }
     }
 
+    #[track_caller]
     pub fn _by_ref(self) -> values::PointerValue<'ctx> {
         match self.val {
-            | OperandValue::Ref(ptr) => ptr,
+            | OperandValue::Ref(ptr, _) => ptr,
             | v => unreachable!("{:?}", v),
         }
     }
 
     pub fn load(&self, ctx: &mut CodegenCtx<'_, 'ctx>) -> values::BasicValueEnum<'ctx> {
         match self.val {
-            | OperandValue::Ref(ptr) => ctx.builder.build_load(ptr, ""),
+            | OperandValue::Ref(ptr, _) => ctx.builder.build_load(ptr, ""),
             | OperandValue::Phi(phi) => phi.as_basic_value(),
             | OperandValue::Imm(imm) => imm,
             | OperandValue::Pair(_, _) => todo!(),
@@ -98,12 +102,13 @@ impl<'ctx> OperandRef<'ctx> {
 
     pub fn deref(&self, ctx: &mut CodegenCtx<'_, 'ctx>) -> PlaceRef<'ctx> {
         let layout = self.layout.elem(ctx.db).unwrap();
-        let ptr = match self.val {
-            | OperandValue::Imm(ptr) => ptr.into_pointer_value(),
+        let (ptr, extra) = match self.val {
+            | OperandValue::Imm(ptr) => (ptr.into_pointer_value(), None),
+            | OperandValue::Pair(ptr, extra) => (ptr.into_pointer_value(), Some(extra)),
             | _ => unreachable!(),
         };
 
-        PlaceRef { ptr, layout }
+        PlaceRef { layout, ptr, extra }
     }
 
     pub fn field(&self, ctx: &mut CodegenCtx<'_, 'ctx>, index: usize) -> Self {
@@ -150,9 +155,19 @@ impl<'ctx> OperandRef<'ctx> {
         let ty = ctx.basic_type_for_repr(&layout.repr);
         let val = match self.val {
             | OperandValue::Imm(val) => OperandValue::Imm(ctx.builder.build_bitcast(val, ty, "")),
-            | OperandValue::Ref(ptr) => {
-                let ty = ty.ptr_type(AddressSpace::Generic);
-                OperandValue::Ref(ctx.builder.build_pointer_cast(ptr, ty, ""))
+            | OperandValue::Ref(ptr, None) if matches!(layout.abi, Abi::ScalarPair(_, _)) => {
+                let val = ctx.builder.build_load(ptr, "").into_struct_value();
+                let a = ctx.builder.build_extract_value(val, 0, "").unwrap();
+                let b = ctx.builder.build_extract_value(val, 1, "").unwrap();
+                OperandValue::Pair(a, b)
+            },
+            | OperandValue::Ref(ptr, Some(extra)) if matches!(layout.abi, Abi::ScalarPair(_, _)) => {
+                let val = ctx.builder.build_load(ptr, "");
+                OperandValue::Pair(val, extra)
+            },
+            | OperandValue::Ref(ptr, extra) => {
+                let ty = ty.ptr_type(AddressSpace::default());
+                OperandValue::Ref(ctx.builder.build_pointer_cast(ptr, ty, ""), extra)
             },
             | OperandValue::Phi(phi) => OperandValue::Phi(phi),
             | OperandValue::Pair(a, b) => OperandValue::Pair(a, b),
@@ -167,7 +182,7 @@ impl<'ctx> OperandRef<'ctx> {
         }
 
         match self.val {
-            | OperandValue::Ref(ptr) => {
+            | OperandValue::Ref(ptr, None) => {
                 let src_align = self.layout.align.bytes() as u32;
                 let dst_align = dest.layout.align.bytes() as u32;
                 let size = ctx.context.i32_type().const_int(dest.layout.size.bytes(), false);
@@ -176,6 +191,7 @@ impl<'ctx> OperandRef<'ctx> {
                     .build_memcpy(dest.ptr, dst_align, ptr, src_align, size)
                     .unwrap();
             },
+            | OperandValue::Ref(_, Some(_)) => unreachable!(),
             | OperandValue::Imm(val) => {
                 ctx.builder.build_store(dest.ptr, val);
             },

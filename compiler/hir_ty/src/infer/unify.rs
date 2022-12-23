@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{ExprOrPatId, InferenceContext};
-use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo, TySource, Types, Unknown};
+use crate::info::{CtntInfo, FieldInfo, TyId, TyInfo, TySource, Types, Unknown};
 use crate::ty::{List, TypeVar, WhereClause};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -196,20 +196,6 @@ impl InferenceContext<'_> {
         }
     }
 
-    pub fn expand_alias(&mut self, src: TySource, alias: TypeAliasId, args: &[TyId]) -> TyId {
-        let lower = self.db.type_for_alias(alias);
-        let ty = lower.ty.ty.to_info(self.db, &mut self.types, &mut self.type_vars, src);
-
-        ty.everywhere(true, &mut self.types, &mut |types, ty| match types[ty] {
-            | TyInfo::ForAll(_, inner, scope) => {
-                let args = args.clone();
-
-                inner.replace_vars(types, &args, scope)
-            },
-            | _ => ty,
-        })
-    }
-
     pub fn unify_alias(&mut self, t1: TyId, t2: TyId, alias: TypeAliasId, args: &[TyId]) -> bool {
         let src = self.types.source(t1);
         let ty = self.expand_alias(src, alias, args);
@@ -220,11 +206,11 @@ impl InferenceContext<'_> {
     pub fn unify_types(&mut self, t1: TyId, t2: TyId) -> bool {
         let t1 = self.subst_type(t1).normalize(&mut self.types);
         let t2 = self.subst_type(t2).normalize(&mut self.types);
-        // log::debug!(
-        //     "{} == {}",
-        //     t1.display(self.db, &self.types),
-        //     t2.display(self.db, &self.types),
-        // );
+        tracing::debug!(
+            "{} == {}",
+            t1.display(self.db, &self.types),
+            t2.display(self.db, &self.types),
+        );
 
         match (self.types[t1].clone(), self.types[t2].clone()) {
             | (TyInfo::Error, _) | (_, TyInfo::Error) => true,
@@ -244,15 +230,15 @@ impl InferenceContext<'_> {
             | (TyInfo::Row(..), _) => self.unify_rows(t1, t2),
             | (_, TyInfo::Row(..)) => self.unify_rows(t1, t2),
             | (TyInfo::Ctor(c1), TyInfo::Ctor(c2)) => c1 == c2,
-            | (TyInfo::Alias(c1), TyInfo::Alias(c2)) => c1 == c2,
+            | (TyInfo::Alias(c1), TyInfo::Alias(c2)) if c1 == c2 => true,
             | (TyInfo::Alias(a), _) => self.unify_alias(t1, t2, a, &[]),
-            | (_, TyInfo::Alias(a)) => self.unify_alias(t2, t1, a, &[]),
+            | (_, TyInfo::Alias(b)) => self.unify_alias(t2, t1, b, &[]),
             | (TyInfo::App(a, args), _) if matches!(self.types[a], TyInfo::Alias(_)) => match self.types[a] {
                 | TyInfo::Alias(a) => self.unify_alias(t1, t2, a, &args),
                 | _ => unreachable!(),
             },
             | (_, TyInfo::App(a, args)) if matches!(self.types[a], TyInfo::Alias(_)) => match self.types[a] {
-                | TyInfo::Alias(a) => self.unify_alias(t2, t1, a, &args),
+                | TyInfo::Alias(b) => self.unify_alias(t2, t1, b, &args),
                 | _ => unreachable!(),
             },
             | (TyInfo::App(a1, a2), TyInfo::App(b1, b2)) if a2.len() == b2.len() => {

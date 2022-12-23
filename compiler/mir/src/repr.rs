@@ -3,6 +3,7 @@ use std::ops::RangeInclusive;
 use hir::attrs::{AttrInput, AttrInputGroup};
 use hir::id::{CtorId, DefWithBodyId, LocalCtorId, TypeAliasId, TypeCtorId, TypeVarId};
 use hir::ty::{Ty, TyKind};
+use hir::HirDisplay;
 use hir_def::data::CtorData;
 use hir_def::lang_item;
 
@@ -14,10 +15,17 @@ pub enum Repr {
     Scalar(Scalar),
     Struct(Box<[Repr]>),
     Enum(Box<[Repr]>),
+    Array(ArrayLen, Box<Repr>),
     Ptr(Box<Repr>, bool, bool),
     Box(Box<Repr>),
     Func(Box<Signature>, bool),
     ReprOf(Ty),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ArrayLen {
+    Const(usize),
+    TypeVar(hir::TypeVar),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -55,6 +63,13 @@ impl Repr {
         Self::Struct(Box::new([]))
     }
 
+    pub fn usize() -> Self {
+        Self::Scalar(Scalar {
+            value: Primitive::Int(Integer::Int, false),
+            valid_range: 0..=u128::MAX,
+        })
+    }
+
     pub fn i32() -> Self {
         Self::Scalar(Scalar {
             value: Primitive::Int(Integer::I32, true),
@@ -90,6 +105,7 @@ impl Repr {
             | Repr::Func(_, _) => Integer::Int,
             | Repr::Struct(fs) => fs.iter().map(Self::align).max().unwrap_or(Integer::I8),
             | Repr::Enum(vs) => vs.iter().map(Self::align).max().unwrap_or(Integer::I8),
+            | Repr::Array(_, e) => e.align(),
             | Repr::ReprOf(_) => todo!(),
         }
     }
@@ -103,7 +119,7 @@ pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
         | TyKind::App(base, args) => match base.lookup(db.upcast()) {
             | TyKind::Ctor(ctor) => repr_of_ctor(db, ctor, &args),
             | TyKind::Alias(alias) => repr_of_alias(db, alias, &args),
-            | _ => unreachable!(),
+            | _ => unreachable!("{}", base.display(db.upcast())),
         },
         | TyKind::TypeVar(..) => Repr::Opaque,
         | TyKind::Where(_, ty) => db.repr_of(ty),
@@ -235,6 +251,28 @@ fn repr_from_attrs(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) ->
         }
     }
 
+    if let Some(arr) = group.field("array").and_then(AttrInput::group) {
+        if let (Some(elem), Some(len)) = (arr.field("elem"), arr.field("len")) {
+            let elem = if let Some(idx) = elem.int() {
+                db.repr_of(args[idx as usize])
+            } else {
+                repr_from_attrs(db, elem.group().unwrap(), args)
+            };
+
+            let len = if let Some(idx) = len.int() {
+                match args[idx as usize].lookup(db.upcast()) {
+                    | TyKind::Figure(l) => ArrayLen::Const(l as usize),
+                    | TyKind::TypeVar(v) => ArrayLen::TypeVar(v.src().unwrap().into()),
+                    | _ => unreachable!(),
+                }
+            } else {
+                ArrayLen::Const(len.string().unwrap().parse().unwrap())
+            };
+
+            repr = Repr::Array(len, Box::new(elem))
+        }
+    }
+
     if let Some(func) = group.field("func").and_then(AttrInput::group) {
         if let Some(arg) = func.field("arg") {
             if let Some(ret) = func.field("ret") {
@@ -307,12 +345,12 @@ pub fn func_signature_query(db: &dyn MirDatabase, func: hir::Func) -> Signature 
     let mut ret = infer.self_type.ty;
     let mut args = Vec::new();
 
-    while let TyKind::Where(_, ty) = ret.lookup(hir_db) {
-        ret = ty;
-    }
-
-    while let TyKind::ForAll(_, ty, _) = ret.lookup(hir_db) {
-        ret = ty;
+    loop {
+        match ret.lookup(hir_db) {
+            | TyKind::ForAll(_, ty, _) => ret = ty,
+            | TyKind::Where(_, ty) => ret = ty,
+            | _ => break,
+        }
     }
 
     if func.has_body(hir_db) {

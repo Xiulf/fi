@@ -1,9 +1,10 @@
-use hir::id::{AssocItemId, DefWithBodyId, HasModule};
-use hir::{Expr, HasResolver, Literal, MethodSource, Resolver, ValueNs};
+use hir::id::{AssocItemId, HasModule};
+use hir::{Expr, HasResolver, HirDisplay, Literal, MethodSource, Resolver, ValueNs};
 
 use super::*;
 use crate::repr::Repr;
 
+#[derive(Debug)]
 pub enum Arg {
     ExprId(hir::ExprId),
     Op(Operand),
@@ -27,6 +28,21 @@ impl BodyLowerCtx<'_> {
                     | Literal::String(ref v) => Operand::Const(Const::String(v.clone()), repr),
                 }
             },
+            | Expr::Array { ref exprs } => {
+                let res = self.store_in(store_in, self.infer.type_of_expr[expr]);
+
+                for (i, &expr) in exprs.iter().enumerate() {
+                    let idx = (Const::Int(i as i128), Repr::usize());
+                    let mut place = Some(res.clone().index(idx));
+                    let op = self.lower_expr(expr, &mut place);
+
+                    if let Some(place) = place {
+                        self.builder.assign(place, op);
+                    }
+                }
+
+                Operand::Move(res)
+            },
             | Expr::Path { ref path } => self.lower_path(
                 &Resolver::for_expr(self.db.upcast(), self.builder.origin().def, expr),
                 (expr, 0),
@@ -45,7 +61,7 @@ impl BodyLowerCtx<'_> {
                 args.reverse();
                 self.lower_app(expr, Arg::ExprId(base), args, store_in)
             },
-            | Expr::Infix { ref exprs, ref ops } => self.lower_infix_expr(expr, exprs, ops),
+            | Expr::Infix { ref exprs, ref ops } => self.lower_infix_expr(expr, exprs, ops, store_in),
             | Expr::If {
                 cond,
                 then,
@@ -153,7 +169,7 @@ impl BodyLowerCtx<'_> {
             if let Expr::Path { ref path } = body[base] {
                 let resolver = Resolver::for_expr(self.db.upcast(), self.builder.origin().def, base);
 
-                return self.lower_path_app(&resolver, (expr, 0), path, args, store_in);
+                return self.lower_path_app(&resolver, expr, (base, 0), path, args, store_in);
             }
         }
 
@@ -165,7 +181,8 @@ impl BodyLowerCtx<'_> {
     pub fn lower_path_app(
         &mut self,
         resolver: &Resolver,
-        expr: (hir::ExprId, usize),
+        expr: hir::ExprId,
+        base: (hir::ExprId, usize),
         path: &hir::Path,
         mut args: Vec<Arg>,
         store_in: &mut Option<Place>,
@@ -177,27 +194,25 @@ impl BodyLowerCtx<'_> {
                 let resolver = id.resolver(self.db.upcast());
                 let data = self.db.fixity_data(id);
 
-                return self.lower_path_app(&resolver, expr, &data.func, args, store_in);
+                return self.lower_path_app(&resolver, expr, base, &data.func, args, store_in);
             },
             | ValueNs::Func(id) => {
                 let func = hir::Func::from(id);
 
                 if func.is_intrinsic(self.db.upcast()) {
-                    return self.lower_intrinsic(expr.0, &func.name(self.db.upcast()).to_string(), args, store_in);
+                    return self.lower_intrinsic(expr, &func.name(self.db.upcast()).to_string(), args, store_in);
                 }
 
-                (self.lower_path(resolver, expr, path, &mut None), self.func_params(id))
+                (self.lower_path(resolver, base, path, &mut None), self.func_params(id))
             },
             | ValueNs::Ctor(id) => {
-                let ty = self.infer.type_of_expr[expr.0];
-                let repr = self.db.repr_of(ty);
-                let res = self.builder.add_local(LocalKind::Tmp, repr);
-                self.builder.init(res);
+                let ty = self.infer.type_of_expr[expr];
+                let res = self.store_in(store_in, ty);
                 let downcast = if self.db.type_ctor_data(id.parent).ctors.len() == 1 {
-                    Place::new(res)
+                    res.clone()
                 } else {
-                    self.builder.set_discriminant(Place::new(res), id.into());
-                    Place::new(res).downcast(id.into())
+                    self.builder.set_discriminant(res.clone(), id.into());
+                    res.clone().downcast(id.into())
                 };
 
                 for (i, arg) in args.into_iter().enumerate() {
@@ -205,33 +220,33 @@ impl BodyLowerCtx<'_> {
                     self.builder.assign(downcast.clone().field(i), arg);
                 }
 
-                return Operand::Move(Place::new(res));
+                return Operand::Move(res);
             },
-            | _ => (self.lower_path(resolver, expr, path, &mut None), args.len()),
+            | _ => (self.lower_path(resolver, base, path, &mut None), args.len()),
         };
 
         if params > 0 {
-            let ty = self.infer.type_of_expr[expr.0];
+            let repr = self.app_ret_ty(&base, params);
             let args2 = args
                 .drain(..params)
                 .map(|a| self.lower_arg(a, &mut None))
                 .collect::<Vec<_>>();
 
             if args.is_empty() {
-                let res = self.store_in(store_in, ty);
+                let res = self.store_in_repr(store_in, repr);
 
                 self.builder.call(res.clone(), base, args2);
                 return Operand::Move(res);
             }
 
-            let res = self.store_in(&mut None, ty);
+            let res = self.store_in_repr(&mut None, repr);
 
             self.builder.call(res.clone(), base, args2);
             base = Operand::Move(res);
         }
 
         if !args.is_empty() {
-            self.lower_app(expr.0, Arg::Op(base), args, store_in)
+            self.lower_app(expr, Arg::Op(base), args, store_in)
         } else {
             base
         }
@@ -273,33 +288,50 @@ impl BodyLowerCtx<'_> {
                 let infer = self.infer.clone();
                 let is_method = func.as_assoc_item(self.db.upcast()).is_some();
                 let mut methods = infer.methods.get(&expr).map(|m| m.iter().copied());
-                let base = if is_method {
-                    let methods = methods.as_mut().unwrap();
+                let (mut base, sig) = if is_method {
+                    let methods = methods.as_mut().expect(&format!("{:?}", expr));
 
                     match methods.next().unwrap() {
                         | MethodSource::Member(id) => {
                             let member = self.db.member_data(id);
-                            let item = match member.item(path.segments().last().unwrap()).unwrap() {
-                                | AssocItemId::FuncId(id) => DefWithBodyId::FuncId(id),
-                                | AssocItemId::StaticId(id) => DefWithBodyId::StaticId(id),
+                            let func = match member.item(path.segments().last().unwrap()).unwrap() {
+                                | AssocItemId::FuncId(id) => hir::Func::from(id),
+                                | AssocItemId::StaticId(_) => unreachable!(),
                             };
 
-                            let ty = self.db.value_ty(item.into()).ty;
-                            let res = self.store_in(store_in, ty);
+                            let sig = self.db.func_signature(func);
+                            let repr = Repr::Func(Box::new(sig.clone()), false);
+                            let res = if sig.params.is_empty() {
+                                self.store_in_repr(&mut None, repr)
+                            } else {
+                                self.store_in_repr(store_in, repr)
+                            };
 
-                            self.builder.def_ref(res.clone(), item.into());
-                            Operand::Move(res)
+                            self.builder.def_ref(res.clone(), func.into());
+                            (Operand::Move(res), sig)
                         },
                         | MethodSource::Record(_idx, _p) => todo!(),
                     }
                 } else {
                     let sig = self.db.func_signature(func);
-                    let repr = Repr::Func(Box::new(sig), false);
-                    let res = self.store_in_repr(store_in, repr);
+                    let repr = Repr::Func(Box::new(sig.clone()), false);
+                    let res = if sig.params.is_empty() {
+                        self.store_in_repr(&mut None, repr)
+                    } else {
+                        self.store_in_repr(store_in, repr)
+                    };
 
                     self.builder.def_ref(res.clone(), func.into());
-                    Operand::Move(res)
+                    (Operand::Move(res), sig)
                 };
+
+                tracing::debug!("{}: {}", path, sig.display(self.db.upcast()));
+
+                if sig.params.is_empty() {
+                    let place = self.store_in_repr(store_in, sig.ret);
+                    self.builder.call(place.clone(), base, []);
+                    base = Operand::Move(place);
+                }
 
                 base
             },
@@ -307,7 +339,13 @@ impl BodyLowerCtx<'_> {
         }
     }
 
-    pub fn lower_infix_expr(&mut self, expr: hir::ExprId, exprs: &[hir::ExprId], ops: &[hir::Path]) -> Operand {
+    pub fn lower_infix_expr(
+        &mut self,
+        expr: hir::ExprId,
+        exprs: &[hir::ExprId],
+        ops: &[hir::Path],
+        store_in: &mut Option<Place>,
+    ) -> Operand {
         use std::iter::{once, Enumerate, Peekable};
         let exprs = exprs.iter().map(|e| Arg::ExprId(*e));
         let resolver = Resolver::for_expr(self.db.upcast(), self.builder.origin().def, expr);
@@ -331,6 +369,8 @@ impl BodyLowerCtx<'_> {
             ops.iter().enumerate(),
             expr,
             &resolver,
+            store_in,
+            true,
         );
 
         fn go<'a>(
@@ -340,6 +380,8 @@ impl BodyLowerCtx<'_> {
             mut ops: Enumerate<impl Iterator<Item = &'a hir::Path>>,
             id: hir::ExprId,
             resolver: &Resolver,
+            store_in: &mut Option<Place>,
+            top_level: bool,
         ) -> Operand {
             if let Some((fix, assoc, prec)) = fixities.next() {
                 let (i, op) = ops.next().unwrap();
@@ -357,24 +399,36 @@ impl BodyLowerCtx<'_> {
                     let lhs = exprs.next().unwrap();
                     let rhs = exprs.next().unwrap();
 
-                    return ctx.lower_path_app(resolver, (id, i), op, vec![lhs, rhs], &mut None);
+                    if top_level {
+                        return ctx.lower_path_app(resolver, id, (id, i), op, vec![lhs, rhs], store_in);
+                    } else {
+                        return ctx.lower_path_app(resolver, id, (id, i), op, vec![lhs, rhs], &mut None);
+                    }
                 };
 
                 if left {
                     let lhs = exprs.next().unwrap();
                     let rhs = exprs.next().unwrap();
-                    let exp = ctx.lower_path_app(resolver, (id, i), op, vec![lhs, rhs], &mut None);
+                    let exp = ctx.lower_path_app(resolver, id, (id, i), op, vec![lhs, rhs], &mut None);
                     let exprs = once(Arg::Op(exp)).chain(exprs).collect::<Vec<_>>();
 
-                    go(ctx, fixities, exprs.into_iter(), ops, id, resolver)
+                    go(ctx, fixities, exprs.into_iter(), ops, id, resolver, store_in, top_level)
                 } else {
                     let lhs = exprs.next().unwrap();
-                    let rhs = go(ctx, fixities, exprs, ops, id, resolver);
+                    let rhs = go(ctx, fixities, exprs, ops, id, resolver, store_in, false);
 
-                    ctx.lower_path_app(resolver, (id, i), op, vec![lhs, Arg::Op(rhs)], &mut None)
+                    if top_level {
+                        ctx.lower_path_app(resolver, id, (id, i), op, vec![lhs, Arg::Op(rhs)], store_in)
+                    } else {
+                        ctx.lower_path_app(resolver, id, (id, i), op, vec![lhs, Arg::Op(rhs)], &mut None)
+                    }
                 }
             } else {
-                ctx.lower_arg(exprs.next().unwrap(), &mut None)
+                if top_level {
+                    ctx.lower_arg(exprs.next().unwrap(), store_in)
+                } else {
+                    ctx.lower_arg(exprs.next().unwrap(), &mut None)
+                }
             }
         }
     }
@@ -429,6 +483,15 @@ impl BodyLowerCtx<'_> {
         self.builder.discriminant(Place::new(local), place);
 
         Operand::Move(Place::new(local))
+    }
+
+    fn app_ret_ty(&self, base: &Operand, params: usize) -> Repr {
+        let base = self.builder.operand_repr(base);
+
+        match base {
+            | Repr::Func(sig, _) => sig.ret,
+            | _ => unreachable!(),
+        }
     }
 
     fn func_params(&self, id: hir::id::FuncId) -> usize {

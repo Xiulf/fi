@@ -1,4 +1,5 @@
-module Monad.Reader =
+@cfg(skip)
+module Monad:Reader =
 
 import Core
 

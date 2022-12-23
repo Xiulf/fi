@@ -1,4 +1,4 @@
-module Core.Convert =
+module Core:Convert =
 
 import Core
 
@@ -14,14 +14,18 @@ class TryInto a b err | a b -> err =
 class TryFrom a b err | a b -> err =
     try_from :: b -> Result err a
 
+@cfg(skip)
 member a a of Into =
     into x = x
 
+@cfg(skip)
 member a b of Into where From b a =
     into x = from x
 
+@cfg(skip)
 member a a of From =
     from x = x
 
+@cfg(skip)
 member a b err of TryInto where TryFrom b a err =
     try_into x = try_from x

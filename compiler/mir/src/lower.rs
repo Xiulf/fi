@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arena::ArenaMap;
 use hir::ty::{Constraint, Ty};
-use hir::{AsName, PatId};
+use hir::{AsName, HirDisplay, PatId};
 
 use crate::builder::Builder;
 use crate::db::MirDatabase;
@@ -55,7 +55,9 @@ pub(crate) fn lower_body(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> B
 
     if let hir::id::DefWithBodyId::FuncId(f) = def {
         let f = hir::Func::from(f);
+        let sig = db.func_signature(f);
         tracing::debug!("lower_body({})", f.name(db.upcast()));
+        tracing::debug!("{}", sig.display(db.upcast()));
     }
 
     let entry = bcx.builder.create_block();

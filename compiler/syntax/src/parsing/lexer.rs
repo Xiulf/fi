@@ -294,6 +294,12 @@ impl<'src> Lexer<'src> {
                 self.insert_default(start, COLON);
             },
             | '=' if !is_op_char(self.peek()) => match self.stack[..] {
+                | [.., (_, LayoutDelim::ModuleHead), (_, LayoutDelim::Paren)] => {
+                    self.stack.pop().unwrap();
+                    self.stack.pop().unwrap();
+                    self.emit(EQUALS);
+                    self.insert_start(LayoutDelim::ModuleBody);
+                },
                 | [.., (_, LayoutDelim::ClassHead), (_, LayoutDelim::Where)] => {
                     Collapse::new(self.tokens.len()).collapse(
                         start,

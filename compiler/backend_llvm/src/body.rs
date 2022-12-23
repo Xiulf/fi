@@ -1,6 +1,6 @@
 use arena::Idx;
 use hir::HirDisplay;
-use inkwell::values::{self, AggregateValue, BasicValue, BasicValueEnum, CallableValue};
+use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
 use mir::repr::Repr;
 use mir::syntax::{
     BinOp, Block, BlockData, CastKind, Const, JumpTarget, Local, LocalKind, Operand, Place, Projection, Rvalue, Stmt,
@@ -18,7 +18,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen(&mut self) {
         let body = self.body.clone();
         let by_ref_locals = crate::ssa::analyze(self);
-        eprintln!("{}", body.display(self.db.upcast()));
+        tracing::debug!("{}", self.func.get_type());
+        tracing::debug!("{}", body.display(self.db.upcast()));
 
         let entry = self.context.append_basic_block(self.func, "entry");
         let first_block = Idx::from_raw(0u32.into());
@@ -34,13 +35,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
         if self.fn_abi.ret.is_indirect() {
             let ptr = self.func.get_first_param().unwrap().into_pointer_value();
-            let val = PlaceRef::new(self.fn_abi.ret.layout.clone(), ptr);
+            let val = PlaceRef::new(self.fn_abi.ret.layout.clone(), ptr, None);
 
             self.ret_ptr = Some(val);
         }
 
         for (local, data) in body.locals.iter() {
-            if data.kind != LocalKind::Arg {
+            if !body.blocks[first_block].params.contains(&Local(local)) {
                 let layout = crate::layout::repr_and_layout(self.db, data.repr.clone());
                 let value = if by_ref_locals.contains(&Local(local)) {
                     if layout.abi.is_unsized() {
@@ -48,6 +49,12 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     } else {
                         LocalRef::Place(PlaceRef::new_alloca(self.cx, layout))
                     }
+                } else if data.kind == LocalKind::Arg {
+                    let ty = self.basic_type_for_repr(&layout.repr);
+                    let phi = self.builder.build_phi(ty, "");
+                    let phi = OperandRef::new_phi(layout, phi);
+
+                    LocalRef::Operand(Some(phi))
                 } else {
                     LocalRef::new_operand(self.cx, layout)
                 };
@@ -56,37 +63,14 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             }
         }
 
-        for (block, data) in body.blocks.iter() {
+        for (block, _) in body.blocks.iter() {
             let bb = self.context.append_basic_block(self.func, "");
 
             self.blocks.insert(block, bb);
-            self.builder.position_at_end(bb);
-
-            if block != first_block {
-                for param in data.params.iter() {
-                    let layout = crate::layout::repr_and_layout(self.db, body.locals[param.0].repr.clone());
-                    let value = if by_ref_locals.contains(&param) {
-                        if layout.abi.is_unsized() {
-                            todo!();
-                        } else {
-                            LocalRef::Place(PlaceRef::new_alloca(self.cx, layout))
-                        }
-                    } else {
-                        let ty = self.basic_type_for_repr(&layout.repr);
-                        let phi = self.builder.build_phi(ty, "");
-                        let phi = OperandRef::new_phi(layout, phi);
-
-                        LocalRef::Operand(Some(phi))
-                    };
-
-                    self.locals.insert(param.0, value);
-                }
-            }
         }
 
         let first_block = self.blocks[first_block];
 
-        self.builder.position_at_end(entry);
         self.builder.build_unconditional_branch(first_block);
 
         for (block, data) in body.blocks.iter() {
@@ -142,14 +126,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | PassMode::ByValPair(_, _) => {
                     let op = self.codegen_operand(op);
                     let (a, b) = op.pair();
-                    let ty = self
-                        .basic_type_for_repr(&self.fn_abi.ret.layout.repr)
-                        .into_struct_type();
-                    let undef = ty.get_undef();
 
-                    undef.const_insert_value(a, &mut [0]);
-                    undef.const_insert_value(b, &mut [1]);
-                    self.builder.build_return(Some(&undef));
+                    self.builder.build_aggregate_return(&[a, b]);
                 },
                 | PassMode::ByRef { size: Some(_) } => {
                     let ret_ptr = self.ret_ptr.clone().unwrap();
@@ -294,7 +272,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
                 let func_abi = self.compute_fn_abi(&func_sig);
                 let func = match func.val {
-                    | OperandValue::Ref(ptr) => self.builder.build_load(ptr, ""),
+                    | OperandValue::Ref(ptr, None) => self.builder.build_load(ptr, ""),
                     | _ => func.immediate(),
                 };
 
@@ -327,8 +305,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     },
                     | PassMode::ByValPair(_, _) => {
                         let val = call.left().unwrap().into_struct_value();
-                        let a = val.const_extract_value(&mut [0]);
-                        let b = val.const_extract_value(&mut [1]);
+                        let a = self.builder.build_extract_value(val, 0, "").unwrap();
+                        let b = self.builder.build_extract_value(val, 1, "").unwrap();
                         let res = OperandRef::new_pair(func_abi.ret.layout, a, b);
                         self.store_return(place, res);
                     },
@@ -490,6 +468,10 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | Projection::Deref => res.deref(self.cx),
                 | Projection::Field(i) => res.field(self.cx, *i),
                 | Projection::Downcast(ctor) => res.downcast(self.cx, *ctor),
+                | Projection::Index(i) => {
+                    let i = self.codegen_operand(i).load(self.cx);
+                    res.index(self.cx, i)
+                },
             };
         }
 
@@ -561,7 +543,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn make_ref(&mut self, op: OperandRef<'ctx>) -> PlaceRef<'ctx> {
         match op.val {
-            | OperandValue::Ref(ptr) => PlaceRef::new(op.layout, ptr),
+            | OperandValue::Ref(ptr, extra) => PlaceRef::new(op.layout, ptr, extra),
             | _ => {
                 let place = PlaceRef::new_alloca(self.cx, op.layout.clone());
                 op.store(self.cx, &place);

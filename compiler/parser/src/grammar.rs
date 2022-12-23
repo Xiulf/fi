@@ -30,10 +30,10 @@ fn exports(p: &mut Parser) {
 
     p.expect(L_PAREN);
 
-    while !p.at(EOF) && !p.at(R_PAREN) {
+    while !p.at(EOF) && !p.at_ts(TokenSet::new(&[R_PAREN, EQUALS])) {
         export(p);
 
-        if !p.at(R_PAREN) {
+        if !p.at_ts(TokenSet::new(&[R_PAREN, EQUALS])) {
             p.expect(COMMA);
         }
     }
@@ -82,6 +82,7 @@ fn export(p: &mut Parser) {
         },
         | _ => {
             p.error("exported an export");
+            p.bump_any();
             m.abandon(p);
         },
     }

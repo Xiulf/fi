@@ -1,4 +1,4 @@
-module Core.Default =
+module Core:Default =
 
 import Core
 

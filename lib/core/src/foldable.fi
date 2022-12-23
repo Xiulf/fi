@@ -1,7 +1,7 @@
-module Core.Foldable =
+module Core:Foldable =
 
 import Core
-import Core.Ops (Concat, concat)
+import Core:Ops (Concat, concat)
 
 class Foldable f =
     foldl :: forall a b. f a -> b -> (b -> a -> b) -> b
@@ -10,5 +10,6 @@ class Foldable f =
 class FromFoldable t =
     fromFoldable :: forall f a. f a -> t a where Foldable f
 
+@cfg(skip)
 foldMap :: forall f d. f d -> d where Foldable f, Default d, Concat d
 foldMap f = foldr f default concat

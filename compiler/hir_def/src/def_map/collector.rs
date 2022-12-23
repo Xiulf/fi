@@ -3,6 +3,7 @@ use cfg::CfgOptions;
 use rustc_hash::{FxHashMap, FxHashSet};
 use syntax::{ast, NameOwner};
 
+use crate::attrs::{Attrs, RawAttrs};
 use crate::db::DefDatabase;
 use crate::def_map::path_resolution::{FixPoint, ResolveMode};
 use crate::def_map::DefMap;
@@ -113,6 +114,14 @@ impl<'a> DefCollector<'a> {
         let mut modules = Vec::new();
 
         let mut seed = |this: &mut DefCollector, file_id, module: ast::ItemModule| -> Option<()> {
+            let attrs = Attrs(RawAttrs::new(&module));
+
+            if let Some(cfg) = attrs.cfg() {
+                if !cfg.is_enabled(&this.cfg_opts) {
+                    return None;
+                }
+            }
+
             let name = module.name()?.as_name();
             let exports = module.exports();
             let item_tree = this.db.item_tree(file_id);

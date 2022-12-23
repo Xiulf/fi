@@ -16,8 +16,8 @@ use hir_def::body::Body;
 use hir_def::diagnostic::DiagnosticSink;
 use hir_def::expr::ExprId;
 use hir_def::id::{
-    AssocItemId, ClassId, ContainerId, DefWithBodyId, FixityId, HasModule, MemberId, TypeCtorId, TypeVarId,
-    TypeVarOwner, TypedDefId,
+    AssocItemId, ClassId, ContainerId, DefWithBodyId, FixityId, HasModule, MemberId, TypeAliasId, TypeCtorId,
+    TypeVarId, TypeVarOwner, TypedDefId,
 };
 use hir_def::infix::ProcessInfix;
 use hir_def::lang_item::{self, LangItem};
@@ -342,6 +342,14 @@ impl<'a> InferenceContext<'a> {
         self.result.diagnostics.push(diag);
     }
 
+    pub fn expand_aliases(&mut self, ty: TyId) -> TyId {
+        ty.expand_aliases(self.db, &mut self.types, &mut self.type_vars)
+    }
+
+    pub fn expand_alias(&mut self, src: TySource, alias: TypeAliasId, args: &[TyId]) -> TyId {
+        TyId::expand_alias(self.db, &mut self.types, &mut self.type_vars, src, alias, args)
+    }
+
     // #[track_caller]
     pub(crate) fn report_mismatch(&mut self, expected: TyId, found: TyId, id: impl Into<ExprOrPatId>) {
         // log::debug!("mismatch: {}", std::panic::Location::caller());
@@ -357,7 +365,8 @@ impl<'a> InferenceContext<'a> {
         });
     }
 
-    pub(crate) fn constrain(&mut self, expected: CtntExpected, found: CtntFound, ctnt: CtntInfo) {
+    pub(crate) fn constrain(&mut self, expected: CtntExpected, found: CtntFound, mut ctnt: CtntInfo) {
+        ctnt.types = ctnt.types.iter().map(|&t| self.expand_aliases(t)).collect();
         self.constraints.push((ctnt, expected, found, self.class_env.current()));
     }
 

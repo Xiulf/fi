@@ -1,53 +1,61 @@
-module Main:Test =
+module Test =
 
-import Prim
-import Intrinsics (unsafe, transmute, iconvert, iadd, ptr_offset, ($))
+import Core
+import Core:Ops (Index)
+import Intrinsics (unsafe, transmute, iconvert, iadd, ptr_offset)
 
 
-type Option a =
-    | None
-    | Some a
+type Range i = | Range i i
+infix 5 Range as (..)
+
 
 @main
 main =
-    let a = None :: Option Int32
-    let r = unwrap_or a 0
+    let arr = [0, 1, 2, 3 :: Int32]
+    let range = 0..4
+
+    ExitCode $ arr#2
+
+
+member (Array 4 Int32) Int Int32 of Index =
+    index arr idx = Intrinsics:array_index arr idx
+
+
+; module String (String, AsStr, new, empty, push, puts) =
+;     type String = | String (Ptr Byte) Uint Uint
     
-    puts "test"
-    ExitCode r
+;     empty :: String
+;     empty = String LibC:NULL 0 0
+    
+;     ; push :: forall t. String -> t -> String where AsStr t
+;     push :: String -> Str -> String
+;     push (String ptr len cap) s =
+;         let sPtr, sLen = str_parts (asStr s)
+;         let newLen = iadd len sLen
+;         let newPtr = LibC:malloc newLen
+;         LibC:memcpy newPtr ptr len
+;         let len' = iconvert len
+;         let newPtr' = ptr_offset newPtr len'
+;         LibC:memcpy newPtr' sPtr sLen
+;         String newPtr newLen newLen
 
+;     str_parts :: Str -> (Ptr Byte, Uint)
+;     str_parts s = unsafe (transmute s)
 
-unwrap_or :: Option Int32 -> Int32 -> Int32
-unwrap_or (Some x) _ = x
-unwrap_or _        x = x
+;     str_from_parts :: Ptr Byte -> Uint -> Str where Unsafe
+;     str_from_parts ptr len = transmute (ptr, len)
 
+;     @inline
+;     puts :: Str -> Int32
+;     puts s =
+;         let ptr, _ = str_parts s
+;         unsafe (LibC:puts ptr)
+    
+;     class AsStr t =
+;         asStr :: t -> Str
+    
+;     member Str of AsStr =
+;         asStr s = s
 
-module C =
-    foreign puts :: Ptr Byte -> Int32 where Unsafe
-    foreign malloc :: forall t. Uint -> Ptr t
-    foreign memcpy :: forall t. Ptr t -> Ptr t -> Uint -> Ptr t
-
-
-@inline
-puts :: Str -> Int32
-puts s =
-    let ptr, _ = str_parts s
-    unsafe (C:puts ptr)
-
-concatstr :: Str -> Str -> Str
-concatstr a b =
-    let ap, al = str_parts a
-    let bp, bl = str_parts b
-    let len = iadd al bl
-    let ptr = C:malloc (len) :: Ptr Byte
-    C:memcpy ptr ap al
-    let al' = iconvert al
-    let ptr' = ptr_offset ptr al'
-    C:memcpy ptr' bp bl
-    unsafe (str_from_parts ptr len)
-
-str_parts :: Str -> (Ptr Byte, Uint)
-str_parts s = unsafe (transmute s)
-
-str_from_parts :: Ptr Byte -> Uint -> Str where Unsafe
-str_from_parts ptr len = transmute (ptr, len)
+;     member String of AsStr =
+;         asStr (String ptr len _) = unsafe (str_from_parts ptr len)

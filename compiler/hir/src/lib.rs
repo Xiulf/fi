@@ -189,6 +189,10 @@ impl Module {
         for inst in self.members(db) {
             inst.diagnostics(db, sink);
         }
+
+        for child in self.children(db) {
+            child.diagnostics(db, sink);
+        }
     }
 }
 
@@ -439,31 +443,31 @@ impl Func {
 
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let infer = db.infer(self.id.into());
-        // let data = db.func_data(self.id);
-        // let body = db.body(self.id.into());
+        let data = db.func_data(self.id);
+        let body = db.body(self.id.into());
 
-        // if data.name.as_ref() == "test" {
-        // eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-        // eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
+        if data.name.as_ref() == "main" {
+            eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
+            eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
-        // for ((id, i), method) in &infer.methods {
-        //     eprintln!("{:?}#{} -> {:?}", id, i, method);
-        // }
+            for ((id, i), method) in &infer.methods {
+                eprintln!("{:?}#{} -> {:?}", id, i, method);
+            }
 
-        // eprintln!();
+            eprintln!();
 
-        // for (expr, ty) in infer.type_of_expr.iter() {
-        //     eprintln!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
-        // }
+            for (expr, ty) in infer.type_of_expr.iter() {
+                eprintln!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
+            }
 
-        // eprintln!();
+            eprintln!();
 
-        // for (pat, ty) in infer.type_of_pat.iter() {
-        //     eprintln!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
-        // }
+            for (pat, ty) in infer.type_of_pat.iter() {
+                eprintln!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
+            }
 
-        // eprintln!();
-        // }
+            eprintln!();
+        }
 
         infer.add_diagnostics(db, self.id.into(), sink);
     }

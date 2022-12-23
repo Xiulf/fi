@@ -166,11 +166,22 @@ impl Builder {
                     | Repr::Struct(fields) => repr = fields[i].clone(),
                     | _ => unreachable!(),
                 },
+                | Projection::Index(_) => match repr {
+                    | Repr::Array(_, e) => repr = *e.clone(),
+                    | _ => unreachable!(),
+                },
                 | Projection::Downcast(_) => todo!(),
             }
         }
 
         repr
+    }
+
+    pub fn operand_repr(&self, op: &Operand) -> Repr {
+        match op {
+            | Operand::Copy(place) | Operand::Move(place) => self.place_repr(place),
+            | Operand::Const(_, repr) => repr.clone(),
+        }
     }
 }
 
@@ -189,6 +200,11 @@ impl Place {
 
     pub fn field(mut self, index: usize) -> Self {
         self.projection.push(Projection::Field(index));
+        self
+    }
+
+    pub fn index(mut self, index: impl Into<Operand>) -> Self {
+        self.projection.push(Projection::Index(index.into()));
         self
     }
 

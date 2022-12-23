@@ -5,7 +5,6 @@ use arena::{ArenaMap, Idx};
 use base_db::target::CompilerTarget;
 use hir::attrs::HasAttrs;
 use hir::id::DefWithBodyId;
-use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -32,7 +31,6 @@ pub struct CodegenCtx<'a, 'ctx> {
     pub target_machine: TargetMachine,
     pub target_data: TargetData,
     pub fpm: &'a PassManager<values::FunctionValue<'ctx>>,
-    pub hir: hir::Module,
     pub funcs: FxHashMap<hir::Func, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
     pub consts: Cell<usize>,
 }
@@ -96,7 +94,6 @@ pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnc
 
     let ctx = CodegenCtx {
         db,
-        hir,
         target_data,
         target_machine,
         module: &module,
@@ -112,7 +109,7 @@ pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnc
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn write(&mut self, file: &mut dyn std::io::Write) {
-        self.module.print_to_stderr();
+        // self.module.print_to_stderr();
 
         let buffer = self
             .target_machine
@@ -122,15 +119,25 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         file.write_all(buffer.as_slice()).unwrap();
     }
 
-    pub fn codegen(&mut self) {
-        for def in self.hir.declarations(self.db.upcast()) {
+    pub fn codegen(&mut self, module: hir::Module) {
+        self.codegen_module(module);
+
+        let mpm = PassManager::create(());
+
+        mpm.add_always_inliner_pass();
+        // mpm.add_function_inlining_pass();
+        mpm.run_on(self.module);
+    }
+
+    pub fn codegen_module(&mut self, module: hir::Module) {
+        for def in module.declarations(self.db.upcast()) {
             match def {
                 | hir::ModuleDef::Func(func) => self.codegen_func(func),
                 | _ => {},
             }
         }
 
-        for member in self.hir.members(self.db.upcast()) {
+        for member in module.members(self.db.upcast()) {
             for item in member.items(self.db.upcast()) {
                 match item {
                     | hir::AssocItem::Func(func) => self.codegen_func(func),
@@ -139,11 +146,9 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             }
         }
 
-        let mpm = PassManager::create(());
-
-        mpm.add_always_inliner_pass();
-        // mpm.add_function_inlining_pass();
-        mpm.run_on(self.module);
+        for module in module.children(self.db.upcast()) {
+            self.codegen_module(module);
+        }
     }
 
     pub fn declare_func(&mut self, func: hir::Func) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {

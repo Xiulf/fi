@@ -10,27 +10,37 @@ use crate::operand::{OperandRef, OperandValue};
 pub struct PlaceRef<'ctx> {
     pub layout: ReprAndLayout,
     pub ptr: values::PointerValue<'ctx>,
+    pub extra: Option<values::BasicValueEnum<'ctx>>,
 }
 
 impl<'ctx> PlaceRef<'ctx> {
     pub fn new_uninit(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
-        let ty = ctx.basic_type_for_layout(&layout).ptr_type(AddressSpace::Local);
+        let ty = ctx.basic_type_for_layout(&layout).ptr_type(AddressSpace::default());
 
         Self {
             layout,
             ptr: ty.const_null(),
+            extra: None,
         }
     }
 
-    pub fn new(layout: ReprAndLayout, ptr: values::PointerValue<'ctx>) -> Self {
-        Self { layout, ptr }
+    pub fn new(
+        layout: ReprAndLayout,
+        ptr: values::PointerValue<'ctx>,
+        extra: Option<values::BasicValueEnum<'ctx>>,
+    ) -> Self {
+        Self { layout, ptr, extra }
     }
 
     pub fn new_alloca(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         let ty = ctx.basic_type_for_repr(&layout.repr);
         let ptr = ctx.builder.build_alloca(ty, "");
 
-        Self { layout, ptr }
+        Self {
+            layout,
+            ptr,
+            extra: None,
+        }
     }
 
     pub fn cast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
@@ -42,7 +52,11 @@ impl<'ctx> PlaceRef<'ctx> {
         let ty = ctx.basic_type_for_layout(&layout).ptr_type(ads);
         let ptr = ctx.builder.build_pointer_cast(self.ptr, ty, "");
 
-        Self { layout, ptr }
+        Self {
+            layout,
+            ptr,
+            extra: self.extra,
+        }
     }
 
     pub fn deref(self, ctx: &mut CodegenCtx<'_, 'ctx>) -> Self {
@@ -66,7 +80,7 @@ impl<'ctx> PlaceRef<'ctx> {
                 ctx.builder.build_struct_gep(self.ptr, 1, "").unwrap()
             },
             | Abi::Scalar(_) | Abi::ScalarPair(..) if field.is_zst() => {
-                let ptr = ctx.context.i8_type().ptr_type(AddressSpace::Generic);
+                let ptr = ctx.context.i8_type().ptr_type(AddressSpace::default());
                 let ptr = ctx.builder.build_pointer_cast(self.ptr, ptr, "");
                 let usize = ctx.context.ptr_sized_int_type(&ctx.target_data, None);
                 let offset = usize.const_int(offset.bytes(), false);
@@ -81,10 +95,22 @@ impl<'ctx> PlaceRef<'ctx> {
             },
         };
 
-        let ty = ctx.basic_type_for_repr(&field.repr).ptr_type(AddressSpace::Generic);
+        let ty = ctx.basic_type_for_repr(&field.repr).ptr_type(AddressSpace::default());
         let ptr = ctx.builder.build_pointer_cast(ptr, ty, "");
 
-        PlaceRef::new(field, ptr)
+        PlaceRef::new(field, ptr, None)
+    }
+
+    pub fn index(&self, ctx: &mut CodegenCtx<'_, 'ctx>, index: values::BasicValueEnum<'ctx>) -> Self {
+        let layout = self.layout.elem(ctx.db).unwrap();
+        let index = index.into_int_value();
+        let zero = ctx
+            .context
+            .ptr_sized_int_type(&ctx.target_data, None)
+            .const_int(0, false);
+        let ptr = unsafe { ctx.builder.build_in_bounds_gep(self.ptr, &[zero, index], "") };
+
+        Self::new(layout, ptr, None)
     }
 
     pub fn downcast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, ctor: hir::Ctor) -> Self {
@@ -95,7 +121,7 @@ impl<'ctx> PlaceRef<'ctx> {
         downcast.layout = self.layout.variant(index);
 
         let ty = ctx.basic_type_for_layout(&downcast.layout);
-        let ty = ty.ptr_type(AddressSpace::Generic);
+        let ty = ty.ptr_type(AddressSpace::default());
 
         downcast.ptr = ctx.builder.build_pointer_cast(downcast.ptr, ty, "");
         downcast
@@ -188,7 +214,7 @@ impl<'ctx> PlaceRef<'ctx> {
 
                 OperandValue::Pair(load(0), load(1))
             },
-            | _ => OperandValue::Ref(self.ptr),
+            | _ => OperandValue::Ref(self.ptr, self.extra),
         };
 
         OperandRef {

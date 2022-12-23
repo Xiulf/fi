@@ -12,7 +12,7 @@ use crate::in_file::InFile;
 use crate::item_tree::{ItemTreeId, ItemTreeNode};
 use crate::name::{AsName, Name};
 
-const CFG_ATTR: &'static str = "if";
+const CFG_ATTR: &'static str = "cfg";
 const DOC_ATTR: &'static str = "doc";
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]

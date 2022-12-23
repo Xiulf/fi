@@ -245,9 +245,9 @@ impl HirDisplay for Ty {
                     match id, args, lib, f {
                         "array-type"(2) => {
                             write!(f, "[")?;
-                            args[1].hir_fmt(f)?;
+                            args[0].hir_fmt(f)?;
                             write!(f, "]")?;
-                            TyParens(args[0], ParenMode::App).hir_fmt(f)
+                            TyParens(args[1], ParenMode::App).hir_fmt(f)
                         },
                         "slice-type"(1) => {
                             write!(f, "[]")?;

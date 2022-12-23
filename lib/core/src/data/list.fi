@@ -1,11 +1,12 @@
-module Data.List =
+@cfg(skip)
+module Data:List =
 
 import Core
-import Core.Cmp
-import Core.Ops (Index, index)
-import Core.Foldable
-import Core.Mappable
-import Data.Option
+import Core:Cmp
+import Core:Ops (Index, index)
+import Core:Foldable
+import Core:Mappable
+import Data:Option
 
 type List a =
     | Nil
@@ -19,11 +20,11 @@ length Nil    = 0
 first (x:_) = Some x
 first Nil   = None
 
-last (x:Nil) = Some x
-last (_: xs) = last xs
+last (x : Nil) = Some x
+last (_ : xs) = last xs
 last Nil     = None
 
-reverse list = foldl list Nil fn acc x -> x:acc
+reverse list = foldl list Nil fn acc x -> x : acc
 
 sort :: forall a. List a -> List a where Ord a a
 sort list = sortBy list fn a b -> cmp a b
@@ -48,29 +49,29 @@ sortBy list cmp =
         x : Nil -> x
         _ -> recur (mergePairs list)
 
-    mergeAll (SortBy.sequences cmp list)
+    mergeAll (SortBy:sequences cmp list)
 
 module SortBy =
     descending cmp = fn a la lb -> case lb of
-        b : bs if a `cmp` b == Gt -> descending cmp b (a:la) bs
-        _ -> (a:la) : sequences cmp lb
+        b : bs if a `cmp` b == Gt -> descending cmp b (a : la) bs
+        _ -> (a : la) : sequences cmp lb
 
     ascending cmp = fn a la lb -> case lb of
         b : bs if a `cmp` b != Gt -> ascending cmp b (fn ys -> la (a : ys)) bs
-        _ -> la (a:Nil) : sequences cmp lb
+        _ -> la (a : Nil) : sequences cmp lb
 
     sequences :: forall a. (a -> a -> Ordering) -> List a -> List (List a)
     sequences cmp = fn list -> case list of
         a : b : xs
-            if a `cmp` b == Gt -> descending cmp b (a:Nil) xs
-            else               -> ascending cmp b (fn x -> a:x) xs
+            if a `cmp` b == Gt -> descending cmp b (a : Nil) xs
+            else               -> ascending cmp b (fn x -> a : x) xs
         _ -> list : Nil
 
 member (List a) of Default =
     default = Nil
 
 member List of FromFoldable =
-    fromFoldable f = foldr f Nil fn acc x -> x:acc
+    fromFoldable f = foldr f Nil fn acc x -> x : acc
 
 member (List a) i a of Index where Integer i  =
     index (x: _) 0   = x
@@ -78,12 +79,12 @@ member (List a) i a of Index where Integer i  =
     index Nil    _   = partial (crash "index out of range")
 
 member List of Foldable =
-    foldl (x:xs) init f = foldl xs (f init x) f
+    foldl (x : xs) init f = foldl xs (f init x) f
     foldl Nil    init _ = init
     
-    foldr (x:xs) init f = f (foldr xs init f) x
+    foldr (x : xs) init f = f (foldr xs init f) x
     foldr Nil    init _ = init
 
 member List of Mappable =
-    map (x:xs) f = f x : map xs f
+    map (x : xs) f = f x : map xs f
     map Nil    _ = Nil

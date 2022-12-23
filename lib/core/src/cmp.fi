@@ -1,7 +1,8 @@
-module Core.Cmp =
+@cfg(skip)
+module Core:Cmp =
 
 import Core
-import Data.Bool (not)
+import Data:Bool (not)
 
 
 class Eq lhs rhs =

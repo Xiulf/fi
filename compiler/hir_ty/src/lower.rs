@@ -732,6 +732,7 @@ pub(crate) fn lower_member_query(db: &dyn HirDatabase, id: MemberId) -> Arc<Memb
                 let src = ctx.source(ty);
                 let kind = kind.to_info(db, &mut ctx.icx.types, &mut ctx.icx.type_vars, src);
                 let ty_ = ctx.lower_ty(ty);
+                let ty_ = ctx.expand_aliases(ty_);
 
                 ctx.check_kind(ty_, kind);
                 ty_

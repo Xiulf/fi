@@ -4,7 +4,7 @@ use hir::display::HirFormatter;
 use hir::id::DefWithBodyId;
 use hir::{DefWithBody, HirDisplay};
 
-use crate::repr::{Integer, Primitive, Repr, Scalar, Signature};
+use crate::repr::{ArrayLen, Integer, Primitive, Repr, Scalar, Signature};
 use crate::syntax::*;
 
 impl HirDisplay for Module {
@@ -274,6 +274,7 @@ impl HirDisplay for Place {
             match proj {
                 | Projection::Deref => f.write_char('*')?,
                 | Projection::Field(_) => {},
+                | Projection::Index(_) => {},
                 | Projection::Downcast(_) => f.write_char('(')?,
             }
         }
@@ -284,6 +285,7 @@ impl HirDisplay for Place {
             match proj {
                 | Projection::Deref => {},
                 | Projection::Field(i) => write!(f, ".{i}")?,
+                | Projection::Index(i) => write!(f, "[{}]", i.display(f.db))?,
                 | Projection::Downcast(c) => write!(f, " as {})", c.name(f.db))?,
             }
         }
@@ -338,11 +340,21 @@ impl HirDisplay for Repr {
 
                 write!(f, " }}")
             },
+            | Self::Array(len, el) => write!(f, "[{}]{}", len.display(f.db), el.display(f.db)),
             | Self::Ptr(to, true, _) => write!(f, "*fat {}", to.display(f.db)),
             | Self::Ptr(to, false, _) => write!(f, "*{}", to.display(f.db)),
             | Self::Box(to) => write!(f, "box({})", to.display(f.db)),
             | Self::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
             | Self::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),
+        }
+    }
+}
+
+impl HirDisplay for ArrayLen {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> Result {
+        match self {
+            | Self::Const(l) => write!(f, "{l}"),
+            | Self::TypeVar(v) => v.hir_fmt(f),
         }
     }
 }

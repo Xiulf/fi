@@ -2,7 +2,7 @@ pub mod db;
 pub mod diagnostics;
 
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, ExitCode};
 use std::{fs, io};
 
 use base_db::input::{FileId, SourceRoot, SourceRootId};
@@ -272,7 +272,7 @@ impl Driver {
         Ok(true)
     }
 
-    pub fn run(&self, ws: usize, args: impl Iterator<Item = impl AsRef<std::ffi::OsStr>>) -> io::Result<bool> {
+    pub fn run(&self, ws: usize, args: impl Iterator<Item = impl AsRef<std::ffi::OsStr>>) -> io::Result<ExitCode> {
         if self.build(ws)? {
             let ws = &self.workspaces[ws];
             let libs = self.db.libs();
@@ -310,9 +310,11 @@ impl Driver {
             }
 
             println!("`");
-            cmd.status().map(|s| s.success())
+
+            cmd.status()
+                .map(|s| s.code().map(|c| ExitCode::from(c as u8)).unwrap_or(ExitCode::FAILURE))
         } else {
-            Ok(false)
+            Ok(ExitCode::FAILURE)
         }
     }
 

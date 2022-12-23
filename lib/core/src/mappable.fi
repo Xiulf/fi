@@ -1,4 +1,4 @@
-module Core.Mappable =
+module Core:Mappable =
 
 import Core
 

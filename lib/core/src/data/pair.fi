@@ -1,7 +1,8 @@
-module Data.Pair =
+@cfg(skip)
+module Data:Pair =
 
 import Core
-import Core.Cmp
+import Core:Cmp
 
 member (Pair a b) of Default where Default a, Default b =
     default = default, default

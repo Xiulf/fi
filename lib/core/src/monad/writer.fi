@@ -1,7 +1,8 @@
-module Monad.Writer =
+@cfg(skip)
+module Monad:Writer =
 
 import Core
-import Core.Ops (Concat, concat)
+import Core:Ops (Concat, concat)
 
 class MonadWrite w m | m -> w where Try m = 
     write :: w -> m ()

@@ -141,6 +141,41 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Lay
             Arc::new(Layout::scalar(scalar, triple))
         },
         | Repr::Func(_, true) => todo!(),
+        | Repr::Array(ArrayLen::Const(len), el) => {
+            let len = *len as u64;
+            let elem = _layout_of(db, triple, el);
+
+            Arc::new(Layout {
+                size: elem.stride * len,
+                align: elem.align,
+                stride: elem.stride * len,
+                abi: Abi::Aggregate { sized: true },
+                fields: Fields::Array {
+                    stride: elem.stride,
+                    count: len as usize,
+                },
+                variants: Variants::Single { index: 0 },
+                largest_niche: None,
+                elem: Some(*el.clone()),
+            })
+        },
+        | Repr::Array(ArrayLen::TypeVar(_), el) => {
+            let elem = _layout_of(db, triple, el);
+
+            Arc::new(Layout {
+                size: Size::ZERO,
+                align: elem.align,
+                stride: Size::ZERO,
+                abi: Abi::Aggregate { sized: false },
+                fields: Fields::Array {
+                    stride: elem.stride,
+                    count: 0,
+                },
+                variants: Variants::Single { index: 0 },
+                largest_niche: None,
+                elem: Some(*el.clone()),
+            })
+        },
         | Repr::Struct(fields) => {
             let layouts = fields
                 .iter()

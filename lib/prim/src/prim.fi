@@ -25,6 +25,10 @@ foreign type Fn :: Type -> Type -> Type
 
 infixr 1 Fn as (->)
 
+@lang = "box-type"
+@repr(box(elem = 0))
+foreign type Box :: Type -> Type
+
 @lang = "ptr-type"
 @repr(ptr(elem = 0))
 foreign type Ptr :: Type -> Type
@@ -67,7 +71,7 @@ foreign type Record :: Row Type -> Type
 @repr(scalar = "f32") foreign type Float32 :: Type
 @repr(scalar = "f64") foreign type Float64 :: Type
 
-type Byte = Uint8
+type Byte = Int8
 type Float = Float32
 type Double = Float64
 

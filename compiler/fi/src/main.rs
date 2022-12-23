@@ -4,6 +4,7 @@ mod interactive;
 
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use base_db::libs::LibKind;
 use base_db::{Error, ICE};
@@ -107,7 +108,7 @@ struct LspArgs {
     input: PathBuf,
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<ExitCode> {
     let cli = Cli::parse();
     let filter = cli
         .args
@@ -171,23 +172,22 @@ fn main() -> anyhow::Result<()> {
     run_cli(cli)
 }
 
-fn run_cli(cli: Cli) -> anyhow::Result<()> {
+fn run_cli(cli: Cli) -> anyhow::Result<ExitCode> {
     let Cli { args, command } = cli;
 
     match command {
         | Some(command) => match command {
             | Commands::Basic(command) => {
                 let (driver, ws) = setup_basic(args, &command)?;
-                run_basic(&driver, ws, &command).map(|_| ())?;
-                Ok(())
+                run_basic(&driver, ws, &command).map_err(Into::into)
             },
-            | Commands::Watch(watch) => run_watch(args, watch),
-            | Commands::Lsp(lsp) => run_lsp(args, lsp),
+            | Commands::Watch(watch) => run_watch(args, watch).map(|_| ExitCode::SUCCESS),
+            | Commands::Lsp(lsp) => run_lsp(args, lsp).map(|_| ExitCode::SUCCESS),
         },
         | None if !args.files.is_empty() => run_files(args),
         | None => {
             interactive::run();
-            Ok(())
+            Ok(ExitCode::SUCCESS)
         },
     }
 }
@@ -208,15 +208,27 @@ fn setup_basic(cli: CliArgs, command: &BasicCommands) -> anyhow::Result<(Driver,
     })
 }
 
-fn run_basic(driver: &Driver, ws: usize, command: &BasicCommands) -> io::Result<bool> {
+fn run_basic(driver: &Driver, ws: usize, command: &BasicCommands) -> io::Result<ExitCode> {
     match command {
-        | BasicCommands::Check(_) => driver.check(),
-        | BasicCommands::Build(_) => driver.build(ws),
+        | BasicCommands::Check(_) => {
+            if driver.check()? {
+                Ok(ExitCode::SUCCESS)
+            } else {
+                Ok(ExitCode::FAILURE)
+            }
+        },
+        | BasicCommands::Build(_) => {
+            if driver.build(ws)? {
+                Ok(ExitCode::SUCCESS)
+            } else {
+                Ok(ExitCode::FAILURE)
+            }
+        },
         | BasicCommands::Run(args) => driver.run(ws, args.args.iter()),
     }
 }
 
-fn run_files(cli: CliArgs) -> anyhow::Result<()> {
+fn run_files(cli: CliArgs) -> anyhow::Result<ExitCode> {
     let cfg: Cfg = cli.cfg.into_iter().collect();
     let name = cli.name.unwrap();
     let output = cli.output.unwrap_or_default();
@@ -232,8 +244,11 @@ fn run_files(cli: CliArgs) -> anyhow::Result<()> {
         cfg,
     })?;
 
-    driver.build(ws)?;
-    Ok(())
+    if driver.build(ws)? {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        Ok(ExitCode::FAILURE)
+    }
 }
 
 fn run_lsp(_cli: CliArgs, _args: LspArgs) -> anyhow::Result<()> {

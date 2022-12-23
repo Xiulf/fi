@@ -16,7 +16,7 @@ use mir::db::MirDatabase;
 
 pub fn codegen(db: &dyn MirDatabase, module: hir::Module, file: &mut dyn Write) {
     ctx::with_codegen_ctx(db, module, |mut ctx| {
-        ctx.codegen();
+        ctx.codegen(module);
         ctx.write(file);
     })
 }
