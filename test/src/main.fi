@@ -1,8 +1,6 @@
 module Test =
 
 import Core
-import Core:Ops (Index)
-import Intrinsics (unsafe, transmute, iconvert, iadd, ptr_offset)
 
 
 type Range i = | Range i i
@@ -11,15 +9,22 @@ infix 5 Range as (..)
 
 @main
 main =
-    let arr = [0, 1, 2, 3 :: Int32]
-    let range = 0..4
+    let arr = [0, 1, 2, 3 :: Int32] # (0..4)
 
     ExitCode $ arr#2
 
 
-member (Array 4 Int32) Int Int32 of Index =
+member (Array 4 Int32) Int Int32 of Core:Ops:Index =
     index arr idx = Intrinsics:array_index arr idx
 
+member (Slice Int32) Int Int32 of Core:Ops:Index =
+    index slice idx = Intrinsics:slice_index slice idx
+
+member (Array 4 Int32) (Range Int) (Slice Int32) of Core:Ops:Index =
+    index arr (Range s e) = Intrinsics:array_slice arr s e
+
+member (Slice Int32) (Range Int) (Slice Int32) of Core:Ops:Index =
+    index slice (Range s e) = Intrinsics:slice_slice slice s e
 
 ; module String (String, AsStr, new, empty, push, puts) =
 ;     type String = | String (Ptr Byte) Uint Uint

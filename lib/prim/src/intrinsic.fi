@@ -15,6 +15,10 @@ infixl 1 applyFlipped as (.)
 @intrinsic foreign iconvert :: forall a b. a -> b where Integer a, Integer b
 
 @intrinsic foreign array_index :: forall t l i. Array l t -> i -> t where Integer i
+@intrinsic foreign array_slice :: forall t l i. Array l t -> i -> i -> Slice t where Integer i
+
+@intrinsic foreign slice_index :: forall t i. Slice t -> i -> t where Integer i
+@intrinsic foreign slice_slice :: forall t i. Slice t -> i -> i -> Slice t where Integer i
 
 @intrinsic foreign box_alloc :: forall t. Uint -> Box t
 @intrinsic foreign box_free  :: forall t. Box t -> Unit

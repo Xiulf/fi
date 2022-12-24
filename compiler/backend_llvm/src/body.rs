@@ -78,6 +78,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         }
 
         if self.func.verify(true) {
+            // self.func.print_to_stderr();
             self.fpm.run_on(&self.func);
         } else {
             eprintln!();
@@ -471,6 +472,11 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | Projection::Index(i) => {
                     let i = self.codegen_operand(i).load(self.cx);
                     res.index(self.cx, i)
+                },
+                | Projection::Slice(lo, hi) => {
+                    let lo = self.codegen_operand(lo).load(self.cx);
+                    let hi = self.codegen_operand(hi).load(self.cx);
+                    res.slice(self.cx, lo, hi)
                 },
             };
         }

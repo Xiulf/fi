@@ -1,4 +1,4 @@
-use arena::{Arena, Idx};
+use arena::{Arena, Idx, RawIdx};
 use hir::id::DefWithBodyId;
 use hir::{Ctor, DefWithBody, ExprId, Func};
 use rustc_hash::FxHashMap;
@@ -225,6 +225,9 @@ pub enum Projection {
     /// Get a reference to a specific index of this place.
     Index(Operand),
 
+    /// Get a subslice of this place.
+    Slice(Operand, Operand),
+
     /// Downcast the type of this place to the given variant.
     Downcast(Ctor),
 }
@@ -240,11 +243,39 @@ pub enum Const {
     Ctor(Ctor),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Location {
+    pub block: Block,
+    pub stmt: usize,
+}
+
 impl Place {
     pub fn has_deref(&self) -> bool {
         self.projection
             .first()
             .map(|f| matches!(f, Projection::Deref))
             .unwrap_or(false)
+    }
+}
+
+impl Block {
+    pub const ENTRY: Self = Self(Idx::DUMMY);
+
+    pub fn start_location(self) -> Location {
+        Location { block: self, stmt: 0 }
+    }
+}
+
+impl Location {
+    pub const START: Self = Self {
+        block: Block::ENTRY,
+        stmt: 0,
+    };
+
+    pub fn next_stmt(self) -> Self {
+        Self {
+            stmt: self.stmt + 1,
+            ..self
+        }
     }
 }

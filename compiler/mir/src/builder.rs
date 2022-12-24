@@ -170,6 +170,11 @@ impl Builder {
                     | Repr::Array(_, e) => repr = *e.clone(),
                     | _ => unreachable!(),
                 },
+                | Projection::Slice(_, _) => match repr {
+                    | Repr::Array(_, e) => repr = Repr::Ptr(e.clone(), true, true),
+                    | Repr::Ptr(_, true, _) => {},
+                    | _ => unreachable!(),
+                },
                 | Projection::Downcast(_) => todo!(),
             }
         }
@@ -205,6 +210,11 @@ impl Place {
 
     pub fn index(mut self, index: impl Into<Operand>) -> Self {
         self.projection.push(Projection::Index(index.into()));
+        self
+    }
+
+    pub fn slice(mut self, lo: impl Into<Operand>, hi: impl Into<Operand>) -> Self {
+        self.projection.push(Projection::Slice(lo.into(), hi.into()));
         self
     }
 

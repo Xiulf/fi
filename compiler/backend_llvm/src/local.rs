@@ -4,7 +4,7 @@ use rustc_hash::FxHashSet;
 use crate::abi::PassMode;
 use crate::ctx::{BodyCtx, CodegenCtx};
 use crate::layout::ReprAndLayout;
-use crate::operand::OperandRef;
+use crate::operand::{OperandRef, OperandValue};
 use crate::place::PlaceRef;
 
 #[derive(Debug, Clone)]
@@ -64,10 +64,35 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                         index += 1;
                         LocalRef::Place(PlaceRef::new(layout, arg, None))
                     } else {
-                        todo!()
+                        let a = self.func.get_nth_param(index).unwrap().into_pointer_value();
+                        let b = self.func.get_nth_param(index + 1).unwrap();
+                        index += 2;
+                        LocalRef::Place(PlaceRef::new(layout, a, Some(b)))
                     }
                 } else {
                     let tmp = PlaceRef::new_alloca(self.cx, layout);
+
+                    match pass_mode {
+                        | PassMode::NoPass => {},
+                        | PassMode::ByVal(_) | PassMode::ByRef { size: Some(_) } => {
+                            let arg = self.func.get_nth_param(index).unwrap();
+                            index += 1;
+                            OperandValue::Imm(arg).store(self.cx, &tmp);
+                        },
+                        | PassMode::ByValPair(_, _) => {
+                            let a = self.func.get_nth_param(index).unwrap();
+                            let b = self.func.get_nth_param(index + 1).unwrap();
+                            index += 2;
+                            OperandValue::Pair(a, b).store(self.cx, &tmp);
+                        },
+                        | PassMode::ByRef { size: None } => {
+                            let a = self.func.get_nth_param(index).unwrap().into_pointer_value();
+                            let b = self.func.get_nth_param(index + 1).unwrap();
+                            index += 2;
+                            OperandValue::Ref(a, Some(b)).store(self.cx, &tmp);
+                        },
+                    };
+
                     LocalRef::Place(tmp)
                 }
             })

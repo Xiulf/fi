@@ -59,12 +59,20 @@ impl BodyLowerCtx<'_> {
                 self.builder.binop(res.clone(), BinOp::Offset, ptr, offset);
                 Operand::Move(res)
             },
-            | "array_index" => {
+            | "array_index" | "slice_index" => {
                 let arr = self.lower_arg(args.next().unwrap(), &mut None);
                 let arr = self.place_op(arr);
                 let idx = self.lower_arg(args.next().unwrap(), &mut None);
 
                 Operand::Copy(arr.index(idx))
+            },
+            | "array_slice" | "slice_slice" => {
+                let arr = self.lower_arg(args.next().unwrap(), &mut None);
+                let arr = self.place_op(arr);
+                let lo = self.lower_arg(args.next().unwrap(), &mut None);
+                let hi = self.lower_arg(args.next().unwrap(), &mut None);
+
+                Operand::Copy(arr.slice(lo, hi))
             },
             | "iadd" => {
                 let lhs = self.lower_arg(args.next().unwrap(), &mut None);

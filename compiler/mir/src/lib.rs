@@ -6,3 +6,4 @@ mod display;
 pub mod lower;
 pub mod repr;
 pub mod syntax;
+pub mod visitor;

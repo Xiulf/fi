@@ -46,5 +46,5 @@ class Rem lhs rhs out | lhs rhs -> out, lhs -> rhs =
 class Concat lhs rhs | lhs -> rhs =
     concat :: lhs -> rhs -> lhs
 
-class Index list idx out | list idx -> out, list -> idx =
+class Index list idx out | list idx -> out =
     index :: list -> idx -> out

@@ -272,9 +272,10 @@ impl HirDisplay for Place {
     fn hir_fmt(&self, f: &mut HirFormatter<'_>) -> Result {
         for proj in self.projection.iter().rev() {
             match proj {
-                | Projection::Deref => f.write_char('*')?,
+                | Projection::Deref => f.write_str("(*")?,
                 | Projection::Field(_) => {},
                 | Projection::Index(_) => {},
+                | Projection::Slice(_, _) => {},
                 | Projection::Downcast(_) => f.write_char('(')?,
             }
         }
@@ -283,9 +284,10 @@ impl HirDisplay for Place {
 
         for proj in self.projection.iter() {
             match proj {
-                | Projection::Deref => {},
+                | Projection::Deref => f.write_char(')')?,
                 | Projection::Field(i) => write!(f, ".{i}")?,
                 | Projection::Index(i) => write!(f, "[{}]", i.display(f.db))?,
+                | Projection::Slice(l, h) => write!(f, "[{}..{}]", l.display(f.db), h.display(f.db))?,
                 | Projection::Downcast(c) => write!(f, " as {})", c.name(f.db))?,
             }
         }

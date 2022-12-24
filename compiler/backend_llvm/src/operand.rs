@@ -177,18 +177,23 @@ impl<'ctx> OperandRef<'ctx> {
     }
 
     pub fn store(&self, ctx: &mut CodegenCtx<'_, 'ctx>, dest: &PlaceRef<'ctx>) {
+        self.val.store(ctx, dest);
+    }
+}
+
+impl<'ctx> OperandValue<'ctx> {
+    pub fn store(self, ctx: &mut CodegenCtx<'_, 'ctx>, dest: &PlaceRef<'ctx>) {
         if dest.layout.is_zst() {
             return;
         }
 
-        match self.val {
+        match self {
             | OperandValue::Ref(ptr, None) => {
-                let src_align = self.layout.align.bytes() as u32;
                 let dst_align = dest.layout.align.bytes() as u32;
                 let size = ctx.context.i32_type().const_int(dest.layout.size.bytes(), false);
 
                 ctx.builder
-                    .build_memcpy(dest.ptr, dst_align, ptr, src_align, size)
+                    .build_memcpy(dest.ptr, dst_align, ptr, dst_align, size)
                     .unwrap();
             },
             | OperandValue::Ref(_, Some(_)) => unreachable!(),

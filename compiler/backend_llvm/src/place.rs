@@ -1,6 +1,8 @@
 use base_db::target::CompilerTarget;
 use inkwell::types::BasicType;
+use inkwell::values::BasicValue;
 use inkwell::{values, AddressSpace};
+use mir::repr::Repr;
 
 use crate::ctx::CodegenCtx;
 use crate::layout::{primitive_align, primitive_size, Abi, ReprAndLayout, TagEncoding, Variants};
@@ -103,7 +105,9 @@ impl<'ctx> PlaceRef<'ctx> {
 
     pub fn index(&self, ctx: &mut CodegenCtx<'_, 'ctx>, index: values::BasicValueEnum<'ctx>) -> Self {
         let layout = self.layout.elem(ctx.db).unwrap();
+        tracing::debug!("{}", self.ptr);
         let index = index.into_int_value();
+        tracing::debug!("{}", index);
         let zero = ctx
             .context
             .ptr_sized_int_type(&ctx.target_data, None)
@@ -111,6 +115,25 @@ impl<'ctx> PlaceRef<'ctx> {
         let ptr = unsafe { ctx.builder.build_in_bounds_gep(self.ptr, &[zero, index], "") };
 
         Self::new(layout, ptr, None)
+    }
+
+    pub fn slice(
+        &self,
+        ctx: &mut CodegenCtx<'_, 'ctx>,
+        lo: values::BasicValueEnum<'ctx>,
+        hi: values::BasicValueEnum<'ctx>,
+    ) -> Self {
+        let repr = Repr::Ptr(Box::new(self.layout.elem.clone().unwrap()), true, false);
+        let layout = crate::layout::repr_and_layout(ctx.db, repr);
+        let mut slice = self.index(ctx, lo);
+        let lo = lo.into_int_value();
+        let hi = hi.into_int_value();
+        let len = ctx.builder.build_int_sub(hi, lo, "");
+        let ty = ctx.basic_type_for_repr(&layout.repr).into_pointer_type();
+
+        slice.ptr = ctx.builder.build_pointer_cast(slice.ptr, ty, "");
+        slice.extra = Some(len.as_basic_value_enum());
+        slice
     }
 
     pub fn downcast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, ctor: hir::Ctor) -> Self {

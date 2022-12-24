@@ -183,6 +183,10 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | Projection::Deref => base.elem(self.db).unwrap(),
                 | Projection::Field(i) => base.field(self.db, i).unwrap(),
                 | Projection::Index(_) => base.elem(self.db).unwrap(),
+                | Projection::Slice(_, _) => {
+                    let repr = Repr::Ptr(Box::new(base.elem.clone().unwrap()), true, false);
+                    crate::layout::repr_and_layout(self.db, repr)
+                },
                 | Projection::Downcast(_) => todo!(),
             };
         }
