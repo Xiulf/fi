@@ -18,13 +18,20 @@ member (Array 4 Int32) Int Int32 of Core:Ops:Index =
     index arr idx = Intrinsics:array_index arr idx
 
 member (Slice Int32) Int Int32 of Core:Ops:Index =
-    index slice idx = Intrinsics:slice_index slice idx
+    index slice idx =
+        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr Int32, Uint
+        let ptr = Intrinsics:ptr_offset ptr idx
+        Intrinsics:ptr_read ptr
 
 member (Array 4 Int32) (Range Int) (Slice Int32) of Core:Ops:Index =
     index arr (Range s e) = Intrinsics:array_slice arr s e
 
 member (Slice Int32) (Range Int) (Slice Int32) of Core:Ops:Index =
-    index slice (Range s e) = Intrinsics:slice_slice slice s e
+    index slice (Range s e) =
+        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr Int32, Uint
+        let ptr = Intrinsics:ptr_offset ptr s
+        let len = Intrinsics:isub e s
+        Intrinsics:unsafe (Intrinsics:transmute (ptr, len))
 
 ; module String (String, AsStr, new, empty, push, puts) =
 ;     type String = | String (Ptr Byte) Uint Uint

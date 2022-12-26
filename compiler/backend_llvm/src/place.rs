@@ -17,7 +17,7 @@ pub struct PlaceRef<'ctx> {
 
 impl<'ctx> PlaceRef<'ctx> {
     pub fn new_uninit(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
-        let ty = ctx.basic_type_for_layout(&layout).ptr_type(AddressSpace::default());
+        let ty = ctx.basic_type_for_ral(&layout).ptr_type(AddressSpace::default());
 
         Self {
             layout,
@@ -35,7 +35,7 @@ impl<'ctx> PlaceRef<'ctx> {
     }
 
     pub fn new_alloca(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
-        let ty = ctx.basic_type_for_repr(&layout.repr);
+        let ty = ctx.basic_type_for_ral(&layout);
         let ptr = ctx.builder.build_alloca(ty, "");
 
         Self {
@@ -51,7 +51,7 @@ impl<'ctx> PlaceRef<'ctx> {
         }
 
         let ads = self.ptr.get_type().get_address_space();
-        let ty = ctx.basic_type_for_layout(&layout).ptr_type(ads);
+        let ty = ctx.basic_type_for_ral(&layout).ptr_type(ads);
         let ptr = ctx.builder.build_pointer_cast(self.ptr, ty, "");
 
         Self {
@@ -66,11 +66,7 @@ impl<'ctx> PlaceRef<'ctx> {
     }
 
     pub fn field(&self, ctx: &mut CodegenCtx<'_, 'ctx>, index: usize) -> Self {
-        let triple = match ctx.db.target() {
-            | CompilerTarget::Native(triple) => triple,
-            | _ => unreachable!(),
-        };
-
+        let triple = ctx.triple;
         let field = self.layout.field(ctx.db, index).unwrap();
         let offset = self.layout.fields.offset(index);
 
@@ -97,7 +93,7 @@ impl<'ctx> PlaceRef<'ctx> {
             },
         };
 
-        let ty = ctx.basic_type_for_repr(&field.repr).ptr_type(AddressSpace::default());
+        let ty = ctx.basic_type_for_ral(&field).ptr_type(AddressSpace::default());
         let ptr = ctx.builder.build_pointer_cast(ptr, ty, "");
 
         PlaceRef::new(field, ptr, None)
@@ -105,9 +101,7 @@ impl<'ctx> PlaceRef<'ctx> {
 
     pub fn index(&self, ctx: &mut CodegenCtx<'_, 'ctx>, index: values::BasicValueEnum<'ctx>) -> Self {
         let layout = self.layout.elem(ctx.db).unwrap();
-        tracing::debug!("{}", self.ptr);
         let index = index.into_int_value();
-        tracing::debug!("{}", index);
         let zero = ctx
             .context
             .ptr_sized_int_type(&ctx.target_data, None)
@@ -123,15 +117,14 @@ impl<'ctx> PlaceRef<'ctx> {
         lo: values::BasicValueEnum<'ctx>,
         hi: values::BasicValueEnum<'ctx>,
     ) -> Self {
-        let repr = Repr::Ptr(Box::new(self.layout.elem.clone().unwrap()), true, false);
+        let repr = Repr::Ptr(Box::new(self.layout.elem(ctx.db).unwrap().repr), true, false);
         let layout = crate::layout::repr_and_layout(ctx.db, repr);
         let mut slice = self.index(ctx, lo);
         let lo = lo.into_int_value();
         let hi = hi.into_int_value();
         let len = ctx.builder.build_int_sub(hi, lo, "");
-        let ty = ctx.basic_type_for_repr(&layout.repr).into_pointer_type();
 
-        slice.ptr = ctx.builder.build_pointer_cast(slice.ptr, ty, "");
+        slice.layout = layout;
         slice.extra = Some(len.as_basic_value_enum());
         slice
     }
@@ -141,9 +134,9 @@ impl<'ctx> PlaceRef<'ctx> {
         let ctors = ctor.type_ctor().ctors(ctx.db.upcast());
         let index = ctors.iter().position(|&c| c == ctor).unwrap();
 
-        downcast.layout = self.layout.variant(index);
+        downcast.layout = self.layout.variant(index).clone();
 
-        let ty = ctx.basic_type_for_layout(&downcast.layout);
+        let ty = ctx.basic_type_for_ral(&downcast.layout);
         let ty = ty.ptr_type(AddressSpace::default());
 
         downcast.ptr = ctx.builder.build_pointer_cast(downcast.ptr, ty, "");
@@ -151,7 +144,7 @@ impl<'ctx> PlaceRef<'ctx> {
     }
 
     pub fn get_discr(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: &ReprAndLayout) -> values::IntValue<'ctx> {
-        let discr_ty = ctx.basic_type_for_repr(&layout.repr).into_int_type();
+        let discr_ty = ctx.basic_type_for_ral(&layout).into_int_type();
         let (_tag_scalar, tag_encoding, tag_field) = match self.layout.variants {
             | Variants::Single { index } => {
                 return discr_ty.const_int(index as u64, false);
@@ -190,7 +183,7 @@ impl<'ctx> PlaceRef<'ctx> {
                 ..
             } => {
                 let ptr = self.field(ctx, tag_field).ptr;
-                let ty = ctx.basic_type_for_scalar(tag, None).into_int_type();
+                let ty = ctx.basic_type_for_scalar(tag).into_int_type();
                 let val = ty.const_int(idx as u64, false);
 
                 ctx.builder.build_store(ptr, val);
@@ -207,7 +200,7 @@ impl<'ctx> PlaceRef<'ctx> {
             } => {
                 if idx != dataful_variant {
                     let niche = self.field(ctx, tag_field);
-                    let niche_ty = ctx.basic_type_for_repr(&niche.layout.repr).into_int_type();
+                    let niche_ty = ctx.basic_type_for_ral(&niche.layout).into_int_type();
                     let niche_val = idx - *niche_variants.start();
                     let niche_val = (niche_val as u128).wrapping_add(niche_start);
                     let niche_val = niche_ty.const_int(niche_val as u64, false);
@@ -223,21 +216,25 @@ impl<'ctx> PlaceRef<'ctx> {
             return OperandRef::new_zst(ctx, self.layout);
         }
 
-        let val = match &self.layout.abi {
-            | Abi::Scalar(_) => {
-                let load = ctx.builder.build_load(self.ptr, "");
+        let val = if let Some(extra) = self.extra {
+            OperandValue::Pair(self.ptr.as_basic_value_enum(), extra)
+        } else {
+            match &self.layout.abi {
+                | Abi::Scalar(_) => {
+                    let load = ctx.builder.build_load(self.ptr, "");
 
-                OperandValue::Imm(load)
-            },
-            | Abi::ScalarPair(_, _) => {
-                let load = |i| {
-                    let ptr = ctx.builder.build_struct_gep(self.ptr, i, "").unwrap();
-                    ctx.builder.build_load(ptr, "")
-                };
+                    OperandValue::Imm(load)
+                },
+                | Abi::ScalarPair(_, _) => {
+                    let load = |i| {
+                        let ptr = ctx.builder.build_struct_gep(self.ptr, i, "").unwrap();
+                        ctx.builder.build_load(ptr, "")
+                    };
 
-                OperandValue::Pair(load(0), load(1))
-            },
-            | _ => OperandValue::Ref(self.ptr, self.extra),
+                    OperandValue::Pair(load(0), load(1))
+                },
+                | _ => OperandValue::Ref(self.ptr, self.extra),
+            }
         };
 
         OperandRef {

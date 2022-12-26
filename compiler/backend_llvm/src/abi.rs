@@ -1,4 +1,3 @@
-use base_db::target::CompilerTarget;
 use inkwell::types;
 use mir::repr::Signature;
 
@@ -78,23 +77,19 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
-    pub fn pass_mode(&self, layout: &Layout) -> PassMode<'ctx> {
+    pub fn pass_mode(&self, layout: &ReprAndLayout) -> PassMode<'ctx> {
         if layout.is_zst() {
             PassMode::NoPass
         } else {
             match &layout.abi {
                 | Abi::Uninhabited => PassMode::NoPass,
-                | Abi::Scalar(s) => PassMode::ByVal(self.basic_type_for_scalar(s, layout.elem.as_ref())),
+                | Abi::Scalar(s) => PassMode::ByVal(self.basic_type_for_scalar(s)),
                 | Abi::ScalarPair(a, b) => {
-                    let triple = match self.db.target() {
-                        | CompilerTarget::Native(triple) => triple,
-                        | _ => unreachable!(),
-                    };
+                    let a_ty = self.basic_type_for_ral(&layout.field(self.db, 0).unwrap());
+                    let b_ty = self.basic_type_for_ral(&layout.field(self.db, 1).unwrap());
 
-                    let a_ty = self.basic_type_for_scalar(a, layout.elem.as_ref());
-                    let b_ty = self.basic_type_for_scalar(b, None);
-
-                    if primitive_size(a.value, &triple).bits() == 128 && primitive_size(b.value, &triple).bits() == 128
+                    if primitive_size(a.value, self.triple).bits() == 128
+                        && primitive_size(b.value, self.triple).bits() == 128
                     {
                         PassMode::ByRef {
                             size: Some(layout.size),

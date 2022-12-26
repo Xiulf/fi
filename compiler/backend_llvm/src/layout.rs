@@ -27,7 +27,6 @@ pub struct Layout {
     pub size: Size,
     pub align: Align,
     pub stride: Size,
-    pub elem: Option<Repr>,
     pub abi: Abi,
     pub fields: Fields,
     pub variants: Variants,
@@ -55,9 +54,9 @@ pub enum Abi {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Fields {
     Primitive,
+    Union(usize),
     Array { stride: Size, count: usize },
-    Union { fields: Vec<ReprAndLayout> },
-    Arbitrary { fields: Vec<(Size, ReprAndLayout)> },
+    Arbitrary { offsets: Vec<Size> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -116,24 +115,18 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Lay
         | Repr::Ptr(to, false, nonnull) => {
             let mut scalar = new_scalar(Primitive::Pointer, triple);
             scalar.valid_range = *nonnull as u128..=*scalar.valid_range.end();
-            let mut layout = Layout::scalar(scalar, triple);
-            layout.elem = Some((**to).clone());
-            Arc::new(layout)
+            Arc::new(Layout::scalar(scalar, triple))
         },
         | Repr::Ptr(to, true, nonnull) => {
             let mut scalar = new_scalar(Primitive::Pointer, triple);
             scalar.valid_range = *nonnull as u128..=*scalar.valid_range.end();
             let meta = new_scalar(Primitive::Int(Integer::Int, false), triple);
-            let mut layout = scalar_pair(scalar, meta, triple);
-            layout.elem = Some((**to).clone());
-            Arc::new(layout)
+            Arc::new(scalar_pair(scalar, meta, triple))
         },
         | Repr::Box(to) => {
             let mut scalar = new_scalar(Primitive::Pointer, triple);
             scalar.valid_range = 1..=*scalar.valid_range.end();
-            let mut layout = Layout::scalar(scalar, triple);
-            layout.elem = Some((**to).clone());
-            Arc::new(layout)
+            Arc::new(Layout::scalar(scalar, triple))
         },
         | Repr::Func(_, false) => {
             let mut scalar = new_scalar(Primitive::Pointer, triple);
@@ -156,7 +149,6 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Lay
                 },
                 variants: Variants::Single { index: 0 },
                 largest_niche: None,
-                elem: Some(*el.clone()),
             })
         },
         | Repr::Array(ArrayLen::TypeVar(_), el) => {
@@ -173,7 +165,6 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Lay
                 },
                 variants: Variants::Single { index: 0 },
                 largest_niche: None,
-                elem: Some(*el.clone()),
             })
         },
         | Repr::Struct(fields) => {
@@ -214,24 +205,13 @@ fn scalar_pair(a: Scalar, b: Scalar, triple: &Triple) -> Layout {
         .chain(Niche::from_scalar(triple, Size::ZERO, a.clone()))
         .max_by_key(|n| n.available(triple));
 
-    let a_lyt = ReprAndLayout {
-        repr: Repr::Scalar(a.clone()),
-        layout: Arc::new(Layout::scalar(a.clone(), triple)),
-    };
-
-    let b_lyt = ReprAndLayout {
-        repr: Repr::Scalar(b.clone()),
-        layout: Arc::new(Layout::scalar(b.clone(), triple)),
-    };
-
     Layout {
         size,
         align,
         stride: size.align_to(align),
-        elem: None,
         abi: Abi::ScalarPair(a, b),
         fields: Fields::Arbitrary {
-            fields: vec![(Size::ZERO, a_lyt), (b_offset, b_lyt)],
+            offsets: vec![Size::ZERO, b_offset],
         },
         variants: Variants::Single { index: 0 },
         largest_niche,
@@ -277,6 +257,7 @@ fn struct_layout(lyts: Vec<ReprAndLayout>, triple: &Triple) -> Layout {
 
     let size = offset;
     let stride = offset.align_to(align);
+    let offsets = fields.into_iter().map(|f| f.0).collect();
     let largest_niche = niches.into_iter().max_by_key(|n| n.available(triple));
 
     Layout {
@@ -284,8 +265,7 @@ fn struct_layout(lyts: Vec<ReprAndLayout>, triple: &Triple) -> Layout {
         align,
         stride,
         abi,
-        elem: None,
-        fields: Fields::Arbitrary { fields },
+        fields: Fields::Arbitrary { offsets },
         variants: Variants::Single { index: 0 },
         largest_niche,
     }
@@ -326,8 +306,8 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
             };
 
             for (_, variant) in &mut variants {
-                if let Fields::Arbitrary { fields } = &mut variant.fields {
-                    for (offset, _) in fields {
+                if let Fields::Arbitrary { offsets } = &mut variant.fields {
+                    for offset in offsets {
                         *offset = *offset + tag_size;
                     }
                 }
@@ -346,25 +326,13 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
                 size,
                 align,
                 stride: size.align_to(align),
-                elem: None,
                 abi: Abi::Aggregate { sized: true },
-                fields: Fields::Union {
-                    fields: variants.clone(),
-                },
+                fields: Fields::Union(variants.len()),
                 variants: Variants::Single { index: 0 },
                 largest_niche: None,
             };
 
-            let fields = vec![
-                (Size::ZERO, ReprAndLayout {
-                    repr: Repr::Scalar(tag.clone()),
-                    layout: Arc::new(Layout::scalar(tag.clone(), triple)),
-                }),
-                (tag_size, ReprAndLayout {
-                    repr: Repr::Opaque,
-                    layout: Arc::new(union_),
-                }),
-            ];
+            let offsets = vec![Size::ZERO, tag_size];
 
             size = size + tag_size;
 
@@ -372,10 +340,7 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
                 (
                     tag.clone(),
                     Fields::Arbitrary {
-                        fields: vec![(Size::ZERO, ReprAndLayout {
-                            repr: Repr::Scalar(tag.clone()),
-                            layout: Arc::new(Layout::scalar(tag.clone(), triple)),
-                        })],
+                        offsets: vec![Size::ZERO],
                     },
                     Variants::Multiple {
                         tag,
@@ -385,7 +350,7 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
                     },
                 )
             } else {
-                (tag.clone(), Fields::Arbitrary { fields }, Variants::Multiple {
+                (tag.clone(), Fields::Arbitrary { offsets }, Variants::Multiple {
                     tag,
                     tag_encoding,
                     variants,
@@ -423,7 +388,6 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
             size,
             align,
             stride,
-            elem: None,
             abi: Abi::Aggregate { sized: true },
             fields,
             variants,
@@ -434,9 +398,43 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
 }
 
 impl ReprAndLayout {
-    pub fn variant(&self, variant: usize) -> ReprAndLayout {
+    pub fn elem(&self, db: &dyn MirDatabase) -> Option<ReprAndLayout> {
+        let el = match &self.repr {
+            | Repr::Ptr(el, _, _) | Repr::Box(el) | Repr::Array(_, el) => el,
+            | _ => return None,
+        };
+
+        Some(repr_and_layout(db, *el.clone()))
+    }
+
+    pub fn field(&self, db: &dyn MirDatabase, field: usize) -> Option<ReprAndLayout> {
+        assert!(field < self.fields.count());
+
+        match &self.repr {
+            | Repr::Array(_, el) => Some(repr_and_layout(db, (**el).clone())),
+            | Repr::Struct(reprs) => Some(repr_and_layout(db, reprs[field].clone())),
+            | Repr::Ptr(el, true, nn) => match field {
+                | 0 => Some(repr_and_layout(db, Repr::Ptr(el.clone(), false, *nn))),
+                | 1 => Some(repr_and_layout(db, Repr::usize())),
+                | _ => unreachable!(),
+            },
+            | Repr::Enum(reprs) => match self.variants {
+                | Variants::Single { index } => repr_and_layout(db, reprs[index].clone()).field(db, field),
+                | Variants::Multiple { ref tag, .. } => {
+                    assert_eq!(field, 0);
+                    Some(ReprAndLayout {
+                        repr: Repr::Scalar(tag.clone()),
+                        layout: Arc::new(Layout::scalar(tag.clone(), db.target().triple())),
+                    })
+                },
+            },
+            | _ => None,
+        }
+    }
+
+    pub fn variant(&self, variant: usize) -> &ReprAndLayout {
         match self.variants {
-            | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self.clone(),
+            | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self,
             | Variants::Single { .. } => unreachable!(),
             // | Variants::Single { index } => Arc::new(Layout {
             //     size: Size::ZERO,
@@ -448,7 +446,7 @@ impl ReprAndLayout {
             //     variants: Variants::Single { index },
             //     largest_niche: None,
             // }),
-            | Variants::Multiple { ref variants, .. } => variants[variant].clone(),
+            | Variants::Multiple { ref variants, .. } => &variants[variant],
         }
     }
 }
@@ -464,9 +462,8 @@ impl Layout {
         size: Size::ZERO,
         align: Align::ONE,
         stride: Size::ZERO,
-        elem: None,
         abi: Abi::Aggregate { sized: true },
-        fields: Fields::Arbitrary { fields: Vec::new() },
+        fields: Fields::Arbitrary { offsets: Vec::new() },
         variants: Variants::Single { index: 0 },
         largest_niche: None,
     };
@@ -480,7 +477,6 @@ impl Layout {
             size,
             align,
             stride: size.align_to(align),
-            elem: None,
             abi: Abi::Scalar(scalar),
             fields: Fields::Primitive,
             variants: Variants::Single { index: 0 },
@@ -523,24 +519,6 @@ impl Layout {
                 | _ => false,
             },
             | _ => false,
-        }
-    }
-
-    pub fn elem(&self, db: &dyn MirDatabase) -> Option<ReprAndLayout> {
-        let elem = self.elem.clone()?;
-        let layout = layout_of(db, &elem);
-
-        Some(ReprAndLayout { repr: elem, layout })
-    }
-
-    pub fn field(&self, db: &dyn MirDatabase, field: usize) -> Option<ReprAndLayout> {
-        assert!(field < self.fields.count());
-
-        match &self.fields {
-            | Fields::Primitive => None,
-            | Fields::Array { .. } => self.elem(db),
-            | Fields::Union { fields: types } => Some(types[field].clone()),
-            | Fields::Arbitrary { fields } => Some(fields[field].1.clone()),
         }
     }
 }
@@ -587,6 +565,16 @@ impl std::ops::Add for Size {
     fn add(self, rhs: Self) -> Self::Output {
         Self {
             raw: self.raw + rhs.raw,
+        }
+    }
+}
+
+impl std::ops::Sub for Size {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            raw: self.raw - rhs.raw,
         }
     }
 }
@@ -660,9 +648,9 @@ impl Fields {
     pub fn count(&self) -> usize {
         match self {
             | Fields::Primitive => 0,
+            | Fields::Union(count) => *count,
             | Fields::Array { count, .. } => *count,
-            | Fields::Union { fields: types } => types.len(),
-            | Fields::Arbitrary { fields } => fields.len(),
+            | Fields::Arbitrary { offsets: fields } => fields.len(),
         }
     }
 
@@ -675,13 +663,13 @@ impl Fields {
                 *stride * i
             },
             | Fields::Union { .. } => Size::ZERO,
-            | Fields::Arbitrary { fields } => fields[idx].0,
+            | Fields::Arbitrary { offsets } => offsets[idx],
         }
     }
 
     pub fn min_offset(&self) -> Size {
         match self {
-            | Fields::Arbitrary { fields } => fields.iter().map(|f| f.0).min().unwrap_or(Size::ZERO),
+            | Fields::Arbitrary { offsets } => offsets.iter().copied().min().unwrap_or(Size::ZERO),
             | _ => Size::ZERO,
         }
     }

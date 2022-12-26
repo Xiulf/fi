@@ -83,6 +83,15 @@ impl BodyLowerCtx<'_> {
                 self.builder.binop(res.clone(), BinOp::Add, lhs, rhs);
                 Operand::Move(res)
             },
+            | "isub" => {
+                let lhs = self.lower_arg(args.next().unwrap(), &mut None);
+                let rhs = self.lower_arg(args.next().unwrap(), &mut None);
+                let ty = self.infer.type_of_expr[expr];
+                let res = self.store_in(store_in, ty);
+
+                self.builder.binop(res.clone(), BinOp::Sub, lhs, rhs);
+                Operand::Move(res)
+            },
             | "iconvert" => {
                 let val = self.lower_arg(args.next().unwrap(), &mut None);
                 let ty = self.infer.type_of_expr[expr];

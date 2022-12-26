@@ -1,11 +1,11 @@
 use inkwell::types::{self, BasicType};
 use inkwell::AddressSpace;
-use mir::repr::{ArrayLen, Integer, Primitive, Repr, Scalar, Signature};
+use mir::repr::{Integer, Primitive, Repr, Scalar, Signature};
 use mir::syntax::{Operand, Place, Projection};
 
 use crate::abi::{FnAbi, PassMode};
 use crate::ctx::{BodyCtx, CodegenCtx};
-use crate::layout::{Abi, Fields, Layout, ReprAndLayout};
+use crate::layout::{integer_size, Abi, Align, Fields, ReprAndLayout, Size};
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn fn_type_for_abi(&self, fn_abi: &FnAbi<'ctx>) -> types::FunctionType<'ctx> {
@@ -15,7 +15,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | PassMode::ByVal(ty) => Err(ty),
             | PassMode::ByValPair(a, b) => Err(self.context.struct_type(&[a, b], false).as_basic_type_enum()),
             | PassMode::ByRef { size: Some(_) } => {
-                let ret_ty = self.basic_type_for_repr(&fn_abi.ret.layout.repr);
+                let ret_ty = self.basic_type_for_ral(&fn_abi.ret.layout);
                 args.push(ret_ty.ptr_type(AddressSpace::default()).as_basic_type_enum().into());
                 Ok(self.context.void_type())
             },
@@ -31,7 +31,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                     args.push(b.into());
                 },
                 | PassMode::ByRef { size: Some(_) } => {
-                    let ty = self.basic_type_for_repr(&arg.layout.repr);
+                    let ty = self.basic_type_for_ral(&arg.layout);
                     args.push(ty.ptr_type(AddressSpace::default()).as_basic_type_enum().into());
                 },
                 | PassMode::ByRef { size: None } => todo!(),
@@ -49,126 +49,167 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         self.fn_type_for_abi(&abi)
     }
 
-    pub fn basic_type_for_repr(&self, repr: &Repr) -> types::BasicTypeEnum<'ctx> {
-        match repr {
-            | Repr::Opaque => self.context.i8_type().as_basic_type_enum(),
-            | Repr::ReprOf(ty) => self.basic_type_for_repr(&self.db.repr_of(*ty)),
-            | Repr::Scalar(scalar) => self.basic_type_for_scalar(scalar, None),
-            | Repr::Func(sig, false) => self
-                .fn_type_for_signature(sig)
-                .ptr_type(AddressSpace::default())
-                .as_basic_type_enum(),
-            | Repr::Func(_sig, true) => todo!(),
-            | Repr::Ptr(to, false, _) => self
-                .basic_type_for_repr(to)
-                .ptr_type(AddressSpace::default())
-                .as_basic_type_enum(),
-            | Repr::Box(to) => self
-                .basic_type_for_repr(to)
-                .ptr_type(AddressSpace::default())
-                .as_basic_type_enum(),
-            | Repr::Array(ArrayLen::Const(len), elem) => {
-                let elem = self.basic_type_for_repr(elem);
-                elem.array_type(*len as u32).as_basic_type_enum()
+    pub fn basic_type_for_ral(&self, layout: &ReprAndLayout) -> types::BasicTypeEnum<'ctx> {
+        match layout.abi {
+            | Abi::Uninhabited => return self.context.i8_type().as_basic_type_enum(),
+            | Abi::Scalar(ref scalar) => {
+                return match &layout.repr {
+                    | Repr::Ptr(to, _, _) | Repr::Box(to) => self
+                        .basic_type_for_ral(&crate::layout::repr_and_layout(self.db, (**to).clone()))
+                        .ptr_type(AddressSpace::default())
+                        .as_basic_type_enum(),
+                    | Repr::Func(sig, _) => self
+                        .fn_type_for_signature(sig)
+                        .ptr_type(AddressSpace::default())
+                        .as_basic_type_enum(),
+                    | _ => self.basic_type_for_scalar(scalar),
+                };
             },
-            | Repr::Struct(fields) => {
-                let layout = crate::layout::layout_of(self.db, repr);
+            | Abi::ScalarPair(..) => {
+                let a = self.basic_type_for_ral(&layout.field(self.db, 0).unwrap());
+                let b = self.basic_type_for_ral(&layout.field(self.db, 1).unwrap());
 
-                match layout.abi {
-                    | Abi::Scalar(_) => self.basic_type_for_repr(&fields[0]),
-                    | _ => {
-                        let fields = fields.iter().map(|f| self.basic_type_for_repr(f)).collect::<Vec<_>>();
-
-                        self.context.struct_type(&fields, false).as_basic_type_enum()
-                    },
-                }
+                return self.context.struct_type(&[a, b], false).as_basic_type_enum();
             },
-            | _ => {
-                let layout = crate::layout::layout_of(self.db, repr);
-                self.basic_type_for_layout(&layout)
-            },
+            | _ => {},
         }
-    }
 
-    pub fn basic_type_for_layout(&self, layout: &Layout) -> types::BasicTypeEnum<'ctx> {
-        match &layout.abi {
-            | Abi::Uninhabited => unreachable!(),
-            | Abi::Scalar(scalar) => self.basic_type_for_scalar(scalar, layout.elem.as_ref()),
-            | Abi::ScalarPair(a, b) => {
-                let fields = [
-                    self.basic_type_for_scalar(a, layout.elem.as_ref()),
-                    self.basic_type_for_scalar(b, layout.elem.as_ref()),
-                ];
+        match layout.fields {
+            | Fields::Primitive | Fields::Union(_) => {
+                let fill = self.llvm_padding(layout.size, layout.align);
+                self.context.struct_type(&[fill], false).as_basic_type_enum()
+            },
+            | Fields::Array { count, .. } => {
+                let elem = self.basic_type_for_ral(&layout.elem(self.db).unwrap());
+                elem.array_type(count as u32).as_basic_type_enum()
+            },
+            | Fields::Arbitrary { ref offsets } => {
+                let mut offset = Size::ZERO;
+                let mut field_remapping = Vec::with_capacity(offsets.len());
+                let mut fields = Vec::with_capacity(offsets.len() * 2);
+                let mut prev_align = layout.align;
+
+                for (i, &field_offset) in offsets.iter().enumerate() {
+                    let field = layout.field(self.db, i).unwrap();
+                    let field_align = prev_align.min(field.align).restrict_for_offset(field_offset);
+                    let padding = field_offset - offset;
+
+                    if padding != Size::ZERO {
+                        let align = prev_align.min(field_align);
+                        fields.push(self.llvm_padding(padding, align));
+                    }
+
+                    field_remapping.push(fields.len());
+                    fields.push(self.basic_type_for_ral(&field));
+                    offset = field_offset + field.size;
+                    prev_align = field_align;
+                }
+
+                if !layout.abi.is_unsized() && offsets.len() > 0 {
+                    let padding = layout.stride - offset;
+
+                    if padding != Size::ZERO {
+                        fields.push(self.llvm_padding(padding, prev_align));
+                    }
+                }
+
                 self.context.struct_type(&fields, false).as_basic_type_enum()
             },
-            | Abi::Aggregate { sized: true } => match &layout.fields {
-                | Fields::Primitive => unreachable!(),
-                | Fields::Array { count, .. } => {
-                    let elem = layout.elem.as_ref().unwrap();
-                    let elem = self.basic_type_for_repr(elem);
-                    elem.array_type(*count as u32).as_basic_type_enum()
-                },
-                | Fields::Arbitrary { fields } if fields.is_empty() => {
-                    self.context.struct_type(&[], false).as_basic_type_enum()
-                },
-                | Fields::Arbitrary { fields } => {
-                    let min_offset = fields.iter().map(|f| f.0).min().unwrap();
-                    let padding = if min_offset.bytes() > 0 {
-                        Some(
-                            self.context
-                                .i8_type()
-                                .array_type(min_offset.bytes() as u32)
-                                .as_basic_type_enum(),
-                        )
-                    } else {
-                        None
-                    };
-
-                    let fields = padding
-                        .into_iter()
-                        .chain(fields.iter().map(|(_, f)| self.basic_type_for_layout(f)))
-                        .collect::<Vec<_>>();
-
-                    self.context.struct_type(&fields, false).as_basic_type_enum()
-                },
-                | Fields::Union { .. } => match layout.size.bytes() {
-                    | 0 => self.context.struct_type(&[], false).as_basic_type_enum(),
-                    | 1 => self.context.i8_type().as_basic_type_enum(),
-                    | 2 => self.context.i16_type().as_basic_type_enum(),
-                    | 4 => self.context.i32_type().as_basic_type_enum(),
-                    | 8 => self.context.i64_type().as_basic_type_enum(),
-                    | 16 => self.context.i128_type().as_basic_type_enum(),
-                    | s => self.context.i8_type().array_type(s as u32).as_basic_type_enum(),
-                },
-            },
-            | Abi::Aggregate { sized: false } => todo!(),
         }
     }
 
-    pub fn basic_type_for_scalar(&self, scalar: &Scalar, elem: Option<&Repr>) -> types::BasicTypeEnum<'ctx> {
+    pub fn llvm_padding(&self, size: Size, align: Align) -> types::BasicTypeEnum<'ctx> {
+        let int = match align.bytes() {
+            | 1 => Integer::I8,
+            | 2 => Integer::I16,
+            | 3..=4 => Integer::I32,
+            | _ => Integer::I64,
+        };
+
+        let size = size.bytes();
+        let int_size = integer_size(int, self.triple).bytes();
+        assert_eq!(size % int_size, 0);
+        self.basic_type_for_integer(int)
+            .array_type((size / int_size) as u32)
+            .as_basic_type_enum()
+    }
+
+    // pub fn basic_type_for_layout(&self, layout: &Layout) -> types::BasicTypeEnum<'ctx> {
+    //     match &layout.abi {
+    //         | Abi::Uninhabited => unreachable!(),
+    //         | Abi::Scalar(scalar) => self.basic_type_for_scalar(scalar, layout.elem.as_ref()),
+    //         | Abi::ScalarPair(a, b) => {
+    //             let fields = [
+    //                 self.basic_type_for_scalar(a, layout.elem.as_ref()),
+    //                 self.basic_type_for_scalar(b, layout.elem.as_ref()),
+    //             ];
+    //             self.context.struct_type(&fields, false).as_basic_type_enum()
+    //         },
+    //         | Abi::Aggregate { sized: true } => match &layout.fields {
+    //             | Fields::Primitive => unreachable!(),
+    //             | Fields::Array { count, .. } => {
+    //                 let elem = layout.elem.as_ref().unwrap();
+    //                 let elem = self.basic_type_for_repr(elem);
+    //                 elem.array_type(*count as u32).as_basic_type_enum()
+    //             },
+    //             | Fields::Arbitrary { offsets: fields } if fields.is_empty() => {
+    //                 self.context.struct_type(&[], false).as_basic_type_enum()
+    //             },
+    //             | Fields::Arbitrary { offsets: fields } => {
+    //                 let min_offset = fields.iter().map(|f| f.0).min().unwrap();
+    //                 let padding = if min_offset.bytes() > 0 {
+    //                     Some(
+    //                         self.context
+    //                             .i8_type()
+    //                             .array_type(min_offset.bytes() as u32)
+    //                             .as_basic_type_enum(),
+    //                     )
+    //                 } else {
+    //                     None
+    //                 };
+
+    //                 let fields = padding
+    //                     .into_iter()
+    //                     .chain(fields.iter().map(|(_, f)| self.basic_type_for_layout(f)))
+    //                     .collect::<Vec<_>>();
+
+    //                 self.context.struct_type(&fields, false).as_basic_type_enum()
+    //             },
+    //             | Fields::Union { .. } => match layout.size.bytes() {
+    //                 | 0 => self.context.struct_type(&[], false).as_basic_type_enum(),
+    //                 | 1 => self.context.i8_type().as_basic_type_enum(),
+    //                 | 2 => self.context.i16_type().as_basic_type_enum(),
+    //                 | 4 => self.context.i32_type().as_basic_type_enum(),
+    //                 | 8 => self.context.i64_type().as_basic_type_enum(),
+    //                 | 16 => self.context.i128_type().as_basic_type_enum(),
+    //                 | s => self.context.i8_type().array_type(s as u32).as_basic_type_enum(),
+    //             },
+    //         },
+    //         | Abi::Aggregate { sized: false } => todo!(),
+    //     }
+    // }
+
+    pub fn basic_type_for_scalar(&self, scalar: &Scalar) -> types::BasicTypeEnum<'ctx> {
         match scalar.value {
-            | Primitive::Int(Integer::Int, _) => self
-                .context
-                .ptr_sized_int_type(&self.target_data, None)
-                .as_basic_type_enum(),
-            | Primitive::Int(Integer::I8, _) => self.context.i8_type().as_basic_type_enum(),
-            | Primitive::Int(Integer::I16, _) => self.context.i16_type().as_basic_type_enum(),
-            | Primitive::Int(Integer::I32, _) => self.context.i32_type().as_basic_type_enum(),
-            | Primitive::Int(Integer::I64, _) => self.context.i64_type().as_basic_type_enum(),
-            | Primitive::Int(Integer::I128, _) => self.context.i128_type().as_basic_type_enum(),
+            | Primitive::Int(int, _) => self.basic_type_for_integer(int).as_basic_type_enum(),
             | Primitive::Float => self.context.f32_type().as_basic_type_enum(),
             | Primitive::Double => self.context.f64_type().as_basic_type_enum(),
-            | Primitive::Pointer => elem
-                .map(|e| {
-                    self.basic_type_for_repr(e)
-                        .ptr_type(AddressSpace::default())
-                        .as_basic_type_enum()
-                })
-                .unwrap_or_else(|| {
-                    self.context
-                        .ptr_sized_int_type(&self.target_data, Some(AddressSpace::default()))
-                        .as_basic_type_enum()
-                }),
+            | Primitive::Pointer => self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .as_basic_type_enum(),
+        }
+    }
+
+    pub fn basic_type_for_integer(&self, int: Integer) -> types::IntType<'ctx> {
+        match int {
+            | Integer::I8 => self.context.i8_type(),
+            | Integer::I16 => self.context.i16_type(),
+            | Integer::I32 => self.context.i32_type(),
+            | Integer::I64 => self.context.i64_type(),
+            | Integer::I128 => self.context.i128_type(),
+            | Integer::Int => self.context.ptr_sized_int_type(&self.target_data, None),
         }
     }
 }
@@ -184,7 +225,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | Projection::Field(i) => base.field(self.db, i).unwrap(),
                 | Projection::Index(_) => base.elem(self.db).unwrap(),
                 | Projection::Slice(_, _) => {
-                    let repr = Repr::Ptr(Box::new(base.elem.clone().unwrap()), true, false);
+                    let repr = Repr::Ptr(Box::new(base.elem(self.db).unwrap().repr), true, false);
                     crate::layout::repr_and_layout(self.db, repr)
                 },
                 | Projection::Downcast(_) => todo!(),

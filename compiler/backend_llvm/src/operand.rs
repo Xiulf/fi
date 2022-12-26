@@ -22,7 +22,7 @@ pub struct OperandRef<'ctx> {
 
 impl<'ctx> OperandRef<'ctx> {
     pub fn new_zst(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
-        let undef = match ctx.basic_type_for_repr(&layout.repr) {
+        let undef = match ctx.basic_type_for_ral(&layout) {
             | BasicTypeEnum::IntType(t) => t.get_undef().as_basic_value_enum(),
             | BasicTypeEnum::FloatType(t) => t.get_undef().as_basic_value_enum(),
             | BasicTypeEnum::PointerType(t) => t.get_undef().as_basic_value_enum(),
@@ -76,7 +76,7 @@ impl<'ctx> OperandRef<'ctx> {
     }
 
     #[track_caller]
-    pub fn pair(self) -> (values::BasicValueEnum<'ctx>, values::BasicValueEnum<'ctx>) {
+    pub fn pair(&self) -> (values::BasicValueEnum<'ctx>, values::BasicValueEnum<'ctx>) {
         match self.val {
             | OperandValue::Pair(a, b) => (a, b),
             | v => unreachable!("{:?}", v),
@@ -134,12 +134,12 @@ impl<'ctx> OperandRef<'ctx> {
 
         match (&mut val, &field.abi) {
             | (OperandValue::Imm(val), _) => {
-                let ty = ctx.basic_type_for_repr(&field.repr);
+                let ty = ctx.basic_type_for_ral(&field);
                 *val = ctx.builder.build_bitcast(*val, ty, "");
             },
-            | (OperandValue::Pair(a_val, b_val), Abi::ScalarPair(a, b)) => {
-                let a_ty = ctx.basic_type_for_scalar(a, None);
-                let b_ty = ctx.basic_type_for_scalar(b, None);
+            | (OperandValue::Pair(a_val, b_val), Abi::ScalarPair(_, _)) => {
+                let a_ty = ctx.basic_type_for_ral(&field.field(ctx.db, 0).unwrap());
+                let b_ty = ctx.basic_type_for_ral(&field.field(ctx.db, 1).unwrap());
                 *a_val = ctx.builder.build_bitcast(*a_val, a_ty, "");
                 *b_val = ctx.builder.build_bitcast(*b_val, b_ty, "");
             },
@@ -152,7 +152,7 @@ impl<'ctx> OperandRef<'ctx> {
     }
 
     pub fn bitcast(self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
-        let ty = ctx.basic_type_for_repr(&layout.repr);
+        let ty = ctx.basic_type_for_ral(&layout);
         let val = match self.val {
             | OperandValue::Imm(val) => OperandValue::Imm(ctx.builder.build_bitcast(val, ty, "")),
             | OperandValue::Ref(ptr, None) if matches!(layout.abi, Abi::ScalarPair(_, _)) => {

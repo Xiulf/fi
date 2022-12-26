@@ -25,6 +25,7 @@ use crate::place::PlaceRef;
 
 pub struct CodegenCtx<'a, 'ctx> {
     pub db: &'a dyn MirDatabase,
+    pub triple: &'a target_lexicon::Triple,
     pub context: &'ctx Context,
     pub module: &'a Module<'ctx>,
     pub builder: &'a Builder<'ctx>,
@@ -56,12 +57,12 @@ impl<'a, 'b, 'ctx> std::ops::Deref for BodyCtx<'a, 'b, 'ctx> {
 pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnce(CodegenCtx) -> T) -> T {
     Target::initialize_native(&InitializationConfig::default()).unwrap();
 
-    let target_triple = match db.target() {
+    let triple = match db.target() {
         | CompilerTarget::Native(triple) => triple,
         | _ => unreachable!(),
     };
 
-    let target_triple = TargetTriple::create(&target_triple.to_string());
+    let target_triple = TargetTriple::create(&triple.to_string());
     let host_cpu = TargetMachine::get_host_cpu_name();
     let host_features = TargetMachine::get_host_cpu_features();
     let target = Target::from_triple(&target_triple).unwrap();
@@ -94,6 +95,7 @@ pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnc
 
     let ctx = CodegenCtx {
         db,
+        triple: &triple,
         target_data,
         target_machine,
         module: &module,

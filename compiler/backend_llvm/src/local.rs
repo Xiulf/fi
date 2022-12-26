@@ -60,7 +60,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
                 if let PassMode::ByRef { .. } = pass_mode {
                     if !layout.abi.is_unsized() {
-                        let arg = self.func.get_nth_param(index as u32).unwrap().into_pointer_value();
+                        let arg = self.func.get_nth_param(index).unwrap().into_pointer_value();
                         index += 1;
                         LocalRef::Place(PlaceRef::new(layout, arg, None))
                     } else {
