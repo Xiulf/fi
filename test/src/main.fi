@@ -10,11 +10,9 @@ infix 5 Range as (..)
 @main
 main =
     let arr = [1, 2, 4, 8 :: Int32] # (0..4)
+    let arr = arr # (1..4)
 
     ExitCode $ arr#2
-
-
-identity x = x
 
 
 member (Array len t) Int t of Core:Ops:Index =

@@ -350,15 +350,15 @@ pub fn func_signature_query(db: &dyn MirDatabase, instance: Instance) -> Signatu
     let mut ret = db.value_ty(hir::id::ValueTyDefId::FuncId(func.into())).ty;
     let mut args = Vec::new();
 
-    if let Some(assoc_item) = func.as_assoc_item(hir_db) {
-        if let hir::AssocItemContainer::Member(member) = assoc_item.container(hir_db) {
-            let class = member.class(hir_db);
+    // if let Some(assoc_item) = func.as_assoc_item(hir_db) {
+    //     if let hir::AssocItemContainer::Member(member) = assoc_item.container(hir_db) {
+    //         let class = member.class(hir_db);
 
-            if let Some(hir::AssocItem::Func(func)) = class.item(hir_db, &func.name(hir_db)) {
-                ret = db.value_ty(hir::id::ValueTyDefId::FuncId(func.into())).ty;
-            }
-        }
-    }
+    //         if let Some(hir::AssocItem::Func(func)) = class.item(hir_db, &func.name(hir_db)) {
+    //             ret = db.value_ty(hir::id::ValueTyDefId::FuncId(func.into())).ty;
+    //         }
+    //     }
+    // }
 
     loop {
         match ret.lookup(hir_db) {

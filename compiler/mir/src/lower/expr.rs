@@ -294,14 +294,15 @@ impl BodyLowerCtx<'_> {
                     match methods.next().unwrap() {
                         | MethodSource::Member(id) => {
                             let member = self.db.member_data(id);
+                            let member_info = self.db.lower_member(id);
                             let func = match member.item(path.segments().last().unwrap()).unwrap() {
                                 | AssocItemId::FuncId(id) => hir::Func::from(id),
                                 | AssocItemId::StaticId(_) => unreachable!(),
                             };
 
-                            let types = infer.instances.get(&expr.0);
-                            let func =
-                                Instance::new(func.into(), types.cloned().unwrap_or_default(), methods.collect());
+                            let types = infer.instances.get(&expr.0).map(|t| &t[..]).unwrap_or_default();
+                            let types = member_info.member.get_instance_types(self.db.upcast(), types);
+                            let func = Instance::new(func.into(), types, methods.collect());
                             let sig = self.db.func_signature(func.clone());
                             let repr = Repr::Func(Box::new(sig.clone()), false);
                             let res = if sig.params.is_empty() {

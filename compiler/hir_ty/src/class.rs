@@ -12,7 +12,7 @@ use crate::display::HirDisplay;
 use crate::infer::{ExprOrPatId, InferenceContext};
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin, TypeVars, Types, Unknown};
 use crate::lower::MemberLowerResult;
-use crate::ty::{Constraint, Ty, TyKind, TypeVar, WhereClause};
+use crate::ty::{Constraint, Reason, Ty, TyKind, TypeVar, WhereClause};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Class<T, C> {
@@ -344,6 +344,36 @@ impl Member<Ty, Constraint> {
             score -= self.where_clause.constraints.len() as isize;
             score
         }
+    }
+
+    pub fn get_instance_types(&self, db: &dyn HirDatabase, types: &[Ty]) -> Vec<Ty> {
+        let unknown = TyKind::Error(Reason::Unknown).intern(db);
+        let mut res = vec![unknown; self.vars.len()];
+
+        fn run(db: &dyn HirDatabase, res: &mut Vec<Ty>, a: Ty, b: Ty) {
+            match (a.lookup(db), b.lookup(db)) {
+                | (TyKind::TypeVar(tv), _) => {
+                    res[tv.idx() as usize] = b;
+                },
+                | (TyKind::App(a1, b1), TyKind::App(a2, b2)) => {
+                    run(db, res, a1, a2);
+
+                    for (&c1, &c2) in b1.iter().zip(b2.iter()) {
+                        run(db, res, c1, c2);
+                    }
+                },
+                | (TyKind::Row(_, _), TyKind::Row(_, _)) => todo!(),
+                | (TyKind::Where(_, _), TyKind::Where(_, _)) => todo!(),
+                | (TyKind::ForAll(_, _, _), TyKind::ForAll(_, _, _)) => todo!(),
+                | _ => {},
+            }
+        }
+
+        for (&a, &b) in self.types.iter().zip(types) {
+            run(db, &mut res, a, b);
+        }
+
+        res
     }
 }
 

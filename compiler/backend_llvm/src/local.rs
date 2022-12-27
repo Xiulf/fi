@@ -36,7 +36,6 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             .iter()
             .map(|arg| {
                 let repr = self.instance.subst_repr(self.db, &body.locals[arg.0].repr);
-                tracing::debug!("{}", hir::HirDisplay::display(&repr, self.db.upcast()));
                 let layout = self.db.layout_of(repr);
                 let pass_mode = self.pass_mode(&layout);
 

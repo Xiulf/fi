@@ -76,6 +76,49 @@ impl Ty {
         }
     }
 
+    pub fn everything<F>(self, db: &dyn HirDatabase, f: &mut F)
+    where
+        F: FnMut(Ty),
+    {
+        match self.lookup(db) {
+            | TyKind::Row(ref fields, tail) => {
+                for field in fields.iter() {
+                    field.ty.everything(db, f);
+                }
+
+                if let Some(tail) = tail {
+                    tail.everything(db, f);
+                }
+            },
+            | TyKind::App(base, ref args) => {
+                base.everything(db, f);
+
+                for ty in args.iter() {
+                    ty.everything(db, f);
+                }
+            },
+            | TyKind::Where(ref where_, ty) => {
+                for ctnt in where_.constraints.iter() {
+                    for ty in ctnt.types.iter() {
+                        ty.everything(db, f);
+                    }
+                }
+
+                ty.everything(db, f);
+            },
+            | TyKind::ForAll(ref k, t, _) => {
+                for ty in k.iter() {
+                    ty.everything(db, f);
+                }
+
+                t.everything(db, f);
+            },
+            | _ => {},
+        }
+
+        f(self)
+    }
+
     pub fn replace_var(self, db: &dyn HirDatabase, var: TypeVarId, with: Ty) -> Ty {
         match self.lookup(db) {
             | TyKind::TypeVar(tv) if tv.2 == Some(var) => with,

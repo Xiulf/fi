@@ -113,7 +113,7 @@ pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnc
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn write(&mut self, file: &mut dyn std::io::Write) {
-        // self.module.print_to_stderr();
+        tracing::debug!("{}", self.module.to_string());
 
         let buffer = self
             .target_machine
