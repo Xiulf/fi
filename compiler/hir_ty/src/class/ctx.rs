@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use super::*;
 
+#[allow(dead_code)]
 pub struct ClassSolveCtx {
     members: FxHashMap<ClassId, Arc<Members>>,
     state: Mutex<State>,

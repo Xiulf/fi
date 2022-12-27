@@ -4,32 +4,9 @@ use hir::display::HirFormatter;
 use hir::id::DefWithBodyId;
 use hir::{DefWithBody, HirDisplay};
 
+use crate::instance::{Instance, InstanceDef};
 use crate::repr::{ArrayLen, Integer, Primitive, Repr, Scalar, Signature};
 use crate::syntax::*;
-
-impl HirDisplay for Module {
-    fn hir_fmt(&self, _f: &mut HirFormatter) -> std::fmt::Result {
-        // write!(f, "module {}", self.name)?;
-
-        // if !self.functions.is_empty() {
-        //     writeln!(f)?;
-        // }
-
-        // for (_, func) in self.functions.iter() {
-        //     write!(f, "\n{}", func)?;
-        // }
-
-        // if !self.bodies.is_empty() {
-        //     writeln!(f)?;
-        // }
-
-        // for (_, body) in self.bodies.iter() {
-        //     write!(f, "\n{}", body.display(f.db))?;
-        // }
-
-        Ok(())
-    }
-}
 
 impl Display for Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -219,11 +196,33 @@ impl HirDisplay for Rvalue {
             | Self::Ref(p) => write!(f, "&{}", p.display(f.db)),
             | Self::Discriminant(p) => write!(f, "discriminant {}", p.display(f.db)),
             | Self::Cast(kind, op) => write!(f, "cast {} ({:?})", op.display(f.db), kind),
-            | Self::BodyRef(b) => write!(f, "body_ref {b}"),
-            | Self::DefRef(DefWithBody::Func(d)) => write!(f, "func_ref {}", d.link_name(f.db).0),
-            | Self::DefRef(DefWithBody::Static(d)) => write!(f, "static_ref {}", d.link_name(f.db).0),
-            | Self::DefRef(DefWithBody::Const(d)) => write!(f, "const_ref {}", d.path(f.db)),
+            | Self::InstanceRef(i) => write!(f, "instance {}", i.display(f.db)),
             | Self::BinOp(op, lhs, rhs) => write!(f, "{} {} {}", lhs.display(f.db), op, rhs.display(f.db)),
+        }
+    }
+}
+
+impl HirDisplay for Instance {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+        self.def.hir_fmt(f)?;
+
+        if let Some(subst) = &self.subst {
+            for ty in &subst.types {
+                write!(f, "^{}", ty.display(f.db))?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl HirDisplay for InstanceDef {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+        match self {
+            | Self::Def(DefWithBody::Func(d)) => write!(f, "{}", d.link_name(f.db).0),
+            | Self::Def(DefWithBody::Const(d)) => write!(f, "{}", d.name(f.db)),
+            | Self::Def(DefWithBody::Static(d)) => write!(f, "{}", d.link_name(f.db).0),
+            | Self::Body(b) => write!(f, "{}", b),
         }
     }
 }
@@ -313,7 +312,7 @@ impl HirDisplay for Const {
 impl HirDisplay for Repr {
     fn hir_fmt(&self, f: &mut HirFormatter) -> Result {
         match self {
-            | Self::Opaque => f.write_str("{opaque}"),
+            | Self::TypeVar(v) => write!(f, "${}", v.idx()),
             | Self::ReprOf(ty) => write!(f, "repr_of({})", ty.display(f.db)),
             | Self::Scalar(scalar) => write!(f, "{scalar}"),
             | Self::Struct(fields) => {
@@ -356,7 +355,7 @@ impl HirDisplay for ArrayLen {
     fn hir_fmt(&self, f: &mut HirFormatter) -> Result {
         match self {
             | Self::Const(l) => write!(f, "{l}"),
-            | Self::TypeVar(v) => v.hir_fmt(f),
+            | Self::TypeVar(v) => write!(f, "${}", v.idx()),
         }
     }
 }

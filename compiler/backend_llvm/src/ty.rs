@@ -1,11 +1,10 @@
 use inkwell::types::{self, BasicType};
 use inkwell::AddressSpace;
+use mir::layout::{Abi, Align, Fields, ReprAndLayout, Size};
 use mir::repr::{Integer, Primitive, Repr, Scalar, Signature};
-use mir::syntax::{Operand, Place, Projection};
 
 use crate::abi::{FnAbi, PassMode};
-use crate::ctx::{BodyCtx, CodegenCtx};
-use crate::layout::{integer_size, Abi, Align, Fields, ReprAndLayout, Size};
+use crate::ctx::CodegenCtx;
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn fn_type_for_abi(&self, fn_abi: &FnAbi<'ctx>) -> types::FunctionType<'ctx> {
@@ -55,7 +54,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | Abi::Scalar(ref scalar) => {
                 return match &layout.repr {
                     | Repr::Ptr(to, _, _) | Repr::Box(to) => self
-                        .basic_type_for_ral(&crate::layout::repr_and_layout(self.db, (**to).clone()))
+                        .basic_type_for_ral(&self.db.layout_of((**to).clone()))
                         .ptr_type(AddressSpace::default())
                         .as_basic_type_enum(),
                     | Repr::Func(sig, _) => self
@@ -127,7 +126,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         };
 
         let size = size.bytes();
-        let int_size = integer_size(int, self.triple).bytes();
+        let int_size = int.size(self.triple).bytes();
         assert_eq!(size % int_size, 0);
         self.basic_type_for_integer(int)
             .array_type((size / int_size) as u32)
@@ -214,31 +213,31 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 }
 
-impl<'ctx> BodyCtx<'_, '_, 'ctx> {
-    pub fn place_layout(&self, place: &Place) -> ReprAndLayout {
-        let repr = self.body.locals[place.local.0].repr.clone();
-        let mut base = crate::layout::repr_and_layout(self.db, repr);
+// impl<'ctx> BodyCtx<'_, '_, 'ctx> {
+//     pub fn place_layout(&self, place: &Place) -> Arc<ReprAndLayout> {
+//         let repr = self.body.locals[place.local.0].repr.clone();
+//         let mut base = self.db.layout_of(repr);
 
-        for proj in place.projection.iter() {
-            base = match *proj {
-                | Projection::Deref => base.elem(self.db).unwrap(),
-                | Projection::Field(i) => base.field(self.db, i).unwrap(),
-                | Projection::Index(_) => base.elem(self.db).unwrap(),
-                | Projection::Slice(_, _) => {
-                    let repr = Repr::Ptr(Box::new(base.elem(self.db).unwrap().repr), true, false);
-                    crate::layout::repr_and_layout(self.db, repr)
-                },
-                | Projection::Downcast(_) => todo!(),
-            };
-        }
+//         for proj in place.projection.iter() {
+//             base = match *proj {
+//                 | Projection::Deref => base.elem(self.db).unwrap(),
+//                 | Projection::Field(i) => base.field(self.db, i).unwrap(),
+//                 | Projection::Index(_) => base.elem(self.db).unwrap(),
+//                 | Projection::Slice(_, _) => {
+//                     let repr = Repr::Ptr(Box::new(base.elem(self.db).unwrap().repr.clone()), true, false);
+//                     self.db.layout_of(repr)
+//                 },
+//                 | Projection::Downcast(_) => todo!(),
+//             };
+//         }
 
-        base
-    }
+//         base
+//     }
 
-    pub fn operand_layout(&self, operand: &Operand) -> ReprAndLayout {
-        match operand {
-            | Operand::Copy(p) | Operand::Move(p) => self.place_layout(p),
-            | Operand::Const(_, r) => crate::layout::repr_and_layout(self.db, r.clone()),
-        }
-    }
-}
+//     pub fn operand_layout(&self, operand: &Operand) -> Arc<ReprAndLayout> {
+//         match operand {
+//             | Operand::Copy(p) | Operand::Move(p) => self.place_layout(p),
+//             | Operand::Const(_, r) => self.db.layout_of(r.clone()),
+//         }
+//     }
+// }

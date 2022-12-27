@@ -25,6 +25,7 @@ pub enum Pattern {
     Switch(Place, i128),
     Check(hir::ExprId),
     And(Box<Pattern>, Box<Pattern>),
+    #[allow(dead_code)]
     Or(Box<Pattern>, Box<Pattern>),
 }
 

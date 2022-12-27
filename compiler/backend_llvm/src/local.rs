@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
+use mir::layout::ReprAndLayout;
 use mir::syntax::Local;
 use rustc_hash::FxHashSet;
 
 use crate::abi::PassMode;
 use crate::ctx::{BodyCtx, CodegenCtx};
-use crate::layout::ReprAndLayout;
 use crate::operand::{OperandRef, OperandValue};
 use crate::place::PlaceRef;
 
@@ -14,7 +16,7 @@ pub enum LocalRef<'ctx> {
 }
 
 impl<'ctx> LocalRef<'ctx> {
-    pub fn new_operand(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
+    pub fn new_operand(ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
         if layout.is_zst() {
             Self::Operand(Some(OperandRef::new_zst(ctx, layout)))
         } else {
@@ -33,7 +35,9 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             .params
             .iter()
             .map(|arg| {
-                let layout = crate::layout::repr_and_layout(self.db, body.locals[arg.0].repr.clone());
+                let repr = self.instance.subst_repr(self.db, &body.locals[arg.0].repr);
+                tracing::debug!("{}", hir::HirDisplay::display(&repr, self.db.upcast()));
+                let layout = self.db.layout_of(repr);
                 let pass_mode = self.pass_mode(&layout);
 
                 if !by_ref_locals.contains(arg) {

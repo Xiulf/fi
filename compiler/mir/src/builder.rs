@@ -1,5 +1,6 @@
-use hir::{Ctor, DefWithBody};
+use hir::Ctor;
 
+use crate::instance::Instance;
 use crate::repr::Repr;
 use crate::syntax::*;
 
@@ -140,12 +141,8 @@ impl Builder {
         self.stmt(Stmt::Assign(res, Rvalue::Cast(kind, op)));
     }
 
-    pub fn body_ref(&mut self, res: Place, body: Body) {
-        self.stmt(Stmt::Assign(res, Rvalue::BodyRef(body)));
-    }
-
-    pub fn def_ref(&mut self, res: Place, def: DefWithBody) {
-        self.stmt(Stmt::Assign(res, Rvalue::DefRef(def)));
+    pub fn instance_ref(&mut self, res: Place, instance: Instance) {
+        self.stmt(Stmt::Assign(res, Rvalue::InstanceRef(instance)));
     }
 
     pub fn binop(&mut self, res: Place, op: BinOp, lhs: impl Into<Operand>, rhs: impl Into<Operand>) {

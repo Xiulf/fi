@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use inkwell::types;
+use mir::layout::{Abi, ReprAndLayout, Size};
 use mir::repr::Signature;
 
 use crate::ctx::CodegenCtx;
-use crate::layout::{primitive_size, Abi, Layout, ReprAndLayout, Size};
 
 #[derive(Debug, Clone, Copy)]
 pub enum PassMode<'ctx> {
@@ -27,7 +29,7 @@ pub struct FnAbi<'ctx> {
 
 #[derive(Debug, Clone)]
 pub struct ArgAbi<'ctx> {
-    pub layout: ReprAndLayout,
+    pub layout: Arc<ReprAndLayout>,
     pub mode: PassMode<'ctx>,
 }
 
@@ -54,13 +56,13 @@ impl<T> Iterator for EmptySinglePair<T> {
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn compute_fn_abi(&self, sig: &Signature) -> FnAbi<'ctx> {
-        let ret_layout = crate::layout::repr_and_layout(self.db, sig.ret.clone());
+        let ret_layout = self.db.layout_of(sig.ret.clone());
         let ret = self.compute_layout_abi(ret_layout);
         let args = sig
             .params
             .iter()
             .map(|a| {
-                let layout = crate::layout::repr_and_layout(self.db, a.clone());
+                let layout = self.db.layout_of(a.clone());
                 self.compute_layout_abi(layout)
             })
             .collect();
@@ -68,7 +70,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         FnAbi { args, ret }
     }
 
-    pub fn compute_layout_abi(&self, layout: ReprAndLayout) -> ArgAbi<'ctx> {
+    pub fn compute_layout_abi(&self, layout: Arc<ReprAndLayout>) -> ArgAbi<'ctx> {
         let pass_mode = self.pass_mode(&layout);
 
         ArgAbi {
@@ -88,9 +90,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                     let a_ty = self.basic_type_for_ral(&layout.field(self.db, 0).unwrap());
                     let b_ty = self.basic_type_for_ral(&layout.field(self.db, 1).unwrap());
 
-                    if primitive_size(a.value, self.triple).bits() == 128
-                        && primitive_size(b.value, self.triple).bits() == 128
-                    {
+                    if a.value.size(self.triple).bits() == 128 && b.value.size(self.triple).bits() == 128 {
                         PassMode::ByRef {
                             size: Some(layout.size),
                         }

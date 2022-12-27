@@ -3,15 +3,15 @@
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
-use base_db::target::CompilerTarget;
-use mir::db::MirDatabase;
-pub use mir::repr::*;
 use target_lexicon::{PointerWidth, Triple};
+
+use crate::db::MirDatabase;
+use crate::repr::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReprAndLayout {
     pub repr: Repr,
-    pub layout: Arc<Layout>,
+    pub layout: Layout,
 }
 
 impl std::ops::Deref for ReprAndLayout {
@@ -68,7 +68,7 @@ pub enum Variants {
         tag: Scalar,
         tag_encoding: TagEncoding,
         tag_field: usize,
-        variants: Vec<ReprAndLayout>,
+        variants: Vec<Arc<ReprAndLayout>>,
     },
 }
 
@@ -88,57 +88,46 @@ pub struct Niche {
     pub scalar: Scalar,
 }
 
-pub fn repr_and_layout(db: &dyn MirDatabase, repr: Repr) -> ReprAndLayout {
+pub fn repr_and_layout(db: &dyn MirDatabase, repr: Repr) -> Arc<ReprAndLayout> {
     let layout = layout_of(db, &repr);
 
-    ReprAndLayout { repr, layout }
+    Arc::new(ReprAndLayout { repr, layout })
 }
 
-pub fn layout_of(db: &dyn MirDatabase, repr: &Repr) -> Arc<Layout> {
-    let triple = match db.target() {
-        | CompilerTarget::Native(triple) => triple,
-        | _ => unreachable!(),
-    };
+pub fn layout_of(db: &dyn MirDatabase, repr: &Repr) -> Layout {
+    let target = db.target();
+    let triple = target.triple();
 
     _layout_of(db, &triple, repr)
 }
 
-pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Layout> {
+pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Layout {
     match repr {
-        | Repr::Opaque => {
+        | Repr::TypeVar(_) => {
             let mut layout = Layout::UNIT;
             layout.abi = Abi::Uninhabited;
-            Arc::new(layout)
+            layout
         },
-        | Repr::Scalar(scalar) => Arc::new(Layout::scalar(scalar.clone(), &triple)),
+        | Repr::Scalar(scalar) => Layout::scalar(scalar.clone(), &triple),
         | Repr::ReprOf(ty) => _layout_of(db, triple, &db.repr_of(*ty)),
-        | Repr::Ptr(to, false, nonnull) => {
-            let mut scalar = new_scalar(Primitive::Pointer, triple);
+        | Repr::Ptr(_, false, false) => Layout::scalar(Scalar::new(Primitive::Pointer, triple), triple),
+        | Repr::Ptr(_, true, nonnull) => {
+            let mut scalar = Scalar::new(Primitive::Pointer, triple);
             scalar.valid_range = *nonnull as u128..=*scalar.valid_range.end();
-            Arc::new(Layout::scalar(scalar, triple))
+            let meta = Scalar::new(Primitive::Int(Integer::Int, false), triple);
+            scalar_pair(scalar, meta, triple)
         },
-        | Repr::Ptr(to, true, nonnull) => {
-            let mut scalar = new_scalar(Primitive::Pointer, triple);
-            scalar.valid_range = *nonnull as u128..=*scalar.valid_range.end();
-            let meta = new_scalar(Primitive::Int(Integer::Int, false), triple);
-            Arc::new(scalar_pair(scalar, meta, triple))
-        },
-        | Repr::Box(to) => {
-            let mut scalar = new_scalar(Primitive::Pointer, triple);
+        | Repr::Ptr(_, false, true) | Repr::Box(_) | Repr::Func(_, false) => {
+            let mut scalar = Scalar::new(Primitive::Pointer, triple);
             scalar.valid_range = 1..=*scalar.valid_range.end();
-            Arc::new(Layout::scalar(scalar, triple))
-        },
-        | Repr::Func(_, false) => {
-            let mut scalar = new_scalar(Primitive::Pointer, triple);
-            scalar.valid_range = 1..=*scalar.valid_range.end();
-            Arc::new(Layout::scalar(scalar, triple))
+            Layout::scalar(scalar, triple)
         },
         | Repr::Func(_, true) => todo!(),
         | Repr::Array(ArrayLen::Const(len), el) => {
             let len = *len as u64;
             let elem = _layout_of(db, triple, el);
 
-            Arc::new(Layout {
+            Layout {
                 size: elem.stride * len,
                 align: elem.align,
                 stride: elem.stride * len,
@@ -149,12 +138,12 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Lay
                 },
                 variants: Variants::Single { index: 0 },
                 largest_niche: None,
-            })
+            }
         },
         | Repr::Array(ArrayLen::TypeVar(_), el) => {
             let elem = _layout_of(db, triple, el);
 
-            Arc::new(Layout {
+            Layout {
                 size: Size::ZERO,
                 align: elem.align,
                 stride: Size::ZERO,
@@ -165,7 +154,7 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Lay
                 },
                 variants: Variants::Single { index: 0 },
                 largest_niche: None,
-            })
+            }
         },
         | Repr::Struct(fields) => {
             let layouts = fields
@@ -179,27 +168,27 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Arc<Lay
                 })
                 .collect();
 
-            Arc::new(struct_layout(layouts, triple))
+            struct_layout(layouts, triple)
         },
         | Repr::Enum(variants) => {
             let layouts = variants
                 .iter()
                 .map(|v| {
                     let layout = _layout_of(db, triple, v);
-                    (v.clone(), Arc::unwrap_or_clone(layout))
+                    (v.clone(), layout)
                 })
                 .collect();
 
-            Arc::new(enum_layout(layouts, triple))
+            enum_layout(layouts, triple)
         },
     }
 }
 
 fn scalar_pair(a: Scalar, b: Scalar, triple: &Triple) -> Layout {
-    let b_align = primitive_align(b.value, triple);
-    let align = primitive_align(a.value, triple).max(b_align);
-    let b_offset = primitive_size(a.value, triple).align_to(b_align);
-    let size = b_offset + primitive_size(b.value, triple);
+    let b_align = b.value.align(triple);
+    let align = a.value.align(triple).max(b_align);
+    let b_offset = a.value.size(triple).align_to(b_align);
+    let size = b_offset + b.value.size(triple);
     let largest_niche = Niche::from_scalar(triple, b_offset, b.clone())
         .into_iter()
         .chain(Niche::from_scalar(triple, Size::ZERO, a.clone()))
@@ -315,23 +304,10 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
 
             let variants = variants
                 .into_iter()
-                .map(|(repr, layout)| ReprAndLayout {
-                    repr,
-                    layout: Arc::new(layout),
-                })
+                .map(|(repr, layout)| Arc::new(ReprAndLayout { repr, layout }))
                 .collect::<Vec<_>>();
 
             let tag_encoding = TagEncoding::Direct;
-            let union_ = Layout {
-                size,
-                align,
-                stride: size.align_to(align),
-                abi: Abi::Aggregate { sized: true },
-                fields: Fields::Union(variants.len()),
-                variants: Variants::Single { index: 0 },
-                largest_niche: None,
-            };
-
             let offsets = vec![Size::ZERO, tag_size];
 
             size = size + tag_size;
@@ -359,7 +335,7 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
             }
         };
 
-        let (tag, fields, variants) = if let Some(niche) = largest_niche {
+        let (_tag, fields, variants) = if let Some(niche) = largest_niche {
             if niche.available(triple) >= lyts.len() as u128 {
                 // @TODO: implement niches
                 no_niche(lyts)
@@ -398,43 +374,43 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
 }
 
 impl ReprAndLayout {
-    pub fn elem(&self, db: &dyn MirDatabase) -> Option<ReprAndLayout> {
+    pub fn elem(&self, db: &dyn MirDatabase) -> Option<Arc<ReprAndLayout>> {
         let el = match &self.repr {
             | Repr::Ptr(el, _, _) | Repr::Box(el) | Repr::Array(_, el) => el,
             | _ => return None,
         };
 
-        Some(repr_and_layout(db, *el.clone()))
+        Some(db.layout_of((**el).clone()))
     }
 
-    pub fn field(&self, db: &dyn MirDatabase, field: usize) -> Option<ReprAndLayout> {
+    pub fn field(&self, db: &dyn MirDatabase, field: usize) -> Option<Arc<ReprAndLayout>> {
         assert!(field < self.fields.count());
 
         match &self.repr {
-            | Repr::Array(_, el) => Some(repr_and_layout(db, (**el).clone())),
-            | Repr::Struct(reprs) => Some(repr_and_layout(db, reprs[field].clone())),
+            | Repr::Array(_, el) => Some(db.layout_of((**el).clone())),
+            | Repr::Struct(reprs) => Some(db.layout_of(reprs[field].clone())),
             | Repr::Ptr(el, true, nn) => match field {
-                | 0 => Some(repr_and_layout(db, Repr::Ptr(el.clone(), false, *nn))),
-                | 1 => Some(repr_and_layout(db, Repr::usize())),
+                | 0 => Some(db.layout_of(Repr::Ptr(el.clone(), false, *nn))),
+                | 1 => Some(db.layout_of(Repr::usize())),
                 | _ => unreachable!(),
             },
             | Repr::Enum(reprs) => match self.variants {
-                | Variants::Single { index } => repr_and_layout(db, reprs[index].clone()).field(db, field),
+                | Variants::Single { index } => db.layout_of(reprs[index].clone()).field(db, field),
                 | Variants::Multiple { ref tag, .. } => {
                     assert_eq!(field, 0);
-                    Some(ReprAndLayout {
+                    Some(Arc::new(ReprAndLayout {
                         repr: Repr::Scalar(tag.clone()),
-                        layout: Arc::new(Layout::scalar(tag.clone(), db.target().triple())),
-                    })
+                        layout: Layout::scalar(tag.clone(), db.target().triple()),
+                    }))
                 },
             },
             | _ => None,
         }
     }
 
-    pub fn variant(&self, variant: usize) -> &ReprAndLayout {
+    pub fn variant(self: &Arc<ReprAndLayout>, variant: usize) -> Arc<ReprAndLayout> {
         match self.variants {
-            | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self,
+            | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self.clone(),
             | Variants::Single { .. } => unreachable!(),
             // | Variants::Single { index } => Arc::new(Layout {
             //     size: Size::ZERO,
@@ -446,7 +422,7 @@ impl ReprAndLayout {
             //     variants: Variants::Single { index },
             //     largest_niche: None,
             // }),
-            | Variants::Multiple { ref variants, .. } => &variants[variant],
+            | Variants::Multiple { ref variants, .. } => variants[variant].clone(),
         }
     }
 }
@@ -469,7 +445,7 @@ impl Layout {
     };
 
     pub fn scalar(scalar: Scalar, triple: &Triple) -> Self {
-        let size = primitive_size(scalar.value, triple);
+        let size = scalar.value.size(triple);
         let align = Align::from_bytes(size.bytes());
         let largest_niche = Niche::from_scalar(triple, Size::ZERO, scalar.clone());
 
@@ -692,7 +668,7 @@ impl Niche {
             valid_range: ref v,
         } = self.scalar;
 
-        let bits = primitive_size(value, triple).bits();
+        let bits = value.size(triple).bits();
         assert!(bits <= 128);
         let max_value = !0u128 >> (128 - bits);
         let niche = v.end().wrapping_add(1)..*v.start();
@@ -707,7 +683,7 @@ impl Niche {
             valid_range: ref v,
         } = self.scalar;
 
-        let bits = primitive_size(value, triple).bits();
+        let bits = value.size(triple).bits();
         assert!(bits <= 128);
         let max_value = !0128 >> (128 - bits);
 
@@ -736,49 +712,55 @@ impl Niche {
     }
 }
 
-pub fn new_scalar(value: Primitive, triple: &Triple) -> Scalar {
-    let bits = primitive_size(value, &triple).bits();
+impl Scalar {
+    pub fn new(value: Primitive, triple: &Triple) -> Self {
+        let bits = value.size(&triple).bits();
 
-    Scalar {
-        value,
-        valid_range: 0..=(!0 >> (128 - bits)),
+        Scalar {
+            value,
+            valid_range: 0..=(!0 >> (128 - bits)),
+        }
     }
 }
 
-pub fn primitive_size(prim: Primitive, triple: &Triple) -> Size {
-    match prim {
-        | Primitive::Int(int, _) => integer_size(int, triple),
-        | Primitive::Float => Size::from_bits(32),
-        | Primitive::Double => Size::from_bits(64),
-        | Primitive::Pointer => match triple.pointer_width() {
-            | Ok(PointerWidth::U16) => Size::from_bits(16),
-            | Ok(PointerWidth::U32) => Size::from_bits(32),
-            | Ok(PointerWidth::U64) => Size::from_bits(64),
-            | Err(_) => Size::from_bits(32),
-        },
+impl Primitive {
+    pub fn size(self, triple: &Triple) -> Size {
+        match self {
+            | Primitive::Int(int, _) => int.size(triple),
+            | Primitive::Float => Size::from_bits(32),
+            | Primitive::Double => Size::from_bits(64),
+            | Primitive::Pointer => match triple.pointer_width() {
+                | Ok(PointerWidth::U16) => Size::from_bits(16),
+                | Ok(PointerWidth::U32) => Size::from_bits(32),
+                | Ok(PointerWidth::U64) => Size::from_bits(64),
+                | Err(_) => Size::from_bits(32),
+            },
+        }
+    }
+
+    pub fn align(self, triple: &Triple) -> Align {
+        Align::from_bytes(self.size(triple).bytes())
     }
 }
 
-pub fn primitive_align(prim: Primitive, triple: &Triple) -> Align {
-    Align::from_bytes(primitive_size(prim, triple).bytes())
-}
-
-pub fn integer_size(int: Integer, triple: &Triple) -> Size {
-    match int {
-        | Integer::Int => match triple.pointer_width() {
-            | Ok(PointerWidth::U16) => Size::from_bits(16),
-            | Ok(PointerWidth::U32) => Size::from_bits(32),
-            | Ok(PointerWidth::U64) => Size::from_bits(64),
-            | _ => Size::from_bits(32),
-        },
-        | Integer::I8 => Size::from_bits(8),
-        | Integer::I16 => Size::from_bits(16),
-        | Integer::I32 => Size::from_bits(32),
-        | Integer::I64 => Size::from_bits(64),
-        | Integer::I128 => Size::from_bits(128),
+impl Integer {
+    pub fn size(self, triple: &Triple) -> Size {
+        match self {
+            | Integer::Int => match triple.pointer_width() {
+                | Ok(PointerWidth::U16) => Size::from_bits(16),
+                | Ok(PointerWidth::U32) => Size::from_bits(32),
+                | Ok(PointerWidth::U64) => Size::from_bits(64),
+                | _ => Size::from_bits(32),
+            },
+            | Integer::I8 => Size::from_bits(8),
+            | Integer::I16 => Size::from_bits(16),
+            | Integer::I32 => Size::from_bits(32),
+            | Integer::I64 => Size::from_bits(64),
+            | Integer::I128 => Size::from_bits(128),
+        }
     }
-}
 
-pub fn _integer_align(int: Integer, triple: &Triple) -> Align {
-    Align::from_bytes(integer_size(int, triple).bytes())
+    pub fn align(self, triple: &Triple) -> Align {
+        Align::from_bytes(self.size(triple).bytes())
+    }
 }

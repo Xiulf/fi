@@ -282,7 +282,7 @@ impl Driver {
                 .find(|&lib| libs[lib.into()].kind == LibKind::Executable)
                 .unwrap();
 
-            let asm = self.db.lib_assembly(lib.into());
+            let asm = Assembly::dummy(lib);
             let path = asm.path(&self.db, &self.target_dir);
 
             let mut cmd = if self.db.target() == CompilerTarget::Javascript {

@@ -5,6 +5,8 @@ use hir::db::HirDatabase;
 use hir::id::DefWithBodyId;
 use hir::ty::Ty;
 
+use crate::instance::Instance;
+use crate::layout::ReprAndLayout;
 use crate::repr::{Repr, Signature};
 use crate::syntax::{Body, BodyData};
 
@@ -23,6 +25,9 @@ pub trait MirDatabase: HirDatabase + Upcast<dyn HirDatabase> {
     #[salsa::cycle(crate::repr::repr_of_cycle)]
     fn repr_of(&self, ty: Ty) -> Repr;
 
+    #[salsa::invoke(crate::layout::repr_and_layout)]
+    fn layout_of(&self, repr: Repr) -> Arc<ReprAndLayout>;
+
     #[salsa::invoke(crate::repr::func_signature_query)]
-    fn func_signature(&self, func: hir::Func) -> Signature;
+    fn func_signature(&self, func: Instance) -> Signature;
 }

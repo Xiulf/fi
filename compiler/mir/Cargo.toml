@@ -10,5 +10,7 @@ hir_def = { path = "../hir_def" }
 base_db = { path = "../base_db" }
 arena = { path = "../arena" }
 rustc-hash = "1.1.0"
+mangling = "0.2.3"
 salsa = "0.17.0-pre.2"
 tracing = "^0.1"
+target-lexicon = { version = "0.12.0", features = ["std"] }

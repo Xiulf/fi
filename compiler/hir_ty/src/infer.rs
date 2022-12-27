@@ -137,7 +137,7 @@ pub struct InferenceResult<T, C> {
     pub(crate) diagnostics: Vec<InferenceDiagnostic<T, C>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MethodSource {
     Member(MemberId),
     Record(usize, ClassEnvPath),

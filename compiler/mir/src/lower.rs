@@ -10,6 +10,7 @@ use hir::{AsName, HirDisplay, PatId};
 
 use crate::builder::Builder;
 use crate::db::MirDatabase;
+use crate::instance::Instance;
 use crate::repr::Repr;
 use crate::syntax::*;
 
@@ -55,7 +56,7 @@ pub(crate) fn lower_body(db: &dyn MirDatabase, def: hir::id::DefWithBodyId) -> B
 
     if let hir::id::DefWithBodyId::FuncId(f) = def {
         let f = hir::Func::from(f);
-        let sig = db.func_signature(f);
+        let sig = db.func_signature(Instance::mono(f.into()));
         tracing::debug!("lower_body({})", f.name(db.upcast()));
         tracing::debug!("{}", sig.display(db.upcast()));
     }
@@ -108,21 +109,23 @@ pub(crate) fn mir_main_shim(db: &dyn MirDatabase, main_fn: hir::Func) -> Body {
         | _ => unreachable!(),
     };
 
-    let report_sig = db.func_signature(report_fn);
+    let report_fn = Instance::mono(report_fn.into());
+    let report_sig = db.func_signature(report_fn.clone());
     let report_ret = report_sig.ret.clone();
     let report = cx
         .builder
         .add_local(LocalKind::Tmp, Repr::Func(Box::new(report_sig), false));
 
-    let main_sig = db.func_signature(main_fn);
+    let main_fn = Instance::mono(main_fn.into());
+    let main_sig = db.func_signature(main_fn.clone());
     let main_ret = main_sig.ret.clone();
     let main_repr = Repr::Func(Box::new(main_sig), false);
     let main = cx.builder.add_local(LocalKind::Tmp, main_repr);
     let ret = cx.builder.add_local(LocalKind::Tmp, main_ret);
     let res = cx.builder.add_local(LocalKind::Tmp, report_ret);
 
-    cx.builder.def_ref(Place::new(report), report_fn.into());
-    cx.builder.def_ref(Place::new(main), main_fn.into());
+    cx.builder.instance_ref(Place::new(report), report_fn);
+    cx.builder.instance_ref(Place::new(main), main_fn);
     cx.builder.call(Place::new(ret), Operand::Move(Place::new(main)), []);
     cx.builder
         .call(Place::new(res), Operand::Move(Place::new(report)), [Operand::Move(

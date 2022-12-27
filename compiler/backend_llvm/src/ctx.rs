@@ -15,6 +15,7 @@ use inkwell::targets::{
 };
 use inkwell::{values, OptimizationLevel};
 use mir::db::MirDatabase;
+use mir::instance::Instance;
 use mir::repr::{Repr, Signature};
 use mir::syntax::{BlockData, LocalData};
 use rustc_hash::FxHashMap;
@@ -32,12 +33,13 @@ pub struct CodegenCtx<'a, 'ctx> {
     pub target_machine: TargetMachine,
     pub target_data: TargetData,
     pub fpm: &'a PassManager<values::FunctionValue<'ctx>>,
-    pub funcs: FxHashMap<hir::Func, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
+    pub funcs: FxHashMap<Instance, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
     pub consts: Cell<usize>,
 }
 
 pub struct BodyCtx<'a, 'b, 'ctx> {
     pub cx: &'a mut CodegenCtx<'b, 'ctx>,
+    pub instance: Instance,
     pub body: Arc<mir::syntax::BodyData>,
     pub func: values::FunctionValue<'ctx>,
     pub fn_abi: &'a FnAbi<'ctx>,
@@ -153,25 +155,20 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
-    pub fn declare_func(&mut self, func: hir::Func) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {
+    pub fn declare_func(&mut self, func: Instance) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {
         if let Some(value) = self.funcs.get(&func) {
             return value.clone();
         }
 
-        let linkage = if func.is_foreign(self.db.upcast()) || func.is_exported(self.db.upcast()) {
+        let linkage = if func.is_foreign(self.db) || func.is_exported(self.db) {
             Linkage::External
         } else {
             Linkage::Internal
         };
 
-        let (name, mangle) = func.link_name(self.db.upcast());
-        let name = if mangle {
-            mangling::mangle(name.as_ref().bytes())
-        } else {
-            name.to_string()
-        };
-
-        let sig = self.db.func_signature(func);
+        let name = func.link_name(self.db);
+        let sig = self.db.func_signature(func.clone());
+        tracing::debug!("{}", hir::HirDisplay::display(&sig, self.db.upcast()));
         let abi = self.compute_fn_abi(&sig);
         let ty = self.fn_type_for_abi(&abi);
         let value = self.module.add_function(&name, ty, Some(linkage));
@@ -181,16 +178,55 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         (value, abi)
     }
 
+    pub fn declare_or_codegen_func(&mut self, func: Instance) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {
+        let (value, abi) = self.declare_func(func.clone());
+
+        if func.subst.is_none() {
+            return (value, abi);
+        }
+
+        if value.get_first_basic_block().is_some() {
+            return (value, abi);
+        }
+
+        let insert_block = self.builder.get_insert_block();
+        let body = func.body(self.db);
+        let mut ctx = BodyCtx {
+            body: self.db.lookup_intern_body(body),
+            instance: func,
+            func: value,
+            fn_abi: &abi,
+            ret_ptr: None,
+            blocks: ArenaMap::default(),
+            locals: ArenaMap::default(),
+            cx: self,
+        };
+
+        ctx.codegen();
+
+        if let Some(block) = insert_block {
+            self.builder.position_at_end(block);
+        }
+
+        (value, abi)
+    }
+
     pub fn codegen_func(&mut self, func: hir::Func) {
         if func.is_intrinsic(self.db.upcast()) {
             return;
         }
 
+        if func.is_generic(self.db.upcast()) {
+            return;
+        }
+
         if func.has_body(self.db.upcast()) {
-            let (value, abi) = self.declare_func(func);
+            let instance = Instance::mono(func.into());
+            let (value, abi) = self.declare_func(instance.clone());
             let body = self.db.body_mir(DefWithBodyId::FuncId(func.into()));
             let mut ctx = BodyCtx {
                 body: self.db.lookup_intern_body(body),
+                instance,
                 func: value,
                 fn_abi: &abi,
                 ret_ptr: None,
@@ -217,8 +253,10 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let main_type = self.fn_type_for_abi(&abi);
         let value = self.module.add_function("main", main_type, None);
         let main_shim = self.db.mir_main_shim(main_func);
+        let instance = Instance::mono(main_shim.into());
         let mut ctx = BodyCtx {
             body: self.db.lookup_intern_body(main_shim),
+            instance,
             func: value,
             fn_abi: &abi,
             ret_ptr: None,

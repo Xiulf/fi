@@ -3,7 +3,6 @@
 mod abi;
 mod body;
 mod ctx;
-mod layout;
 mod local;
 mod operand;
 mod place;

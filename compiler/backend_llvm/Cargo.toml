@@ -10,7 +10,6 @@ hir = { path = "../hir" }
 base_db = { path = "../base_db" }
 rustc-hash = "1.1.0"
 target-lexicon = { version = "0.12.0", features = ["std"] }
-mangling = "0.2.3"
 tracing = "^0.1"
 
 [dependencies.inkwell]

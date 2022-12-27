@@ -1,5 +1,5 @@
 use hir::id::{AssocItemId, HasModule};
-use hir::{Expr, HasResolver, HirDisplay, Literal, MethodSource, Resolver, ValueNs};
+use hir::{Expr, HasResolver, Literal, MethodSource, Resolver, ValueNs};
 
 use super::*;
 use crate::repr::Repr;
@@ -299,7 +299,10 @@ impl BodyLowerCtx<'_> {
                                 | AssocItemId::StaticId(_) => unreachable!(),
                             };
 
-                            let sig = self.db.func_signature(func);
+                            let types = infer.instances.get(&expr.0);
+                            let func =
+                                Instance::new(func.into(), types.cloned().unwrap_or_default(), methods.collect());
+                            let sig = self.db.func_signature(func.clone());
                             let repr = Repr::Func(Box::new(sig.clone()), false);
                             let res = if sig.params.is_empty() {
                                 self.store_in_repr(&mut None, repr)
@@ -307,13 +310,24 @@ impl BodyLowerCtx<'_> {
                                 self.store_in_repr(store_in, repr)
                             };
 
-                            self.builder.def_ref(res.clone(), func.into());
+                            self.builder.instance_ref(res.clone(), func);
                             (Operand::Move(res), sig)
                         },
                         | MethodSource::Record(_idx, _p) => todo!(),
                     }
                 } else {
-                    let sig = self.db.func_signature(func);
+                    let types = infer.instances.get(&expr.0);
+                    let func = if types.is_some() || methods.is_some() {
+                        Instance::new(
+                            func.into(),
+                            types.cloned().unwrap_or_default(),
+                            methods.map(|c| c.collect()).unwrap_or_default(),
+                        )
+                    } else {
+                        Instance::mono(func.into())
+                    };
+
+                    let sig = self.db.func_signature(func.clone());
                     let repr = Repr::Func(Box::new(sig.clone()), false);
                     let res = if sig.params.is_empty() {
                         self.store_in_repr(&mut None, repr)
@@ -321,7 +335,7 @@ impl BodyLowerCtx<'_> {
                         self.store_in_repr(store_in, repr)
                     };
 
-                    self.builder.def_ref(res.clone(), func.into());
+                    self.builder.instance_ref(res.clone(), func);
                     (Operand::Move(res), sig)
                 };
 
@@ -485,7 +499,7 @@ impl BodyLowerCtx<'_> {
         Operand::Move(Place::new(local))
     }
 
-    fn app_ret_ty(&self, base: &Operand, params: usize) -> Repr {
+    fn app_ret_ty(&self, base: &Operand, _params: usize) -> Repr {
         let base = self.builder.operand_repr(base);
 
         match base {

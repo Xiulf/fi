@@ -134,6 +134,7 @@ fn main() -> anyhow::Result<ExitCode> {
 
         tracing_subscriber::fmt()
             .without_time()
+            .with_line_number(true)
             .with_ansi(false)
             .with_env_filter(filter)
             .with_writer(non_blocking)
@@ -141,7 +142,11 @@ fn main() -> anyhow::Result<ExitCode> {
 
         Some(guard)
     } else {
-        tracing_subscriber::fmt().without_time().with_env_filter(filter).init();
+        tracing_subscriber::fmt()
+            .without_time()
+            .with_line_number(true)
+            .with_env_filter(filter)
+            .init();
         None
     };
 

@@ -1,22 +1,24 @@
-use base_db::target::CompilerTarget;
+use std::sync::Arc;
+
 use inkwell::types::BasicType;
 use inkwell::values::BasicValue;
 use inkwell::{values, AddressSpace};
+use mir::layout::{Abi, ReprAndLayout, TagEncoding, Variants};
 use mir::repr::Repr;
 
 use crate::ctx::CodegenCtx;
-use crate::layout::{primitive_align, primitive_size, Abi, ReprAndLayout, TagEncoding, Variants};
 use crate::operand::{OperandRef, OperandValue};
 
 #[derive(Debug, Clone)]
 pub struct PlaceRef<'ctx> {
-    pub layout: ReprAndLayout,
+    pub layout: Arc<ReprAndLayout>,
     pub ptr: values::PointerValue<'ctx>,
     pub extra: Option<values::BasicValueEnum<'ctx>>,
 }
 
 impl<'ctx> PlaceRef<'ctx> {
-    pub fn new_uninit(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
+    #[allow(dead_code)]
+    pub fn new_uninit(ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
         let ty = ctx.basic_type_for_ral(&layout).ptr_type(AddressSpace::default());
 
         Self {
@@ -27,14 +29,14 @@ impl<'ctx> PlaceRef<'ctx> {
     }
 
     pub fn new(
-        layout: ReprAndLayout,
+        layout: Arc<ReprAndLayout>,
         ptr: values::PointerValue<'ctx>,
         extra: Option<values::BasicValueEnum<'ctx>>,
     ) -> Self {
         Self { layout, ptr, extra }
     }
 
-    pub fn new_alloca(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
+    pub fn new_alloca(ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
         let ty = ctx.basic_type_for_ral(&layout);
         let ptr = ctx.builder.build_alloca(ty, "");
 
@@ -45,7 +47,8 @@ impl<'ctx> PlaceRef<'ctx> {
         }
     }
 
-    pub fn cast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
+    #[allow(dead_code)]
+    pub fn cast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
         if self.layout == layout {
             return self.clone();
         }
@@ -72,9 +75,7 @@ impl<'ctx> PlaceRef<'ctx> {
 
         let ptr = match self.layout.abi {
             | _ if offset.bytes() == 0 => self.ptr,
-            | Abi::ScalarPair(ref a, ref b)
-                if offset == primitive_size(a.value, &triple).align_to(primitive_align(b.value, &triple)) =>
-            {
+            | Abi::ScalarPair(ref a, ref b) if offset == a.value.size(triple).align_to(b.value.align(triple)) => {
                 ctx.builder.build_struct_gep(self.ptr, 1, "").unwrap()
             },
             | Abi::Scalar(_) | Abi::ScalarPair(..) if field.is_zst() => {
@@ -117,8 +118,8 @@ impl<'ctx> PlaceRef<'ctx> {
         lo: values::BasicValueEnum<'ctx>,
         hi: values::BasicValueEnum<'ctx>,
     ) -> Self {
-        let repr = Repr::Ptr(Box::new(self.layout.elem(ctx.db).unwrap().repr), true, false);
-        let layout = crate::layout::repr_and_layout(ctx.db, repr);
+        let repr = Repr::Ptr(Box::new(self.layout.elem(ctx.db).unwrap().repr.clone()), true, false);
+        let layout = ctx.db.layout_of(repr);
         let mut slice = self.index(ctx, lo);
         let lo = lo.into_int_value();
         let hi = hi.into_int_value();
@@ -134,7 +135,7 @@ impl<'ctx> PlaceRef<'ctx> {
         let ctors = ctor.type_ctor().ctors(ctx.db.upcast());
         let index = ctors.iter().position(|&c| c == ctor).unwrap();
 
-        downcast.layout = self.layout.variant(index).clone();
+        downcast.layout = self.layout.variant(index);
 
         let ty = ctx.basic_type_for_ral(&downcast.layout);
         let ty = ty.ptr_type(AddressSpace::default());

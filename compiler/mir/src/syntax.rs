@@ -1,9 +1,10 @@
-use arena::{Arena, Idx, RawIdx};
+use arena::{Arena, Idx};
 use hir::id::DefWithBodyId;
-use hir::{Ctor, DefWithBody, ExprId, Func};
+use hir::{Ctor, ExprId, Func};
 use rustc_hash::FxHashMap;
 use salsa::{InternId, InternKey};
 
+use crate::instance::Instance;
 use crate::repr::Repr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,11 +151,8 @@ pub enum Rvalue {
     /// Cast to a different type.
     Cast(CastKind, Operand),
 
-    /// Create a reference to the given body.
-    BodyRef(Body),
-
-    /// Create a reference to the given def.
-    DefRef(DefWithBody),
+    /// Create a reference to the given instance.
+    InstanceRef(Instance),
 
     /// A binary operation (add, sub, mul, div, etc.).
     BinOp(BinOp, Operand, Operand),

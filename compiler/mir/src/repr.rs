@@ -2,16 +2,17 @@ use std::ops::RangeInclusive;
 
 use hir::attrs::{AttrInput, AttrInputGroup};
 use hir::id::{CtorId, DefWithBodyId, LocalCtorId, TypeAliasId, TypeCtorId, TypeVarId};
-use hir::ty::{Ty, TyKind};
-use hir::HirDisplay;
+use hir::ty::{Ty, TyKind, TypeVar};
+use hir::{DefWithBody, HirDisplay};
 use hir_def::data::CtorData;
 use hir_def::lang_item;
 
 use crate::db::MirDatabase;
+use crate::instance::{Instance, InstanceDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Repr {
-    Opaque,
+    TypeVar(TypeVar),
     Scalar(Scalar),
     Struct(Box<[Repr]>),
     Enum(Box<[Repr]>),
@@ -25,7 +26,7 @@ pub enum Repr {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ArrayLen {
     Const(usize),
-    TypeVar(hir::TypeVar),
+    TypeVar(TypeVar),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -93,7 +94,7 @@ impl Repr {
 
     fn align(&self) -> Integer {
         match self {
-            | Repr::Opaque => Integer::Int,
+            | Repr::TypeVar(_) => Integer::Int,
             | Repr::Scalar(s) => match s.value {
                 | Primitive::Int(i, _) => i,
                 | Primitive::Float => Integer::I32,
@@ -113,7 +114,7 @@ impl Repr {
 
 pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
     match ty.lookup(db.upcast()) {
-        | TyKind::Error(_) => Repr::Opaque,
+        | TyKind::Error(_) => unreachable!(),
         | TyKind::Ctor(ctor) => repr_of_ctor(db, ctor, &[]),
         | TyKind::Alias(alias) => repr_of_alias(db, alias, &[]),
         | TyKind::App(base, args) => match base.lookup(db.upcast()) {
@@ -121,7 +122,7 @@ pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
             | TyKind::Alias(alias) => repr_of_alias(db, alias, &args),
             | _ => unreachable!("{}", base.display(db.upcast())),
         },
-        | TyKind::TypeVar(..) => Repr::Opaque,
+        | TyKind::TypeVar(var) => Repr::TypeVar(var),
         | TyKind::Where(_, ty) => db.repr_of(ty),
         | TyKind::ForAll(_, ty, _) => db.repr_of(ty),
         | k => todo!("{:?}", k),
@@ -202,7 +203,7 @@ fn repr_of_variant(db: &dyn MirDatabase, local_id: LocalCtorId, ctor: &CtorData,
 }
 
 fn repr_from_attrs(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) -> Repr {
-    let mut repr = Repr::Opaque;
+    let mut repr = Repr::Struct(Box::new([]));
 
     if let Some(val) = group.field("scalar").and_then(AttrInput::string) {
         repr = Repr::Scalar(Scalar {
@@ -262,7 +263,7 @@ fn repr_from_attrs(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) ->
             let len = if let Some(idx) = len.int() {
                 match args[idx as usize].lookup(db.upcast()) {
                     | TyKind::Figure(l) => ArrayLen::Const(l as usize),
-                    | TyKind::TypeVar(v) => ArrayLen::TypeVar(v.src().unwrap().into()),
+                    | TyKind::TypeVar(v) => ArrayLen::TypeVar(v),
                     | _ => unreachable!(),
                 }
             } else {
@@ -337,13 +338,27 @@ fn primitive_from_attr(attr: &str) -> Primitive {
     }
 }
 
-pub fn func_signature_query(db: &dyn MirDatabase, func: hir::Func) -> Signature {
+pub fn func_signature_query(db: &dyn MirDatabase, instance: Instance) -> Signature {
+    let func = match instance.def {
+        | InstanceDef::Def(DefWithBody::Func(f)) => f,
+        | _ => unreachable!(),
+    };
+
     let hir_db: &dyn hir::db::HirDatabase = db.upcast();
-    let infer = db.infer(DefWithBodyId::FuncId(func.into()));
     let lib = func.lib(hir_db).into();
     let func_ctor = db.lang_item(lib, lang_item::FN_TYPE).unwrap().as_type_ctor().unwrap();
-    let mut ret = infer.self_type.ty;
+    let mut ret = db.value_ty(hir::id::ValueTyDefId::FuncId(func.into())).ty;
     let mut args = Vec::new();
+
+    if let Some(assoc_item) = func.as_assoc_item(hir_db) {
+        if let hir::AssocItemContainer::Member(member) = assoc_item.container(hir_db) {
+            let class = member.class(hir_db);
+
+            if let Some(hir::AssocItem::Func(func)) = class.item(hir_db, &func.name(hir_db)) {
+                ret = db.value_ty(hir::id::ValueTyDefId::FuncId(func.into())).ty;
+            }
+        }
+    }
 
     loop {
         match ret.lookup(hir_db) {
@@ -380,6 +395,11 @@ pub fn func_signature_query(db: &dyn MirDatabase, func: hir::Func) -> Signature 
 
     let params = args.into_iter().map(|a| db.repr_of(a)).collect();
     let ret = db.repr_of(ret);
+    let sig = Signature { params, ret };
 
-    Signature { params, ret }
+    if let Some(subst) = &instance.subst {
+        subst.subst_signature(db, &sig)
+    } else {
+        sig
+    }
 }

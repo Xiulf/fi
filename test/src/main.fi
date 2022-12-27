@@ -9,26 +9,29 @@ infix 5 Range as (..)
 
 @main
 main =
-    let arr = [0, 1, 2, 3 :: Int32] # (0..4)
+    let arr = [1, 2, 4, 8 :: Int32] # (0..4)
 
     ExitCode $ arr#2
 
 
-member (Array 4 Int32) Int Int32 of Core:Ops:Index =
+identity x = x
+
+
+member (Array len t) Int t of Core:Ops:Index =
     index arr idx = Intrinsics:array_index arr idx
 
-member (Slice Int32) Int Int32 of Core:Ops:Index =
+member (Slice t) Int t of Core:Ops:Index =
     index slice idx =
-        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr Int32, Uint
+        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr _, Uint
         let ptr = Intrinsics:ptr_offset ptr idx
         Intrinsics:ptr_read ptr
 
-member (Array 4 Int32) (Range Int) (Slice Int32) of Core:Ops:Index =
+member (Array len t) (Range Int) (Slice t) of Core:Ops:Index =
     index arr (Range s e) = Intrinsics:array_slice arr s e
 
-member (Slice Int32) (Range Int) (Slice Int32) of Core:Ops:Index =
+member (Slice t) (Range Int) (Slice t) of Core:Ops:Index =
     index slice (Range s e) =
-        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr Int32, Uint
+        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr t, Uint
         let ptr = Intrinsics:ptr_offset ptr s
         let len = Intrinsics:isub e s
         Intrinsics:unsafe (Intrinsics:transmute (ptr, len))

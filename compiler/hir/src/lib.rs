@@ -31,7 +31,7 @@ use hir_ty::db::HirDatabase;
 pub use hir_ty::display::HirDisplay;
 pub use hir_ty::infer::{InferenceResult, MethodSource};
 pub use hir_ty::ty;
-use hir_ty::ty::Ty;
+use hir_ty::ty::{Ty, TyKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Lib {
@@ -401,6 +401,12 @@ impl Func {
         db.attrs(self.id.into()).by_key("intrinsic").exists()
     }
 
+    pub fn is_generic(self, db: &dyn HirDatabase) -> bool {
+        let ty = db.value_ty(ValueTyDefId::FuncId(self.id)).ty;
+
+        matches!(ty.lookup(db), TyKind::ForAll(..))
+    }
+
     pub fn link_name(self, db: &dyn HirDatabase) -> (Name, bool) {
         let attrs = db.attrs(self.id.into());
         let mut link_name = attrs.by_key("link_name").string_value();
@@ -447,26 +453,20 @@ impl Func {
         let body = db.body(self.id.into());
 
         if data.name.as_ref() == "main" {
-            eprintln!("{:?}:", self.id.lookup(db.upcast()).container);
-            eprintln!("{} :: {}", data.name, infer.self_type.ty.display(db));
+            tracing::debug!("{:?}:", self.id.lookup(db.upcast()).container);
+            tracing::debug!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
             for ((id, i), method) in &infer.methods {
-                eprintln!("{:?}#{} -> {:?}", id, i, method);
+                tracing::debug!("{:?}#{} -> {:?}", id, i, method);
             }
-
-            eprintln!();
 
             for (expr, ty) in infer.type_of_expr.iter() {
-                eprintln!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
+                tracing::debug!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
             }
-
-            eprintln!();
 
             for (pat, ty) in infer.type_of_pat.iter() {
-                eprintln!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
+                tracing::debug!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
             }
-
-            eprintln!();
         }
 
         infer.add_diagnostics(db, self.id.into(), sink);
@@ -798,6 +798,10 @@ impl Class {
         Vec::new()
     }
 
+    pub fn item(self, db: &dyn HirDatabase, name: &Name) -> Option<AssocItem> {
+        db.class_data(self.id).item(name).map(Into::into)
+    }
+
     pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {
         db.class_data(self.id)
             .items
@@ -850,6 +854,10 @@ impl Member {
         let lower = db.lower_member(self.id);
 
         lower.member.class.into()
+    }
+
+    pub fn item(self, db: &dyn HirDatabase, name: &Name) -> Option<AssocItem> {
+        db.member_data(self.id).item(name).map(Into::into)
     }
 
     pub fn items(self, db: &dyn HirDatabase) -> Vec<AssocItem> {

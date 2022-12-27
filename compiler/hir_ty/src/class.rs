@@ -78,7 +78,7 @@ pub struct ClassEnvMatchResult {
     pub subst: FxHashMap<Unknown, TyId>,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct ClassEnvPath(u128);
 

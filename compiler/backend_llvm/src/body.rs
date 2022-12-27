@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use arena::Idx;
 use hir::HirDisplay;
 use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
-use inkwell::FloatPredicate;
+use mir::instance::InstanceDef;
+use mir::layout::ReprAndLayout;
 use mir::repr::Repr;
 use mir::syntax::{
     BinOp, Block, BlockData, CastKind, Const, JumpTarget, Local, LocalKind, Operand, Place, Projection, Rvalue, Stmt,
@@ -10,7 +13,6 @@ use mir::syntax::{
 
 use crate::abi::{ArgAbi, EmptySinglePair, PassMode};
 use crate::ctx::BodyCtx;
-use crate::layout::ReprAndLayout;
 use crate::local::LocalRef;
 use crate::operand::{OperandRef, OperandValue};
 use crate::place::PlaceRef;
@@ -43,7 +45,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
         for (local, data) in body.locals.iter() {
             if !body.blocks[first_block].params.contains(&Local(local)) {
-                let layout = crate::layout::repr_and_layout(self.db, data.repr.clone());
+                let repr = self.instance.subst_repr(self.db, &data.repr);
+                let layout = self.db.layout_of(repr);
                 let value = if by_ref_locals.contains(&Local(local)) {
                     if layout.abi.is_unsized() {
                         todo!();
@@ -79,7 +82,6 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         }
 
         if self.func.verify(true) {
-            // self.func.print_to_stderr();
             self.fpm.run_on(&self.func);
         } else {
             eprintln!();
@@ -241,15 +243,15 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     match &self.locals[place.local.0] {
                         | LocalRef::Place(place) => self.codegen_rvalue(place.clone(), rvalue),
                         | LocalRef::Operand(None) => {
-                            let repr = self.body.locals[place.local.0].repr.clone();
-                            let layout = crate::layout::repr_and_layout(self.db, repr);
+                            let repr = self.instance.subst_repr(self.db, &self.body.locals[place.local.0].repr);
+                            let layout = self.db.layout_of(repr);
                             let op = self.codegen_rvalue_operand(layout, rvalue);
                             self.locals[place.local.0] = LocalRef::Operand(Some(op));
                         },
                         | LocalRef::Operand(Some(op)) => {
                             assert!(!op.layout.is_zst());
-                            let repr = self.body.locals[place.local.0].repr.clone();
-                            let layout = crate::layout::repr_and_layout(self.db, repr);
+                            let repr = self.instance.subst_repr(self.db, &self.body.locals[place.local.0].repr);
+                            let layout = self.db.layout_of(repr);
                             self.codegen_rvalue_operand(layout, rvalue);
                         },
                     }
@@ -363,7 +365,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         }
     }
 
-    pub fn codegen_rvalue_operand(&mut self, layout: ReprAndLayout, rvalue: &Rvalue) -> OperandRef<'ctx> {
+    pub fn codegen_rvalue_operand(&mut self, layout: Arc<ReprAndLayout>, rvalue: &Rvalue) -> OperandRef<'ctx> {
         match rvalue {
             | Rvalue::Ref(pl) => {
                 let ptr = self.codegen_place(pl).ptr.as_basic_value_enum();
@@ -387,15 +389,16 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | Rvalue::Discriminant(place) => {
                 let place = self.codegen_place(place);
                 let repr = place.layout.repr.discr();
-                let layout = crate::layout::repr_and_layout(self.db, repr);
+                let layout = self.db.layout_of(repr);
                 let discr = place.get_discr(self.cx, &layout);
 
                 OperandRef::new_imm(layout, discr.as_basic_value_enum())
             },
-            | Rvalue::DefRef(def) => {
-                let value = match *def {
-                    | hir::DefWithBody::Func(func) => {
-                        self.cx.declare_func(func).0.as_global_value().as_basic_value_enum()
+            | Rvalue::InstanceRef(instance) => {
+                let value = match instance.def {
+                    | InstanceDef::Def(hir::DefWithBody::Func(_)) => {
+                        let func = self.cx.declare_or_codegen_func(instance.clone()).0;
+                        func.as_global_value().as_basic_value_enum()
                     },
                     | _ => todo!(),
                 };
@@ -409,7 +412,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_binop(
         &mut self,
-        layout: ReprAndLayout,
+        layout: Arc<ReprAndLayout>,
         op: &BinOp,
         lhs: &Operand,
         rhs: &Operand,
@@ -537,7 +540,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     }
 
     pub fn codegen_const(&mut self, const_: &Const, repr: &Repr) -> OperandRef<'ctx> {
-        let layout = crate::layout::repr_and_layout(self.db, repr.clone());
+        let repr = self.instance.subst_repr(self.db, repr);
+        let layout = self.db.layout_of(repr);
         let ty = self.basic_type_for_ral(&layout);
         let value = match *const_ {
             | Const::Undefined => unreachable!(),

@@ -1,11 +1,11 @@
 use arena::{ArenaMap, Idx};
 use mir::db::MirDatabase;
+use mir::layout::Abi;
 use mir::syntax::{Block, Local, LocalData, Location, Place, Rvalue};
 use mir::visitor::{MutUseContext, PlaceContext, UseContext, Visitor};
 use rustc_hash::FxHashSet;
 
 use crate::ctx::BodyCtx;
-use crate::layout::Abi;
 
 enum LocalKind {
     ZST,
@@ -24,7 +24,8 @@ pub fn analyze(ctx: &BodyCtx<'_, '_, '_>) -> FxHashSet<Local> {
     let mut set = FxHashSet::default();
 
     for (id, local) in ctx.body.locals.iter() {
-        let layout = crate::layout::layout_of(ctx.db, &local.repr);
+        let repr = ctx.instance.subst_repr(ctx.db, &local.repr);
+        let layout = ctx.db.layout_of(repr);
         let kind = if layout.is_zst() {
             LocalKind::ZST
         } else if let Abi::Scalar(_) | Abi::ScalarPair(_, _) = layout.abi {
