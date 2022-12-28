@@ -1,4 +1,3 @@
-@cfg(skip)
 module Core:Cmp =
 
 import Core

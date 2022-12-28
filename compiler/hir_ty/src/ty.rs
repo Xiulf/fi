@@ -166,6 +166,54 @@ impl Ty {
             | _ => self,
         }
     }
+
+    pub fn replace_local_vars(self, db: &dyn HirDatabase, types: &[Ty]) -> Ty {
+        match self.lookup(db) {
+            | TyKind::TypeVar(tv) => types[tv.idx() as usize],
+            | TyKind::Row(fields, rest) => {
+                let fields = fields
+                    .iter()
+                    .map(|f| Field {
+                        name: f.name.clone(),
+                        ty: f.ty.replace_local_vars(db, types),
+                    })
+                    .collect();
+
+                let rest = rest.map(|r| r.replace_local_vars(db, types));
+
+                TyKind::Row(fields, rest).intern(db)
+            },
+            | TyKind::App(base, args) => {
+                let base = base.replace_local_vars(db, types);
+                let args = args.iter().map(|a| a.replace_local_vars(db, types)).collect();
+
+                TyKind::App(base, args).intern(db)
+            },
+            | TyKind::Where(clause, ty) => {
+                let clause = WhereClause {
+                    constraints: clause
+                        .constraints
+                        .iter()
+                        .map(|c| Constraint {
+                            class: c.class,
+                            types: c.types.iter().map(|t| t.replace_local_vars(db, types)).collect(),
+                        })
+                        .collect(),
+                };
+
+                let ty = ty.replace_local_vars(db, types);
+
+                TyKind::Where(clause, ty).intern(db)
+            },
+            | TyKind::ForAll(params, ty, scope) => {
+                let ty = ty.replace_local_vars(db, types);
+                let params = params.iter().map(|p| p.replace_local_vars(db, types)).collect();
+
+                TyKind::ForAll(params, ty, scope).intern(db)
+            },
+            | _ => self,
+        }
+    }
 }
 
 impl TyKind {

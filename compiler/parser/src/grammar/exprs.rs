@@ -320,6 +320,7 @@ pub(crate) fn block(p: &mut Parser, allow_bind: bool) {
     let m = p.start();
 
     p.expect(LYT_START);
+    p.eat(LYT_SEP);
 
     while !p.at(EOF) && !p.at(LYT_END) {
         // p.eat(LYT_SEP);

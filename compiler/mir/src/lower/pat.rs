@@ -110,23 +110,7 @@ impl BodyLowerCtx<'_> {
                 let then_block = self.builder.create_block();
                 let next_block = self.builder.create_block();
 
-                match arm[0].pattern {
-                    | Pattern::Switch(ref discr, value) => {
-                        let discr = self.get_discr(discr.clone());
-
-                        self.builder.switch(Operand::Copy(discr), vec![value], [
-                            then_block.into(),
-                            next_block.into(),
-                        ]);
-                    },
-                    | Pattern::Check(expr) => {
-                        let op = self.lower_expr(expr, &mut None);
-                        self.builder.switch(op, vec![0], [next_block.into(), then_block.into()]);
-                    },
-                    | Pattern::And(ref _a, ref _b) => todo!(),
-                    | Pattern::Or(ref _a, ref _b) => todo!(),
-                }
-
+                self.lower_pattern(&arm[0].pattern, then_block, next_block);
                 self.builder.switch_block(then_block);
                 self.lower_match_value(&arm[0].value, exit_block);
                 self.builder.switch_block(next_block);
@@ -138,6 +122,35 @@ impl BodyLowerCtx<'_> {
             self.builder.jump((exit_block, [op]));
         } else {
             self.builder.unreachable();
+        }
+    }
+
+    fn lower_pattern(&mut self, pattern: &Pattern, then_block: Block, next_block: Block) {
+        match *pattern {
+            | Pattern::Switch(ref discr, value) => {
+                let discr = self.get_discr(discr.clone());
+
+                self.builder.switch(Operand::Copy(discr), vec![value], [
+                    then_block.into(),
+                    next_block.into(),
+                ]);
+            },
+            | Pattern::Check(expr) => {
+                let op = self.lower_expr(expr, &mut None);
+                self.builder.switch(op, vec![0], [next_block.into(), then_block.into()]);
+            },
+            | Pattern::And(ref a, ref b) => {
+                let second_block = self.builder.create_block();
+                self.lower_pattern(a, second_block, next_block);
+                self.builder.switch_block(second_block);
+                self.lower_pattern(b, then_block, next_block);
+            },
+            | Pattern::Or(ref a, ref b) => {
+                let second_block = self.builder.create_block();
+                self.lower_pattern(a, then_block, second_block);
+                self.builder.switch_block(second_block);
+                self.lower_pattern(b, then_block, next_block);
+            },
         }
     }
 

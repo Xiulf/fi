@@ -1,74 +1,17 @@
 module Test =
 
 import Core
-
-
-type Range i = | Range i i
-infix 5 Range as (..)
+import Data:Range ((..))
 
 
 @main
+main :: ExitCode
 main =
-    let arr = [1, 2, 4, 8 :: Int32] # (0..4)
-    let arr = arr # (1..4)
+    let x = fib 8
 
-    ExitCode $ arr#2
+    ExitCode $ x
 
 
-member (Array len t) Int t of Core:Ops:Index =
-    index arr idx = Intrinsics:array_index arr idx
-
-member (Slice t) Int t of Core:Ops:Index =
-    index slice idx =
-        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr _, Uint
-        let ptr = Intrinsics:ptr_offset ptr idx
-        Intrinsics:ptr_read ptr
-
-member (Array len t) (Range Int) (Slice t) of Core:Ops:Index =
-    index arr (Range s e) = Intrinsics:array_slice arr s e
-
-member (Slice t) (Range Int) (Slice t) of Core:Ops:Index =
-    index slice (Range s e) =
-        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr t, Uint
-        let ptr = Intrinsics:ptr_offset ptr s
-        let len = Intrinsics:isub e s
-        Intrinsics:unsafe (Intrinsics:transmute (ptr, len))
-
-; module String (String, AsStr, new, empty, push, puts) =
-;     type String = | String (Ptr Byte) Uint Uint
-    
-;     empty :: String
-;     empty = String LibC:NULL 0 0
-    
-;     ; push :: forall t. String -> t -> String where AsStr t
-;     push :: String -> Str -> String
-;     push (String ptr len cap) s =
-;         let sPtr, sLen = str_parts (asStr s)
-;         let newLen = iadd len sLen
-;         let newPtr = LibC:malloc newLen
-;         LibC:memcpy newPtr ptr len
-;         let len' = iconvert len
-;         let newPtr' = ptr_offset newPtr len'
-;         LibC:memcpy newPtr' sPtr sLen
-;         String newPtr newLen newLen
-
-;     str_parts :: Str -> (Ptr Byte, Uint)
-;     str_parts s = unsafe (transmute s)
-
-;     str_from_parts :: Ptr Byte -> Uint -> Str where Unsafe
-;     str_from_parts ptr len = transmute (ptr, len)
-
-;     @inline
-;     puts :: Str -> Int32
-;     puts s =
-;         let ptr, _ = str_parts s
-;         unsafe (LibC:puts ptr)
-    
-;     class AsStr t =
-;         asStr :: t -> Str
-    
-;     member Str of AsStr =
-;         asStr s = s
-
-;     member String of AsStr =
-;         asStr (String ptr len _) = unsafe (str_from_parts ptr len)
+fib :: forall i. i -> i where Integer i
+fib n if n < 2 = n
+      else     = (fib (n - 2)) + (fib (n - 1))

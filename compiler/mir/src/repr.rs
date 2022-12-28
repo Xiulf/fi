@@ -71,6 +71,13 @@ impl Repr {
         })
     }
 
+    pub fn isize() -> Self {
+        Self::Scalar(Scalar {
+            value: Primitive::Int(Integer::Int, true),
+            valid_range: 0..=u128::MAX,
+        })
+    }
+
     pub fn i32() -> Self {
         Self::Scalar(Scalar {
             value: Primitive::Int(Integer::I32, true),

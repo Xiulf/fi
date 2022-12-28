@@ -11,11 +11,17 @@ infixl 1 applyFlipped as (.)
 @intrinsic foreign idiv :: forall i. i -> i -> i where Integer i
 @intrinsic foreign irem :: forall i. i -> i -> i where Integer i
 @intrinsic foreign ieq  :: forall i. i -> i -> Bool where Integer i
-@intrinsic foreign icmp :: forall i. i -> i -> Int where Integer i
+@intrinsic foreign ine  :: forall i. i -> i -> Bool where Integer i
+@intrinsic foreign ilt  :: forall i. i -> i -> Bool where Integer i
+@intrinsic foreign ile  :: forall i. i -> i -> Bool where Integer i
+@intrinsic foreign igt  :: forall i. i -> i -> Bool where Integer i
+@intrinsic foreign ige  :: forall i. i -> i -> Bool where Integer i
+
 @intrinsic foreign iconvert :: forall a b. a -> b where Integer a, Integer b
 
 @intrinsic foreign array_index :: forall t l i. Array l t -> i -> t where Integer i
 @intrinsic foreign array_slice :: forall t l i. Array l t -> i -> i -> Slice t where Integer i
+@intrinsic foreign array_len   :: forall t l. Array l t -> Int
 
 @intrinsic foreign box_alloc :: forall t. Uint -> Box t
 @intrinsic foreign box_free  :: forall t. Box t -> Unit

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use arena::Idx;
 use hir::HirDisplay;
 use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
+use inkwell::IntPredicate;
 use mir::instance::InstanceDef;
 use mir::layout::ReprAndLayout;
 use mir::repr::Repr;
@@ -395,9 +396,10 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 OperandRef::new_imm(layout, discr.as_basic_value_enum())
             },
             | Rvalue::InstanceRef(instance) => {
+                let instance = self.instance.subst_instance(self.db, instance);
                 let value = match instance.def {
                     | InstanceDef::Def(hir::DefWithBody::Func(_)) => {
-                        let func = self.cx.declare_or_codegen_func(instance.clone()).0;
+                        let func = self.cx.declare_or_codegen_func(instance).0;
                         func.as_global_value().as_basic_value_enum()
                     },
                     | _ => todo!(),
@@ -463,7 +465,24 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | BinOp::And => self.builder.build_and(lhs, rhs, ""),
                 | BinOp::Or => self.builder.build_or(lhs, rhs, ""),
                 | BinOp::Xor => self.builder.build_xor(lhs, rhs, ""),
-                | _ => unreachable!(),
+                | BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                    let pred = match op {
+                        | BinOp::Eq => IntPredicate::EQ,
+                        | BinOp::Ne => IntPredicate::NE,
+                        | BinOp::Lt if is_signed => IntPredicate::SLT,
+                        | BinOp::Lt => IntPredicate::ULT,
+                        | BinOp::Le if is_signed => IntPredicate::SLE,
+                        | BinOp::Le => IntPredicate::ULE,
+                        | BinOp::Gt if is_signed => IntPredicate::SGT,
+                        | BinOp::Gt => IntPredicate::UGT,
+                        | BinOp::Ge if is_signed => IntPredicate::SGE,
+                        | BinOp::Ge => IntPredicate::UGE,
+                        | _ => unreachable!(),
+                    };
+
+                    self.builder.build_int_compare(pred, lhs, rhs, "")
+                },
+                | BinOp::Offset => unreachable!(),
             };
 
             OperandRef::new_imm(layout, val.as_basic_value_enum())

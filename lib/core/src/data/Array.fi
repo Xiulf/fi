@@ -1,0 +1,14 @@
+module Data:Array =
+
+import Core
+import Data:Range (Range, (..))
+
+
+member (Array len t) (Slice t) of Into =
+    into arr = arr # (0..(Intrinsics:array_len arr))
+
+member (Array len t) Int t of Core:Ops:Index =
+    index arr idx = Intrinsics:array_index arr idx
+
+member (Array len t) (Range Int) (Slice t) of Core:Ops:Index =
+    index arr (Range s e) = Intrinsics:array_slice arr s e

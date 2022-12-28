@@ -1,0 +1,5 @@
+module Data:Range =
+
+type Range t = | Range t t
+
+infix 5 Range as (..)

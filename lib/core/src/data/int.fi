@@ -1,4 +1,3 @@
-@cfg(skip)
 module Data:Int =
 
 import Core
@@ -27,7 +26,11 @@ member i i of Eq where Integer i =
     eq a b = Intrinsics:ieq a b
 
 member i i of Ord where Integer i =
-    cmp a b = case Intrinsics:icmp a b of
-        0 -> Eq
-        1 -> Gt
-        _ -> Lt
+    ; cmp a b if Intrinsics:ilt a b = Lt
+    ;         if Intrinsics:ieq a b = Eq
+    ;         else                  = Gt
+
+    cmp a b =
+        if Intrinsics:ilt a b then Lt
+        else if Intrinsics:ieq a b then Eq
+        else Gt

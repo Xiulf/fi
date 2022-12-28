@@ -346,6 +346,7 @@ pub(crate) fn class(p: &mut Parser, m: Marker) {
 
     if p.eat(EQUALS) {
         p.expect(LYT_START);
+        p.eat(LYT_SEP);
 
         while !p.at_ts(TokenSet::new(&[EOF, LYT_END])) {
             assoc_item(p);
@@ -441,6 +442,7 @@ pub(crate) fn member(p: &mut Parser, m: Marker) {
 
     if p.eat(EQUALS) {
         p.expect(LYT_START);
+        p.eat(LYT_SEP);
 
         while !p.at(EOF) && !p.at(LYT_END) {
             assoc_item(p);

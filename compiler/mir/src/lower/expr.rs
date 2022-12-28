@@ -155,6 +155,7 @@ impl BodyLowerCtx<'_> {
         self.builder.switch_block(then_block);
         let then = self.lower_expr(then, &mut None);
         self.builder.jump((exit_block, [then]));
+        self.builder.switch_block(else_block);
         let else_ = self.lower_expr(else_, &mut None);
         self.builder.jump((exit_block, [else_]));
         self.builder.switch_block(exit_block);

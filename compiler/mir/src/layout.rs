@@ -335,7 +335,7 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
             }
         };
 
-        let (_tag, fields, variants) = if let Some(niche) = largest_niche {
+        let (tag, fields, variants) = if let Some(niche) = largest_niche {
             if niche.available(triple) >= lyts.len() as u128 {
                 // @TODO: implement niches
                 no_niche(lyts)
@@ -348,28 +348,27 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
 
         let stride = size.align_to(align);
 
-        // if primitive_size(tag.value, triple) == size {
-        //     Layout {
-        //         size,
-        //         align,
-        //         stride,
-        //         elem: None,
-        //         abi: Abi::Scalar(tag),
-        //         fields,
-        //         variants,
-        //         largest_niche: None,
-        //     }
-        // } else {
-        Layout {
-            size,
-            align,
-            stride,
-            abi: Abi::Aggregate { sized: true },
-            fields,
-            variants,
-            largest_niche: None,
+        if tag.value.size(triple) == size {
+            Layout {
+                size,
+                align,
+                stride,
+                abi: Abi::Scalar(tag),
+                fields,
+                variants,
+                largest_niche: None,
+            }
+        } else {
+            Layout {
+                size,
+                align,
+                stride,
+                abi: Abi::Aggregate { sized: true },
+                fields,
+                variants,
+                largest_niche: None,
+            }
         }
-        // }
     }
 }
 

@@ -1,7 +1,7 @@
 use expr::Arg;
 
 use super::*;
-use crate::repr::Repr;
+use crate::repr::{ArrayLen, Repr};
 
 impl BodyLowerCtx<'_> {
     pub fn lower_intrinsic(
@@ -59,14 +59,14 @@ impl BodyLowerCtx<'_> {
                 self.builder.binop(res.clone(), BinOp::Offset, ptr, offset);
                 Operand::Move(res)
             },
-            | "array_index" | "slice_index" => {
+            | "array_index" => {
                 let arr = self.lower_arg(args.next().unwrap(), &mut None);
                 let arr = self.place_op(arr);
                 let idx = self.lower_arg(args.next().unwrap(), &mut None);
 
                 Operand::Copy(arr.index(idx))
             },
-            | "array_slice" | "slice_slice" => {
+            | "array_slice" => {
                 let arr = self.lower_arg(args.next().unwrap(), &mut None);
                 let arr = self.place_op(arr);
                 let lo = self.lower_arg(args.next().unwrap(), &mut None);
@@ -74,24 +74,25 @@ impl BodyLowerCtx<'_> {
 
                 Operand::Copy(arr.slice(lo, hi))
             },
-            | "iadd" => {
-                let lhs = self.lower_arg(args.next().unwrap(), &mut None);
-                let rhs = self.lower_arg(args.next().unwrap(), &mut None);
-                let ty = self.infer.type_of_expr[expr];
-                let res = self.store_in(store_in, ty);
+            | "array_len" => {
+                let arr = self.lower_arg(args.next().unwrap(), &mut None);
+                let repr = self.builder.operand_repr(&arr);
+                let len = match repr {
+                    | Repr::Array(len, _) => len,
+                    | _ => unreachable!(),
+                };
 
-                self.builder.binop(res.clone(), BinOp::Add, lhs, rhs);
-                Operand::Move(res)
-            },
-            | "isub" => {
-                let lhs = self.lower_arg(args.next().unwrap(), &mut None);
-                let rhs = self.lower_arg(args.next().unwrap(), &mut None);
-                let ty = self.infer.type_of_expr[expr];
-                let res = self.store_in(store_in, ty);
+                let len = match len {
+                    | ArrayLen::Const(l) => l as i128,
+                    | ArrayLen::TypeVar(_) => todo!(),
+                };
 
-                self.builder.binop(res.clone(), BinOp::Sub, lhs, rhs);
-                Operand::Move(res)
+                Operand::Const(Const::Int(len), Repr::isize())
             },
+            | "iadd" => self.lower_intrinsic_binop(expr, BinOp::Add, args, store_in),
+            | "isub" => self.lower_intrinsic_binop(expr, BinOp::Sub, args, store_in),
+            | "ieq" => self.lower_intrinsic_binop(expr, BinOp::Eq, args, store_in),
+            | "ilt" => self.lower_intrinsic_binop(expr, BinOp::Lt, args, store_in),
             | "iconvert" => {
                 let val = self.lower_arg(args.next().unwrap(), &mut None);
                 let ty = self.infer.type_of_expr[expr];
@@ -110,5 +111,21 @@ impl BodyLowerCtx<'_> {
             },
             | _ => todo!("intrinsic '{name}'"),
         }
+    }
+
+    fn lower_intrinsic_binop(
+        &mut self,
+        expr: hir::ExprId,
+        op: BinOp,
+        mut args: impl Iterator<Item = Arg>,
+        store_in: &mut Option<Place>,
+    ) -> Operand {
+        let lhs = self.lower_arg(args.next().unwrap(), &mut None);
+        let rhs = self.lower_arg(args.next().unwrap(), &mut None);
+        let ty = self.infer.type_of_expr[expr];
+        let res = self.store_in(store_in, ty);
+
+        self.builder.binop(res.clone(), op, lhs, rhs);
+        Operand::Move(res)
     }
 }

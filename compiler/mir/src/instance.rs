@@ -45,6 +45,14 @@ impl Instance {
         }
     }
 
+    pub fn subst_instance(&self, db: &dyn MirDatabase, instance: &Instance) -> Instance {
+        if let Some(subst) = &self.subst {
+            subst.subst_instance(db, instance)
+        } else {
+            instance.clone()
+        }
+    }
+
     pub fn body(&self, db: &dyn MirDatabase) -> Body {
         match self.def {
             | InstanceDef::Def(def) => db.body_mir(def.into()),
@@ -127,6 +135,22 @@ impl InstanceDef {
 }
 
 impl Subst {
+    pub fn subst_instance(&self, db: &dyn MirDatabase, instance: &Instance) -> Instance {
+        Instance {
+            def: instance.def,
+            subst: instance.subst.as_ref().map(|s| {
+                let types = s
+                    .types
+                    .iter()
+                    .map(|t| t.replace_local_vars(db.upcast(), &self.types))
+                    .collect();
+                let methods = s.methods.clone();
+
+                Arc::new(Subst { types, methods })
+            }),
+        }
+    }
+
     pub fn subst_repr(&self, db: &dyn MirDatabase, repr: &Repr) -> Repr {
         match repr {
             | Repr::TypeVar(tv) => db.repr_of(self.types[tv.idx() as usize]),
