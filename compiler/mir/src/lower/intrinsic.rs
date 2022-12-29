@@ -1,9 +1,16 @@
+use base_db::libs::LibId;
 use expr::Arg;
+use hir::id::HasModule;
+use hir_def::lang_item;
 
 use super::*;
 use crate::repr::{ArrayLen, Repr};
 
 impl BodyLowerCtx<'_> {
+    fn lib(&self) -> LibId {
+        self.builder.origin().def.module(self.db.upcast()).lib
+    }
+
     pub fn lower_intrinsic(
         &mut self,
         expr: hir::ExprId,
@@ -26,6 +33,9 @@ impl BodyLowerCtx<'_> {
                 self.builder.abort();
                 Operand::Const(Const::Unit, Repr::unit())
             },
+            | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
+            | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
+            | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap(), &mut None);
                 let place = self.place_op(place);
@@ -126,6 +136,29 @@ impl BodyLowerCtx<'_> {
         let res = self.store_in(store_in, ty);
 
         self.builder.binop(res.clone(), op, lhs, rhs);
+        Operand::Move(res)
+    }
+
+    fn lower_intrinsic_nullop(
+        &mut self,
+        expr: hir::ExprId,
+        op: NullOp,
+        mut args: impl Iterator<Item = Arg>,
+        store_in: &mut Option<Place>,
+    ) -> Operand {
+        let proxy = match args.next().unwrap() {
+            | Arg::ExprId(e) => self.infer.type_of_expr[e],
+            | Arg::Op(_) => unreachable!(),
+        };
+
+        let lib = self.lib();
+        let proxy_id = self.db.lang_item(lib, lang_item::PROXY_TYPE).unwrap();
+        let proxy_id = proxy_id.as_type_ctor().unwrap();
+        let proxy = proxy.match_ctor(self.db.upcast(), proxy_id).unwrap()[0];
+        let repr = self.db.repr_of(proxy);
+        let res = self.store_in(store_in, self.infer.type_of_expr[expr]);
+
+        self.builder.nullop(res.clone(), op, repr);
         Operand::Move(res)
     }
 }

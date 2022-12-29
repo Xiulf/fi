@@ -106,8 +106,12 @@ impl InferenceContext<'_> {
             &ctnt,
             src,
         ) {
+            let class = self.db.class_data(ctnt.class);
             res.apply(ctnt, self);
-            self.record_solve(found, MethodSource::Member(res.member));
+
+            if !class.items.is_empty() {
+                self.record_solve(found, MethodSource::Member(res.member));
+            }
 
             for ctnt in res.constraints.iter() {
                 let source = match ctnt {

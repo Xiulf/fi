@@ -156,6 +156,9 @@ pub enum Rvalue {
 
     /// A binary operation (add, sub, mul, div, etc.).
     BinOp(BinOp, Operand, Operand),
+
+    /// A nullary operation (size_of, align_of, stride_of).
+    NullOp(NullOp, Repr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -191,6 +194,13 @@ pub enum BinOp {
     Rem,
 
     Offset,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NullOp {
+    SizeOf,
+    AlignOf,
+    StrideOf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

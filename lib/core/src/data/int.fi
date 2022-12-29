@@ -26,11 +26,6 @@ member i i of Eq where Integer i =
     eq a b = Intrinsics:ieq a b
 
 member i i of Ord where Integer i =
-    ; cmp a b if Intrinsics:ilt a b = Lt
-    ;         if Intrinsics:ieq a b = Eq
-    ;         else                  = Gt
-
-    cmp a b =
-        if Intrinsics:ilt a b then Lt
-        else if Intrinsics:ieq a b then Eq
-        else Gt
+    cmp a b if Intrinsics:ilt a b = Lt
+            if Intrinsics:ieq a b = Eq
+            else                  = Gt

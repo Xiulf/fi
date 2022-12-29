@@ -21,6 +21,7 @@ pub enum SyntaxKind {
     LEFT_ARROW,
     DBL_COLON,
     DBL_DOT,
+    FIELD_DOT,
     DOT,
     COMMA,
     COLON,

@@ -131,6 +131,7 @@ macro_rules! make_visitor {
                         self.visit_operand(lhs, loc);
                         self.visit_operand(rhs, loc);
                     },
+                    | Rvalue::NullOp(_, _) => {},
                     | Rvalue::InstanceRef(_) => {},
                 }
             }

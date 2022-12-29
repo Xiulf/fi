@@ -69,7 +69,7 @@ pub(crate) fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<
 
     loop {
         match p.current() {
-            | DOT => {
+            | FIELD_DOT => {
                 let expr = m.precede(p);
 
                 p.bump(DOT);
@@ -190,8 +190,7 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
                         expr(p);
                     }
                 },
-                | c => {
-                    dbg!(c);
+                | _ => {
                     p.error("expected 'then' or 'do'");
                     m.abandon(p);
                     return None;
@@ -273,7 +272,7 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
 fn peek(p: &Parser, n: usize, allow_do: bool) -> bool {
     match p.nth(n) {
         | DO_KW | TRY_KW => allow_do,
-        | FN_KW | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | IF_KW | CASE_KW
+        | FN_KW | IDENT | SYMBOL | INT | FLOAT | CHAR | STRING | L_PAREN | L_BRACE | L_BRACKET | CASE_KW
         | UNDERSCORE | RECUR_KW | RETURN_KW => true,
         | _ => false,
     }

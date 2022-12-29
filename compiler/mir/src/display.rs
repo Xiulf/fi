@@ -2,11 +2,43 @@ use std::fmt::{Display, Formatter, Result, Write};
 
 use hir::display::HirFormatter;
 use hir::id::DefWithBodyId;
-use hir::{DefWithBody, HirDisplay};
+use hir::{DefWithBody, HirDisplay, MethodSource};
 
 use crate::instance::{Instance, InstanceDef};
 use crate::repr::{ArrayLen, Integer, Primitive, Repr, Scalar, Signature};
 use crate::syntax::*;
+
+impl HirDisplay for Instance {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+        self.def.hir_fmt(f)?;
+
+        if let Some(subst) = &self.subst {
+            for ty in &subst.types {
+                write!(f, "^{}", ty.display(f.db))?;
+            }
+
+            for &method in &subst.methods {
+                match method {
+                    | MethodSource::Member(m) => write!(f, "&{}", hir::Member::from(m).link_name(f.db))?,
+                    | MethodSource::Record(i, _) => write!(f, "&${i}")?,
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl HirDisplay for InstanceDef {
+    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
+        match self {
+            | Self::Def(DefWithBody::Func(d)) => write!(f, "{}", d.link_name(f.db).0),
+            | Self::Def(DefWithBody::Const(d)) => write!(f, "{}", d.name(f.db)),
+            | Self::Def(DefWithBody::Static(d)) => write!(f, "{}", d.link_name(f.db).0),
+            | Self::Body(b) => write!(f, "{}", b),
+        }
+    }
+}
 
 impl Display for Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -198,31 +230,7 @@ impl HirDisplay for Rvalue {
             | Self::Cast(kind, op) => write!(f, "cast {} ({:?})", op.display(f.db), kind),
             | Self::InstanceRef(i) => write!(f, "instance {}", i.display(f.db)),
             | Self::BinOp(op, lhs, rhs) => write!(f, "{} {} {}", lhs.display(f.db), op, rhs.display(f.db)),
-        }
-    }
-}
-
-impl HirDisplay for Instance {
-    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
-        self.def.hir_fmt(f)?;
-
-        if let Some(subst) = &self.subst {
-            for ty in &subst.types {
-                write!(f, "^{}", ty.display(f.db))?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl HirDisplay for InstanceDef {
-    fn hir_fmt(&self, f: &mut HirFormatter) -> std::fmt::Result {
-        match self {
-            | Self::Def(DefWithBody::Func(d)) => write!(f, "{}", d.link_name(f.db).0),
-            | Self::Def(DefWithBody::Const(d)) => write!(f, "{}", d.name(f.db)),
-            | Self::Def(DefWithBody::Static(d)) => write!(f, "{}", d.link_name(f.db).0),
-            | Self::Body(b) => write!(f, "{}", b),
+            | Self::NullOp(op, repr) => write!(f, "{} {}", op, repr.display(f.db)),
         }
     }
 }
@@ -251,6 +259,18 @@ impl Display for BinOp {
             | Self::Rem => "%",
 
             | Self::Offset => "*+",
+        };
+
+        f.write_str(s)
+    }
+}
+
+impl Display for NullOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let s = match self {
+            | Self::SizeOf => "sizeof",
+            | Self::AlignOf => "alignof",
+            | Self::StrideOf => "strideof",
         };
 
         f.write_str(s)

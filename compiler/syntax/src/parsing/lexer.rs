@@ -52,6 +52,7 @@ enum LayoutDelim {
     MemberHead,
     MemberBody,
     DeclHead,
+    DeclGuards,
     TypeDecl,
     Where,
     Forall,
@@ -74,6 +75,7 @@ impl LayoutDelim {
             | LayoutDelim::ModuleBody
             | LayoutDelim::ClassBody
             | LayoutDelim::MemberBody
+            | LayoutDelim::DeclGuards
             | LayoutDelim::Where
             | LayoutDelim::Of
             | LayoutDelim::Do => true,
@@ -262,15 +264,15 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 self.insert_default(start, DBL_DOT);
             },
-            // | '.' if self.is_path_sep() => {
-            //     self.insert_default(start, PATH_SEP);
+            | '.' if self.is_path_sep() => {
+                self.insert_default(start, FIELD_DOT);
 
-            //     if let [.., (_, LayoutDelim::Forall)] = self.stack[..] {
-            //         self.stack.pop().unwrap();
-            //     } else {
-            //         self.stack.push((start, LayoutDelim::Prop));
-            //     }
-            // },
+                if let [.., (_, LayoutDelim::Forall)] = self.stack[..] {
+                    self.stack.pop().unwrap();
+                } else {
+                    self.stack.push((start, LayoutDelim::Prop));
+                }
+            },
             | '.' if matches!(self.stack[..], [.., (_, LayoutDelim::Forall)]) => {
                 self.insert_default(start, DOT);
                 self.stack.pop().unwrap();
@@ -783,6 +785,19 @@ impl<'src> Lexer<'src> {
                 | [.., (_, LayoutDelim::CaseBinders)] => {
                     self.emit(IF_KW);
                 },
+                | [.., (_, LayoutDelim::DeclGuards)] => {
+                    self.insert_sep(start);
+                    self.emit(IF_KW);
+                },
+                | [.., (_, LayoutDelim::DeclHead)] => {
+                    self.tokens.push(Token {
+                        kind: LYT_START,
+                        len: TextSize::from(0),
+                    });
+                    self.emit(IF_KW);
+                    self.stack.pop().unwrap();
+                    self.stack.push((start, LayoutDelim::DeclGuards));
+                },
                 | _ => {
                     self.insert_default(start, IF_KW);
                     self.insert_start(LayoutDelim::If);
@@ -812,12 +827,16 @@ impl<'src> Lexer<'src> {
             | "else" => {
                 let mut c = Collapse::new(self.tokens.len());
 
-                c.collapse(start, indented_p, &mut self.stack, &mut self.tokens);
+                c.collapse(start, offside_p, &mut self.stack, &mut self.tokens);
 
                 match self.stack[..] {
                     | [.., (_, LayoutDelim::Then)] => {
                         self.emit(ELSE_KW);
                         self.stack.pop().unwrap();
+                    },
+                    | [.., (_, LayoutDelim::DeclGuards)] => {
+                        self.insert_sep(start);
+                        self.emit(ELSE_KW);
                     },
                     | _ => {
                         c.restore(&mut self.stack, &mut self.tokens);

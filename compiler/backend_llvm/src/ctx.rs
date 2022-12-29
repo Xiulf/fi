@@ -168,7 +168,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
         let name = func.link_name(self.db);
         let sig = self.db.func_signature(func.clone());
-        tracing::debug!("{}", hir::HirDisplay::display(&sig, self.db.upcast()));
+        tracing::debug!("{} :: {}", name, hir::HirDisplay::display(&sig, self.db.upcast()));
         let abi = self.compute_fn_abi(&sig);
         let ty = self.fn_type_for_abi(&abi);
         let value = self.module.add_function(&name, ty, Some(linkage));
@@ -179,6 +179,10 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 
     pub fn declare_or_codegen_func(&mut self, func: Instance) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {
+        if let Some(value) = self.funcs.get(&func) {
+            return value.clone();
+        }
+
         let (value, abi) = self.declare_func(func.clone());
 
         if func.subst.is_none() {
@@ -189,23 +193,25 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             return (value, abi);
         }
 
-        let insert_block = self.builder.get_insert_block();
-        let body = func.body(self.db);
-        let mut ctx = BodyCtx {
-            body: self.db.lookup_intern_body(body),
-            instance: func,
-            func: value,
-            fn_abi: &abi,
-            ret_ptr: None,
-            blocks: ArenaMap::default(),
-            locals: ArenaMap::default(),
-            cx: self,
-        };
+        if func.has_body(self.db) {
+            let insert_block = self.builder.get_insert_block();
+            let body = func.body(self.db);
+            let mut ctx = BodyCtx {
+                body: self.db.lookup_intern_body(body),
+                instance: func,
+                func: value,
+                fn_abi: &abi,
+                ret_ptr: None,
+                blocks: ArenaMap::default(),
+                locals: ArenaMap::default(),
+                cx: self,
+            };
 
-        ctx.codegen();
+            ctx.codegen();
 
-        if let Some(block) = insert_block {
-            self.builder.position_at_end(block);
+            if let Some(block) = insert_block {
+                self.builder.position_at_end(block);
+            }
         }
 
         (value, abi)

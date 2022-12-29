@@ -149,6 +149,10 @@ impl Builder {
         self.stmt(Stmt::Assign(res, Rvalue::BinOp(op, lhs.into(), rhs.into())));
     }
 
+    pub fn nullop(&mut self, res: Place, op: NullOp, repr: Repr) {
+        self.stmt(Stmt::Assign(res, Rvalue::NullOp(op, repr)));
+    }
+
     pub fn place_repr(&self, place: &Place) -> Repr {
         let mut repr = self.body.locals[place.local.0].repr.clone();
 

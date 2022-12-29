@@ -8,8 +8,8 @@ use mir::instance::InstanceDef;
 use mir::layout::ReprAndLayout;
 use mir::repr::Repr;
 use mir::syntax::{
-    BinOp, Block, BlockData, CastKind, Const, JumpTarget, Local, LocalKind, Operand, Place, Projection, Rvalue, Stmt,
-    Term,
+    BinOp, Block, BlockData, CastKind, Const, JumpTarget, Local, LocalKind, NullOp, Operand, Place, Projection, Rvalue,
+    Stmt, Term,
 };
 
 use crate::abi::{ArgAbi, EmptySinglePair, PassMode};
@@ -408,6 +408,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 OperandRef::new_imm(layout, value)
             },
             | Rvalue::BinOp(op, lhs, rhs) => self.codegen_binop(layout, op, lhs, rhs),
+            | Rvalue::NullOp(op, repr) => self.codegen_nullop(layout, op, repr),
             | _ => todo!(),
         }
     }
@@ -487,6 +488,18 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
             OperandRef::new_imm(layout, val.as_basic_value_enum())
         }
+    }
+
+    pub fn codegen_nullop(&mut self, layout: Arc<ReprAndLayout>, op: &NullOp, repr: &Repr) -> OperandRef<'ctx> {
+        let repr = self.db.layout_of(self.instance.subst_repr(self.db, repr));
+        let ty = self.basic_type_for_ral(&layout).into_int_type();
+        let val = match op {
+            | NullOp::SizeOf => ty.const_int(repr.size.bytes(), false),
+            | NullOp::AlignOf => ty.const_int(repr.align.bytes(), false),
+            | NullOp::StrideOf => ty.const_int(repr.stride.bytes(), false),
+        };
+
+        OperandRef::new_imm(layout, val.as_basic_value_enum())
     }
 
     pub fn codegen_operand(&mut self, op: &Operand) -> OperandRef<'ctx> {

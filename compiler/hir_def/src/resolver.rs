@@ -11,7 +11,7 @@ use crate::pat::PatId;
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::scope::{ExprScopeId, ExprScopes, TypeScopeId, TypeScopes};
-use crate::type_ref::LocalTypeRefId;
+use crate::type_ref::{LocalTypeRefId, TypeRef};
 use crate::visibility::Visibility;
 
 #[derive(Default, Debug, Clone)]
@@ -296,12 +296,16 @@ impl Resolver {
     }
 
     fn push_module_scope(self, def_map: Arc<DefMap>, module_id: LocalModuleId) -> Self {
-        std::iter::successors(Some(module_id), |&id| def_map[id].parent).fold(self, |this, module_id| {
-            this.push_scope(Scope::ModuleScope(ModuleItemMap {
-                def_map: def_map.clone(),
-                module_id,
-            }))
-        })
+        std::iter::successors(Some(module_id), |&id| def_map[id].parent)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .fold(self, |this, module_id| {
+                this.push_scope(Scope::ModuleScope(ModuleItemMap {
+                    def_map: def_map.clone(),
+                    module_id,
+                }))
+            })
     }
 
     fn push_expr_scope(self, owner: DefWithBodyId, expr_scopes: Arc<ExprScopes>, scope_id: ExprScopeId) -> Self {
@@ -400,35 +404,40 @@ impl HasResolver for FixityId {
 
 impl HasResolver for FuncId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        // let data = db.func_data(self);
-
         self.lookup(db).container.resolver(db)
-        // .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
 impl HasResolver for StaticId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        // let data = db.static_data(self);
-
         self.lookup(db).container.resolver(db)
-        // .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
 impl HasResolver for ConstId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        // let data = db.const_data(self);
-
         self.lookup(db).module.resolver(db)
-        // .with_type_vars(data.type_map(), TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
 impl HasResolver for DefWithBodyId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
         match self {
-            | DefWithBodyId::FuncId(id) => id.resolver(db),
+            | DefWithBodyId::FuncId(id) => {
+                let data = db.func_data(id);
+
+                if let Some(ty) = data.ty {
+                    let type_map = data.type_map();
+
+                    if let TypeRef::Forall(_, inner) = type_map[ty] {
+                        let owner = TypeVarOwner::TypedDefId(id.into());
+
+                        return Resolver::for_type_ref(db, owner, inner);
+                    }
+                }
+
+                id.lookup(db).container.resolver(db)
+            },
             | DefWithBodyId::ConstId(id) => id.resolver(db),
             | DefWithBodyId::StaticId(id) => id.resolver(db),
         }

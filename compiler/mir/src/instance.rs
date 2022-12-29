@@ -53,6 +53,13 @@ impl Instance {
         }
     }
 
+    pub fn has_body(&self, db: &dyn MirDatabase) -> bool {
+        match self.def {
+            | InstanceDef::Def(def) => def.has_body(db.upcast()),
+            | InstanceDef::Body(_) => true,
+        }
+    }
+
     pub fn body(&self, db: &dyn MirDatabase) -> Body {
         match self.def {
             | InstanceDef::Def(def) => db.body_mir(def.into()),
@@ -61,15 +68,30 @@ impl Instance {
     }
 
     pub fn link_name(&self, db: &dyn MirDatabase) -> String {
+        use std::fmt::Write;
         let mut def_name = self.def.link_name(db);
 
+        if self.is_foreign(db) {
+            return def_name;
+        }
+
         if let Some(subst) = &self.subst {
+            let mut text = String::new();
+
             for ty in &subst.types {
-                let text = format!("^{}", ty.display(db.upcast()));
-                def_name.push_str(&mangling::mangle(text.bytes()));
+                write!(text, "^{}", ty.display(db.upcast())).unwrap();
             }
 
-            // TODO: add methods
+            for &method in &subst.methods {
+                match method {
+                    | MethodSource::Member(m) => {
+                        write!(text, "&{}", hir::Member::from(m).link_name(db.upcast())).unwrap()
+                    },
+                    | MethodSource::Record(i, _) => write!(text, "&${i}").unwrap(),
+                }
+            }
+
+            def_name.push_str(&mangling::mangle(text.bytes()));
         }
 
         def_name

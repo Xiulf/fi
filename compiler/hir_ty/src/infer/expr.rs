@@ -660,6 +660,7 @@ impl InferenceContext<'_> {
                     | ValueNs::Fixity(id) => break 't self.infer_infix(id, expr.into()),
                     | ValueNs::Func(id) => {
                         if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
+                            self.can_generalize = false;
                             // break 't self.subst.subst_type(&mut self.types, self.result.self_type.ty);
                             break 't self.instantiate(self.result.self_type.ty, (expr, idx.unwrap_or(0)).into());
                         } else {

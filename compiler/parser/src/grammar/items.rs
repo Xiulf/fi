@@ -167,7 +167,7 @@ pub(crate) fn func(p: &mut Parser, m: Marker) {
         types::ty(p);
         m.complete(p, ONE_FUNC);
     } else {
-        while !p.at_ts(TokenSet::new(&[EOF, LYT_SEP, LYT_END, EQUALS, IF_KW])) {
+        while !p.at_ts(EOF | LYT_SEP | LYT_END | LYT_START | EQUALS) {
             patterns::atom(p);
         }
 
@@ -176,15 +176,17 @@ pub(crate) fn func(p: &mut Parser, m: Marker) {
 
             exprs::block(p, false);
             body.complete(p, EXPR_DO);
-        } else if p.at(IF_KW) {
+        } else if p.at(LYT_START) && p.nth_at(1, IF_KW) {
             let guarded = p.start();
 
+            p.bump(LYT_START);
             exprs::case_guard(p, EQUALS);
 
-            while p.at_ts(IF_KW | ELSE_KW) {
+            while p.eat(LYT_SEP) {
                 exprs::case_guard(p, EQUALS);
             }
 
+            p.expect(LYT_END);
             guarded.complete(p, CASE_GUARDED);
         }
 

@@ -8,10 +8,24 @@ import Data:Range ((..))
 main :: ExitCode
 main =
     let x = fib 8
+    let b = Box:new 5
 
-    ExitCode $ x
+    ExitCode x
 
 
 fib :: forall i. i -> i where Integer i
 fib n if n < 2 = n
-      else     = (fib (n - 2)) + (fib (n - 1))
+      else     = fib (n - 2) + fib (n - 1)
+
+
+
+module Box =
+    import Core
+
+    type Box t = | Box (Ptr t)
+    
+    new :: forall t. t -> Box t
+    new x =
+        let ptr = LibC:malloc (Intrinsics:size_of (Proxy :: Proxy t))
+        Intrinsics:ptr_write ptr x
+        Box ptr

@@ -300,6 +300,14 @@ impl DefWithBody {
         }
     }
 
+    pub fn has_body(self, db: &dyn HirDatabase) -> bool {
+        match self {
+            | DefWithBody::Func(it) => it.has_body(db),
+            | DefWithBody::Static(it) => it.has_body(db),
+            | DefWithBody::Const(_) => true,
+        }
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         match self {
             | DefWithBody::Func(it) => it.diagnostics(db, sink),
@@ -447,27 +455,28 @@ impl Func {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let infer = db.infer(self.id.into());
         let data = db.func_data(self.id);
         let body = db.body(self.id.into());
 
-        if data.name.as_ref() == "main" {
-            tracing::debug!("{:?}:", self.id.lookup(db.upcast()).container);
-            tracing::debug!("{} :: {}", data.name, infer.self_type.ty.display(db));
+        // if data.name.as_ref() == "main" {
+        tracing::debug!("{:?}:", self.id.lookup(db.upcast()).container);
+        tracing::debug!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
-            for ((id, i), method) in &infer.methods {
-                tracing::debug!("{:?}#{} -> {:?}", id, i, method);
-            }
-
-            for (expr, ty) in infer.type_of_expr.iter() {
-                tracing::debug!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
-            }
-
-            for (pat, ty) in infer.type_of_pat.iter() {
-                tracing::debug!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
-            }
+        for ((id, i), method) in &infer.methods {
+            tracing::debug!("{:?}#{} -> {:?}", id, i, method);
         }
+
+        for (expr, ty) in infer.type_of_expr.iter() {
+            tracing::debug!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
+        }
+
+        for (pat, ty) in infer.type_of_pat.iter() {
+            tracing::debug!("{:?} -> {:?} :: {}", pat, body[pat], ty.display(db));
+        }
+        // }
 
         infer.add_diagnostics(db, self.id.into(), sink);
     }
@@ -499,6 +508,10 @@ impl Static {
 
     pub fn path(self, db: &dyn HirDatabase) -> Path {
         self.module(db).path_to_name(db, self.name(db))
+    }
+
+    pub fn has_body(self, db: &dyn HirDatabase) -> bool {
+        !db.static_data(self.id).is_foreign
     }
 
     pub fn link_name(self, db: &dyn HirDatabase) -> (Name, bool) {
@@ -847,7 +860,7 @@ impl Member {
         let name = Class::from(lower.member.class).name(db);
         let id = u32::from(self.id.as_intern_id());
 
-        format!("$member_{}_{}", name, id).as_name()
+        format!("{}@{}", name, id).as_name()
     }
 
     pub fn class(self, db: &dyn HirDatabase) -> Class {
