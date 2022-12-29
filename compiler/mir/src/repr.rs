@@ -12,6 +12,8 @@ use crate::instance::{Instance, InstanceDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Repr {
+    Opaque,
+    Uninhabited,
     TypeVar(TypeVar),
     Scalar(Scalar),
     Struct(Box<[Repr]>),
@@ -101,6 +103,8 @@ impl Repr {
 
     fn align(&self) -> Integer {
         match self {
+            | Repr::Opaque => Integer::I8,
+            | Repr::Uninhabited => unreachable!(),
             | Repr::TypeVar(_) => Integer::Int,
             | Repr::Scalar(s) => match s.value {
                 | Primitive::Int(i, _) => i,
@@ -167,7 +171,9 @@ fn repr_of_ctor(db: &dyn MirDatabase, id: TypeCtorId, args: &[Ty]) -> Repr {
 
     let data = db.type_ctor_data(id);
 
-    if data.ctors.is_empty() {
+    if data.is_foreign {
+        Repr::Opaque
+    } else if data.ctors.is_empty() {
         Repr::Struct(Box::new([]))
     } else if data.ctors.len() == 1 {
         let (local_id, ctor) = data.ctors.iter().next().unwrap();
@@ -210,7 +216,11 @@ fn repr_of_variant(db: &dyn MirDatabase, local_id: LocalCtorId, ctor: &CtorData,
 }
 
 fn repr_from_attrs(db: &dyn MirDatabase, group: &AttrInputGroup, args: &[Ty]) -> Repr {
-    let mut repr = Repr::Struct(Box::new([]));
+    let mut repr = Repr::Opaque;
+
+    if group.ident("uninhabited") {
+        repr = Repr::Uninhabited;
+    }
 
     if let Some(val) = group.field("scalar").and_then(AttrInput::string) {
         repr = Repr::Scalar(Scalar {

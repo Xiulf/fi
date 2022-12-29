@@ -668,6 +668,13 @@ impl<'a> BodyInferenceContext<'a> {
             unreachable!()
         }
     }
+
+    fn infix_arg(&mut self, arg: InfixArg) -> TyId {
+        match arg {
+            | InfixArg::ExprId(expr) => self.infer_expr(expr),
+            | InfixArg::TyId(ty) => ty,
+        }
+    }
 }
 
 impl<'a> ProcessInfix for InferenceContext<'a> {
@@ -713,8 +720,23 @@ impl<'a> ProcessInfix for InferenceContext<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
+enum InfixArg {
+    ExprId(ExprId),
+    TyId(TyId),
+}
+
+impl InfixArg {
+    fn ty(self) -> TyId {
+        match self {
+            | Self::TyId(t) => t,
+            | _ => unreachable!(),
+        }
+    }
+}
+
 impl<'a> ProcessInfix for BodyInferenceContext<'a> {
-    type It = TyId;
+    type It = InfixArg;
     type Src = TySource;
 
     fn db(&self) -> &dyn hir_def::db::DefDatabase {
@@ -726,7 +748,7 @@ impl<'a> ProcessInfix for BodyInferenceContext<'a> {
     }
 
     fn error(&mut self, src: Self::Src) -> Self::It {
-        InferenceContext::error(self, src)
+        InfixArg::TyId(InferenceContext::error(self, src))
     }
 
     fn on_unresolved(&mut self, src: Self::Src, idx: usize, path: &Path) {

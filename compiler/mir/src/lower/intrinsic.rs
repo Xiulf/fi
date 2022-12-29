@@ -33,6 +33,26 @@ impl BodyLowerCtx<'_> {
                 self.builder.abort();
                 Operand::Const(Const::Unit, Repr::unit())
             },
+            | "drop" => {
+                let arg = self.lower_arg(args.next().unwrap(), &mut None);
+                let arg = match arg {
+                    | Operand::Copy(place) | Operand::Move(place) => place,
+                    | _ => unreachable!(),
+                };
+
+                assert!(arg.projection.is_empty());
+                self.builder.drop(arg.local);
+                Operand::Const(Const::Unit, Repr::unit())
+            },
+            | "copy" => {
+                let arg = self.lower_arg(args.next().unwrap(), &mut None);
+                let arg = match arg {
+                    | Operand::Copy(place) | Operand::Move(place) => place,
+                    | _ => unreachable!(),
+                };
+
+                Operand::Copy(arg)
+            },
             | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
             | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
             | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
@@ -50,14 +70,14 @@ impl BodyLowerCtx<'_> {
                 let arg = self.lower_arg(args.next().unwrap(), &mut None);
                 let place = self.place_op(arg);
 
-                Operand::Copy(place.deref())
+                Operand::Move(place.deref())
             },
             | "ptr_write" => {
                 let place = self.lower_arg(args.next().unwrap(), &mut None);
                 let place = self.place_op(place);
                 let op = self.lower_arg(args.next().unwrap(), &mut None);
 
-                self.builder.assign(place, op);
+                self.builder.assign(place.deref(), op);
                 Operand::Const(Const::Unit, Repr::unit())
             },
             | "ptr_offset" => {

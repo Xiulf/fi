@@ -332,6 +332,8 @@ impl HirDisplay for Const {
 impl HirDisplay for Repr {
     fn hir_fmt(&self, f: &mut HirFormatter) -> Result {
         match self {
+            | Self::Opaque => write!(f, "{{opaque}}"),
+            | Self::Uninhabited => write!(f, "{{uninhabited}}"),
             | Self::TypeVar(v) => write!(f, "${}", v.idx()),
             | Self::ReprOf(ty) => write!(f, "repr_of({})", ty.display(f.db)),
             | Self::Scalar(scalar) => write!(f, "{scalar}"),

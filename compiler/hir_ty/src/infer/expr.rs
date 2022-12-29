@@ -10,6 +10,7 @@ use tracing::trace;
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, ExprOrPatId, InferenceContext, InferenceDiagnostic};
+use crate::infer::InfixArg;
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo, TySource};
 use crate::lower::LowerCtx;
 
@@ -21,7 +22,7 @@ impl BodyInferenceContext<'_> {
         let body = Arc::clone(&self.body);
         let src = self.source(expr);
         let ty = match &body[expr] {
-            | Expr::Missing => self.error(src),
+            | Expr::Missing => self.error(src).ty(),
             | Expr::Typed { expr, ty } => self.owner.with_type_map(self.db.upcast(), |type_map| {
                 let mut lcx = LowerCtx::new(type_map, self);
                 let ty_ = lcx.lower_ty(*ty);
@@ -78,19 +79,27 @@ impl BodyInferenceContext<'_> {
                 | Literal::String(_) => self.lang_type(lang_item::STR_TYPE, src),
             },
             | Expr::Infix { exprs, ops } => {
-                let exprs = exprs.iter().map(|&e| self.infer_expr(e)).collect::<Vec<_>>();
-
-                self.process_infix(
+                let exprs = exprs.iter().map(|&e| InfixArg::ExprId(e)).collect::<Vec<_>>();
+                let arg = self.process_infix(
                     exprs.into_iter(),
                     ops,
                     src,
                     |ctx, i, op, lhs, rhs| {
-                        let mid = ctx.check_app(op, lhs, (expr, i));
+                        let op = ctx.infix_arg(op);
+                        let mid = match lhs {
+                            | InfixArg::ExprId(e) => ctx.infer_app(op, e, (expr, i)),
+                            | InfixArg::TyId(t) => ctx.check_app(op, t, (expr, i)),
+                        };
 
-                        ctx.check_app(mid, rhs, (expr, i))
+                        InfixArg::TyId(match rhs {
+                            | InfixArg::ExprId(e) => ctx.infer_app(mid, e, (expr, i)),
+                            | InfixArg::TyId(t) => ctx.check_app(mid, t, (expr, i)),
+                        })
                     },
-                    |ctx, i, path, resolver| ctx.infer_path(path, resolver, expr, Some(i)),
-                )
+                    |ctx, i, path, resolver| InfixArg::TyId(ctx.infer_path(path, resolver, expr, Some(i))),
+                );
+
+                self.infix_arg(arg)
             },
             | Expr::App { base, arg } => {
                 let base_ty = self.infer_expr(*base);
@@ -486,7 +495,7 @@ impl BodyInferenceContext<'_> {
                     }
                 },
                 | None => {
-                    let error = self.error(src);
+                    let error = self.error(src).ty();
 
                     self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
                     self.unify_types(expected, error);
@@ -536,7 +545,7 @@ impl BodyInferenceContext<'_> {
         }
     }
 
-    pub fn infer_app(&mut self, base_ty: TyId, arg: ExprId, expr: ExprId) -> TyId {
+    pub fn infer_app(&mut self, base_ty: TyId, arg: ExprId, expr: impl Into<ExprOrPatId> + Copy) -> TyId {
         let base_ty = self.subst_type(base_ty);
         let func_ty = self.lang_ctor(lang_item::FN_TYPE);
 

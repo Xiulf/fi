@@ -9,6 +9,7 @@ use tracing::trace;
 
 use super::diagnostics::{CtntExpected, CtntFound};
 use super::{BodyInferenceContext, InferenceDiagnostic};
+use crate::infer::InfixArg;
 use crate::info::{CtntInfo, FieldInfo, ToInfo, TyId, TyInfo};
 use crate::lower::LowerCtx;
 
@@ -20,7 +21,7 @@ impl BodyInferenceContext<'_> {
         let body = Arc::clone(&self.body);
         let src = self.source(pat);
         let ty = match &body[pat] {
-            | Pat::Missing => self.error(src),
+            | Pat::Missing => self.error(src).ty(),
             | Pat::Wildcard => self.fresh_type(src),
             | Pat::Unit => self.unit(src),
             | Pat::Typed { pat, ty } => self.owner.with_type_map(self.db.upcast(), |type_map| {
@@ -31,21 +32,27 @@ impl BodyInferenceContext<'_> {
                 ty
             }),
             | Pat::Infix { pats, ops } => {
-                let pats = pats.iter().map(|&p| self.infer_pat(p)).collect::<Vec<_>>();
+                let pats = pats
+                    .iter()
+                    .map(|&p| InfixArg::TyId(self.infer_pat(p)))
+                    .collect::<Vec<_>>();
 
-                self.process_infix(
+                let arg = self.process_infix(
                     pats.into_iter(),
                     ops,
                     src,
                     |ctx, _, op, lhs, rhs| {
                         let ret = ctx.fresh_type(src);
+                        let op = ctx.infix_arg(op);
+                        let lhs = ctx.infix_arg(lhs);
+                        let rhs = ctx.infix_arg(rhs);
                         let ty = ctx.fn_type([lhs, rhs], ret, src);
 
                         if !ctx.unify_types(op, ty) {
                             ctx.report_mismatch(op, ty, pat);
                         }
 
-                        ret
+                        InfixArg::TyId(ret)
                     },
                     |ctx, _, path, resolver| match resolver.resolve_value_fully(ctx.db.upcast(), path) {
                         | Some((value, vis)) => {
@@ -62,14 +69,16 @@ impl BodyInferenceContext<'_> {
 
                             let ty = ty.to_info(ctx.db, &mut ctx.icx.types, &mut ctx.icx.type_vars, src).ty;
 
-                            ctx.instantiate(ty, pat.into())
+                            InfixArg::TyId(ctx.instantiate(ty, pat.into()))
                         },
                         | None => {
                             ctx.report(InferenceDiagnostic::UnresolvedValue { id: pat.into() });
                             ctx.error(src)
                         },
                     },
-                )
+                );
+
+                self.infix_arg(arg)
             },
             | Pat::App { base, args } => {
                 let ret = self.fresh_type(src);
@@ -102,7 +111,7 @@ impl BodyInferenceContext<'_> {
                 },
                 | None => {
                     self.report(InferenceDiagnostic::UnresolvedValue { id: pat.into() });
-                    self.error(src)
+                    self.error(src).ty()
                 },
             },
             | Pat::Bind { subpat: None, .. } => self.fresh_type(src),

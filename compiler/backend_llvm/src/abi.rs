@@ -85,7 +85,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         } else {
             match &layout.abi {
                 | Abi::Uninhabited => PassMode::NoPass,
-                | Abi::Scalar(s) => PassMode::ByVal(self.basic_type_for_scalar(s)),
+                | Abi::Scalar(_) => PassMode::ByVal(self.basic_type_for_ral(layout)),
                 | Abi::ScalarPair(a, b) => {
                     let a_ty = self.basic_type_for_ral(&layout.field(self.db, 0).unwrap());
                     let b_ty = self.basic_type_for_ral(&layout.field(self.db, 1).unwrap());

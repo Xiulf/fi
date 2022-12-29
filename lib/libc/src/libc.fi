@@ -15,6 +15,8 @@ type C_Array t = Ptr t
 type Size_T  = Uint
 type Ssize_T = Int
 
+foreign type C_Void :: Type
+
 NULL :: forall t. Ptr t
 NULL = unsafe (transmute (0 :: Uint))
 
@@ -27,7 +29,7 @@ foreign puts :: C_Str -> C_Int
 foreign write :: C_Int -> Ptr C_Char -> Size_T -> Ssize_T
 
 ; mem
-foreign malloc :: forall t. Size_T -> Ptr t
-foreign free :: forall t. Ptr t -> ()
-foreign memcpy :: forall t. Ptr t -> Ptr t -> Uint -> Ptr t
-foreign memmove :: forall t. Ptr t -> Ptr t -> Uint -> Ptr t
+foreign malloc :: Size_T -> Ptr C_Void
+foreign free :: Ptr C_Void -> ()
+foreign memcpy :: Ptr C_Void -> Ptr C_Void -> Uint -> Ptr C_Void
+foreign memmove :: Ptr C_Void -> Ptr C_Void -> Uint -> Ptr C_Void

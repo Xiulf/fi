@@ -103,7 +103,12 @@ pub fn layout_of(db: &dyn MirDatabase, repr: &Repr) -> Layout {
 
 pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Layout {
     match repr {
-        | Repr::TypeVar(_) => {
+        | Repr::Opaque => {
+            let mut layout = Layout::UNIT;
+            layout.abi = Abi::Aggregate { sized: true };
+            layout
+        },
+        | Repr::Uninhabited | Repr::TypeVar(_) => {
             let mut layout = Layout::UNIT;
             layout.abi = Abi::Uninhabited;
             layout

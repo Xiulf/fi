@@ -28,10 +28,15 @@ infixl 1 applyFlipped as (.)
 
 @intrinsic foreign addr_of    :: forall ptr to. to -> ptr where Pointer ptr to
 @intrinsic foreign ptr_offset :: forall ptr to. ptr -> Int -> ptr where Pointer ptr to
-@intrinsic foreign ptr_read   :: forall ptr to. ptr -> to where Pointer ptr to
-@intrinsic foreign ptr_write  :: forall ptr to. ptr -> to -> Unit where Pointer ptr to
+@intrinsic foreign ptr_read   :: forall ptr to. ptr -> to where Pointer ptr to, Unsafe
+@intrinsic foreign ptr_write  :: forall ptr to. ptr -> to -> Unit where Pointer ptr to, Unsafe
 
 @intrinsic foreign size_of :: forall t. Proxy t -> Uint
+@intrinsic foreign align_of :: forall t. Proxy t -> Uint
+@intrinsic foreign stride_of :: forall t. Proxy t -> Uint
+
+@intrinsic foreign copy :: forall t. t -> t
+@intrinsic foreign drop :: forall t. t -> () where Unsafe
 
 @intrinsic foreign apply        :: forall a r. (a -> r) -> a -> r
 @intrinsic foreign applyFlipped :: forall a r. a -> (a -> r) -> r

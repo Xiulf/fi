@@ -5,14 +5,14 @@ import Data:Range (Range)
 
 
 member (Slice t) Int t of Core:Ops:Index =
-    index slice idx =
-        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr _, Uint
+    index slice idx = Intrinsics:unsafe do
+        let ptr, _ = Intrinsics:transmute slice :: Ptr _, Uint
         let ptr = Intrinsics:ptr_offset ptr idx
         Intrinsics:ptr_read ptr
 
 member (Slice t) (Range Int) (Slice t) of Core:Ops:Index =
-    index slice (Range s e) =
-        let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute slice) :: Ptr t, Uint
+    index slice (Range s e) = Intrinsics:unsafe do
+        let ptr, _ = Intrinsics:transmute slice :: Ptr t, Uint
         let ptr = Intrinsics:ptr_offset ptr s
         let len = Intrinsics:isub e s
-        Intrinsics:unsafe (Intrinsics:transmute (ptr, len))
+        Intrinsics:transmute (ptr, len)
