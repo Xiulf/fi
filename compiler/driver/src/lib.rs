@@ -62,7 +62,7 @@ impl Default for Driver {
         Self {
             db: db::RootDatabase::default(),
             workspaces: Vec::new(),
-            target_dir: AbsPathBuf::assert("/".into()),
+            target_dir: AbsPathBuf::assert(std::env::current_dir().unwrap()),
             cfg: CfgOptions::default(),
             vfs: vfs::VirtualFileSystem::default(),
         }

@@ -37,6 +37,7 @@ use crate::info::{CtntInfo, FromInfo, ToInfo, TyId, TyInfo, TySource, TypeOrigin
 use crate::lower::LowerCtx;
 use crate::ty::{Constraint, List, Ty, TyAndSrc, TypeVar, WhereClause};
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<InferenceResult<Ty, Constraint>> {
     let body = db.body(def);
     let resolver = Resolver::for_expr(db.upcast(), def, body.body_expr());
@@ -59,13 +60,21 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let data = db.func_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
-            let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
+            tracing::debug!("{}", data.name);
+            let scope = lcx.push_type_vars(&data.type_vars);
+            let kinds = lcx.type_vars.var_kinds(scope).clone();
+            let mut ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
+
+            if !kinds.is_empty() {
+                ty = lcx.types.insert(TyInfo::ForAll(kinds, ty, scope), src);
+            }
 
             if db.attrs(id.into()).by_key("main").exists() {
                 lcx.main_fn(ty, db.body(id.into()).body_expr());
             }
 
             lcx.check_kind_type(ty);
+            lcx.type_vars.pop_scope();
             (ty, data.name.clone())
         }),
         | DefWithBodyId::StaticId(id) => icx.with_owner(TypeVarOwner::TypedDefId(id.into()), |icx| {
@@ -527,8 +536,12 @@ impl<'a> InferenceContext<'a> {
             .ty
             .to_info(self.db, &mut self.types, &mut self.type_vars, item_ty.src);
 
+        let mut scope = self.type_vars.top_scope();
         let mut item_ty = match self.types[item_ty].clone() {
-            | TyInfo::ForAll(_, inner, scope) => inner.replace_vars(&mut self.types, &types, scope),
+            | TyInfo::ForAll(_, inner, s) => {
+                scope = s;
+                inner.replace_vars(&mut self.types, &types, s)
+            },
             | _ => item_ty,
         };
 
@@ -548,8 +561,6 @@ impl<'a> InferenceContext<'a> {
         }
 
         if !kinds.is_empty() {
-            let scope = self.type_vars.top_scope();
-
             item_ty = self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
         }
 

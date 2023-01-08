@@ -289,6 +289,7 @@ impl TypeVarOwner {
         match self {
             | TypeVarOwner::DefWithBodyId(_) => None,
             | TypeVarOwner::TypedDefId(id) => match id {
+                | TypedDefId::FuncId(id) => Some(db.func_data(id).type_vars.clone()),
                 | TypedDefId::TypeAliasId(id) => Some(db.type_alias_data(id).type_vars.clone()),
                 | TypedDefId::TypeCtorId(id) => Some(db.type_ctor_data(id).type_vars.clone()),
                 | TypedDefId::ClassId(id) => Some(db.class_data(id).type_vars.clone()),

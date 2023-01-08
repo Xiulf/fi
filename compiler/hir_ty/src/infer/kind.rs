@@ -20,7 +20,10 @@ impl InferenceContext<'_> {
                 self.subst_type(kind)
             },
             | TyInfo::Skolem(_, kind) => kind,
-            | TyInfo::TypeVar(var) => self.type_vars.var_kinds(var.scope())[var.idx() as usize],
+            | TyInfo::TypeVar(var) => {
+                tracing::debug!("{:?}, {:?}", var, self.type_vars);
+                self.type_vars.var_kinds(var.scope())[var.idx() as usize]
+            },
             | TyInfo::Figure(_) => self.lang_type(lang_item::FIGURE_KIND, src),
             | TyInfo::Symbol(_) => self.lang_type(lang_item::SYMBOL_KIND, src),
             | TyInfo::Row(fields, tail) => {

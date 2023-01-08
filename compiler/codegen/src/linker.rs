@@ -87,7 +87,7 @@ pub struct CcLinker {
 impl CcLinker {
     pub fn new() -> Self {
         Self {
-            cmd: Command::new("cc"),
+            cmd: Command::new("gcc"),
         }
     }
 }

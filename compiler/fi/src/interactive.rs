@@ -53,12 +53,12 @@ impl Interactive {
                         | Some(".code") => {
                             println!("{}", self.text());
                         },
-                        | Some(".load") => self.load(words.as_str()),
-                        | Some(".import") => self.add_import(words.as_str()),
-                        | Some(".let") => self.add_let(words.as_str()),
-                        | Some(".r" | ".resolve") => self.resolve(words.as_str()),
-                        | Some(".t" | ".type") => self.type_of(words.as_str()),
-                        | Some(".k" | ".kind") => self.kind_of(words.as_str()),
+                        | Some(".load") => self.load(words.remainder().unwrap()),
+                        | Some(".import") => self.add_import(words.remainder().unwrap()),
+                        | Some(".let") => self.add_let(words.remainder().unwrap()),
+                        | Some(".r" | ".resolve") => self.resolve(words.remainder().unwrap()),
+                        | Some(".t" | ".type") => self.type_of(words.remainder().unwrap()),
+                        | Some(".k" | ".kind") => self.kind_of(words.remainder().unwrap()),
                         | Some(_) => self.eval(&text),
                         | None => {},
                     }

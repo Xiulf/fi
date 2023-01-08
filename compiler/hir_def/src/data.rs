@@ -25,6 +25,7 @@ pub struct FixityData {
 pub struct FuncData {
     pub name: Name,
     pub ty: Option<LocalTypeRefId>,
+    pub type_vars: Box<[LocalTypeVarId]>,
     pub has_body: bool,
     pub is_foreign: bool,
     type_map: TypeMap,
@@ -146,6 +147,14 @@ impl FuncData {
         let src = loc.source(db).map(|v| v.iter().next().unwrap());
         let mut type_builder = TypeMap::builder();
         let ty = src.value.ty().map(|t| type_builder.alloc_type_ref(t));
+        let type_vars = match src.value.type_vars() {
+            | Some(vars) => vars
+                .iter()
+                .map(|t| type_builder.alloc_type_var(t))
+                .collect::<Box<[LocalTypeVarId]>>(),
+            | None => Box::new([]),
+        };
+
         let (type_map, type_source_map) = type_builder.finish();
 
         Arc::new(FuncData {
@@ -153,6 +162,7 @@ impl FuncData {
             has_body: it.has_body,
             is_foreign: it.is_foreign,
             ty,
+            type_vars,
             type_map,
             type_source_map,
         })
@@ -236,10 +246,10 @@ impl TypeAliasData {
         let item_tree = db.item_tree(loc.id.file_id);
         let it = &item_tree[loc.id.value];
         let mut type_builder = TypeMap::builder();
-        let type_vars = first.vars().or_else(|| next.as_ref()?.vars());
+        let type_vars = first.type_vars().or_else(|| next.as_ref()?.type_vars());
         let type_vars = match type_vars {
             | Some(vars) => vars
-                .type_vars()
+                .iter()
                 .map(|t| type_builder.alloc_type_var(t))
                 .collect::<Box<[LocalTypeVarId]>>(),
             | None => Box::new([]),
@@ -281,10 +291,10 @@ impl TypeCtorData {
         let mut ctors = Arena::new();
         let kind = first.kind().or_else(|| next.as_ref()?.kind());
         let kind = kind.map(|k| type_builder.alloc_type_ref(k));
-        let type_vars = first.vars().or_else(|| next.as_ref()?.vars());
+        let type_vars = first.type_vars().or_else(|| next.as_ref()?.type_vars());
         let type_vars = match type_vars {
             | Some(vars) => vars
-                .type_vars()
+                .iter()
                 .map(|t| type_builder.alloc_type_var(t))
                 .collect::<Box<[LocalTypeVarId]>>(),
             | None => Box::new([]),
@@ -341,7 +351,7 @@ impl ClassData {
         let mut type_builder = TypeMap::builder();
         let type_vars = match src.value.vars() {
             | Some(vars) => vars
-                .type_vars()
+                .iter()
                 .map(|t| type_builder.alloc_type_var(t))
                 .collect::<Box<[LocalTypeVarId]>>(),
             | None => Box::new([]),

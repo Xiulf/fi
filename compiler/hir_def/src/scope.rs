@@ -207,7 +207,7 @@ impl TypeScopes {
             scopes_by_ty: FxHashMap::default(),
         };
 
-        let mut root = scopes.root_scope();
+        let root = scopes.root_scope();
 
         if let Some(vars) = vars {
             for &var in vars.iter() {
@@ -215,8 +215,6 @@ impl TypeScopes {
 
                 scopes.add_binding(root, name, var);
             }
-
-            root = scopes.new_scope(root);
         }
 
         for (id, _) in type_map.iter() {
@@ -278,13 +276,13 @@ fn compute_type_scopes(id: LocalTypeRefId, type_map: &TypeMap, scopes: &mut Type
 
     match type_map[id] {
         | TypeRef::Forall(ref vars, inner) => {
+            let scope = scopes.new_scope(scope);
+
             for &var in vars.iter() {
                 let name = type_map[var].name.clone();
 
                 scopes.add_binding(scope, name, var);
             }
-
-            let scope = scopes.new_scope(scope);
 
             compute_type_scopes(inner, type_map, scopes, scope);
         },

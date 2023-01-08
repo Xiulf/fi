@@ -149,7 +149,7 @@ pub(crate) fn funcs(p: &mut Parser, m: Marker, multiple: bool) {
     func(p, f);
 
     if multiple {
-        while p.at(LYT_SEP) && p.nth_at(1, IDENT) && !p.nth_at(2, DBL_COLON) && p.nth_text(1) == name {
+        while p.at(LYT_SEP) && p.nth_at(1, IDENT) && !peek_type_ann(p, 2) && p.nth_text(1) == name {
             p.bump(LYT_SEP);
             let f = p.start();
 
@@ -160,10 +160,20 @@ pub(crate) fn funcs(p: &mut Parser, m: Marker, multiple: bool) {
     m.complete(p, ITEM_FUNC);
 }
 
+pub(crate) fn peek_type_ann(p: &Parser, mut n: usize) -> bool {
+    while p.nth_at(n, IDENT) {
+        n += 1;
+    }
+
+    p.nth_at(n, DBL_COLON)
+}
+
 pub(crate) fn func(p: &mut Parser, m: Marker) {
     paths::name(p);
 
-    if p.eat(DBL_COLON) {
+    if peek_type_ann(p, 0) {
+        type_vars(p);
+        p.bump(DBL_COLON);
         types::ty(p);
         m.complete(p, ONE_FUNC);
     } else {

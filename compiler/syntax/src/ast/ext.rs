@@ -314,6 +314,10 @@ impl ItemFunc {
 }
 
 impl OneFunc {
+    pub fn type_vars(&self) -> Option<TypeVars> {
+        support::child(&self.0)
+    }
+
     pub fn args(&self) -> AstChildren<Pat> {
         support::children(&self.0)
     }
@@ -396,7 +400,7 @@ impl ItemType {
 }
 
 impl OneType {
-    pub fn vars(&self) -> Option<TypeVars> {
+    pub fn type_vars(&self) -> Option<TypeVars> {
         support::child(&self.0)
     }
 
@@ -507,7 +511,7 @@ impl ItemMember {
 }
 
 impl TypeVars {
-    pub fn type_vars(&self) -> AstChildren<Name> {
+    pub fn iter(&self) -> AstChildren<Name> {
         support::children(&self.0)
     }
 }

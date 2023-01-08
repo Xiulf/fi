@@ -14,10 +14,9 @@ main =
     ExitCode x
 
 
-fib :: forall i. i -> i where Integer i
+fib i :: i -> i where Integer i
 fib n if n < 2 = n
       else     = fib (n - 2) + fib (n - 1)
-
 
 
 module Box =
@@ -26,27 +25,27 @@ module Box =
 
     type Box t = | Box (Ptr t)
     
-    new :: forall t. t -> Box t
+    new t :: t -> Box t
     new x = unsafe do
         let ptr = LibC:malloc (size_of (Proxy :: Proxy t))
         let ptr = transmute ptr
         ptr_write ptr x
         Box ptr
     
-    copy :: forall t. Box t -> Box t
+    copy t :: Box t -> Box t
     copy (Box ptr) = unsafe do
         let val = Intrinsics:copy (ptr_read ptr)
         new val
     
-    drop :: forall t. Box t -> ()
+    drop t :: Box t -> ()
     drop (Box ptr) = unsafe do
         let val = ptr_read ptr
         Intrinsics:drop val
         let ptr = transmute ptr
         LibC:free ptr
     
-    get :: forall t. Box t -> t
+    get t :: Box t -> t
     get (Box ptr) = unsafe $ Intrinsics:copy (ptr_read ptr)
     
-    set :: forall t. Box t -> t -> ()
+    set t :: Box t -> t -> ()
     set (Box ptr) x = unsafe (ptr_write ptr x)

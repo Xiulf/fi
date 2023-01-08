@@ -148,7 +148,7 @@ impl TypeRef {
             | ast::Type::Parens(inner) => Self::from_ast_opt(inner.ty(), map),
             | ast::Type::Forall(inner) => {
                 if let Some(vars) = inner.vars() {
-                    let vars = vars.type_vars().map(|v| map.alloc_type_var(v)).collect();
+                    let vars = vars.iter().map(|v| map.alloc_type_var(v)).collect();
                     let inner = map.alloc_type_ref_opt(inner.ty());
 
                     Self::Forall(vars, inner)

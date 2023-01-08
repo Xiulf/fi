@@ -11,7 +11,7 @@ use crate::pat::PatId;
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::scope::{ExprScopeId, ExprScopes, TypeScopeId, TypeScopes};
-use crate::type_ref::{LocalTypeRefId, TypeRef};
+use crate::type_ref::LocalTypeRefId;
 use crate::visibility::Visibility;
 
 #[derive(Default, Debug, Clone)]
@@ -273,7 +273,8 @@ impl Resolver {
         let scope_chain = scopes.scope_chain(scope_id).collect::<Vec<_>>();
 
         for scope in scope_chain.into_iter().rev() {
-            if !scopes.entries(scope).is_empty() {
+            if scope != scopes.root() {
+                // if !scopes.entries(scope).is_empty() {
                 r = r.push_type_scope(owner, Arc::clone(&scopes), scope);
             }
         }
@@ -404,7 +405,10 @@ impl HasResolver for FixityId {
 
 impl HasResolver for FuncId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
-        self.lookup(db).container.resolver(db)
+        self.lookup(db)
+            .container
+            .resolver(db)
+            .with_type_vars(db, TypeVarOwner::TypedDefId(self.into()))
     }
 }
 
@@ -423,21 +427,7 @@ impl HasResolver for ConstId {
 impl HasResolver for DefWithBodyId {
     fn resolver(self, db: &dyn DefDatabase) -> Resolver {
         match self {
-            | DefWithBodyId::FuncId(id) => {
-                let data = db.func_data(id);
-
-                if let Some(ty) = data.ty {
-                    let type_map = data.type_map();
-
-                    if let TypeRef::Forall(_, inner) = type_map[ty] {
-                        let owner = TypeVarOwner::TypedDefId(id.into());
-
-                        return Resolver::for_type_ref(db, owner, inner);
-                    }
-                }
-
-                id.lookup(db).container.resolver(db)
-            },
+            | DefWithBodyId::FuncId(id) => id.resolver(db),
             | DefWithBodyId::ConstId(id) => id.resolver(db),
             | DefWithBodyId::StaticId(id) => id.resolver(db),
         }

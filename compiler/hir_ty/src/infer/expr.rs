@@ -390,7 +390,7 @@ impl BodyInferenceContext<'_> {
     }
 
     pub fn check_expr(&mut self, expr: ExprId, expected: TyId) {
-        let src = self.source(expr);
+        let _src = self.source(expr);
         let body = Arc::clone(&self.body);
         let expected = self.subst_type(expected);
 
@@ -445,62 +445,62 @@ impl BodyInferenceContext<'_> {
 
                 self.check_expr(*inner, ty_);
             }),
-            | (Expr::Path { path }, _) => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
-                | Some((res, vis)) => {
-                    if path.segments().len() > 1
-                        && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
-                    {
-                        self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
-                    }
+            // | (Expr::Path { path }, _) => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
+            //     | Some((res, vis)) => {
+            //         if path.segments().len() > 1
+            //             && !vis.is_visible_from(self.db.upcast(), self.resolver.module().unwrap())
+            //         {
+            //             self.report(InferenceDiagnostic::PrivateValue { id: expr.into() });
+            //         }
 
-                    let ty = match res {
-                        | ValueNs::Local(pat) => self.result.type_of_pat[pat],
-                        | ValueNs::Fixity(_) => unimplemented!(),
-                        | ValueNs::Func(id) => {
-                            if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
-                                self.icx
-                                    .subst
-                                    .subst_type(&mut self.icx.types, self.icx.result.self_type.ty)
-                            } else {
-                                self.db.value_ty(id.into()).ty.to_info(
-                                    self.icx.db,
-                                    &mut self.icx.types,
-                                    &mut self.icx.type_vars,
-                                    src,
-                                )
-                            }
-                        },
-                        | ValueNs::Static(id) => self.db.value_ty(id.into()).ty.to_info(
-                            self.icx.db,
-                            &mut self.icx.types,
-                            &mut self.icx.type_vars,
-                            src,
-                        ),
-                        | ValueNs::Const(id) => self.db.value_ty(id.into()).ty.to_info(
-                            self.icx.db,
-                            &mut self.icx.types,
-                            &mut self.icx.type_vars,
-                            src,
-                        ),
-                        | ValueNs::Ctor(id) => self.db.value_ty(id.into()).ty.to_info(
-                            self.icx.db,
-                            &mut self.icx.types,
-                            &mut self.icx.type_vars,
-                            src,
-                        ),
-                    };
+            //         let ty = match res {
+            //             | ValueNs::Local(pat) => self.result.type_of_pat[pat],
+            //             | ValueNs::Fixity(_) => unimplemented!(),
+            //             | ValueNs::Func(id) => {
+            //                 if self.owner == TypeVarOwner::DefWithBodyId(id.into()) {
+            //                     self.icx
+            //                         .subst
+            //                         .subst_type(&mut self.icx.types, self.icx.result.self_type.ty)
+            //                 } else {
+            //                     self.db.value_ty(id.into()).ty.to_info(
+            //                         self.icx.db,
+            //                         &mut self.icx.types,
+            //                         &mut self.icx.type_vars,
+            //                         src,
+            //                     )
+            //                 }
+            //             },
+            //             | ValueNs::Static(id) => self.db.value_ty(id.into()).ty.to_info(
+            //                 self.icx.db,
+            //                 &mut self.icx.types,
+            //                 &mut self.icx.type_vars,
+            //                 src,
+            //             ),
+            //             | ValueNs::Const(id) => self.db.value_ty(id.into()).ty.to_info(
+            //                 self.icx.db,
+            //                 &mut self.icx.types,
+            //                 &mut self.icx.type_vars,
+            //                 src,
+            //             ),
+            //             | ValueNs::Ctor(id) => self.db.value_ty(id.into()).ty.to_info(
+            //                 self.icx.db,
+            //                 &mut self.icx.types,
+            //                 &mut self.icx.type_vars,
+            //                 src,
+            //             ),
+            //         };
 
-                    if !self.subsume_types(ty, expected, expr.into()) {
-                        self.report_mismatch(expected, ty, expr);
-                    }
-                },
-                | None => {
-                    let error = self.error(src).ty();
+            //         if !self.subsume_types(ty, expected, expr.into()) {
+            //             self.report_mismatch(expected, ty, expr);
+            //         }
+            //     },
+            //     | None => {
+            //         let error = self.error(src).ty();
 
-                    self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
-                    self.unify_types(expected, error);
-                },
-            },
+            //         self.report(InferenceDiagnostic::UnresolvedValue { id: expr.into() });
+            //         self.unify_types(expected, error);
+            //     },
+            // },
             | (Expr::Lit { lit: Literal::Int(_) }, _) => {
                 let integer = self.lang_class(lang_item::INTEGER_CLASS);
 
@@ -548,6 +548,7 @@ impl BodyInferenceContext<'_> {
     pub fn infer_app(&mut self, base_ty: TyId, arg: ExprId, expr: impl Into<ExprOrPatId> + Copy) -> TyId {
         let base_ty = self.subst_type(base_ty);
         let func_ty = self.lang_ctor(lang_item::FN_TYPE);
+        tracing::debug!("{}, {:?}", base_ty.display(self.db, &self.types), expr.into());
 
         if let Some(&[arg_ty, ret_ty]) = base_ty.match_ctor(&self.types, func_ty).as_deref() {
             self.check_expr(arg, arg_ty);
@@ -562,7 +563,6 @@ impl BodyInferenceContext<'_> {
     pub fn check_app(&mut self, base_ty: TyId, arg: TyId, expr: impl Into<ExprOrPatId> + Copy) -> TyId {
         let src = self.source(expr.into());
         let base_ty = self.subst_type(base_ty);
-        // log::debug!("{}", base_ty.display(self.db, &self.types));
 
         match self.types[base_ty].clone() {
             | TyInfo::ForAll(kinds, ty, scope) => {
@@ -683,6 +683,7 @@ impl InferenceContext<'_> {
 
                 let ty = self.db.value_ty(id).ty;
                 let ty = ty.to_info(self.db, &mut self.types, &mut self.type_vars, src);
+                tracing::debug!("{} :: {} ({:?})", path, ty.display(self.db, &self.types), expr);
 
                 self.result.type_of_expr.insert(expr, ty);
 

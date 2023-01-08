@@ -328,7 +328,7 @@ impl HirDisplay for Ty {
                     kinds
                         .iter()
                         .enumerate()
-                        .map(|(i, _)| format!(" {}{}", scope, i))
+                        .map(|(i, k)| format!(" ({}{} :: {})", scope, i, k.display(f.db)))
                         .collect::<Vec<_>>()
                         .join("")
                 )?;

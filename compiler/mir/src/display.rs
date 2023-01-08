@@ -337,6 +337,13 @@ impl HirDisplay for Repr {
             | Self::TypeVar(v) => write!(f, "${}", v.idx()),
             | Self::ReprOf(ty) => write!(f, "repr_of({})", ty.display(f.db)),
             | Self::Scalar(scalar) => write!(f, "{scalar}"),
+            | Self::Array(len, el) => write!(f, "[{}]{}", len.display(f.db), el.display(f.db)),
+            | Self::Ptr(to, true, _) => write!(f, "*fat {}", to.display(f.db)),
+            | Self::Ptr(to, false, _) => write!(f, "*{}", to.display(f.db)),
+            | Self::Box(to) => write!(f, "box({})", to.display(f.db)),
+            | Self::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
+            | Self::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),
+            | Self::Struct(fields) if fields.is_empty() => write!(f, "()"),
             | Self::Struct(fields) => {
                 write!(f, "struct {{ ")?;
 
@@ -358,17 +365,27 @@ impl HirDisplay for Repr {
                         f.write_str(", ")?;
                     }
 
-                    field.hir_fmt(f)?;
+                    match field {
+                        | Self::Struct(fields) if fields.is_empty() => write!(f, "_{}", i)?,
+                        | Self::Struct(fields) => {
+                            write!(f, "_{} {{ ", i)?;
+
+                            for (i, field) in fields.iter().enumerate() {
+                                if i != 0 {
+                                    f.write_str(", ")?;
+                                }
+
+                                field.hir_fmt(f)?;
+                            }
+
+                            write!(f, " }}")?;
+                        },
+                        | _ => field.hir_fmt(f)?,
+                    }
                 }
 
                 write!(f, " }}")
             },
-            | Self::Array(len, el) => write!(f, "[{}]{}", len.display(f.db), el.display(f.db)),
-            | Self::Ptr(to, true, _) => write!(f, "*fat {}", to.display(f.db)),
-            | Self::Ptr(to, false, _) => write!(f, "*{}", to.display(f.db)),
-            | Self::Box(to) => write!(f, "box({})", to.display(f.db)),
-            | Self::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
-            | Self::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),
         }
     }
 }

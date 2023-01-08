@@ -463,7 +463,7 @@ impl Func {
 
         // if data.name.as_ref() == "main" {
         tracing::debug!("{:?}:", self.id.lookup(db.upcast()).container);
-        tracing::debug!("{} :: {}", data.name, infer.self_type.ty.display(db));
+        tracing::error!("{} :: {}", data.name, infer.self_type.ty.display(db));
 
         for ((id, i), method) in &infer.methods {
             tracing::debug!("{:?}#{} -> {:?}", id, i, method);

@@ -682,7 +682,7 @@ impl std::fmt::Display for TyDisplay<'_> {
                             .join(""),
                     ))
                     .collect::<Vec<_>>()
-                    .join(""),
+                    .join(","),
             ),
             | TyInfo::Where(ref where_, ty) => write!(
                 f,
@@ -701,7 +701,7 @@ impl std::fmt::Display for TyDisplay<'_> {
                             .join(""),
                     ))
                     .collect::<Vec<_>>()
-                    .join(""),
+                    .join(","),
             ),
             | TyInfo::ForAll(ref kinds, ty, scope) if self.lhs_exposed => {
                 let scope: u32 = scope.into_raw().into();

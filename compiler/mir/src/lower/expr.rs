@@ -341,7 +341,7 @@ impl BodyLowerCtx<'_> {
                     (Operand::Move(res), sig)
                 };
 
-                tracing::debug!("{}: {}", path, sig.display(self.db.upcast()));
+                tracing::debug!("{}: {} ({:?})", path, sig.display(self.db.upcast()), expr);
 
                 if sig.params.is_empty() {
                     let place = self.store_in_repr(store_in, sig.ret);
