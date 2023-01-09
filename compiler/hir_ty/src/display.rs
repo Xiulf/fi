@@ -321,18 +321,33 @@ impl HirDisplay for Ty {
             | TyKind::ForAll(kinds, ty, scope) => {
                 let scope: u32 = scope.into_raw().into();
                 let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+                let vars = kinds
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("{}{}", scope, i))
+                    .collect::<Vec<_>>()
+                    .join(" ");
 
-                write!(
-                    f,
-                    "forall{}. ",
-                    kinds
-                        .iter()
-                        .enumerate()
-                        .map(|(i, k)| format!(" ({}{} :: {})", scope, i, k.display(f.db)))
-                        .collect::<Vec<_>>()
-                        .join("")
-                )?;
-                ty.hir_fmt(f)
+                write!(f, "forall {}. ", vars)?;
+                ty.hir_fmt(f)?;
+
+                if let TyKind::Where(..) = ty.lookup(f.db) {
+                    for (i, kind) in kinds.iter().enumerate() {
+                        write!(f, ", {}{} :: {}", scope, i, kind.display(f.db))?;
+                    }
+                } else {
+                    write!(f, " where ")?;
+
+                    for (i, kind) in kinds.iter().enumerate() {
+                        if i != 0 {
+                            write!(f, ", ")?;
+                        }
+
+                        write!(f, "{}{} :: {}", scope, i, kind.display(f.db))?;
+                    }
+                }
+
+                Ok(())
             },
         }
     }
