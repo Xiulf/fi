@@ -95,7 +95,7 @@ impl Assembly {
             for dep in deps {
                 add_deps(linker, db, dep.dependencies(db).into_iter().map(|d| d.lib).collect());
                 let name = dep.name(db).to_string();
-                linker.add_object(db.libs()[dep.into()].kind, &name);
+                linker.add_lib(db.libs()[dep.into()].kind, &name);
             }
         }
 
@@ -106,12 +106,16 @@ impl Assembly {
                 path = std::borrow::Cow::Owned(pkg_root.join(path).into());
             }
 
-            linker.add_object(base_db::libs::LibKind::Dynamic, path.to_str().unwrap());
+            linker.add_lib(base_db::libs::LibKind::Dynamic, path.to_str().unwrap());
         }
 
         linker.out_kind(db.libs()[self.lib.into()].kind);
         linker.build(out.as_ref());
-        linker.run().unwrap();
+        tracing::debug!("{:?}", linker);
+
+        if let Err(e) = linker.run() {
+            base_db::Error::throw(format!("error while linking:\n{}", e));
+        }
 
         out
     }
@@ -146,6 +150,7 @@ impl Assembly {
             | CompilerTarget::Native(triple) => match db.libs()[self.lib.into()].kind {
                 | LibKind::Executable => "",
                 | LibKind::Dynamic | LibKind::Static => match triple.operating_system {
+                    | target_lexicon::OperatingSystem::Windows => "",
                     | target_lexicon::OperatingSystem::Wasi => "",
                     | _ => "lib",
                 },

@@ -15,4 +15,4 @@ tracing = "^0.1"
 [dependencies.inkwell]
 git = "https://github.com/TheDan64/inkwell"
 branch = "master"
-features = ["llvm11-0"]
+features = ["llvm14-0"]

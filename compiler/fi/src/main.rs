@@ -33,13 +33,13 @@ struct CliArgs {
     #[clap(long, short, requires = "files")]
     name: Option<String>,
 
-    #[clap(long, requires = "files")]
-    target: Option<String>,
-
     #[clap(long, requires = "files", value_parser = parse_output)]
     output: Option<LibKind>,
 
-    #[clap(short = 'O', value_parser = parse_optimization)]
+    #[clap(long, global = true)]
+    target: Option<String>,
+
+    #[clap(short = 'O', global = true, value_parser = parse_optimization)]
     optimization: Option<Optimization>,
 
     #[clap(long = "link", short, requires = "files")]

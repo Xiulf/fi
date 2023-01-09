@@ -11,6 +11,8 @@ hir = { path = "../hir" }
 base_db = { path = "../base_db" }
 project = { path = "../project" }
 paths = { path = "../paths" }
+# lld_rs = "140.0.0"
+tracing = "^0.1"
 tempfile = "3.2.0"
 salsa = "0.17.0-pre.2"
 target-lexicon = { version = "0.12.0", features = ["std"] }

@@ -10,76 +10,115 @@ use crate::CompilerTarget;
 pub fn create(target: CompilerTarget) -> Box<dyn Linker> {
     match target {
         | CompilerTarget::Javascript => Box::new(JsLinker::new()),
-        | CompilerTarget::Native(_) => Box::new(CcLinker::new()),
+        | CompilerTarget::Native(triple) => match triple.operating_system {
+            | target_lexicon::OperatingSystem::Windows => Box::new(MsvcLinker::new()),
+            | target_lexicon::OperatingSystem::MacOSX { .. } => todo!(),
+            | target_lexicon::OperatingSystem::Ios => todo!(),
+            | target_lexicon::OperatingSystem::Wasi => todo!(),
+            // | _ => Box::new(ElfLinker::new()),
+            | _ => Box::new(CcLinker::new()),
+        },
     }
 }
 
-pub trait Linker {
-    fn runtime_path(&mut self, rpath: &Path);
-    fn add_path(&mut self, path: &Path);
-    fn add_module(&mut self, path: &Path);
-    fn add_object(&mut self, kind: LibKind, path: &str);
-    fn out_kind(&mut self, kind: LibKind);
-    fn build(&mut self, out: &Path);
-    fn run(&mut self) -> io::Result<()>;
+#[derive(Debug)]
+pub enum LinkError {
+    Io(io::Error),
+    Lld(String),
 }
 
-pub struct LdLinker {
-    cmd: Command,
-}
-
-impl LdLinker {
-    pub fn new() -> Self {
-        Self {
-            cmd: Command::new("ld"),
+impl std::fmt::Display for LinkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            | Self::Lld(e) => write!(f, "{}", e),
+            | Self::Io(e) => write!(f, "{}", e),
         }
     }
 }
 
-impl Linker for LdLinker {
+impl std::error::Error for LinkError {
+}
+
+impl From<io::Error> for LinkError {
+    fn from(value: io::Error) -> Self {
+        Self::Io(value)
+    }
+}
+
+pub trait Linker: std::fmt::Debug {
+    fn runtime_path(&mut self, rpath: &Path);
+    fn add_path(&mut self, path: &Path);
+    fn add_module(&mut self, path: &Path);
+    fn add_lib(&mut self, kind: LibKind, path: &str);
+    fn out_kind(&mut self, kind: LibKind);
+    fn build(&mut self, out: &Path);
+    fn run(&mut self) -> Result<(), LinkError>;
+}
+
+#[derive(Debug)]
+pub struct ElfLinker {
+    args: Vec<String>,
+}
+
+impl ElfLinker {
+    pub fn new() -> Self {
+        Self { args: Vec::new() }
+    }
+
+    fn arg(&mut self, arg: impl AsRef<std::ffi::OsStr>) -> &mut Self {
+        self.args.push(arg.as_ref().to_str().unwrap().to_string());
+        self
+    }
+}
+
+impl Linker for ElfLinker {
     fn runtime_path(&mut self, rpath: &Path) {
-        self.cmd.arg("-rpath");
-        self.cmd.arg(rpath);
+        self.arg("--rpath");
+        self.arg(rpath);
     }
 
     fn add_path(&mut self, path: &Path) {
-        self.cmd.arg("-L");
-        self.cmd.arg(path);
+        self.arg("-L");
+        self.arg(path);
     }
 
     fn add_module(&mut self, path: &Path) {
-        self.cmd.arg(path);
+        self.arg(path);
     }
 
-    fn add_object(&mut self, kind: LibKind, path: &str) {
+    fn add_lib(&mut self, kind: LibKind, path: &str) {
         match kind {
-            | LibKind::Dynamic => self.cmd.arg("-Bdynamic"),
-            | LibKind::Static => self.cmd.arg("-Bstatic"),
+            | LibKind::Dynamic => self.arg("--Bdynamic"),
+            | LibKind::Static => self.arg("--Bstatic"),
             | LibKind::Executable => panic!("linking with executable"),
         };
 
-        self.cmd.arg("-l");
-        self.cmd.arg(path);
+        self.arg("-l");
+        self.arg(path);
     }
 
     fn out_kind(&mut self, kind: LibKind) {
         match kind {
-            | LibKind::Dynamic => self.cmd.arg("-shared"),
-            | LibKind::Static => self.cmd.arg("-static"),
-            | LibKind::Executable => self.cmd.arg("-no-pie"),
+            | LibKind::Dynamic => self.arg("--shared"),
+            | LibKind::Static => self.arg("--static"),
+            | LibKind::Executable => self.arg("--no-pie"),
         };
     }
 
     fn build(&mut self, out: &Path) {
-        self.cmd.arg("-o");
-        self.cmd.arg(out);
+        self.arg("--output");
+        self.arg(out);
     }
 
-    fn run(&mut self) -> io::Result<()> {
-        self.cmd.status().map(|_| ())
+    fn run(&mut self) -> Result<(), LinkError> {
+        todo!();
+        // lld_rs::link(lld_rs::LldFlavor::Elf, &self.args)
+        //     .ok()
+        //     .map_err(LinkError::Lld)
     }
 }
 
+#[derive(Debug)]
 pub struct CcLinker {
     cmd: Command,
 }
@@ -87,55 +126,127 @@ pub struct CcLinker {
 impl CcLinker {
     pub fn new() -> Self {
         Self {
-            cmd: Command::new("gcc"),
+            cmd: Command::new("cc"),
         }
+    }
+
+    fn arg(&mut self, arg: impl AsRef<std::ffi::OsStr>) -> &mut Self {
+        self.cmd.arg(arg);
+        self
     }
 }
 
 impl Linker for CcLinker {
     fn runtime_path(&mut self, rpath: &Path) {
-        self.cmd.arg("-Wl,-rpath");
-        self.cmd.arg(rpath);
+        self.arg("-Wl,-rpath");
+        self.arg(rpath);
     }
 
     fn add_path(&mut self, path: &Path) {
-        self.cmd.arg("-L");
-        self.cmd.arg(path);
+        self.arg("-L");
+        self.arg(path);
     }
 
     fn add_module(&mut self, path: &Path) {
-        self.cmd.arg(path);
+        self.arg(path);
     }
 
-    fn add_object(&mut self, kind: LibKind, path: &str) {
+    fn add_lib(&mut self, kind: LibKind, path: &str) {
         match kind {
-            | LibKind::Dynamic => self.cmd.arg("-Wl,-Bdynamic"),
-            | LibKind::Static => self.cmd.arg("-Wl,-Bstatic"),
+            | LibKind::Dynamic => self.arg("-Bdynamic"),
+            | LibKind::Static => self.arg("-Bstatic"),
             | LibKind::Executable => panic!("linking with executable"),
         };
 
-        self.cmd.arg("-l");
-        self.cmd.arg(path);
+        self.arg("-l");
+        self.arg(path);
     }
 
     fn out_kind(&mut self, kind: LibKind) {
         match kind {
-            | LibKind::Dynamic => self.cmd.arg("-shared"),
-            | LibKind::Static => self.cmd.arg("-static"),
-            | LibKind::Executable => self.cmd.arg("-no-pie"),
+            | LibKind::Dynamic => self.arg("-shared"),
+            | LibKind::Static => self.arg("-static"),
+            | LibKind::Executable => self.arg("-no-pie"),
         };
     }
 
     fn build(&mut self, out: &Path) {
-        self.cmd.arg("-o");
-        self.cmd.arg(out);
+        self.arg("-o");
+        self.arg(out);
     }
 
-    fn run(&mut self) -> io::Result<()> {
-        self.cmd.status().map(|_| ())
+    fn run(&mut self) -> Result<(), LinkError> {
+        self.cmd.status().map(|_| ()).map_err(LinkError::Io)
     }
 }
 
+#[derive(Debug)]
+pub struct MsvcLinker {
+    args: Vec<String>,
+}
+
+impl MsvcLinker {
+    pub fn new() -> Self {
+        Self { args: Vec::new() }
+    }
+
+    fn arg(&mut self, arg: impl AsRef<std::ffi::OsStr>) -> &mut Self {
+        self.args.push(arg.as_ref().to_str().unwrap().to_string());
+        self
+    }
+}
+
+impl Linker for MsvcLinker {
+    fn runtime_path(&mut self, _rpath: &Path) {
+        // self.arg("--rpath");
+        // self.arg(rpath);
+    }
+
+    fn add_path(&mut self, path: &Path) {
+        self.arg(format!("/libpath:{}", path.display()));
+    }
+
+    fn add_module(&mut self, path: &Path) {
+        self.arg(path);
+    }
+
+    fn add_lib(&mut self, kind: LibKind, path: &str) {
+        let mut path = Path::new(path).to_path_buf();
+
+        match kind {
+            | LibKind::Dynamic => path = path.with_extension("lib"),
+            | LibKind::Static => path = path.with_extension("lib"),
+            | LibKind::Executable => panic!("linking with executable"),
+        };
+
+        self.arg(path);
+    }
+
+    fn out_kind(&mut self, kind: LibKind) {
+        match kind {
+            | LibKind::Dynamic => {
+                self.arg("/dll").arg("/noentry");
+            },
+            | LibKind::Static => {},
+            | LibKind::Executable => {},
+        };
+    }
+
+    fn build(&mut self, out: &Path) {
+        // self.arg(format!("/implib:{}", out.file_stem().unwrap().to_str().unwrap()));
+        self.arg(format!("/out:{}", out.display()));
+        // self.arg("msvcrt.lib");
+    }
+
+    fn run(&mut self) -> Result<(), LinkError> {
+        todo!()
+        // lld_rs::link(lld_rs::LldFlavor::Coff, &self.args)
+        //     .ok()
+        //     .map_err(LinkError::Lld)
+    }
+}
+
+#[derive(Debug)]
 pub struct JsLinker {
     rpath: PathBuf,
     files: Vec<PathBuf>,
@@ -174,7 +285,7 @@ impl Linker for JsLinker {
         self.add_file(path);
     }
 
-    fn add_object(&mut self, _kind: LibKind, path: &str) {
+    fn add_lib(&mut self, _kind: LibKind, path: &str) {
         let mut path = Path::new(path).to_path_buf().with_extension("js");
 
         if !path.exists() {
@@ -194,7 +305,7 @@ impl Linker for JsLinker {
         self.out_file = out.to_path_buf();
     }
 
-    fn run(&mut self) -> io::Result<()> {
+    fn run(&mut self) -> Result<(), LinkError> {
         use std::io::{BufRead, Write};
         std::fs::create_dir_all(self.out_file.parent().unwrap())?;
         let mut emitted = HashSet::new();
