@@ -86,6 +86,7 @@ impl Driver {
         driver.init_cfg(&target);
         driver.target_dir = input_dir(opts.input).join("target");
         driver.cfg = driver.cfg.merge(&cfg);
+        driver.db.set_target_dir(driver.target_dir.clone());
         driver.db.set_target(target);
 
         let ws = driver.load(opts.input)?;
@@ -120,6 +121,7 @@ impl Driver {
 
         driver.set_libs();
         driver.set_source_roots();
+        driver.db.set_target_dir(driver.target_dir.clone());
         driver.db.set_target(target);
 
         let ws = driver.workspaces.len() - 1;

@@ -35,6 +35,13 @@ impl CompilerTarget {
             | _ => &Self::UNKNOWN,
         }
     }
+
+    pub fn is_windows(&self) -> bool {
+        match self {
+            | Self::Native(triple) => triple.operating_system == target_lexicon::OperatingSystem::Windows,
+            | _ => false,
+        }
+    }
 }
 
 impl FromStr for CompilerTarget {

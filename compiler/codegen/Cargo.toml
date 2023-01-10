@@ -12,6 +12,8 @@ base_db = { path = "../base_db" }
 project = { path = "../project" }
 paths = { path = "../paths" }
 # lld_rs = "140.0.0"
+cc = "^1.0.78"
+mangling = "^0.2.3"
 tracing = "^0.1"
 tempfile = "3.2.0"
 salsa = "0.17.0-pre.2"

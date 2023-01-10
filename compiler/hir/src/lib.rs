@@ -175,6 +175,19 @@ impl Module {
         def_map[self.id.local_id].scope.members().map(Member::from).collect()
     }
 
+    pub fn exports(self, db: &dyn HirDatabase) -> Vec<ModuleDef> {
+        self.declarations(db)
+            .into_iter()
+            .filter(|d| d.is_exported(db))
+            .chain(self.members(db).into_iter().flat_map(|m| {
+                m.items(db).into_iter().map(|i| match i {
+                    | AssocItem::Func(f) => ModuleDef::Func(f),
+                    | AssocItem::Static(s) => ModuleDef::Static(s),
+                })
+            }))
+            .collect()
+    }
+
     pub fn diagnostics(self, db: &dyn HirDatabase, sink: &mut DiagnosticSink) {
         let def_map = db.def_map(self.id.lib);
 
@@ -247,6 +260,21 @@ impl ModuleDef {
         }
     }
 
+    pub fn is_exported(self, db: &dyn HirDatabase) -> bool {
+        let ns = match self {
+            | ModuleDef::Module(_) => return false,
+            | ModuleDef::Fixity(_)
+            | ModuleDef::Func(_)
+            | ModuleDef::Static(_)
+            | ModuleDef::Const(_)
+            | ModuleDef::Ctor(_) => ExportNs::Values,
+            | _ => ExportNs::Types,
+        };
+
+        let module = self.module(db).unwrap();
+        module.is_exported(db, self.name(db), ns)
+    }
+
     pub fn name(self, db: &dyn HirDatabase) -> Name {
         match self {
             | ModuleDef::Module(it) => it.name(db),
@@ -258,6 +286,14 @@ impl ModuleDef {
             | ModuleDef::TypeCtor(it) => it.name(db),
             | ModuleDef::Ctor(it) => it.name(db),
             | ModuleDef::Class(it) => it.name(db),
+        }
+    }
+
+    pub fn link_name(self, db: &dyn HirDatabase) -> Option<(Name, bool)> {
+        match self {
+            | ModuleDef::Func(it) => Some(it.link_name(db)),
+            | ModuleDef::Static(it) => Some(it.link_name(db)),
+            | _ => None,
         }
     }
 

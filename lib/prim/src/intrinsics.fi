@@ -5,42 +5,42 @@ import Prim
 infixr 0 apply as ($)
 infixl 1 applyFlipped as (.)
 
-@intrinsic foreign iadd :: forall i. i -> i -> i where Integer i
-@intrinsic foreign isub :: forall i. i -> i -> i where Integer i
-@intrinsic foreign imul :: forall i. i -> i -> i where Integer i
-@intrinsic foreign idiv :: forall i. i -> i -> i where Integer i
-@intrinsic foreign irem :: forall i. i -> i -> i where Integer i
-@intrinsic foreign ieq  :: forall i. i -> i -> Bool where Integer i
-@intrinsic foreign ine  :: forall i. i -> i -> Bool where Integer i
-@intrinsic foreign ilt  :: forall i. i -> i -> Bool where Integer i
-@intrinsic foreign ile  :: forall i. i -> i -> Bool where Integer i
-@intrinsic foreign igt  :: forall i. i -> i -> Bool where Integer i
-@intrinsic foreign ige  :: forall i. i -> i -> Bool where Integer i
+@intrinsic foreign iadd i :: i -> i -> i where Integer i
+@intrinsic foreign isub i :: i -> i -> i where Integer i
+@intrinsic foreign imul i :: i -> i -> i where Integer i
+@intrinsic foreign idiv i :: i -> i -> i where Integer i
+@intrinsic foreign irem i :: i -> i -> i where Integer i
+@intrinsic foreign ieq  i :: i -> i -> Bool where Integer i
+@intrinsic foreign ine  i :: i -> i -> Bool where Integer i
+@intrinsic foreign ilt  i :: i -> i -> Bool where Integer i
+@intrinsic foreign ile  i :: i -> i -> Bool where Integer i
+@intrinsic foreign igt  i :: i -> i -> Bool where Integer i
+@intrinsic foreign ige  i :: i -> i -> Bool where Integer i
 
-@intrinsic foreign iconvert :: forall a b. a -> b where Integer a, Integer b
+@intrinsic foreign iconvert a b :: a -> b where Integer a, Integer b
 
-@intrinsic foreign array_index :: forall t l i. Array l t -> i -> t where Integer i
-@intrinsic foreign array_slice :: forall t l i. Array l t -> i -> i -> Slice t where Integer i
-@intrinsic foreign array_len   :: forall t l. Array l t -> Int
+@intrinsic foreign array_index t l i :: Array l t -> i -> t where Integer i
+@intrinsic foreign array_slice t l i :: Array l t -> i -> i -> Slice t where Integer i
+@intrinsic foreign array_len   t l   :: Array l t -> Int
 
-@intrinsic foreign box_alloc :: forall t. Uint -> Box t
-@intrinsic foreign box_free  :: forall t. Box t -> Unit
+@intrinsic foreign box_alloc t :: Uint -> Box t
+@intrinsic foreign box_free  t :: Box t -> Unit
 
-@intrinsic foreign addr_of    :: forall ptr to. to -> ptr where Pointer ptr to
-@intrinsic foreign ptr_offset :: forall ptr to. ptr -> Int -> ptr where Pointer ptr to
-@intrinsic foreign ptr_read   :: forall ptr to. ptr -> to where Pointer ptr to, Unsafe
-@intrinsic foreign ptr_write  :: forall ptr to. ptr -> to -> Unit where Pointer ptr to, Unsafe
+@intrinsic foreign addr_of    ptr to :: to -> ptr where Pointer ptr to
+@intrinsic foreign ptr_offset ptr to :: ptr -> Int -> ptr where Pointer ptr to
+@intrinsic foreign ptr_read   ptr to :: ptr -> to where Pointer ptr to, Unsafe
+@intrinsic foreign ptr_write  ptr to :: ptr -> to -> Unit where Pointer ptr to, Unsafe
 
-@intrinsic foreign size_of :: forall t. Proxy t -> Uint
-@intrinsic foreign align_of :: forall t. Proxy t -> Uint
-@intrinsic foreign stride_of :: forall t. Proxy t -> Uint
+@intrinsic foreign size_of   t :: Proxy t -> Uint
+@intrinsic foreign align_of  t :: Proxy t -> Uint
+@intrinsic foreign stride_of t :: Proxy t -> Uint
 
-@intrinsic foreign copy :: forall t. t -> t
-@intrinsic foreign drop :: forall t. t -> () where Unsafe
+@intrinsic foreign copy t :: t -> t
+@intrinsic foreign drop t :: t -> () where Unsafe
 
-@intrinsic foreign apply        :: forall a r. (a -> r) -> a -> r
-@intrinsic foreign applyFlipped :: forall a r. a -> (a -> r) -> r
-@intrinsic foreign transmute    :: forall a b. a -> b where Unsafe
-@intrinsic foreign unsafe       :: forall a. (a where Unsafe) -> a
-@intrinsic foreign crash        :: Str -> Never where Partial
-@intrinsic foreign partial      :: forall a. (a where Partial) -> a
+@intrinsic foreign apply        a r :: (a -> r) -> a -> r
+@intrinsic foreign applyFlipped a r :: a -> (a -> r) -> r
+@intrinsic foreign transmute    a b :: a -> b where Unsafe
+@intrinsic foreign unsafe       a   :: (a where Unsafe) -> a
+@intrinsic foreign crash            :: Str -> Never where Partial
+@intrinsic foreign partial      a   :: (a where Partial) -> a

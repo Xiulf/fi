@@ -8,10 +8,11 @@ use project::Workspace;
 use tempfile::NamedTempFile;
 
 use crate::db::CodegenDatabase;
+use crate::linker::Linker;
 
 #[derive(Debug)]
 pub struct ObjectFile {
-    file: NamedTempFile,
+    path: tempfile::TempPath,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -22,7 +23,7 @@ pub struct Assembly {
 
 impl PartialEq for ObjectFile {
     fn eq(&self, other: &Self) -> bool {
-        self.file.path().eq(other.file.path())
+        self.tmp_path().eq(other.tmp_path())
     }
 }
 
@@ -31,11 +32,13 @@ impl Eq for ObjectFile {
 
 impl ObjectFile {
     pub fn new(file: NamedTempFile) -> Self {
-        Self { file }
+        let path = file.into_temp_path();
+        Self { path }
     }
 
+    #[inline(always)]
     pub fn tmp_path(&self) -> &Path {
-        self.file.path()
+        self.path.as_ref()
     }
 }
 
@@ -82,6 +85,7 @@ impl Assembly {
             linker.add_module(obj.tmp_path());
         }
 
+        add_exports(db, &mut *linker, self.lib);
         linker.runtime_path(target_dir.as_ref());
         linker.add_path(target_dir.as_ref());
 
@@ -89,13 +93,20 @@ impl Assembly {
             &mut *linker,
             db.upcast(),
             lib.deps.iter().map(|&id| id.into()).collect(),
+            target_dir,
         );
 
-        fn add_deps(linker: &mut dyn crate::linker::Linker, db: &dyn hir::db::HirDatabase, deps: Vec<hir::Lib>) {
+        fn add_deps(linker: &mut dyn Linker, db: &dyn hir::db::HirDatabase, deps: Vec<hir::Lib>, target_dir: &AbsPath) {
             for dep in deps {
-                add_deps(linker, db, dep.dependencies(db).into_iter().map(|d| d.lib).collect());
+                add_deps(
+                    linker,
+                    db,
+                    dep.dependencies(db).into_iter().map(|d| d.lib).collect(),
+                    target_dir,
+                );
+
                 let name = dep.name(db).to_string();
-                linker.add_lib(db.libs()[dep.into()].kind, &name);
+                linker.add_lib(db.libs()[dep.into()].kind, &name, target_dir.as_ref());
             }
         }
 
@@ -106,11 +117,21 @@ impl Assembly {
                 path = std::borrow::Cow::Owned(pkg_root.join(path).into());
             }
 
-            linker.add_lib(base_db::libs::LibKind::Dynamic, path.to_str().unwrap());
+            linker.add_lib(
+                base_db::libs::LibKind::Dynamic,
+                path.to_str().unwrap(),
+                target_dir.as_ref(),
+            );
         }
 
-        linker.out_kind(db.libs()[self.lib.into()].kind);
+        if db.target().is_windows() {
+            linker.subsystem("console");
+            linker.add_module(Path::new("ucrt.lib"));
+        }
+
+        linker.out_kind(db.libs()[self.lib.into()].kind, out.as_ref());
         linker.build(out.as_ref());
+
         tracing::debug!("{:?}", linker);
 
         if let Err(e) = linker.run() {
@@ -157,4 +178,35 @@ impl Assembly {
             },
         }
     }
+}
+
+fn add_exports(db: &dyn CodegenDatabase, linker: &mut dyn Linker, lib: hir::Lib) {
+    let db = db.upcast();
+
+    for module in lib.modules(db) {
+        for export in module.exports(db) {
+            match export {
+                | hir::ModuleDef::Func(it) if it.has_body(db) => {
+                    // for now ignore generic function
+                    if !it.is_generic(db) {
+                        add_export(linker, it.link_name(db));
+                    }
+                },
+                | hir::ModuleDef::Static(it) if it.has_body(db) => {
+                    add_export(linker, it.link_name(db));
+                },
+                | _ => {},
+            }
+        }
+    }
+}
+
+fn add_export(linker: &mut dyn Linker, (symbol, mangle): (hir::Name, bool)) {
+    let mut symbol = symbol.to_string();
+
+    if mangle {
+        symbol = mangling::mangle(symbol.as_bytes());
+    }
+
+    linker.add_export(&symbol);
 }
