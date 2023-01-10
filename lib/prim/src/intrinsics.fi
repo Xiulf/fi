@@ -41,6 +41,7 @@ infixl 1 applyFlipped as (.)
 @intrinsic foreign apply        a r :: (a -> r) -> a -> r
 @intrinsic foreign applyFlipped a r :: a -> (a -> r) -> r
 @intrinsic foreign transmute    a b :: a -> b where Unsafe
-@intrinsic foreign unsafe       a   :: (a where Unsafe) -> a
 @intrinsic foreign crash            :: Str -> Never where Partial
-@intrinsic foreign partial      a   :: (a where Partial) -> a
+
+@identity foreign unsafe  a :: (a where Unsafe) -> a
+@identity foreign partial a :: (a where Partial) -> a

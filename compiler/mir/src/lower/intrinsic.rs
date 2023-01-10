@@ -21,8 +21,8 @@ impl BodyLowerCtx<'_> {
         let mut args = args.into_iter();
 
         match name {
-            | "partial" => self.lower_arg(args.next().unwrap(), store_in),
-            | "unsafe" => self.lower_arg(args.next().unwrap(), store_in),
+            // | "partial" => self.lower_arg(args.next().unwrap(), store_in),
+            // | "unsafe" => self.lower_arg(args.next().unwrap(), store_in),
             | "apply" => {
                 let base = args.next().unwrap();
 

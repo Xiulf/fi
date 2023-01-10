@@ -204,6 +204,10 @@ impl BodyLowerCtx<'_> {
                     return self.lower_intrinsic(expr, &func.name(self.db.upcast()).to_string(), args, store_in);
                 }
 
+                if func.is_identity(self.db.upcast()) {
+                    return self.lower_arg(args.remove(0), store_in);
+                }
+
                 (self.lower_path(resolver, base, path, &mut None), self.func_params(id))
             },
             | ValueNs::Ctor(id) => {

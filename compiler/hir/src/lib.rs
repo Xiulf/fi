@@ -445,6 +445,10 @@ impl Func {
         db.attrs(self.id.into()).by_key("intrinsic").exists()
     }
 
+    pub fn is_identity(self, db: &dyn HirDatabase) -> bool {
+        db.attrs(self.id.into()).by_key("identity").exists()
+    }
+
     pub fn is_generic(self, db: &dyn HirDatabase) -> bool {
         let ty = db.value_ty(ValueTyDefId::FuncId(self.id)).ty;
 
