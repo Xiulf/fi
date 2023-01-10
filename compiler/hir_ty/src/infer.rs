@@ -66,7 +66,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let mut ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
             if !kinds.is_empty() {
-                ty = lcx.types.insert(TyInfo::ForAll(kinds, ty, scope), src);
+                ty = lcx.types.insert(TyInfo::ForAll(kinds, ty, scope, Some(id.into())), src);
             }
 
             if db.attrs(id.into()).by_key("main").exists() {
@@ -492,7 +492,8 @@ impl<'a> InferenceContext<'a> {
 
         let item_ty = self.types.insert(TyInfo::Where(where_clause, ann), src);
 
-        self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
+        self.types
+            .insert(TyInfo::ForAll(kinds, item_ty, scope, Some(class.into())), src)
     }
 
     pub(crate) fn member_item(&mut self, member: MemberId, ann: TyId, item: &Name, body: &Body) -> TyId {
@@ -538,7 +539,7 @@ impl<'a> InferenceContext<'a> {
 
         let mut scope = self.type_vars.top_scope();
         let mut item_ty = match self.types[item_ty].clone() {
-            | TyInfo::ForAll(_, inner, s) => {
+            | TyInfo::ForAll(_, inner, s, _) => {
                 scope = s;
                 inner.replace_vars(&mut self.types, &types, s)
             },
@@ -561,7 +562,8 @@ impl<'a> InferenceContext<'a> {
         }
 
         if !kinds.is_empty() {
-            item_ty = self.types.insert(TyInfo::ForAll(kinds, item_ty, scope), src)
+            let t = TyInfo::ForAll(kinds, item_ty, scope, Some(member.into()));
+            item_ty = self.types.insert(t, src)
         }
 
         let item_ty = item_ty.normalize(&mut self.types);
@@ -624,7 +626,7 @@ impl<'a> BodyInferenceContext<'a> {
 
     fn check_body(&mut self, ann: TyId, is_func: bool) {
         match self.types[ann].clone() {
-            | TyInfo::ForAll(_kinds, inner, scope) => {
+            | TyInfo::ForAll(_kinds, inner, scope, _) => {
                 self.type_vars.push_scope(scope);
                 // let sk = self.skolemize(&kinds, inner, scope);
                 self.check_body(inner, is_func);

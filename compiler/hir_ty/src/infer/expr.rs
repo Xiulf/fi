@@ -397,7 +397,7 @@ impl BodyInferenceContext<'_> {
         self.result.type_of_expr.insert(expr, expected);
 
         match (&body[expr], self.types[expected].clone()) {
-            | (_, TyInfo::ForAll(kinds, inner, scope)) => {
+            | (_, TyInfo::ForAll(kinds, inner, scope, _)) => {
                 let sk = self.skolemize(&kinds, inner, scope);
 
                 self.check_expr(expr, sk);
@@ -565,7 +565,7 @@ impl BodyInferenceContext<'_> {
         let base_ty = self.subst_type(base_ty);
 
         match self.types[base_ty].clone() {
-            | TyInfo::ForAll(kinds, ty, scope) => {
+            | TyInfo::ForAll(kinds, ty, scope, _) => {
                 let repl = kinds
                     .iter()
                     .map(|&k| self.fresh_type_with_kind(k, src))

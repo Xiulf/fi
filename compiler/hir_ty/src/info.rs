@@ -30,7 +30,7 @@ pub enum TyInfo {
     App(TyId, List<TyId>),
 
     Where(WhereClause<CtntInfo>, TyId),
-    ForAll(List<TyId>, TyId, TypeVarScopeId),
+    ForAll(List<TyId>, TyId, TypeVarScopeId, Option<TypedDefId>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -254,10 +254,10 @@ impl TyId {
 
                 f(types, ty)
             },
-            | TyInfo::ForAll(k, t, s) => {
+            | TyInfo::ForAll(k, t, s, o) => {
                 let k = k.iter().map(|k| k.everywhere(override_, types, f)).collect();
                 let t = t.everywhere(override_, types, f);
-                let ty = types.update(self, TyInfo::ForAll(k, t, s), override_);
+                let ty = types.update(self, TyInfo::ForAll(k, t, s, o), override_);
 
                 f(types, ty)
             },
@@ -316,11 +316,11 @@ impl TyId {
 
                 types.update(t, TyInfo::Where(where_, inner), override_)
             },
-            | TyInfo::ForAll(k, t, s) => {
+            | TyInfo::ForAll(k, t, s, o) => {
                 let k = k.iter().map(|k| k.everywhere_reverse(override_, types, f)).collect();
                 let t = t.everywhere_reverse(override_, types, f);
 
-                types.update(t, TyInfo::ForAll(k, t, s), override_)
+                types.update(t, TyInfo::ForAll(k, t, s, o), override_)
             },
             | _ => t,
         }
@@ -357,7 +357,7 @@ impl TyId {
 
                 ty.everything(types, f);
             },
-            | TyInfo::ForAll(ref k, t, _) => {
+            | TyInfo::ForAll(ref k, t, _, _) => {
                 for ty in k.iter() {
                     ty.everything(types, f);
                 }
@@ -449,11 +449,11 @@ impl TyId {
 
                 types.update(self, TyInfo::Where(where_, inner), false)
             },
-            | TyInfo::ForAll(k, inner, s) => {
+            | TyInfo::ForAll(k, inner, s, o) => {
                 let k = k.iter().map(|k| k.replace_vars(types, with, scope)).collect();
                 let inner = inner.replace_vars(types, with, scope);
 
-                types.update(self, TyInfo::ForAll(k, inner, s), false)
+                types.update(self, TyInfo::ForAll(k, inner, s, o), false)
             },
             | _ => self,
         }
@@ -492,7 +492,7 @@ impl TyId {
         let ty = lower.ty.ty.to_info(db, types, type_vars, src);
 
         ty.everywhere(true, types, &mut |types, ty| match types[ty] {
-            | TyInfo::ForAll(_, inner, scope) => {
+            | TyInfo::ForAll(_, inner, scope, _) => {
                 let args = args.clone();
 
                 inner.replace_vars(types, &args, scope)
@@ -703,7 +703,7 @@ impl std::fmt::Display for TyDisplay<'_> {
                     .collect::<Vec<_>>()
                     .join(","),
             ),
-            | TyInfo::ForAll(ref kinds, ty, scope) if self.lhs_exposed => {
+            | TyInfo::ForAll(ref kinds, ty, scope, _) if self.lhs_exposed => {
                 let scope: u32 = scope.into_raw().into();
                 let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
 
@@ -719,7 +719,7 @@ impl std::fmt::Display for TyDisplay<'_> {
                     self.with_ty(ty, false),
                 )
             },
-            | TyInfo::ForAll(ref kinds, ty, scope) => {
+            | TyInfo::ForAll(ref kinds, ty, scope, _) => {
                 let scope: u32 = scope.into_raw().into();
                 let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
 

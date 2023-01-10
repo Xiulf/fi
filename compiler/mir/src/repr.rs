@@ -135,7 +135,7 @@ pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
         },
         | TyKind::TypeVar(var) => Repr::TypeVar(var),
         | TyKind::Where(_, ty) => db.repr_of(ty),
-        | TyKind::ForAll(_, ty, _) => db.repr_of(ty),
+        | TyKind::ForAll(_, ty, _, _) => db.repr_of(ty),
         | k => todo!("{:?}", k),
     }
 }
@@ -379,7 +379,7 @@ pub fn func_signature_query(db: &dyn MirDatabase, instance: Instance) -> Signatu
 
     loop {
         match ret.lookup(hir_db) {
-            | TyKind::ForAll(_, ty, _) => ret = ty,
+            | TyKind::ForAll(_, ty, _, _) => ret = ty,
             | TyKind::Where(_, ty) => ret = ty,
             | _ => break,
         }

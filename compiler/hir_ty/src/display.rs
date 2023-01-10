@@ -163,7 +163,7 @@ impl HirDisplay for TypeVar {
             })
         } else {
             let scope: u32 = self.scope().into_raw().into();
-            let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
+            let scope = "'".repeat(scope as usize);
 
             write!(f, "{}{}", scope, self.idx())
         }
@@ -318,22 +318,32 @@ impl HirDisplay for Ty {
                 write!(f, " ")?;
                 where_.hir_fmt(f)
             },
-            | TyKind::ForAll(kinds, ty, scope) => {
-                let scope: u32 = scope.into_raw().into();
-                let scope = unsafe { std::char::from_u32_unchecked('a' as u32 + scope) };
-                let vars = kinds
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| format!("{}{}", scope, i))
-                    .collect::<Vec<_>>()
-                    .join(" ");
+            | TyKind::ForAll(kinds, ty, scope, origin) => {
+                let type_vars = origin.and_then(|o| {
+                    o.with_type_map(f.db.upcast(), |type_map| {
+                        let type_vars = o.type_vars(f.db.upcast())?;
 
+                        Some(type_vars.iter().map(|v| type_map[*v].name.clone()).collect::<Vec<_>>())
+                    })
+                });
+
+                let type_vars = type_vars.as_deref().unwrap_or(&[]);
+                let scope: u32 = scope.into_raw().into();
+                let scope = "'".repeat(scope as usize);
+                let var_name = |i: usize| {
+                    type_vars
+                        .get(i)
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| format!("{scope}{i}"))
+                };
+
+                let vars = (0..kinds.len()).map(&var_name).collect::<Vec<_>>().join(" ");
                 write!(f, "forall {}. ", vars)?;
                 ty.hir_fmt(f)?;
 
                 if let TyKind::Where(..) = ty.lookup(f.db) {
                     for (i, kind) in kinds.iter().enumerate() {
-                        write!(f, ", {}{} :: {}", scope, i, kind.display(f.db))?;
+                        write!(f, ", {} :: {}", var_name(i), kind.display(f.db))?;
                     }
                 } else {
                     write!(f, " where ")?;
@@ -343,7 +353,7 @@ impl HirDisplay for Ty {
                             write!(f, ", ")?;
                         }
 
-                        write!(f, "{}{} :: {}", scope, i, kind.display(f.db))?;
+                        write!(f, "{} :: {}", var_name(i), kind.display(f.db))?;
                     }
                 }
 

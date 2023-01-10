@@ -56,11 +56,11 @@ impl InferenceContext<'_> {
 
                 self.types.update(inner, TyInfo::Where(where_, ty), false)
             },
-            | TyInfo::ForAll(k, ty, s) => {
+            | TyInfo::ForAll(k, ty, s, o) => {
                 let k = k.iter().map(|&k| self.skolemize(kinds, k, scope)).collect();
                 let ty = self.skolemize(kinds, ty, scope);
 
-                self.types.update(inner, TyInfo::ForAll(k, ty, s), false)
+                self.types.update(inner, TyInfo::ForAll(k, ty, s, o), false)
             },
             | _ => inner,
         }

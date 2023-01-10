@@ -526,7 +526,7 @@ impl BodyLowerCtx<'_> {
 
             loop {
                 match ty.lookup(self.db.upcast()) {
-                    | hir::ty::TyKind::ForAll(_, inner, _) => {
+                    | hir::ty::TyKind::ForAll(_, inner, _, _) => {
                         ty = inner;
                     },
                     | hir::ty::TyKind::Where(_, inner) => {

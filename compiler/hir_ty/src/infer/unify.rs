@@ -97,7 +97,7 @@ impl InferenceContext<'_> {
 
     pub fn instantiate(&mut self, ty: TyId, id: ExprOrPatId) -> TyId {
         match self.types[ty].clone() {
-            | TyInfo::ForAll(kinds, inner, scope) => {
+            | TyInfo::ForAll(kinds, inner, scope, _) => {
                 let us = kinds
                     .iter()
                     .map(|&k| {
@@ -192,7 +192,7 @@ impl InferenceContext<'_> {
             let kinds = unknowns.into_values().collect();
             let ty = self.subst_type(ty);
 
-            self.types.insert(TyInfo::ForAll(kinds, ty, scope), src)
+            self.types.insert(TyInfo::ForAll(kinds, ty, scope, None), src)
         }
     }
 
@@ -258,18 +258,18 @@ impl InferenceContext<'_> {
 
                 self.unify_types(c2, t2)
             },
-            | (TyInfo::ForAll(k1, t1, s1), TyInfo::ForAll(k2, t2, s2)) => {
+            | (TyInfo::ForAll(k1, t1, s1, _), TyInfo::ForAll(k2, t2, s2, _)) => {
                 let sk1 = self.skolemize(&k1, t1, s1);
                 let sk2 = self.skolemize(&k2, t2, s2);
 
                 self.unify_types(sk1, sk2)
             },
-            | (TyInfo::ForAll(kinds, ty, scope), _) => {
+            | (TyInfo::ForAll(kinds, ty, scope, _), _) => {
                 let sk = self.skolemize(&kinds, ty, scope);
 
                 self.unify_types(sk, t2)
             },
-            | (_, TyInfo::ForAll(_, _, _)) => self.unify_types(t2, t1),
+            | (_, TyInfo::ForAll(_, _, _, _)) => self.unify_types(t2, t1),
             | (TyInfo::Where(c1, a1), TyInfo::Where(c2, a2)) if c1.constraints.len() == c2.constraints.len() => {
                 c1.constraints.iter().zip(c2.constraints.iter()).all(|(c1, c2)| {
                     c1.class == c2.class

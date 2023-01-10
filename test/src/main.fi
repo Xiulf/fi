@@ -14,7 +14,7 @@ main =
     ExitCode x
 
 
-; fib i :: i -> i where Integer i
+fib i :: i -> i where Integer i
 fib n if n < 2 = n
       else     = fib (n - 2) + fib (n - 1)
 
@@ -23,18 +23,19 @@ module Box =
     import Core
     import Intrinsics (ptr_read, ptr_write, size_of, transmute, unsafe)
 
-    type Box t = | Box (Ptr t)
+    type Box t =
+        | Box (Ptr t)
     
     new t :: t -> Box t
     new x = unsafe do
-        let ptr = LibC:malloc (size_of (Proxy :: Proxy t))
+        let ptr = LibC:malloc $ size_of (Proxy :: Proxy t)
         let ptr = transmute ptr
         ptr_write ptr x
         Box ptr
     
     copy t :: Box t -> Box t
     copy (Box ptr) = unsafe do
-        let val = Intrinsics:copy (ptr_read ptr)
+        let val = Intrinsics:copy $ ptr_read ptr
         new val
     
     drop t :: Box t -> ()
@@ -48,4 +49,4 @@ module Box =
     get (Box ptr) = unsafe $ Intrinsics:copy (ptr_read ptr)
     
     set t :: Box t -> t -> ()
-    set (Box ptr) x = unsafe (ptr_write ptr x)
+    set (Box ptr) x = unsafe $ ptr_write ptr x

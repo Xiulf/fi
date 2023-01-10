@@ -364,7 +364,7 @@ impl Member<Ty, Constraint> {
                 },
                 | (TyKind::Row(_, _), TyKind::Row(_, _)) => todo!(),
                 | (TyKind::Where(_, _), TyKind::Where(_, _)) => todo!(),
-                | (TyKind::ForAll(_, _, _), TyKind::ForAll(_, _, _)) => todo!(),
+                | (TyKind::ForAll(_, _, _, _), TyKind::ForAll(_, _, _, _)) => todo!(),
                 | _ => {},
             }
         }
@@ -778,7 +778,7 @@ fn match_type_inner(
 
             match_type_inner(db, types, c2, with, ty_skolems, with_skolems, subst, vars)
         },
-        | (TyInfo::ForAll(ref v1, a1, s1), TyInfo::ForAll(ref v2, a2, s2)) if v1.len() == v2.len() => {
+        | (TyInfo::ForAll(ref v1, a1, s1, _), TyInfo::ForAll(ref v2, a2, s2, _)) if v1.len() == v2.len() => {
             let mut matched = Matched::Match(());
 
             for (i, (k1, k2)) in v1.iter().zip(v2.iter()).enumerate() {
@@ -871,7 +871,7 @@ fn type_score(db: &dyn HirDatabase, ty: Ty) -> isize {
         },
         | TyKind::App(a, b) => type_score(db, a) + b.iter().map(|&b| type_score(db, b)).sum::<isize>(),
         // | TyKind::Where(ctnt, ty) => ctnt.types.iter().map(|&t| type_score(db, t)).sum::<isize>() + type_score(db, ty),
-        | TyKind::ForAll(k, t, _) => k.iter().map(|&k| type_score(db, k)).sum::<isize>() + type_score(db, t),
+        | TyKind::ForAll(k, t, _, _) => k.iter().map(|&k| type_score(db, k)).sum::<isize>() + type_score(db, t),
         | _ => -5,
     }
 }

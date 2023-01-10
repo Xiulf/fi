@@ -288,30 +288,14 @@ impl TypeVarOwner {
     pub fn type_vars(self, db: &dyn DefDatabase) -> Option<Box<[LocalTypeVarId]>> {
         match self {
             | TypeVarOwner::DefWithBodyId(_) => None,
-            | TypeVarOwner::TypedDefId(id) => match id {
-                | TypedDefId::FuncId(id) => Some(db.func_data(id).type_vars.clone()),
-                | TypedDefId::TypeAliasId(id) => Some(db.type_alias_data(id).type_vars.clone()),
-                | TypedDefId::TypeCtorId(id) => Some(db.type_ctor_data(id).type_vars.clone()),
-                | TypedDefId::ClassId(id) => Some(db.class_data(id).type_vars.clone()),
-                | TypedDefId::MemberId(id) => Some(db.member_data(id).type_vars.clone()),
-                | _ => None,
-            },
+            | TypeVarOwner::TypedDefId(id) => id.type_vars(db),
         }
     }
 
     pub fn with_type_map<T>(self, db: &dyn DefDatabase, f: impl FnOnce(&TypeMap) -> T) -> T {
         match self {
             | TypeVarOwner::DefWithBodyId(def) => f(db.body(def).type_map()),
-            | TypeVarOwner::TypedDefId(id) => match id {
-                | TypedDefId::FuncId(id) => f(db.func_data(id).type_map()),
-                | TypedDefId::StaticId(id) => f(db.static_data(id).type_map()),
-                | TypedDefId::ConstId(id) => f(db.const_data(id).type_map()),
-                | TypedDefId::TypeAliasId(id) => f(db.type_alias_data(id).type_map()),
-                | TypedDefId::TypeCtorId(id) => f(db.type_ctor_data(id).type_map()),
-                | TypedDefId::CtorId(id) => f(db.type_ctor_data(id.parent).type_map()),
-                | TypedDefId::ClassId(id) => f(db.class_data(id).type_map()),
-                | TypedDefId::MemberId(id) => f(db.member_data(id).type_map()),
-            },
+            | TypeVarOwner::TypedDefId(id) => id.with_type_map(db, f),
         }
     }
 
@@ -358,6 +342,30 @@ impl DefWithBodyId {
 }
 
 impl TypedDefId {
+    pub fn type_vars(self, db: &dyn DefDatabase) -> Option<Box<[LocalTypeVarId]>> {
+        match self {
+            | TypedDefId::FuncId(id) => Some(db.func_data(id).type_vars.clone()),
+            | TypedDefId::TypeAliasId(id) => Some(db.type_alias_data(id).type_vars.clone()),
+            | TypedDefId::TypeCtorId(id) => Some(db.type_ctor_data(id).type_vars.clone()),
+            | TypedDefId::ClassId(id) => Some(db.class_data(id).type_vars.clone()),
+            | TypedDefId::MemberId(id) => Some(db.member_data(id).type_vars.clone()),
+            | _ => None,
+        }
+    }
+
+    pub fn with_type_map<T>(self, db: &dyn DefDatabase, f: impl FnOnce(&TypeMap) -> T) -> T {
+        match self {
+            | TypedDefId::FuncId(id) => f(db.func_data(id).type_map()),
+            | TypedDefId::StaticId(id) => f(db.static_data(id).type_map()),
+            | TypedDefId::ConstId(id) => f(db.const_data(id).type_map()),
+            | TypedDefId::TypeAliasId(id) => f(db.type_alias_data(id).type_map()),
+            | TypedDefId::TypeCtorId(id) => f(db.type_ctor_data(id).type_map()),
+            | TypedDefId::CtorId(id) => f(db.type_ctor_data(id.parent).type_map()),
+            | TypedDefId::ClassId(id) => f(db.class_data(id).type_map()),
+            | TypedDefId::MemberId(id) => f(db.member_data(id).type_map()),
+        }
+    }
+
     pub fn container(self, db: &dyn DefDatabase) -> ContainerId {
         match self {
             | TypedDefId::FuncId(id) => id.lookup(db).container,

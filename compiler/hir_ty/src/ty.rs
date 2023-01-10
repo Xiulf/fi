@@ -1,4 +1,4 @@
-use hir_def::id::{ClassId, TypeAliasId, TypeCtorId, TypeVarId};
+use hir_def::id::{ClassId, TypeAliasId, TypeCtorId, TypeVarId, TypedDefId};
 use hir_def::name::Name;
 
 use crate::db::HirDatabase;
@@ -29,7 +29,7 @@ pub enum TyKind {
     App(Ty, List<Ty>),
 
     Where(WhereClause<Constraint>, Ty),
-    ForAll(List<Ty>, Ty, TypeVarScopeId),
+    ForAll(List<Ty>, Ty, TypeVarScopeId, Option<TypedDefId>),
     TypeVar(TypeVar),
 }
 
@@ -106,7 +106,7 @@ impl Ty {
 
                 ty.everything(db, f);
             },
-            | TyKind::ForAll(ref k, t, _) => {
+            | TyKind::ForAll(ref k, t, _, _) => {
                 for ty in k.iter() {
                     ty.everything(db, f);
                 }
@@ -157,11 +157,11 @@ impl Ty {
 
                 TyKind::Where(clause, ty).intern(db)
             },
-            | TyKind::ForAll(params, ty, scope) => {
+            | TyKind::ForAll(params, ty, scope, origin) => {
                 let ty = ty.replace_var(db, var, with);
                 let params = params.iter().map(|p| p.replace_var(db, var, with)).collect();
 
-                TyKind::ForAll(params, ty, scope).intern(db)
+                TyKind::ForAll(params, ty, scope, origin).intern(db)
             },
             | _ => self,
         }
@@ -205,11 +205,11 @@ impl Ty {
 
                 TyKind::Where(clause, ty).intern(db)
             },
-            | TyKind::ForAll(params, ty, scope) => {
+            | TyKind::ForAll(params, ty, scope, origin) => {
                 let ty = ty.replace_local_vars(db, types);
                 let params = params.iter().map(|p| p.replace_local_vars(db, types)).collect();
 
-                TyKind::ForAll(params, ty, scope).intern(db)
+                TyKind::ForAll(params, ty, scope, origin).intern(db)
             },
             | _ => self,
         }

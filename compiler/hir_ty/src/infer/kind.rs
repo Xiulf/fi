@@ -59,7 +59,7 @@ impl InferenceContext<'_> {
                     lower.ty.ty.to_info(self.db, &mut self.types, &mut self.type_vars, src)
                 };
 
-                if let TyInfo::ForAll(kinds, inner, _) = self.types[ty].clone() {
+                if let TyInfo::ForAll(kinds, inner, _, _) = self.types[ty].clone() {
                     let kind = self.infer_kind(inner);
 
                     self.fn_type(kinds.into_vec(), kind, src)
@@ -69,7 +69,7 @@ impl InferenceContext<'_> {
             },
             | TyInfo::App(base, args) => self.check_kind_for_app(base, &args, src),
             | TyInfo::Where(_, ty) => self.infer_kind(ty),
-            | TyInfo::ForAll(kinds, inner, scope) => {
+            | TyInfo::ForAll(kinds, inner, scope, _) => {
                 for kind in kinds.into_vec() {
                     self.check_kind_type(kind);
                 }

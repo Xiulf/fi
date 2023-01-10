@@ -896,7 +896,7 @@ impl BodyCtx<'_, '_> {
 
         loop {
             match ty.lookup(self.db) {
-                | hir::ty::TyKind::ForAll(_, inner, _) => {
+                | hir::ty::TyKind::ForAll(_, inner, _, _) => {
                     ty = inner;
                 },
                 | hir::ty::TyKind::Where(_, inner) => {

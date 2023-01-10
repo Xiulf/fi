@@ -38,7 +38,7 @@ impl ToInfo for Ty {
         let mut scopes = FxHashMap::default();
 
         ty.everything(types, &mut |t| match types[t] {
-            | TyInfo::ForAll(ref kinds, _, scope) => {
+            | TyInfo::ForAll(ref kinds, _, scope, _) => {
                 let new_scope = type_vars.alloc_scope(kinds.clone());
 
                 scopes.insert(scope, new_scope);
@@ -52,10 +52,10 @@ impl ToInfo for Ty {
                 TyInfo::TypeVar(TypeVar::new(tv.idx(), scopes[&tv.scope()], tv.src())),
                 true,
             ),
-            | TyInfo::ForAll(kinds, inner, scope) => {
+            | TyInfo::ForAll(kinds, inner, scope, origin) => {
                 let scope = scopes[&scope];
 
-                types.update(t, TyInfo::ForAll(kinds, inner, scope), true)
+                types.update(t, TyInfo::ForAll(kinds, inner, scope, origin), true)
             },
             | _ => t,
         });
@@ -92,7 +92,7 @@ impl ToInfo for Ty {
 
                     TyInfo::Where(where_, inner)
                 },
-                | TyKind::ForAll(vars, ret, scope) => {
+                | TyKind::ForAll(vars, ret, scope, origin) => {
                     let vars = vars
                         .iter()
                         .map(|&v| rec(v, db, types, type_vars, src))
@@ -102,7 +102,7 @@ impl ToInfo for Ty {
                     // let new_scope = type_vars.alloc_scope(vars.clone());
                     // let ret = ret.rescope(types, scope, new_scope);
 
-                    TyInfo::ForAll(vars, ret, scope)
+                    TyInfo::ForAll(vars, ret, scope, origin)
                 },
                 | TyKind::TypeVar(tv) => TyInfo::TypeVar(tv),
             };
@@ -149,11 +149,11 @@ impl FromInfo for Ty {
 
                 TyKind::Where(where_, inner)
             },
-            | TyInfo::ForAll(ref vars, inner, scope) => {
+            | TyInfo::ForAll(ref vars, inner, scope, origin) => {
                 let vars = vars.iter().map(|&v| Self::from_info(db, types, v)).collect();
                 let inner = Self::from_info(db, types, inner);
 
-                TyKind::ForAll(vars, inner, scope)
+                TyKind::ForAll(vars, inner, scope, origin)
             },
         };
 

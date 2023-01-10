@@ -46,12 +46,11 @@ impl BodyLowerCtx<'_> {
             },
             | "copy" => {
                 let arg = self.lower_arg(args.next().unwrap(), &mut None);
-                let arg = match arg {
-                    | Operand::Copy(place) | Operand::Move(place) => place,
-                    | _ => unreachable!(),
-                };
 
-                Operand::Copy(arg)
+                match arg {
+                    | Operand::Move(place) => Operand::Copy(place),
+                    | _ => arg,
+                }
             },
             | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
             | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),

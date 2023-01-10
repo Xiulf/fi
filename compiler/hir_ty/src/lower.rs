@@ -169,7 +169,7 @@ impl<'a, 'b> LowerCtx<'a, 'b> {
 
                 self.icx.resolver = resolver;
                 self.type_vars.pop_scope();
-                self.icx.types.insert(TyInfo::ForAll(kinds, inner, scope), src)
+                self.icx.types.insert(TyInfo::ForAll(kinds, inner, scope, None), src)
             },
             | TypeRef::Where(where_clause, inner) => {
                 let where_ = self.lower_where_clause(where_clause, WhereSource::TypeRef(self.owner, ty));
@@ -386,7 +386,8 @@ pub(crate) fn value_ty(db: &dyn HirDatabase, id: ValueTyDefId) -> TyAndSrc<Ty> {
                 let mut ty = lcx.lower_ty(ty);
 
                 if !kinds.is_empty() {
-                    ty = lcx.icx.types.insert(TyInfo::ForAll(kinds, ty, scope), src);
+                    let t = TyInfo::ForAll(kinds, ty, scope, Some(id.into()));
+                    ty = lcx.icx.types.insert(t, src);
                 }
 
                 ty = match id.lookup(db.upcast()).container {
@@ -520,7 +521,8 @@ pub(crate) fn ctor_ty(db: &dyn HirDatabase, id: CtorId) -> Arc<LowerResult<Ty>> 
     };
 
     let ty = if let Some((vars, scope)) = vars {
-        ctx.icx.types.insert(TyInfo::ForAll(vars, ty, scope), src)
+        let t = TyInfo::ForAll(vars, ty, scope, Some(id.parent.into()));
+        ctx.icx.types.insert(t, src)
     } else {
         ty
     };
@@ -547,7 +549,8 @@ pub(crate) fn type_for_alias(db: &dyn HirDatabase, id: TypeAliasId) -> Arc<Lower
     let src = ctx.source(TypeOrigin::Def(id.into()));
     let kinds = var_kinds(&mut ctx, vars, src);
     let ty = if !kinds.is_empty() {
-        ctx.icx.types.insert(TyInfo::ForAll(kinds, ty, scope), src)
+        let t = TyInfo::ForAll(kinds, ty, scope, Some(id.into()));
+        ctx.icx.types.insert(t, src)
     } else {
         ty
     };
