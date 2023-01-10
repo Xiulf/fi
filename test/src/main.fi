@@ -14,7 +14,7 @@ main =
     ExitCode x
 
 
-fib i :: i -> i where Integer i
+; fib i :: i -> i where Integer i
 fib n if n < 2 = n
       else     = fib (n - 2) + fib (n - 1)
 

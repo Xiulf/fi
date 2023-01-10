@@ -256,11 +256,6 @@ impl<'a> InferenceContext<'a> {
             diagnostics: Vec::new(),
         });
 
-        res.self_type.ty = res.self_type.ty.normalize(&mut self.types);
-        self.result.self_type = res.self_type;
-        self.result.type_of_pat = res.type_of_pat.clone();
-        res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(self)).collect();
-
         let mut finalize = |v: &mut TyId| {
             *v = self.subst_type(*v);
             *v = self.unskolemize(*v);
@@ -273,6 +268,11 @@ impl<'a> InferenceContext<'a> {
         res.instances
             .values_mut()
             .for_each(|v| v.iter_mut().for_each(&mut finalize));
+
+        finalize(&mut res.self_type.ty);
+        self.result.self_type = res.self_type;
+        self.result.type_of_pat = res.type_of_pat.clone();
+        res.diagnostics = res.diagnostics.into_iter().map(|i| i.subst_types(self)).collect();
 
         InferenceResult::from_info(self.db, &self.types, res)
     }
