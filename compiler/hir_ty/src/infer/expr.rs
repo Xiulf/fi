@@ -425,13 +425,6 @@ impl BodyInferenceContext<'_> {
                 }
             },
             | (Expr::Do { stmts }, _) => self.check_block(stmts, expected, expr),
-            | (_, TyInfo::Unknown(_)) => {
-                let infer = self.infer_expr(expr);
-
-                if !self.unify_types(infer, expected) {
-                    self.report_mismatch(expected, infer, expr);
-                }
-            },
             | (Expr::Typed { expr: inner, ty }, _) => self.owner.with_type_map(self.db.upcast(), |type_map| {
                 let mut lcx = LowerCtx::new(type_map, self);
                 let ty_ = lcx.lower_ty(*ty);
@@ -445,6 +438,13 @@ impl BodyInferenceContext<'_> {
 
                 self.check_expr(*inner, ty_);
             }),
+            | (_, TyInfo::Unknown(_)) => {
+                let infer = self.infer_expr(expr);
+
+                if !self.unify_types(infer, expected) {
+                    self.report_mismatch(expected, infer, expr);
+                }
+            },
             // | (Expr::Path { path }, _) => match self.resolver.resolve_value_fully(self.db.upcast(), path) {
             //     | Some((res, vis)) => {
             //         if path.segments().len() > 1

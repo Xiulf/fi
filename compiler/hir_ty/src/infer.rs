@@ -60,7 +60,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let data = db.func_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
-            tracing::debug!("{}", data.name);
+            tracing::debug!("func {}", data.name);
             let scope = lcx.push_type_vars(&data.type_vars);
             let kinds = lcx.type_vars.var_kinds(scope).clone();
             let mut ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
@@ -90,6 +90,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
             let data = db.const_data(id);
             let mut lcx = LowerCtx::new(data.type_map(), icx);
             let src = lcx.source(TypeOrigin::Def(id.into()));
+            tracing::debug!("const {}", data.name);
             let ty = data.ty.map(|t| lcx.lower_ty(t)).unwrap_or(lcx.fresh_type(src));
 
             lcx.check_kind_type(ty);
@@ -374,8 +375,8 @@ impl<'a> InferenceContext<'a> {
         });
     }
 
-    pub(crate) fn constrain(&mut self, expected: CtntExpected, found: CtntFound, mut ctnt: CtntInfo) {
-        ctnt.types = ctnt.types.iter().map(|&t| self.expand_aliases(t)).collect();
+    pub(crate) fn constrain(&mut self, expected: CtntExpected, found: CtntFound, ctnt: CtntInfo) {
+        // ctnt.types = ctnt.types.iter().map(|&t| self.expand_aliases(t)).collect();
         self.constraints.push((ctnt, expected, found, self.class_env.current()));
     }
 
@@ -646,13 +647,12 @@ impl<'a> BodyInferenceContext<'a> {
         let body = self.body.clone();
         let (a, mut ret) = self.fn_args(ann, body.params().len());
 
-        if a.is_empty() {
+        if a.is_empty() && !body.params().is_empty() {
             let src = self.source(body.body_expr());
             ret = self.fresh_type(src);
         }
 
         let args = body.params().iter().map(|&pat| self.infer_pat(pat)).collect::<Vec<_>>();
-
         let ty = if !args.is_empty() || is_func {
             let src = self.types.source(ann);
 

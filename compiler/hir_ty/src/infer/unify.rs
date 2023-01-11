@@ -130,7 +130,14 @@ impl InferenceContext<'_> {
     }
 
     pub fn subst_ctnt(&mut self, ctnt: &CtntInfo) -> CtntInfo {
-        self.subst.subst_ctnt(&mut self.types, ctnt)
+        let mut ctnt = self.subst.subst_ctnt(&mut self.types, ctnt);
+
+        ctnt.types = ctnt
+            .types
+            .iter()
+            .map(|&t| TyId::expand_aliases(t, self.db, &mut self.types, &mut self.type_vars))
+            .collect();
+        ctnt
     }
 
     pub fn occurs(&self, u: Unknown, ty: TyId) -> bool {

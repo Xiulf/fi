@@ -12,24 +12,38 @@ type C_Double  = Float64
 type C_Str     = Ptr C_Char
 type C_Array t = Ptr t
 
-type Size_T  = Uint
-type Ssize_T = Int
+type SizeT  = Uint
+type SsizeT = Int
 
 foreign type C_Void :: Type
 
-NULL :: forall t. Ptr t
-NULL = unsafe (transmute (0 :: Uint))
+const NULL :: forall t. Ptr t
+const NULL = unsafe (transmute (0 :: Uint))
 
 const STDIN_FILENO  = 0 :: C_Int
 const STDOUT_FILENO = 1 :: C_Int
 const STDERR_FILENO = 2 :: C_Int
 
+const AF_INET = 2 :: C_Int
+const SOCK_STREAM = 1 :: C_Int
+
 ; io
 foreign puts :: C_Str -> C_Int
-foreign write :: C_Int -> Ptr C_Char -> Size_T -> Ssize_T
+foreign write :: C_Int -> Ptr C_Char -> SizeT -> SsizeT
 
 ; mem
-foreign malloc :: Size_T -> Ptr C_Void
+foreign malloc :: SizeT -> Ptr C_Void
 foreign free :: Ptr C_Void -> ()
 foreign memcpy :: Ptr C_Void -> Ptr C_Void -> Uint -> Ptr C_Void
 foreign memmove :: Ptr C_Void -> Ptr C_Void -> Uint -> Ptr C_Void
+
+; sockets
+type SocklenT = Int32
+type Sockaddr = | Sockaddr SaFamilyT (Array 14 C_Char)
+type SaFamilyT = Uint16
+
+foreign socket :: C_Int -> C_Int -> C_Int -> C_Int
+foreign bind   :: C_Int -> Ptr Sockaddr -> SocklenT -> C_Int
+foreign listen :: C_Int -> C_Int -> C_Int
+foreign accept :: C_Int -> Ptr Sockaddr -> Ptr SocklenT -> C_Int
+foreign close  :: C_Int -> C_Int

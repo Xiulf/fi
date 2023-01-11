@@ -97,7 +97,7 @@ impl Repr {
                     valid_range: 0..=variants.len() as u128 - 1,
                 })
             },
-            | _ => unreachable!(),
+            | _ => unreachable!("{:?}", self),
         }
     }
 

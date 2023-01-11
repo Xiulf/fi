@@ -110,6 +110,8 @@ impl Assembly {
             }
         }
 
+        tracing::debug!("links: {:?}", db.libs()[self.lib.into()].links);
+
         for link in &db.libs()[self.lib.into()].links {
             let mut path = std::borrow::Cow::Borrowed(Path::new(link));
 
@@ -117,11 +119,12 @@ impl Assembly {
                 path = std::borrow::Cow::Owned(pkg_root.join(path).into());
             }
 
-            linker.add_lib(
-                base_db::libs::LibKind::Dynamic,
-                path.to_str().unwrap(),
-                target_dir.as_ref(),
-            );
+            linker.add_module(&path);
+            // linker.add_lib(
+            //     base_db::libs::LibKind::Dynamic,
+            //     path.to_str().unwrap(),
+            //     target_dir.as_ref(),
+            // );
         }
 
         if db.target().is_windows() {

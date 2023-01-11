@@ -1,52 +1,38 @@
 module Test =
 
 import Core
-import Data:Range ((..))
-
 
 @main
-main :: ExitCode
+main :: ()
 main =
-    let b = Box:new $ fib 8
-    let x = Box:get b
+    let sockfd = LibC:socket LibC:AF_INET LibC:SOCK_STREAM 0
+    if sockfd == -1 then do
+        println "socket creation failed"
+        return ()
 
-    Box:drop b
-    ExitCode x
+    println "socket successfully created"
+    let family = Intrinsics:iconvert LibC:AF_INET
+    let servaddr = LibC:Sockaddr family [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80]
+    let b = LibC:bind sockfd (Intrinsics:addr_of servaddr) 16
+    if b != 0 then do
+        println "socket bind failed"
+        return ()
+
+    println "socket successfully bound"
+    let len = 16 :: LibC:SocklenT
+    let cli = LibC:Sockaddr 0 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let connfd = LibC:accept sockfd (Intrinsics:addr_of cli) (Intrinsics:addr_of len)
+    if connfd < 0 then do
+        println "server accept failed"
+        return ()
+
+    println "server accepted the client"
+    ; LibC:close sockfd
+    ()
 
 
-fib i :: i -> i where Integer i
-fib n if n < 2 = n
-      else     = fib (n - 2) + fib (n - 1)
-
-
-module Box =
-    import Core
-    import Intrinsics (ptr_read, ptr_write, size_of, transmute, unsafe)
-
-    type Box t =
-        | Box (Ptr t)
-    
-    new t :: t -> Box t
-    new x = unsafe do
-        let ptr = LibC:malloc $ size_of (Proxy :: Proxy t)
-        let ptr = transmute ptr
-        ptr_write ptr x
-        Box ptr
-    
-    copy t :: Box t -> Box t
-    copy (Box ptr) = unsafe do
-        let val = Intrinsics:copy $ ptr_read ptr
-        new val
-    
-    drop t :: Box t -> ()
-    drop (Box ptr) = unsafe do
-        let val = ptr_read ptr
-        Intrinsics:drop val
-        let ptr = transmute ptr
-        LibC:free ptr
-    
-    get t :: Box t -> t
-    get (Box ptr) = unsafe $ Intrinsics:copy (ptr_read ptr)
-    
-    set t :: Box t -> t -> ()
-    set (Box ptr) x = unsafe $ ptr_write ptr x
+println :: Str -> ()
+println s =
+    let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute s) :: _, Uint
+    LibC:puts ptr
+    ()

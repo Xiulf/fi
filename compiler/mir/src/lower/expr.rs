@@ -268,6 +268,15 @@ impl BodyLowerCtx<'_> {
 
         match resolved {
             | ValueNs::Local(id) => Operand::Copy(self.locals[id].clone()),
+            | ValueNs::Const(id) => {
+                let types = self.infer.instances.get(&expr.0).cloned().unwrap_or_default();
+                let instance = Instance::new(hir::Const::from(id).into(), types, Vec::new());
+                let ty = self.infer.type_of_expr[expr.0];
+                let res = self.store_in(store_in, ty);
+
+                self.builder.instance_ref(res.clone(), instance);
+                Operand::Move(res)
+            },
             | ValueNs::Ctor(id) => {
                 let ty_ctor = self.db.type_ctor_data(id.parent);
                 let ctor = &ty_ctor.ctors[id.local_id];

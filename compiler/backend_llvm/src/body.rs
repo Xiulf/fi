@@ -168,8 +168,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                         let discr_val = self.builder.build_int_truncate(discr_val, i1_type, "");
 
                         match values[0] {
-                            | 0 => self.builder.build_conditional_branch(discr_val, else_, then),
-                            | 1 => self.builder.build_conditional_branch(discr_val, then, else_),
+                            | 0 => self.builder.build_conditional_branch(discr_val, then, else_),
+                            | 1 => self.builder.build_conditional_branch(discr_val, else_, then),
                             | _ => unreachable!(),
                         }
                     } else {
@@ -401,6 +401,15 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     | InstanceDef::Def(hir::DefWithBody::Func(_)) => {
                         let func = self.cx.declare_or_codegen_func(instance).0;
                         func.as_global_value().as_basic_value_enum()
+                    },
+                    | InstanceDef::Def(hir::DefWithBody::Const(_)) => {
+                        let val = match self.db.eval(instance, Arc::new([])) {
+                            | Ok(val) => val,
+                            | Err(e) => base_db::Error::throw(format!("{e:?}")),
+                        };
+
+                        tracing::debug!("{:?}", val);
+                        return self.codegen_const(&val, &layout.repr);
                     },
                     | _ => todo!(),
                 };
