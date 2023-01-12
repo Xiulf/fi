@@ -5,6 +5,7 @@ import Intrinsics (unsafe, transmute)
 
 type C_Char    = Int8
 type C_Short   = Int16
+type C_UShort  = Uint16
 type C_Int     = Int32
 type C_Long    = Int64
 type C_Float   = Float32
@@ -39,11 +40,16 @@ foreign memmove :: Ptr C_Void -> Ptr C_Void -> Uint -> Ptr C_Void
 
 ; sockets
 type SocklenT = Int32
-type Sockaddr = | Sockaddr SaFamilyT (Array 14 C_Char)
-type SaFamilyT = Uint16
+type SockAddr = | SockAddr C_Short C_UShort NetAddr
+type NetAddr  = | NetAddr Uint8 Uint8 Uint8 Uint8
 
 foreign socket :: C_Int -> C_Int -> C_Int -> C_Int
-foreign bind   :: C_Int -> Ptr Sockaddr -> SocklenT -> C_Int
+foreign bind   :: C_Int -> Ptr SockAddr -> SocklenT -> C_Int
 foreign listen :: C_Int -> C_Int -> C_Int
-foreign accept :: C_Int -> Ptr Sockaddr -> Ptr SocklenT -> C_Int
+foreign accept :: C_Int -> Ptr SockAddr -> Ptr SocklenT -> C_Int
 foreign close  :: C_Int -> C_Int
+foreign recv   :: C_Int -> Ptr C_Char -> Uint -> C_Int -> C_Int
+foreign send   :: C_Int -> Ptr C_Char -> Uint -> C_Int -> C_Int
+
+;; convert the short from host byte order to network byte order
+foreign htons :: C_UShort -> C_UShort

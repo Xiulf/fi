@@ -168,8 +168,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                         let discr_val = self.builder.build_int_truncate(discr_val, i1_type, "");
 
                         match values[0] {
-                            | 0 => self.builder.build_conditional_branch(discr_val, then, else_),
-                            | 1 => self.builder.build_conditional_branch(discr_val, else_, then),
+                            | 0 => self.builder.build_conditional_branch(discr_val, else_, then),
+                            | 1 => self.builder.build_conditional_branch(discr_val, then, else_),
                             | _ => unreachable!(),
                         }
                     } else {
@@ -586,6 +586,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         let ty = self.basic_type_for_ral(&layout);
         let value = match *const_ {
             | Const::Undefined => unreachable!(),
+            | Const::Zeroed => ty.const_zero(),
             | Const::Unit => todo!(),
             | Const::Int(i) => ty.into_int_type().const_int(i as u64, true).as_basic_value_enum(),
             | Const::Float(f) => ty

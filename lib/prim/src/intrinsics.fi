@@ -38,6 +38,8 @@ infixl 1 applyFlipped as (.)
 @intrinsic foreign copy t :: t -> t
 @intrinsic foreign drop t :: t -> () where Unsafe
 
+@intrinsic foreign zeroed t :: Proxy t -> t where Unsafe
+
 @intrinsic foreign apply        a r :: (a -> r) -> a -> r
 @intrinsic foreign applyFlipped a r :: a -> (a -> r) -> r
 @intrinsic foreign transmute    a b :: a -> b where Unsafe

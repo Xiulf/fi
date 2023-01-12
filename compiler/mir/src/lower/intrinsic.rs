@@ -55,6 +55,17 @@ impl BodyLowerCtx<'_> {
             | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
             | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
             | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
+            | "zeroed" => {
+                let proxy = match args.next().unwrap() {
+                    | Arg::ExprId(e) => self.infer.type_of_expr[e],
+                    | Arg::Op(_) => unreachable!(),
+                };
+
+                let proxy = self.get_proxy_type(proxy);
+                let repr = self.db.repr_of(proxy);
+
+                Operand::Const(Const::Zeroed, repr)
+            },
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap(), &mut None);
                 let place = self.place_op(place);
@@ -170,14 +181,19 @@ impl BodyLowerCtx<'_> {
             | Arg::Op(_) => unreachable!(),
         };
 
-        let lib = self.lib();
-        let proxy_id = self.db.lang_item(lib, lang_item::PROXY_TYPE).unwrap();
-        let proxy_id = proxy_id.as_type_ctor().unwrap();
-        let proxy = proxy.match_ctor(self.db.upcast(), proxy_id).unwrap()[0];
+        let proxy = self.get_proxy_type(proxy);
         let repr = self.db.repr_of(proxy);
         let res = self.store_in(store_in, self.infer.type_of_expr[expr]);
 
         self.builder.nullop(res.clone(), op, repr);
         Operand::Move(res)
+    }
+
+    fn get_proxy_type(&self, proxy: Ty) -> Ty {
+        let lib = self.lib();
+        let proxy_id = self.db.lang_item(lib, lang_item::PROXY_TYPE).unwrap();
+        let proxy_id = proxy_id.as_type_ctor().unwrap();
+
+        proxy.match_ctor(self.db.upcast(), proxy_id).unwrap()[0]
     }
 }

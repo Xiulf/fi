@@ -243,6 +243,7 @@ pub enum Projection {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Const {
     Undefined,
+    Zeroed,
     Unit,
     Int(i128),
     Float(u64),

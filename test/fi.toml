@@ -2,7 +2,7 @@
 name = "test"
 version = "0.1.0"
 output = "executable"
-link = ["Ws2_32.lib"]
+# link = ["Ws2_32.lib"]
 
 [dependencies]
 prim = { path = "../lib/prim" }

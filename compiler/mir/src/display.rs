@@ -319,6 +319,7 @@ impl HirDisplay for Const {
     fn hir_fmt(&self, f: &mut HirFormatter<'_>) -> Result {
         match self {
             | Self::Undefined => f.write_str("undefined"),
+            | Self::Zeroed => f.write_str("{{zeroed}}"),
             | Self::Unit => f.write_str("()"),
             | Self::Int(v) => write!(f, "{}", v),
             | Self::Float(v) => write!(f, "{}", f64::from_bits(*v)),
