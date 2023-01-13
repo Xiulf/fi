@@ -53,6 +53,22 @@ println s =
     ()
 
 
+module TcpListener =
+    import Core
+    import Socket (Socket)
+    
+    type TcpListener = | TcpListener Socket
+
+    bind :: LibC:NetAddr -> Uint16 -> Result Str TcpListener
+    bind addr port =
+        case Socket:new_ipv4 addr port of
+            Ok socket -> Ok $ TcpListener socket
+            Error err -> Error err
+
+    close :: TcpListener -> ()
+    close (TcpListener socket) = Socket:close socket
+
+
 module Socket (module Socket, module C) =
     import Core
     import LibC (NetAddr)

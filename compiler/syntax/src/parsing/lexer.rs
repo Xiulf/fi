@@ -586,17 +586,26 @@ impl<'src> Lexer<'src> {
         }
 
         match self.text() {
-            | "module" => {
-                if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
+            | "module" => match self.stack[..] {
+                | [.., (_, LayoutDelim::Prop)] => {
                     self.emit(IDENT);
                     self.stack.pop().unwrap();
-                } else {
+                },
+                | [.., (_, LayoutDelim::TypeDecl | LayoutDelim::ClassHead | LayoutDelim::MemberHead)] => {
+                    self.stack.pop().unwrap();
                     self.insert_default(start, MODULE_KW);
 
                     if self.is_def_start(start) {
                         self.stack.push((start, LayoutDelim::ModuleHead));
                     }
-                }
+                },
+                | _ => {
+                    self.insert_default(start, MODULE_KW);
+
+                    if self.is_def_start(start) {
+                        self.stack.push((start, LayoutDelim::ModuleHead));
+                    }
+                },
             },
             | "import" => {
                 if let [.., (_, LayoutDelim::Prop)] = self.stack[..] {
