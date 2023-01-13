@@ -215,10 +215,12 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     op.store(self.cx, place);
                 },
                 | LocalRef::Operand(Some(phi)) => {
-                    let phi = phi.phi();
-                    let val = op.load(self.cx);
+                    if !phi.layout.is_zst() {
+                        let phi = phi.phi();
+                        let val = op.load(self.cx);
 
-                    phi.add_incoming(&[(&val, block)]);
+                        phi.add_incoming(&[(&val, block)]);
+                    }
                 },
                 | LocalRef::Operand(None) => unreachable!(),
             }
@@ -587,7 +589,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         let value = match *const_ {
             | Const::Undefined => unreachable!(),
             | Const::Zeroed => ty.const_zero(),
-            | Const::Unit => todo!(),
+            | Const::Unit => return OperandRef::new_zst(self.cx, layout),
             | Const::Int(i) => ty.into_int_type().const_int(i as u64, true).as_basic_value_enum(),
             | Const::Float(f) => ty
                 .into_float_type()

@@ -307,15 +307,17 @@ fn enum_layout(mut lyts: Vec<(Repr, Layout)>, triple: &Triple) -> Layout {
                 }
             }
 
+            size = size + tag_size;
+            let tag_encoding = TagEncoding::Direct;
+            let offsets = vec![Size::ZERO];
             let variants = variants
                 .into_iter()
-                .map(|(repr, layout)| Arc::new(ReprAndLayout { repr, layout }))
+                .map(|(repr, mut layout)| {
+                    layout.size = size;
+                    layout.stride = size.align_to(align);
+                    Arc::new(ReprAndLayout { repr, layout })
+                })
                 .collect::<Vec<_>>();
-
-            let tag_encoding = TagEncoding::Direct;
-            let offsets = vec![Size::ZERO, tag_size];
-
-            size = size + tag_size;
 
             if size == tag_size {
                 (
@@ -387,6 +389,7 @@ impl ReprAndLayout {
         Some(db.layout_of((**el).clone()))
     }
 
+    #[track_caller]
     pub fn field(&self, db: &dyn MirDatabase, field: usize) -> Option<Arc<ReprAndLayout>> {
         assert!(field < self.fields.count());
 

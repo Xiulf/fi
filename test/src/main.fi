@@ -1,58 +1,48 @@
 module Test =
 
 import Core
-import Intrinsics (addr_of)
+import Socket (Socket, listen, accept, receive, send, close)
 
 @main
 main :: ExitCode
 main =
-    let Socket:Socket socket_desc server_addr =
-        case Socket:new_ipv4 (Socket:NetAddr 127 0 0 1) 8080 of
-            Ok socket -> socket
-            Error e -> do
-                println e
-                return ExitCode -1
+    let socket = case Socket:new_ipv4 (LibC:NetAddr 127 0 0 1) 8080 of
+        Ok socket -> socket
+        Error e -> do
+            println e
+            return ExitCode -1
 
-    ; let socket_desc = LibC:socket LibC:AF_INET LibC:SOCK_STREAM 0
-    ; if socket_desc < 0 then do
-    ;     println "error while creating socket"
-    ;     return ExitCode -1
-
-    ; println "socket created successfully"
-    ; let family = Intrinsics:iconvert LibC:AF_INET
-    ; let port = LibC:htons 8080
-    ; let server_addr = LibC:SockAddr family port (LibC:NetAddr 127 0 0 1)
-    ; if LibC:bind socket_desc (addr_of server_addr) 16 < 0 then do
-    ;     println "couldn't bind to the port"
-    ;     return ExitCode -1
-
-    ; println "done with binding"
-    if LibC:listen socket_desc 1 < 0 then do
-        println "error while listening"
-        return ExitCode -1
+    case socket .listen 1 of
+        Ok _ -> ()
+        Error e -> do
+            println e
+            return ExitCode -1
 
     println "listening for incoming connections"
-    let client_size = 16 :: LibC:SocklenT
-    let client_addr = LibC:SockAddr 0 0 (LibC:NetAddr 0 0 0 0)
-    let client_sock = LibC:accept socket_desc (addr_of client_addr) (addr_of client_size)
-    if client_sock < 0 then do
-        println "can't accept"
-        return ExitCode -1
-
+    let client = case socket .accept of
+        Ok client -> client
+        Error e -> do
+            println e
+            return ExitCode -1
+    
     println "client connected"
-    let buffer = Intrinsics:unsafe (Intrinsics:zeroed (Proxy :: Proxy (Array 1000 Byte)))
-    let buffer_addr = Intrinsics:unsafe (Intrinsics:transmute (addr_of buffer :: Ptr _))
-    let bytes_received = LibC:recv client_sock buffer_addr 1000 0
-    if bytes_received < 0 then do
-        println "couldn't receive"
-        return ExitCode -1
+    let buffer = Data:Array:zeroed :: Array 1000 Byte
+    let slice = buffer # (Data:Range 0 1000)
 
-    if LibC:send client_sock buffer_addr (Intrinsics:iconvert bytes_received) 0 < 0 then do
-        println "can't send"
-        return ExitCode -1
+    let received = case client .receive slice of
+        Ok n -> n
+        Error e -> do
+            println e
+            return ExitCode -1
 
-    LibC:close client_sock
-    LibC:close socket_desc
+    case client .send (slice # (Data:Range 0 received)) of
+        Ok _ -> ()
+        Error e -> do
+            println e
+            return ExitCode -1
+
+    client .close
+    socket .close
     ExitCode 0
 
 
@@ -67,6 +57,7 @@ module Socket (module Socket, module C) =
     import Core
     import LibC (NetAddr)
     import LibC (NetAddr) as C
+    import Intrinsics (addr_of)
     
     type Socket =
         | Socket LibC:C_Int LibC:SockAddr
@@ -79,6 +70,44 @@ module Socket (module Socket, module C) =
         let family = Intrinsics:iconvert LibC:AF_INET
         let port = LibC:htons port
         let addr = LibC:SockAddr family port addr
-        if LibC:bind desc (addr_of addr) 8 < 0 then return Error "couldn't bind socket"
+        if LibC:bind desc (addr_of addr) 16 < 0 then return Error "couldn't bind socket"
 
         Ok $ Socket desc addr
+
+    close :: Socket -> ()
+    close (Socket desc _) =
+        LibC:close desc
+        ()
+
+    listen :: Socket -> Int32 -> Result Str ()
+    listen (Socket desc _) max_buffer =
+        if LibC:listen desc max_buffer < 0 
+        then Error "error while listening"
+        else Ok ()
+
+    accept :: Socket -> Result Str Socket
+    accept (Socket desc _) =
+        let size = 16 :: LibC:SocklenT
+        let addr = Intrinsics:unsafe (Intrinsics:zeroed (Proxy :: Proxy LibC:SockAddr))
+        let sock = LibC:accept desc (addr_of addr) (addr_of size)
+
+        if sock < 0
+        then Error "error accepting connection"
+        else Ok $ Socket sock addr
+
+    receive :: Socket -> Slice Byte -> Result Str Int
+    receive (Socket desc _) buffer =
+        let buffer_addr, buffer_len = Intrinsics:unsafe (Intrinsics:transmute buffer)
+        let bytes_received = LibC:recv desc buffer_addr buffer_len 0
+
+        if bytes_received < 0
+        then Error "error receiving"
+        else Ok $ Intrinsics:iconvert bytes_received
+
+    send :: Socket -> Slice Byte -> Result Str ()
+    send (Socket desc _) buffer =
+        let buffer_addr, buffer_len = Intrinsics:unsafe (Intrinsics:transmute buffer)
+
+        if LibC:send desc buffer_addr buffer_len 0 < 0
+        then Error "error sending"
+        else Ok ()

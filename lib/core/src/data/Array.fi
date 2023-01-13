@@ -4,6 +4,9 @@ import Core
 import Data:Range (Range, (..))
 
 
+zeroed len t :: Array len t
+zeroed = Intrinsics:unsafe (Intrinsics:zeroed (Proxy :: Proxy (Array len t)))
+
 member (Array len t) (Slice t) of Into =
     into arr = arr # (0..(Intrinsics:array_len arr))
 
