@@ -339,6 +339,7 @@ impl HirDisplay for Const {
             | Self::Char(v) => write!(f, "{:?}", v),
             | Self::String(v) => write!(f, "{:?}", v),
             | Self::Ctor(c) => write!(f, "{}", c.name(f.db)),
+            | Self::TypeVar(v) => write!(f, "${}", v.display(f.db)),
         }
     }
 }

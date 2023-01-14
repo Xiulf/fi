@@ -123,11 +123,11 @@ impl BodyLowerCtx<'_> {
                 };
 
                 let len = match len {
-                    | ArrayLen::Const(l) => l as i128,
-                    | ArrayLen::TypeVar(_) => todo!(),
+                    | ArrayLen::Const(l) => Const::Int(l as i128),
+                    | ArrayLen::TypeVar(v) => Const::TypeVar(v),
                 };
 
-                Operand::Const(Const::Int(len), Repr::isize())
+                Operand::Const(len, Repr::isize())
             },
             | "iadd" => self.lower_intrinsic_binop(expr, BinOp::Add, args, store_in),
             | "isub" => self.lower_intrinsic_binop(expr, BinOp::Sub, args, store_in),

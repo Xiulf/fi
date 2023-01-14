@@ -9,7 +9,7 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
-use inkwell::passes::PassManager;
+use inkwell::passes::{PassManager, PassManagerBuilder};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
 };
@@ -84,16 +84,19 @@ pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnc
     let context = Context::create();
     let module = context.create_module(hir.name(db.upcast()).as_ref());
     let builder = context.create_builder();
+    let pmb = PassManagerBuilder::create();
     let fpm = PassManager::create(&module);
 
-    fpm.add_instruction_combining_pass();
-    fpm.add_reassociate_pass();
-    fpm.add_gvn_pass();
-    fpm.add_cfg_simplification_pass();
-    fpm.add_basic_alias_analysis_pass();
-    fpm.add_promote_memory_to_register_pass();
-    fpm.add_instruction_combining_pass();
-    fpm.add_reassociate_pass();
+    pmb.set_optimization_level(OptimizationLevel::None);
+    pmb.populate_function_pass_manager(&fpm);
+    // fpm.add_instruction_combining_pass();
+    // fpm.add_reassociate_pass();
+    // fpm.add_gvn_pass();
+    // fpm.add_cfg_simplification_pass();
+    // fpm.add_basic_alias_analysis_pass();
+    // fpm.add_promote_memory_to_register_pass();
+    // fpm.add_instruction_combining_pass();
+    // fpm.add_reassociate_pass();
     fpm.initialize();
 
     let ctx = CodegenCtx {

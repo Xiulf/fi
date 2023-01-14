@@ -20,6 +20,22 @@ to_le x = x
 to_le i :: i -> i where Integer i
 to_le x = Intrinsics:byteswap x
 
+@cfg(target_endian = "big")
+from_be i :: i -> i where Integer i
+from_be x = x
+
+@cfg(not(target_endian = "big"))
+from_be i :: i -> i where Integer i
+from_be x = Intrinsics:byteswap x
+
+@cfg(target_endian = "little")
+from_le i :: i -> i where Integer i
+from_le x = x
+
+@cfg(not(target_endian = "little"))
+from_le i :: i -> i where Integer i
+from_le x = Intrinsics:byteswap x
+
 member i of Default where Integer i =
     default = 0
 

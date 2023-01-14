@@ -7,6 +7,9 @@ import Data:Range (Range, (..))
 zeroed len t :: Array len t
 zeroed = Intrinsics:unsafe (Intrinsics:zeroed (Proxy :: Proxy (Array len t)))
 
+as_slice len t :: Array len t -> Slice t
+as_slice arr = Intrinsics:array_slice arr 0 (Intrinsics:array_len arr)
+
 member (Array len t) (Slice t) of Into =
     into arr = arr # (0..(Intrinsics:array_len arr))
 

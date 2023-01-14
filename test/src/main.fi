@@ -27,7 +27,7 @@ main =
     
     println "client connected"
     let buffer = Data:Array:zeroed :: Array 1000 Byte
-    let slice = buffer # (Data:Range 0 1000)
+    let slice = Data:Array:as_slice buffer
 
     let received = case client .receive slice of
         Ok n -> n

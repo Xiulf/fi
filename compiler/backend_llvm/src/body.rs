@@ -617,6 +617,16 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
                 ty.into_int_type().const_int(idx as u64, false).as_basic_value_enum()
             },
+            | Const::TypeVar(tvar) => match self.instance.subst.as_ref() {
+                | Some(subst) => match subst.types[tvar.idx() as usize].lookup(self.db.upcast()) {
+                    | hir::ty::TyKind::Figure(figure) => {
+                        ty.into_int_type().const_int(figure as u64, true).as_basic_value_enum()
+                    },
+                    | hir::ty::TyKind::Symbol(_symbol) => todo!(),
+                    | _ => unreachable!(),
+                },
+                | _ => todo!(),
+            },
         };
 
         OperandRef::new_imm(layout, value)

@@ -174,6 +174,11 @@ fn main() -> anyhow::Result<ExitCode> {
         eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", msg, loc);
     }));
 
+    ctrlc::set_handler(|| {
+        std::panic::resume_unwind(Box::new(()));
+    })
+    .unwrap();
+
     run_cli(cli)
 }
 

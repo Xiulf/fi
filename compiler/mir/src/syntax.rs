@@ -1,5 +1,6 @@
 use arena::{Arena, Idx};
 use hir::id::DefWithBodyId;
+use hir::ty::TypeVar;
 use hir::{Ctor, ExprId, Func};
 use rustc_hash::FxHashMap;
 use salsa::{InternId, InternKey};
@@ -257,6 +258,7 @@ pub enum Const {
     Char(char),
     String(String),
     Ctor(Ctor),
+    TypeVar(TypeVar),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
