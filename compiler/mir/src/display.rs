@@ -204,6 +204,19 @@ impl HirDisplay for Stmt {
             | Self::Drop(l) => write!(f, "drop {l}"),
             | Self::Assign(p, v) => write!(f, "{} = {}", p.display(f.db), v.display(f.db)),
             | Self::SetDiscriminant(p, c) => write!(f, "discriminant {} = {}", p.display(f.db), c.name(f.db)),
+            | Self::Intrinsic { place, func, args } => {
+                write!(f, "{} = {:?}(", place.display(f.db), func)?;
+
+                for (i, a) in args.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+
+                    a.hir_fmt(f)?;
+                }
+
+                f.write_char(')')
+            },
             | Self::Call { place, func, args } => {
                 write!(f, "{} = {}(", place.display(f.db), func.display(f.db))?;
 

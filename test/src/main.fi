@@ -84,7 +84,7 @@ module Socket (module Socket, module C) =
         if desc < 0 then return Error "error while creating socket"
 
         let family = Intrinsics:iconvert LibC:AF_INET
-        let port = LibC:htons port
+        let port = Data:Int:to_be port
         let addr = LibC:SockAddr family port addr
         if LibC:bind desc (addr_of addr) 16 < 0 then return Error "couldn't bind socket"
 
@@ -127,3 +127,25 @@ module Socket (module Socket, module C) =
         if LibC:send desc buffer_addr buffer_len 0 < 0
         then Error "error sending"
         else Ok ()
+
+
+module Net =
+    type IpAddr =
+        | V4 Ipv4Addr
+        | V6 Ipv6Addr
+
+    type Ipv4Addr = | Ipv4Addr (Array 4 Byte)
+    type Ipv6Addr = | Ipv6Addr (Array 16 Byte)
+
+module Net:Ipv4Addr =
+    import Net
+    
+    const UNSPECIFIED = Ipv4Addr [0, 0, 0, 0]
+    const LOCALHOST = Ipv4Addr [127, 0, 0, 1]
+    const BROADCAST = Ipv4Addr [255, 255, 255, 255]
+
+module Net:Ipv6Addr =
+    import Net
+    
+    const UNSPECIFIED = Ipv6Addr [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    const LOCALHOST = Ipv6Addr [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]

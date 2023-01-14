@@ -197,6 +197,13 @@ impl Driver {
             | CompilerTarget::Javascript => CfgValue::String("javascript".into()),
             | CompilerTarget::Native(triple) => CfgValue::String(triple.operating_system.to_string().into()),
         });
+
+        let triple = target.triple();
+
+        self.cfg.set("target_endian", match triple.endianness() {
+            | Ok(target_lexicon::Endianness::Little) => CfgValue::String("little".into()),
+            | _ => CfgValue::String("big".into()),
+        });
     }
 
     pub fn check(&self) -> io::Result<bool> {

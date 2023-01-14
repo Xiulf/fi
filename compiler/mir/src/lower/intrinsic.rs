@@ -149,7 +149,14 @@ impl BodyLowerCtx<'_> {
                 self.builder.cast(res.clone(), CastKind::Bitcast, arg);
                 Operand::Move(res)
             },
-            | _ => todo!("intrinsic '{name}'"),
+            | _ => {
+                let args = args.map(|a| self.lower_arg(a, &mut None)).collect::<Vec<_>>();
+                let ty = self.infer.type_of_expr[expr];
+                let res = self.store_in(store_in, ty);
+
+                self.builder.intrinsic(res.clone(), name.to_string(), args);
+                Operand::Move(res)
+            },
         }
     }
 

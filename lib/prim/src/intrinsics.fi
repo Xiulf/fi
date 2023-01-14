@@ -17,6 +17,9 @@ infixl 1 applyFlipped as (.)
 @intrinsic foreign igt  i :: i -> i -> Bool where Integer i
 @intrinsic foreign ige  i :: i -> i -> Bool where Integer i
 
+@intrinsic foreign byteswap   i :: i -> i where Integer i
+@intrinsic foreign bitreverse i :: i -> i where Integer i
+
 @intrinsic foreign iconvert a b :: a -> b where Integer a, Integer b
 
 @intrinsic foreign array_index t l i :: Array l t -> i -> t where Integer i

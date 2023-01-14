@@ -3,6 +3,22 @@ module Data:Int =
 import Core
 import Core:Ops
 import Core:Cmp
+    
+@cfg(target_endian = "big")
+to_be i :: i -> i where Integer i
+to_be x = x
+
+@cfg(not(target_endian = "big"))
+to_be i :: i -> i where Integer i
+to_be x = Intrinsics:byteswap x
+    
+@cfg(target_endian = "little")
+to_le i :: i -> i where Integer i
+to_le x = x
+
+@cfg(not(target_endian = "little"))
+to_le i :: i -> i where Integer i
+to_le x = Intrinsics:byteswap x
 
 member i of Default where Integer i =
     default = 0

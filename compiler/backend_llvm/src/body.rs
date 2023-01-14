@@ -270,6 +270,9 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
                 place.set_discr(self.cx, index);
             },
+            | Stmt::Intrinsic { place, func, args } => {
+                self.codegen_intrinsic(place, func, args);
+            },
             | Stmt::Call { place, func, args } => {
                 let func = self.codegen_operand(func);
                 let func_sig = match &func.layout.repr {

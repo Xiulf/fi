@@ -117,6 +117,14 @@ impl Builder {
         self.stmt(Stmt::SetDiscriminant(place, ctor));
     }
 
+    pub fn intrinsic(&mut self, place: Place, func: String, args: impl Into<Vec<Operand>>) {
+        self.stmt(Stmt::Intrinsic {
+            place,
+            func,
+            args: args.into(),
+        });
+    }
+
     pub fn call(&mut self, place: Place, func: impl Into<Operand>, args: impl Into<Vec<Operand>>) {
         self.stmt(Stmt::Call {
             place,

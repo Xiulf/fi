@@ -3,6 +3,7 @@
 mod abi;
 mod body;
 mod ctx;
+mod intrinsics;
 mod local;
 mod operand;
 mod place;

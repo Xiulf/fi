@@ -82,6 +82,13 @@ macro_rules! make_visitor {
                     | Stmt::Drop(local) => self.visit_local(local, PlaceContext::MutUse(MutUseContext::Drop), loc),
                     | Stmt::Assign(place, rvalue) => self.visit_assign(place, rvalue, loc),
                     | Stmt::SetDiscriminant(place, _) => self.visit_place(place, PlaceContext::MutUse(MutUseContext::SetDiscriminant), loc),
+                    | Stmt::Intrinsic { place, args, .. } => {
+                        self.visit_place(place, PlaceContext::MutUse(MutUseContext::Call), loc);
+
+                        for arg in args {
+                            self.visit_operand(arg, loc);
+                        }
+                    },
                     | Stmt::Call { place, func, args } => {
                         self.visit_place(place, PlaceContext::MutUse(MutUseContext::Call), loc);
                         self.visit_operand(func, loc);

@@ -129,6 +129,13 @@ pub enum Stmt {
     /// Set the discriminant value of the place.
     SetDiscriminant(Place, Ctor),
 
+    /// Call the given intrinsic function with the arguments and store the result in place.
+    Intrinsic {
+        place: Place,
+        func: String,
+        args: Vec<Operand>,
+    },
+
     /// Call the given function with the arguments and store the result in place.
     Call {
         place: Place,

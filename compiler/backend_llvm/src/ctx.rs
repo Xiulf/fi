@@ -33,6 +33,7 @@ pub struct CodegenCtx<'a, 'ctx> {
     pub target_machine: TargetMachine,
     pub target_data: TargetData,
     pub fpm: &'a PassManager<values::FunctionValue<'ctx>>,
+    pub intrinsics: FxHashMap<&'static str, values::FunctionValue<'ctx>>,
     pub funcs: FxHashMap<Instance, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
     pub consts: Cell<usize>,
 }
@@ -104,6 +105,7 @@ pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnc
         builder: &builder,
         context: &context,
         fpm: &fpm,
+        intrinsics: FxHashMap::default(),
         funcs: FxHashMap::default(),
         consts: Cell::new(0),
     };
