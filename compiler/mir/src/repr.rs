@@ -22,6 +22,7 @@ pub enum Repr {
     Ptr(Box<Repr>, bool, bool),
     Box(Box<Repr>),
     Func(Box<Signature>, bool),
+    Discr(Box<Repr>),
     ReprOf(Ty),
 }
 
@@ -86,57 +87,31 @@ impl Repr {
             valid_range: 0..=u128::MAX,
         })
     }
-
-    pub fn discr(&self) -> Self {
-        match self {
-            | Repr::Enum(variants) if variants.len() > 1 => {
-                let value = Primitive::Int(self.align(), false);
-
-                Self::Scalar(Scalar {
-                    value,
-                    valid_range: 0..=variants.len() as u128 - 1,
-                })
-            },
-            | _ => unreachable!("{:?}", self),
-        }
-    }
-
-    fn align(&self) -> Integer {
-        match self {
-            | Repr::Opaque => Integer::I8,
-            | Repr::Uninhabited => unreachable!(),
-            | Repr::TypeVar(_) => Integer::Int,
-            | Repr::Scalar(s) => match s.value {
-                | Primitive::Int(i, _) => i,
-                | Primitive::Float => Integer::I32,
-                | Primitive::Double => Integer::I64,
-                | Primitive::Pointer => Integer::Int,
-            },
-            | Repr::Box(_) => Integer::Int,
-            | Repr::Ptr(_, _, _) => Integer::Int,
-            | Repr::Func(_, _) => Integer::Int,
-            | Repr::Struct(fs) => fs.iter().map(Self::align).max().unwrap_or(Integer::I8),
-            | Repr::Enum(vs) => vs.iter().map(Self::align).max().unwrap_or(Integer::I8),
-            | Repr::Array(_, e) => e.align(),
-            | Repr::ReprOf(_) => todo!(),
-        }
-    }
 }
 
 pub fn repr_of_query(db: &dyn MirDatabase, ty: Ty) -> Repr {
+    tracing::debug!("{}", ty.display(db.upcast()));
     match ty.lookup(db.upcast()) {
-        | TyKind::Error(_) => unreachable!(),
+        | TyKind::Error(e) => unreachable!("{e:?}"),
         | TyKind::Ctor(ctor) => repr_of_ctor(db, ctor, &[]),
         | TyKind::Alias(alias) => repr_of_alias(db, alias, &[]),
-        | TyKind::App(base, args) => match base.lookup(db.upcast()) {
-            | TyKind::Ctor(ctor) => repr_of_ctor(db, ctor, &args),
-            | TyKind::Alias(alias) => repr_of_alias(db, alias, &args),
-            | _ => unreachable!("{}", base.display(db.upcast())),
+        | TyKind::App(mut base, args) => {
+            let mut args = args.into_vec();
+            while let TyKind::App(b, a) = base.lookup(db.upcast()) {
+                args = [a.into_vec(), args].concat();
+                base = b;
+            }
+
+            match base.lookup(db.upcast()) {
+                | TyKind::Ctor(ctor) => repr_of_ctor(db, ctor, &args),
+                | TyKind::Alias(alias) => repr_of_alias(db, alias, &args),
+                | _ => unreachable!("{}", base.display(db.upcast())),
+            }
         },
         | TyKind::TypeVar(var) => Repr::TypeVar(var),
         | TyKind::Where(_, ty) => db.repr_of(ty),
         | TyKind::ForAll(_, ty, _, _) => db.repr_of(ty),
-        | k => todo!("{:?}", k),
+        | k => todo!("{k:?}"),
     }
 }
 
@@ -355,6 +330,7 @@ fn primitive_from_attr(attr: &str) -> Primitive {
     }
 }
 
+#[tracing::instrument(skip(db))]
 pub fn func_signature_query(db: &dyn MirDatabase, instance: Instance) -> Signature {
     let func = match instance.def {
         | InstanceDef::Def(DefWithBody::Func(f)) => f,
@@ -366,6 +342,8 @@ pub fn func_signature_query(db: &dyn MirDatabase, instance: Instance) -> Signatu
     let func_ctor = db.lang_item(lib, lang_item::FN_TYPE).unwrap().as_type_ctor().unwrap();
     let mut ret = db.value_ty(hir::id::ValueTyDefId::FuncId(func.into())).ty;
     let mut args = Vec::new();
+
+    tracing::debug!("{}", ret.display(db.upcast()));
 
     // if let Some(assoc_item) = func.as_assoc_item(hir_db) {
     //     if let hir::AssocItemContainer::Member(member) = assoc_item.container(hir_db) {

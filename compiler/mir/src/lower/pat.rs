@@ -59,7 +59,7 @@ impl BodyLowerCtx<'_> {
         let repr = self.builder.place_repr(&place);
 
         if let Repr::Enum(_) = repr {
-            let discr = repr.discr();
+            let discr = Repr::Discr(Box::new(repr));
             let tmp = self.builder.add_local(LocalKind::Tmp, discr);
 
             self.builder.init(tmp);
@@ -253,7 +253,7 @@ impl BodyLowerCtx<'_> {
 
                     self.compile_pat_app(&resolver, path, args, place)
                 },
-                | _ => unreachable!(),
+                | ref b => unreachable!("{b:?}"),
             },
             | Pat::Infix { ref pats, ref ops } => self.compile_pat_infix(pats, ops, place),
             | ref p => todo!("{:?}", p),

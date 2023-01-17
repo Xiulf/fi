@@ -132,10 +132,22 @@ class Effectful
 
 class Warn msg where msg :: Symbol
 
+type Infallible :: Type
+
+; @lang = "try-class"
+; class Try self =
+;     ret :: forall output. output -> self output
+;     bind :: forall a b. self a -> (a -> self b) -> self b
+
 @lang = "try-class"
-class Try self =
-    ret :: forall output. output -> self output
-    bind :: forall a b. self a -> (a -> self b) -> self b
+class Try t =
+    ret o :: o -> t o
+    branch o :: t o -> ControlFlow (t Infallible) o
+
+@lang = "controlflow-type"
+type ControlFlow b c =
+    | Break b
+    | Continue c
 
 type ExitCode = | ExitCode Int32
 

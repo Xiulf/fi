@@ -98,7 +98,7 @@ impl InferenceContext<'_> {
     pub fn instantiate(&mut self, ty: TyId, id: ExprOrPatId) -> TyId {
         match self.types[ty].clone() {
             | TyInfo::ForAll(kinds, inner, scope, _) => {
-                let us = kinds
+                let mut us = kinds
                     .iter()
                     .map(|&k| {
                         let src = self.types.source(k);
@@ -109,7 +109,13 @@ impl InferenceContext<'_> {
                 let ty = inner.replace_vars(&mut self.types, &us, scope);
 
                 if let ExprOrPatId::ExprId(e) | ExprOrPatId::ExprIdInfix(e, _) = id {
-                    self.result.instances.insert(e, us);
+                    let i = match id {
+                        | ExprOrPatId::ExprIdInfix(_, i) => i,
+                        | _ => 0,
+                    };
+
+                    let entry = self.result.instances.entry((e, i)).or_default();
+                    entry.append(&mut us);
                 }
 
                 self.instantiate(ty, id)
@@ -210,9 +216,11 @@ impl InferenceContext<'_> {
         self.unify_types(ty, t2)
     }
 
+    #[track_caller]
     pub fn unify_types(&mut self, t1: TyId, t2: TyId) -> bool {
         let t1 = self.subst_type(t1).normalize(&mut self.types);
         let t2 = self.subst_type(t2).normalize(&mut self.types);
+        tracing::debug!("{}", std::panic::Location::caller());
         tracing::debug!(
             "{} == {}",
             t1.display(self.db, &self.types),

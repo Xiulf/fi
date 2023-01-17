@@ -509,6 +509,15 @@ impl Func {
             tracing::debug!("{:?}#{} -> {:?}", id, i, method);
         }
 
+        for (id, inst) in &infer.instances {
+            let types = inst
+                .iter()
+                .map(|t| t.display(db).to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            tracing::debug!("{:?} @ {}", id, types);
+        }
+
         for (expr, ty) in infer.type_of_expr.iter() {
             tracing::debug!("{:?} -> {:?} :: {}", expr, body[expr], ty.display(db));
         }
@@ -789,6 +798,10 @@ impl Ctor {
 
     pub fn type_ctor(self) -> TypeCtor {
         self.parent
+    }
+
+    pub fn idx(&self) -> usize {
+        u32::from(self.id.into_raw()) as usize
     }
 
     pub fn types(self, db: &dyn HirDatabase) -> Vec<Ty> {

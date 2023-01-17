@@ -141,7 +141,7 @@ pub struct InferenceResult<T, C> {
     pub type_of_expr: ArenaMap<ExprId, T>,
     pub type_of_pat: ArenaMap<PatId, T>,
     pub kind_of_ty: ArenaMap<LocalTypeRefId, T>,
-    pub instances: FxHashMap<ExprId, Vec<T>>,
+    pub instances: FxHashMap<(ExprId, usize), Vec<T>>,
     pub methods: FxHashMap<(ExprId, usize), SmallVec<[MethodSource; 1]>>,
     pub constraints: Vec<MethodSource>,
     pub(crate) diagnostics: Vec<InferenceDiagnostic<T, C>>,

@@ -1,12 +1,10 @@
 module Data:Option =
 
-@cfg(skip)
 import Core
 @cfg(skip)
 import Core:Error (Try, Unwrap)
 @cfg(skip)
 import Core:Mappable
-@cfg(skip)
 import Prim (ExitCode, Termination, report)
 @cfg(skip)
 import Intrinsics (crash)
@@ -15,21 +13,25 @@ type Option t =
     | None
     | Some t
 
-@cfg(skip)
 member (Option t) of Default =
     default = None
 
-@cfg(skip)
 member (Option t) of Termination where Termination t =
     report (Some v) = report v
-    report None = ExitCode 1
+    report None = ExitCode -1
 
-@cfg(skip)
 member Option of Try =
     ret x = Some x
 
-    bind (Some x) f = f x
-    bind None _ = None
+    branch (Some x) = Continue x
+    branch None = Break None
+
+; @cfg(skip)
+; member Option of Try =
+;     ret x = Some x
+
+;     bind (Some x) f = f x
+;     bind None _ = None
 
 @cfg(skip)
 member Option of Unwrap =

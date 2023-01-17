@@ -121,8 +121,8 @@ pub(crate) fn record_fields(p: &mut Parser) {
             field.complete(p, FIELD_PUN);
         }
 
-        if !p.at(R_BRACE) {
-            p.expect(COMMA);
+        if !p.at(R_BRACE) && !p.expect(COMMA) {
+            break;
         }
 
         if p.eat(DBL_DOT) {

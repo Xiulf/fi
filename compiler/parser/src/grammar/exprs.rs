@@ -208,8 +208,8 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
             while !p.at(EOF) && !p.at(LYT_END) {
                 case_arm(p);
 
-                if !p.at(LYT_END) {
-                    p.expect(LYT_SEP);
+                if !p.at(LYT_END) && !p.expect(LYT_SEP) {
+                    break;
                 }
             }
 
@@ -246,8 +246,8 @@ pub(crate) fn atom(p: &mut Parser, allow_do: bool) -> Option<CompletedMarker> {
             while !p.at(EOF) && !p.at(R_BRACKET) {
                 expr_(p, true, COMMA);
 
-                if !p.at(R_BRACKET) {
-                    p.expect(COMMA);
+                if !p.at(R_BRACKET) && !p.expect(COMMA) {
+                    break;
                 }
             }
 
@@ -309,8 +309,8 @@ pub(crate) fn record_fields(p: &mut Parser) {
             field.complete(p, FIELD_PUN);
         }
 
-        if !p.at(R_BRACE) {
-            p.expect(COMMA);
+        if !p.at(R_BRACE) && !p.expect(COMMA) {
+            break;
         }
     }
 }
@@ -325,8 +325,8 @@ pub(crate) fn block(p: &mut Parser, allow_bind: bool) {
         // p.eat(LYT_SEP);
         stmt(p, allow_bind);
 
-        if !p.at(LYT_END) {
-            p.expect(LYT_SEP);
+        if !p.at(LYT_END) && !p.expect(LYT_SEP) {
+            break;
         }
     }
 

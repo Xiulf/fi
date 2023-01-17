@@ -853,7 +853,7 @@ impl BodyCtx<'_, '_> {
         let body = self.body.clone();
 
         if let Arg::ExprId(id) = base {
-            if let Some(types) = self.infer.instances.get(&id) {
+            if let Some(types) = self.infer.instances.get(&(id, 0)) {
                 let mut i = 0;
 
                 for ty in types {

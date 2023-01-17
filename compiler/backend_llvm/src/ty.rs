@@ -51,7 +51,17 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         self.fn_type_for_abi(&abi)
     }
 
-    pub fn basic_type_for_ral(&self, layout: &ReprAndLayout) -> types::BasicTypeEnum<'ctx> {
+    pub fn basic_type_for_ral(&self, layout: &Arc<ReprAndLayout>) -> types::BasicTypeEnum<'ctx> {
+        if let Some(ty) = self.types.borrow().get(layout) {
+            return *ty;
+        }
+
+        let ty = self.basic_type_for_ral_uncached(layout);
+        self.types.borrow_mut().insert(layout.clone(), ty);
+        ty
+    }
+
+    fn basic_type_for_ral_uncached(&self, layout: &ReprAndLayout) -> types::BasicTypeEnum<'ctx> {
         match layout.abi {
             | Abi::Uninhabited => return self.context.i8_type().as_basic_type_enum(),
             | Abi::Scalar(ref scalar) => {

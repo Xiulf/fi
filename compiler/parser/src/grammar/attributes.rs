@@ -26,8 +26,8 @@ pub(crate) fn attr_args(p: &mut Parser) {
     while !p.at(EOF) && !p.at_ts(TokenSet::new(&[R_PAREN, AT, LYT_SEP])) {
         attr_arg(p);
 
-        if !p.at(R_PAREN) {
-            p.expect(COMMA);
+        if !p.at(R_PAREN) && !p.expect(COMMA) {
+            break;
         }
     }
 

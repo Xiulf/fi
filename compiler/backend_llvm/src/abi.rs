@@ -79,7 +79,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
-    pub fn pass_mode(&self, layout: &ReprAndLayout) -> PassMode<'ctx> {
+    pub fn pass_mode(&self, layout: &Arc<ReprAndLayout>) -> PassMode<'ctx> {
         if layout.is_zst() {
             PassMode::NoPass
         } else {

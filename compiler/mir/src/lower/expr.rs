@@ -50,6 +50,7 @@ impl BodyLowerCtx<'_> {
                 store_in,
             ),
             | Expr::Do { ref stmts } => self.lower_block(stmts, store_in),
+            | Expr::Try { ref stmts } => self.lower_try(expr, stmts, store_in),
             | Expr::App { mut base, arg } => {
                 let mut args = vec![Arg::ExprId(arg)];
 
@@ -113,6 +114,129 @@ impl BodyLowerCtx<'_> {
         }
 
         Operand::Const(Const::Unit, Repr::unit())
+    }
+
+    pub fn lower_try(&mut self, expr: hir::ExprId, stmts: &[hir::Stmt], _store_in: &mut Option<Place>) -> Operand {
+        let repr = self.db.repr_of(self.infer.type_of_expr[expr]);
+        let res = self.builder.add_local(LocalKind::Arg, repr);
+        let exit_block = self.builder.create_block();
+
+        self.builder.add_block_param(exit_block, res);
+
+        for (i, stmt) in stmts.iter().enumerate() {
+            match *stmt {
+                | hir::Stmt::Expr { expr } if i == stmts.len() - 1 => {
+                    let value = self.lower_expr(expr, &mut None);
+                    self.builder.jump((exit_block, [value]));
+                    self.builder.switch_block(exit_block);
+                    return Operand::Move(Place::new(res));
+                },
+                | hir::Stmt::Expr { expr: e } => {
+                    let value = self.lower_expr(e, &mut None);
+
+                    self.call_branch(expr, i, value, exit_block, |_, _| {});
+                },
+                | hir::Stmt::Let { pat, val } => {
+                    let ty = self.infer.type_of_pat[pat];
+                    let repr = self.db.repr_of(ty);
+                    let local = self.builder.add_local(LocalKind::Var, repr);
+                    self.builder.init(local);
+                    let mut store_in = Some(Place::new(local));
+                    let op = self.lower_expr(val, &mut store_in);
+                    if store_in.is_some() {
+                        self.builder.assign(Place::new(local), op);
+                    }
+
+                    self.define_pat(pat, Place::new(local));
+                },
+                | hir::Stmt::Bind { pat, val } => {
+                    let value = self.lower_expr(val, &mut None);
+
+                    self.call_branch(expr, i, value, exit_block, |this, place| {
+                        this.define_pat(pat, place);
+                    });
+                },
+            }
+        }
+
+        unreachable!();
+    }
+
+    fn call_branch(
+        &mut self,
+        expr: hir::ExprId,
+        index: usize,
+        value: Operand,
+        exit_block: Block,
+        cnt: impl FnOnce(&mut Self, Place),
+    ) {
+        let infer = self.infer.clone();
+        let mut methods = infer.methods.get(&(expr, 0)).unwrap().iter().copied();
+        let method = methods.next().unwrap();
+
+        let lib = self.builder.origin().def.module(self.db.upcast()).lib;
+        let control_flow = self.db.lang_item(lib, "controlflow-type").unwrap();
+        let control_flow = hir::TypeCtor::from(control_flow.as_type_ctor().unwrap());
+        let break_ctor = control_flow.ctors(self.db.upcast())[0];
+        let continue_ctor = control_flow.ctors(self.db.upcast())[1];
+
+        match method {
+            | MethodSource::Member(id) => {
+                let member = self.db.member_data(id);
+                let member_info = self.db.lower_member(id);
+                let func = match member.item(&"branch".as_name()).unwrap() {
+                    | AssocItemId::FuncId(id) => hir::Func::from(id),
+                    | AssocItemId::StaticId(_) => unreachable!(),
+                };
+
+                let types = infer.instances.get(&(expr, index)).map(|t| &t[..]).unwrap_or_default();
+                tracing::debug!(
+                    "{}",
+                    types
+                        .iter()
+                        .map(|t| t.display(self.db.upcast()).to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                // let types = &[infer.type_of_expr[expr]];
+                let types = member_info.member.get_instance_types(self.db.upcast(), types);
+                tracing::debug!(
+                    "{}",
+                    types
+                        .iter()
+                        .map(|t| t.display(self.db.upcast()).to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                let instance = Instance::new(self.db, func.into(), types, methods.collect());
+                let sig = self.db.func_signature(instance.clone());
+                let cf_repr = sig.ret.clone();
+                let cf = self.store_in_repr(&mut None, cf_repr.clone());
+                let repr = Repr::Func(Box::new(sig), false);
+                let func = self.store_in_repr(&mut None, repr);
+
+                self.builder.instance_ref(func.clone(), instance);
+                self.builder.call(cf.clone(), Operand::Move(func), [value]);
+
+                let discr = self.store_in_repr(&mut None, Repr::Discr(Box::new(cf_repr)));
+                let as_break = cf.clone().downcast(break_ctor).field(0);
+                let as_continue = cf.clone().downcast(continue_ctor).field(0);
+                let output_repr = self.builder.place_repr(&as_continue);
+                let output = self.builder.add_local(LocalKind::Arg, output_repr);
+                let next_block = self.builder.create_block();
+
+                self.builder.add_block_param(next_block, output);
+                self.builder.discriminant(discr.clone(), cf);
+                self.builder.switch(Operand::Move(discr), vec![0], [
+                    (exit_block, [Operand::Move(as_break)]).into(),
+                    (next_block, [Operand::Move(as_continue)]).into(),
+                ]);
+
+                self.builder.switch_block(next_block);
+                cnt(self, Place::new(output));
+            },
+            | _ => todo!(),
+        }
     }
 
     pub fn lower_if(&mut self, _expr: hir::ExprId, cond: hir::ExprId, then: hir::ExprId) -> Operand {
@@ -269,8 +393,8 @@ impl BodyLowerCtx<'_> {
         match resolved {
             | ValueNs::Local(id) => Operand::Copy(self.locals[id].clone()),
             | ValueNs::Const(id) => {
-                let types = self.infer.instances.get(&expr.0).cloned().unwrap_or_default();
-                let instance = Instance::new(hir::Const::from(id).into(), types, Vec::new());
+                let types = self.infer.instances.get(&expr).cloned().unwrap_or_default();
+                let instance = Instance::new(self.db, hir::Const::from(id).into(), types, Vec::new());
                 let ty = self.infer.type_of_expr[expr.0];
                 let res = self.store_in(store_in, ty);
 
@@ -314,9 +438,27 @@ impl BodyLowerCtx<'_> {
                                 | AssocItemId::StaticId(_) => unreachable!(),
                             };
 
-                            let types = infer.instances.get(&expr.0).map(|t| &t[..]).unwrap_or_default();
+                            tracing::debug!("{} :: {}", path, func.ty(self.db.upcast()).display(self.db.upcast()));
+                            let types = infer.instances.get(&expr).map(|t| &t[..]).unwrap_or_default();
+                            tracing::debug!(
+                                "{}",
+                                types
+                                    .iter()
+                                    .map(|t| t.display(self.db.upcast()).to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
                             let types = member_info.member.get_instance_types(self.db.upcast(), types);
-                            let func = Instance::new(func.into(), types, methods.collect());
+                            tracing::debug!(
+                                "{}",
+                                types
+                                    .iter()
+                                    .map(|t| t.display(self.db.upcast()).to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
+                            let func = Instance::new(self.db, func.into(), types, methods.collect());
+                            tracing::debug!("{}", func.display(self.db.upcast()));
                             let sig = self.db.func_signature(func.clone());
                             let repr = Repr::Func(Box::new(sig.clone()), false);
                             let res = if sig.params.is_empty() {
@@ -331,9 +473,10 @@ impl BodyLowerCtx<'_> {
                         | MethodSource::Record(_idx, _p) => todo!(),
                     }
                 } else {
-                    let types = infer.instances.get(&expr.0);
+                    let types = infer.instances.get(&expr);
                     let func = if types.is_some() || methods.is_some() {
                         Instance::new(
+                            self.db,
                             func.into(),
                             types.cloned().unwrap_or_default(),
                             methods.map(|c| c.collect()).unwrap_or_default(),
@@ -341,6 +484,7 @@ impl BodyLowerCtx<'_> {
                     } else {
                         Instance::mono(func.into())
                     };
+                    tracing::debug!("{}", func.display(self.db.upcast()));
 
                     let sig = self.db.func_signature(func.clone());
                     let repr = Repr::Func(Box::new(sig.clone()), false);
@@ -506,7 +650,7 @@ impl BodyLowerCtx<'_> {
     }
 
     pub fn get_discriminant(&mut self, place: Place) -> Operand {
-        let repr = self.builder.place_repr(&place).discr();
+        let repr = Repr::Discr(Box::new(self.builder.place_repr(&place)));
         let local = self.builder.add_local(LocalKind::Tmp, repr);
 
         self.builder.discriminant(Place::new(local), place);

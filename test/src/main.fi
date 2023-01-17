@@ -4,46 +4,20 @@ import Core
 import Socket (Socket, listen, accept, receive, send, close)
 
 @main
-main :: ExitCode
-main =
-    let socket = case Socket:new_ipv4 (LibC:NetAddr 127 0 0 1) 8080 of
-        Ok socket -> socket
-        Error e -> do
-            println e
-            return ExitCode -1
-
-    case socket .listen 1 of
-        Ok _ -> ()
-        Error e -> do
-            println e
-            return ExitCode -1
-
-    println "listening for incoming connections"
-    let client = case socket .accept of
-        Ok client -> client
-        Error e -> do
-            println e
-            return ExitCode -1
-    
-    println "client connected"
+main :: Result Str ()
+main = try
+    socket <- Socket:new_ipv4 (LibC:NetAddr 127 0 0 1) 8080
+    socket .listen 1
+    let _ = println "listening for incoming connections"
+    client <- socket .accept
+    let _ = println "client connected"
     let buffer = Data:Array:zeroed :: Array 1000 Byte
     let slice = Data:Array:as_slice buffer
-
-    let received = case client .receive slice of
-        Ok n -> n
-        Error e -> do
-            println e
-            return ExitCode -1
-
-    case client .send (slice # (Data:Range 0 received)) of
-        Ok _ -> ()
-        Error e -> do
-            println e
-            return ExitCode -1
-
-    client .close
-    socket .close
-    ExitCode 0
+    received <- client .receive slice
+    client .send (slice # (0..received))
+    let _ = client .close
+    let _ = socket .close
+    ret ()
 
 
 println :: Str -> ()
@@ -53,6 +27,13 @@ println s =
     ()
 
 
+member (Result Str ()) of Termination =
+    report (Ok _) = ExitCode 0
+    report (Error e) =
+        println e
+        ExitCode -1
+
+
 module TcpListener =
     import Core
     import Socket (Socket)
@@ -60,10 +41,9 @@ module TcpListener =
     type TcpListener = | TcpListener Socket
 
     bind :: LibC:NetAddr -> Uint16 -> Result Str TcpListener
-    bind addr port =
-        case Socket:new_ipv4 addr port of
-            Ok socket -> Ok $ TcpListener socket
-            Error err -> Error err
+    bind addr port = try
+        socket <- Socket:new_ipv4 addr port
+        ret $ TcpListener socket
 
     close :: TcpListener -> ()
     close (TcpListener socket) = Socket:close socket

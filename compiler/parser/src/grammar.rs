@@ -33,8 +33,8 @@ fn exports(p: &mut Parser) {
     while !p.at(EOF) && !p.at_ts(TokenSet::new(&[R_PAREN, EQUALS])) {
         export(p);
 
-        if !p.at_ts(TokenSet::new(&[R_PAREN, EQUALS])) {
-            p.expect(COMMA);
+        if !p.at_ts(TokenSet::new(&[R_PAREN, EQUALS])) && !p.expect(COMMA) {
+            break;
         }
     }
 
@@ -60,8 +60,8 @@ fn export(p: &mut Parser) {
                 while !p.at(EOF) && !p.at(R_PAREN) {
                     paths::name_ref(p);
 
-                    if !p.at(R_PAREN) {
-                        p.expect(COMMA);
+                    if !p.at(R_PAREN) && !p.expect(COMMA) {
+                        break;
                     }
                 }
 

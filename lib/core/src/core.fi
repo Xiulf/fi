@@ -12,5 +12,6 @@ import Core:Error (unwrap, unwrap_or, ret, (!), (?)) as C
 import Core:Ops ((==), (!=), (<), (<=), (>), (>=), (+), (-), (*), (/), (%), (++), (#)) as C
 import Data:Option (Option, Some, None) as C
 import Data:Result (Result, Ok, Error) as C
+import Data:Range (Range, (..)) as C
 @cfg(skip)
 import Data:List (List, Cons, Nil, (:)) as C

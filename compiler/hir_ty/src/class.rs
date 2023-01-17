@@ -348,7 +348,10 @@ impl Member<Ty, Constraint> {
 
     pub fn get_instance_types(&self, db: &dyn HirDatabase, types: &[Ty]) -> Vec<Ty> {
         let unknown = TyKind::Error(Reason::Unknown).intern(db);
+        let class = db.class_data(self.class);
         let mut res = vec![unknown; self.vars.len()];
+
+        res.extend_from_slice(&types[class.type_vars.len()..]);
 
         fn run(db: &dyn HirDatabase, res: &mut Vec<Ty>, a: Ty, b: Ty) {
             match (a.lookup(db), b.lookup(db)) {

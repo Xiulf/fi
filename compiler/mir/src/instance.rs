@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use hir::ty::{Ty, TyKind};
+use arena::ArenaMap;
+use hir::ty::{Ty, TyKind, TypeVarScopeId};
 use hir::{DefWithBody, HirDisplay, MethodSource, Name};
 
 use crate::db::MirDatabase;
@@ -21,15 +22,16 @@ pub enum InstanceDef {
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Subst {
+    depths: ArenaMap<TypeVarScopeId, usize>,
     pub types: Vec<Ty>,
     pub methods: Vec<MethodSource>,
 }
 
 impl Instance {
-    pub fn new(def: InstanceDef, types: Vec<Ty>, methods: Vec<MethodSource>) -> Self {
+    pub fn new(db: &dyn MirDatabase, def: InstanceDef, types: Vec<Ty>, methods: Vec<MethodSource>) -> Self {
         Self {
             def,
-            subst: Some(Arc::new(Subst { types, methods })),
+            subst: Some(Arc::new(Subst::new(db, def, types, methods))),
         }
     }
 
@@ -157,6 +159,35 @@ impl InstanceDef {
 }
 
 impl Subst {
+    fn new(db: &dyn MirDatabase, def: InstanceDef, types: Vec<Ty>, methods: Vec<MethodSource>) -> Self {
+        let mut depths = ArenaMap::default();
+        let mut count = 0;
+
+        if let InstanceDef::Def(def) = def {
+            let mut ty = db
+                .value_ty(match def {
+                    | DefWithBody::Func(f) => hir::id::ValueTyDefId::FuncId(f.into()),
+                    | DefWithBody::Const(f) => hir::id::ValueTyDefId::ConstId(f.into()),
+                    | DefWithBody::Static(f) => hir::id::ValueTyDefId::StaticId(f.into()),
+                })
+                .ty;
+
+            loop {
+                match ty.lookup(db.upcast()) {
+                    | TyKind::Where(_, t) => ty = t,
+                    | TyKind::ForAll(ks, t, s, _) => {
+                        depths.insert(s, count);
+                        count += ks.len();
+                        ty = t;
+                    },
+                    | _ => break,
+                }
+            }
+        }
+
+        Self { depths, types, methods }
+    }
+
     pub fn subst_instance(&self, db: &dyn MirDatabase, instance: &Instance) -> Instance {
         Instance {
             def: instance.def,
@@ -168,15 +199,24 @@ impl Subst {
                     .collect();
                 let methods = s.methods.clone();
 
-                Arc::new(Subst { types, methods })
+                Arc::new(Subst {
+                    depths: self.depths.clone(),
+                    types,
+                    methods,
+                })
             }),
         }
     }
 
     pub fn subst_repr(&self, db: &dyn MirDatabase, repr: &Repr) -> Repr {
         match repr {
-            | Repr::TypeVar(tv) => db.repr_of(self.types[tv.idx() as usize]),
+            | Repr::TypeVar(tv) => match self.depths.get(tv.scope()) {
+                | Some(c) if tv.idx() as usize + c < self.types.len() => db.repr_of(self.types[tv.idx() as usize + c]),
+                | Some(_) => db.repr_of(self.types[tv.idx() as usize]),
+                | None => db.repr_of(self.types[tv.idx() as usize]),
+            },
             | Repr::ReprOf(ty) => self.subst_repr(db, &db.repr_of(*ty)),
+            | Repr::Discr(repr) => Repr::Discr(Box::new(self.subst_repr(db, repr))),
             | Repr::Ptr(to, fat, nn) => Repr::Ptr(Box::new(self.subst_repr(db, to)), *fat, *nn),
             | Repr::Box(of) => Repr::Box(Box::new(self.subst_repr(db, of))),
             | Repr::Struct(reprs) => Repr::Struct(reprs.iter().map(|r| self.subst_repr(db, r)).collect()),

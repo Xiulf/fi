@@ -358,6 +358,7 @@ impl HirDisplay for Repr {
             | Self::Box(to) => write!(f, "box({})", to.display(f.db)),
             | Self::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
             | Self::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),
+            | Self::Discr(repr) => write!(f, "discriminant({})", repr.display(f.db)),
             | Self::Struct(fields) if fields.is_empty() => write!(f, "()"),
             | Self::Struct(fields) => {
                 write!(f, "struct {{ ")?;

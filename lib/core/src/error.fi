@@ -1,7 +1,6 @@
-@cfg(skip)
 module Core:Error (module Core:Error, module t) =
 
-import Prim (Try, ret, bind) as t
+import Prim (Try, ret, branch) as t
 import Prim (Partial, (->))
 import Intrinsics (partial)
 

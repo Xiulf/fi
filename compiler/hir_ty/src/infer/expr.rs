@@ -347,13 +347,14 @@ impl BodyInferenceContext<'_> {
                     self.check_expr(expr, app);
                     return app;
                 },
-                | Stmt::Expr { expr } => {
-                    let src = self.source(expr);
+                | Stmt::Expr { expr: val } => {
+                    let src = self.source(val);
                     let ty = self.fresh_type(src);
                     let app = self.types.insert(TyInfo::App(try_container, [ty].into()), src);
 
-                    self.resolver = Resolver::for_expr(self.db.upcast(), def, expr);
-                    self.check_expr(expr, app);
+                    self.result.instances.insert((expr, i), vec![try_container, ty]);
+                    self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
+                    self.check_expr(val, app);
 
                     let ty = self.subst_type(ty);
 
@@ -366,6 +367,7 @@ impl BodyInferenceContext<'_> {
                     let val_src = self.source(val);
                     let app = self.types.insert(TyInfo::App(try_container, [in_ty].into()), val_src);
 
+                    self.result.instances.insert((expr, i), vec![try_container, in_ty]);
                     self.resolver = Resolver::for_expr(self.db.upcast(), def, val);
                     self.check_expr(val, app);
                 },

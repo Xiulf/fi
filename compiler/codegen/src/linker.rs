@@ -201,7 +201,13 @@ impl Linker for CcLinker {
     }
 
     fn run(&mut self) -> Result<(), LinkError> {
-        self.cmd.output().map(|_| ()).map_err(LinkError::Io)
+        let output = self.cmd.output()?;
+
+        if !output.status.success() {
+            return Err(LinkError::Linker(String::from_utf8(output.stderr).unwrap()));
+        }
+
+        Ok(())
     }
 }
 

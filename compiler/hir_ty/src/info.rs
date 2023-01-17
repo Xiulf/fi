@@ -387,6 +387,9 @@ impl TyId {
             },
             // | TyInfo::App(base, ref args) => match types[base] {
             //     | TyInfo::App(base2, ref args2) => {
+            //         // tracing::error!("{:?}, {:?}", ty, types[ty]);
+            //         // tracing::error!("{:?}, {:?}", base, types[base]);
+            //         // tracing::error!("{:?}, {:?}", base2, types[base2]);
             //         let args = args2.iter().chain(args.iter()).copied().collect();
 
             //         types.update(ty, TyInfo::App(base2, args), true)

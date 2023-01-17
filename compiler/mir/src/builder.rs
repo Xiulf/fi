@@ -184,7 +184,10 @@ impl Builder {
                     | Repr::Ptr(_, true, _) => {},
                     | _ => unreachable!(),
                 },
-                | Projection::Downcast(_) => todo!(),
+                | Projection::Downcast(ctor) => match repr {
+                    | Repr::Enum(e) => repr = e[ctor.idx()].clone(),
+                    | _ => unreachable!(),
+                },
             }
         }
 

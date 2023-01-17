@@ -186,6 +186,14 @@ pub fn _layout_of(db: &dyn MirDatabase, triple: &Triple, repr: &Repr) -> Layout 
 
             enum_layout(layouts, triple)
         },
+        | Repr::Discr(repr) => {
+            let layout = db.layout_of((**repr).clone());
+
+            match layout.variants {
+                | Variants::Multiple { ref tag, .. } => Layout::scalar(tag.clone(), triple),
+                | _ => todo!(),
+            }
+        },
     }
 }
 

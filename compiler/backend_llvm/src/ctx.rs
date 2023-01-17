@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
 use arena::{ArenaMap, Idx};
@@ -13,9 +13,10 @@ use inkwell::passes::{PassManager, PassManagerBuilder};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
 };
-use inkwell::{values, OptimizationLevel};
+use inkwell::{types, values, OptimizationLevel};
 use mir::db::MirDatabase;
 use mir::instance::Instance;
+use mir::layout::ReprAndLayout;
 use mir::repr::{Repr, Signature};
 use mir::syntax::{BlockData, LocalData};
 use rustc_hash::FxHashMap;
@@ -35,6 +36,7 @@ pub struct CodegenCtx<'a, 'ctx> {
     pub fpm: &'a PassManager<values::FunctionValue<'ctx>>,
     pub intrinsics: FxHashMap<&'static str, values::FunctionValue<'ctx>>,
     pub funcs: FxHashMap<Instance, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
+    pub types: RefCell<FxHashMap<Arc<ReprAndLayout>, types::BasicTypeEnum<'ctx>>>,
     pub consts: Cell<usize>,
 }
 
@@ -110,6 +112,7 @@ pub fn with_codegen_ctx<T>(db: &dyn MirDatabase, hir: hir::Module, f: impl FnOnc
         fpm: &fpm,
         intrinsics: FxHashMap::default(),
         funcs: FxHashMap::default(),
+        types: RefCell::default(),
         consts: Cell::new(0),
     };
 

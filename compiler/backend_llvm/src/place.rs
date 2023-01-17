@@ -144,7 +144,7 @@ impl<'ctx> PlaceRef<'ctx> {
         downcast
     }
 
-    pub fn get_discr(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: &ReprAndLayout) -> values::IntValue<'ctx> {
+    pub fn get_discr(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: &Arc<ReprAndLayout>) -> values::IntValue<'ctx> {
         let discr_ty = ctx.basic_type_for_ral(&layout).into_int_type();
         let (_tag_scalar, tag_encoding, tag_field) = match self.layout.variants {
             | Variants::Single { index } => {

@@ -68,8 +68,8 @@ pub(crate) fn module(p: &mut Parser, m: Marker) {
     while !p.at(EOF) && !p.at(LYT_END) {
         items::any_item(p);
 
-        if !p.at(LYT_END) && !p.at(EOF) {
-            p.expect(LYT_SEP);
+        if !p.at(LYT_END) && !p.at(EOF) && !p.expect(LYT_SEP) {
+            break;
         }
     }
 
@@ -87,8 +87,8 @@ pub(crate) fn import(p: &mut Parser, m: Marker) {
         while !p.at(EOF) && !p.at(R_PAREN) {
             paths::name_or_symbol_ref(p);
 
-            if !p.at(R_PAREN) {
-                p.expect(COMMA);
+            if !p.at(R_PAREN) && !p.expect(COMMA) {
+                break;
             }
         }
 
@@ -363,8 +363,8 @@ pub(crate) fn class(p: &mut Parser, m: Marker) {
         while !p.at_ts(TokenSet::new(&[EOF, LYT_END])) {
             assoc_item(p);
 
-            if !p.at(LYT_END) {
-                p.expect(LYT_SEP);
+            if !p.at(LYT_END) && !p.expect(LYT_SEP) {
+                break;
             }
         }
 
@@ -459,8 +459,8 @@ pub(crate) fn member(p: &mut Parser, m: Marker) {
         while !p.at(EOF) && !p.at(LYT_END) {
             assoc_item(p);
 
-            if !p.at(LYT_END) {
-                p.expect(LYT_SEP);
+            if !p.at(LYT_END) && !p.expect(LYT_SEP) {
+                break;
             }
         }
 

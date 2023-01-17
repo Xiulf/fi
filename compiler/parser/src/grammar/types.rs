@@ -93,8 +93,8 @@ pub(crate) fn atom(p: &mut Parser) -> Option<CompletedMarker> {
                     infix(p, COMMA | PIPE);
                     field.complete(p, ROW_FIELD);
 
-                    if !p.at(R_BRACE) && !p.at(PIPE) {
-                        p.expect(COMMA);
+                    if !p.at(R_BRACE) && !p.at(PIPE) && !p.expect(COMMA) {
+                        break;
                     }
 
                     if p.eat(PIPE) {

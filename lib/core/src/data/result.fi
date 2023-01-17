@@ -1,12 +1,10 @@
 module Data:Result =
 
-@cfg(skip)
 import Core:Error (Try, Unwrap)
 @cfg(skip)
 import Core:Mappable
-@cfg(skip)
 import Data:Option (Some, None)
-@cfg(skip)
+import Prim (Continue, Break)
 import Prim (ExitCode, Termination, report)
 @cfg(skip)
 import Intrinsics (crash)
@@ -15,11 +13,9 @@ type Result e t =
     | Error e
     | Ok t
 
-@cfg(skip)
 ok (Ok x) = Some x
 ok (Error _) = None
 
-@cfg(skip)
 err (Error e) = Some e
 err (Ok _) = None
 
@@ -27,17 +23,22 @@ err (Ok _) = None
 unwrap_err (Error e) = e
 unwrap_err (Ok _) = crash "cannot unwrap_err an ok value"
 
-@cfg(skip)
 member (Result e t) of Termination where Termination t =
     report (Ok v) = report v
-    report (Error e) = ExitCode 1
+    report (Error e) = ExitCode -1
 
-@cfg(skip)
 member (Result e) of Try =
     ret x = Ok x
 
-    bind (Ok x) f = f x
-    bind (Error e) _ = Error e
+    branch (Ok x) = Continue x
+    branch (Error e) = Break (Error e)
+
+; @cfg(skip)
+; member (Result e) of Try =
+;     ret x = Ok x
+
+;     bind (Ok x) f = f x
+;     bind (Error e) _ = Error e
 
 @cfg(skip)
 member (Result e) of Unwrap =

@@ -55,11 +55,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                         LocalRef::Place(PlaceRef::new_alloca(self.cx, layout))
                     }
                 } else if data.kind == LocalKind::Arg {
-                    let ty = self.basic_type_for_ral(&layout);
-                    let phi = self.builder.build_phi(ty, "");
-                    let phi = OperandRef::new_phi(layout, phi);
-
-                    LocalRef::Operand(Some(phi))
+                    continue;
                 } else {
                     LocalRef::new_operand(self.cx, layout)
                 };
@@ -68,14 +64,35 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             }
         }
 
-        for (block, _) in body.blocks.iter() {
+        for (block, data) in body.blocks.iter() {
             let bb = self.context.append_basic_block(self.func, "");
 
+            self.builder.position_at_end(bb);
             self.blocks.insert(block, bb);
+
+            if block != first_block {
+                for local in data.params.iter() {
+                    if !by_ref_locals.contains(local) {
+                        let repr = self.instance.subst_repr(self.db, &body.locals[local.0].repr);
+                        let layout = self.db.layout_of(repr);
+
+                        if layout.is_zst() {
+                            let zst = OperandRef::new_zst(self.cx, layout);
+                            self.locals.insert(local.0, LocalRef::Operand(Some(zst)));
+                        } else {
+                            let ty = self.basic_type_for_ral(&layout);
+                            let phi = self.builder.build_phi(ty, "");
+                            let phi = OperandRef::new_phi(layout, phi);
+                            self.locals.insert(local.0, LocalRef::Operand(Some(phi)));
+                        }
+                    }
+                }
+            }
         }
 
         let first_block = self.blocks[first_block];
 
+        self.builder.position_at_end(entry);
         self.builder.build_unconditional_branch(first_block);
 
         for (block, data) in body.blocks.iter() {
@@ -331,6 +348,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | PassMode::NoPass => EmptySinglePair::Empty,
             | PassMode::ByVal(_) => EmptySinglePair::Single(self.codegen_operand(arg).load(self.cx).into()),
             | PassMode::ByValPair(_, _) => {
+                tracing::debug!("{}", arg.display(self.db.upcast()));
                 let op = self.codegen_operand(arg);
                 let (a, b) = op.pair();
                 EmptySinglePair::Pair(a.into(), b.into())
@@ -394,7 +412,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             },
             | Rvalue::Discriminant(place) => {
                 let place = self.codegen_place(place);
-                let repr = place.layout.repr.discr();
+                let repr = Repr::Discr(Box::new(place.layout.repr.clone()));
                 let layout = self.db.layout_of(repr);
                 let discr = place.get_discr(self.cx, &layout);
 
