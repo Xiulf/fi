@@ -441,7 +441,7 @@ pub(crate) fn member(p: &mut Parser, m: Marker) {
     p.expect(MEMBER_KW);
     types::atom(p);
 
-    while !p.at(OF_KW) {
+    while types::peek(p) {
         types::atom(p);
     }
 

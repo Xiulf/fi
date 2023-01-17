@@ -244,14 +244,16 @@ impl HirDisplay for Ty {
                 match_lang! {
                     match id, args, lib, f {
                         "array-type"(2) => {
-                            write!(f, "[")?;
+                            f.write_char('[')?;
                             args[0].hir_fmt(f)?;
-                            write!(f, "]")?;
-                            TyParens(args[1], ParenMode::App).hir_fmt(f)
+                            write!(f, " * ")?;
+                            TyParens(args[1], ParenMode::App).hir_fmt(f)?;
+                            f.write_char(']')
                         },
                         "slice-type"(1) => {
-                            write!(f, "[]")?;
-                            TyParens(args[0], ParenMode::App).hir_fmt(f)
+                            f.write_char('[')?;
+                            TyParens(args[0], ParenMode::App).hir_fmt(f)?;
+                            f.write_char(']')
                         },
                         "fn-type"(2) => {
                             TyParens(args[0], ParenMode::App).hir_fmt(f)?;

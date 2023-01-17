@@ -5,6 +5,7 @@ module Core (
 
 import Prim as C
 import Intrinsics (($), (.), unsafe, crash, partial) as C
+import Core:Cast (Cast, cast) as C
 import Core:Convert (Into, into, From, from) as C
 import Core:Default (Default, default) as C
 @cfg(skip)

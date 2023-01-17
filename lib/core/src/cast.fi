@@ -1,0 +1,9 @@
+module Core:Cast =
+
+import Core
+
+class Cast a b =
+    cast :: a -> b
+
+member t t of Cast =
+    cast x = x

@@ -72,7 +72,7 @@ pub(crate) fn postfix(p: &mut Parser, allow_op: bool, allow_do: bool) -> Option<
             | FIELD_DOT => {
                 let expr = m.precede(p);
 
-                p.bump(DOT);
+                p.bump(FIELD_DOT);
 
                 match p.current() {
                     | IDENT => {

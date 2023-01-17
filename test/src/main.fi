@@ -22,7 +22,8 @@ main = try
 
 println :: Str -> ()
 println s =
-    let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute s) :: _, Uint
+    ; let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute s) :: _, Uint
+    let ptr, _ = cast s :: _, Uint
     LibC:puts ptr
     ()
 
