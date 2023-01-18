@@ -7,3 +7,12 @@ class Cast a b =
 
 member t t of Cast =
     cast x = x
+
+member a b of Cast where Integer a, Integer b =
+    cast x = Intrinsics:iconvert x
+
+member Str (Ptr Byte, Uint) of Cast =
+    cast x = Intrinsics:unsafe (Intrinsics:transmute x)
+
+member Str (Ptr Byte, Int) of Cast =
+    cast x = Intrinsics:unsafe (Intrinsics:transmute x)

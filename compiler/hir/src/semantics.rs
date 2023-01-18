@@ -146,8 +146,12 @@ impl<'db> SemanticsImpl<'db> {
         };
 
         let resolver = match container {
-            | ChildContainer::ModuleId(m) => m.resolver(self.db.upcast()),
             | ChildContainer::DefwithBodyId(def) => return SourceAnalyzer::new_for_body(self.db, def, node, offset),
+            | ChildContainer::ModuleId(m) => m.resolver(self.db.upcast()),
+            | ChildContainer::TypeCtorId(it) => it.resolver(self.db.upcast()),
+            | ChildContainer::TypeAliasId(it) => it.resolver(self.db.upcast()),
+            | ChildContainer::ClassId(it) => it.resolver(self.db.upcast()),
+            | ChildContainer::MemberId(it) => it.resolver(self.db.upcast()),
         };
 
         SourceAnalyzer::new_for_resolver(resolver, node.file_id)
@@ -192,5 +196,6 @@ impl_to_def! {
     (crate::Module, ast::ItemModule, module_to_def),
     (crate::Func, ast::ItemFunc, func_to_def),
     (crate::Class, ast::ItemClass, class_to_def),
+    (crate::Member, ast::ItemMember, member_to_def),
     (crate::Local, ast::PatBind, pat_bind_to_def),
 }

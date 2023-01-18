@@ -5,7 +5,6 @@ pub use base_db::libs::LibId;
 
 use crate::db::DefDatabase;
 use crate::def_map::ModuleData;
-use crate::in_file::InFile;
 use crate::item_tree::*;
 use crate::type_ref::{LocalTypeVarId, TypeMap, TypeSourceMap};
 
@@ -53,12 +52,6 @@ pub trait Lookup {
 
 pub trait HasModule {
     fn module(&self, db: &dyn DefDatabase) -> ModuleId;
-}
-
-pub trait HasSource {
-    type Value;
-
-    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -398,93 +391,6 @@ impl<N: ItemTreeNode> HasModule for ItemLoc<N> {
 impl<N: ItemTreeNode> HasModule for AssocItemLoc<N> {
     fn module(&self, db: &dyn DefDatabase) -> ModuleId {
         self.container.module(db)
-    }
-}
-
-impl<N: ItemTreeNode> HasSource for AssocItemLoc<N> {
-    type Value = N::Source;
-
-    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
-        let tree = db.item_tree(self.id.file_id);
-        let ast_id_map = db.ast_id_map(self.id.file_id);
-        let root = db.parse(self.id.file_id).syntax_node();
-        let node = &tree[self.id.value];
-
-        InFile::new(self.id.file_id, ast_id_map.get(node.ast_id()).to_node(&root))
-    }
-}
-
-impl<N: ItemTreeNode> HasSource for ItemLoc<N> {
-    type Value = N::Source;
-
-    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
-        let tree = db.item_tree(self.id.file_id);
-        let ast_id_map = db.ast_id_map(self.id.file_id);
-        let root = db.parse(self.id.file_id).syntax_node();
-        let node = &tree[self.id.value];
-
-        InFile::new(self.id.file_id, ast_id_map.get(node.ast_id()).to_node(&root))
-    }
-}
-
-impl HasSource for ModuleDefId {
-    type Value = syntax::ast::Item;
-
-    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
-        match self {
-            | Self::ModuleId(id) => {
-                let def_map = db.def_map(id.lib);
-                def_map[id.local_id].origin.declaration(db, &def_map).map(Into::into)
-            },
-            | Self::FixityId(id) => id.lookup(db).source(db).map(Into::into),
-            | Self::FuncId(id) => id.lookup(db).source(db).map(Into::into),
-            | Self::StaticId(id) => id.lookup(db).source(db).map(Into::into),
-            | Self::ConstId(id) => id.lookup(db).source(db).map(Into::into),
-            | Self::TypeAliasId(id) => id.lookup(db).source(db).map(Into::into),
-            | Self::TypeCtorId(id) => id.lookup(db).source(db).map(Into::into),
-            | Self::CtorId(id) => id.parent.lookup(db).source(db).map(Into::into),
-            | Self::ClassId(id) => id.lookup(db).source(db).map(Into::into),
-        }
-    }
-}
-
-impl HasSource for TypedDefId {
-    type Value = syntax::ast::Item;
-
-    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
-        match self {
-            | TypedDefId::FuncId(id) => id.lookup(db).source(db).map(Into::into),
-            | TypedDefId::StaticId(id) => id.lookup(db).source(db).map(Into::into),
-            | TypedDefId::ConstId(id) => id.lookup(db).source(db).map(Into::into),
-            | TypedDefId::TypeAliasId(id) => id.lookup(db).source(db).map(Into::into),
-            | TypedDefId::TypeCtorId(id) => id.lookup(db).source(db).map(Into::into),
-            | TypedDefId::CtorId(id) => id.parent.lookup(db).source(db).map(Into::into),
-            | TypedDefId::ClassId(id) => id.lookup(db).source(db).map(Into::into),
-            | TypedDefId::MemberId(id) => id.lookup(db).source(db).map(Into::into),
-        }
-    }
-}
-
-impl HasSource for DefWithBodyId {
-    type Value = syntax::ast::Item;
-
-    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
-        match self {
-            | DefWithBodyId::FuncId(id) => id.lookup(db).source(db).map(Into::into),
-            | DefWithBodyId::StaticId(id) => id.lookup(db).source(db).map(Into::into),
-            | DefWithBodyId::ConstId(id) => id.lookup(db).source(db).map(Into::into),
-        }
-    }
-}
-
-impl HasSource for TypeVarOwner {
-    type Value = syntax::ast::Item;
-
-    fn source(&self, db: &dyn DefDatabase) -> InFile<Self::Value> {
-        match self {
-            | TypeVarOwner::DefWithBodyId(def) => def.source(db),
-            | TypeVarOwner::TypedDefId(def) => def.source(db),
-        }
     }
 }
 

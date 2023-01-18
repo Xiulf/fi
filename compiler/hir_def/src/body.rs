@@ -10,9 +10,10 @@ use syntax::{ast, AstPtr};
 
 use crate::db::DefDatabase;
 use crate::expr::{Expr, ExprId};
-use crate::id::{DefWithBodyId, HasModule, HasSource, Lookup, ModuleId};
+use crate::id::{DefWithBodyId, HasModule, Lookup, ModuleId};
 use crate::in_file::InFile;
 use crate::pat::{Pat, PatId};
+use crate::source::HasSource;
 use crate::type_ref::{LocalTypeRefId, TypeMap, TypeRef, TypeSourceMap};
 
 #[derive(Debug, PartialEq, Eq)]

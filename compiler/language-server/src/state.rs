@@ -102,6 +102,7 @@ impl LspState {
         self.fetch_workspaces()?;
 
         while let Some(event) = self.next_event(&receiver) {
+            tracing::info!("{event:?}");
             if let Event::Lsp(Message::Notification(not)) = &event {
                 if not.method == notification::Exit::METHOD {
                     return Ok(());

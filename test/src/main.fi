@@ -22,8 +22,7 @@ main = try
 
 println :: Str -> ()
 println s =
-    ; let ptr, _ = Intrinsics:unsafe (Intrinsics:transmute s) :: _, Uint
-    let ptr, _ = cast s :: _, Uint
+    let ptr, len = cast s :: _, Int
     LibC:puts ptr
     ()
 
@@ -64,7 +63,7 @@ module Socket (module Socket, module C) =
         let desc = LibC:socket LibC:AF_INET LibC:SOCK_STREAM 0
         if desc < 0 then return Error "error while creating socket"
 
-        let family = Intrinsics:iconvert LibC:AF_INET
+        let family = cast LibC:AF_INET
         let port = Data:Int:to_be port
         let addr = LibC:SockAddr family port addr
         if LibC:bind desc (addr_of addr) 16 < 0 then return Error "couldn't bind socket"
@@ -99,7 +98,7 @@ module Socket (module Socket, module C) =
 
         if bytes_received < 0
         then Error "error receiving"
-        else Ok $ Intrinsics:iconvert bytes_received
+        else Ok $ cast bytes_received
 
     send :: Socket -> Slice Byte -> Result Str ()
     send (Socket desc _) buffer =

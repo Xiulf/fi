@@ -128,12 +128,11 @@ fn main() -> anyhow::Result<ExitCode> {
 
     let _guard = if let Some(Commands::Lsp(_)) = cli.command {
         let tmp_dir = std::env::temp_dir();
-        eprintln!("logging to {}", tmp_dir.join("shadow-lsp.log").display());
-        let appender = tracing_appender::rolling::never(tmp_dir, "shadow-lsp.log");
+        eprintln!("logging to {}", tmp_dir.join("fi-lsp.log").display());
+        let appender = tracing_appender::rolling::never(tmp_dir, "fi-lsp.log");
         let (non_blocking, guard) = tracing_appender::non_blocking(appender);
 
         tracing_subscriber::fmt()
-            .without_time()
             .with_line_number(true)
             .with_ansi(false)
             .with_env_filter(filter)

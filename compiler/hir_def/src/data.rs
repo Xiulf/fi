@@ -12,6 +12,7 @@ pub use crate::item_tree::{FixityKind, FunDep};
 use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::resolver::{HasResolver, Resolver};
+use crate::source::HasSource;
 use crate::type_ref::{LocalTypeRefId, LocalTypeVarId, TypeMap, TypeMapBuilder, TypeRef, TypeSourceMap, WhereClause};
 
 #[derive(Debug, PartialEq, Eq)]

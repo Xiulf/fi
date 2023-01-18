@@ -24,5 +24,6 @@ pub mod path;
 pub mod per_ns;
 pub mod resolver;
 pub mod scope;
+pub mod source;
 pub mod type_ref;
 pub mod visibility;

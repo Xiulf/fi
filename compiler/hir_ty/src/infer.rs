@@ -799,9 +799,10 @@ pub(crate) mod diagnostics {
     use either::Either;
     use hir_def::diagnostic::DiagnosticSink;
     use hir_def::expr::ExprId;
-    use hir_def::id::{ClassId, HasSource, Lookup, MemberId, TypeVarOwner};
+    use hir_def::id::{ClassId, Lookup, MemberId, TypeVarOwner};
     use hir_def::in_file::InFile;
     use hir_def::resolver::ValueNs;
+    use hir_def::source::HasSource;
     use hir_def::type_ref::{LocalTypeRefId, TypeVarSource};
     use syntax::{ast, AstNode, AstPtr, SyntaxNodePtr};
 

@@ -15,6 +15,7 @@ use crate::item_tree::{self, Item, ItemTree, ItemTreeId};
 use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::per_ns::PerNs;
+use crate::source::HasSource;
 use crate::visibility::Visibility;
 
 // const FIXED_POINT_LIMIT: usize = 8192;

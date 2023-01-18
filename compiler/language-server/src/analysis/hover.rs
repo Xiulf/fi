@@ -26,7 +26,10 @@ pub fn hover(db: &LspDatabase, file_offset: InFile<TextSize>) -> Option<RangeInf
         | _ => 1,
     })?;
 
-    classify::classify_token(&sema, &token)
+    let symbol = classify::classify_token(&sema, &token);
+
+    tracing::info!("{token:?}, {symbol:?}");
+    symbol
         .and_then(|symbol| hover_for_symbol(&sema, file_id, symbol))
         .map(|info| RangeInfo {
             range: token.text_range(),

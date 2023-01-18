@@ -92,6 +92,7 @@ where
     DB: HirDatabase,
 {
     let parent = name.syntax().parent()?;
+    tracing::info!("{parent:?}");
 
     match_ast! {
         match parent {
@@ -124,10 +125,12 @@ fn classify_item<DB>(sema: &Semantics<DB>, item: ast::Item) -> Option<Symbol>
 where
     DB: HirDatabase,
 {
+    tracing::info!("{item:?}");
     let sym = match item {
         | ast::Item::Module(it) => Symbol::Module(sema.to_def(&it)?),
         | ast::Item::Func(it) => Symbol::Func(sema.to_def(&it)?),
         | ast::Item::Class(it) => Symbol::Class(sema.to_def(&it)?),
+        | ast::Item::Member(it) => Symbol::Member(sema.to_def(&it)?),
         | _ => return None,
     };
 
@@ -139,6 +142,7 @@ where
     DB: HirDatabase,
 {
     let parent = item.parent()?;
+    tracing::info!("{parent:?}");
 
     match_ast! {
         match parent {

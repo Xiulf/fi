@@ -90,6 +90,7 @@ where
     D: HasAttrs + HirDisplay,
 {
     let label = def.display(db).to_string();
+    tracing::info!("{label:?}");
     let docs = def.attrs(db).docs();
 
     (label, docs)

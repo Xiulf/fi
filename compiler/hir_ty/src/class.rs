@@ -733,7 +733,7 @@ fn match_type_inner(
 ) -> Matched<()> {
     tracing::trace!("{} == {}", ty.display(db, types), with.display(db, types));
     match (types[ty].clone(), types[with].clone()) {
-        | (_, TyInfo::Unknown(_)) => unreachable!(),
+        | (_, TyInfo::Unknown(_)) => Matched::Match(()),
         | (TyInfo::Error, _) | (_, TyInfo::Error) => Matched::Match(()),
         | (TyInfo::Skolem(v1, t1), TyInfo::Skolem(v2, t2)) if v1 == v2 => {
             match_type_inner(db, types, t1, t2, ty_skolems, with_skolems, subst, vars)
@@ -744,10 +744,13 @@ fn match_type_inner(
         {
             Matched::Match(())
         },
-        // | (_, TyInfo::TypeVar(tv)) if !vars.contains_key(&tv) => {
-        | (_, TyInfo::TypeVar(tv)) => {
+        | (_, TyInfo::TypeVar(tv)) if !vars.contains_key(&tv) => {
             vars.insert(tv, ty);
             Matched::Match(())
+        },
+        | (_, TyInfo::TypeVar(tv)) => {
+            let old = vars[&tv];
+            match_type_inner(db, types, ty, old, ty_skolems, with_skolems, subst, vars)
         },
         | (TyInfo::Unknown(u), _) => {
             subst.insert(u, with);
