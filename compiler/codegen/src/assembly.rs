@@ -129,6 +129,9 @@ impl Assembly {
 
         if db.target().is_windows() {
             linker.subsystem("console");
+            linker.add_module(Path::new("kernel32.lib"));
+            linker.add_module(Path::new("libvcruntime.lib"));
+            linker.add_module(Path::new("msvcrt.lib"));
             linker.add_module(Path::new("ucrt.lib"));
         }
 
