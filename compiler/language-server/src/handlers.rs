@@ -13,7 +13,7 @@ pub fn handle_hover(snap: LspStateSnapshot, params: HoverParams) -> anyhow::Resu
     let line_index = snap.line_index(file_offset.file_id)?;
     let range = util::lsp_range(&line_index, info.range);
     let markup = lsp_types::MarkupContent {
-        kind: lsp_types::MarkupKind::PlainText,
+        kind: lsp_types::MarkupKind::Markdown,
         value: info.info.text,
     };
 

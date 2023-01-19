@@ -10,9 +10,9 @@ member (Slice t) Int t of Core:Ops:Index =
         let ptr = Intrinsics:ptr_offset ptr idx
         Intrinsics:ptr_read ptr
 
-member (Slice t) (Range Int) (Slice t) of Core:Ops:Index =
+member (Slice t) (Range Uint) (Slice t) of Core:Ops:Index =
     index slice (Range s e) = Intrinsics:unsafe do
         let ptr, _ = Intrinsics:transmute slice :: Ptr t, Uint
-        let ptr = Intrinsics:ptr_offset ptr s
+        let ptr = Intrinsics:ptr_offset ptr (cast s)
         let len = Intrinsics:isub e s
         Intrinsics:transmute (ptr, len)
