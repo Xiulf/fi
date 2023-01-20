@@ -2,22 +2,21 @@ module Test =
 
 import Core
 import Data:Array as A
-import TcpListener (bind, accept, close) as L
-import TcpStream (read, write, close) as S
+import Net as N
 
 @main
 main :: Result Str ()
 main = try
-    listener <- L:bind (LibC:NetAddr 127 0 0 1) 8080
+    listener <- N:bind (LibC:NetAddr 127 0 0 1) 8080
     let _ = println "listening for incoming connections"
-    stream <- listener .L:accept
+    stream <- listener .N:accept
     let _ = println "client connected"
     let buffer = A:zeroed :: Array 1000 Byte
     let slice = buffer .A:as_slice
-    received <- stream .S:read slice
-    stream .S:write (slice # (0..received))
-    let _ = stream .S:close
-    let _ = listener .L:close
+    received <- stream .N:read slice
+    stream .N:write (slice # (0..received))
+    let _ = stream .N:close
+    let _ = listener .N:close
     ret ()
 
 
@@ -33,41 +32,6 @@ member (Result Str ()) of Termination =
     report (Error e) =
         println e
         ExitCode -1
-
-
-module TcpListener =
-    import Core
-    import Net
-    import Socket (Socket)
-    
-    bind :: LibC:NetAddr -> Uint16 -> Result Str TcpListener
-    bind addr port = try
-        socket <- Socket:new_ipv4 addr port
-        Socket:listen socket 128
-        ret $ TcpListener socket
-
-    close :: TcpListener -> ()
-    close (TcpListener socket) = Socket:close socket
-
-    accept :: TcpListener -> Result Str TcpStream
-    accept (TcpListener socket) = try
-        other <- Socket:accept socket
-        ret $ TcpStream other
-
-
-module TcpStream =
-    import Core
-    import Net
-    import Socket (Socket)
-
-    read :: TcpStream -> Slice Byte -> Result Str Uint
-    read (TcpStream socket) bytes = Socket:read socket bytes
-
-    write :: TcpStream -> Slice Byte -> Result Str Uint
-    write (TcpStream socket) bytes = Socket:write socket bytes
-
-    close :: TcpStream -> ()
-    close (TcpStream socket) = Socket:close socket
 
 
 module Socket (module Socket, module C) =
@@ -132,6 +96,7 @@ module Socket (module Socket, module C) =
 
 
 module Net =
+    import Core
     import Socket (Socket)
     
     type IpAddr =
@@ -144,12 +109,40 @@ module Net =
     type TcpListener = | TcpListener Socket
     type TcpStream   = | TcpStream   Socket
 
+    class Close t =
+        close :: t -> ()
+    
+    bind :: LibC:NetAddr -> Uint16 -> Result Str TcpListener
+    bind addr port = try
+        socket <- Socket:new_ipv4 addr port
+        Socket:listen socket 128
+        ret $ TcpListener socket
+
+    accept :: TcpListener -> Result Str TcpStream
+    accept (TcpListener socket) = try
+        other <- Socket:accept socket
+        ret $ TcpStream other
+
+    read :: TcpStream -> Slice Byte -> Result Str Uint
+    read (TcpStream socket) bytes = Socket:read socket bytes
+
+    write :: TcpStream -> Slice Byte -> Result Str Uint
+    write (TcpStream socket) bytes = Socket:write socket bytes
+
+    member TcpListener of Close =
+        close (TcpListener socket) = Socket:close socket
+
+    member TcpStream of Close =
+        close (TcpStream socket) = Socket:close socket
+
+
 module Net:Ipv4Addr =
     import Net
     
     const UNSPECIFIED = Ipv4Addr [0, 0, 0, 0]
     const LOCALHOST = Ipv4Addr [127, 0, 0, 1]
     const BROADCAST = Ipv4Addr [255, 255, 255, 255]
+
 
 module Net:Ipv6Addr =
     import Net
