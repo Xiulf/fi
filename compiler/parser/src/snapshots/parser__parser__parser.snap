@@ -1,0 +1,441 @@
+---
+source: compiler/parser/src/parser.rs
+expression: output
+---
+(Some(Node([
+  Start(SOURCE_FILE),
+  Node([
+    Empty,
+    Node([
+      Start(ITEM_MODULE),
+      Node([
+        Node([
+          Node([
+            Empty,
+            Token(MODULE_KW, 6),
+            Node([
+              Token(WHITESPACE, 1),
+            ]),
+          ]),
+          Node([
+            Empty,
+            Node([
+              Node([
+                Token(TYPE, 4),
+                Token(DOT, 1),
+              ]),
+              Token(TYPE, 3),
+            ]),
+            Node([
+              Token(WHITESPACE, 1),
+            ]),
+          ]),
+        ]),
+        Node([
+          Empty,
+          Token(EQUALS, 1),
+          Empty,
+        ]),
+        Node([
+          Token(LYT_SEP, 2),
+          Node([
+            Node([
+              Start(ITEM_FUNC),
+              Node([
+                Node([
+                  Empty,
+                  Token(IDENT, 4),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Empty,
+                Node([
+                  Empty,
+                  Token(EQUALS, 1),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Empty,
+                  Token(INT, 1),
+                  Empty,
+                ]),
+              ]),
+              Finish,
+            ]),
+            Token(LYT_SEP, 1),
+            Node([
+              Start(ITEM_FUNC),
+              Node([
+                Node([
+                  Empty,
+                  Token(IDENT, 2),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Node([
+                    Empty,
+                    Token(IDENT, 1),
+                    Node([
+                      Token(WHITESPACE, 1),
+                    ]),
+                  ]),
+                ]),
+                Node([
+                  Empty,
+                  Token(EQUALS, 1),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Empty,
+                  Token(IDENT, 1),
+                  Empty,
+                ]),
+              ]),
+              Finish,
+            ]),
+            Token(LYT_SEP, 2),
+            Node([
+              Start(ITEM_FUNC),
+              Node([
+                Node([
+                  Empty,
+                  Token(IDENT, 5),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Node([
+                    Node([
+                      Empty,
+                      Token(L_PAREN, 1),
+                      Empty,
+                    ]),
+                    Node([
+                      Node([
+                        Empty,
+                        Token(IDENT, 1),
+                        Node([
+                          Token(WHITESPACE, 1),
+                        ]),
+                      ]),
+                      Node([
+                        Empty,
+                        Token(DBL_COLON, 2),
+                        Node([
+                          Token(WHITESPACE, 1),
+                        ]),
+                      ]),
+                      Node([
+                        Node([
+                          Node([
+                            Empty,
+                            Token(TYPE, 1),
+                            Empty,
+                          ]),
+                          Empty,
+                        ]),
+                        Empty,
+                      ]),
+                    ]),
+                    Node([
+                      Empty,
+                      Token(R_PAREN, 1),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                  ]),
+                ]),
+                Node([
+                  Empty,
+                  Token(EQUALS, 1),
+                  Empty,
+                ]),
+                Node([
+                  Token(LYT_START, 5),
+                  Node([
+                    Empty,
+                    Node([
+                      Empty,
+                      Token(IDENT, 1),
+                      Empty,
+                    ]),
+                  ]),
+                  Token(LYT_END, 2),
+                ]),
+              ]),
+              Finish,
+            ]),
+            Token(LYT_SEP, 0),
+            Node([
+              Node([
+                Node([
+                  Empty,
+                  Token(TYPE_KW, 4),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Empty,
+                  Token(TYPE, 1),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Empty,
+              ]),
+              Node([
+                Empty,
+                Token(EQUALS, 1),
+                Empty,
+              ]),
+              Node([
+                Token(LYT_START, 5),
+                Node([
+                  Node([
+                    Node([
+                      Node([
+                        Empty,
+                        Token(PIPE, 1),
+                        Node([
+                          Token(WHITESPACE, 1),
+                        ]),
+                      ]),
+                      Node([
+                        Empty,
+                        Token(TYPE, 1),
+                        Empty,
+                      ]),
+                    ]),
+                    Token(LYT_SEP, 5),
+                  ]),
+                  Node([
+                    Node([
+                      Empty,
+                      Token(PIPE, 1),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Node([
+                      Empty,
+                      Token(TYPE, 1),
+                      Empty,
+                    ]),
+                  ]),
+                ]),
+                Token(LYT_END, 2),
+              ]),
+            ]),
+            Token(LYT_SEP, 0),
+            Node([
+              Node([
+                Node([
+                  Empty,
+                  Token(TRAIT_KW, 5),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Empty,
+                  Token(TYPE, 8),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Node([
+                    Empty,
+                    Token(IDENT, 4),
+                    Node([
+                      Token(WHITESPACE, 1),
+                    ]),
+                  ]),
+                  Node([
+                    Empty,
+                    Token(IDENT, 2),
+                    Node([
+                      Token(WHITESPACE, 1),
+                    ]),
+                  ]),
+                ]),
+              ]),
+              Node([
+                Node([
+                  Empty,
+                  Token(EQUALS, 1),
+                  Empty,
+                ]),
+                Node([
+                  Token(LYT_START, 5),
+                  Node([
+                    Empty,
+                    Node([
+                      Start(ITEM_FUNC),
+                      Node([
+                        Node([
+                          Empty,
+                          Token(IDENT, 4),
+                          Node([
+                            Token(WHITESPACE, 1),
+                          ]),
+                        ]),
+                        Node([
+                          Empty,
+                          Token(DBL_COLON, 2),
+                          Node([
+                            Token(WHITESPACE, 1),
+                          ]),
+                        ]),
+                        Node([
+                          Node([
+                            Node([
+                              Empty,
+                              Token(IDENT, 4),
+                              Node([
+                                Token(WHITESPACE, 1),
+                              ]),
+                            ]),
+                            Empty,
+                          ]),
+                          Node([
+                            Node([
+                              Empty,
+                              Token(ARROW, 2),
+                              Node([
+                                Token(WHITESPACE, 1),
+                              ]),
+                            ]),
+                            Node([
+                              Node([
+                                Empty,
+                                Token(TYPE, 6),
+                                Node([
+                                  Token(WHITESPACE, 1),
+                                ]),
+                              ]),
+                              Node([
+                                Node([
+                                  Empty,
+                                  Token(IDENT, 2),
+                                  Empty,
+                                ]),
+                              ]),
+                            ]),
+                          ]),
+                        ]),
+                      ]),
+                      Finish,
+                    ]),
+                  ]),
+                  Token(LYT_END, 2),
+                ]),
+              ]),
+            ]),
+            Token(LYT_SEP, 0),
+            Node([
+              Node([
+                Node([
+                  Empty,
+                  Token(IMPL_KW, 4),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Empty,
+                  Token(TYPE, 8),
+                  Node([
+                    Token(WHITESPACE, 1),
+                  ]),
+                ]),
+                Node([
+                  Node([
+                    Empty,
+                    Token(TYPE, 4),
+                    Node([
+                      Token(WHITESPACE, 1),
+                    ]),
+                  ]),
+                  Node([
+                    Empty,
+                    Token(TYPE, 4),
+                    Node([
+                      Token(WHITESPACE, 1),
+                    ]),
+                  ]),
+                ]),
+              ]),
+              Node([
+                Node([
+                  Empty,
+                  Token(EQUALS, 1),
+                  Empty,
+                ]),
+                Node([
+                  Token(LYT_START, 5),
+                  Node([
+                    Empty,
+                    Node([
+                      Start(ITEM_FUNC),
+                      Node([
+                        Node([
+                          Empty,
+                          Token(IDENT, 4),
+                          Node([
+                            Token(WHITESPACE, 1),
+                          ]),
+                        ]),
+                        Node([
+                          Node([
+                            Empty,
+                            Token(IDENT, 4),
+                            Node([
+                              Token(WHITESPACE, 1),
+                            ]),
+                          ]),
+                        ]),
+                        Node([
+                          Empty,
+                          Token(EQUALS, 1),
+                          Node([
+                            Token(WHITESPACE, 1),
+                          ]),
+                        ]),
+                        Node([
+                          Empty,
+                          Token(UNDERSCORE, 1),
+                          Empty,
+                        ]),
+                      ]),
+                      Finish,
+                    ]),
+                  ]),
+                  Token(LYT_END, 0),
+                ]),
+              ]),
+            ]),
+            Token(LYT_SEP, 0),
+          ]),
+        ]),
+      ]),
+      Finish,
+    ]),
+    Node([
+      Empty,
+      Token(EOF, 0),
+      Empty,
+    ]),
+  ]),
+  Finish,
+])), [])

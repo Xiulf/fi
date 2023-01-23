@@ -1,0 +1,329 @@
+---
+source: compiler/base_db/src/lib.rs
+expression: "(node, errors)"
+---
+(([
+  Event(
+    t: "EnterNode",
+    c: (56, false),
+  ),
+  Event(
+    t: "EnterNode",
+    c: (57, false),
+  ),
+  Event(
+    t: "Token",
+    c: (32, "module"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Core"),
+  ),
+  Event(
+    t: "Token",
+    c: (21, "."),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Cmp"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (23, "="),
+  ),
+  Event(
+    t: "Token",
+    c: (5, "\n\n"),
+  ),
+  Event(
+    t: "EnterNode",
+    c: (58, false),
+  ),
+  Event(
+    t: "Token",
+    c: (7, "main"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (23, "="),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (11, "0"),
+  ),
+  Event(
+    t: "LeaveNode",
+  ),
+  Event(
+    t: "Token",
+    c: (5, "\n\n"),
+  ),
+  Event(
+    t: "Token",
+    c: (40, "type"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "X"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (23, "="),
+  ),
+  Event(
+    t: "Token",
+    c: (4, "\n    "),
+  ),
+  Event(
+    t: "Token",
+    c: (29, "|"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Y"),
+  ),
+  Event(
+    t: "Token",
+    c: (5, "\n    "),
+  ),
+  Event(
+    t: "Token",
+    c: (29, "|"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Z"),
+  ),
+  Event(
+    t: "Token",
+    c: (6, "\n\n"),
+  ),
+  Event(
+    t: "Token",
+    c: (5, ""),
+  ),
+  Event(
+    t: "Token",
+    c: (41, "trait"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Iterator"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (7, "self"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (7, "it"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (23, "="),
+  ),
+  Event(
+    t: "Token",
+    c: (4, "\n    "),
+  ),
+  Event(
+    t: "EnterNode",
+    c: (58, false),
+  ),
+  Event(
+    t: "Token",
+    c: (7, "next"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (27, "::"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (7, "self"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (25, "->"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Option"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (7, "it"),
+  ),
+  Event(
+    t: "LeaveNode",
+  ),
+  Event(
+    t: "Token",
+    c: (6, "\n\n"),
+  ),
+  Event(
+    t: "Token",
+    c: (5, ""),
+  ),
+  Event(
+    t: "Token",
+    c: (42, "impl"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Iterator"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Iter"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (8, "Item"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (23, "="),
+  ),
+  Event(
+    t: "Token",
+    c: (4, "\n    "),
+  ),
+  Event(
+    t: "EnterNode",
+    c: (58, false),
+  ),
+  Event(
+    t: "Token",
+    c: (7, "next"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (7, "self"),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (23, "="),
+  ),
+  Event(
+    t: "Token",
+    c: (2, " "),
+  ),
+  Event(
+    t: "Token",
+    c: (24, "_"),
+  ),
+  Event(
+    t: "LeaveNode",
+  ),
+  Event(
+    t: "Token",
+    c: (6, ""),
+  ),
+  Event(
+    t: "Token",
+    c: (5, ""),
+  ),
+  Event(
+    t: "LeaveNode",
+  ),
+  Event(
+    t: "Token",
+    c: (1, ""),
+  ),
+  Event(
+    t: "LeaveNode",
+  ),
+], []), [])

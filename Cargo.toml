@@ -1,0 +1,10 @@
+[workspace]
+members = [
+  "compiler/hir",
+  "compiler/parser",
+  "compiler/syntax",
+  "compiler/base_db",
+  "compiler/diagnostics",
+  "compiler/paths",
+  "compiler/vfs",
+]

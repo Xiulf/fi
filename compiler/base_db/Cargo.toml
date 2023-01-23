@@ -1,0 +1,15 @@
+[package]
+name = "base_db"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rustc-hash = "1.1.0"
+salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
+syntax= { version = "0.1.0", path = "../syntax" }
+triomphe = "0.1.8"
+vfs = { version = "0.1.0", path = "../vfs" }
+
+[dev-dependencies]
+insta = { version = "1.26.0", features = ["ron", "redactions"] }
+unindent = "0.1.11"

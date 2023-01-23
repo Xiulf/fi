@@ -1,0 +1,12 @@
+[package]
+name = "vfs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+paths = { path = "../paths" }
+fst = "^0.4"
+rustc-hash = "1.1.0"
+ra_ap_stdx = "^0.0"
+salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
+serde = { version = "^1.0.123", features = ["derive"] }
