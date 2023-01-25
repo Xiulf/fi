@@ -1,9 +1,6 @@
 use cstree::interning::Interner;
 use cstree::{GreenNode, GreenNodeBuilder, Language};
-use parser::error::SyntaxError;
 use parser::token::SyntaxKind;
-
-use crate::Parsed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Lang {}
@@ -33,27 +30,21 @@ pub type SyntaxElement = cstree::SyntaxElement<Lang>;
 
 pub struct SyntaxTreeBuilder<'i, I> {
     inner: GreenNodeBuilder<'i, 'i, Lang, I>,
-    errors: Vec<SyntaxError>,
 }
 
 impl<'i, I: Interner> SyntaxTreeBuilder<'i, I> {
     pub fn new(interner: &'i mut I) -> Self {
         Self {
             inner: GreenNodeBuilder::with_interner(interner),
-            errors: Vec::new(),
         }
     }
 
-    pub(crate) fn finish_raw(self) -> (GreenNode, Vec<SyntaxError>) {
-        let (node, _) = self.inner.finish();
-
-        (node, self.errors)
+    pub(crate) fn finish_raw(self) -> GreenNode {
+        self.inner.finish().0
     }
 
-    pub fn finish(self) -> Parsed<SyntaxNode> {
-        let (green, errors) = self.finish_raw();
-
-        Parsed::new(green, errors)
+    pub fn finish(self) -> SyntaxNode {
+        SyntaxNode::new_root(self.finish_raw())
     }
 
     pub fn token(&mut self, kind: SyntaxKind, text: &str) {
@@ -66,9 +57,5 @@ impl<'i, I: Interner> SyntaxTreeBuilder<'i, I> {
 
     pub fn finish_node(&mut self) {
         self.inner.finish_node();
-    }
-
-    pub fn error(&mut self, error: SyntaxError) {
-        self.errors.push(error);
     }
 }

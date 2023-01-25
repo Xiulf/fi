@@ -6,7 +6,18 @@ ast_node!(SourceFile, SOURCE_FILE);
 
 ast_node!(Item {
     Module(ItemModule, ITEM_MODULE),
+    Import(ItemImport, ITEM_IMPORT),
+    Fixity(ItemFixity, ITEM_FIXITY),
+    Value(ItemValue, ITEM_VALUE),
+    Type(ItemType, ITEM_TYPE),
+    Trait(ItemTrait, ITEM_TRAIT),
+    Impl(ItemImpl, ITEM_IMPL),
 });
 
-ast_node!(Name, IDENT);
-ast_node!(NameRef, IDENT);
+ast_node!(Ctor, CTOR);
+
+ast_node!(Path, PATH);
+ast_node!(PathSegment, PATH_SEGMENT);
+
+ast_node!(Name, NAME);
+ast_node!(NameRef, NAME_REF);

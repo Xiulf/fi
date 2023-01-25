@@ -65,6 +65,7 @@ fn module(
             rtoken(LYT_SEP)
                 .then(item.clone().separated_trailing(rtoken(LYT_SEP)).collect())
                 .to_event(),
+            rtoken(LYT_SEP).then(item.clone().separated(rtoken(LYT_SEP))).to_event(),
             block(item),
         )))
         .to_event()
@@ -77,25 +78,26 @@ fn module_header() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
 
 fn module_name() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
     trivia()
-        .then(rtoken(TYPE).separated(rtoken(DOT)))
+        .then(rtoken(TYPE).to_node(PATH_SEGMENT).separated(rtoken(DOT)))
         .then(trivia())
         .to_event()
+        .to_node(PATH)
 }
 
 fn func() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     let params = pat_atom().repeated().collect();
-    let decl = token(IDENT).then(token(DBL_COLON)).then(typ()).to_event();
-    let defi = token(IDENT).then(params).then(token(EQUALS)).then(expr()).to_event();
+    let decl = name().then(token(DBL_COLON)).then(typ()).to_event();
+    let defi = name().then(params).then(token(EQUALS)).then(expr()).to_event();
 
-    decl.or(defi).to_node(ITEM_FUNC)
+    decl.or(defi).to_node(ITEM_VALUE)
 }
 
 fn type_ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
     let header = type_header();
-    let ctor = token(PIPE).then(token(TYPE));
+    let ctor = token(PIPE).then(token(TYPE)).to_event().to_node(CTOR);
     let body = choice((ctor.clone().repeated().at_least(1).collect(), block(ctor.to_event())));
 
-    header.then(token(EQUALS)).then(body).to_event()
+    header.then(token(EQUALS)).then(body).to_event().to_node(ITEM_TYPE)
 }
 
 fn type_header() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
@@ -106,7 +108,7 @@ fn trait_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
     let header = token(TRAIT_KW).then(token(TYPE)).then(type_vars()).to_event();
     let body = token(EQUALS).then(block(assoc_item())).to_event();
 
-    header.clone().then(body).to_event().or(header)
+    header.clone().then(body).to_event().or(header).to_node(ITEM_TRAIT)
 }
 
 fn impl_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
@@ -116,7 +118,7 @@ fn impl_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
         .to_event();
     let body = token(EQUALS).then(block(assoc_item())).to_event();
 
-    header.clone().then(body).to_event().or(header)
+    header.clone().then(body).to_event().or(header).to_node(ITEM_IMPL)
 }
 
 fn type_vars() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -214,6 +216,10 @@ fn block(
             [(L_PAREN, R_PAREN), (L_BRACE, R_BRACE), (L_BRACKET, R_BRACKET)],
             err,
         ))
+}
+
+fn name() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    token(IDENT).to_node(NAME)
 }
 
 fn token(kind: SyntaxKind) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {

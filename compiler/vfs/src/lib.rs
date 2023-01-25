@@ -4,12 +4,14 @@ mod vfs_path;
 
 use std::collections::hash_map::Entry;
 
+pub use file_set::FileSet;
+pub use in_file::InFile;
 use rustc_hash::FxHashMap;
 pub use vfs_path::VfsPath;
 
 pub trait Db: salsa::DbWithJar<Jar> {}
 
-impl<T: salsa::DbWithJar<Jar>> Db for T {
+impl<T: ?Sized + salsa::DbWithJar<Jar>> Db for T {
 }
 
 #[salsa::jar(db = Db)]

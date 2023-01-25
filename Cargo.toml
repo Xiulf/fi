@@ -7,4 +7,6 @@ members = [
   "compiler/diagnostics",
   "compiler/paths",
   "compiler/vfs",
+  "compiler/driver",
+  "compiler/fi",
 ]

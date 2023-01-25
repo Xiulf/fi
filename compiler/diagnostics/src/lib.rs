@@ -1,5 +1,17 @@
+use salsa::storage::HasJar;
 use text_size::TextRange;
 use vfs::in_file::InFile;
+
+pub trait Db: vfs::Db + salsa::DbWithJar<Jar> {}
+
+impl<T: ?Sized + vfs::Db + salsa::DbWithJar<Jar>> Db for T {
+}
+
+#[salsa::jar(db = Db)]
+pub struct Jar(Diagnostics);
+
+#[salsa::accumulator]
+pub struct Diagnostics(Diagnostic);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
@@ -28,6 +40,38 @@ pub struct PrimaryLabel {
 pub struct SecondaryLabel {
     pub range: InFile<TextRange>,
     pub message: String,
+}
+
+pub trait ToDiagnostic {
+    type Db<'t>: ?Sized + 't;
+
+    fn to_diagnostic(self, db: &Self::Db<'_>) -> Diagnostic;
+}
+
+impl ToDiagnostic for Diagnostic {
+    type Db<'t> = dyn Db + 't;
+
+    fn to_diagnostic(self, _: &Self::Db<'_>) -> Diagnostic {
+        self
+    }
+}
+
+impl<T: ToDiagnostic + Clone> ToDiagnostic for &T {
+    type Db<'t> = T::Db<'t>;
+
+    fn to_diagnostic(self, db: &Self::Db<'_>) -> Diagnostic {
+        self.clone().to_diagnostic(db)
+    }
+}
+
+impl Diagnostics {
+    pub fn emit<'t, Db, T>(db: &'t Db, diag: T)
+    where
+        Db: HasJar<Jar> + ?Sized + 't,
+        T: ToDiagnostic<Db<'t> = Db>,
+    {
+        Diagnostics::push(db, diag.to_diagnostic(db));
+    }
 }
 
 impl Diagnostic {

@@ -25,15 +25,31 @@ impl SourceFile {
     }
 }
 
-impl NameOwner for ItemModule {
+impl ItemModule {
+    pub fn name(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+
+    pub fn items(&self) -> impl Iterator<Item = Item> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl NameOwner for ItemValue {
     fn name(&self) -> Option<Name> {
         child(self.syntax())
     }
 }
 
-impl ItemModule {
-    pub fn items(&self) -> impl Iterator<Item = Item> + '_ {
+impl Path {
+    pub fn segments(&self) -> impl Iterator<Item = PathSegment> + '_ {
         children(self.syntax())
+    }
+}
+
+impl PathSegment {
+    pub fn text<'a>(&self, resolver: &'a dyn Resolver) -> &'a str {
+        self.syntax().first_token().unwrap().resolve_text(resolver)
     }
 }
 

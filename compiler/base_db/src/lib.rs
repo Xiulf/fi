@@ -8,26 +8,28 @@ use std::sync::RwLock;
 use libs::LibSet;
 use vfs::File;
 
-pub trait Db: vfs::Db + salsa::DbWithJar<Jar> {
+pub trait Db: vfs::Db + diagnostics::Db + salsa::DbWithJar<Jar> {
     fn syntax_interner(&self) -> &RwLock<syntax::Interner>;
     fn libs(&self) -> &LibSet;
 }
 
 #[salsa::jar(db = Db)]
-pub struct Jar(input::SourceRoot, libs::LibId);
+pub struct Jar(input::SourceRoot, libs::LibId, parse);
 
-pub fn parse(db: &dyn Db, file: File) -> syntax::Parsed<syntax::ast::SourceFile> {
-    let text = file.text(db).as_deref().unwrap_or_default();
+#[salsa::tracked]
+pub fn parse(db: &dyn Db, file: File) -> syntax::ast::SourceFile {
     let mut interner = db.syntax_interner().write().unwrap();
 
-    syntax::ast::SourceFile::parse(text, &mut interner)
+    syntax::ast::SourceFile::parse(db, file, &mut interner)
 }
 
 #[cfg(test)]
 mod tests {
+    use syntax::ast::AstNode;
+
     use super::*;
 
-    #[salsa::db(vfs::Jar, crate::Jar)]
+    #[salsa::db(vfs::Jar, diagnostics::Jar, crate::Jar)]
     struct Database {
         storage: salsa::Storage<Self>,
         syntax_interner: RwLock<syntax::Interner>,
@@ -79,11 +81,10 @@ mod tests {
         let file = File::new(&db, vfs::VfsPath::new_virtual("/test.fi".into()), Some(input.into()));
         let parsed = parse(&db, file);
         let interner = db.syntax_interner().read().unwrap();
-        let node = parsed.syntax_node();
+        let node = parsed.syntax();
         let node = node.as_serialize_with_resolver(&*interner);
-        let errors = parsed.errors();
 
-        insta::assert_ron_snapshot!((node, errors), {
+        insta::assert_ron_snapshot!(node, {
             "[1].$expected" => insta::sorted_redaction(),
         });
     }

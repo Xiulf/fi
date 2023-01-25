@@ -77,18 +77,37 @@ pub enum SyntaxKind {
     SOURCE_FILE,
 
     ITEM_MODULE,
-    ITEM_FUNC,
+    ITEM_IMPORT,
+    ITEM_FIXITY,
+    ITEM_VALUE,
+    ITEM_TYPE,
+    ITEM_TRAIT,
+    ITEM_IMPL,
+
+    CTOR,
+
+    PATH,
+    PATH_SEGMENT,
+
+    NAME,
+    NAME_REF,
 
     __LAST,
+}
+
+impl SyntaxKind {
+    pub fn is_trivia(self) -> bool {
+        matches!(self, SyntaxKind::WHITESPACE | SyntaxKind::COMMENT)
+    }
 }
 
 impl fmt::Display for SyntaxKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             | Self::ERROR => "{error}",
-            | Self::EOF => "{eof}",
-            | Self::WHITESPACE => "{whitespace}",
-            | Self::COMMENT => "{comment}",
+            | Self::EOF => "end of input",
+            | Self::WHITESPACE => "whitespace",
+            | Self::COMMENT => "comment",
             | Self::LYT_START => "indentation",
             | Self::LYT_SEP => "newline",
             | Self::LYT_END => "unindentation",

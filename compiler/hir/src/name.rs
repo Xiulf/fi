@@ -39,6 +39,13 @@ impl AsName for str {
     }
 }
 
+impl AsName for syntax::ast::PathSegment {
+    fn as_name(&self, db: &dyn Db) -> Name {
+        let resolver = db.syntax_interner().read().unwrap();
+        Name::new_text(db, SmolStr::new(self.text(&*resolver)))
+    }
+}
+
 impl AsName for syntax::ast::Name {
     fn as_name(&self, db: &dyn Db) -> Name {
         let resolver = db.syntax_interner().read().unwrap();

@@ -1,87 +1,75 @@
+#![feature(trait_upcasting)]
+
 pub mod ast;
 pub mod parsing;
 pub mod ptr;
 pub mod syntax_node;
 
-use std::marker::PhantomData;
-
 pub use cstree::interning::{new_interner, Rodeo as Interner};
-use cstree::{GreenNode, Language};
 pub use cstree::{TextRange, TextSize};
-use parser::error::SyntaxError;
+use diagnostics::{Db, Diagnostic, ToDiagnostic};
+use parser::error::{ErrorReason, SyntaxError};
 pub use parser::token::SyntaxKind;
 pub use syntax_node::*;
-use triomphe::Arc;
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Parsed<T> {
-    green: GreenNode,
-    errors: Arc<[SyntaxError]>,
-    _marker: PhantomData<fn() -> T>,
-}
-
-impl<T> Parsed<T> {
-    pub fn new(green: GreenNode, errors: Vec<SyntaxError>) -> Self {
-        Self {
-            green,
-            errors: errors.into(),
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn syntax_node(&self) -> SyntaxNode {
-        SyntaxNode::new_root(self.green.clone())
-    }
-
-    pub fn errors(&self) -> &[SyntaxError] {
-        &self.errors
-    }
-}
-
-impl<T> Clone for Parsed<T> {
-    fn clone(&self) -> Self {
-        Self {
-            green: self.green.clone(),
-            errors: self.errors.clone(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<T: ast::AstNode> Parsed<T> {
-    pub fn into_syntax(self) -> Parsed<SyntaxNode> {
-        Parsed {
-            green: self.green,
-            errors: self.errors,
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn tree(&self) -> T {
-        T::cast(&self.syntax_node()).unwrap()
-    }
-
-    pub fn cast<N: ast::AstNode>(self) -> Option<Parsed<N>> {
-        if N::can_cast(Lang::kind_from_raw(self.green.kind())) {
-            Some(Parsed {
-                green: self.green,
-                errors: self.errors,
-                _marker: PhantomData,
-            })
-        } else {
-            None
-        }
-    }
-}
+use vfs::{File, InFile};
 
 impl ast::SourceFile {
-    pub fn parse(text: &str, interner: &mut Interner) -> Parsed<Self> {
-        let node = parsing::parse_text(text, interner);
+    pub fn parse(db: &dyn Db, file: File, interner: &mut Interner) -> Self {
+        use ast::AstNode;
+        Self::cast(&parsing::parse_text(db, file, interner)).unwrap()
+    }
+}
 
-        Parsed {
-            green: node.green,
-            errors: node.errors,
-            _marker: PhantomData,
+struct SyntaxDiagnostic(SyntaxError, File);
+
+impl ToDiagnostic for SyntaxDiagnostic {
+    type Db<'t> = dyn Db + 't;
+
+    fn to_diagnostic(self, _: &Self::Db<'_>) -> Diagnostic {
+        let SyntaxDiagnostic(error, file) = self;
+
+        match error {
+            | SyntaxError::ParseError(e) => match e.reason() {
+                | ErrorReason::Custom(msg) => Diagnostic::new(msg, e.span()),
+                | ErrorReason::Unexpected => {
+                    let msg = format!(
+                        "{}, expected {}",
+                        if e.found().is_some() {
+                            "Unexpected token in input"
+                        } else {
+                            "Unexpected end of input"
+                        },
+                        if e.expected().len() == 0 {
+                            "something else".to_string()
+                        } else {
+                            e.expected()
+                                .filter(|e| match e {
+                                    | Some(e) => !e.is_trivia(),
+                                    | None => true,
+                                })
+                                .map(|expected| match expected {
+                                    | Some(expected) => expected.to_string(),
+                                    | None => "end of input".to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        }
+                    );
+
+                    Diagnostic::new(msg, e.span()).with_primary_label(
+                        e.span(),
+                        format!("Unexpected token {}", e.found().unwrap_or(&SyntaxKind::EOF)),
+                    )
+                },
+                | ErrorReason::Unclosed { span, delimiter } => {
+                    Diagnostic::new(format!("Unclosed delimiter {}", delimiter), *span)
+                        .with_primary_label(*span, format!("Unclosed delimiter {}", delimiter))
+                        .with_secondary_label(
+                            InFile::new(file, e.span()),
+                            format!("Must be closed before this {}", e.found().unwrap_or(&SyntaxKind::EOF)),
+                        )
+                },
+            },
         }
     }
 }

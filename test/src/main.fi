@@ -1,0 +1,17 @@
+module Test =
+
+main = 0
+id x = a
+
+other (a :: T) =
+    a
+
+// type X =
+//     | Y
+//     | Z
+
+// trait Iterator self it =
+//     next :: self -> Option it
+
+// impl Iterator Iter Item =
+//     next self = _

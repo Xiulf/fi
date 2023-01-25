@@ -5,9 +5,11 @@ edition = "2021"
 
 [dependencies]
 cstree = { git= "https://github.com/domenicquirl/cstree", rev = "e7b00a603e8782eb45976b7ccb4883eac25aac57", features = ["serde", "serialize"] }
+diagnostics = { version = "0.1.0", path = "../diagnostics" }
 parser = { version = "0.1.0", path = "../parser" }
 serde = { version = "1.0.152", features = ["derive"] }
 triomphe = "0.1.8"
+vfs = { version = "0.1.0", path = "../vfs" }
 
 [dev-dependencies]
 insta = { version = "1.26.0", features = ["ron", "redactions"] }
