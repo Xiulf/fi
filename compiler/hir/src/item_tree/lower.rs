@@ -59,6 +59,7 @@ impl Ctx<'_> {
     fn lower_item(&mut self, item: ast::Item) -> Option<Vec<Item>> {
         let items = match item {
             | ast::Item::Module(it) => self.lower_module(it),
+            | ast::Item::Import(it) => self.lower_import(it),
             | ast::Item::Value(it) => self.lower_value(it),
             | _ => todo!(),
         };
@@ -75,11 +76,62 @@ impl Ctx<'_> {
         Some(vec![id(self.tree.data.modules.alloc(data)).into()])
     }
 
+    fn lower_import(&mut self, import: ast::ItemImport) -> Option<Vec<Item>> {
+        let ast_id = self.ast_map.ast_id(&import);
+        let mut imports = Vec::with_capacity(1);
+
+        expand_import(
+            self.db,
+            InFile::new(self.tree.file, import),
+            |path, _, all, rename, qualify, hiding| {
+                imports.push(
+                    id(self.tree.data.imports.alloc(Import {
+                        index: imports.len(),
+                        ast_id,
+                        path,
+                        rename,
+                        qualify,
+                        hiding,
+                        all,
+                    }))
+                    .into(),
+                );
+            },
+        );
+
+        Some(imports)
+    }
+
     fn lower_value(&mut self, value: ast::ItemValue) -> Option<Vec<Item>> {
         let ast_id = self.ast_map.ast_id(&value);
         let name = value.name()?.as_name(self.db);
         let data = Value { ast_id, name };
 
         Some(vec![id(self.tree.data.values.alloc(data)).into()])
+    }
+}
+
+fn expand_import(
+    db: &dyn Db,
+    import: InFile<ast::ItemImport>,
+    mut cb: impl FnMut(Path, Option<ast::ImportItem>, bool, Option<Name>, Option<Name>, Option<Box<[Name]>>),
+) {
+    if let Some(path) = import.value.module().map(|p| Path::from_ast(db, p)) {
+        let qualify = import.value.rename().map(|n| n.as_name(db));
+
+        if let Some(items) = import.value.items() {
+            for item in items.iter() {
+                if let Some(name) = item.name_ref() {
+                    let rename = item.rename().map(|n| n.as_name(db));
+                    let mut path = path.clone();
+                    path.push(name.as_name(db));
+                    cb(path, Some(item), false, rename, qualify, None);
+                }
+            }
+        } else {
+            let hiding = import.value.hiding().map(|h| h.iter().map(|n| n.as_name(db)).collect());
+
+            cb(path, None, true, None, qualify, hiding);
+        }
     }
 }

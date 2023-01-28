@@ -1,9 +1,11 @@
-use std::ops::Range;
-use std::rc::Rc;
+mod ext;
 
-use chumsky::combinator::{Map, Repeated, Then};
+use std::ops::Range;
+
 use chumsky::prelude::*;
+use chumsky::primitive::Container;
 use chumsky::{Parser, Stream};
+use ext::*;
 use text_size::TextSize;
 
 use crate::error::ParseError;
@@ -43,12 +45,13 @@ fn source_file() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
 fn item() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     recursive(|item| {
         let module = module(item);
+        let import = import();
         let func = func();
         let type_ctor = type_ctor();
         let trait_ = trait_();
         let impl_ = impl_();
 
-        module.or(func).or(type_ctor).or(trait_).or(impl_)
+        module.or(import).or(func).or(type_ctor).or(trait_).or(impl_)
     })
 }
 
@@ -56,16 +59,15 @@ fn assoc_item() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     func()
 }
 
-fn module(
-    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
-) -> impl Parser<SyntaxKind, Event, Error = ParseError> {
+fn module<'a>(
+    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + 'a {
     module_header()
         .then(token(EQUALS))
         .then(choice((
             rtoken(LYT_SEP)
-                .then(item.clone().separated_trailing(rtoken(LYT_SEP)).collect())
+                .then(item.clone().separated(rtoken(LYT_SEP), true, 0))
                 .to_event(),
-            rtoken(LYT_SEP).then(item.clone().separated(rtoken(LYT_SEP))).to_event(),
             block(item),
         )))
         .to_event()
@@ -76,12 +78,34 @@ fn module_header() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
     token(MODULE_KW).then(module_name()).to_event()
 }
 
-fn module_name() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
+fn module_name() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     trivia()
-        .then(rtoken(TYPE).to_node(PATH_SEGMENT).separated(rtoken(DOT)))
+        .then(rtoken(TYPE).to_node(PATH_SEGMENT).separated(rtoken(DOT), false, 1))
         .then(trivia())
         .to_event()
         .to_node(PATH)
+}
+
+fn import() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    let base = token(IMPORT_KW).then(module_name()).to_event();
+    let items = parens(import_item().separated(token(COMMA), true, 0)).to_node(IMPORT_ITEMS);
+    let hiding = token(HIDING_KW)
+        .then(parens(name_ref().separated(token(COMMA), true, 0)))
+        .to_event()
+        .to_node(IMPORT_HIDING);
+    let rename = token(AS_KW).then(type_name()).to_event();
+
+    base.then(opt(items.or(hiding)))
+        .then(opt(rename))
+        .to_event()
+        .to_node(ITEM_IMPORT)
+}
+
+fn import_item() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    name_ref()
+        .then(opt(token(AS_KW).then(any_name()).to_event()))
+        .to_event()
+        .to_node(IMPORT_ITEM)
 }
 
 fn func() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -203,11 +227,11 @@ fn parens(
         ))
 }
 
-fn block(
-    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
-) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+fn block<'a>(
+    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
     rtoken(LYT_START)
-        .then(item.separated(rtoken(LYT_SEP)))
+        .then(item.separated(rtoken(LYT_SEP), false, 1))
         .then(rtoken(LYT_END))
         .to_event()
         .recover_with(nested_delimiters(
@@ -218,119 +242,52 @@ fn block(
         ))
 }
 
+fn path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    rtoken(TYPE)
+        .to_node(NAME_REF)
+        .to_node(PATH_SEGMENT)
+        .then(rtoken(DOT))
+        .repeated()
+        .collect::<Event>()
+        .then(name_ref().to_node(PATH_SEGMENT))
+        .to_event()
+        .to_node(PATH)
+}
+
 fn name() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     token(IDENT).to_node(NAME)
 }
 
-fn token(kind: SyntaxKind) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    trivia().then(rtoken(kind)).then(trivia()).to_event()
+fn type_name() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    token(TYPE).to_node(NAME)
 }
 
-fn rtoken(kind: SyntaxKind) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    just(kind).map_with_span(|t, s: Range<usize>| Event::Token(t, TextSize::from((s.end - s.start) as u32)))
+fn any_name() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    token([IDENT, TYPE]).or(symbol()).to_node(NAME)
+}
+
+fn name_ref() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    token([IDENT, TYPE]).or(symbol()).to_node(NAME_REF)
+}
+
+fn symbol() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    rtoken(L_PAREN).then(rtoken(SYMBOL)).then(rtoken(R_PAREN)).to_event()
+}
+
+fn token(kinds: impl Container<SyntaxKind> + Copy) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    trivia().then(rtoken(kinds)).then(trivia()).to_event()
+}
+
+fn rtoken(kinds: impl Container<SyntaxKind> + Copy) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    one_of(kinds).map_with_span(|t, s: Range<usize>| Event::Token(t, TextSize::from((s.end - s.start) as u32)))
 }
 
 fn trivia() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    rtoken(WHITESPACE).or(rtoken(COMMENT)).repeated().collect()
+    rtoken([WHITESPACE, COMMENT]).repeated().collect()
 }
 
 fn err(span: Range<usize>) -> Event {
     Event::Token(ERROR, TextSize::from((span.end - span.start) as u32))
-}
-
-trait ParserExt: Parser<SyntaxKind, Event, Error = ParseError> + Sized {
-    fn to_node(self, kind: SyntaxKind) -> Map<Self, ToNode, Event>;
-
-    fn separated<Sep>(
-        self,
-        sep: Sep,
-    ) -> Map<
-        Then<Map<Repeated<Then<Self, Sep>>, fn(Vec<(Event, Event)>) -> Event, Vec<(Event, Event)>>, Self>,
-        fn((Event, Event)) -> Event,
-        (Event, Event),
-    >
-    where
-        Self: Clone,
-        Sep: Parser<SyntaxKind, Event, Error = ParseError> + Clone;
-
-    fn separated_trailing<Sep>(self, sep: Sep) -> Repeated<Then<Self, Sep>>
-    where
-        Sep: Parser<SyntaxKind, Event, Error = ParseError>;
-}
-
-trait ToEvent<O>: Parser<SyntaxKind, O, Error = ParseError> + Sized {
-    fn to_event(self) -> Map<Self, fn(O) -> Event, O>;
-}
-
-#[derive(Clone)]
-struct ToNode(Rc<dyn Fn(Event) -> Event>);
-
-impl FnOnce<(Event,)> for ToNode {
-    type Output = Event;
-
-    extern "rust-call" fn call_once(self, _: (Event,)) -> Self::Output {
-        unreachable!("cannot call call_once on ToNode")
-    }
-}
-
-impl FnMut<(Event,)> for ToNode {
-    extern "rust-call" fn call_mut(&mut self, _: (Event,)) -> Self::Output {
-        unreachable!("cannot call call_mut on ToNode")
-    }
-}
-
-impl Fn<(Event,)> for ToNode {
-    extern "rust-call" fn call(&self, args: (Event,)) -> Self::Output {
-        self.0.call(args)
-    }
-}
-
-impl<P> ParserExt for P
-where
-    P: Parser<SyntaxKind, Event, Error = ParseError>,
-{
-    fn to_node(self, kind: SyntaxKind) -> Map<Self, ToNode, Event> {
-        self.map(ToNode(Rc::new(move |e| {
-            ((Event::Start(kind), e), Event::Finish).into()
-        })))
-    }
-
-    fn separated<Sep>(
-        self,
-        sep: Sep,
-    ) -> Map<
-        Then<Map<Repeated<Then<Self, Sep>>, fn(Vec<(Event, Event)>) -> Event, Vec<(Event, Event)>>, Self>,
-        fn((Event, Event)) -> Event,
-        (Event, Event),
-    >
-    where
-        Self: Clone,
-        Sep: Parser<SyntaxKind, Event, Error = ParseError> + Clone,
-    {
-        self.clone()
-            .then(sep)
-            .repeated()
-            .collect::<Event>()
-            .then(self)
-            .to_event()
-    }
-
-    fn separated_trailing<Sep>(self, sep: Sep) -> Repeated<Then<Self, Sep>>
-    where
-        Sep: Parser<SyntaxKind, Event, Error = ParseError>,
-    {
-        self.then(sep).repeated()
-    }
-}
-
-impl<P, O> ToEvent<O> for P
-where
-    P: Parser<SyntaxKind, O, Error = ParseError>,
-    O: Into<Event> + 'static,
-{
-    fn to_event(self) -> Map<Self, fn(O) -> Event, O> {
-        self.map(Into::into)
-    }
 }
 
 #[test]

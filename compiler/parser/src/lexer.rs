@@ -61,19 +61,24 @@ impl Iterator for Lexer<'_> {
             | ('}', _) => self.advance_with(R_BRACE),
             | ('[', _) => self.advance_with(L_BRACKET),
             | (']', _) => self.advance_with(R_BRACKET),
-            | ('.', _) => self.advance_with(DOT),
-            | (',', _) => self.advance_with(COMMA),
-            | ('|', _) => self.advance_with(PIPE),
-            | ('@', _) => self.advance_with(AT),
             | ('`', _) => self.advance_with(TICK),
             | ('_', _) => self.advance_with(UNDERSCORE),
-            | ('=', _) => {
+            | ('.', c) if !is_valid_symbol(c) => self.advance_with(DOT),
+            | (',', c) if !is_valid_symbol(c) => self.advance_with(COMMA),
+            | ('|', c) if !is_valid_symbol(c) => self.advance_with(PIPE),
+            | ('@', c) if !is_valid_symbol(c) => self.advance_with(AT),
+            | ('=', c) if !is_valid_symbol(c) => {
                 self.should_indent = true;
                 self.advance_with(EQUALS)
             },
+            | (c, _) if is_valid_symbol(c) => self.symbol(),
             | _ => self.advance_with(ERROR),
         }
     }
+}
+
+fn is_valid_symbol(c: char) -> bool {
+    "+-=|/,.<>?%^&*$#@!~:".contains(c)
 }
 
 impl<'input> Lexer<'input> {
@@ -146,6 +151,14 @@ impl<'input> Lexer<'input> {
         self.token(COMMENT)
     }
 
+    fn symbol(&mut self) -> Option<Token> {
+        while !self.eof() && is_valid_symbol(self.current) {
+            self.advance();
+        }
+
+        self.token(SYMBOL)
+    }
+
     fn ident(&mut self) -> Option<Token> {
         let is_type = self.current.is_uppercase();
 
@@ -160,6 +173,7 @@ impl<'input> Lexer<'input> {
             | "else" => self.token(ELSE_KW),
             | "fn" => self.token(FN_KW),
             | "foreign" => self.token(FOREIGN_KW),
+            | "hiding" => self.token(HIDING_KW),
             | "if" => self.token(IF_KW),
             | "impl" => self.token(IMPL_KW),
             | "import" => self.token(IMPORT_KW),

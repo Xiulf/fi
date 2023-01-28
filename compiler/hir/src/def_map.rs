@@ -3,6 +3,7 @@ use std::sync::Arc;
 use base_db::input::File;
 use base_db::libs::LibId;
 use rustc_hash::FxHashMap;
+use vfs::InFile;
 
 use crate::data::ModuleData;
 use crate::id::{
@@ -30,10 +31,13 @@ pub struct ModuleScope {
 #[salsa::tracked]
 pub fn query(db: &dyn Db, lib: LibId) -> DefMap {
     let mut modules = FxHashMap::default();
+    let mut imports = Vec::new();
 
     for file in lib.source_root(db).iter(db) {
-        let _ = lower_file(db, &mut modules, lib, file);
+        let _ = lower_file(db, &mut modules, &mut imports, lib, file);
     }
+
+    tracing::debug!("{imports:#?}");
 
     let modules = modules
         .into_iter()
@@ -46,20 +50,45 @@ pub fn query(db: &dyn Db, lib: LibId) -> DefMap {
 struct Ctx<'a> {
     db: &'a dyn Db,
     modules: &'a mut FxHashMap<ModuleId, RawModuleData>,
+    imports: &'a mut Vec<ImportDirective>,
     module: Option<ModuleId>,
     file: File,
     item_tree: Arc<item_tree::ItemTree>,
 }
 
+#[derive(Default, Debug)]
 struct RawModuleData {
     scope: ModuleScope,
 }
 
-fn lower_file(db: &dyn Db, modules: &mut FxHashMap<ModuleId, RawModuleData>, lib: LibId, file: File) -> Option<()> {
+#[derive(Debug)]
+struct ImportDirective {
+    resolve_in: ModuleId,
+    module_id: ModuleId,
+    import: Import,
+}
+
+#[derive(Debug)]
+struct Import {
+    src: ItemTreeId<item_tree::Import>,
+    path: Path,
+    rename: Option<Name>,
+    hiding: Option<Box<[Name]>>,
+    all: bool,
+}
+
+fn lower_file(
+    db: &dyn Db,
+    modules: &mut FxHashMap<ModuleId, RawModuleData>,
+    imports: &mut Vec<ImportDirective>,
+    lib: LibId,
+    file: File,
+) -> Option<()> {
     let mut ctx = Ctx {
         db,
-        modules,
         file,
+        modules,
+        imports,
         module: None,
         item_tree: item_tree::query(db, file),
     };
@@ -95,9 +124,7 @@ impl Ctx<'_> {
 
     fn init_module(&mut self, parent: ModuleParentId, id: ModuleId, name: Name) {
         if !self.modules.contains_key(&id) {
-            self.modules.insert(id, RawModuleData {
-                scope: ModuleScope::default(),
-            });
+            self.modules.insert(id, RawModuleData::default());
 
             if let ModuleParentId::ModuleId(parent) = parent {
                 self.modules
@@ -110,13 +137,14 @@ impl Ctx<'_> {
         }
     }
 
-    fn scope(&mut self) -> &mut ModuleScope {
-        &mut self.modules.get_mut(&self.module.unwrap()).unwrap().scope
+    fn data(&mut self) -> &mut RawModuleData {
+        self.modules.get_mut(&self.module.unwrap()).unwrap()
     }
 
     fn lower_item(&mut self, module: ModuleId, item: Item) {
         match item {
             | Item::Module(it) => self.lower_module(module.into(), it),
+            | Item::Import(it) => self.lower_import(module, it),
             | Item::Fixity(it) => self.lower_fixity(module, it),
             | Item::Value(it) => self.lower_value(module.into(), it),
             | Item::TypeAlias(it) => self.lower_type_alias(module, it),
@@ -138,7 +166,43 @@ impl Ctx<'_> {
         }
 
         self.module = m;
-        self.scope().types.insert(data.name, ItemId::ModuleId(id));
+        self.data().scope.types.insert(data.name, ItemId::ModuleId(id));
+    }
+
+    fn lower_import(&mut self, module: ModuleId, it: LocalItemTreeId<item_tree::Import>) {
+        let item_tree = self.item_tree.clone();
+        let data = &item_tree[it];
+        let module_id = if let Some(qualify) = data.qualify {
+            let module_id = self.modules[&module].scope.types.get(&qualify);
+            let module_id = module_id.map(|&id| match id {
+                | ItemId::ModuleId(id) => id,
+                | _ => unreachable!(),
+            });
+
+            match module_id {
+                | Some(id) => id,
+                | None => {
+                    let module_id = ModuleId::new(self.db, module.into(), qualify);
+
+                    self.data().scope.types.insert(qualify, module_id.into());
+                    module_id
+                },
+            }
+        } else {
+            module
+        };
+
+        self.imports.push(ImportDirective {
+            resolve_in: module,
+            module_id,
+            import: Import {
+                src: InFile::new(self.file, it),
+                rename: data.rename,
+                hiding: data.hiding.clone(),
+                path: data.path.clone(),
+                all: data.all,
+            },
+        });
     }
 
     fn lower_fixity(&mut self, module: ModuleId, it: LocalItemTreeId<item_tree::Fixity>) {
@@ -147,12 +211,12 @@ impl Ctx<'_> {
         let id = FixityId::new(self.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::FixityId(id);
 
-        self.scope().items.push(item);
+        self.data().scope.items.push(item);
 
         if data.is_type {
-            self.scope().types.insert(data.name, item);
+            self.data().scope.types.insert(data.name, item);
         } else {
-            self.scope().values.insert(data.name, item);
+            self.data().scope.values.insert(data.name, item);
         }
     }
 
@@ -162,8 +226,8 @@ impl Ctx<'_> {
         let id = ValueId::new(self.db, container, ItemTreeId::new(self.file, it));
         let item = ItemId::ValueId(id);
 
-        self.scope().items.push(item);
-        self.scope().values.insert(data.name, item);
+        self.data().scope.items.push(item);
+        self.data().scope.values.insert(data.name, item);
     }
 
     fn lower_type_alias(&mut self, module: ModuleId, it: LocalItemTreeId<item_tree::TypeAlias>) {
@@ -172,8 +236,8 @@ impl Ctx<'_> {
         let id = TypeAliasId::new(self.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::TypeAliasId(id);
 
-        self.scope().items.push(item);
-        self.scope().types.insert(data.name, item);
+        self.data().scope.items.push(item);
+        self.data().scope.types.insert(data.name, item);
     }
 
     fn lower_type_ctor(&mut self, module: ModuleId, it: LocalItemTreeId<item_tree::TypeCtor>) {
@@ -182,16 +246,16 @@ impl Ctx<'_> {
         let id = TypeCtorId::new(self.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::TypeCtorId(id);
 
-        self.scope().items.push(item);
-        self.scope().types.insert(data.name, item);
+        self.data().scope.items.push(item);
+        self.data().scope.types.insert(data.name, item);
 
         for &local_id in data.ctors.iter() {
             let data = &item_tree[local_id];
             let id = CtorId::new(self.db, id, local_id);
             let item = ItemId::CtorId(id);
 
-            self.scope().items.push(item);
-            self.scope().values.insert(data.name, item);
+            self.data().scope.items.push(item);
+            self.data().scope.values.insert(data.name, item);
         }
     }
 
@@ -201,8 +265,8 @@ impl Ctx<'_> {
         let id = TraitId::new(self.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::TraitId(id);
 
-        self.scope().items.push(item);
-        self.scope().types.insert(data.name, item);
+        self.data().scope.items.push(item);
+        self.data().scope.types.insert(data.name, item);
 
         for &item in data.items.iter() {
             self.lower_value(id.into(), item);
@@ -212,6 +276,6 @@ impl Ctx<'_> {
     fn lower_impl(&mut self, module: ModuleId, it: LocalItemTreeId<item_tree::Impl>) {
         let id = ImplId::new(self.db, module, ItemTreeId::new(self.file, it));
 
-        self.scope().impls.push(id);
+        self.data().scope.impls.push(id);
     }
 }

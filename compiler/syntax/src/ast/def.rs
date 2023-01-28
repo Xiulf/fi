@@ -14,6 +14,10 @@ ast_node!(Item {
     Impl(ItemImpl, ITEM_IMPL),
 });
 
+ast_node!(ImportItems, IMPORT_ITEMS);
+ast_node!(ImportItem, IMPORT_ITEM);
+ast_node!(ImportHiding, IMPORT_HIDING);
+
 ast_node!(Ctor, CTOR);
 
 ast_node!(Path, PATH);

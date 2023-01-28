@@ -1,5 +1,9 @@
 module Test =
 
+import Core.Default
+import Core.Ops ((+))
+import Data.Option hiding (None) as S
+
 main = 0
 id x = a
 

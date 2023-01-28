@@ -28,6 +28,10 @@ impl Path {
             None
         }
     }
+
+    pub fn push(&mut self, name: Name) {
+        self.segments.push(name);
+    }
 }
 
 impl FromIterator<Name> for Path {

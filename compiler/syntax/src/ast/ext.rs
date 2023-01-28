@@ -35,6 +35,46 @@ impl ItemModule {
     }
 }
 
+impl ItemImport {
+    pub fn module(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+
+    pub fn rename(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+
+    pub fn items(&self) -> Option<ImportItems> {
+        child(self.syntax())
+    }
+
+    pub fn hiding(&self) -> Option<ImportHiding> {
+        child(self.syntax())
+    }
+}
+
+impl ImportItems {
+    pub fn iter(&self) -> impl Iterator<Item = ImportItem> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl ImportItem {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        child(self.syntax())
+    }
+
+    pub fn rename(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+}
+
+impl ImportHiding {
+    pub fn iter(&self) -> impl Iterator<Item = NameRef> + '_ {
+        children(self.syntax())
+    }
+}
+
 impl NameOwner for ItemValue {
     fn name(&self) -> Option<Name> {
         child(self.syntax())
@@ -58,8 +98,12 @@ impl Name {
         token(self.syntax(), SyntaxKind::IDENT)
     }
 
+    pub fn symbol_token(&self) -> Option<&SyntaxToken> {
+        token(self.syntax(), SyntaxKind::SYMBOL)
+    }
+
     pub fn text<'a>(&self, resolver: &'a dyn Resolver) -> &'a str {
-        self.ident_token().unwrap().resolve_text(resolver)
+        self.syntax().first_token().unwrap().resolve_text(resolver)
     }
 }
 
@@ -68,7 +112,11 @@ impl NameRef {
         token(self.syntax(), SyntaxKind::IDENT)
     }
 
+    pub fn symbol_token(&self) -> Option<&SyntaxToken> {
+        token(self.syntax(), SyntaxKind::SYMBOL)
+    }
+
     pub fn text<'a>(&self, resolver: &'a dyn Resolver) -> &'a str {
-        self.ident_token().unwrap().resolve_text(resolver)
+        self.syntax().first_token().unwrap().resolve_text(resolver)
     }
 }

@@ -13,6 +13,7 @@ use vfs::InFile;
 
 use crate::ast_id::FileAstId;
 use crate::name::Name;
+use crate::path::Path;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ItemTree {
@@ -115,6 +116,7 @@ macro_rules! items {
 
 items! {
     Module in modules -> ast::ItemModule,
+    Import in imports -> ast::ItemImport,
     Fixity in fixities -> ast::ItemFixity,
     Value in values -> ast::ItemValue,
     TypeAlias in type_aliases -> ast::ItemType,
@@ -133,6 +135,12 @@ pub struct Module {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Import {
     pub ast_id: FileAstId<ast::ItemImport>,
+    pub path: Path,
+    pub rename: Option<Name>,
+    pub qualify: Option<Name>,
+    pub hiding: Option<Box<[Name]>>,
+    pub index: usize,
+    pub all: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
