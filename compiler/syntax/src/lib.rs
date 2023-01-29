@@ -30,7 +30,7 @@ impl ToDiagnostic for SyntaxDiagnostic {
 
         match error {
             | SyntaxError::ParseError(e) => match e.reason() {
-                | ErrorReason::Custom(msg) => Diagnostic::new(msg, e.span()),
+                | ErrorReason::Custom(msg) => Diagnostic::new(msg, file, e.span()),
                 | ErrorReason::Unexpected => {
                     let msg = format!(
                         "{}, expected {}",
@@ -56,18 +56,18 @@ impl ToDiagnostic for SyntaxDiagnostic {
                         }
                     );
 
-                    Diagnostic::new(msg, e.span()).with_primary_label(
-                        e.span(),
-                        format!("Unexpected token {}", e.found().unwrap_or(&SyntaxKind::EOF)),
-                    )
+                    Diagnostic::new(msg, file, e.span()).with_primary_label(e.span(), match e.found() {
+                        | Some(found) => format!("Unexpected token {found}"),
+                        | None => "Unexpected end of input".to_string(),
+                    })
                 },
                 | ErrorReason::Unclosed { span, delimiter } => {
-                    Diagnostic::new(format!("Unclosed delimiter {}", delimiter), *span)
+                    Diagnostic::new(format!("Unclosed delimiter {}", delimiter), file, *span)
                         .with_primary_label(*span, format!("Unclosed delimiter {}", delimiter))
-                        .with_secondary_label(
-                            InFile::new(file, e.span()),
-                            format!("Must be closed before this {}", e.found().unwrap_or(&SyntaxKind::EOF)),
-                        )
+                        .with_secondary_label(InFile::new(file, e.span()), match e.found() {
+                            | Some(found) => format!("Must be closed before this {found}"),
+                            | None => "Must be closed before the end of the input".to_string(),
+                        })
                 },
             },
         }

@@ -10,7 +10,10 @@ pub struct Path {
 
 impl Path {
     pub fn from_ast(db: &dyn Db, ast: ast::Path) -> Self {
-        ast.segments().map(|s| s.as_name(db)).collect()
+        ast.segments()
+            .filter_map(|s| s.name_ref())
+            .map(|n| n.as_name(db))
+            .collect()
     }
 
     pub fn len(&self) -> usize {
@@ -27,6 +30,10 @@ impl Path {
         } else {
             None
         }
+    }
+
+    pub fn last(&self) -> Name {
+        *self.segments.last().unwrap()
     }
 
     pub fn push(&mut self, name: Name) {

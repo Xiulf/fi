@@ -1,3 +1,5 @@
+#![feature(iterator_try_collect)]
+
 use std::path::PathBuf;
 
 use base_db::libs::LibId;
@@ -86,7 +88,16 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
     };
 
     let mut driver = Driver::default();
-    let files = driver.load_files(args.files)?;
+    let mut files = Vec::with_capacity(args.files.len());
+
+    for file in args.files {
+        let str = file.as_os_str().to_str().unwrap();
+        let mut glob = glob::glob(str)?;
+
+        files.append(&mut glob.try_collect()?);
+    }
+
+    let files = driver.load_files(files)?;
     let lib = driver.create_lib(files);
 
     match cmd {

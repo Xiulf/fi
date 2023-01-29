@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 arena = { git = "https://github.com/Xiulf/arena", version = "0.1.0" }
 base_db = { version = "0.1.0", path = "../base_db" }
+diagnostics = { version = "0.1.0", path = "../diagnostics" }
 ra_ap_stdx = "0.0.149"
 rustc-hash = "1.1.0"
 salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }

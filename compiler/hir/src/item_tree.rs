@@ -1,4 +1,4 @@
-mod lower;
+pub mod lower;
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -9,6 +9,7 @@ use arena::{Arena, Idx};
 use base_db::input::File;
 pub use lower::query;
 use syntax::ast::{self, AstNode};
+pub use syntax::ast::{Assoc, Prec};
 use vfs::InFile;
 
 use crate::ast_id::FileAstId;
@@ -147,7 +148,16 @@ pub struct Import {
 pub struct Fixity {
     pub ast_id: FileAstId<ast::ItemFixity>,
     pub name: Name,
+    pub value: Path,
     pub is_type: bool,
+    pub kind: FixityKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FixityKind {
+    Infix(Assoc, Prec),
+    Prefix,
+    Postfix,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

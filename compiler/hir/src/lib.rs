@@ -3,10 +3,12 @@
 pub mod ast_id;
 pub mod data;
 pub mod def_map;
+pub mod diagnostics;
 pub mod id;
 pub mod item_tree;
 pub mod name;
 pub mod path;
+pub mod per_ns;
 
 use base_db::libs::LibId;
 

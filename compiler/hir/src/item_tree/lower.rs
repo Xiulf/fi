@@ -60,7 +60,9 @@ impl Ctx<'_> {
         let items = match item {
             | ast::Item::Module(it) => self.lower_module(it),
             | ast::Item::Import(it) => self.lower_import(it),
+            | ast::Item::Fixity(it) => self.lower_fixity(it),
             | ast::Item::Value(it) => self.lower_value(it),
+            | ast::Item::Type(it) => self.lower_type(it),
             | _ => todo!(),
         };
 
@@ -102,6 +104,31 @@ impl Ctx<'_> {
         Some(imports)
     }
 
+    fn lower_fixity(&mut self, fixity: ast::ItemFixity) -> Option<Vec<Item>> {
+        let resolver = self.db.syntax_interner().read().unwrap();
+        let ast_id = self.ast_map.ast_id(&fixity);
+        let name = fixity.name()?.as_name(self.db);
+        let value = Path::from_ast(self.db, fixity.value()?);
+        let is_type = fixity.is_type();
+        let kind = if fixity.is_prefix() {
+            FixityKind::Prefix
+        } else if fixity.is_postfix() {
+            FixityKind::Postfix
+        } else {
+            FixityKind::Infix(fixity.assoc()?, fixity.prec(&*resolver)?)
+        };
+
+        let data = Fixity {
+            ast_id,
+            name,
+            value,
+            is_type,
+            kind,
+        };
+
+        Some(vec![id(self.tree.data.fixities.alloc(data)).into()])
+    }
+
     fn lower_value(&mut self, value: ast::ItemValue) -> Option<Vec<Item>> {
         let ast_id = self.ast_map.ast_id(&value);
         let name = value.name()?.as_name(self.db);
@@ -109,9 +136,18 @@ impl Ctx<'_> {
 
         Some(vec![id(self.tree.data.values.alloc(data)).into()])
     }
+
+    fn lower_type(&mut self, typ: ast::ItemType) -> Option<Vec<Item>> {
+        let ast_id = self.ast_map.ast_id(&typ);
+        let name = typ.name()?.as_name(self.db);
+        let ctors = Box::new([]);
+        let data = TypeCtor { ast_id, name, ctors };
+
+        Some(vec![id(self.tree.data.type_ctors.alloc(data)).into()])
+    }
 }
 
-fn expand_import(
+pub fn expand_import(
     db: &dyn Db,
     import: InFile<ast::ItemImport>,
     mut cb: impl FnMut(Path, Option<ast::ImportItem>, bool, Option<Name>, Option<Name>, Option<Box<[Name]>>),

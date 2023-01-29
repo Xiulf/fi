@@ -48,8 +48,9 @@ impl Iterator for Lexer<'_> {
             | (c, _) if c.is_xid_start() => self.ident(),
             | (c, _) if c.is_ascii_digit() => self.number(),
             | ('\0', _) if self.current_indent > 0 => self.dedent(0),
-            | ('\0', _) if self.pos > TextSize::of(self.text) => None,
-            | ('\0', _) => self.emit_eof(),
+            // | ('\0', _) if self.pos > TextSize::of(self.text) => None,
+            // | ('\0', _) => self.emit_eof(),
+            | ('\0', _) => None,
             | ('/', '/') => self.comment(),
             | (':', ':') => self.advance2_with(DBL_COLON),
             | ('.', '.') => self.advance2_with(DBL_DOT),
@@ -123,11 +124,11 @@ impl<'input> Lexer<'input> {
         self.advance_with(kind)
     }
 
-    fn emit_eof(&mut self) -> Option<Token> {
-        let token = self.token(EOF);
-        self.advance();
-        token
-    }
+    // fn emit_eof(&mut self) -> Option<Token> {
+    //     let token = self.token(EOF);
+    //     self.advance();
+    //     token
+    // }
 
     fn token(&mut self, kind: SyntaxKind) -> Option<Token> {
         let len = self.pos - self.start;
@@ -166,6 +167,10 @@ impl<'input> Lexer<'input> {
             self.advance();
         }
 
+        while !self.eof() && self.current == '\'' {
+            self.advance();
+        }
+
         match self.current_text() {
             | "as" => self.token(AS_KW),
             | "const" => self.token(CONST_KW),
@@ -183,6 +188,8 @@ impl<'input> Lexer<'input> {
             | "let" => self.token(LET_KW),
             | "match" => self.token(MATCH_KW),
             | "module" => self.token(MODULE_KW),
+            | "postfix" => self.token(POSTFIX_KW),
+            | "prefix" => self.token(PREFIX_KW),
             | "recur" => self.token(RECUR_KW),
             | "return" => self.token(RETURN_KW),
             | "static" => self.token(STATIC_KW),

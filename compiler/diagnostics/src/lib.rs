@@ -1,6 +1,7 @@
 use salsa::storage::HasJar;
 use text_size::TextRange;
 use vfs::in_file::InFile;
+use vfs::File;
 
 pub trait Db: vfs::Db + salsa::DbWithJar<Jar> {}
 
@@ -16,6 +17,7 @@ pub struct Diagnostics(Diagnostic);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
     pub title: String,
+    pub file: File,
     pub range: TextRange,
     pub level: Level,
     pub primary_label: Option<PrimaryLabel>,
@@ -75,8 +77,9 @@ impl Diagnostics {
 }
 
 impl Diagnostic {
-    pub fn new(title: impl ToString, range: TextRange) -> Self {
+    pub fn new(title: impl ToString, file: File, range: TextRange) -> Self {
         Self {
+            file,
             range,
             title: title.to_string(),
             level: Level::Error,

@@ -44,10 +44,9 @@ impl Driver {
     }
 
     pub fn debug(&self, lib: LibId) {
-        use salsa::debug::DebugWithDb;
         let def_map = hir::def_map::query(&self.db, lib);
 
         // eprintln!("{:#?}", lib.debug_all(&self.db));
-        eprintln!("{:#?}", def_map.debug_all(&self.db));
+        tracing::debug!("\n{}", def_map.dump(&self.db));
     }
 }

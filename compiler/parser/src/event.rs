@@ -50,6 +50,12 @@ impl From<((((Self, Self), Self), Self), Self)> for Event {
     }
 }
 
+impl From<(((((Self, Self), Self), Self), Self), Self)> for Event {
+    fn from((((((a, b), c), d), e), f): (((((Self, Self), Self), Self), Self), Self)) -> Self {
+        Self::Node(Box::new([a, b, c, d, e, f]))
+    }
+}
+
 impl FromIterator<Self> for Event {
     fn from_iter<T: IntoIterator<Item = Self>>(iter: T) -> Self {
         let events = <Box<[Event]>>::from_iter(iter);

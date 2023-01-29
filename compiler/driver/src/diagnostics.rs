@@ -15,18 +15,30 @@ impl Driver {
             files: Default::default(),
         };
 
+        let mut n_errors = 0;
         for file in lib.source_root(&self.db).iter(&self.db) {
             base_db::parse(&self.db, file);
             let diagnostics = base_db::parse::accumulated::<Diagnostics>(&self.db, file);
+            n_errors += diagnostics.len();
             for diag in diagnostics {
-                self.report_diagnostic(&mut cache, file, diag)?;
+                self.report_diagnostic(&mut cache, diag)?;
             }
+        }
+
+        if n_errors > 0 {
+            return Ok(());
+        }
+
+        hir::def_map::query(&self.db, lib);
+        let diagnostics = hir::def_map::query::accumulated::<Diagnostics>(&self.db, lib);
+        for diag in diagnostics {
+            self.report_diagnostic(&mut cache, diag)?;
         }
 
         Ok(())
     }
 
-    fn report_diagnostic(&self, cache: &mut DbCache, file: File, diag: Diagnostic) -> io::Result<()> {
+    fn report_diagnostic(&self, cache: &mut DbCache, diag: Diagnostic) -> io::Result<()> {
         let (report_kind, color) = match diag.level {
             | Level::Error => (ReportKind::Error, Color::Red),
             | Level::Warning => (ReportKind::Warning, Color::Yellow),
@@ -34,13 +46,16 @@ impl Driver {
         };
 
         let mut colors = ColorGenerator::new();
-        let mut report = Report::build(report_kind, file, diag.range.start().into()).with_message(diag.title);
+        let mut report = Report::build(report_kind, diag.file, diag.range.start().into()).with_message(diag.title);
 
         if let Some(ann) = diag.primary_label {
-            let span = (file, usize::from(ann.range.start())..usize::from(ann.range.end()));
+            let span = (diag.file, usize::from(ann.range.start())..usize::from(ann.range.end()));
             report = report.with_label(Label::new(span).with_message(ann.message).with_color(color));
         } else {
-            let span = (file, usize::from(diag.range.start())..usize::from(diag.range.end()));
+            let span = (
+                diag.file,
+                usize::from(diag.range.start())..usize::from(diag.range.end()),
+            );
             report = report.with_label(Label::new(span).with_color(color));
         }
 

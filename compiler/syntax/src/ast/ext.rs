@@ -25,6 +25,24 @@ impl SourceFile {
     }
 }
 
+impl Exports {
+    pub fn iter(&self) -> impl Iterator<Item = Export> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl ExportName {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        child(self.syntax())
+    }
+}
+
+impl ExportModule {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        child(self.syntax())
+    }
+}
+
 impl ItemModule {
     pub fn name(&self) -> Option<Path> {
         child(self.syntax())
@@ -32,6 +50,10 @@ impl ItemModule {
 
     pub fn items(&self) -> impl Iterator<Item = Item> + '_ {
         children(self.syntax())
+    }
+
+    pub fn exports(&self) -> Option<Exports> {
+        child(self.syntax())
     }
 }
 
@@ -75,7 +97,66 @@ impl ImportHiding {
     }
 }
 
+impl NameOwner for ItemFixity {
+    fn name(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+}
+
+impl ItemFixity {
+    pub fn value(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+
+    pub fn is_type(&self) -> bool {
+        token(self.syntax(), SyntaxKind::TYPE_KW).is_some()
+    }
+
+    pub fn is_prefix(&self) -> bool {
+        token(self.syntax(), SyntaxKind::PREFIX_KW).is_some()
+    }
+
+    pub fn is_postfix(&self) -> bool {
+        token(self.syntax(), SyntaxKind::POSTFIX_KW).is_some()
+    }
+
+    pub fn assoc(&self) -> Option<Assoc> {
+        token(self.syntax(), SyntaxKind::INFIX_KW).map_or_else(
+            || {
+                token(self.syntax(), SyntaxKind::INFIXL_KW).map_or_else(
+                    || token(self.syntax(), SyntaxKind::INFIXR_KW).map(|_| Assoc::Right),
+                    |_| Some(Assoc::Left),
+                )
+            },
+            |_| Some(Assoc::None),
+        )
+    }
+
+    pub fn prec(&self, resolver: &dyn Resolver) -> Option<Prec> {
+        let int = token(self.syntax(), SyntaxKind::INT)?;
+        let text = int.resolve_text(resolver);
+
+        text.parse().map(Prec).ok()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Assoc {
+    None,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Prec(usize);
+
 impl NameOwner for ItemValue {
+    fn name(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+}
+
+impl NameOwner for ItemType {
     fn name(&self) -> Option<Name> {
         child(self.syntax())
     }
@@ -88,35 +169,27 @@ impl Path {
 }
 
 impl PathSegment {
-    pub fn text<'a>(&self, resolver: &'a dyn Resolver) -> &'a str {
-        self.syntax().first_token().unwrap().resolve_text(resolver)
+    pub fn name_ref(&self) -> Option<NameRef> {
+        child(self.syntax())
     }
 }
 
 impl Name {
     pub fn ident_token(&self) -> Option<&SyntaxToken> {
-        token(self.syntax(), SyntaxKind::IDENT)
+        token(self.syntax(), SyntaxKind::IDENT).or_else(|| token(self.syntax(), SyntaxKind::TYPE))
     }
 
     pub fn symbol_token(&self) -> Option<&SyntaxToken> {
         token(self.syntax(), SyntaxKind::SYMBOL)
-    }
-
-    pub fn text<'a>(&self, resolver: &'a dyn Resolver) -> &'a str {
-        self.syntax().first_token().unwrap().resolve_text(resolver)
     }
 }
 
 impl NameRef {
     pub fn ident_token(&self) -> Option<&SyntaxToken> {
-        token(self.syntax(), SyntaxKind::IDENT)
+        token(self.syntax(), SyntaxKind::IDENT).or_else(|| token(self.syntax(), SyntaxKind::TYPE))
     }
 
     pub fn symbol_token(&self) -> Option<&SyntaxToken> {
         token(self.syntax(), SyntaxKind::SYMBOL)
-    }
-
-    pub fn text<'a>(&self, resolver: &'a dyn Resolver) -> &'a str {
-        self.syntax().first_token().unwrap().resolve_text(resolver)
     }
 }

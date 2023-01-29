@@ -13,7 +13,7 @@ pub struct Token {
 #[repr(u16)]
 pub enum SyntaxKind {
     ERROR,
-    EOF,
+    // EOF,
     WHITESPACE,
     COMMENT,
 
@@ -54,6 +54,8 @@ pub enum SyntaxKind {
     INFIXL_KW,
     INFIXR_KW,
     INFIX_KW,
+    PREFIX_KW,
+    POSTFIX_KW,
     FOREIGN_KW,
     CONST_KW,
     STATIC_KW,
@@ -76,6 +78,13 @@ pub enum SyntaxKind {
 
     SOURCE_FILE,
 
+    ATTR,
+    ATTR_ARGS,
+    ATTR_ARG_IDENT,
+    ATTR_ARG_CALL,
+    ATTR_ARG_EQUAL,
+    ATTR_ARG_LIT,
+
     ITEM_MODULE,
     ITEM_IMPORT,
     ITEM_FIXITY,
@@ -84,11 +93,20 @@ pub enum SyntaxKind {
     ITEM_TRAIT,
     ITEM_IMPL,
 
+    EXPORTS,
+    EXPORT_NAME,
+    EXPORT_MODULE,
+
     IMPORT_ITEMS,
     IMPORT_ITEM,
     IMPORT_HIDING,
 
     CTOR,
+
+    LIT_INT,
+    LIT_FLOAT,
+    LIT_CHAR,
+    LIT_STRING,
 
     PATH,
     PATH_SEGMENT,
@@ -109,7 +127,7 @@ impl fmt::Display for SyntaxKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             | Self::ERROR => "{error}",
-            | Self::EOF => "end of input",
+            // | Self::EOF => "end of input",
             | Self::WHITESPACE => "whitespace",
             | Self::COMMENT => "comment",
             | Self::LYT_START => "indentation",

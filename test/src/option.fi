@@ -1,0 +1,5 @@
+module Data.Option =
+
+type Option t =
+    | None
+    | Some t

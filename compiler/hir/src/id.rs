@@ -3,6 +3,7 @@ use base_db::libs::LibId;
 
 use crate::item_tree::{self, ItemTreeId};
 use crate::name::Name;
+use crate::Db;
 
 #[salsa::interned]
 pub struct ModuleId {
@@ -79,6 +80,48 @@ pub enum ItemId {
     ImplId(ImplId),
 }
 
+impl ItemId {
+    pub fn name(self, db: &dyn Db) -> Option<Name> {
+        match self {
+            | Self::ModuleId(id) => Some(id.name(db)),
+            | Self::FixityId(id) => {
+                let it = id.it(db);
+                let tree = item_tree::query(db, it.file);
+                Some(tree[it.value].name)
+            },
+            | Self::ValueId(id) => {
+                let it = id.it(db);
+                let tree = item_tree::query(db, it.file);
+                Some(tree[it.value].name)
+            },
+            | Self::TypeAliasId(id) => {
+                let it = id.it(db);
+                let tree = item_tree::query(db, it.file);
+                Some(tree[it.value].name)
+            },
+            | Self::TypeCtorId(id) => {
+                let it = id.it(db);
+                let tree = item_tree::query(db, it.file);
+                Some(tree[it.value].name)
+            },
+            | Self::CtorId(id) => {
+                let it = id.type_ctor(db).it(db);
+                let tree = item_tree::query(db, it.file);
+                Some(tree[id.local_id(db)].name)
+            },
+            | Self::TraitId(id) => {
+                let it = id.it(db);
+                let tree = item_tree::query(db, it.file);
+                Some(tree[it.value].name)
+            },
+            | Self::ImplId(_) => None,
+        }
+    }
+}
+
 ra_ap_stdx::impl_from!(LibId, ModuleId for ModuleParentId);
 ra_ap_stdx::impl_from!(ModuleId, TraitId, ImplId for ContainerId);
 ra_ap_stdx::impl_from!(ModuleId, FixityId, ValueId, TypeAliasId, TypeCtorId, CtorId, TraitId, ImplId for ItemId);
+
+impl ra_ap_stdx::hash::NoHashHashable for ModuleId {
+}
