@@ -174,6 +174,24 @@ impl NameOwner for Ctor {
     }
 }
 
+impl NameOwner for ItemTrait {
+    fn name(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+}
+
+impl ItemTrait {
+    pub fn items(&self) -> impl Iterator<Item = ItemValue> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl ItemImpl {
+    pub fn items(&self) -> impl Iterator<Item = ItemValue> + '_ {
+        children(self.syntax())
+    }
+}
+
 impl Path {
     pub fn segments(&self) -> impl Iterator<Item = PathSegment> + '_ {
         children(self.syntax())

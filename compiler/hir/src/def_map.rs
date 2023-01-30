@@ -5,18 +5,19 @@ use base_db::libs::LibId;
 use diagnostics::Diagnostics;
 use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
 use syntax::ast::{self, AstNode};
+use syntax::ptr::AstPtr;
 use vfs::InFile;
 
 use crate::ast_id::AstId;
 use crate::data::ModuleData;
-use crate::diagnostics::UnresolvedImport;
+use crate::diagnostics::{UnknownExport, UnknownName, UnresolvedImport};
 use crate::id::{
     ContainerId, CtorId, FixityId, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId, TypeCtorId, ValueId,
 };
 use crate::item_tree::{Item, ItemTreeId, LocalItemTreeId};
 use crate::name::{AsName, Name};
 use crate::path::Path;
-use crate::per_ns::PerNs;
+use crate::per_ns::{Namespace, PerNs};
 use crate::{item_tree, Db};
 
 #[salsa::tracked]
@@ -38,9 +39,11 @@ pub struct ModuleScope {
 #[derive(Default, Debug, PartialEq, Eq)]
 struct ModuleExports {
     modules: NoHashHashSet<ModuleId>,
-    names: NoHashHashSet<Name>,
+    names: NoHashHashMap<Name, Option<ExportSrc>>,
     export_all: bool,
 }
+
+type ExportSrc = InFile<AstPtr<ast::NameRef>>;
 
 impl ModuleScope {
     pub fn get(&self, name: Name) -> PerNs<ItemId> {
@@ -66,6 +69,7 @@ pub fn query(db: &dyn Db, lib: LibId) -> DefMap {
     }
 
     ctx.resolve_imports();
+    ctx.verify_exports();
 
     let modules = ctx
         .modules
@@ -183,7 +187,7 @@ impl ModuleCtx<'_, '_> {
                     data.scope.modules.insert(name, ItemId::ModuleId(id));
 
                     if export {
-                        data.scope.exports.names.insert(name);
+                        data.scope.exports.names.insert(name, None);
                     }
                 },
             }
@@ -230,7 +234,7 @@ impl ModuleCtx<'_, '_> {
 
         if let None = exports {
             for &(name, _) in &scope.items {
-                scope.exports.names.insert(name);
+                scope.exports.names.insert(name, None);
             }
             return;
         }
@@ -239,21 +243,30 @@ impl ModuleCtx<'_, '_> {
             match export {
                 | syntax::ast::Export::Name(ex) => {
                     if let Some(name) = ex.name_ref() {
-                        scope.exports.names.insert(name.as_name(self.base.db));
+                        let src = InFile::new(self.file, AstPtr::new(&name));
+                        scope.exports.names.insert(name.as_name(self.base.db), Some(src));
                     }
                 },
                 | syntax::ast::Export::Module(ex) => {
-                    if let Some(name) = ex.name_ref() {
-                        let name = name.as_name(self.base.db);
+                    if let Some(name_ref) = ex.name_ref() {
+                        let name = name_ref.as_name(self.base.db);
                         if name == self.module.unwrap().name(self.base.db) {
                             for &(name, _) in &scope.items {
-                                scope.exports.names.insert(name);
+                                scope.exports.names.insert(name, None);
                             }
                         } else {
                             let module = match scope.modules.get(&name) {
                                 | Some(&ItemId::ModuleId(m)) => m,
                                 | Some(_) => unreachable!(),
-                                | None => continue, // TODO: report error
+                                | None => {
+                                    Diagnostics::emit(self.base.db, UnknownName {
+                                        file: self.file,
+                                        ast: AstPtr::new(&name_ref),
+                                        ns: Namespace::Modules,
+                                        name,
+                                    });
+                                    continue;
+                                },
                             };
 
                             scope.exports.modules.insert(module);
@@ -376,6 +389,21 @@ impl ModuleCtx<'_, '_> {
 }
 
 impl Ctx<'_> {
+    fn verify_exports(&self) {
+        for (_, module) in &self.modules {
+            for (&name, src) in &module.scope.exports.names {
+                if module.scope.get(name).is_none() {
+                    let src = src.as_ref().unwrap();
+                    Diagnostics::emit(self.db, UnknownExport {
+                        file: src.file,
+                        ast: src.value,
+                        name,
+                    });
+                }
+            }
+        }
+    }
+
     fn resolve_imports(&mut self) {
         let mut prev_unresolved = self.imports.len() + 1;
 
@@ -396,7 +424,6 @@ impl Ctx<'_> {
             let data = &item_tree[directive.import.src.value];
 
             Diagnostics::emit(self.db, UnresolvedImport {
-                module: directive.module_id,
                 ast: AstId(InFile::new(directive.import.src.file, data.ast_id)),
                 index: data.index,
             });
@@ -561,7 +588,7 @@ impl ModuleExports {
             return true;
         }
 
-        self.names.contains(&name)
+        self.names.contains_key(&name)
     }
 }
 
@@ -578,7 +605,7 @@ impl DefMap {
             if scope.exports.export_all {
                 format_to!(out, "*");
             } else {
-                for name in &scope.exports.names {
+                for (name, _) in &scope.exports.names {
                     format_to!(out, "{}, ", name.display(db));
                 }
 

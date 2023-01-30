@@ -108,8 +108,10 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
 }
 
 fn check(_args: CheckArgs, driver: Driver, lib: LibId) -> anyhow::Result<()> {
-    driver.report_diagnostics(lib)?;
-    driver.debug(lib);
+    if !driver.report_diagnostics(lib)? {
+        driver.debug(lib);
+    }
+
     Ok(())
 }
 

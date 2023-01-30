@@ -9,7 +9,7 @@ use super::*;
 use crate::db::Database;
 
 impl Driver {
-    pub fn report_diagnostics(&self, lib: LibId) -> io::Result<()> {
+    pub fn report_diagnostics(&self, lib: LibId) -> io::Result<bool> {
         let mut cache = DbCache {
             db: &self.db,
             files: Default::default(),
@@ -26,16 +26,17 @@ impl Driver {
         }
 
         if n_errors > 0 {
-            return Ok(());
+            return Ok(true);
         }
 
         hir::def_map::query(&self.db, lib);
         let diagnostics = hir::def_map::query::accumulated::<Diagnostics>(&self.db, lib);
         for diag in diagnostics {
             self.report_diagnostic(&mut cache, diag)?;
+            n_errors += 1;
         }
 
-        Ok(())
+        Ok(n_errors > 0)
     }
 
     fn report_diagnostic(&self, cache: &mut DbCache, diag: Diagnostic) -> io::Result<()> {

@@ -4,11 +4,9 @@ use syntax::ptr::SyntaxNodePtr;
 use vfs::InFile;
 
 use crate::ast_id::AstId;
-use crate::id::ModuleId;
 use crate::Db;
 
 pub struct UnresolvedImport {
-    pub module: ModuleId,
     pub ast: AstId<syntax::ast::ItemImport>,
     pub index: usize,
 }

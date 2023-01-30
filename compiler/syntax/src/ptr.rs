@@ -92,6 +92,9 @@ impl<N: AstNode> Clone for AstPtr<N> {
     }
 }
 
+impl<N: AstNode> Copy for AstPtr<N> {
+}
+
 impl<N: AstNode> PartialEq for AstPtr<N> {
     fn eq(&self, other: &Self) -> bool {
         self.raw == other.raw

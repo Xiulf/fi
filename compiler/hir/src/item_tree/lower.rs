@@ -64,7 +64,8 @@ impl Ctx<'_> {
             | ast::Item::Fixity(it) => self.lower_fixity(it),
             | ast::Item::Value(it) => self.lower_value(it),
             | ast::Item::Type(it) => self.lower_type(it),
-            | _ => todo!(),
+            | ast::Item::Trait(it) => self.lower_trait(it),
+            | ast::Item::Impl(it) => self.lower_impl(it),
         };
 
         items
@@ -153,6 +154,41 @@ impl Ctx<'_> {
         let data = Ctor { ast_id, name };
 
         Some(self.tree.data.ctors.alloc(data))
+    }
+
+    fn lower_trait(&mut self, trait_: ast::ItemTrait) -> Option<Vec<Item>> {
+        let ast_id = self.ast_map.ast_id(&trait_);
+        let name = trait_.name()?.as_name(self.db);
+        let items = trait_
+            .items()
+            .filter_map(|it| self.lower_value(it))
+            .flatten()
+            .map(|it| match it {
+                | Item::Value(it) => it,
+                | _ => unreachable!(),
+            })
+            .collect();
+
+        let data = Trait { ast_id, name, items };
+
+        Some(vec![id(self.tree.data.traits.alloc(data)).into()])
+    }
+
+    fn lower_impl(&mut self, impl_: ast::ItemImpl) -> Option<Vec<Item>> {
+        let ast_id = self.ast_map.ast_id(&impl_);
+        let items = impl_
+            .items()
+            .filter_map(|it| self.lower_value(it))
+            .flatten()
+            .map(|it| match it {
+                | Item::Value(it) => it,
+                | _ => unreachable!(),
+            })
+            .collect();
+
+        let data = Impl { ast_id, items };
+
+        Some(vec![id(self.tree.data.impls.alloc(data)).into()])
     }
 }
 

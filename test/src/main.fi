@@ -10,12 +10,12 @@ main = 0
 id (a :: t) =
     a
 
-// type X =
-//     | Y
-//     | Z
+type X =
+    | Y
+    | Z
 
-// trait Iterator self it =
-//     next :: self -> Option it
+trait Iterator self it =
+    next :: self -> Option it
 
-// impl Iterator Iter Item =
-//     next self = _
+impl Iterator Iter Item =
+    next self = _

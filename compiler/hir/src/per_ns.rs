@@ -5,6 +5,13 @@ pub struct PerNs<T> {
     pub modules: Option<T>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Namespace {
+    Types,
+    Values,
+    Modules,
+}
+
 impl<T> PerNs<T> {
     pub fn new(types: Option<T>, values: Option<T>, modules: Option<T>) -> Self {
         Self { types, values, modules }
