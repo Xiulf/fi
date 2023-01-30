@@ -5,6 +5,7 @@ use vfs::File;
 
 use super::*;
 use crate::ast_id::AstIdMap;
+use crate::id::LocalCtorId;
 use crate::name::AsName;
 use crate::path::Path;
 use crate::Db;
@@ -140,10 +141,18 @@ impl Ctx<'_> {
     fn lower_type(&mut self, typ: ast::ItemType) -> Option<Vec<Item>> {
         let ast_id = self.ast_map.ast_id(&typ);
         let name = typ.name()?.as_name(self.db);
-        let ctors = Box::new([]);
+        let ctors = typ.ctors().filter_map(|c| self.lower_ctor(c)).collect();
         let data = TypeCtor { ast_id, name, ctors };
 
         Some(vec![id(self.tree.data.type_ctors.alloc(data)).into()])
+    }
+
+    fn lower_ctor(&mut self, ctor: ast::Ctor) -> Option<LocalCtorId> {
+        let ast_id = self.ast_map.ast_id(&ctor);
+        let name = ctor.name()?.as_name(self.db);
+        let data = Ctor { ast_id, name };
+
+        Some(self.tree.data.ctors.alloc(data))
     }
 }
 

@@ -4,7 +4,7 @@ use base_db::input::File;
 use base_db::libs::LibId;
 use diagnostics::Diagnostics;
 use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
-use syntax::ast::AstNode;
+use syntax::ast::{self, AstNode};
 use vfs::InFile;
 
 use crate::ast_id::AstId;
@@ -14,7 +14,7 @@ use crate::id::{
     ContainerId, CtorId, FixityId, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId, TypeCtorId, ValueId,
 };
 use crate::item_tree::{Item, ItemTreeId, LocalItemTreeId};
-use crate::name::Name;
+use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::per_ns::PerNs;
 use crate::{item_tree, Db};
@@ -31,7 +31,7 @@ pub struct ModuleScope {
     values: NoHashHashMap<Name, ItemId>,
     modules: NoHashHashMap<Name, ItemId>,
     exports: ModuleExports,
-    items: Vec<ItemId>,
+    items: Vec<(Name, ItemId)>,
     impls: Vec<ImplId>,
 }
 
@@ -94,6 +94,7 @@ struct ModuleCtx<'a, 'b> {
 struct RawModuleData {
     scope: ModuleScope,
     all_imports: AllImports,
+    imported_by: NoHashHashSet<ModuleId>,
 }
 
 #[derive(Default, Debug)]
@@ -139,16 +140,20 @@ impl Ctx<'_> {
         let module = source_file.module()?;
         let path = Path::from_ast(ctx.base.db, module.name()?);
 
-        ctx.lower(lib.into(), path, item_tree.items());
+        ctx.lower(lib.into(), path, &module, item_tree.items());
         Some(())
+    }
+
+    fn data_of(&mut self, m: ModuleId) -> &mut RawModuleData {
+        self.modules.get_mut(&m).unwrap()
     }
 }
 
 impl ModuleCtx<'_, '_> {
-    fn lower(&mut self, mut parent: ModuleParentId, path: Path, items: &[Item]) {
+    fn lower(&mut self, mut parent: ModuleParentId, path: Path, module: &ast::ItemModule, items: &[Item]) {
         for (i, name) in path.iter().enumerate() {
             let id = ModuleId::new(self.base.db, parent, name);
-            self.init_module(parent, id, name);
+            self.init_module(parent, id, name, true);
             parent = id.into();
 
             if i == path.len() - 1 {
@@ -158,13 +163,14 @@ impl ModuleCtx<'_, '_> {
                     self.lower_item(id, item);
                 }
 
+                self.lower_exports(module.exports());
                 self.module = m;
                 return;
             }
         }
     }
 
-    fn init_module(&mut self, parent: ModuleParentId, id: ModuleId, name: Name) {
+    fn init_module(&mut self, parent: ModuleParentId, id: ModuleId, name: Name, export: bool) {
         if !self.base.modules.contains_key(&id) {
             self.base.modules.insert(id, RawModuleData::default());
 
@@ -173,20 +179,19 @@ impl ModuleCtx<'_, '_> {
                     self.base.root_modules.insert(name, id);
                 },
                 | ModuleParentId::ModuleId(parent) => {
-                    self.base
-                        .modules
-                        .get_mut(&parent)
-                        .unwrap()
-                        .scope
-                        .modules
-                        .insert(name, ItemId::ModuleId(id));
+                    let data = self.base.modules.get_mut(&parent).unwrap();
+                    data.scope.modules.insert(name, ItemId::ModuleId(id));
+
+                    if export {
+                        data.scope.exports.names.insert(name);
+                    }
                 },
             }
         }
     }
 
     fn data(&mut self) -> &mut RawModuleData {
-        self.base.modules.get_mut(&self.module.unwrap()).unwrap()
+        self.base.data_of(self.module.unwrap())
     }
 
     fn lower_item(&mut self, module: ModuleId, item: Item) {
@@ -206,7 +211,7 @@ impl ModuleCtx<'_, '_> {
         let item_tree = self.item_tree.clone();
         let data = &item_tree[it];
         let id = ModuleId::new(self.base.db, parent, data.name);
-        self.init_module(parent, id, data.name);
+        self.init_module(parent, id, data.name, false);
         let m = self.module.replace(id);
 
         for &item in data.items.iter() {
@@ -221,16 +226,42 @@ impl ModuleCtx<'_, '_> {
     }
 
     fn lower_exports(&mut self, exports: Option<syntax::ast::Exports>) {
+        let scope = &mut self.base.modules.get_mut(&self.module.unwrap()).unwrap().scope;
+
         if let None = exports {
-            let scope = &mut self.base.modules.get_mut(&self.module.unwrap()).unwrap().scope;
-            for item in &scope.items {
-                let name = item.name(self.base.db).unwrap();
+            for &(name, _) in &scope.items {
                 scope.exports.names.insert(name);
             }
             return;
         }
 
-        for export in exports.unwrap().iter() {}
+        for export in exports.unwrap().iter() {
+            match export {
+                | syntax::ast::Export::Name(ex) => {
+                    if let Some(name) = ex.name_ref() {
+                        scope.exports.names.insert(name.as_name(self.base.db));
+                    }
+                },
+                | syntax::ast::Export::Module(ex) => {
+                    if let Some(name) = ex.name_ref() {
+                        let name = name.as_name(self.base.db);
+                        if name == self.module.unwrap().name(self.base.db) {
+                            for &(name, _) in &scope.items {
+                                scope.exports.names.insert(name);
+                            }
+                        } else {
+                            let module = match scope.modules.get(&name) {
+                                | Some(&ItemId::ModuleId(m)) => m,
+                                | Some(_) => unreachable!(),
+                                | None => continue, // TODO: report error
+                            };
+
+                            scope.exports.modules.insert(module);
+                        }
+                    }
+                },
+            }
+        }
     }
 
     fn lower_import(&mut self, module: ModuleId, it: LocalItemTreeId<item_tree::Import>) {
@@ -247,8 +278,8 @@ impl ModuleCtx<'_, '_> {
                 | Some(id) => id,
                 | None => {
                     let module_id = ModuleId::new(self.base.db, module.into(), qualify);
-                    self.init_module(module.into(), module_id, qualify);
-                    // self.data().scope.modules.insert(qualify, module_id.into());
+                    self.init_module(module.into(), module_id, qualify, false);
+                    self.base.modules.get_mut(&module_id).unwrap().scope.exports.export_all = true;
                     module_id
                 },
             }
@@ -275,7 +306,7 @@ impl ModuleCtx<'_, '_> {
         let id = FixityId::new(self.base.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::FixityId(id);
 
-        self.data().scope.items.push(item);
+        self.data().scope.items.push((data.name, item));
 
         if data.is_type {
             self.data().scope.types.insert(data.name, item);
@@ -290,7 +321,7 @@ impl ModuleCtx<'_, '_> {
         let id = ValueId::new(self.base.db, container, ItemTreeId::new(self.file, it));
         let item = ItemId::ValueId(id);
 
-        self.data().scope.items.push(item);
+        self.data().scope.items.push((data.name, item));
         self.data().scope.values.insert(data.name, item);
     }
 
@@ -300,7 +331,7 @@ impl ModuleCtx<'_, '_> {
         let id = TypeAliasId::new(self.base.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::TypeAliasId(id);
 
-        self.data().scope.items.push(item);
+        self.data().scope.items.push((data.name, item));
         self.data().scope.types.insert(data.name, item);
     }
 
@@ -310,7 +341,7 @@ impl ModuleCtx<'_, '_> {
         let id = TypeCtorId::new(self.base.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::TypeCtorId(id);
 
-        self.data().scope.items.push(item);
+        self.data().scope.items.push((data.name, item));
         self.data().scope.types.insert(data.name, item);
 
         for &local_id in data.ctors.iter() {
@@ -318,7 +349,7 @@ impl ModuleCtx<'_, '_> {
             let id = CtorId::new(self.base.db, id, local_id);
             let item = ItemId::CtorId(id);
 
-            self.data().scope.items.push(item);
+            self.data().scope.items.push((data.name, item));
             self.data().scope.values.insert(data.name, item);
         }
     }
@@ -329,7 +360,7 @@ impl ModuleCtx<'_, '_> {
         let id = TraitId::new(self.base.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::TraitId(id);
 
-        self.data().scope.items.push(item);
+        self.data().scope.items.push((data.name, item));
         self.data().scope.types.insert(data.name, item);
 
         for &item in data.items.iter() {
@@ -407,13 +438,40 @@ impl Ctx<'_> {
             | _ => unreachable!(),
         };
 
-        let resolutions = self.modules[&module]
-            .scope
-            .resolutions()
+        fn exports(
+            modules: &NoHashHashMap<ModuleId, RawModuleData>,
+            m: ModuleId,
+        ) -> Box<dyn Iterator<Item = (Name, PerNs<ItemId>)> + '_> {
+            Box::new(
+                modules[&m]
+                    .scope
+                    .resolutions()
+                    .filter(move |(n, _)| modules[&m].scope.exports.is_exported(*n))
+                    .chain(
+                        modules[&m]
+                            .scope
+                            .exports
+                            .modules
+                            .iter()
+                            .flat_map(|&m2| exports(modules, m2)),
+                    ),
+            )
+        }
+
+        let resolutions = exports(&self.modules, module)
             .filter(|(n, _)| !directive.import.hiding.contains(n))
             .collect::<Vec<_>>();
 
         self.update(directive.module_id, &resolutions, ImportType::All);
+        self.add_reexport(module, directive.module_id);
+    }
+
+    fn add_reexport(&mut self, from: ModuleId, to: ModuleId) {
+        self.data_of(from).imported_by.insert(to);
+
+        for module in self.modules[&from].scope.exports.modules.clone() {
+            self.add_reexport(module, to);
+        }
     }
 
     fn update(&mut self, module: ModuleId, resolutions: &[(Name, PerNs<ItemId>)], import_type: ImportType) {
@@ -426,6 +484,16 @@ impl Ctx<'_> {
 
         if !changed {
             return;
+        }
+
+        let resolutions = resolutions
+            .iter()
+            .copied()
+            .filter(|(n, _)| data.scope.exports.is_exported(*n))
+            .collect::<Vec<_>>();
+
+        for id in data.imported_by.clone() {
+            self.update(id, &resolutions, ImportType::All);
         }
     }
 }
@@ -487,28 +555,53 @@ impl ModuleScope {
     }
 }
 
+impl ModuleExports {
+    pub fn is_exported(&self, name: Name) -> bool {
+        if self.export_all {
+            return true;
+        }
+
+        self.names.contains(&name)
+    }
+}
+
 impl DefMap {
     pub fn dump(self, db: &dyn Db) -> String {
         use ra_ap_stdx::format_to;
         let mut out = String::new();
 
         for (id, module) in self.modules(db) {
+            let scope = module.scope(db);
             format_to!(out, "{} - {id:?}:\n", id.name(db).display(db));
-            format_to!(out, "  types:\n");
+            format_to!(out, "  exports: ");
 
-            for (name, item) in &module.scope(db).types {
+            if scope.exports.export_all {
+                format_to!(out, "*");
+            } else {
+                for name in &scope.exports.names {
+                    format_to!(out, "{}, ", name.display(db));
+                }
+
+                for id in &scope.exports.modules {
+                    format_to!(out, "module {}, ", id.name(db).display(db));
+                }
+            }
+
+            format_to!(out, "\n  types:\n");
+
+            for (name, item) in &scope.types {
                 format_to!(out, "    - {}: {:?}\n", name.display(db), item);
             }
 
             format_to!(out, "  values:\n");
 
-            for (name, item) in &module.scope(db).values {
+            for (name, item) in &scope.values {
                 format_to!(out, "    - {}: {:?}\n", name.display(db), item);
             }
 
             format_to!(out, "  modules:\n");
 
-            for (name, item) in &module.scope(db).modules {
+            for (name, item) in &scope.modules {
                 format_to!(out, "    - {}: {:?}\n", name.display(db), item);
             }
         }

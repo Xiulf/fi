@@ -162,6 +162,18 @@ impl NameOwner for ItemType {
     }
 }
 
+impl ItemType {
+    pub fn ctors(&self) -> impl Iterator<Item = Ctor> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl NameOwner for Ctor {
+    fn name(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+}
+
 impl Path {
     pub fn segments(&self) -> impl Iterator<Item = PathSegment> + '_ {
         children(self.syntax())

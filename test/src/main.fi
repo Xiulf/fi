@@ -1,5 +1,6 @@
 module Test (module Test, default) =
 
+import Other
 import Core.Default
 import Core.Ops ((+))
 import Data.Option hiding (Option) as S

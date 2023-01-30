@@ -74,8 +74,8 @@ impl AstIdMap {
         bfs(node, |it| {
             if let Some(item) = ast::Item::cast(it) {
                 res.alloc(item.syntax());
-                // } else if let Some(item) = ast::Ctor::cast(it) {
-                //     res.alloc(item.syntax());
+            } else if let Some(item) = ast::Ctor::cast(it) {
+                res.alloc(item.syntax());
             }
         });
 
