@@ -32,6 +32,7 @@ pub struct ItemTreeData {
     type_aliases: Arena<TypeAlias>,
     type_ctors: Arena<TypeCtor>,
     ctors: Arena<Ctor>,
+    fields: Arena<Field>,
     traits: Arena<Trait>,
     impls: Arena<Impl>,
 }
@@ -71,6 +72,14 @@ impl Index<Idx<Ctor>> for ItemTree {
 
     fn index(&self, id: Idx<Ctor>) -> &Self::Output {
         &self.data.ctors[id]
+    }
+}
+
+impl Index<Idx<Field>> for ItemTree {
+    type Output = Field;
+
+    fn index(&self, id: Idx<Field>) -> &Self::Output {
+        &self.data.fields[id]
     }
 }
 
@@ -182,6 +191,13 @@ pub struct TypeCtor {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ctor {
     pub ast_id: FileAstId<ast::Ctor>,
+    pub name: Name,
+    pub fields: Option<Box<[Idx<Field>]>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Field {
+    pub ast_id: FileAstId<ast::CtorField>,
     pub name: Name,
 }
 

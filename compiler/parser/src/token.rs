@@ -102,6 +102,8 @@ pub enum SyntaxKind {
     IMPORT_HIDING,
 
     CTOR,
+    CTOR_RECORD,
+    CTOR_FIELD,
 
     LIT_INT,
     LIT_FLOAT,
@@ -127,13 +129,13 @@ impl fmt::Display for SyntaxKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             | Self::ERROR => "{error}",
-            // | Self::EOF => "end of input",
             | Self::WHITESPACE => "whitespace",
             | Self::COMMENT => "comment",
-            | Self::LYT_START => "indentation",
+            | Self::LYT_START => "indent",
             | Self::LYT_SEP => "newline",
-            | Self::LYT_END => "unindentation",
+            | Self::LYT_END => "unindent",
             | Self::IDENT => "identifier",
+            | Self::TYPE => "type name",
             | Self::SYMBOL => "symbol",
             | Self::INT => "int literal",
             | Self::FLOAT => "float literal",

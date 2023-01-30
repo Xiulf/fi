@@ -76,6 +76,8 @@ impl AstIdMap {
                 res.alloc(item.syntax());
             } else if let Some(item) = ast::Ctor::cast(it) {
                 res.alloc(item.syntax());
+            } else if let Some(item) = ast::CtorField::cast(it) {
+                res.alloc(item.syntax());
             }
         });
 

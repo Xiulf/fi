@@ -279,7 +279,9 @@ fn test_lexer() {
         main = 0
 
         type X =
-            | Y
+            | Y { a :: Int
+                , b :: Float
+                }
             | Z
 
         trait Iterator self it =

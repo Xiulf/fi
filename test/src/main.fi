@@ -11,8 +11,8 @@ id (a :: t) =
     a
 
 type X =
-    | Y
-    | Z
+    | Y { a :: Int, b :: Float }
+    | Z Int Float
 
 trait Iterator self it =
     next :: self -> Option it

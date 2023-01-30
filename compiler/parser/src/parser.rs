@@ -176,7 +176,10 @@ fn fixity() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 }
 
 fn value() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    name()
+    attr()
+        .repeated()
+        .collect::<Event>()
+        .then(name())
         .then(pat_atom().repeated().collect::<Event>())
         .then(opt(token(DBL_COLON).then(typ()).to_event()))
         .then(opt(token(EQUALS).then(expr()).to_event()))
@@ -186,19 +189,29 @@ fn value() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 
 fn type_ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
     let header = type_header();
-    let ctor = token(PIPE)
-        .then(type_name())
-        .then(typ_atom().repeated().collect::<Event>())
-        .to_event()
-        .to_node(CTOR);
-
-    let body = choice((ctor.clone().repeated().at_least(1).collect(), block(ctor.to_event())));
+    let body = choice((ctor().repeated().at_least(1).collect(), block(ctor())));
 
     header.then(token(EQUALS)).then(body).to_event().to_node(ITEM_TYPE)
 }
 
-fn type_header() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
+fn type_header() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     token(TYPE_KW).then(type_name()).then(type_vars()).to_event()
+}
+
+fn ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    token(PIPE)
+        .then(type_name())
+        .then(ctor_record().or(typ_atom().repeated().collect::<Event>()))
+        .to_event()
+        .to_node(CTOR)
+}
+
+fn ctor_record() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    braces(ctor_field().separated(token(COMMA), true, 0)).to_node(CTOR_RECORD)
+}
+
+fn ctor_field() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    name().then(token(DBL_COLON)).then(typ()).to_event().to_node(CTOR_FIELD)
 }
 
 fn trait_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
@@ -298,6 +311,36 @@ fn parens(
             L_PAREN,
             R_PAREN,
             [(L_BRACE, R_BRACE), (L_BRACKET, R_BRACKET), (LYT_START, LYT_END)],
+            err,
+        ))
+}
+
+fn braces(
+    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    token(L_BRACE)
+        .then(item)
+        .then(token(R_BRACE))
+        .to_event()
+        .recover_with(nested_delimiters(
+            L_BRACE,
+            R_BRACE,
+            [(L_PAREN, R_PAREN), (L_BRACKET, R_BRACKET), (LYT_START, LYT_END)],
+            err,
+        ))
+}
+
+fn brackets(
+    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    token(L_BRACKET)
+        .then(item)
+        .then(token(R_BRACKET))
+        .to_event()
+        .recover_with(nested_delimiters(
+            L_BRACKET,
+            R_BRACKET,
+            [(L_PAREN, R_PAREN), (L_BRACE, R_BRACE), (LYT_START, LYT_END)],
             err,
         ))
 }

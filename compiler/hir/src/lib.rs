@@ -25,6 +25,7 @@ pub struct Jar(
     id::TypeAliasId,
     id::TypeCtorId,
     id::CtorId,
+    id::FieldId,
     id::TraitId,
     id::ImplId,
     data::ModuleData,

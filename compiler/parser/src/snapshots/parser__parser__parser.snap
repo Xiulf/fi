@@ -9,6 +9,7 @@ expression: output
     Node([
       Start(ITEM_MODULE),
       Node([
+        Empty,
         Node([
           Node([
             Empty,
@@ -20,16 +21,37 @@ expression: output
           Node([
             Empty,
             Node([
+              Start(PATH),
               Node([
-                Token(TYPE, 4),
-                Token(DOT, 1),
+                Node([
+                  Start(PATH_SEGMENT),
+                  Node([
+                    Start(NAME_REF),
+                    Token(TYPE, 4),
+                    Finish,
+                  ]),
+                  Finish,
+                ]),
+                Node([
+                  Token(DOT, 1),
+                  Node([
+                    Start(PATH_SEGMENT),
+                    Node([
+                      Start(NAME_REF),
+                      Token(TYPE, 3),
+                      Finish,
+                    ]),
+                    Finish,
+                  ]),
+                ]),
               ]),
-              Token(TYPE, 3),
+              Finish,
             ]),
             Node([
               Token(WHITESPACE, 1),
             ]),
           ]),
+          Empty,
         ]),
         Node([
           Empty,
@@ -40,220 +62,11 @@ expression: output
           Token(LYT_SEP, 2),
           Node([
             Node([
-              Start(ITEM_FUNC),
-              Node([
-                Node([
-                  Empty,
-                  Token(IDENT, 4),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Empty,
-                Node([
-                  Empty,
-                  Token(EQUALS, 1),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
-                  Empty,
-                  Token(INT, 1),
-                  Empty,
-                ]),
-              ]),
-              Finish,
-            ]),
-            Token(LYT_SEP, 1),
-            Node([
-              Start(ITEM_FUNC),
-              Node([
-                Node([
-                  Empty,
-                  Token(IDENT, 2),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
-                  Node([
-                    Empty,
-                    Token(IDENT, 1),
-                    Node([
-                      Token(WHITESPACE, 1),
-                    ]),
-                  ]),
-                ]),
-                Node([
-                  Empty,
-                  Token(EQUALS, 1),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
-                  Empty,
-                  Token(IDENT, 1),
-                  Empty,
-                ]),
-              ]),
-              Finish,
-            ]),
-            Token(LYT_SEP, 2),
-            Node([
-              Start(ITEM_FUNC),
-              Node([
-                Node([
-                  Empty,
-                  Token(IDENT, 5),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
-                  Node([
-                    Node([
-                      Empty,
-                      Token(L_PAREN, 1),
-                      Empty,
-                    ]),
-                    Node([
-                      Node([
-                        Empty,
-                        Token(IDENT, 1),
-                        Node([
-                          Token(WHITESPACE, 1),
-                        ]),
-                      ]),
-                      Node([
-                        Empty,
-                        Token(DBL_COLON, 2),
-                        Node([
-                          Token(WHITESPACE, 1),
-                        ]),
-                      ]),
-                      Node([
-                        Node([
-                          Node([
-                            Empty,
-                            Token(TYPE, 1),
-                            Empty,
-                          ]),
-                          Empty,
-                        ]),
-                        Empty,
-                      ]),
-                    ]),
-                    Node([
-                      Empty,
-                      Token(R_PAREN, 1),
-                      Node([
-                        Token(WHITESPACE, 1),
-                      ]),
-                    ]),
-                  ]),
-                ]),
-                Node([
-                  Empty,
-                  Token(EQUALS, 1),
-                  Empty,
-                ]),
-                Node([
-                  Token(LYT_START, 5),
-                  Node([
-                    Empty,
-                    Node([
-                      Empty,
-                      Token(IDENT, 1),
-                      Empty,
-                    ]),
-                  ]),
-                  Token(LYT_END, 2),
-                ]),
-              ]),
-              Finish,
-            ]),
-            Token(LYT_SEP, 0),
-            Node([
-              Node([
-                Node([
-                  Empty,
-                  Token(TYPE_KW, 4),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
-                  Empty,
-                  Token(TYPE, 1),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Empty,
-              ]),
+              Start(ITEM_VALUE),
               Node([
                 Empty,
-                Token(EQUALS, 1),
-                Empty,
-              ]),
-              Node([
-                Token(LYT_START, 5),
                 Node([
-                  Node([
-                    Node([
-                      Node([
-                        Empty,
-                        Token(PIPE, 1),
-                        Node([
-                          Token(WHITESPACE, 1),
-                        ]),
-                      ]),
-                      Node([
-                        Empty,
-                        Token(TYPE, 1),
-                        Empty,
-                      ]),
-                    ]),
-                    Token(LYT_SEP, 5),
-                  ]),
-                  Node([
-                    Node([
-                      Empty,
-                      Token(PIPE, 1),
-                      Node([
-                        Token(WHITESPACE, 1),
-                      ]),
-                    ]),
-                    Node([
-                      Empty,
-                      Token(TYPE, 1),
-                      Empty,
-                    ]),
-                  ]),
-                ]),
-                Token(LYT_END, 2),
-              ]),
-            ]),
-            Token(LYT_SEP, 0),
-            Node([
-              Node([
-                Node([
-                  Empty,
-                  Token(TRAIT_KW, 5),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
-                  Empty,
-                  Token(TYPE, 8),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
+                  Start(NAME),
                   Node([
                     Empty,
                     Token(IDENT, 4),
@@ -261,31 +74,98 @@ expression: output
                       Token(WHITESPACE, 1),
                     ]),
                   ]),
+                  Finish,
+                ]),
+                Empty,
+                Empty,
+                Node([
                   Node([
                     Empty,
-                    Token(IDENT, 2),
+                    Token(EQUALS, 1),
                     Node([
                       Token(WHITESPACE, 1),
                     ]),
                   ]),
-                ]),
-              ]),
-              Node([
-                Node([
-                  Empty,
-                  Token(EQUALS, 1),
-                  Empty,
-                ]),
-                Node([
-                  Token(LYT_START, 5),
                   Node([
                     Empty,
+                    Token(INT, 1),
+                    Empty,
+                  ]),
+                ]),
+              ]),
+              Finish,
+            ]),
+            Node([
+              Token(LYT_SEP, 1),
+              Node([
+                Start(ITEM_VALUE),
+                Node([
+                  Empty,
+                  Node([
+                    Start(NAME),
                     Node([
-                      Start(ITEM_FUNC),
+                      Empty,
+                      Token(IDENT, 2),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Finish,
+                  ]),
+                  Node([
+                    Node([
+                      Empty,
+                      Token(IDENT, 1),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                  ]),
+                  Empty,
+                  Node([
+                    Node([
+                      Empty,
+                      Token(EQUALS, 1),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Node([
+                      Empty,
+                      Token(IDENT, 1),
+                      Empty,
+                    ]),
+                  ]),
+                ]),
+                Finish,
+              ]),
+              Token(LYT_SEP, 2),
+              Node([
+                Start(ITEM_VALUE),
+                Node([
+                  Empty,
+                  Node([
+                    Start(NAME),
+                    Node([
+                      Empty,
+                      Token(IDENT, 5),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Finish,
+                  ]),
+                  Node([
+                    Node([
+                      Node([
+                        Empty,
+                        Token(L_PAREN, 1),
+                        Empty,
+                      ]),
                       Node([
                         Node([
                           Empty,
-                          Token(IDENT, 4),
+                          Token(IDENT, 1),
                           Node([
                             Token(WHITESPACE, 1),
                           ]),
@@ -301,128 +181,347 @@ expression: output
                           Node([
                             Node([
                               Empty,
-                              Token(IDENT, 4),
-                              Node([
-                                Token(WHITESPACE, 1),
-                              ]),
+                              Token(TYPE, 1),
+                              Empty,
                             ]),
                             Empty,
                           ]),
+                          Empty,
+                        ]),
+                      ]),
+                      Node([
+                        Empty,
+                        Token(R_PAREN, 1),
+                        Node([
+                          Token(WHITESPACE, 1),
+                        ]),
+                      ]),
+                    ]),
+                  ]),
+                  Empty,
+                  Node([
+                    Node([
+                      Empty,
+                      Token(EQUALS, 1),
+                      Empty,
+                    ]),
+                    Node([
+                      Token(LYT_START, 5),
+                      Node([
+                        Node([
+                          Empty,
+                          Token(IDENT, 1),
+                          Empty,
+                        ]),
+                        Empty,
+                      ]),
+                      Token(LYT_END, 2),
+                    ]),
+                  ]),
+                ]),
+                Finish,
+              ]),
+              Token(LYT_SEP, 0),
+              Node([
+                Start(ITEM_TYPE),
+                Node([
+                  Node([
+                    Node([
+                      Empty,
+                      Token(TYPE_KW, 4),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Node([
+                      Start(NAME),
+                      Node([
+                        Empty,
+                        Token(TYPE, 1),
+                        Node([
+                          Token(WHITESPACE, 1),
+                        ]),
+                      ]),
+                      Finish,
+                    ]),
+                    Empty,
+                  ]),
+                  Node([
+                    Empty,
+                    Token(EQUALS, 1),
+                    Empty,
+                  ]),
+                  Node([
+                    Token(LYT_START, 5),
+                    Node([
+                      Node([
+                        Start(CTOR),
+                        Node([
+                          Node([
+                            Empty,
+                            Token(PIPE, 1),
+                            Node([
+                              Token(WHITESPACE, 1),
+                            ]),
+                          ]),
+                          Node([
+                            Start(NAME),
+                            Node([
+                              Empty,
+                              Token(TYPE, 1),
+                              Empty,
+                            ]),
+                            Finish,
+                          ]),
+                          Empty,
+                        ]),
+                        Finish,
+                      ]),
+                      Node([
+                        Token(LYT_SEP, 5),
+                        Node([
+                          Start(CTOR),
                           Node([
                             Node([
                               Empty,
-                              Token(ARROW, 2),
+                              Token(PIPE, 1),
                               Node([
                                 Token(WHITESPACE, 1),
                               ]),
                             ]),
                             Node([
+                              Start(NAME),
                               Node([
                                 Empty,
-                                Token(TYPE, 6),
+                                Token(TYPE, 1),
+                                Empty,
+                              ]),
+                              Finish,
+                            ]),
+                            Empty,
+                          ]),
+                          Finish,
+                        ]),
+                      ]),
+                    ]),
+                    Token(LYT_END, 2),
+                  ]),
+                ]),
+                Finish,
+              ]),
+              Token(LYT_SEP, 0),
+              Node([
+                Start(ITEM_TRAIT),
+                Node([
+                  Node([
+                    Node([
+                      Empty,
+                      Token(TRAIT_KW, 5),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Node([
+                      Empty,
+                      Token(TYPE, 8),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Node([
+                      Node([
+                        Empty,
+                        Token(IDENT, 4),
+                        Node([
+                          Token(WHITESPACE, 1),
+                        ]),
+                      ]),
+                      Node([
+                        Empty,
+                        Token(IDENT, 2),
+                        Node([
+                          Token(WHITESPACE, 1),
+                        ]),
+                      ]),
+                    ]),
+                  ]),
+                  Node([
+                    Node([
+                      Empty,
+                      Token(EQUALS, 1),
+                      Empty,
+                    ]),
+                    Node([
+                      Token(LYT_START, 5),
+                      Node([
+                        Node([
+                          Start(ITEM_VALUE),
+                          Node([
+                            Empty,
+                            Node([
+                              Start(NAME),
+                              Node([
+                                Empty,
+                                Token(IDENT, 4),
+                                Node([
+                                  Token(WHITESPACE, 1),
+                                ]),
+                              ]),
+                              Finish,
+                            ]),
+                            Empty,
+                            Node([
+                              Node([
+                                Empty,
+                                Token(DBL_COLON, 2),
                                 Node([
                                   Token(WHITESPACE, 1),
                                 ]),
                               ]),
                               Node([
                                 Node([
+                                  Node([
+                                    Empty,
+                                    Token(IDENT, 4),
+                                    Node([
+                                      Token(WHITESPACE, 1),
+                                    ]),
+                                  ]),
                                   Empty,
-                                  Token(IDENT, 2),
-                                  Empty,
+                                ]),
+                                Node([
+                                  Node([
+                                    Empty,
+                                    Token(ARROW, 2),
+                                    Node([
+                                      Token(WHITESPACE, 1),
+                                    ]),
+                                  ]),
+                                  Node([
+                                    Node([
+                                      Empty,
+                                      Token(TYPE, 6),
+                                      Node([
+                                        Token(WHITESPACE, 1),
+                                      ]),
+                                    ]),
+                                    Node([
+                                      Node([
+                                        Empty,
+                                        Token(IDENT, 2),
+                                        Empty,
+                                      ]),
+                                    ]),
+                                  ]),
                                 ]),
                               ]),
                             ]),
+                            Empty,
                           ]),
+                          Finish,
+                        ]),
+                        Empty,
+                      ]),
+                      Token(LYT_END, 2),
+                    ]),
+                  ]),
+                ]),
+                Finish,
+              ]),
+              Token(LYT_SEP, 0),
+              Node([
+                Start(ITEM_IMPL),
+                Node([
+                  Node([
+                    Node([
+                      Empty,
+                      Token(IMPL_KW, 4),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Node([
+                      Empty,
+                      Token(TYPE, 8),
+                      Node([
+                        Token(WHITESPACE, 1),
+                      ]),
+                    ]),
+                    Node([
+                      Node([
+                        Empty,
+                        Token(TYPE, 4),
+                        Node([
+                          Token(WHITESPACE, 1),
                         ]),
                       ]),
-                      Finish,
-                    ]),
-                  ]),
-                  Token(LYT_END, 2),
-                ]),
-              ]),
-            ]),
-            Token(LYT_SEP, 0),
-            Node([
-              Node([
-                Node([
-                  Empty,
-                  Token(IMPL_KW, 4),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
-                  Empty,
-                  Token(TYPE, 8),
-                  Node([
-                    Token(WHITESPACE, 1),
-                  ]),
-                ]),
-                Node([
-                  Node([
-                    Empty,
-                    Token(TYPE, 4),
-                    Node([
-                      Token(WHITESPACE, 1),
+                      Node([
+                        Empty,
+                        Token(TYPE, 4),
+                        Node([
+                          Token(WHITESPACE, 1),
+                        ]),
+                      ]),
                     ]),
                   ]),
                   Node([
-                    Empty,
-                    Token(TYPE, 4),
                     Node([
-                      Token(WHITESPACE, 1),
+                      Empty,
+                      Token(EQUALS, 1),
+                      Empty,
                     ]),
-                  ]),
-                ]),
-              ]),
-              Node([
-                Node([
-                  Empty,
-                  Token(EQUALS, 1),
-                  Empty,
-                ]),
-                Node([
-                  Token(LYT_START, 5),
-                  Node([
-                    Empty,
                     Node([
-                      Start(ITEM_FUNC),
+                      Token(LYT_START, 5),
                       Node([
                         Node([
-                          Empty,
-                          Token(IDENT, 4),
-                          Node([
-                            Token(WHITESPACE, 1),
-                          ]),
-                        ]),
-                        Node([
+                          Start(ITEM_VALUE),
                           Node([
                             Empty,
-                            Token(IDENT, 4),
                             Node([
-                              Token(WHITESPACE, 1),
+                              Start(NAME),
+                              Node([
+                                Empty,
+                                Token(IDENT, 4),
+                                Node([
+                                  Token(WHITESPACE, 1),
+                                ]),
+                              ]),
+                              Finish,
+                            ]),
+                            Node([
+                              Node([
+                                Empty,
+                                Token(IDENT, 4),
+                                Node([
+                                  Token(WHITESPACE, 1),
+                                ]),
+                              ]),
+                            ]),
+                            Empty,
+                            Node([
+                              Node([
+                                Empty,
+                                Token(EQUALS, 1),
+                                Node([
+                                  Token(WHITESPACE, 1),
+                                ]),
+                              ]),
+                              Node([
+                                Empty,
+                                Token(UNDERSCORE, 1),
+                                Empty,
+                              ]),
                             ]),
                           ]),
+                          Finish,
                         ]),
-                        Node([
-                          Empty,
-                          Token(EQUALS, 1),
-                          Node([
-                            Token(WHITESPACE, 1),
-                          ]),
-                        ]),
-                        Node([
-                          Empty,
-                          Token(UNDERSCORE, 1),
-                          Empty,
-                        ]),
+                        Empty,
                       ]),
-                      Finish,
+                      Token(LYT_END, 0),
                     ]),
                   ]),
-                  Token(LYT_END, 0),
                 ]),
+                Finish,
               ]),
             ]),
             Token(LYT_SEP, 0),
@@ -430,11 +529,6 @@ expression: output
         ]),
       ]),
       Finish,
-    ]),
-    Node([
-      Empty,
-      Token(EOF, 0),
-      Empty,
     ]),
   ]),
   Finish,

@@ -3,7 +3,6 @@ use base_db::libs::LibId;
 
 use crate::item_tree::{self, ItemTreeId};
 use crate::name::Name;
-use crate::Db;
 
 #[salsa::interned]
 pub struct ModuleId {
@@ -44,6 +43,14 @@ pub struct CtorId {
 pub type LocalCtorId = Idx<item_tree::Ctor>;
 
 #[salsa::interned]
+pub struct FieldId {
+    pub ctor: CtorId,
+    pub local_id: LocalFieldId,
+}
+
+pub type LocalFieldId = Idx<item_tree::Field>;
+
+#[salsa::interned]
 pub struct TraitId {
     pub module: ModuleId,
     pub it: ItemTreeId<item_tree::Trait>,
@@ -76,47 +83,9 @@ pub enum ItemId {
     TypeAliasId(TypeAliasId),
     TypeCtorId(TypeCtorId),
     CtorId(CtorId),
+    FieldId(FieldId),
     TraitId(TraitId),
     ImplId(ImplId),
-}
-
-impl ItemId {
-    pub fn name(self, db: &dyn Db) -> Option<Name> {
-        match self {
-            | Self::ModuleId(id) => Some(id.name(db)),
-            | Self::FixityId(id) => {
-                let it = id.it(db);
-                let tree = item_tree::query(db, it.file);
-                Some(tree[it.value].name)
-            },
-            | Self::ValueId(id) => {
-                let it = id.it(db);
-                let tree = item_tree::query(db, it.file);
-                Some(tree[it.value].name)
-            },
-            | Self::TypeAliasId(id) => {
-                let it = id.it(db);
-                let tree = item_tree::query(db, it.file);
-                Some(tree[it.value].name)
-            },
-            | Self::TypeCtorId(id) => {
-                let it = id.it(db);
-                let tree = item_tree::query(db, it.file);
-                Some(tree[it.value].name)
-            },
-            | Self::CtorId(id) => {
-                let it = id.type_ctor(db).it(db);
-                let tree = item_tree::query(db, it.file);
-                Some(tree[id.local_id(db)].name)
-            },
-            | Self::TraitId(id) => {
-                let it = id.it(db);
-                let tree = item_tree::query(db, it.file);
-                Some(tree[it.value].name)
-            },
-            | Self::ImplId(_) => None,
-        }
-    }
 }
 
 ra_ap_stdx::impl_from!(LibId, ModuleId for ModuleParentId);

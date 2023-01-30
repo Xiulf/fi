@@ -174,6 +174,24 @@ impl NameOwner for Ctor {
     }
 }
 
+impl Ctor {
+    pub fn record(&self) -> Option<CtorRecord> {
+        child(self.syntax())
+    }
+}
+
+impl CtorRecord {
+    pub fn fields(&self) -> impl Iterator<Item = CtorField> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl NameOwner for CtorField {
+    fn name(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+}
+
 impl NameOwner for ItemTrait {
     fn name(&self) -> Option<Name> {
         child(self.syntax())

@@ -12,7 +12,8 @@ use crate::ast_id::AstId;
 use crate::data::ModuleData;
 use crate::diagnostics::{UnknownExport, UnknownName, UnresolvedImport};
 use crate::id::{
-    ContainerId, CtorId, FixityId, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId, TypeCtorId, ValueId,
+    ContainerId, CtorId, FieldId, FixityId, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId, TypeCtorId,
+    ValueId,
 };
 use crate::item_tree::{Item, ItemTreeId, LocalItemTreeId};
 use crate::name::{AsName, Name};
@@ -364,6 +365,17 @@ impl ModuleCtx<'_, '_> {
 
             self.data().scope.items.push((data.name, item));
             self.data().scope.values.insert(data.name, item);
+
+            if let Some(fields) = &data.fields {
+                for &local_id in fields.iter() {
+                    let data = &item_tree[local_id];
+                    let id = FieldId::new(self.base.db, id, local_id);
+                    let item = ItemId::FieldId(id);
+
+                    self.data().scope.items.push((data.name, item));
+                    self.data().scope.values.insert(data.name, item);
+                }
+            }
         }
     }
 

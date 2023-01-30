@@ -5,7 +5,7 @@ use vfs::File;
 
 use super::*;
 use crate::ast_id::AstIdMap;
-use crate::id::LocalCtorId;
+use crate::id::{LocalCtorId, LocalFieldId};
 use crate::name::AsName;
 use crate::path::Path;
 use crate::Db;
@@ -151,9 +151,20 @@ impl Ctx<'_> {
     fn lower_ctor(&mut self, ctor: ast::Ctor) -> Option<LocalCtorId> {
         let ast_id = self.ast_map.ast_id(&ctor);
         let name = ctor.name()?.as_name(self.db);
-        let data = Ctor { ast_id, name };
+        let fields = ctor
+            .record()
+            .map(|record| record.fields().filter_map(|f| self.lower_field(f)).collect());
+        let data = Ctor { ast_id, name, fields };
 
         Some(self.tree.data.ctors.alloc(data))
+    }
+
+    fn lower_field(&mut self, field: ast::CtorField) -> Option<LocalFieldId> {
+        let ast_id = self.ast_map.ast_id(&field);
+        let name = field.name()?.as_name(self.db);
+        let data = Field { ast_id, name };
+
+        Some(self.tree.data.fields.alloc(data))
     }
 
     fn lower_trait(&mut self, trait_: ast::ItemTrait) -> Option<Vec<Item>> {

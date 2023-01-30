@@ -34,6 +34,8 @@ ast_node!(ImportItem, IMPORT_ITEM);
 ast_node!(ImportHiding, IMPORT_HIDING);
 
 ast_node!(Ctor, CTOR);
+ast_node!(CtorRecord, CTOR_RECORD);
+ast_node!(CtorField, CTOR_FIELD);
 
 ast_node!(Path, PATH);
 ast_node!(PathSegment, PATH_SEGMENT);

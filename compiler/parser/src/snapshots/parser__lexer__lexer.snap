@@ -96,8 +96,80 @@ expression: tokens
     len: 1,
   ),
   Token(
-    kind: LYT_SEP,
+    kind: WHITESPACE,
+    len: 1,
+  ),
+  Token(
+    kind: L_BRACE,
+    len: 1,
+  ),
+  Token(
+    kind: WHITESPACE,
+    len: 1,
+  ),
+  Token(
+    kind: IDENT,
+    len: 1,
+  ),
+  Token(
+    kind: WHITESPACE,
+    len: 1,
+  ),
+  Token(
+    kind: DBL_COLON,
+    len: 2,
+  ),
+  Token(
+    kind: WHITESPACE,
+    len: 1,
+  ),
+  Token(
+    kind: TYPE,
+    len: 3,
+  ),
+  Token(
+    kind: COMMA,
+    len: 10,
+  ),
+  Token(
+    kind: WHITESPACE,
+    len: 1,
+  ),
+  Token(
+    kind: IDENT,
+    len: 1,
+  ),
+  Token(
+    kind: WHITESPACE,
+    len: 1,
+  ),
+  Token(
+    kind: DBL_COLON,
+    len: 2,
+  ),
+  Token(
+    kind: WHITESPACE,
+    len: 1,
+  ),
+  Token(
+    kind: TYPE,
     len: 5,
+  ),
+  Token(
+    kind: LYT_SEP,
+    len: 9,
+  ),
+  Token(
+    kind: R_BRACE,
+    len: 1,
+  ),
+  Token(
+    kind: LYT_END,
+    len: 5,
+  ),
+  Token(
+    kind: LYT_SEP,
+    len: 0,
   ),
   Token(
     kind: PIPE,
@@ -285,10 +357,6 @@ expression: tokens
   ),
   Token(
     kind: LYT_SEP,
-    len: 0,
-  ),
-  Token(
-    kind: EOF,
     len: 0,
   ),
 ]
