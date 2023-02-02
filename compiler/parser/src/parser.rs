@@ -236,22 +236,30 @@ fn type_vars() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 }
 
 fn pat_atom() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    let ident = token(IDENT);
-    let underscore = token(UNDERSCORE);
-    let unit = token(L_PAREN).then(token(R_PAREN)).to_event();
-    let parens = parens(pat());
+    let ident = token(IDENT).to_node(PAT_BIND);
+    let underscore = token(UNDERSCORE).to_node(PAT_WILDCARD);
+    let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(PAT_UNIT);
+    let parens = parens(pat()).to_node(PAT_PARENS);
 
     ident.or(underscore).or(unit).or(parens)
 }
 
 fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     recursive(|pat| {
-        let ident = token(IDENT);
-        let underscore = token(UNDERSCORE);
-        let unit = token(L_PAREN).then(token(R_PAREN)).to_event();
-        let parens = parens(pat.clone());
+        let ident = token(IDENT)
+            .then(opt(token(AT).then(pat.clone()).to_event()))
+            .to_event()
+            .to_node(PAT_BIND);
+        let underscore = token(UNDERSCORE).to_node(PAT_WILDCARD);
+        let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(PAT_UNIT);
+        let parens = parens(pat.clone()).to_node(PAT_PARENS);
         let atom = ident.or(underscore).or(unit).or(parens);
-        let typed = atom.clone().then(token(DBL_COLON)).then(typ()).to_event();
+        let typed = atom
+            .clone()
+            .then(token(DBL_COLON))
+            .then(typ())
+            .to_event()
+            .to_node(PAT_TYPED);
 
         typed.or(atom)
     })
@@ -283,12 +291,12 @@ fn typ() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 
 fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     recursive(|expr| {
-        let ident = token(IDENT);
-        let int = token(INT);
-        let hole = token(UNDERSCORE);
-        let block = block(stmt(expr.clone()));
-        let parens = parens(expr);
-        let atom = ident.or(int).or(hole).or(block).or(parens);
+        let ident = path().to_node(EXPR_PATH);
+        let lit = literal().to_node(EXPR_LITERAL);
+        let hole = token(UNDERSCORE).to_node(EXPR_HOLE);
+        let block = block(stmt(expr.clone())).to_node(EXPR_BLOCK);
+        let parens = parens(expr).to_node(EXPR_PARENS);
+        let atom = ident.or(lit).or(hole).or(block).or(parens);
 
         atom
     })
@@ -297,7 +305,7 @@ fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 fn stmt(
     expr: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
 ) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    expr
+    expr.to_node(STMT_EXPR)
 }
 
 fn parens(

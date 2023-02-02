@@ -1,5 +1,6 @@
 use crate::def_map::ModuleScope;
-use crate::id;
+use crate::id::{self, ValueId};
+use crate::Db;
 
 #[salsa::tracked]
 pub struct ModuleData {
@@ -49,4 +50,9 @@ pub struct TraitData {
 pub struct ImplData {
     #[id]
     pub id: id::ImplId,
+}
+
+#[salsa::tracked]
+pub fn value_data(db: &dyn Db, id: ValueId) -> ValueData {
+    ValueData::new(db, id)
 }

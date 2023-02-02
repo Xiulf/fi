@@ -156,6 +156,16 @@ impl NameOwner for ItemValue {
     }
 }
 
+impl ItemValue {
+    pub fn params(&self) -> impl Iterator<Item = Pat> + '_ {
+        children(self.syntax())
+    }
+
+    pub fn body(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+}
+
 impl NameOwner for ItemType {
     fn name(&self) -> Option<Name> {
         child(self.syntax())
@@ -207,6 +217,44 @@ impl ItemTrait {
 impl ItemImpl {
     pub fn items(&self) -> impl Iterator<Item = ItemValue> + '_ {
         children(self.syntax())
+    }
+}
+
+impl ExprLiteral {
+    pub fn literal(&self) -> Option<Literal> {
+        child(self.syntax())
+    }
+}
+
+impl ExprPath {
+    pub fn path(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+}
+
+impl ExprBlock {
+    pub fn statements(&self) -> impl Iterator<Item = Stmt> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl ExprTry {
+    pub fn statements(&self) -> impl Iterator<Item = Stmt> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl StmtExpr {
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+}
+
+impl LitInt {
+    pub fn value(&self, resolver: &dyn Resolver) -> Option<i128> {
+        let text = token(self.syntax(), SyntaxKind::INT)?.resolve_text(resolver);
+
+        text.parse().ok()
     }
 }
 

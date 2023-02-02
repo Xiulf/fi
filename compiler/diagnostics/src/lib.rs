@@ -44,6 +44,10 @@ pub struct SecondaryLabel {
     pub message: String,
 }
 
+pub trait DiagnosticSink {
+    fn add_diagnostic(&mut self, diag: Diagnostic);
+}
+
 pub trait ToDiagnostic {
     type Db<'t>: ?Sized + 't;
 

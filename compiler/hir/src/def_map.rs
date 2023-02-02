@@ -54,6 +54,14 @@ impl ModuleScope {
             self.modules.get(&name).copied(),
         )
     }
+
+    pub fn items(&self) -> impl Iterator<Item = ItemId> + '_ {
+        self.items.iter().map(|(_, i)| *i)
+    }
+
+    pub fn impls(&self) -> impl Iterator<Item = ImplId> + '_ {
+        self.impls.iter().copied()
+    }
 }
 
 #[salsa::tracked]

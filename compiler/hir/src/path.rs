@@ -8,6 +8,8 @@ pub struct Path {
     segments: Vec<Name>,
 }
 
+pub struct Display<'a>(&'a dyn Db, &'a Path);
+
 impl Path {
     pub fn from_ast(db: &dyn Db, ast: ast::Path) -> Self {
         ast.segments()
@@ -18,6 +20,10 @@ impl Path {
 
     pub fn len(&self) -> usize {
         self.segments.len()
+    }
+
+    pub fn display<'a>(&'a self, db: &'a dyn Db) -> Display<'a> {
+        Display(db, self)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Name> + '_ {
@@ -46,5 +52,19 @@ impl FromIterator<Name> for Path {
         Self {
             segments: Vec::from_iter(iter),
         }
+    }
+}
+
+impl std::fmt::Display for Display<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, name) in self.1.segments.iter().enumerate() {
+            if i != 0 {
+                '.'.fmt(f)?;
+            }
+
+            name.display(self.0).fmt(f)?;
+        }
+
+        Ok(())
     }
 }

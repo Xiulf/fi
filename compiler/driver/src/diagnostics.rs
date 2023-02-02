@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ::diagnostics::{Diagnostic, Diagnostics, Level};
+use ::diagnostics::{Diagnostic, DiagnosticSink, Level};
 use ariadne::{Cache, Color, ColorGenerator, Label, Report, ReportKind, Source};
 use paths::AbsPathBuf;
 use vfs::{File, VfsPath};
@@ -8,43 +8,37 @@ use vfs::{File, VfsPath};
 use super::*;
 use crate::db::Database;
 
+struct Sink<'db>(DbCache<'db>, usize, usize);
+
 impl Driver {
     pub fn report_diagnostics(&self, lib: LibId) -> io::Result<bool> {
-        let mut cache = DbCache {
+        let cache = DbCache {
             db: &self.db,
             files: Default::default(),
         };
 
-        let mut n_errors = 0;
-        for file in lib.source_root(&self.db).iter(&self.db) {
-            base_db::parse(&self.db, file);
-            let diagnostics = base_db::parse::accumulated::<Diagnostics>(&self.db, file);
-            n_errors += diagnostics.len();
-            for diag in diagnostics {
-                self.report_diagnostic(&mut cache, diag)?;
-            }
-        }
+        let mut sink = Sink(cache, 0, 0);
+        let lib = hir::Lib::from(lib);
 
-        if n_errors > 0 {
-            return Ok(true);
-        }
+        lib.diagnostics(&self.db, &mut sink);
 
-        hir::def_map::query(&self.db, lib);
-        let diagnostics = hir::def_map::query::accumulated::<Diagnostics>(&self.db, lib);
-        for diag in diagnostics {
-            self.report_diagnostic(&mut cache, diag)?;
-            n_errors += 1;
-        }
-
-        Ok(n_errors > 0)
+        Ok(sink.1 == 0)
     }
+}
 
-    fn report_diagnostic(&self, cache: &mut DbCache, diag: Diagnostic) -> io::Result<()> {
+impl DiagnosticSink for Sink<'_> {
+    fn add_diagnostic(&mut self, diag: Diagnostic) {
         let (report_kind, color) = match diag.level {
             | Level::Error => (ReportKind::Error, Color::Red),
             | Level::Warning => (ReportKind::Warning, Color::Yellow),
             | Level::Info => (ReportKind::Advice, Color::Black),
         };
+
+        match diag.level {
+            | Level::Error => self.1 += 1,
+            | Level::Warning => self.2 += 1,
+            | _ => {},
+        }
 
         let mut colors = ColorGenerator::new();
         let mut report = Report::build(report_kind, diag.file, diag.range.start().into()).with_message(diag.title);
@@ -71,7 +65,7 @@ impl Driver {
             report = report.with_note(note);
         }
 
-        report.finish().eprint(cache)
+        report.finish().eprint(&mut self.0).unwrap();
     }
 }
 

@@ -37,11 +37,50 @@ ast_node!(Ctor, CTOR);
 ast_node!(CtorRecord, CTOR_RECORD);
 ast_node!(CtorField, CTOR_FIELD);
 
-ast_node!(Path, PATH);
-ast_node!(PathSegment, PATH_SEGMENT);
+ast_node!(Pat {
+    Typed(PatTyped, PAT_TYPED),
+    Parens(PatParens, PAT_PARENS),
+    Unit(PatUnit, PAT_UNIT),
+    Wildcard(PatWildcard, PAT_WILDCARD),
+    Literal(PatLiteral, PAT_LITERAL),
+    Bind(PatBind, PAT_BIND),
+    Path(PatPath, PAT_PATH),
+    App(PatApp, PAT_APP),
+    Infix(PatInfix, PAT_INFIX),
+});
 
-ast_node!(Name, NAME);
-ast_node!(NameRef, NAME_REF);
+ast_node!(Expr {
+    Typed(ExprTyped, EXPR_TYPED),
+    Parens(ExprParens, EXPR_PARENS),
+    Hole(ExprHole, EXPR_HOLE),
+    Unit(ExprUnit, EXPR_UNIT),
+    Path(ExprPath, EXPR_PATH),
+    Literal(ExprLiteral, EXPR_LITERAL),
+    Lambda(ExprLamda, EXPR_LAMBDA),
+    Infix(ExprInfix, EXPR_INFIX),
+    Prefix(ExprPrefix, EXPR_PREFIX),
+    Postfix(ExprPostfix, EXPR_POSTFIX),
+    App(ExprApp, EXPR_APP),
+    Method(ExprMethod, EXPR_METHOD),
+    Block(ExprBlock, EXPR_BLOCK),
+    Try(ExprTry, EXPR_TRY),
+    If(ExprIf, EXPR_IF),
+    Match(ExprMatch, EXPR_MATCH),
+    Return(ExprReturn, EXPR_RETURN),
+});
+
+ast_node!(MatchArm, MATCH_ARM);
+ast_node!(MatchGuard, MATCH_GUARD);
+ast_node!(MatchValue {
+    Normal(MatchValueNormal, MATCH_VALUE),
+    Guarded(MatchValueGuarded, MATCH_GUARDED),
+});
+
+ast_node!(Stmt {
+    Let(StmtLet, STMT_LET),
+    Bind(StmtBind, STMT_BIND),
+    Expr(StmtExpr, STMT_EXPR),
+});
 
 ast_node!(Literal {
     Int(LitInt, LIT_INT),
@@ -49,3 +88,9 @@ ast_node!(Literal {
     Char(LitChar, LIT_CHAR),
     String(LitString, LIT_STRING),
 });
+
+ast_node!(Path, PATH);
+ast_node!(PathSegment, PATH_SEGMENT);
+
+ast_node!(Name, NAME);
+ast_node!(NameRef, NAME_REF);

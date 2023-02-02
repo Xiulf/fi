@@ -3,6 +3,8 @@ use base_db::libs::LibId;
 
 use crate::item_tree::{self, ItemTreeId};
 use crate::name::Name;
+use crate::pat::PatId;
+use crate::Db;
 
 #[salsa::interned]
 pub struct ModuleId {
@@ -88,9 +90,42 @@ pub enum ItemId {
     ImplId(ImplId),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ValueDefId {
+    FixityId(FixityId),
+    ValueId(ValueId),
+    CtorId(CtorId),
+    FieldId(FieldId),
+    PatId(PatId),
+}
+
+pub trait HasModule: Copy {
+    fn module(self, db: &dyn Db) -> ModuleId;
+}
+
+impl ModuleId {
+    pub fn lib(self, db: &dyn Db) -> LibId {
+        match self.parent(db) {
+            | ModuleParentId::LibId(id) => id,
+            | ModuleParentId::ModuleId(id) => id.lib(db),
+        }
+    }
+}
+
+impl HasModule for ContainerId {
+    fn module(self, db: &dyn Db) -> ModuleId {
+        match self {
+            | ContainerId::ModuleId(id) => id,
+            | ContainerId::TraitId(id) => id.module(db),
+            | ContainerId::ImplId(id) => id.module(db),
+        }
+    }
+}
+
 ra_ap_stdx::impl_from!(LibId, ModuleId for ModuleParentId);
 ra_ap_stdx::impl_from!(ModuleId, TraitId, ImplId for ContainerId);
 ra_ap_stdx::impl_from!(ModuleId, FixityId, ValueId, TypeAliasId, TypeCtorId, CtorId, TraitId, ImplId for ItemId);
+ra_ap_stdx::impl_from!(FixityId, ValueId, CtorId, FieldId, PatId for ValueDefId);
 
 impl ra_ap_stdx::hash::NoHashHashable for ModuleId {
 }
