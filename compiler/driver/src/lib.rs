@@ -47,6 +47,6 @@ impl Driver {
         let def_map = hir::def_map::query(&self.db, lib);
 
         // eprintln!("{:#?}", lib.debug_all(&self.db));
-        tracing::debug!("\n{}", def_map.dump(&self.db));
+        tracing::debug!("\n{}", def_map.debug(&self.db));
     }
 }

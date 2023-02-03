@@ -1,3 +1,0 @@
-module Core.Default =
-
-default () :: t

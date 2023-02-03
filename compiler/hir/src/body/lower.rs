@@ -2,19 +2,19 @@ use std::sync::Arc;
 
 use arena::Arena;
 use diagnostics::Diagnostics;
-use either::Either;
 use ra_ap_stdx::hash::NoHashHashMap;
-use syntax::ast;
+use syntax::ast::{self, Assoc, Prec};
 use syntax::ptr::AstPtr;
 use vfs::File;
 
-use super::{Body, BodySourceMap, ExprSrc, SyntheticSugar};
+use super::{Body, BodySourceMap, ExprSrc, PatSrc};
 use crate::def_map::DefMap;
 use crate::diagnostics::UnresolvedPath;
 use crate::expr::{Expr, ExprId, Literal, Stmt};
-use crate::id::{HasModule, ValueDefId, ValueId};
-use crate::name::Name;
-use crate::pat::PatId;
+use crate::id::{HasModule, ItemId, ValueDefId, ValueId};
+use crate::item_tree::FixityKind;
+use crate::name::{AsName, Name};
+use crate::pat::{Pat, PatId};
 use crate::path::Path;
 use crate::per_ns::Namespace;
 use crate::source::HasSource;
@@ -26,20 +26,23 @@ pub fn query(db: &dyn Db, id: ValueId) -> Arc<Body> {
     let mut ctx = Ctx::new(db, id, src.file);
 
     ctx.lower(src.value);
+    tracing::debug!("{}", ctx.body.debug(db));
 
     Arc::new(ctx.body)
 }
 
 struct Ctx<'db> {
     db: &'db dyn Db,
-    def_map: DefMap,
+    def_map: Arc<DefMap>,
     value: ValueId,
     body: Body,
     src_map: BodySourceMap,
     scopes: Vec<Scope>,
 }
 
+#[derive(Default)]
 struct Scope {
+    boundary: bool,
     names: NoHashHashMap<Name, PatId>,
 }
 
@@ -70,19 +73,23 @@ impl<'db> Ctx<'db> {
     }
 
     fn lower(&mut self, item: ast::ItemValue) {
+        self.scopes.push(Scope::default());
+        let params = item.params().map(|p| self.lower_pat(p)).collect();
         let expr = self.lower_expr_opt(item.body());
+
+        self.body.params = params;
         self.body.body_expr = expr;
     }
 
     fn alloc_expr(&mut self, expr: Expr, ptr: AstPtr<ast::Expr>) -> ExprId {
-        let id = self.make_expr(expr, Either::Left(ptr));
+        let id = self.make_expr(expr, ExprSrc::Single(ptr));
 
         self.src_map.src_to_expr.insert(ptr, id);
         id
     }
 
     fn alloc_expr_desugared(&mut self, expr: Expr) -> ExprId {
-        self.make_expr(expr, Either::Right(SyntheticSugar(self.value)))
+        self.make_expr(expr, ExprSrc::Synthetic(self.value))
     }
 
     fn make_expr(&mut self, expr: Expr, src: ExprSrc) -> ExprId {
@@ -94,6 +101,28 @@ impl<'db> Ctx<'db> {
 
     fn missing_expr(&mut self) -> ExprId {
         self.alloc_expr_desugared(Expr::Missing)
+    }
+
+    fn alloc_pat(&mut self, pat: Pat, ptr: AstPtr<ast::Pat>) -> PatId {
+        let id = self.make_pat(pat, PatSrc::Single(ptr));
+
+        self.src_map.src_to_pat.insert(ptr, id);
+        id
+    }
+
+    fn alloc_pat_desugared(&mut self, pat: Pat) -> PatId {
+        self.make_pat(pat, PatSrc::Synthetic(self.value))
+    }
+
+    fn make_pat(&mut self, pat: Pat, src: PatSrc) -> PatId {
+        let id = self.body.pats.alloc(pat);
+
+        self.src_map.pat_to_src.insert(id, src);
+        id
+    }
+
+    fn missing_pat(&mut self) -> PatId {
+        self.alloc_pat_desugared(Pat::Missing)
     }
 
     fn lower_expr_opt(&mut self, expr: Option<ast::Expr>) -> ExprId {
@@ -123,6 +152,42 @@ impl<'db> Ctx<'db> {
                 let def = self.resolve_path(&path, &epath);
 
                 self.alloc_expr(Expr::Path { path, def }, syntax_ptr)
+            },
+            | ast::Expr::Lambda(_) => {
+                self.scopes.push(Scope {
+                    boundary: true,
+                    ..Scope::default()
+                });
+
+                let _ = self.scopes.last().unwrap().boundary;
+                todo!()
+            },
+            | ast::Expr::App(e) => {
+                let base = self.lower_expr_opt(e.base());
+                let args = e.args().map(|e| self.lower_expr(e)).collect();
+
+                self.alloc_expr(Expr::App { base, args }, syntax_ptr)
+            },
+            | ast::Expr::Infix(e) => {
+                let exprs = e.exprs().map(|e| self.lower_expr(e)).collect::<Vec<_>>();
+                let ops = e
+                    .ops()
+                    .map(|p| (Path::from_ast(self.db, p.clone()), p))
+                    .collect::<Vec<_>>();
+
+                self.lower_infix(
+                    exprs,
+                    ops,
+                    |ctx| ctx.missing_expr(),
+                    |ctx, def, path, path_src, lhs, rhs| {
+                        let base = ctx.make_expr(Expr::Path { path, def }, ExprSrc::Operator(AstPtr::new(&path_src)));
+                        let args = Box::new([lhs, rhs]);
+                        let lhs_ptr = ctx.src_map.expr_to_src[lhs].as_expr_ptr(true);
+                        let rhs_ptr = ctx.src_map.expr_to_src[rhs].as_expr_ptr(false);
+
+                        ctx.make_expr(Expr::App { base, args }, ExprSrc::Infix(lhs_ptr, rhs_ptr))
+                    },
+                )
             },
             | ast::Expr::Block(e) => {
                 let (stmts, expr) = self.lower_block(e.statements());
@@ -154,9 +219,151 @@ impl<'db> Ctx<'db> {
 
     fn lower_stmt(&mut self, stmt: ast::Stmt) -> Stmt {
         match stmt {
-            | ast::Stmt::Let(_) => todo!(),
+            | ast::Stmt::Let(s) => {
+                self.scopes.push(Scope::default());
+                let pat = self.lower_pat_opt(s.pat());
+                let val = self.lower_expr_opt(s.expr());
+
+                Stmt::Let(pat, val)
+            },
             | ast::Stmt::Bind(_) => todo!(),
             | ast::Stmt::Expr(s) => Stmt::Expr(self.lower_expr_opt(s.expr())),
+        }
+    }
+
+    fn lower_pat_opt(&mut self, pat: Option<ast::Pat>) -> PatId {
+        pat.map(|p| self.lower_pat(p)).unwrap_or_else(|| self.missing_pat())
+    }
+
+    fn lower_pat(&mut self, pat: ast::Pat) -> PatId {
+        self.maybe_lower_pat(pat).unwrap_or_else(|| self.missing_pat())
+    }
+
+    fn maybe_lower_pat(&mut self, pat: ast::Pat) -> Option<PatId> {
+        let syntax_ptr = AstPtr::new(&pat);
+
+        Some(match pat {
+            | ast::Pat::Parens(p) => self.lower_pat_opt(p.pat()),
+            | ast::Pat::Unit(_) => self.alloc_pat(Pat::Wildcard, syntax_ptr),
+            | ast::Pat::Typed(p) => {
+                let inner = self.lower_pat_opt(p.pat());
+
+                inner
+            },
+            | ast::Pat::Bind(p) => {
+                let name = p.name()?.as_name(self.db);
+                let subpat = p.subpat().map(|p| self.lower_pat(p));
+                let id = self.alloc_pat(Pat::Bind { name, subpat }, syntax_ptr);
+
+                self.scopes.last_mut().unwrap().names.insert(name, id);
+                id
+            },
+            | ast::Pat::Path(p) => {
+                let epath = p.path()?;
+                let path = Path::from_ast(self.db, epath.clone());
+                let def = self.resolve_path(&path, &epath);
+                let ctor = def.and_then(|def| match def {
+                    | ValueDefId::CtorId(id) => Some(id),
+                    | _ => todo!(),
+                });
+
+                self.alloc_pat(
+                    Pat::Ctor {
+                        path,
+                        ctor,
+                        args: Box::new([]),
+                    },
+                    syntax_ptr,
+                )
+            },
+            | p => todo!("{p:?}"),
+        })
+    }
+
+    fn lower_infix<T>(
+        &mut self,
+        items: Vec<T>,
+        ops: Vec<(Path, ast::Path)>,
+        mut missing: impl FnMut(&mut Self) -> T,
+        mut mk_app: impl FnMut(&mut Self, Option<ValueDefId>, Path, ast::Path, T, T) -> T,
+    ) -> T {
+        let fixities = ops
+            .iter()
+            .map(|(op, src)| {
+                let resolved = self.resolve_path(op, src);
+                let (prec, assoc) = resolved
+                    .map(|def| match def {
+                        | ValueDefId::FixityId(id) => {
+                            let data = crate::data::fixity_data(self.db, id);
+                            match data.kind(self.db) {
+                                | FixityKind::Infix(assoc, prec) => (prec, assoc),
+                                | _ => (Prec::ZERO, Assoc::Left), // TODO: report error
+                            }
+                        },
+                        | _ => (Prec::ZERO, Assoc::Left),
+                    })
+                    .unwrap_or((Prec::ZERO, Assoc::Left));
+
+                (resolved, prec, assoc)
+            })
+            .collect::<Vec<_>>();
+
+        return go(
+            self,
+            ops.into_iter(),
+            fixities.into_iter().peekable(),
+            items.into_iter(),
+            &mut missing,
+            &mut mk_app,
+        );
+
+        use std::iter::{once, Peekable};
+
+        fn go<'a, T>(
+            ctx: &mut Ctx<'a>,
+            mut ops: impl Iterator<Item = (Path, ast::Path)>,
+            mut fixities: Peekable<impl Iterator<Item = (Option<ValueDefId>, Prec, Assoc)>>,
+            mut items: impl Iterator<Item = T>,
+            missing: &mut dyn FnMut(&mut Ctx<'a>) -> T,
+            mk_app: &mut dyn FnMut(&mut Ctx<'a>, Option<ValueDefId>, Path, ast::Path, T, T) -> T,
+        ) -> T {
+            if let Some((op, op_src)) = ops.next() {
+                let (id, prec, assoc) = fixities.next().unwrap();
+                let left = if let Some(&(id2, prec2, _)) = fixities.peek() {
+                    if id == id2 {
+                        match assoc {
+                            | Assoc::Left => true,
+                            | Assoc::Right => false,
+                            | Assoc::None => todo!(),
+                        }
+                    } else if prec >= prec2 {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    let lhs = items.next().unwrap_or_else(|| missing(ctx));
+                    let rhs = items.next().unwrap_or_else(|| missing(ctx));
+
+                    return mk_app(ctx, id, op, op_src, lhs, rhs);
+                };
+
+                if left {
+                    let lhs = items.next().unwrap_or_else(|| missing(ctx));
+                    let rhs = items.next().unwrap_or_else(|| missing(ctx));
+                    let item = mk_app(ctx, id, op, op_src, lhs, rhs);
+                    let items = once(item).chain(items).collect::<Vec<_>>();
+
+                    go(ctx, ops, fixities, items.into_iter(), missing, mk_app)
+                } else {
+                    let lhs = items.next().unwrap_or_else(|| missing(ctx));
+                    let rhs = go(ctx, ops, fixities, items, missing, mk_app);
+
+                    mk_app(ctx, id, op, op_src, lhs, rhs)
+                }
+            } else {
+                items.next().unwrap_or_else(|| missing(ctx))
+            }
         }
     }
 
@@ -167,6 +374,25 @@ impl<'db> Ctx<'db> {
                     return Some(ValueDefId::PatId(pat));
                 }
             }
+        }
+
+        let module = self.value.container(self.db).module(self.db);
+
+        if let Some(item) = self.def_map.resolve_path(self.db, path, module) {
+            if let None = item.values {
+                // TODO: report error: not a value
+                return None;
+            }
+
+            let id = match item.values.unwrap() {
+                | ItemId::FixityId(id) => ValueDefId::FixityId(id),
+                | ItemId::ValueId(id) => ValueDefId::ValueId(id),
+                | ItemId::CtorId(id) => ValueDefId::CtorId(id),
+                | ItemId::FieldId(id) => ValueDefId::FieldId(id),
+                | _ => unreachable!(),
+            };
+
+            return Some(id);
         }
 
         Diagnostics::emit(self.db, UnresolvedPath {

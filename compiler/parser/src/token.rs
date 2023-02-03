@@ -201,6 +201,8 @@ impl fmt::Display for SyntaxKind {
             | Self::INFIXL_KW => "'infixl'",
             | Self::INFIXR_KW => "'infixr'",
             | Self::INFIX_KW => "'infix'",
+            | Self::PREFIX_KW => "'prefix'",
+            | Self::POSTFIX_KW => "'postfix'",
             | Self::FOREIGN_KW => "'foreign'",
             | Self::CONST_KW => "'const'",
             | Self::STATIC_KW => "'static'",

@@ -1,4 +1,4 @@
-#![feature(trait_upcasting)]
+#![feature(trait_upcasting, let_chains)]
 
 pub mod ast_id;
 pub mod body;
@@ -36,6 +36,7 @@ pub struct Jar(
     id::ImplId,
     data::ModuleData,
     data::FixityData,
+    data::fixity_data,
     data::ValueData,
     data::value_data,
     data::TypeAliasData,
@@ -43,10 +44,10 @@ pub struct Jar(
     data::CtorData,
     data::TraitData,
     data::ImplData,
+    data::impl_data,
     name::Name,
     ast_id::query,
     item_tree::query,
-    def_map::DefMap,
     def_map::query,
     body::query,
     lib_diagnostics,
@@ -72,6 +73,11 @@ pub struct Value {
     data: data::ValueData,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Impl {
+    data: data::ImplData,
+}
+
 #[salsa::tracked]
 fn lib_diagnostics(db: &dyn Db, id: LibId) {
     let lib = Lib { id };
@@ -86,10 +92,10 @@ impl Lib {
         self.id.deps(db).into_iter().map(|&l| l.into()).collect()
     }
 
-    pub fn modules(self, db: &dyn Db) -> impl Iterator<Item = Module> + '_ {
+    pub fn modules(self, db: &dyn Db) -> Vec<Module> {
         let def_map = def_map::query(db, self.id);
 
-        def_map.modules(db).into_iter().map(|(_, &data)| Module { data })
+        def_map.modules().map(|(_, data)| Module { data }).collect()
     }
 
     pub fn diagnostics(self, db: &dyn Db, sink: &mut dyn DiagnosticSink) {
@@ -109,9 +115,20 @@ impl Module {
         })
     }
 
+    pub fn impls(self, db: &dyn Db) -> impl Iterator<Item = Impl> + '_ {
+        self.data
+            .scope(db)
+            .impls()
+            .map(|id| Impl::from(data::impl_data(db, id)))
+    }
+
     fn run_all_queries(self, db: &dyn Db) {
         for item in self.items(db) {
             item.run_all_queries(db);
+        }
+
+        for impl_ in self.impls(db) {
+            impl_.run_all_queries(db);
         }
     }
 }
@@ -130,6 +147,18 @@ impl Value {
     }
 }
 
+impl Impl {
+    pub fn items(self, db: &dyn Db) -> impl Iterator<Item = Value> + '_ {
+        self.data.items(db).values().map(|&id| data::value_data(db, id).into())
+    }
+
+    fn run_all_queries(self, db: &dyn Db) {
+        for item in self.items(db) {
+            item.run_all_queries(db);
+        }
+    }
+}
+
 impl From<LibId> for Lib {
     fn from(id: LibId) -> Self {
         Self { id }
@@ -144,6 +173,12 @@ impl From<data::ModuleData> for Module {
 
 impl From<data::ValueData> for Value {
     fn from(data: data::ValueData) -> Self {
+        Self { data }
+    }
+}
+
+impl From<data::ImplData> for Impl {
+    fn from(data: data::ImplData) -> Self {
         Self { data }
     }
 }

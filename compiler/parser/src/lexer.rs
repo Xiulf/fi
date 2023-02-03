@@ -47,6 +47,8 @@ impl Iterator for Lexer<'_> {
             | (c, _) if c.is_whitespace() => self.whitespace(),
             | (c, _) if c.is_xid_start() => self.ident(),
             | (c, _) if c.is_ascii_digit() => self.number(),
+            | ('\'', _) => self.character(),
+            | ('"', _) => self.string(),
             | ('\0', _) if self.current_indent > 0 => self.dedent(0),
             // | ('\0', _) if self.pos > TextSize::of(self.text) => None,
             // | ('\0', _) => self.emit_eof(),
@@ -122,6 +124,14 @@ impl<'input> Lexer<'input> {
     fn advance2_with(&mut self, kind: SyntaxKind) -> Option<Token> {
         self.advance();
         self.advance_with(kind)
+    }
+
+    fn expect(&mut self, ch: char) {
+        if self.current != ch {
+            todo!();
+        }
+
+        self.advance();
     }
 
     // fn emit_eof(&mut self) -> Option<Token> {
@@ -212,6 +222,73 @@ impl<'input> Lexer<'input> {
         self.token(INT)
     }
 
+    fn character(&mut self) -> Option<Token> {
+        self.advance();
+
+        match self.current {
+            | '\\' => self.escape(),
+            | '\'' => todo!(),
+            | _ => self.advance(),
+        }
+
+        if self.current != '\'' {
+            todo!();
+        }
+
+        self.advance();
+        self.token(CHAR)
+    }
+
+    fn string(&mut self) -> Option<Token> {
+        self.advance();
+
+        while !self.eof() {
+            match self.current {
+                | '\\' => self.escape(),
+                | '"' => {
+                    self.advance();
+                    break;
+                },
+                | _ => self.advance(),
+            }
+        }
+
+        self.token(STRING)
+    }
+
+    fn escape(&mut self) {
+        self.advance();
+
+        match self.current {
+            | '\'' | '"' | '0' | 'n' | 'r' | 't' => self.advance(),
+            | 'x' => {
+                self.advance();
+                self.hex_digit();
+                self.hex_digit();
+            },
+            | 'u' => {
+                self.advance();
+                self.expect('{');
+                self.hex_digit();
+                let mut i = 0;
+                while !self.eof() && i < 5 && self.current.is_digit(16) {
+                    self.advance();
+                    i += 1;
+                }
+                self.expect('}');
+            },
+            | _ => todo!(),
+        }
+    }
+
+    fn hex_digit(&mut self) {
+        if !self.current.is_digit(16) {
+            todo!();
+        }
+
+        self.advance();
+    }
+
     fn newline(&mut self) -> Option<Token> {
         self.advance();
         let start = self.pos;
@@ -260,7 +337,7 @@ impl<'input> Lexer<'input> {
         self.insert_newline = !self.newlines_ignored();
 
         if new_indent > last_indent.level {
-            // TODO: report error
+            todo!();
         }
 
         if last_indent.ignored {

@@ -33,6 +33,10 @@ impl Name {
         Self::new_text(db, SmolStr::new_inline("[missing]"))
     }
 
+    pub fn is_symbol(self, db: &dyn Db) -> bool {
+        matches!(self.repr(db), Repr::Symbol(_))
+    }
+
     pub fn is_lowercase(self, db: &dyn Db) -> bool {
         match self.repr(db) {
             | Repr::Text(text) => text.chars().all(char::is_lowercase),

@@ -1,0 +1,15 @@
+module Prim =
+
+foreign type Type
+foreign type Int32
+
+@lang = "unit-type"
+type Unit = | Unit
+
+trait Termination t =
+    report :: t -> ExitCode
+
+type ExitCode = | ExitCode Int32
+
+impl Termination Unit =
+    report () = ExitCode 0

@@ -15,6 +15,13 @@ fn token(parent: &SyntaxNode, kind: SyntaxKind) -> Option<&SyntaxToken> {
         .find(|it| it.kind() == kind)
 }
 
+fn token2<'a>(parent: &'a SyntaxNode, kinds: &[SyntaxKind]) -> Option<&'a SyntaxToken> {
+    parent
+        .children_with_tokens()
+        .filter_map(|it| it.into_token())
+        .find(|it| kinds.contains(&it.kind()))
+}
+
 pub trait NameOwner: AstNode {
     fn name(&self) -> Option<Name>;
 }
@@ -150,6 +157,10 @@ pub enum Assoc {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Prec(usize);
 
+impl Prec {
+    pub const ZERO: Self = Self(0);
+}
+
 impl NameOwner for ItemValue {
     fn name(&self) -> Option<Name> {
         child(self.syntax())
@@ -220,6 +231,40 @@ impl ItemImpl {
     }
 }
 
+impl PatParens {
+    pub fn pat(&self) -> Option<Pat> {
+        child(self.syntax())
+    }
+}
+
+impl PatTyped {
+    pub fn pat(&self) -> Option<Pat> {
+        child(self.syntax())
+    }
+}
+
+impl PatBind {
+    pub fn name(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+
+    pub fn subpat(&self) -> Option<Pat> {
+        child(self.syntax())
+    }
+}
+
+impl PatLiteral {
+    pub fn literal(&self) -> Option<Literal> {
+        child(self.syntax())
+    }
+}
+
+impl PatPath {
+    pub fn path(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+}
+
 impl ExprLiteral {
     pub fn literal(&self) -> Option<Literal> {
         child(self.syntax())
@@ -232,6 +277,36 @@ impl ExprPath {
     }
 }
 
+impl ExprLambda {
+    pub fn params(&self) -> impl Iterator<Item = Pat> + '_ {
+        children(self.syntax())
+    }
+
+    pub fn body(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+}
+
+impl ExprInfix {
+    pub fn exprs(&self) -> impl Iterator<Item = Expr> + '_ {
+        children(self.syntax())
+    }
+
+    pub fn ops(&self) -> impl Iterator<Item = Path> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl ExprApp {
+    pub fn base(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+
+    pub fn args(&self) -> impl Iterator<Item = Expr> + '_ {
+        children(self.syntax()).skip(1)
+    }
+}
+
 impl ExprBlock {
     pub fn statements(&self) -> impl Iterator<Item = Stmt> + '_ {
         children(self.syntax())
@@ -241,6 +316,16 @@ impl ExprBlock {
 impl ExprTry {
     pub fn statements(&self) -> impl Iterator<Item = Stmt> + '_ {
         children(self.syntax())
+    }
+}
+
+impl StmtLet {
+    pub fn pat(&self) -> Option<Pat> {
+        child(self.syntax())
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
     }
 }
 
@@ -276,7 +361,12 @@ impl Name {
     }
 
     pub fn symbol_token(&self) -> Option<&SyntaxToken> {
-        token(self.syntax(), SyntaxKind::SYMBOL)
+        token2(self.syntax(), &[
+            SyntaxKind::SYMBOL,
+            SyntaxKind::COMMA,
+            SyntaxKind::PIPE,
+            SyntaxKind::AT,
+        ])
     }
 }
 
@@ -286,6 +376,11 @@ impl NameRef {
     }
 
     pub fn symbol_token(&self) -> Option<&SyntaxToken> {
-        token(self.syntax(), SyntaxKind::SYMBOL)
+        token2(self.syntax(), &[
+            SyntaxKind::SYMBOL,
+            SyntaxKind::COMMA,
+            SyntaxKind::PIPE,
+            SyntaxKind::AT,
+        ])
     }
 }

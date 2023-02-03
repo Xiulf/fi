@@ -1,3 +1,0 @@
-module Other (module O) =
-
-import Data.Option as O

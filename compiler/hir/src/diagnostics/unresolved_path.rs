@@ -1,5 +1,4 @@
 use diagnostics::{Diagnostic, ToDiagnostic};
-use syntax::ast::AstNode;
 use syntax::ptr::AstPtr;
 use vfs::File;
 
@@ -18,19 +17,22 @@ impl ToDiagnostic for UnresolvedPath {
     type Db<'t> = dyn Db + 't;
 
     fn to_diagnostic(self, db: &Self::Db<'_>) -> Diagnostic {
-        let ns = match self.ns {
+        let mut kind = match self.ns {
             | Namespace::Types => "type",
             | Namespace::Values => "value",
             | Namespace::Modules => "module",
         };
 
-        let root = base_db::parse(db, self.file);
-        let node = self.ast.to_node(root.syntax());
+        if let Some(name) = self.path.as_name() {
+            if name.is_symbol(db) {
+                kind = "operator";
+            }
+        }
 
         Diagnostic::new(
-            format!("unknown {ns} '{}'", self.path.display(db)),
+            format!("unknown {kind} '{}'", self.path.display(db)),
             self.file,
-            node.syntax().text_range(),
+            self.ast.syntax_node_ptr().range(),
         )
     }
 }

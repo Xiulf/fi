@@ -21,10 +21,10 @@ use crate::path::Path;
 use crate::per_ns::{Namespace, PerNs};
 use crate::{item_tree, Db};
 
-#[salsa::tracked]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefMap {
-    #[return_ref]
-    pub modules: NoHashHashMap<ModuleId, ModuleData>,
+    root_modules: NoHashHashMap<Name, ModuleId>,
+    modules: NoHashHashMap<ModuleId, ModuleData>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -46,6 +46,44 @@ struct ModuleExports {
 
 type ExportSrc = InFile<AstPtr<ast::NameRef>>;
 
+impl DefMap {
+    pub fn modules(&self) -> impl Iterator<Item = (ModuleId, ModuleData)> + '_ {
+        self.modules.iter().map(|(&k, &v)| (k, v))
+    }
+
+    pub fn root_modules(&self) -> &NoHashHashMap<Name, ModuleId> {
+        &self.root_modules
+    }
+
+    pub fn resolve_path(&self, db: &dyn Db, path: &Path, current_module: ModuleId) -> Option<PerNs<ItemId>> {
+        let mut module = current_module;
+        let mut segments = path.iter();
+        let root_name = segments.next()?;
+        let root = self.root_modules.get(&root_name).copied();
+        let res = PerNs::new(None, None, root.map(ItemId::ModuleId));
+        let mut res = res.or(self[module].scope(db).get(root_name));
+
+        while let Some(segment) = segments.next() {
+            module = match res.modules? {
+                | ItemId::ModuleId(id) => id,
+                | _ => unreachable!(),
+            };
+
+            res = self[module].scope(db).get(segment);
+        }
+
+        res.to_option()
+    }
+}
+
+impl std::ops::Index<ModuleId> for DefMap {
+    type Output = ModuleData;
+
+    fn index(&self, index: ModuleId) -> &Self::Output {
+        &self.modules[&index]
+    }
+}
+
 impl ModuleScope {
     pub fn get(&self, name: Name) -> PerNs<ItemId> {
         PerNs::new(
@@ -65,7 +103,7 @@ impl ModuleScope {
 }
 
 #[salsa::tracked]
-pub fn query(db: &dyn Db, lib: LibId) -> DefMap {
+pub fn query(db: &dyn Db, lib: LibId) -> Arc<DefMap> {
     let mut ctx = Ctx {
         db,
         modules: NoHashHashMap::default(),
@@ -80,13 +118,14 @@ pub fn query(db: &dyn Db, lib: LibId) -> DefMap {
     ctx.resolve_imports();
     ctx.verify_exports();
 
+    let root_modules = ctx.root_modules;
     let modules = ctx
         .modules
         .into_iter()
         .map(|(k, v)| (k, ModuleData::new(db, k, v.scope)))
         .collect();
 
-    DefMap::new(db, modules)
+    Arc::new(DefMap { root_modules, modules })
 }
 
 struct Ctx<'a> {
@@ -362,6 +401,7 @@ impl ModuleCtx<'_, '_> {
         let data = &item_tree[it];
         let id = TypeCtorId::new(self.base.db, module, ItemTreeId::new(self.file, it));
         let item = ItemId::TypeCtorId(id);
+        let is_newtype = data.ctors.len() == 1;
 
         self.data().scope.items.push((data.name, item));
         self.data().scope.types.insert(data.name, item);
@@ -374,7 +414,7 @@ impl ModuleCtx<'_, '_> {
             self.data().scope.items.push((data.name, item));
             self.data().scope.values.insert(data.name, item);
 
-            if let Some(fields) = &data.fields {
+            if let Some(fields) = &data.fields && is_newtype {
                 for &local_id in fields.iter() {
                     let data = &item_tree[local_id];
                     let id = FieldId::new(self.base.db, id, local_id);
@@ -613,11 +653,11 @@ impl ModuleExports {
 }
 
 impl DefMap {
-    pub fn dump(self, db: &dyn Db) -> String {
+    pub fn debug(&self, db: &dyn Db) -> String {
         use ra_ap_stdx::format_to;
         let mut out = String::new();
 
-        for (id, module) in self.modules(db) {
+        for (id, module) in self.modules() {
             let scope = module.scope(db);
             format_to!(out, "{} - {id:?}:\n", id.name(db).display(db));
             format_to!(out, "  exports: ");

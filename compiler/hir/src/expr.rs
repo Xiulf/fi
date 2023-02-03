@@ -59,3 +59,14 @@ pub enum Stmt {
     Let(PatId, ExprId),
     Expr(ExprId),
 }
+
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            | Self::Int(l) => l.fmt(f),
+            | Self::Float(l) => f64::from_bits(*l).fmt(f),
+            | Self::Char(l) => write!(f, "{l:?}"),
+            | Self::String(l) => write!(f, "{l:?}"),
+        }
+    }
+}

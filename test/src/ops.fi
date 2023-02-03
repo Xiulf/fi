@@ -1,3 +1,0 @@
-module Core.Ops =
-
-infixl 3 (+) = test

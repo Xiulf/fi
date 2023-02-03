@@ -1,5 +1,4 @@
 use diagnostics::{Diagnostic, ToDiagnostic};
-use syntax::ast::AstNode;
 use syntax::ptr::AstPtr;
 use vfs::File;
 
@@ -24,13 +23,10 @@ impl ToDiagnostic for UnknownName {
             | Namespace::Modules => "module",
         };
 
-        let root = base_db::parse(db, self.file);
-        let node = self.ast.to_node(root.syntax());
-
         Diagnostic::new(
             format!("unknown {ns} '{}'", self.name.display(db)),
             self.file,
-            node.syntax().text_range(),
+            self.ast.syntax_node_ptr().range(),
         )
     }
 }
