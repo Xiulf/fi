@@ -11,7 +11,7 @@ use super::{Body, BodySourceMap, ExprSrc, PatSrc};
 use crate::def_map::DefMap;
 use crate::diagnostics::UnresolvedPath;
 use crate::expr::{Expr, ExprId, Literal, Stmt};
-use crate::id::{HasModule, ItemId, ValueDefId, ValueId};
+use crate::id::{CtorId, HasModule, ItemId, ValueDefId, ValueId};
 use crate::item_tree::FixityKind;
 use crate::name::{AsName, Name};
 use crate::pat::{Pat, PatId};
@@ -244,7 +244,24 @@ impl<'db> Ctx<'db> {
 
         Some(match pat {
             | ast::Pat::Parens(p) => self.lower_pat_opt(p.pat()),
-            | ast::Pat::Unit(_) => self.alloc_pat(Pat::Wildcard, syntax_ptr),
+            | ast::Pat::Unit(_) => {
+                let lib = self.value.container(self.db).module(self.db).lib(self.db);
+                let unit = crate::lang_item::query(self.db, lib, "unit-type")?;
+                let unit = unit.as_type_ctor()?;
+                let it = unit.it(self.db);
+                let item_tree = crate::item_tree::query(self.db, it.file);
+                let data = &item_tree[it.value];
+                let unit = CtorId::new(self.db, unit, data.ctors[0]);
+
+                self.alloc_pat(
+                    Pat::Ctor {
+                        path: Path::default(),
+                        ctor: Some(unit),
+                        args: Box::new([]),
+                    },
+                    syntax_ptr,
+                )
+            },
             | ast::Pat::Typed(p) => {
                 let inner = self.lower_pat_opt(p.pat());
 
@@ -262,10 +279,7 @@ impl<'db> Ctx<'db> {
                 let epath = p.path()?;
                 let path = Path::from_ast(self.db, epath.clone());
                 let def = self.resolve_path(&path, &epath);
-                let ctor = def.and_then(|def| match def {
-                    | ValueDefId::CtorId(id) => Some(id),
-                    | _ => todo!(),
-                });
+                let ctor = self.lower_pat_ctor(def);
 
                 self.alloc_pat(
                     Pat::Ctor {
@@ -276,8 +290,46 @@ impl<'db> Ctx<'db> {
                     syntax_ptr,
                 )
             },
+            | ast::Pat::App(p) => {
+                let base = p.base()?;
+                let epath = base.path()?;
+                let path = Path::from_ast(self.db, epath.clone());
+                let def = self.resolve_path(&path, &epath);
+                let ctor = self.lower_pat_ctor(def);
+                let args = p.args().map(|p| self.lower_pat(p)).collect();
+
+                self.alloc_pat(Pat::Ctor { path, ctor, args }, syntax_ptr)
+            },
+            | ast::Pat::Infix(p) => {
+                let pats = p.pats().map(|e| self.lower_pat(e)).collect::<Vec<_>>();
+                let ops = p
+                    .ops()
+                    .map(|p| (Path::from_ast(self.db, p.clone()), p))
+                    .collect::<Vec<_>>();
+
+                self.lower_infix(
+                    pats,
+                    ops,
+                    |ctx| ctx.missing_pat(),
+                    |ctx, def, path, _, lhs, rhs| {
+                        let lhs_ptr = ctx.src_map.pat_to_src[lhs].as_pat_ptr(true);
+                        let rhs_ptr = ctx.src_map.pat_to_src[rhs].as_pat_ptr(false);
+                        let args = Box::new([lhs, rhs]);
+                        let ctor = ctx.lower_pat_ctor(def);
+
+                        ctx.make_pat(Pat::Ctor { path, ctor, args }, PatSrc::Infix(lhs_ptr, rhs_ptr))
+                    },
+                )
+            },
             | p => todo!("{p:?}"),
         })
+    }
+
+    fn lower_pat_ctor(&self, def: Option<ValueDefId>) -> Option<CtorId> {
+        match def? {
+            | ValueDefId::CtorId(id) => Some(id),
+            | _ => None, // TODO: report error
+        }
     }
 
     fn lower_infix<T>(

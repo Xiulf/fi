@@ -1,11 +1,18 @@
+use std::marker::PhantomData;
+
+use cstree::SyntaxNodeChildren;
+
 use super::*;
 
 fn child<N: AstNode>(parent: &SyntaxNode) -> Option<N> {
     parent.children().find_map(N::cast)
 }
 
-fn children<'a, N: AstNode + 'a>(parent: &'a SyntaxNode) -> impl Iterator<Item = N> + 'a {
-    parent.children().filter_map(N::cast)
+fn children<'a, N: AstNode + 'a>(parent: &'a SyntaxNode) -> AstChildren<'a, N> {
+    AstChildren {
+        iter: parent.children(),
+        _marker: PhantomData,
+    }
 }
 
 fn token(parent: &SyntaxNode, kind: SyntaxKind) -> Option<&SyntaxToken> {
@@ -22,12 +29,130 @@ fn token2<'a>(parent: &'a SyntaxNode, kinds: &[SyntaxKind]) -> Option<&'a Syntax
         .find(|it| kinds.contains(&it.kind()))
 }
 
+pub struct AstChildren<'a, T> {
+    iter: SyntaxNodeChildren<'a, crate::syntax_node::Lang>,
+    _marker: PhantomData<T>,
+}
+
+impl<'a, T: AstNode> Iterator for AstChildren<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.by_ref().find_map(T::cast)
+    }
+}
+
+pub trait AttrsOwner: AstNode {
+    fn attrs(&self) -> AstChildren<Attr> {
+        children(self.syntax())
+    }
+}
+
+// pub trait DocCommentsOwner: AstNode {
+//     fn doc_comments(&self) -> CommentIter {
+//         CommentIter {
+//             iter: self.syntax().children_with_tokens(),
+//         }
+//     }
+
+//     fn doc_comment_text(&self) -> Option<String> {
+//         self.doc_comments().doc_comment_text()
+//     }
+// }
+
+// pub struct CommentIter {
+//     iter: crate::SyntaxElementChildren,
+// }
+
+// impl CommentIter {
+//     pub fn from_syntax_node(syntax_node: &SyntaxNode) -> Self {
+//         CommentIter {
+//             iter: syntax_node.children_with_tokens(),
+//         }
+//     }
+
+//     pub fn doc_comment_text(self) -> Option<String> {
+//         let docs = self
+//             .filter_map(|cmt| cmt.doc_comment().map(ToOwned::to_owned))
+//             .collect::<Vec<_>>()
+//             .join("\n");
+
+//         if docs.is_empty() {
+//             None
+//         } else {
+//             Some(docs)
+//         }
+//     }
+// }
+
+// impl Iterator for CommentIter {
+//     type Item = Comment;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         self.iter
+//             .by_ref()
+//             .find_map(|el| el.into_token().and_then(Comment::cast))
+//     }
+// }
+
 pub trait NameOwner: AstNode {
     fn name(&self) -> Option<Name>;
 }
 
 impl SourceFile {
     pub fn module(&self) -> Option<ItemModule> {
+        child(self.syntax())
+    }
+}
+
+impl Attr {
+    pub fn name(&self) -> Option<NameRef> {
+        child(self.syntax())
+    }
+
+    pub fn value(&self) -> Option<Literal> {
+        child(self.syntax())
+    }
+
+    pub fn args(&self) -> Option<AttrArgs> {
+        child(self.syntax())
+    }
+}
+
+impl AttrArgs {
+    pub fn iter(&self) -> impl Iterator<Item = AttrArg> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl AttrArgLiteral {
+    pub fn literal(&self) -> Option<Literal> {
+        child(self.syntax())
+    }
+}
+
+impl AttrArgIdent {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        child(self.syntax())
+    }
+}
+
+impl AttrArgEqual {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        child(self.syntax())
+    }
+
+    pub fn literal(&self) -> Option<Literal> {
+        child(self.syntax())
+    }
+}
+
+impl AttrArgCall {
+    pub fn name_ref(&self) -> Option<NameRef> {
+        child(self.syntax())
+    }
+
+    pub fn args(&self) -> Option<AttrArgs> {
         child(self.syntax())
     }
 }
@@ -50,6 +175,12 @@ impl ExportModule {
     }
 }
 
+impl AttrsOwner for Item {
+}
+
+impl AttrsOwner for ItemModule {
+}
+
 impl ItemModule {
     pub fn name(&self) -> Option<Path> {
         child(self.syntax())
@@ -62,6 +193,9 @@ impl ItemModule {
     pub fn exports(&self) -> Option<Exports> {
         child(self.syntax())
     }
+}
+
+impl AttrsOwner for ItemImport {
 }
 
 impl ItemImport {
@@ -102,6 +236,9 @@ impl ImportHiding {
     pub fn iter(&self) -> impl Iterator<Item = NameRef> + '_ {
         children(self.syntax())
     }
+}
+
+impl AttrsOwner for ItemFixity {
 }
 
 impl NameOwner for ItemFixity {
@@ -161,6 +298,9 @@ impl Prec {
     pub const ZERO: Self = Self(0);
 }
 
+impl AttrsOwner for ItemValue {
+}
+
 impl NameOwner for ItemValue {
     fn name(&self) -> Option<Name> {
         child(self.syntax())
@@ -177,6 +317,9 @@ impl ItemValue {
     }
 }
 
+impl AttrsOwner for ItemType {
+}
+
 impl NameOwner for ItemType {
     fn name(&self) -> Option<Name> {
         child(self.syntax())
@@ -187,6 +330,9 @@ impl ItemType {
     pub fn ctors(&self) -> impl Iterator<Item = Ctor> + '_ {
         children(self.syntax())
     }
+}
+
+impl AttrsOwner for Ctor {
 }
 
 impl NameOwner for Ctor {
@@ -207,10 +353,16 @@ impl CtorRecord {
     }
 }
 
+impl AttrsOwner for CtorField {
+}
+
 impl NameOwner for CtorField {
     fn name(&self) -> Option<Name> {
         child(self.syntax())
     }
+}
+
+impl AttrsOwner for ItemTrait {
 }
 
 impl NameOwner for ItemTrait {
@@ -223,6 +375,9 @@ impl ItemTrait {
     pub fn items(&self) -> impl Iterator<Item = ItemValue> + '_ {
         children(self.syntax())
     }
+}
+
+impl AttrsOwner for ItemImpl {
 }
 
 impl ItemImpl {
@@ -262,6 +417,26 @@ impl PatLiteral {
 impl PatPath {
     pub fn path(&self) -> Option<Path> {
         child(self.syntax())
+    }
+}
+
+impl PatInfix {
+    pub fn pats(&self) -> impl Iterator<Item = Pat> + '_ {
+        children(self.syntax())
+    }
+
+    pub fn ops(&self) -> impl Iterator<Item = Path> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl PatApp {
+    pub fn base(&self) -> Option<PatPath> {
+        child(self.syntax())
+    }
+
+    pub fn args(&self) -> impl Iterator<Item = Pat> + '_ {
+        children(self.syntax()).skip(1)
     }
 }
 
@@ -340,6 +515,14 @@ impl LitInt {
         let text = token(self.syntax(), SyntaxKind::INT)?.resolve_text(resolver);
 
         text.parse().ok()
+    }
+}
+
+impl LitString {
+    pub fn value(&self, resolver: &dyn Resolver) -> Option<String> {
+        let text = token(self.syntax(), SyntaxKind::STRING)?.resolve_text(resolver);
+
+        Some(text[1..text.len() - 1].to_string())
     }
 }
 

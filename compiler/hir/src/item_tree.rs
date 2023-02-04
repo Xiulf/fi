@@ -8,19 +8,22 @@ use std::ops::Index;
 use arena::{Arena, Idx};
 use base_db::input::File;
 pub use lower::query;
+use rustc_hash::FxHashMap;
 use syntax::ast::{self, AstNode};
 pub use syntax::ast::{Assoc, Prec};
 use vfs::InFile;
 
 use crate::ast_id::FileAstId;
+use crate::attrs::{Attrs, RawAttrs};
 use crate::name::Name;
 use crate::path::Path;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ItemTree {
     file: File,
     items: Vec<Item>,
     data: ItemTreeData,
+    attrs: FxHashMap<AttrOwner, RawAttrs>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq, Hash)]
@@ -53,9 +56,24 @@ pub struct LocalItemTreeId<N: ItemTreeNode> {
 
 pub type ItemTreeId<N> = InFile<LocalItemTreeId<N>>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AttrOwner {
+    Item(Item),
+    Ctor(Idx<Ctor>),
+    Field(Idx<Field>),
+}
+
 impl ItemTree {
     pub fn items(&self) -> &[Item] {
         &self.items
+    }
+
+    pub fn attrs(&self, owner: AttrOwner) -> Attrs {
+        Attrs(self.raw_attrs(owner).clone())
+    }
+
+    pub(crate) fn raw_attrs(&self, owner: AttrOwner) -> &RawAttrs {
+        self.attrs.get(&owner).unwrap_or(&RawAttrs::EMPTY)
     }
 }
 
@@ -212,6 +230,24 @@ pub struct Trait {
 pub struct Impl {
     pub ast_id: FileAstId<ast::ItemImpl>,
     pub items: Box<[LocalItemTreeId<Value>]>,
+}
+
+impl From<Item> for AttrOwner {
+    fn from(value: Item) -> Self {
+        Self::Item(value)
+    }
+}
+
+impl From<Idx<Ctor>> for AttrOwner {
+    fn from(value: Idx<Ctor>) -> Self {
+        Self::Ctor(value)
+    }
+}
+
+impl From<Idx<Field>> for AttrOwner {
+    fn from(value: Idx<Field>) -> Self {
+        Self::Field(value)
+    }
 }
 
 impl<N: ItemTreeNode> Clone for LocalItemTreeId<N> {

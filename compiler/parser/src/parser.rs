@@ -44,7 +44,7 @@ fn attrs() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 
 fn attr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     rtoken(AT)
-        .then(rtoken(IDENT))
+        .then(rtoken(IDENT).to_node(NAME_REF))
         .then(opt(token(EQUALS).then(literal()).to_event().or(attr_args())))
         .to_event()
         .to_node(ATTR)

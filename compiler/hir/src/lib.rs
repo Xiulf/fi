@@ -1,6 +1,7 @@
-#![feature(trait_upcasting, let_chains)]
+#![feature(trait_upcasting, let_chains, iter_intersperse)]
 
 pub mod ast_id;
+pub mod attrs;
 pub mod body;
 pub mod data;
 pub mod def_map;
@@ -8,6 +9,7 @@ pub mod diagnostics;
 pub mod expr;
 pub mod id;
 pub mod item_tree;
+pub mod lang_item;
 pub mod name;
 pub mod pat;
 pub mod path;
@@ -50,6 +52,8 @@ pub struct Jar(
     item_tree::query,
     def_map::query,
     body::query,
+    lang_item::lib_lang_items,
+    lang_item::query,
     lib_diagnostics,
 );
 

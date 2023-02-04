@@ -1,15 +1,19 @@
 mod def;
 mod ext;
+mod tokens;
 
 use cstree::interning::Resolver;
 pub use def::*;
 pub use ext::*;
 use parser::token::SyntaxKind;
+pub use tokens::*;
 
 use crate::{SyntaxNode, SyntaxToken};
 
 pub trait AstNode {
-    fn can_cast(kind: SyntaxKind) -> bool;
+    fn can_cast(kind: SyntaxKind) -> bool
+    where
+        Self: Sized;
 
     fn cast(syntax: &SyntaxNode) -> Option<Self>
     where

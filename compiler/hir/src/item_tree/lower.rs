@@ -18,6 +18,7 @@ pub fn query(db: &dyn Db, file: File) -> Arc<ItemTree> {
             file,
             items: Vec::new(),
             data: ItemTreeData::default(),
+            attrs: FxHashMap::default(),
         },
         ast_map: crate::ast_id::query(db, file),
     };
@@ -58,6 +59,7 @@ impl Ctx<'_> {
     }
 
     fn lower_item(&mut self, item: ast::Item) -> Option<Vec<Item>> {
+        let attrs = RawAttrs::new(self.db, &item);
         let items = match item {
             | ast::Item::Module(it) => self.lower_module(it),
             | ast::Item::Import(it) => self.lower_import(it),
@@ -67,6 +69,12 @@ impl Ctx<'_> {
             | ast::Item::Trait(it) => self.lower_trait(it),
             | ast::Item::Impl(it) => self.lower_impl(it),
         };
+
+        if !attrs.is_empty() {
+            for item in items.iter().flatten() {
+                self.tree.attrs.insert((*item).into(), attrs.clone());
+            }
+        }
 
         items
     }
