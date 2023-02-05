@@ -179,6 +179,7 @@ fn fixity() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 
 fn value() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     attrs()
+        .then(opt(token(FOREIGN_KW)))
         .then(name())
         .then(pat_atom().repeated().collect::<Event>())
         .then(opt(token(DBL_COLON).then(typ()).to_event()))
@@ -224,15 +225,20 @@ fn ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 }
 
 fn ctor_record() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    braces(ctor_field().separated(token(COMMA), true, 0))
-        .to_node(CTOR_RECORD)
-        .labelled("record")
+    braces(
+        ctor_field()
+            .separated(token(COMMA), true, 0)
+            .then(opt(rtoken(LYT_SEP)))
+            .to_event(),
+    )
+    .to_node(CTOR_RECORD)
+    .labelled("record")
 }
 
 fn ctor_field() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     name()
         .then(token(DBL_COLON))
-        .then(typ())
+        .then(typ_atom())
         .to_event()
         .to_node(CTOR_FIELD)
         .labelled("field")
@@ -490,6 +496,7 @@ fn path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .repeated()
         .collect::<Event>()
         .then(rany_name_ref().to_node(PATH_SEGMENT))
+        .then(trivia())
         .to_event()
         .to_node(PATH)
         .labelled("path")
@@ -503,6 +510,7 @@ fn type_path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .repeated()
         .collect::<Event>()
         .then(rtype_name_ref().to_node(PATH_SEGMENT))
+        .then(trivia())
         .to_event()
         .to_node(PATH)
         .labelled("path")

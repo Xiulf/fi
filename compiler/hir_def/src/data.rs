@@ -1,9 +1,13 @@
 use ra_ap_stdx::hash::NoHashHashMap;
+use syntax::ptr::AstPtr;
 
+use crate::attrs::Attrs;
 use crate::def_map::ModuleScope;
-use crate::id::{self, FixityId, ImplId, ValueId};
-use crate::item_tree::FixityKind;
+use crate::id::{self, FixityId, ImplId, TypeVarId, TypedItemId, ValueId};
+use crate::item_tree::{AttrOwner, FixityKind};
 use crate::name::Name;
+use crate::source::HasSource;
+use crate::type_ref::TypeRefId;
 use crate::Db;
 
 #[salsa::tracked]
@@ -25,6 +29,13 @@ pub struct FixityData {
 pub struct ValueData {
     #[id]
     pub id: id::ValueId,
+    #[return_ref]
+    pub attrs: Attrs,
+    pub ty: Option<TypeRefId>,
+    #[return_ref]
+    pub type_vars: Box<[TypeVarId]>,
+    pub is_foreign: bool,
+    pub has_body: bool,
 }
 
 #[salsa::tracked]
@@ -70,7 +81,17 @@ pub fn fixity_data(db: &dyn Db, id: FixityId) -> FixityData {
 
 #[salsa::tracked]
 pub fn value_data(db: &dyn Db, id: ValueId) -> ValueData {
-    ValueData::new(db, id)
+    let it = id.it(db);
+    let item_tree = crate::item_tree::query(db, it.file);
+    let data = &item_tree[it.value];
+    let source = id.source(db).value;
+    let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
+    let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let ty = source.ty().and_then(|t| src_map.typ_for_src(AstPtr::new(&t)));
+    let is_foreign = data.is_foreign;
+    let has_body = data.has_body;
+
+    ValueData::new(db, id, attrs, ty, type_vars, is_foreign, has_body)
 }
 
 #[salsa::tracked]

@@ -315,6 +315,14 @@ impl ItemValue {
     pub fn body(&self) -> Option<Expr> {
         child(self.syntax())
     }
+
+    pub fn ty(&self) -> Option<Type> {
+        child(self.syntax())
+    }
+
+    pub fn foreign_token(&self) -> Option<&SyntaxToken> {
+        token(self.syntax(), SyntaxKind::FOREIGN_KW)
+    }
 }
 
 impl AttrsOwner for ItemType {

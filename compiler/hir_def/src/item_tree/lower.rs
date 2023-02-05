@@ -142,7 +142,14 @@ impl Ctx<'_> {
     fn lower_value(&mut self, value: ast::ItemValue) -> Option<Vec<Item>> {
         let ast_id = self.ast_map.ast_id(&value);
         let name = value.name()?.as_name(self.db);
-        let data = Value { ast_id, name };
+        let is_foreign = value.foreign_token().is_some();
+        let has_body = value.body().is_some();
+        let data = Value {
+            ast_id,
+            name,
+            is_foreign,
+            has_body,
+        };
 
         Some(vec![id(self.tree.data.values.alloc(data)).into()])
     }

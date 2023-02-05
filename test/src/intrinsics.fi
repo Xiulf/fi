@@ -2,5 +2,5 @@ module Prim.Intrinsics =
 
 import Prim
 
-iconvert :: a -> b where Integer a, Integer b
-iadd :: a, a -> a where Integer a
+foreign iconvert :: a -> b where Integer a, Integer b
+foreign iadd :: a, a -> a where Integer a

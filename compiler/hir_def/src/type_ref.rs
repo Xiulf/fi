@@ -4,13 +4,14 @@ use arena::{Arena, ArenaMap, Idx};
 use diagnostics::Diagnostics;
 use ra_ap_stdx::hash::NoHashHashMap;
 use rustc_hash::FxHashMap;
-use syntax::ast::{self, AstNode};
+use syntax::ast::{self, Assoc, AstNode, Prec};
 use syntax::ptr::AstPtr;
 use vfs::File;
 
 use crate::def_map::DefMap;
 use crate::diagnostics::UnresolvedPath;
 use crate::id::{HasModule, ITypedItemId, ItemId, TraitId, TypeDefId, TypeVarId, TypedItemId};
+use crate::item_tree::FixityKind;
 use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::per_ns::Namespace;
@@ -77,6 +78,13 @@ pub enum TypeRefSrc {
     Synthetic,
 }
 
+impl TypedItemId {
+    #[inline]
+    pub fn type_map(self, db: &dyn Db) -> (Arc<TypeMap>, Arc<TypeSourceMap>, Box<[TypeVarId]>) {
+        query(db, ITypedItemId::new(db, self))
+    }
+}
+
 #[salsa::tracked]
 pub fn query(db: &dyn Db, item: ITypedItemId) -> (Arc<TypeMap>, Arc<TypeSourceMap>, Box<[TypeVarId]>) {
     let item = item.as_item_id(db);
@@ -104,9 +112,14 @@ pub fn query(db: &dyn Db, item: ITypedItemId) -> (Arc<TypeMap>, Arc<TypeSourceMa
     }
 
     rec(&mut ctx, &src.value);
-    tracing::debug!("{:#?}", ctx.map);
 
     (Arc::new(ctx.map), Arc::new(ctx.src), ctx.vars.into_values().collect())
+}
+
+impl TypeSourceMap {
+    pub fn typ_for_src(&self, src: AstPtr<ast::Type>) -> Option<TypeRefId> {
+        self.src_to_typ.get(&src).copied()
+    }
 }
 
 struct Ctx<'a> {
@@ -116,6 +129,17 @@ struct Ctx<'a> {
     map: TypeMap,
     src: TypeSourceMap,
     vars: NoHashHashMap<Name, TypeVarId>,
+}
+
+impl TypeRefSrc {
+    pub fn as_typ_ptr(self, lhs: bool) -> AstPtr<ast::Type> {
+        match self {
+            | Self::Single(ptr) => ptr,
+            | Self::Infix(ptr, _) if lhs => ptr,
+            | Self::Infix(_, ptr) => ptr,
+            | _ => unreachable!(),
+        }
+    }
 }
 
 impl<'a> Ctx<'a> {
@@ -203,6 +227,18 @@ impl<'a> Ctx<'a> {
 
                 self.alloc_type(TypeRef::Path { path, def }, syntax_ptr)
             },
+            | ast::Type::App(t) => {
+                let base = self.lower_type_opt(t.base());
+                let args = t.args().map(|t| self.lower_type(t)).collect();
+
+                self.alloc_type(TypeRef::App { base, args }, syntax_ptr)
+            },
+            | ast::Type::Infix(t) => {
+                let types = t.types().map(|t| self.lower_type(t)).collect();
+                let ops = t.ops().map(|p| (Path::from_ast(self.db, p.clone()), p)).collect();
+
+                self.lower_infix(types, ops)
+            },
             | ast::Type::Func(t) => {
                 let args = t.args().map(|t| self.lower_type(t)).collect();
                 let ret = self.lower_type_opt(t.ret());
@@ -259,6 +295,102 @@ impl<'a> Ctx<'a> {
 
     fn lower_var_kind(&mut self, _ast: ast::WhereClauseVarKind) -> Option<TypeVarKind> {
         todo!()
+    }
+
+    fn make_infix_app(
+        &mut self,
+        def: Option<TypeDefId>,
+        path: Path,
+        path_src: ast::Path,
+        lhs: TypeRefId,
+        rhs: TypeRefId,
+    ) -> TypeRefId {
+        let base = self.make_type(
+            TypeRef::Path { path, def },
+            TypeRefSrc::Operator(AstPtr::new(&path_src)),
+        );
+        let args = Box::new([lhs, rhs]);
+        let lhs_ptr = self.src.typ_to_src[lhs].as_typ_ptr(true);
+        let rhs_ptr = self.src.typ_to_src[rhs].as_typ_ptr(false);
+
+        self.make_type(TypeRef::App { base, args }, TypeRefSrc::Infix(lhs_ptr, rhs_ptr))
+    }
+
+    fn lower_infix(&mut self, items: Vec<TypeRefId>, ops: Vec<(Path, ast::Path)>) -> TypeRefId {
+        let fixities = ops
+            .iter()
+            .map(|(op, src)| {
+                let resolved = self.resolve_path(op, src);
+                let (prec, assoc) = resolved
+                    .map(|def| match def {
+                        | TypeDefId::FixityId(id) => {
+                            let data = crate::data::fixity_data(self.db, id);
+                            match data.kind(self.db) {
+                                | FixityKind::Infix(assoc, prec) => (prec, assoc),
+                                | _ => (Prec::ZERO, Assoc::Left), // TODO: report error
+                            }
+                        },
+                        | _ => (Prec::ZERO, Assoc::Left),
+                    })
+                    .unwrap_or((Prec::ZERO, Assoc::Left));
+
+                (resolved, prec, assoc)
+            })
+            .collect::<Vec<_>>();
+
+        return go(
+            self,
+            ops.into_iter(),
+            fixities.into_iter().peekable(),
+            items.into_iter(),
+        );
+
+        use std::iter::{once, Peekable};
+
+        fn go(
+            ctx: &mut Ctx,
+            mut ops: impl Iterator<Item = (Path, ast::Path)>,
+            mut fixities: Peekable<impl Iterator<Item = (Option<TypeDefId>, Prec, Assoc)>>,
+            mut items: impl Iterator<Item = TypeRefId>,
+        ) -> TypeRefId {
+            if let Some((op, op_src)) = ops.next() {
+                let (id, prec, assoc) = fixities.next().unwrap();
+                let left = if let Some(&(id2, prec2, _)) = fixities.peek() {
+                    if id == id2 {
+                        match assoc {
+                            | Assoc::Left => true,
+                            | Assoc::Right => false,
+                            | Assoc::None => todo!(),
+                        }
+                    } else if prec >= prec2 {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    let lhs = items.next().unwrap_or_else(|| ctx.missing_type());
+                    let rhs = items.next().unwrap_or_else(|| ctx.missing_type());
+
+                    return ctx.make_infix_app(id, op, op_src, lhs, rhs);
+                };
+
+                if left {
+                    let lhs = items.next().unwrap_or_else(|| ctx.missing_type());
+                    let rhs = items.next().unwrap_or_else(|| ctx.missing_type());
+                    let item = ctx.make_infix_app(id, op, op_src, lhs, rhs);
+                    let items = once(item).chain(items).collect::<Vec<_>>();
+
+                    go(ctx, ops, fixities, items.into_iter())
+                } else {
+                    let lhs = items.next().unwrap_or_else(|| ctx.missing_type());
+                    let rhs = go(ctx, ops, fixities, items);
+
+                    ctx.make_infix_app(id, op, op_src, lhs, rhs)
+                }
+            } else {
+                items.next().unwrap_or_else(|| ctx.missing_type())
+            }
+        }
     }
 
     fn resolve_path(&self, path: &Path, ast: &ast::Path) -> Option<TypeDefId> {

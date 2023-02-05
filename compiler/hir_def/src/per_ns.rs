@@ -42,6 +42,10 @@ impl<T> PerNs<T> {
         }
     }
 
+    pub fn without_modules(self) -> Self {
+        Self { modules: None, ..self }
+    }
+
     pub fn is_none(&self) -> bool {
         self.types.is_none() && self.values.is_none() && self.modules.is_none()
     }

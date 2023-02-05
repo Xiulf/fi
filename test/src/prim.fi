@@ -1,7 +1,9 @@
 module Prim =
 
-foreign type Type
 foreign type Int32
+
+foreign type Array len item
+infixr type 1 (*) = Array
 
 @lang = "unit-type"
 type Unit = | Unit

@@ -191,6 +191,8 @@ pub enum FixityKind {
 pub struct Value {
     pub ast_id: FileAstId<ast::ItemValue>,
     pub name: Name,
+    pub is_foreign: bool,
+    pub has_body: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
