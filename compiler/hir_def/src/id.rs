@@ -4,6 +4,7 @@ use base_db::libs::LibId;
 use crate::item_tree::{self, ItemTreeId};
 use crate::name::Name;
 use crate::pat::PatId;
+use crate::type_ref::LocalTypeVarId;
 use crate::Db;
 
 #[salsa::interned]
@@ -64,6 +65,12 @@ pub struct ImplId {
     pub it: ItemTreeId<item_tree::Impl>,
 }
 
+#[salsa::interned]
+pub struct TypeVarId {
+    pub owner: TypedItemId,
+    pub local_id: LocalTypeVarId,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModuleParentId {
     LibId(LibId),
@@ -91,12 +98,37 @@ pub enum ItemId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypedItemId {
+    ValueId(ValueId),
+    TypeAliasId(TypeAliasId),
+    TypeCtorId(TypeCtorId),
+    CtorId(CtorId),
+    FieldId(FieldId),
+    TraitId(TraitId),
+    ImplId(ImplId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueDefId {
     FixityId(FixityId),
     ValueId(ValueId),
     CtorId(CtorId),
     FieldId(FieldId),
     PatId(PatId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypeDefId {
+    FixityId(FixityId),
+    TypeAliasId(TypeAliasId),
+    TypeCtorId(TypeCtorId),
+    TraitId(TraitId),
+    TypeVarId(TypeVarId),
+}
+
+#[salsa::interned]
+pub struct ITypedItemId {
+    pub as_item_id: TypedItemId,
 }
 
 pub trait HasModule: Copy {
@@ -115,17 +147,33 @@ impl ModuleId {
 impl HasModule for ContainerId {
     fn module(self, db: &dyn Db) -> ModuleId {
         match self {
-            | ContainerId::ModuleId(id) => id,
-            | ContainerId::TraitId(id) => id.module(db),
-            | ContainerId::ImplId(id) => id.module(db),
+            | Self::ModuleId(id) => id,
+            | Self::TraitId(id) => id.module(db),
+            | Self::ImplId(id) => id.module(db),
+        }
+    }
+}
+
+impl HasModule for TypedItemId {
+    fn module(self, db: &dyn Db) -> ModuleId {
+        match self {
+            | Self::ValueId(id) => id.container(db).module(db),
+            | Self::CtorId(id) => id.type_ctor(db).module(db),
+            | Self::FieldId(id) => id.ctor(db).type_ctor(db).module(db),
+            | Self::TypeAliasId(id) => id.module(db),
+            | Self::TypeCtorId(id) => id.module(db),
+            | Self::TraitId(id) => id.module(db),
+            | Self::ImplId(id) => id.module(db),
         }
     }
 }
 
 ra_ap_stdx::impl_from!(LibId, ModuleId for ModuleParentId);
 ra_ap_stdx::impl_from!(ModuleId, TraitId, ImplId for ContainerId);
-ra_ap_stdx::impl_from!(ModuleId, FixityId, ValueId, TypeAliasId, TypeCtorId, CtorId, TraitId, ImplId for ItemId);
+ra_ap_stdx::impl_from!(ModuleId, FixityId, ValueId, CtorId, FieldId, TypeAliasId, TypeCtorId, TraitId, ImplId for ItemId);
+ra_ap_stdx::impl_from!(ValueId, CtorId, FieldId, TypeAliasId, TypeCtorId, TraitId, ImplId for TypedItemId);
 ra_ap_stdx::impl_from!(FixityId, ValueId, CtorId, FieldId, PatId for ValueDefId);
+ra_ap_stdx::impl_from!(FixityId, TypeAliasId, TypeCtorId, TraitId, TypeVarId for TypeDefId);
 
 impl ra_ap_stdx::hash::NoHashHashable for ModuleId {
 }

@@ -6,6 +6,8 @@ foreign type Int32
 @lang = "unit-type"
 type Unit = | Unit
 
+trait Integer i
+
 trait Termination t =
     report :: t -> ExitCode
 

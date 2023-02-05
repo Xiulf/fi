@@ -37,6 +37,25 @@ ast_node!(Ctor, CTOR);
 ast_node!(CtorRecord, CTOR_RECORD);
 ast_node!(CtorField, CTOR_FIELD);
 
+ast_node!(WhereClause, WHERE_CLAUSE);
+ast_node!(WhereClauseItem {
+    Constraint(WhereClauseConstraint, WHERE_CLAUSE_CONSTRAINT),
+    VarKind(WhereClauseVarKind, WHERE_CLAUSE_VAR_KIND),
+});
+
+ast_node!(Type {
+    Parens(TypeParens, TYPE_PARENS),
+    Hole(TypeHole, TYPE_HOLE),
+    Unit(TypeUnit, TYPE_UNIT),
+    Var(TypeVar, TYPE_VAR),
+    Path(TypePath, TYPE_PATH),
+    List(TypeList, TYPE_LIST),
+    App(TypeApp, TYPE_APP),
+    Infix(TypeInfix, TYPE_INFIX),
+    Func(TypeFunc, TYPE_FUNC),
+    Where(TypeWhere, TYPE_WHERE),
+});
+
 ast_node!(Pat {
     Typed(PatTyped, PAT_TYPED),
     Parens(PatParens, PAT_PARENS),

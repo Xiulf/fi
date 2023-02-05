@@ -323,10 +323,10 @@ impl<'input> Lexer<'input> {
         } else {
             self.indents.push(Indent {
                 level: new_indent,
-                ignored: false,
+                ignored: true,
             });
             self.current_indent = new_indent;
-            self.next()
+            self.token(WHITESPACE)
         }
     }
 
@@ -341,7 +341,11 @@ impl<'input> Lexer<'input> {
         }
 
         if last_indent.ignored {
-            self.next()
+            if self.pos - self.start == TextSize::from(0) {
+                self.next()
+            } else {
+                self.token(WHITESPACE)
+            }
         } else {
             self.token(LYT_END)
         }

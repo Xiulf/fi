@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "compiler/hir",
+  "compiler/hir_def",
   "compiler/parser",
   "compiler/syntax",
   "compiler/base_db",

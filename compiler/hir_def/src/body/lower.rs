@@ -73,6 +73,10 @@ impl<'db> Ctx<'db> {
     }
 
     fn lower(&mut self, item: ast::ItemValue) {
+        // use syntax::ast::AstNode;
+        // let resolver = self.db.syntax_interner().read().unwrap();
+        // tracing::debug!("{}", item.syntax().debug(&*resolver, true));
+
         self.scopes.push(Scope::default());
         let params = item.params().map(|p| self.lower_pat(p)).collect();
         let expr = self.lower_expr_opt(item.body());
@@ -137,6 +141,7 @@ impl<'db> Ctx<'db> {
         let syntax_ptr = AstPtr::new(&expr);
 
         Some(match expr {
+            | ast::Expr::Parens(e) => self.lower_expr_opt(e.expr()),
             | ast::Expr::Literal(e) => {
                 let resolver = self.db.syntax_interner().read().unwrap();
                 let lit = match e.literal()? {

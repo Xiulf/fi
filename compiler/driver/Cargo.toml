@@ -9,7 +9,7 @@ edition = "2021"
 ariadne = { git = "https://github.com/Cyberduc-k/ariadne.git" }
 base_db = { version = "0.1.0", path = "../base_db" }
 diagnostics = { version = "0.1.0", path = "../diagnostics" }
-hir = { version = "0.1.0", path = "../hir" }
+hir_def = { version = "0.1.0", path = "../hir_def" }
 paths = { version = "0.1.0", path = "../paths" }
 salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
 syntax = { version = "0.1.0", path = "../syntax" }

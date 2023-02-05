@@ -15,6 +15,7 @@ pub mod pat;
 pub mod path;
 pub mod per_ns;
 pub mod source;
+pub mod type_ref;
 
 use ::diagnostics::{DiagnosticSink, Diagnostics};
 use base_db::libs::LibId;
@@ -36,6 +37,8 @@ pub struct Jar(
     id::FieldId,
     id::TraitId,
     id::ImplId,
+    id::TypeVarId,
+    id::ITypedItemId,
     data::ModuleData,
     data::FixityData,
     data::fixity_data,
@@ -52,6 +55,7 @@ pub struct Jar(
     item_tree::query,
     def_map::query,
     body::query,
+    type_ref::query,
     lang_item::lib_lang_items,
     lang_item::query,
     lib_diagnostics,
@@ -147,7 +151,10 @@ impl Item {
 
 impl Value {
     fn run_all_queries(self, db: &dyn Db) {
+        let item = id::ITypedItemId::new(db, self.data.id(db).into());
+
         body::query(db, self.data.id(db));
+        type_ref::query(db, item);
     }
 }
 

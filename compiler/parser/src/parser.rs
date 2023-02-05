@@ -103,6 +103,7 @@ fn module<'a>(
         )
         .to_event()
         .to_node(ITEM_MODULE)
+        .labelled("module")
 }
 
 fn module_header() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
@@ -143,6 +144,7 @@ fn import() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .then(opt(rename))
         .to_event()
         .to_node(ITEM_IMPORT)
+        .labelled("import")
 }
 
 fn import_item() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -168,7 +170,11 @@ fn fixity() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .then(path())
         .to_event();
 
-    attrs().then(infix.or(prefix)).to_event().to_node(ITEM_FIXITY)
+    attrs()
+        .then(infix.or(prefix))
+        .to_event()
+        .to_node(ITEM_FIXITY)
+        .labelled("fixity definition")
 }
 
 fn value() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -179,6 +185,7 @@ fn value() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .then(opt(token(EQUALS).then(expr()).to_event()))
         .to_event()
         .to_node(ITEM_VALUE)
+        .labelled("value definition")
 }
 
 fn type_ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -191,6 +198,7 @@ fn type_ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .then(body)
         .to_event()
         .to_node(ITEM_TYPE)
+        .labelled("type definition")
 }
 
 fn foreign_type() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -199,6 +207,7 @@ fn foreign_type() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone 
         .then(type_header())
         .to_event()
         .to_node(ITEM_TYPE)
+        .labelled("type definition")
 }
 
 fn type_header() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -211,25 +220,39 @@ fn ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .then(ctor_record().or(typ_atom().repeated().collect::<Event>()))
         .to_event()
         .to_node(CTOR)
+        .labelled("constructor")
 }
 
 fn ctor_record() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    braces(ctor_field().separated(token(COMMA), true, 0)).to_node(CTOR_RECORD)
+    braces(ctor_field().separated(token(COMMA), true, 0))
+        .to_node(CTOR_RECORD)
+        .labelled("record")
 }
 
 fn ctor_field() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    name().then(token(DBL_COLON)).then(typ()).to_event().to_node(CTOR_FIELD)
+    name()
+        .then(token(DBL_COLON))
+        .then(typ())
+        .to_event()
+        .to_node(CTOR_FIELD)
+        .labelled("field")
 }
 
 fn trait_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
     let header = attrs()
         .then(token(TRAIT_KW))
-        .then(token(TYPE))
+        .then(type_name())
         .then(type_vars())
         .to_event();
     let body = token(EQUALS).then(block(assoc_item())).to_event();
 
-    header.clone().then(body).to_event().or(header).to_node(ITEM_TRAIT)
+    header
+        .clone()
+        .then(body)
+        .to_event()
+        .or(header)
+        .to_node(ITEM_TRAIT)
+        .labelled("trait")
 }
 
 fn impl_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
@@ -240,37 +263,83 @@ fn impl_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
         .to_event();
     let body = token(EQUALS).then(block(assoc_item())).to_event();
 
-    header.clone().then(body).to_event().or(header).to_node(ITEM_IMPL)
+    header
+        .clone()
+        .then(body)
+        .to_event()
+        .or(header)
+        .to_node(ITEM_IMPL)
+        .labelled("impl")
 }
 
 fn type_vars() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     token(IDENT).repeated().labelled("type variables").collect()
 }
 
-fn typ_atom() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    let name = token(TYPE);
-    let ident = token(IDENT);
-    let list = brackets(typ());
-    let parens = parens(typ());
+fn where_clause<'a>(
+    typ_atom: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
+    let constraint = type_path()
+        .then(typ_atom.repeated().collect())
+        .to_event()
+        .to_node(WHERE_CLAUSE_CONSTRAINT);
+    let item = choice((constraint,));
 
-    choice((name, ident, list, parens))
+    token(WHERE_KW)
+        .then(item.separated(token(COMMA), true, 0))
+        .to_event()
+        .to_node(WHERE_CLAUSE)
+        .labelled("where clause")
+}
+
+fn typ_atom() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    let ident = name().to_node(TYPE_VAR);
+    let name = type_path().to_node(TYPE_PATH);
+    let list = brackets(typ()).to_node(TYPE_LIST);
+    let parens = parens(typ()).to_node(TYPE_PARENS);
+
+    choice((name, ident, list, parens)).labelled("type")
 }
 
 fn typ() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    recursive(move |typ| {
-        let name = token(TYPE);
-        let ident = token(IDENT);
-        let list = brackets(typ.clone());
-        let parens = parens(typ);
+    recursive(|typ| {
+        let ident = name().to_node(TYPE_VAR);
+        let name = type_path().to_node(TYPE_PATH);
+        let list = brackets(typ.clone()).to_node(TYPE_LIST);
+        let parens = parens(typ).to_node(TYPE_PARENS);
         let atom = choice((name, ident, list, parens));
-        let app = atom.clone().then(atom.clone().repeated().collect()).to_event();
-        let func = app
+        let app = atom
             .clone()
-            .then(token(ARROW).then(app.clone()).repeated().collect())
-            .map(Into::into);
+            .then(atom.clone().repeated().at_least(1).collect())
+            .to_event()
+            .to_node(TYPE_APP)
+            .or(atom.clone());
 
-        func.or(app).or(atom)
+        let infix = app
+            .clone()
+            .separated(symbol_operator(), false, 2)
+            .to_node(TYPE_INFIX)
+            .or(app.clone());
+
+        let func = recursive(move |func| {
+            app.clone()
+                .separated(token(COMMA), false, 1)
+                .then(token(ARROW))
+                .then(func)
+                .to_event()
+                .to_node(TYPE_FUNC)
+                .or(infix)
+        });
+
+        let where_ = func
+            .clone()
+            .then(where_clause(atom.clone()))
+            .to_event()
+            .to_node(TYPE_WHERE);
+
+        where_.or(func)
     })
+    .labelled("type")
 }
 
 fn pat_atom() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -280,7 +349,7 @@ fn pat_atom() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(PAT_UNIT);
     let parens = parens(pat()).to_node(PAT_PARENS);
 
-    choice((bind, underscore, ctor, unit, parens))
+    choice((bind, underscore, ctor, unit, parens)).labelled("pattern")
 }
 
 fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -308,6 +377,7 @@ fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 
         typed.or(app).or(atom)
     })
+    .labelled("pattern")
 }
 
 fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -325,6 +395,7 @@ fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 
         infix
     })
+    .labelled("expression")
 }
 
 fn stmt(
@@ -337,12 +408,12 @@ fn stmt(
         .to_node(STMT_LET);
     let expr = expr.to_node(STMT_EXPR);
 
-    choice((let_, expr))
+    choice((let_, expr)).labelled("statement")
 }
 
-fn parens(
-    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
-) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+fn parens<'a>(
+    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
     token(L_PAREN)
         .then(item)
         .then(token(R_PAREN))
@@ -355,9 +426,9 @@ fn parens(
         ))
 }
 
-fn braces(
-    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
-) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+fn braces<'a>(
+    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
     token(L_BRACE)
         .then(item)
         .then(token(R_BRACE))
@@ -370,9 +441,9 @@ fn braces(
         ))
 }
 
-fn brackets(
-    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
-) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+fn brackets<'a>(
+    item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
     token(L_BRACKET)
         .then(item)
         .then(token(R_BRACKET))
@@ -408,7 +479,7 @@ fn literal() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .or(rtoken(STRING).to_node(LIT_STRING))
         .labelled("literal");
 
-    trivia().then(lit).then(trivia()).to_event()
+    trivia().then(lit).then(trivia()).to_event().labelled("literal")
 }
 
 fn path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -418,9 +489,10 @@ fn path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .then(rtoken(DOT))
         .repeated()
         .collect::<Event>()
-        .then(any_name_ref().to_node(PATH_SEGMENT))
+        .then(rany_name_ref().to_node(PATH_SEGMENT))
         .to_event()
         .to_node(PATH)
+        .labelled("path")
 }
 
 fn type_path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -430,9 +502,10 @@ fn type_path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .then(rtoken(DOT))
         .repeated()
         .collect::<Event>()
-        .then(type_name_ref().to_node(PATH_SEGMENT))
+        .then(rtype_name_ref().to_node(PATH_SEGMENT))
         .to_event()
         .to_node(PATH)
+        .labelled("path")
 }
 
 fn name() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -458,11 +531,19 @@ fn type_name_ref() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone
     trivia().then(rtoken(TYPE).to_node(NAME_REF)).then(trivia()).to_event()
 }
 
+fn rtype_name_ref() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    rtoken(TYPE).to_node(NAME_REF)
+}
+
 fn any_name_ref() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     trivia()
         .then(rtoken([IDENT, TYPE]).or(symbol()).to_node(NAME_REF))
         .then(trivia())
         .to_event()
+}
+
+fn rany_name_ref() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    rtoken([IDENT, TYPE]).or(symbol()).to_node(NAME_REF)
 }
 
 fn operator() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -476,6 +557,18 @@ fn operator() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
                     .to_node(NAME_REF)
                     .to_node(PATH_SEGMENT)
                     .to_node(PATH)),
+        )
+        .then(trivia())
+        .to_event()
+}
+
+fn symbol_operator() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    trivia()
+        .then(
+            rtoken([SYMBOL, COMMA, AT, PIPE])
+                .to_node(NAME_REF)
+                .to_node(PATH_SEGMENT)
+                .to_node(PATH),
         )
         .then(trivia())
         .to_event()

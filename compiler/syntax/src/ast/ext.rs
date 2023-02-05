@@ -386,6 +386,88 @@ impl ItemImpl {
     }
 }
 
+impl WhereClause {
+    pub fn iter(&self) -> impl Iterator<Item = WhereClauseItem> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl WhereClauseConstraint {
+    pub fn path(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+
+    pub fn types(&self) -> impl Iterator<Item = Type> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl TypeParens {
+    pub fn ty(&self) -> Option<Type> {
+        child(self.syntax())
+    }
+}
+
+impl TypeVar {
+    pub fn name(&self) -> Option<Name> {
+        child(self.syntax())
+    }
+}
+
+impl TypePath {
+    pub fn path(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+}
+
+impl TypeList {
+    pub fn ty(&self) -> Option<Type> {
+        child(self.syntax())
+    }
+}
+
+impl TypeApp {
+    pub fn base(&self) -> Option<Type> {
+        child(self.syntax())
+    }
+
+    pub fn args(&self) -> impl Iterator<Item = Type> + '_ {
+        children(self.syntax()).skip(1)
+    }
+}
+
+impl TypeInfix {
+    pub fn types(&self) -> impl Iterator<Item = Type> + '_ {
+        children(self.syntax())
+    }
+
+    pub fn ops(&self) -> impl Iterator<Item = Path> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl TypeFunc {
+    pub fn args(&self) -> impl Iterator<Item = Type> + '_ {
+        let len = children::<Type>(self.syntax()).count();
+        let len = if len > 0 { len - 1 } else { len };
+        children(self.syntax()).take(len)
+    }
+
+    pub fn ret(&self) -> Option<Type> {
+        children(self.syntax()).last()
+    }
+}
+
+impl TypeWhere {
+    pub fn ty(&self) -> Option<Type> {
+        child(self.syntax())
+    }
+
+    pub fn where_clause(&self) -> Option<WhereClause> {
+        child(self.syntax())
+    }
+}
+
 impl PatParens {
     pub fn pat(&self) -> Option<Pat> {
         child(self.syntax())
@@ -437,6 +519,12 @@ impl PatApp {
 
     pub fn args(&self) -> impl Iterator<Item = Pat> + '_ {
         children(self.syntax()).skip(1)
+    }
+}
+
+impl ExprParens {
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
     }
 }
 

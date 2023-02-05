@@ -47,6 +47,12 @@ impl Path {
     }
 }
 
+impl From<Name> for Path {
+    fn from(value: Name) -> Self {
+        Path { segments: vec![value] }
+    }
+}
+
 impl FromIterator<Name> for Path {
     fn from_iter<T: IntoIterator<Item = Name>>(iter: T) -> Self {
         Self {
