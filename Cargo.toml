@@ -1,12 +1,4 @@
 [workspace]
 members = [
-  "compiler/hir_def",
-  "compiler/parser",
-  "compiler/syntax",
-  "compiler/base_db",
-  "compiler/diagnostics",
-  "compiler/paths",
-  "compiler/vfs",
-  "compiler/driver",
-  "compiler/fi",
+  "compiler/*",
 ]

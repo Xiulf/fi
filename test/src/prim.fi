@@ -8,7 +8,8 @@ infixr type 1 (*) = Array
 @lang = "unit-type"
 type Unit = | Unit
 
-trait Integer i
+trait AnyInt i
+trait AnyFloat f
 
 trait Termination t =
     report :: t -> ExitCode

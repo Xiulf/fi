@@ -1,0 +1,11 @@
+[package]
+name = "hir_ty"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+base_db = { version = "0.1.0", path = "../base_db" }
+diagnostics = { version = "0.1.0", path = "../diagnostics" }
+hir_def = { version = "0.1.0", path = "../hir_def" }

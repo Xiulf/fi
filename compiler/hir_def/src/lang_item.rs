@@ -98,5 +98,6 @@ pub fn query(db: &dyn Db, lib: LibId, item: &'static str) -> Option<LangItem> {
         return Some(target);
     }
 
-    todo!()
+    // TODO: check deps
+    None
 }

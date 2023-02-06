@@ -2,5 +2,19 @@ module Prim.Intrinsics =
 
 import Prim
 
-foreign iconvert :: a -> b where Integer a, Integer b
-foreign iadd :: a, a -> a where Integer a
+@intrinsic foreign iadd :: a, a -> a where AnyInt a
+@intrinsic foreign isub :: a, a -> a where AnyInt a
+@intrinsic foreign imul :: a, a -> a where AnyInt a
+@intrinsic foreign idiv :: a, a -> a where AnyInt a
+@intrinsic foreign irem :: a, a -> a where AnyInt a
+
+@intrinsic foreign fadd :: a, a -> a where AnyFloat a
+@intrinsic foreign fsub :: a, a -> a where AnyFloat a
+@intrinsic foreign fmul :: a, a -> a where AnyFloat a
+@intrinsic foreign fdiv :: a, a -> a where AnyFloat a
+@intrinsic foreign frem :: a, a -> a where AnyFloat a
+
+@intrinsic foreign iconvert :: a -> b where AnyInt a, AnyInt b
+@intrinsic foreign fconvert :: a -> b where AnyFloat a, AnyFloat b
+@intrinsic foreign ifconvert :: a -> b where AnyInt a, AnyFloat b
+@intrinsic foreign ficonvert :: a -> b where AnyFloat a, AnyInt b

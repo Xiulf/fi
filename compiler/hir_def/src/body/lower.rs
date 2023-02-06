@@ -142,6 +142,23 @@ impl<'db> Ctx<'db> {
 
         Some(match expr {
             | ast::Expr::Parens(e) => self.lower_expr_opt(e.expr()),
+            | ast::Expr::Unit(_) => {
+                let lib = self.value.container(self.db).module(self.db).lib(self.db);
+                let unit = crate::lang_item::query(self.db, lib, "unit-type")?;
+                let unit = unit.as_type_ctor()?;
+                let it = unit.it(self.db);
+                let item_tree = crate::item_tree::query(self.db, it.file);
+                let data = &item_tree[it.value];
+                let unit = CtorId::new(self.db, unit, data.ctors[0]);
+
+                self.alloc_expr(
+                    Expr::Path {
+                        path: Path::default(),
+                        def: Some(ValueDefId::CtorId(unit)),
+                    },
+                    syntax_ptr,
+                )
+            },
             | ast::Expr::Literal(e) => {
                 let resolver = self.db.syntax_interner().read().unwrap();
                 let lit = match e.literal()? {

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Range;
 
@@ -90,7 +90,7 @@ impl From<ErrorLabel> for Option<&'static str> {
 pub struct ParseError {
     span: TextRange,
     reason: ErrorReason,
-    expected: HashSet<Option<SyntaxKind>>,
+    expected: BTreeSet<Option<SyntaxKind>>,
     found: Option<SyntaxKind>,
     label: ErrorLabel,
 }
@@ -101,7 +101,7 @@ impl ParseError {
         Self {
             span: TextRange::new(TextSize::from(span.start as u32), TextSize::from(span.end as u32)),
             reason: ErrorReason::Custom(msg.to_string()),
-            expected: HashSet::default(),
+            expected: BTreeSet::default(),
             found: None,
             label: ErrorLabel::None,
         }
