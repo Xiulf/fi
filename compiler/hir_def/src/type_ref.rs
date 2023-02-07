@@ -1,11 +1,10 @@
-use std::sync::Arc;
-
 use arena::{Arena, ArenaMap, Idx};
 use diagnostics::Diagnostics;
 use ra_ap_stdx::hash::NoHashHashMap;
 use rustc_hash::FxHashMap;
 use syntax::ast::{self, Assoc, AstNode, Prec};
 use syntax::ptr::AstPtr;
+use triomphe::Arc;
 use vfs::File;
 
 use crate::def_map::DefMap;

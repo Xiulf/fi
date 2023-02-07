@@ -1,11 +1,10 @@
-use std::sync::Arc;
-
 use base_db::input::File;
 use base_db::libs::LibId;
 use diagnostics::Diagnostics;
 use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
 use syntax::ast::{self, AstNode};
 use syntax::ptr::AstPtr;
+use triomphe::Arc;
 use vfs::InFile;
 
 use crate::ast_id::AstId;

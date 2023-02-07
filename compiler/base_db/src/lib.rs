@@ -3,9 +3,8 @@
 pub mod input;
 pub mod libs;
 
-use std::sync::RwLock;
-
 use libs::LibSet;
+use parking_lot::RwLock;
 use vfs::File;
 
 pub trait Db: vfs::Db + diagnostics::Db + salsa::DbWithJar<Jar> {
@@ -18,7 +17,7 @@ pub struct Jar(input::SourceRoot, libs::LibId, parse);
 
 #[salsa::tracked]
 pub fn parse(db: &dyn Db, file: File) -> syntax::ast::SourceFile {
-    let mut interner = db.syntax_interner().write().unwrap();
+    let mut interner = db.syntax_interner().write();
 
     syntax::ast::SourceFile::parse(db, file, &mut interner)
 }
@@ -80,7 +79,7 @@ mod tests {
         let db = Database::new();
         let file = File::new(&db, vfs::VfsPath::new_virtual("/test.fi".into()), Some(input.into()));
         let parsed = parse(&db, file);
-        let interner = db.syntax_interner().read().unwrap();
+        let interner = db.syntax_interner().read();
         let node = parsed.syntax();
         let node = node.as_serialize_with_resolver(&*interner);
 

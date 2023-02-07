@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
 use syntax::ast::NameOwner;
+use triomphe::Arc;
 use vfs::File;
 
 use super::*;
@@ -115,7 +114,7 @@ impl Ctx<'_> {
     }
 
     fn lower_fixity(&mut self, fixity: ast::ItemFixity) -> Option<Vec<Item>> {
-        let resolver = self.db.syntax_interner().read().unwrap();
+        let resolver = self.db.syntax_interner().read();
         let ast_id = self.ast_map.ast_id(&fixity);
         let name = fixity.name()?.as_name(self.db);
         let value = Path::from_ast(self.db, fixity.value()?);

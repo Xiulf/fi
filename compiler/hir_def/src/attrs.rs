@@ -100,7 +100,7 @@ impl RawAttrs {
     pub(crate) const EMPTY: Self = Self { entries: None };
 
     pub(crate) fn new(db: &dyn Db, owner: &dyn ast::AttrsOwner) -> Self {
-        let resolver = db.syntax_interner().read().unwrap();
+        let resolver = db.syntax_interner().read();
         let entries = collect_attrs(owner)
             .filter_map(|attr| match attr {
                 | Either::Left(attr) => Attr::from_src(attr, &*resolver),

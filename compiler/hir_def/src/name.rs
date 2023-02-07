@@ -57,7 +57,7 @@ impl AsName for str {
 
 impl AsName for syntax::ast::Name {
     fn as_name(&self, db: &dyn Db) -> Name {
-        let resolver = db.syntax_interner().read().unwrap();
+        let resolver = db.syntax_interner().read();
 
         if let Some(ident) = self.ident_token() {
             return Name::new_text(db, SmolStr::new(ident.resolve_text(&*resolver)));
@@ -73,7 +73,7 @@ impl AsName for syntax::ast::Name {
 
 impl AsName for syntax::ast::NameRef {
     fn as_name(&self, db: &dyn Db) -> Name {
-        let resolver = db.syntax_interner().read().unwrap();
+        let resolver = db.syntax_interner().read();
 
         if let Some(ident) = self.ident_token() {
             return Name::new_text(db, SmolStr::new(ident.resolve_text(&*resolver)));

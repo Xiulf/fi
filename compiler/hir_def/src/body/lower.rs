@@ -1,10 +1,9 @@
-use std::sync::Arc;
-
 use arena::Arena;
 use diagnostics::Diagnostics;
 use ra_ap_stdx::hash::NoHashHashMap;
 use syntax::ast::{self, Assoc, Prec};
 use syntax::ptr::AstPtr;
+use triomphe::Arc;
 use vfs::File;
 
 use super::{Body, BodySourceMap, ExprSrc, PatSrc};
@@ -160,7 +159,7 @@ impl<'db> Ctx<'db> {
                 )
             },
             | ast::Expr::Literal(e) => {
-                let resolver = self.db.syntax_interner().read().unwrap();
+                let resolver = self.db.syntax_interner().read();
                 let lit = match e.literal()? {
                     | ast::Literal::Int(l) => Literal::Int(l.value(&*resolver)?),
                     | _ => todo!(),

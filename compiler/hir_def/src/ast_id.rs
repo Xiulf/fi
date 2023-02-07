@@ -1,11 +1,11 @@
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use arena::{Arena, Idx};
 use syntax::ast::{self, AstNode};
 use syntax::ptr::{AstPtr, SyntaxNodePtr};
 use syntax::SyntaxNode;
+use triomphe::Arc;
 use vfs::{File, InFile};
 
 use crate::Db;
