@@ -18,7 +18,7 @@ impl Driver {
         };
 
         let mut sink = Sink(cache, 0, 0);
-        let lib = hir_def::Lib::from(lib);
+        let lib = hir::Lib::from(lib);
 
         lib.diagnostics(&self.db, &mut sink);
 

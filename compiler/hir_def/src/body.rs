@@ -44,7 +44,31 @@ pub enum PatSrc {
     Synthetic(ValueId),
 }
 
+impl std::ops::Index<ExprId> for Body {
+    type Output = Expr;
+
+    fn index(&self, index: ExprId) -> &Self::Output {
+        &self.exprs[index]
+    }
+}
+
+impl std::ops::Index<PatId> for Body {
+    type Output = Pat;
+
+    fn index(&self, index: PatId) -> &Self::Output {
+        &self.pats[index]
+    }
+}
+
 impl Body {
+    pub fn params(&self) -> &[PatId] {
+        &self.params
+    }
+
+    pub fn body_expr(&self) -> ExprId {
+        self.body_expr
+    }
+
     pub fn debug(&self, db: &dyn Db) -> String {
         use ra_ap_stdx::format_to;
         let mut out = String::new();

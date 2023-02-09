@@ -1,20 +1,14 @@
 [package]
-name = "driver"
+name = "hir"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ariadne = { git = "https://github.com/Cyberduc-k/ariadne.git" }
 base_db = { version = "0.1.0", path = "../base_db" }
 diagnostics = { version = "0.1.0", path = "../diagnostics" }
-hir = { version = "0.1.0", path = "../hir" }
 hir_def = { version = "0.1.0", path = "../hir_def" }
 hir_ty = { version = "0.1.0", path = "../hir_ty" }
-parking_lot = "0.12.1"
-paths = { version = "0.1.0", path = "../paths" }
 salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
-syntax = { version = "0.1.0", path = "../syntax" }
-tracing = "0.1.37"
-vfs = { version = "0.1.0", path = "../vfs" }
+triomphe = "0.1.8"

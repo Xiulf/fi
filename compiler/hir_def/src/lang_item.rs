@@ -7,6 +7,10 @@ use smol_str::SmolStr;
 use crate::id::{ItemId, TraitId, TypeAliasId, TypeCtorId, ValueId};
 use crate::Db;
 
+pub const TYPE_KIND: &'static str = "type-kind";
+pub const UNIT_TYPE: &'static str = "unit-type";
+pub const BOOL_TYPE: &'static str = "bool-type";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LangItem {
     ValueId(ValueId),

@@ -1,5 +1,8 @@
 module Prim =
 
+@lang = "type-kind"
+foreign type Type
+
 foreign type Int32
 
 foreign type Array len item

@@ -7,7 +7,7 @@ pub struct Ty {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Unknown(u32);
+pub struct Unknown(pub(crate) u32);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TyKind {
@@ -23,15 +23,5 @@ pub struct FuncType {
     pub params: Box<[Ty]>,
     pub ret: Ty,
     pub env: Ty,
-    pub is_varargs: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Kind {
-    Normal(usize),
-    HigherOrder(Box<[Kind]>),
-}
-
-impl Kind {
-    pub const TYPE: Self = Self::Normal(0);
+    pub variadic: bool,
 }
