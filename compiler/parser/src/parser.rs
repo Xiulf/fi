@@ -390,14 +390,14 @@ fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     recursive(|expr| {
         let ident = path().to_node(EXPR_PATH);
         let lit = literal().to_node(EXPR_LITERAL);
-        let hole = token(UNDERSCORE).to_node(EXPR_HOLE);
-        let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(EXPR_UNIT);
+        let hole = rtoken(UNDERSCORE).to_node(EXPR_HOLE);
+        let unit = rtoken(L_PAREN).then(rtoken(R_PAREN)).to_event().to_node(EXPR_UNIT);
         let block = block(stmt(expr.clone())).to_node(EXPR_BLOCK);
         let parens = parens(expr).to_node(EXPR_PARENS);
-        let atom = choice((ident, lit, hole, unit, block, parens));
-        let app = atom.clone().repeated().at_least(2).collect().to_node(EXPR_APP);
+        let atom = choice((ident, lit, hole, unit, block, parens)).pad_ws();
+        let app = atom.clone().repeated().at_least(2).collect().to_node(EXPR_APP).pad_ws();
         let app = app.or(atom);
-        let infix = app.clone().separated(operator(), false, 2).to_node(EXPR_INFIX);
+        let infix = app.clone().separated(operator(), false, 2).to_node(EXPR_INFIX).pad_ws();
         let infix = infix.or(app);
 
         infix
@@ -497,7 +497,6 @@ fn path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .repeated()
         .collect::<Event>()
         .then(rany_name_ref().to_node(PATH_SEGMENT))
-        .then(trivia())
         .to_event()
         .to_node(PATH)
         .labelled("path")

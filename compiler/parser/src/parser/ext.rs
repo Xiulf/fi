@@ -4,12 +4,17 @@ use chumsky::combinator::Map;
 use chumsky::primitive::empty;
 use chumsky::{BoxedParser, Parser};
 
+use super::trivia;
 use crate::error::ParseError;
 use crate::event::Event;
 use crate::token::SyntaxKind;
 
 pub trait ParserExt: Parser<SyntaxKind, Event, Error = ParseError> + Sized {
     fn to_node(self, kind: SyntaxKind) -> Map<Self, ToNode, Event>;
+
+    fn pad_ws<'a>(self) -> BoxedParser<'a, SyntaxKind, Event, ParseError>
+    where
+        Self: 'a;
 
     fn separated<'a, Sep>(self, sep: Sep, trailing: bool, min: usize) -> BoxedParser<'a, SyntaxKind, Event, ParseError>
     where
@@ -52,6 +57,13 @@ where
         self.map(ToNode(Rc::new(move |e| {
             ((Event::Start(kind), e), Event::Finish).into()
         })))
+    }
+
+    fn pad_ws<'a>(self) -> BoxedParser<'a, SyntaxKind, Event, ParseError>
+    where
+        Self: 'a,
+    {
+        trivia().then(self).then(trivia()).to_event().boxed()
     }
 
     fn separated<'a, Sep>(self, sep: Sep, trailing: bool, min: usize) -> BoxedParser<'a, SyntaxKind, Event, ParseError>
