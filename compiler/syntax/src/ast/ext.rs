@@ -350,6 +350,10 @@ impl NameOwner for Ctor {
 }
 
 impl Ctor {
+    pub fn types(&self) -> impl Iterator<Item = Type> + '_ {
+        children(self.syntax())
+    }
+
     pub fn record(&self) -> Option<CtorRecord> {
         child(self.syntax())
     }

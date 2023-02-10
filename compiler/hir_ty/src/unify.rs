@@ -76,7 +76,7 @@ impl Ctx<'_> {
         match self.find_binding(u) {
             | Ok(t) => self.unify(t, t2),
             | Err((level, _kind)) => {
-                let b = self.follow_binding(t2);
+                let b = self.resolve_type_shallow(t2);
 
                 if t1 == b {
                     return true;
@@ -99,7 +99,7 @@ impl Ctx<'_> {
         }
     }
 
-    fn follow_binding(&mut self, t: Ty) -> Ty {
+    pub fn resolve_type_shallow(&mut self, t: Ty) -> Ty {
         match t.kind(self.db) {
             | TyKind::Unknown(u) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
                 | Some(t) => t,

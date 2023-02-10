@@ -1,5 +1,5 @@
 use hir_def::display::HirDisplay;
-use hir_def::id::TypeCtorId;
+use hir_def::id::{TypeCtorId, TypeVarId};
 
 #[salsa::interned]
 pub struct Ty {
@@ -14,6 +14,7 @@ pub struct Unknown(pub(crate) u32);
 pub enum TyKind {
     Error,
     Unknown(Unknown),
+    Var(TypeVarId),
     Ctor(TypeCtorId),
     App(Ty, Box<[Ty]>),
     Func(FuncType),
@@ -35,6 +36,12 @@ impl HirDisplay for Ty {
         match self.kind(f.db) {
             | TyKind::Error => write!(f, "{{error}}"),
             | TyKind::Unknown(u) => write!(f, "?{}", u.0),
+            | TyKind::Var(var) => {
+                let owner = var.owner(f.db);
+                let type_map = owner.type_map(f.db).0;
+
+                write!(f, "{}", type_map[var.local_id(f.db)].name.display(f.db))
+            },
             | TyKind::Ctor(ctor) => {
                 let it = ctor.it(f.db);
                 let item_tree = hir_def::item_tree::query(f.db, it.file);

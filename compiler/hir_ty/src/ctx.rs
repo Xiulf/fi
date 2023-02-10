@@ -17,12 +17,12 @@ pub struct Ctx<'db> {
     pub(crate) result: InferResult,
     pub(crate) subst: Substitution,
     pub(crate) owner: TypedItemId,
+    pub(crate) level: UnkLevel,
 }
 
 pub struct BodyCtx<'db, 'ctx> {
     pub(crate) ctx: &'ctx mut Ctx<'db>,
     pub(crate) body: Arc<Body>,
-    pub(crate) level: UnkLevel,
 }
 
 #[derive(Default, Debug, PartialEq, Eq, Hash)]
@@ -51,15 +51,12 @@ impl<'db> Ctx<'db> {
             owner,
             result: InferResult::default(),
             subst: Substitution::default(),
+            level: UnkLevel(1),
         }
     }
 
     pub fn with_body(&mut self, body: Arc<Body>) -> BodyCtx<'db, '_> {
-        BodyCtx {
-            level: UnkLevel(1),
-            ctx: self,
-            body,
-        }
+        BodyCtx { ctx: self, body }
     }
 
     pub fn finish(self) -> Arc<InferResult> {

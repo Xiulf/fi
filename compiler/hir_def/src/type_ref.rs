@@ -115,6 +115,22 @@ pub fn query(db: &dyn Db, item: ITypedItemId) -> (Arc<TypeMap>, Arc<TypeSourceMa
     (Arc::new(ctx.map), Arc::new(ctx.src), ctx.vars.into_values().collect())
 }
 
+impl std::ops::Index<TypeRefId> for TypeMap {
+    type Output = TypeRef;
+
+    fn index(&self, index: TypeRefId) -> &Self::Output {
+        &self.type_refs[index]
+    }
+}
+
+impl std::ops::Index<LocalTypeVarId> for TypeMap {
+    type Output = TypeVar;
+
+    fn index(&self, index: LocalTypeVarId) -> &Self::Output {
+        &self.type_vars[index]
+    }
+}
+
 impl TypeSourceMap {
     pub fn typ_for_src(&self, src: AstPtr<ast::Type>) -> Option<TypeRefId> {
         self.src_to_typ.get(&src).copied()

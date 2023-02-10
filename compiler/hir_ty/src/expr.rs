@@ -10,6 +10,10 @@ impl BodyCtx<'_, '_> {
 
         if let Expectation::HasType(expected) = expected {
             self.unify_types(ty, expected, id.into());
+
+            if matches!(self.resolve_type_shallow(ty).kind(self.db), TyKind::Error) {
+                return expected;
+            }
         }
 
         ty
@@ -17,8 +21,7 @@ impl BodyCtx<'_, '_> {
 
     fn infer_expr_inner(&mut self, id: ExprId, expected: Expectation) -> Ty {
         let body = self.body.clone();
-
-        match &body[id] {
+        let ty = match &body[id] {
             | Expr::Missing => self.error(),
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
@@ -31,7 +34,7 @@ impl BodyCtx<'_, '_> {
             | Expr::Path { def: None, .. } => self.error(),
             | Expr::Path { def: Some(def), .. } => {
                 let ty = match def {
-                    | ValueDefId::CtorId(id) => Ty::new(self.db, TyKind::Ctor(id.type_ctor(self.db))),
+                    | ValueDefId::CtorId(id) => crate::ctor_ty(self.db, *id),
                     | ValueDefId::PatId(id) => self.result.type_of_pat[*id],
                     | _ => todo!(),
                 };
@@ -76,6 +79,9 @@ impl BodyCtx<'_, '_> {
                 result_ty
             },
             | e => todo!("{e:?}"),
-        }
+        };
+
+        self.result.type_of_expr.insert(id, ty);
+        ty
     }
 }

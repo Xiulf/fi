@@ -3,7 +3,7 @@ use syntax::ptr::AstPtr;
 
 use crate::attrs::Attrs;
 use crate::def_map::ModuleScope;
-use crate::id::{self, FixityId, ImplId, TypeVarId, TypedItemId, ValueId};
+use crate::id::{self, CtorId, FixityId, ImplId, TypeVarId, TypedItemId, ValueId};
 use crate::item_tree::{AttrOwner, FixityKind};
 use crate::name::Name;
 use crate::source::HasSource;
@@ -54,6 +54,8 @@ pub struct TypeCtorData {
 pub struct CtorData {
     #[id]
     pub id: id::CtorId,
+    #[return_ref]
+    pub types: Box<[TypeRefId]>,
 }
 
 #[salsa::tracked]
@@ -92,6 +94,19 @@ pub fn value_data(db: &dyn Db, id: ValueId) -> ValueData {
     let has_body = data.has_body;
 
     ValueData::new(db, id, attrs, ty, type_vars, is_foreign, has_body)
+}
+
+#[salsa::tracked]
+pub fn ctor_data(db: &dyn Db, id: CtorId) -> CtorData {
+    let type_ctor = id.type_ctor(db);
+    let source = id.source(db).value;
+    let (_, src_map, _) = TypedItemId::from(type_ctor).type_map(db);
+    let types = source
+        .types()
+        .filter_map(|t| src_map.typ_for_src(AstPtr::new(&t)))
+        .collect();
+
+    CtorData::new(db, id, types)
 }
 
 #[salsa::tracked]

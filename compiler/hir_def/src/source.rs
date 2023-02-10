@@ -92,15 +92,19 @@ impl HasSource for TypeCtorId {
 impl HasSource for CtorId {
     type Value = syntax::ast::Ctor;
 
-    fn source(&self, _db: &dyn Db) -> InFile<Self::Value> {
-        // let it = self.it(db);
-        // let tree = item_tree::query(db, it.file);
-        // let ast_map = ast_id::query(db, it.file);
-        // let root = base_db::parse(db, it.file);
-        // let node = &tree[it.value];
+    fn source(&self, db: &dyn Db) -> InFile<Self::Value> {
+        let type_ctor = self.type_ctor(db);
+        let local_id = self.local_id(db);
+        let it = type_ctor.it(db);
+        let tree = item_tree::query(db, it.file);
+        let ast_map = ast_id::query(db, it.file);
+        let root = base_db::parse(db, it.file);
+        let node = &tree[it.value];
+        let idx = node.ctors.iter().position(|&c| c == local_id).unwrap();
+        let node = ast_map.get(node.ast_id).to_node(root.syntax());
+        let node = node.ctors().nth(idx).unwrap();
 
-        // it.with_value(ast_map.get(node.ast_id).to_node(root.syntax()))
-        todo!()
+        it.with_value(node)
     }
 }
 
