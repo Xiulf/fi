@@ -168,6 +168,15 @@ impl HasModule for TypedItemId {
     }
 }
 
+impl TypedItemId {
+    pub fn as_value_id(self) -> Option<ValueId> {
+        match self {
+            | Self::ValueId(id) => Some(id),
+            | _ => None,
+        }
+    }
+}
+
 ra_ap_stdx::impl_from!(LibId, ModuleId for ModuleParentId);
 ra_ap_stdx::impl_from!(ModuleId, TraitId, ImplId for ContainerId);
 ra_ap_stdx::impl_from!(ModuleId, FixityId, ValueId, CtorId, FieldId, TypeAliasId, TypeCtorId, TraitId, ImplId for ItemId);

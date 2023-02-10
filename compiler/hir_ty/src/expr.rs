@@ -9,7 +9,7 @@ impl BodyCtx<'_, '_> {
         let ty = self.infer_expr_inner(id, expected);
 
         if let Expectation::HasType(expected) = expected {
-            self.unify_types(ty, expected);
+            self.unify_types(ty, expected, id.into());
         }
 
         ty
@@ -55,7 +55,7 @@ impl BodyCtx<'_, '_> {
                     }),
                 );
 
-                self.unify_types(func, new_func);
+                self.unify_types(func, new_func, (*base).into());
                 ret
             },
             | Expr::If { cond, then, else_ } => {
@@ -71,8 +71,8 @@ impl BodyCtx<'_, '_> {
                     | None => self.unit_type(),
                 };
 
-                self.unify_types(then_ty, result_ty);
-                self.unify_types(else_ty, result_ty);
+                self.unify_types(then_ty, result_ty, id.into());
+                self.unify_types(else_ty, result_ty, id.into());
                 result_ty
             },
             | e => todo!("{e:?}"),

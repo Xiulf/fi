@@ -16,7 +16,7 @@ pub struct Ctx<'db> {
     pub(crate) db: &'db dyn Db,
     pub(crate) result: InferResult,
     pub(crate) subst: Substitution,
-    owner: TypedItemId,
+    pub(crate) owner: TypedItemId,
 }
 
 pub struct BodyCtx<'db, 'ctx> {

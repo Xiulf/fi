@@ -4,6 +4,7 @@ use arena::{Arena, ArenaMap};
 pub use lower::query;
 use rustc_hash::FxHashMap;
 use syntax::ptr::AstPtr;
+use syntax::TextRange;
 use vfs::File;
 
 use crate::expr::{Expr, ExprId, Stmt};
@@ -57,6 +58,20 @@ impl std::ops::Index<PatId> for Body {
 
     fn index(&self, index: PatId) -> &Self::Output {
         &self.pats[index]
+    }
+}
+
+impl BodySourceMap {
+    pub fn file(&self) -> File {
+        self.file
+    }
+
+    pub fn expr_src(&self, id: ExprId) -> ExprSrc {
+        self.expr_to_src[id]
+    }
+
+    pub fn pat_src(&self, id: PatId) -> PatSrc {
+        self.pat_to_src[id]
     }
 }
 
@@ -145,6 +160,15 @@ impl ExprSrc {
             | _ => unreachable!(),
         }
     }
+
+    pub fn text_range(self) -> TextRange {
+        match self {
+            | Self::Single(ptr) => ptr.syntax_node_ptr().range(),
+            | Self::Infix(a, b) => a.syntax_node_ptr().range().cover(b.syntax_node_ptr().range()),
+            | Self::Operator(ptr) => ptr.syntax_node_ptr().range(),
+            | Self::Synthetic(_) => unreachable!(),
+        }
+    }
 }
 
 impl PatSrc {
@@ -154,6 +178,15 @@ impl PatSrc {
             | Self::Infix(ptr, _) if lhs => ptr,
             | Self::Infix(_, ptr) => ptr,
             | _ => unreachable!(),
+        }
+    }
+
+    pub fn text_range(self) -> TextRange {
+        match self {
+            | Self::Single(ptr) => ptr.syntax_node_ptr().range(),
+            | Self::Infix(a, b) => a.syntax_node_ptr().range().cover(b.syntax_node_ptr().range()),
+            | Self::Operator(ptr) => ptr.syntax_node_ptr().range(),
+            | Self::Synthetic(_) => unreachable!(),
         }
     }
 }

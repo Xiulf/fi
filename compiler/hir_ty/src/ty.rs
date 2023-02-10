@@ -35,17 +35,27 @@ impl HirDisplay for Ty {
         match self.kind(f.db) {
             | TyKind::Error => write!(f, "{{error}}"),
             | TyKind::Unknown(u) => write!(f, "?{}", u.0),
-            | TyKind::Ctor(c) => {
-                let it = c.it(f.db);
+            | TyKind::Ctor(ctor) => {
+                let it = ctor.it(f.db);
                 let item_tree = hir_def::item_tree::query(f.db, it.file);
                 write!(f, "{}", item_tree[it.value].name.display(f.db))
             },
+            | TyKind::App(base, args) => {
+                base.hir_fmt(f)?;
+                for arg in args.iter() {
+                    f.write_char(' ')?;
+                    arg.hir_fmt(f)?;
+                }
+                Ok(())
+            },
             | TyKind::Func(func) => {
                 f.write_joined(func.params.iter(), ", ")?;
+                if func.variadic {
+                    f.write_str(", ..")?;
+                }
                 f.write_str(" -> ")?;
                 func.ret.hir_fmt(f)
             },
-            | _ => todo!(),
         }
     }
 }

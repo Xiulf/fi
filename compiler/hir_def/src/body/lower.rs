@@ -20,14 +20,14 @@ use crate::source::HasSource;
 use crate::Db;
 
 #[salsa::tracked]
-pub fn query(db: &dyn Db, id: ValueId) -> Arc<Body> {
+pub fn query(db: &dyn Db, id: ValueId) -> (Arc<Body>, Arc<BodySourceMap>) {
     let src = id.source(db);
     let mut ctx = Ctx::new(db, id, src.file);
 
     ctx.lower(src.value);
     tracing::debug!("{}", ctx.body.debug(db));
 
-    Arc::new(ctx.body)
+    (Arc::new(ctx.body), Arc::new(ctx.src_map))
 }
 
 struct Ctx<'db> {

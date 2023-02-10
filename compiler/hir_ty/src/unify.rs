@@ -1,8 +1,11 @@
+use diagnostics::Diagnostics;
 use ena::unify::{InPlace, UnificationTable, UnifyKey, UnifyValue};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
+use crate::diagnostics::TypeMismatch;
 use crate::ty::{Ty, TyKind, Unknown};
+use crate::TyOrigin;
 
 #[derive(Default)]
 pub struct Substitution {
@@ -31,11 +34,14 @@ impl Ctx<'_> {
         self.fresh_type_with_kind(level, kind)
     }
 
-    pub fn unify_types(&mut self, t1: Ty, t2: Ty) {
+    pub fn unify_types(&mut self, t1: Ty, t2: Ty, origin: TyOrigin) {
         if !self.unify(t1, t2) {
-            use hir_def::display::HirDisplay;
-            // TODO: report error
-            tracing::error!("unify failed on {} and {}", t1.display(self.db), t2.display(self.db));
+            Diagnostics::emit(self.db, TypeMismatch {
+                a: t1,
+                b: t2,
+                owner: self.owner,
+                origin,
+            });
         }
     }
 
