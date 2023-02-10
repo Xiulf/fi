@@ -33,9 +33,9 @@ impl Ctx<'_> {
 
     pub fn unify_types(&mut self, t1: Ty, t2: Ty) {
         if !self.unify(t1, t2) {
-            use salsa::debug::DebugWithDb;
+            use hir_def::display::HirDisplay;
             // TODO: report error
-            tracing::error!("unify failed on {:?} and {:?}", t1.debug(self.db), t2.debug(self.db));
+            tracing::error!("unify failed on {} and {}", t1.display(self.db), t2.display(self.db));
         }
     }
 

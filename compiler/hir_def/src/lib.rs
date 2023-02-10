@@ -6,6 +6,7 @@ pub mod body;
 pub mod data;
 pub mod def_map;
 pub mod diagnostics;
+pub mod display;
 pub mod expr;
 pub mod id;
 pub mod item_tree;
