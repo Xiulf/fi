@@ -4,6 +4,7 @@ use crate::id::ValueDefId;
 use crate::name::Name;
 use crate::pat::{DecisionTree, PatId};
 use crate::path::Path;
+use crate::type_ref::TypeRefId;
 
 pub type ExprId = Idx<Expr>;
 
@@ -44,9 +45,13 @@ pub enum Expr {
     Return {
         expr: ExprId,
     },
+    Typed {
+        expr: ExprId,
+        ty: TypeRefId,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Literal {
     Int(i128),
     Float(u64),

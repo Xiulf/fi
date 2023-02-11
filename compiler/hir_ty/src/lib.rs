@@ -1,5 +1,6 @@
 #![feature(trait_upcasting)]
 
+use ctx::Expectation;
 use hir_def::expr::ExprId;
 use hir_def::id::{CtorId, TypedItemId, ValueId};
 use hir_def::pat::PatId;
@@ -12,6 +13,7 @@ pub mod ctx;
 pub mod diagnostics;
 pub mod expr;
 pub mod lower;
+pub mod pat;
 pub mod ty;
 pub mod unify;
 
@@ -42,15 +44,39 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         .unwrap_or_else(|| ctx.fresh_type(ctx.level));
 
     let mut bcx = ctx.with_body(body.clone());
-    let ty = bcx.infer_expr(body.body_expr(), ctx::Expectation::HasType(ret));
-    let ty = ctx.resolve_type_shallow(ty);
+    let params = body
+        .params()
+        .iter()
+        .map(|&p| bcx.infer_pat(p, Expectation::None))
+        .collect::<Box<[_]>>();
+    let mut ty = bcx.infer_expr(body.body_expr(), ctx::Expectation::HasType(ret));
+
+    if !params.is_empty() {
+        ty = Ty::new(
+            db,
+            TyKind::Func(FuncType {
+                params,
+                ret: ty,
+                env: bcx.ctx.fresh_type(bcx.level),
+                variadic: false,
+            }),
+        );
+    }
+
+    let ty = ctx.resolve_type_fully(ty);
 
     tracing::debug!("{}", ty.display(db));
 
+    let type_of_pat = ctx.result.type_of_pat.clone();
     let type_of_expr = ctx.result.type_of_expr.clone();
 
+    for (p, ty) in type_of_pat.iter() {
+        let ty = ctx.resolve_type_fully(*ty);
+        tracing::debug!("${:0>2} :: {}", u32::from(p.into_raw()), ty.display(db));
+    }
+
     for (e, ty) in type_of_expr.iter() {
-        let ty = ctx.resolve_type_shallow(*ty);
+        let ty = ctx.resolve_type_fully(*ty);
         tracing::debug!("#{:0>3} :: {}", u32::from(e.into_raw()), ty.display(db));
     }
 

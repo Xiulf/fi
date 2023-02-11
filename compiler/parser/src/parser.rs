@@ -432,22 +432,9 @@ fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 fn match_arm(
     expr: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
 ) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    let if_guard = rtoken(IF_KW)
-        .then(expr.clone().to_node(MATCH_GUARD))
-        .then(rtoken(ARROW))
-        .then(expr.clone())
-        .to_event();
-    let else_guard = rtoken(ELSE_KW).then(expr.clone()).to_event();
-    let guarded = if_guard
-        .repeated()
-        .at_least(1)
-        .collect::<Event>()
-        .then(opt(else_guard))
-        .to_event()
-        .to_node(MATCH_GUARDED);
-    let value = rtoken(ARROW).then(expr).to_event().to_node(MATCH_VALUE).or(guarded);
+    let guard = rtoken(IF_KW).then(expr.clone()).to_event().to_node(MATCH_GUARD);
 
-    rtoken(PIPE).then(pat()).then(value).to_event().to_node(MATCH_ARM)
+    rtoken(PIPE).then(pat()).then(opt(guard)).then(rtoken(ARROW)).then(expr).to_event().to_node(MATCH_ARM)
 }
 
 fn stmt(

@@ -94,6 +94,7 @@ impl Body {
             match pat {
                 | Pat::Missing => format_to!(out, "Missing"),
                 | Pat::Wildcard => format_to!(out, "Wildcard"),
+                | Pat::Lit { lit } => format_to!(out, "Lit {lit}"),
                 | Pat::Bind { name, subpat } => {
                     format_to!(out, "Bind {}", name.display(db));
                     if let Some(subpat) = subpat {
@@ -105,6 +106,9 @@ impl Body {
                     for arg in args.iter() {
                         format_to!(out, ", ${:0>2}", u32::from(arg.into_raw()));
                     }
+                },
+                | Pat::Typed { pat, ty: _ } => {
+                    format_to!(out, "Typed ${:0>2}", u32::from(pat.into_raw()));
                 },
             }
         }
@@ -142,6 +146,20 @@ impl Body {
                             | Stmt::Expr(expr) => format_to!(out, "Expr #{:0>3}", u32::from(expr.into_raw())),
                         }
                     }
+                },
+                | Expr::Match {
+                    expr,
+                    branches,
+                    decision_tree: _,
+                } => {
+                    format_to!(out, "Match #{:0>3}", u32::from(expr.into_raw()));
+                    for branch in branches.iter() {
+                        format_to!(out, "\n      └ ");
+                        format_to!(out, "#{:0>3}", u32::from(branch.into_raw()));
+                    }
+                },
+                | Expr::Typed { expr, ty: _ } => {
+                    format_to!(out, "Typed #{:0>3}", u32::from(expr.into_raw()));
                 },
                 | _ => todo!("{expr:?}"),
             }

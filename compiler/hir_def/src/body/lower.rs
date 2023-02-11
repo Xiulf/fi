@@ -8,15 +8,16 @@ use vfs::File;
 
 use super::{Body, BodySourceMap, ExprSrc, PatSrc};
 use crate::def_map::DefMap;
-use crate::diagnostics::UnresolvedPath;
+use crate::diagnostics::{UnmatchedPattern, UnreachableBranch, UnresolvedPath};
 use crate::expr::{Expr, ExprId, Literal, Stmt};
-use crate::id::{CtorId, HasModule, ItemId, ValueDefId, ValueId};
+use crate::id::{CtorId, HasModule, ItemId, TypedItemId, ValueDefId, ValueId};
 use crate::item_tree::FixityKind;
 use crate::name::{AsName, Name};
-use crate::pat::{Pat, PatId};
+use crate::pat::{Constructor, DecisionTree, Pat, PatId, PatternMatrix, PatternStack, VariantTag};
 use crate::path::Path;
 use crate::per_ns::Namespace;
 use crate::source::HasSource;
+use crate::type_ref::TypeSourceMap;
 use crate::Db;
 
 #[salsa::tracked]
@@ -36,6 +37,7 @@ struct Ctx<'db> {
     value: ValueId,
     body: Body,
     src_map: BodySourceMap,
+    typ_map: Arc<TypeSourceMap>,
     scopes: Vec<Scope>,
 }
 
@@ -49,11 +51,13 @@ impl<'db> Ctx<'db> {
     fn new(db: &'db dyn Db, value: ValueId, file: File) -> Self {
         let lib = value.container(db).module(db).lib(db);
         let def_map = crate::def_map::query(db, lib);
+        let (_, typ_map, _) = TypedItemId::from(value).type_map(db);
 
         Self {
             db,
             value,
             def_map,
+            typ_map,
             body: Body {
                 exprs: Arena::default(),
                 pats: Arena::default(),
@@ -141,6 +145,16 @@ impl<'db> Ctx<'db> {
 
         Some(match expr {
             | ast::Expr::Parens(e) => self.lower_expr_opt(e.expr()),
+            | ast::Expr::Typed(e) => {
+                let expr = self.lower_expr_opt(e.expr());
+                let ty = e.ty().and_then(|t| self.typ_map.typ_for_src(AstPtr::new(&t)));
+
+                if let Some(ty) = ty {
+                    self.alloc_expr(Expr::Typed { expr, ty }, syntax_ptr)
+                } else {
+                    expr
+                }
+            },
             | ast::Expr::Unit(_) => {
                 let lib = self.value.container(self.db).module(self.db).lib(self.db);
                 let unit = crate::lang_item::query(self.db, lib, "unit-type")?;
@@ -215,6 +229,18 @@ impl<'db> Ctx<'db> {
 
                 self.alloc_expr(Expr::Block { stmts, expr }, syntax_ptr)
             },
+            | ast::Expr::Match(e) => {
+                let (expr, branches, decision_tree) = self.lower_match(e);
+
+                self.alloc_expr(
+                    Expr::Match {
+                        expr,
+                        branches,
+                        decision_tree,
+                    },
+                    syntax_ptr,
+                )
+            },
             | e => todo!("{e:?}"),
         })
     }
@@ -252,6 +278,98 @@ impl<'db> Ctx<'db> {
         }
     }
 
+    fn lower_match(&mut self, e: ast::ExprMatch) -> (ExprId, Box<[ExprId]>, DecisionTree) {
+        let expr = self.lower_expr_opt(e.expr());
+        let mut matrix = self.lower_pattern_matrix(e.arms());
+        let branches = e.arms().map(|a| self.lower_expr_opt(a.expr())).collect::<Box<[_]>>();
+        let result = matrix.compile();
+
+        if result.reachable_branches.len() != branches.len() {
+            for (i, arm) in e.arms().enumerate() {
+                if !result.reachable_branches.contains(&i) {
+                    Diagnostics::emit(self.db, UnreachableBranch {
+                        file: self.src_map.file,
+                        ast: AstPtr::new(&arm),
+                    });
+                }
+            }
+        }
+
+        if result.missed_case_count > 0 {
+            Diagnostics::emit(self.db, UnmatchedPattern {
+                file: self.src_map.file,
+                ast: AstPtr::new(&e),
+            });
+        }
+
+        (expr, branches, result.tree)
+    }
+
+    fn lower_pattern_matrix(&mut self, arms: impl Iterator<Item = ast::MatchArm>) -> PatternMatrix {
+        let rows = arms
+            .enumerate()
+            .map(|(i, arm)| (self.lower_pattern_stack_opt(arm.pat()), i))
+            .collect();
+
+        PatternMatrix { rows }
+    }
+
+    fn lower_pattern_stack_opt(&mut self, pat: Option<ast::Pat>) -> PatternStack {
+        pat.map(|p| self.lower_pattern_stack(p)).unwrap_or_default()
+    }
+
+    fn lower_pattern_stack(&mut self, pat: ast::Pat) -> PatternStack {
+        self.maybe_lower_pattern_stack(pat).unwrap_or_default()
+    }
+
+    fn maybe_lower_pattern_stack(&mut self, pat: ast::Pat) -> Option<PatternStack> {
+        let syntax_ptr = AstPtr::new(&pat);
+
+        Some(match pat {
+            | ast::Pat::Typed(p) => {
+                let ty = p.ty().and_then(|t| self.typ_map.typ_for_src(AstPtr::new(&t)));
+                let mut stack = self.lower_pattern_stack_opt(p.pat());
+
+                if let Some(ty) = ty {
+                    let pat = stack.head()?.1;
+                    let id = self.alloc_pat(Pat::Typed { pat, ty }, syntax_ptr);
+
+                    stack.set_id(id);
+                }
+
+                stack
+            },
+            | ast::Pat::Wildcard(_) => {
+                let id = self.alloc_pat(Pat::Wildcard, syntax_ptr);
+
+                PatternStack(vec![(Constructor::MatchAll, id)])
+            },
+            | ast::Pat::Literal(p) => {
+                let resolver = self.db.syntax_interner().read();
+                let lit = match p.literal()? {
+                    | ast::Literal::Int(l) => Literal::Int(l.value(&*resolver)?),
+                    | _ => todo!(),
+                };
+
+                let id = self.alloc_pat(Pat::Lit { lit: lit.clone() }, syntax_ptr);
+                let tag = VariantTag::Literal(lit);
+                let fields = PatternStack(vec![(Constructor::MatchAll, id)]);
+
+                PatternStack(vec![(Constructor::Variant(tag, fields), id)])
+            },
+            | ast::Pat::Bind(p) => {
+                let name = p.name()?.as_name(self.db);
+                let subpat = p.subpat().map(|p| self.lower_pat(p)); // TODO: lower to pattern stack
+                let id = self.alloc_pat(Pat::Bind { name, subpat }, syntax_ptr);
+
+                self.scopes.last_mut().unwrap().names.insert(name, id);
+
+                PatternStack(vec![(Constructor::MatchAll, id)])
+            },
+            | p => todo!("{p:?}"),
+        })
+    }
+
     fn lower_pat_opt(&mut self, pat: Option<ast::Pat>) -> PatId {
         pat.map(|p| self.lower_pat(p)).unwrap_or_else(|| self.missing_pat())
     }
@@ -265,6 +383,16 @@ impl<'db> Ctx<'db> {
 
         Some(match pat {
             | ast::Pat::Parens(p) => self.lower_pat_opt(p.pat()),
+            | ast::Pat::Typed(p) => {
+                let pat = self.lower_pat_opt(p.pat());
+                let ty = p.ty().and_then(|t| self.typ_map.typ_for_src(AstPtr::new(&t)));
+
+                if let Some(ty) = ty {
+                    self.alloc_pat(Pat::Typed { pat, ty }, syntax_ptr)
+                } else {
+                    pat
+                }
+            },
             | ast::Pat::Unit(_) => {
                 let lib = self.value.container(self.db).module(self.db).lib(self.db);
                 let unit = crate::lang_item::query(self.db, lib, "unit-type")?;
@@ -283,10 +411,14 @@ impl<'db> Ctx<'db> {
                     syntax_ptr,
                 )
             },
-            | ast::Pat::Typed(p) => {
-                let inner = self.lower_pat_opt(p.pat());
+            | ast::Pat::Literal(p) => {
+                let resolver = self.db.syntax_interner().read();
+                let lit = match p.literal()? {
+                    | ast::Literal::Int(l) => Literal::Int(l.value(&*resolver)?),
+                    | _ => todo!(),
+                };
 
-                inner
+                self.alloc_pat(Pat::Lit { lit }, syntax_ptr)
             },
             | ast::Pat::Bind(p) => {
                 let name = p.name()?.as_name(self.db);

@@ -1,6 +1,8 @@
 use hir_def::display::HirDisplay;
 use hir_def::id::{TypeCtorId, TypeVarId};
 
+use crate::Db;
+
 #[salsa::interned]
 pub struct Ty {
     #[return_ref]
@@ -26,6 +28,35 @@ pub struct FuncType {
     pub ret: Ty,
     pub env: Ty,
     pub variadic: bool,
+}
+
+impl Ty {
+    pub fn fold(self, db: &dyn Db, f: &mut dyn FnMut(Ty) -> Ty) -> Ty {
+        match self.kind(db) {
+            | TyKind::App(base, args) => {
+                let base = base.fold(db, f);
+                let args = args.iter().map(|a| a.fold(db, f)).collect();
+
+                f(Ty::new(db, TyKind::App(base, args)))
+            },
+            | TyKind::Func(func) => {
+                let params = func.params.iter().map(|p| p.fold(db, f)).collect();
+                let ret = func.ret.fold(db, f);
+                let env = func.env.fold(db, f);
+
+                f(Ty::new(
+                    db,
+                    TyKind::Func(FuncType {
+                        params,
+                        ret,
+                        env,
+                        variadic: func.variadic,
+                    }),
+                ))
+            },
+            | _ => f(self),
+        }
+    }
 }
 
 impl HirDisplay for Ty {

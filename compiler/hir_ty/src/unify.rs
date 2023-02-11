@@ -102,11 +102,15 @@ impl Ctx<'_> {
     pub fn resolve_type_shallow(&mut self, t: Ty) -> Ty {
         match t.kind(self.db) {
             | TyKind::Unknown(u) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
-                | Some(t) => t,
+                | Some(t) => self.resolve_type_shallow(t),
                 | None => t,
             },
             | _ => t,
         }
+    }
+
+    pub fn resolve_type_fully(&mut self, t: Ty) -> Ty {
+        t.fold(self.db, &mut |t| self.resolve_type_shallow(t))
     }
 }
 

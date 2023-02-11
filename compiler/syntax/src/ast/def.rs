@@ -90,10 +90,6 @@ ast_node!(Expr {
 
 ast_node!(MatchArm, MATCH_ARM);
 ast_node!(MatchGuard, MATCH_GUARD);
-ast_node!(MatchValue {
-    Normal(MatchValueNormal, MATCH_VALUE),
-    Guarded(MatchValueGuarded, MATCH_GUARDED),
-});
 
 ast_node!(Stmt {
     Let(StmtLet, STMT_LET),

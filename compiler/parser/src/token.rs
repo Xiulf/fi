@@ -149,8 +149,6 @@ pub enum SyntaxKind {
     EXPR_RETURN,
 
     MATCH_ARM,
-    MATCH_VALUE,
-    MATCH_GUARDED,
     MATCH_GUARD,
 
     STMT_LET,

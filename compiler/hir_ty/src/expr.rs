@@ -1,5 +1,6 @@
-use hir_def::expr::{Expr, ExprId, Literal};
+use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::ValueDefId;
+use hir_def::pat::{Case, DecisionTree, VariantTag};
 
 use crate::ctx::{BodyCtx, Expectation};
 use crate::ty::{FuncType, Ty, TyKind};
@@ -31,12 +32,13 @@ impl BodyCtx<'_, '_> {
                 },
                 | l => todo!("{l:?}"),
             },
+            | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),
             | Expr::Path { def: Some(def), .. } => {
                 let ty = match def {
                     | ValueDefId::CtorId(id) => crate::ctor_ty(self.db, *id),
                     | ValueDefId::PatId(id) => self.result.type_of_pat[*id],
-                    | _ => todo!(),
+                    | d => todo!("{d:?}"),
                 };
 
                 ty
@@ -78,10 +80,95 @@ impl BodyCtx<'_, '_> {
                 self.unify_types(else_ty, result_ty, id.into());
                 result_ty
             },
+            | Expr::Match {
+                expr,
+                branches,
+                decision_tree,
+            } => {
+                let expected = expected.adjust_for_branches(self.db);
+                let pred = self.infer_expr(*expr, Expectation::None);
+                let res = self.ctx.fresh_type(self.level);
+
+                self.infer_decision_tree(decision_tree, Expectation::HasType(pred));
+
+                for &branch in branches.iter() {
+                    let ty = self.infer_expr_inner(branch, expected);
+                    self.unify_types(ty, res, branch.into());
+                }
+
+                res
+            },
             | e => todo!("{e:?}"),
         };
 
         self.result.type_of_expr.insert(id, ty);
         ty
+    }
+
+    fn infer_block(&mut self, stmts: &[Stmt], expr: Option<ExprId>, expected: Expectation) -> Ty {
+        for stmt in stmts {
+            match *stmt {
+                | Stmt::Expr(e) => {
+                    self.infer_expr_inner(e, Expectation::None);
+                },
+                | Stmt::Let(p, e) => {
+                    let ty = self.infer_pat(p, Expectation::None);
+                    self.infer_expr_inner(e, Expectation::HasType(ty));
+                },
+            }
+        }
+
+        if let Some(expr) = expr {
+            return self.infer_expr(expr, expected);
+        }
+
+        self.unit_type()
+    }
+
+    fn infer_decision_tree(&mut self, tree: &DecisionTree, expected: Expectation) {
+        match tree {
+            | DecisionTree::Guard(_guard, _next) => todo!("guards"),
+            | DecisionTree::Switch(pat, cases) => {
+                let ty = self.infer_pat(*pat, expected);
+
+                for case in cases {
+                    self.infer_case(case, ty);
+                }
+            },
+            | _ => {},
+        }
+    }
+
+    fn infer_case(&mut self, case: &Case, expected: Ty) {
+        if let Some(tag) = &case.tag {
+            match tag {
+                | VariantTag::Literal(_lit) => {},
+                | VariantTag::Ctor(id) => {
+                    let ty = crate::ctor_ty(self.db, *id);
+
+                    if let TyKind::Func(func) = ty.kind(self.db) {
+                        assert_eq!(case.fields.len(), func.params.len());
+
+                        for (fields, &param) in case.fields.iter().zip(func.params.iter()) {
+                            for &field in fields {
+                                self.infer_pat(field, Expectation::HasType(param));
+                            }
+                        }
+                    } else {
+                        assert!(case.fields.is_empty());
+                    }
+
+                    self.infer_decision_tree(&case.branch, Expectation::None);
+                    return;
+                },
+            }
+        }
+
+        assert_eq!(case.fields.len(), 1);
+        for &field in &case.fields[0] {
+            self.result.type_of_pat.insert(field, expected);
+        }
+
+        self.infer_decision_tree(&case.branch, Expectation::None);
     }
 }

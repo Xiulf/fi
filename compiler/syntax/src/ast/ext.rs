@@ -490,6 +490,10 @@ impl PatTyped {
     pub fn pat(&self) -> Option<Pat> {
         child(self.syntax())
     }
+
+    pub fn ty(&self) -> Option<Type> {
+        child(self.syntax())
+    }
 }
 
 impl PatBind {
@@ -536,6 +540,16 @@ impl PatApp {
 
 impl ExprParens {
     pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+}
+
+impl ExprTyped {
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+
+    pub fn ty(&self) -> Option<Type> {
         child(self.syntax())
     }
 }
@@ -591,6 +605,44 @@ impl ExprBlock {
 impl ExprTry {
     pub fn statements(&self) -> impl Iterator<Item = Stmt> + '_ {
         children(self.syntax())
+    }
+}
+
+impl ExprMatch {
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+
+    pub fn arms(&self) -> impl Iterator<Item = MatchArm> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl MatchArm {
+    pub fn pat(&self) -> Option<Pat> {
+        child(self.syntax())
+    }
+
+    pub fn guard(&self) -> Option<Expr> {
+        child::<MatchGuard>(self.syntax()).and_then(|g| child(g.syntax()))
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+}
+
+impl MatchGuard {
+    pub fn is_else(&self) -> bool {
+        token(self.syntax(), SyntaxKind::ELSE_KW).is_some()
+    }
+
+    pub fn guard(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        children(self.syntax()).nth(1)
     }
 }
 
