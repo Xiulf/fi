@@ -296,7 +296,7 @@ impl<'input> Lexer<'input> {
             self.advance();
         }
 
-        let new_indent = self.text[start.into()..self.pos.into()].len();
+        let new_indent = (self.pos - start).into();
 
         match (self.current, self.next) {
             | ('\r' | '\n', _) => self.newline(),

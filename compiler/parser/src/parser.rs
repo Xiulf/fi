@@ -14,6 +14,7 @@ use crate::lexer::Lexer;
 use crate::token::SyntaxKind::{self, *};
 
 pub fn parse(text: &str) -> (Option<Event>, Vec<ParseError>) {
+    // dbg!(tokens_with_range(text).collect::<Vec<_>>());
     let tokens = tokens_with_range(text);
     let stream = Stream::from_iter(text.len()..text.len(), tokens);
 
@@ -303,8 +304,9 @@ fn typ_atom() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     let name = type_path().to_node(TYPE_PATH);
     let list = brackets(typ()).to_node(TYPE_LIST);
     let parens = parens(typ()).to_node(TYPE_PARENS);
+    let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(TYPE_UNIT);
 
-    choice((name, ident, list, parens)).labelled("type")
+    choice((name, ident, list, unit, parens)).labelled("type")
 }
 
 fn typ() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -313,7 +315,8 @@ fn typ() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         let name = type_path().to_node(TYPE_PATH);
         let list = brackets(typ.clone()).to_node(TYPE_LIST);
         let parens = parens(typ).to_node(TYPE_PARENS);
-        let atom = choice((name, ident, list, parens));
+        let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(TYPE_UNIT);
+        let atom = choice((name, ident, list, unit, parens));
         let app = atom
             .clone()
             .then(atom.clone().repeated().at_least(1).collect())
@@ -352,10 +355,11 @@ fn pat_atom() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     let bind = name().to_node(PAT_BIND);
     let underscore = token(UNDERSCORE).to_node(PAT_WILDCARD);
     let ctor = type_path().to_node(PAT_PATH);
+    let literal = literal().to_node(PAT_LITERAL);
     let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(PAT_UNIT);
     let parens = parens(pat()).to_node(PAT_PARENS);
 
-    choice((bind, underscore, ctor, unit, parens)).labelled("pattern")
+    choice((bind, underscore, ctor, unit, literal, parens)).labelled("pattern")
 }
 
 fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
@@ -368,7 +372,8 @@ fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(PAT_UNIT);
         let parens = parens(pat.clone()).to_node(PAT_PARENS);
         let ctor = type_path().to_node(PAT_PATH);
-        let atom = choice((bind, underscore, unit, parens, ctor.clone()));
+        let literal = literal().to_node(PAT_LITERAL);
+        let atom = choice((bind, underscore, unit, literal, parens, ctor.clone()));
         let app = ctor
             .then(atom.clone().repeated().at_least(1).collect())
             .to_event()
@@ -393,16 +398,56 @@ fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         let hole = rtoken(UNDERSCORE).to_node(EXPR_HOLE);
         let unit = rtoken(L_PAREN).then(rtoken(R_PAREN)).to_event().to_node(EXPR_UNIT);
         let block = block(stmt(expr.clone())).to_node(EXPR_BLOCK);
-        let parens = parens(expr).to_node(EXPR_PARENS);
+        let parens = parens(expr.clone()).to_node(EXPR_PARENS);
         let atom = choice((ident, lit, hole, unit, block, parens)).pad_ws();
         let app = atom.clone().repeated().at_least(2).collect().to_node(EXPR_APP).pad_ws();
         let app = app.or(atom);
         let infix = app.clone().separated(operator(), false, 2).to_node(EXPR_INFIX).pad_ws();
         let infix = infix.or(app);
+        let ifelse = rtoken(IF_KW)
+            .then(infix.clone())
+            .then(opt(rtoken(LYT_SEP)))
+            .then(rtoken(THEN_KW))
+            .then(expr.clone())
+            .then(opt(opt(rtoken(LYT_SEP))
+                .then(rtoken(ELSE_KW))
+                .then(expr.clone())
+                .to_event()))
+            .to_event()
+            .to_node(EXPR_IF)
+            .pad_ws();
+        let match_ = rtoken(MATCH_KW)
+            .then(infix.clone())
+            .then(rtoken(WITH_KW))
+            .then(rtoken(LYT_SEP).then(match_arm(expr)).repeated().collect())
+            .to_event()
+            .to_node(EXPR_MATCH)
+            .pad_ws();
 
-        infix
+        choice((ifelse, match_, infix))
     })
     .labelled("expression")
+}
+
+fn match_arm(
+    expr: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+    let if_guard = rtoken(IF_KW)
+        .then(expr.clone().to_node(MATCH_GUARD))
+        .then(rtoken(ARROW))
+        .then(expr.clone())
+        .to_event();
+    let else_guard = rtoken(ELSE_KW).then(expr.clone()).to_event();
+    let guarded = if_guard
+        .repeated()
+        .at_least(1)
+        .collect::<Event>()
+        .then(opt(else_guard))
+        .to_event()
+        .to_node(MATCH_GUARDED);
+    let value = rtoken(ARROW).then(expr).to_event().to_node(MATCH_VALUE).or(guarded);
+
+    rtoken(PIPE).then(pat()).then(value).to_event().to_node(MATCH_ARM)
 }
 
 fn stmt(
@@ -467,7 +512,7 @@ fn block<'a>(
     item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
 ) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
     rtoken(LYT_START)
-        .then(item.separated(rtoken(LYT_SEP), false, 0))
+        .then(item.separated(rtoken(LYT_SEP), true, 0))
         .then(rtoken(LYT_END))
         .to_event()
         .recover_with(nested_delimiters(
