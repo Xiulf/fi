@@ -62,7 +62,7 @@ impl Lib {
         lib_diagnostics(db, self.id);
         let diagnostics = lib_diagnostics::accumulated::<Diagnostics>(db, self.id);
 
-        for diag in diagnostics.into_iter().rev() {
+        for diag in diagnostics.into_iter() {
             sink.add_diagnostic(diag);
         }
     }
