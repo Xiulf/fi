@@ -37,7 +37,7 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
             | TypeRef::Func { args, ret } => {
                 let params = args.iter().map(|&t| self.lower_type_ref(t)).collect();
                 let ret = self.lower_type_ref(*ret);
-                let env = self.ctx.fresh_type(self.level);
+                let env = self.unit_type();
                 let variadic = false;
 
                 Ty::new(

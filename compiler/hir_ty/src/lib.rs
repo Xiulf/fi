@@ -32,7 +32,6 @@ pub enum TyOrigin {
 
 #[salsa::tracked]
 pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
-    use hir_def::display::HirDisplay;
     let data = hir_def::data::value_data(db, value);
     let body = hir_def::body::query(db, value).0;
     let type_map = TypedItemId::from(value).type_map(db).0;
@@ -51,43 +50,27 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         .collect::<Box<[_]>>();
 
     bcx.ret_ty = ret;
-    bcx.result.ty = GeneralizedType::new(ret, data.type_vars(db));
-
-    if !params.is_empty() {
-        bcx.result.ty = GeneralizedType::new(
+    bcx.result.ty = if params.is_empty() {
+        GeneralizedType::new(ret, data.type_vars(db))
+    } else {
+        GeneralizedType::new(
             Ty::new(
                 db,
                 TyKind::Func(FuncType {
                     ret,
                     params,
-                    env: bcx.ctx.fresh_type(bcx.level),
+                    env: bcx.unit_type(),
                     variadic: false,
                 }),
             ),
             data.type_vars(db),
-        );
-    }
+        )
+    };
 
     let _ = bcx.infer_expr(body.body_expr(), ctx::Expectation::HasType(ret));
     let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
+
     ctx.result.ty = ctx.generalize(ty, data.type_vars(db));
-    let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
-    let ty = ctx.resolve_type_fully(ty);
-    tracing::debug!("{}", ty.display(db));
-
-    let type_of_pat = ctx.result.type_of_pat.clone();
-    let type_of_expr = ctx.result.type_of_expr.clone();
-
-    for (p, ty) in type_of_pat.iter() {
-        let ty = ctx.resolve_type_fully(*ty);
-        tracing::debug!("${:0>2} :: {}", u32::from(p.into_raw()), ty.display(db));
-    }
-
-    for (e, ty) in type_of_expr.iter() {
-        let ty = ctx.resolve_type_fully(*ty);
-        tracing::debug!("#{:0>3} :: {}", u32::from(e.into_raw()), ty.display(db));
-    }
-
     ctx.finish()
 }
 

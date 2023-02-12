@@ -3,11 +3,13 @@ use ena::unify::{InPlace, UnificationTable, UnifyKey, UnifyValue};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
-use crate::diagnostics::TypeMismatch;
-use crate::ty::{Ty, TyKind, Unknown};
+use crate::diagnostics::{RecursiveType, TypeMismatch};
+use crate::ty::{GeneralizedType, Ty, TyKind, Unknown};
 use crate::TyOrigin;
 
-#[derive(Default)]
+const RECURSION_LIMIT: u32 = 32;
+
+#[derive(Default, Debug)]
 pub struct Substitution {
     pub(crate) solved: NoHashHashMap<Unknown, Ty>,
     unsolved: NoHashHashMap<Unknown, Ty>,
@@ -21,7 +23,7 @@ pub struct UnkLevel(pub(crate) u32);
 pub enum UnifyResult {
     Ok,
     Fail,
-    RecursiveType,
+    RecursiveType(Ty),
 }
 
 impl UnifyResult {
@@ -55,13 +57,19 @@ impl Ctx<'_> {
             | UnifyResult::Ok => {},
             | UnifyResult::Fail => {
                 Diagnostics::emit(self.db, TypeMismatch {
-                    a: t1,
-                    b: t2,
+                    a: self.resolve_type_fully(t1),
+                    b: self.resolve_type_fully(t2),
                     owner: self.owner,
                     origin,
                 });
             },
-            | UnifyResult::RecursiveType => todo!(),
+            | UnifyResult::RecursiveType(t) => {
+                Diagnostics::emit(self.db, RecursiveType {
+                    ty: self.resolve_type_fully(t),
+                    owner: self.owner,
+                    origin,
+                });
+            },
         }
     }
 
@@ -110,19 +118,46 @@ impl Ctx<'_> {
     fn unify_unknown(&mut self, u: Unknown, t1: Ty, t2: Ty) -> UnifyResult {
         match self.find_binding(u) {
             | Ok(t) => self.unify(t, t2),
-            | Err((_level, _kind)) => {
+            | Err((level, _kind)) => {
                 let b = self.resolve_type_shallow(t2);
 
                 if t1 == b {
                     return UnifyResult::Ok;
                 }
 
-                // TODO: occurs check
+                if self.occurs(u, level, b, RECURSION_LIMIT) {
+                    return UnifyResult::RecursiveType(b);
+                }
+
                 // TODO: check kind
 
                 self.subst.solved.insert(u, b);
                 UnifyResult::Ok
             },
+        }
+    }
+
+    fn occurs(&mut self, u: Unknown, level: UnkLevel, ty: Ty, n: u32) -> bool {
+        if n == 0 {
+            panic!("recursion limit reached in occurs");
+        }
+
+        let n = n - 1;
+
+        match ty.kind(self.db) {
+            | TyKind::Unknown(u2) => match self.find_binding(*u2) {
+                | Ok(t) => self.occurs(u, level, t, n),
+                | Err((_, _)) => u == *u2,
+            },
+            | TyKind::App(base, args) => {
+                self.occurs(u, level, *base, n) || args.iter().any(|&a| self.occurs(u, level, a, n))
+            },
+            | TyKind::Func(func) => {
+                func.params.iter().any(|&a| self.occurs(u, level, a, n))
+                    || self.occurs(u, level, func.ret, n)
+                    || self.occurs(u, level, func.env, n)
+            },
+            | _ => false,
         }
     }
 
@@ -144,7 +179,20 @@ impl Ctx<'_> {
     }
 
     pub fn resolve_type_fully(&mut self, t: Ty) -> Ty {
-        t.fold(self.db, &mut |t| self.resolve_type_shallow(t))
+        t.fold(self.db, &mut |t| match t.kind(self.db) {
+            | TyKind::Unknown(u) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
+                | Some(t) => self.resolve_type_fully(t),
+                | None => t,
+            },
+            | _ => t,
+        })
+    }
+
+    pub fn resolve_generalized_type_fully(&mut self, t: GeneralizedType) -> GeneralizedType {
+        match t {
+            | GeneralizedType::Mono(t) => GeneralizedType::Mono(self.resolve_type_fully(t)),
+            | GeneralizedType::Poly(vars, t) => GeneralizedType::Poly(vars, self.resolve_type_fully(t)),
+        }
     }
 }
 

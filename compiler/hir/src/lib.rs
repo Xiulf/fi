@@ -108,7 +108,18 @@ impl Value {
 
         hir_def::body::query(db, self.data.id(db));
         hir_def::type_ref::query(db, item);
-        hir_ty::infer(db, self.data.id(db));
+
+        use hir_def::display::HirDisplay;
+        let result = hir_ty::infer(db, self.data.id(db));
+        tracing::debug!("{}", result.ty.display(db));
+
+        for (p, ty) in result.type_of_pat.iter() {
+            tracing::debug!("${:0>2} :: {}", u32::from(p.into_raw()), ty.display(db));
+        }
+
+        for (e, ty) in result.type_of_expr.iter() {
+            tracing::debug!("#{:0>3} :: {}", u32::from(e.into_raw()), ty.display(db));
+        }
     }
 }
 

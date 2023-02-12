@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::id::TypeVarId;
+
 pub trait HirDisplay {
     type Db<'a>: ?Sized + 'a;
 
@@ -69,6 +71,29 @@ impl<'a, Db> HirFormatter<'a, Db>
 where
     Db: ?Sized + 'a,
 {
+    pub fn with_upcast<T, Db2>(
+        &mut self,
+        upcast: impl FnOnce(&Db) -> &Db2,
+        f: impl FnOnce(&mut HirFormatter<Db2>) -> T,
+    ) -> T
+    where
+        Db2: ?Sized + 'a,
+    {
+        let buf = std::mem::replace(&mut self.buf, String::new());
+        let mut fmt = HirFormatter {
+            buf,
+            db: upcast(self.db),
+            fmt: self.fmt,
+            curr_size: self.curr_size,
+            max_size: self.max_size,
+            display_target: self.display_target,
+        };
+
+        let res = f(&mut fmt);
+        self.buf = fmt.buf;
+        res
+    }
+
     pub fn write_joined<'b, T>(&mut self, iter: impl IntoIterator<Item = T>, sep: &str) -> fmt::Result
     where
         T: HirDisplay<Db<'b> = Db>,
@@ -164,5 +189,21 @@ impl<'a, W: fmt::Write> fmt::Write for Indent<'a, W> {
         }
 
         Ok(())
+    }
+}
+
+impl HirDisplay for TypeVarId {
+    type Db<'a> = dyn crate::Db + 'a;
+
+    fn hir_fmt(&self, f: &mut HirFormatter<Self::Db<'_>>) -> fmt::Result {
+        use std::fmt::Write as _;
+        let owner = self.owner(f.db);
+        let type_map = owner.type_map(f.db).0;
+        let name = match self.local_id(f.db) {
+            | either::Either::Left(local_id) => type_map[local_id].name,
+            | either::Either::Right(name) => name,
+        };
+
+        write!(f, "{}", name.display(f.db))
     }
 }

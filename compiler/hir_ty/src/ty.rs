@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use either::Either;
 use hir_def::display::HirDisplay;
 use hir_def::id::{TypeCtorId, TypeVarId};
 
@@ -89,23 +88,14 @@ impl GeneralizedType {
 }
 
 impl HirDisplay for Ty {
-    type Db<'a> = dyn crate::Db + 'a;
+    type Db<'a> = dyn Db + 'a;
 
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
         use std::fmt::Write as _;
         match self.kind(f.db) {
             | TyKind::Error => write!(f, "{{error}}"),
             | TyKind::Unknown(u) => write!(f, "?{}", u.0),
-            | TyKind::Var(var) => {
-                let owner = var.owner(f.db);
-                let type_map = owner.type_map(f.db).0;
-                let name = match var.local_id(f.db) {
-                    | Either::Left(local_id) => type_map[local_id].name,
-                    | Either::Right(name) => name,
-                };
-
-                write!(f, "{}", name.display(f.db))
-            },
+            | TyKind::Var(var) => f.with_upcast::<_, dyn hir_def::Db>(|d| d, |f| var.hir_fmt(f)),
             | TyKind::Ctor(ctor) => {
                 let it = ctor.it(f.db);
                 let item_tree = hir_def::item_tree::query(f.db, it.file);
@@ -119,13 +109,49 @@ impl HirDisplay for Ty {
                 }
                 Ok(())
             },
-            | TyKind::Func(func) => {
-                f.write_joined(func.params.iter(), ", ")?;
-                if func.variadic {
-                    f.write_str(", ..")?;
-                }
-                f.write_str(" -> ")?;
-                func.ret.hir_fmt(f)
+            | TyKind::Func(func) => func.hir_fmt(f),
+        }
+    }
+}
+
+impl HirDisplay for FuncType {
+    type Db<'a> = dyn Db + 'a;
+
+    fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        f.write_char('{')?;
+        self.env.hir_fmt(f)?;
+        f.write_str("} ")?;
+        f.write_joined(self.params.iter(), ", ")?;
+        if self.variadic {
+            f.write_str(", ..")?;
+        }
+        f.write_str(" -> ")?;
+        self.ret.hir_fmt(f)
+    }
+}
+
+impl HirDisplay for GeneralizedType {
+    type Db<'a> = dyn Db + 'a;
+
+    fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        match self {
+            | Self::Mono(ty) => ty.hir_fmt(f),
+            | Self::Poly(vars, ty) => {
+                f.write_str("forall")?;
+                f.with_upcast::<_, dyn hir_def::Db>(
+                    |d| d,
+                    |f| {
+                        for var in vars.iter() {
+                            f.write_char(' ')?;
+                            var.hir_fmt(f)?;
+                        }
+                        Ok(())
+                    },
+                )?;
+                f.write_str(". ")?;
+                ty.hir_fmt(f)
             },
         }
     }

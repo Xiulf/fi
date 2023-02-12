@@ -81,6 +81,7 @@ fn item() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         let impl_ = impl_();
 
         choice((module, import, fixity, value, type_, foreign_type, trait_, impl_))
+            .recover_with(skip_until([LYT_SEP], err))
     })
 }
 
@@ -370,7 +371,14 @@ fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
             .to_node(PAT_BIND);
         let underscore = token(UNDERSCORE).to_node(PAT_WILDCARD);
         let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(PAT_UNIT);
-        let parens = parens(pat.clone()).to_node(PAT_PARENS);
+        let typed = pat
+            .clone()
+            .then(token(DBL_COLON))
+            .then(typ())
+            .to_event()
+            .to_node(PAT_TYPED)
+            .or(pat);
+        let parens = parens(typed).to_node(PAT_PARENS);
         let ctor = type_path().to_node(PAT_PATH);
         let literal = literal().to_node(PAT_LITERAL);
         let atom = choice((bind, underscore, unit, literal, parens, ctor.clone()));
@@ -378,15 +386,8 @@ fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
             .then(atom.clone().repeated().at_least(1).collect())
             .to_event()
             .to_node(PAT_APP);
-        let typed = app
-            .clone()
-            .or(atom.clone())
-            .then(token(DBL_COLON))
-            .then(typ())
-            .to_event()
-            .to_node(PAT_TYPED);
 
-        typed.or(app).or(atom)
+        app.or(atom)
     })
     .labelled("pattern")
 }
@@ -434,7 +435,13 @@ fn match_arm(
 ) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     let guard = rtoken(IF_KW).then(expr.clone()).to_event().to_node(MATCH_GUARD);
 
-    rtoken(PIPE).then(pat()).then(opt(guard)).then(rtoken(ARROW)).then(expr).to_event().to_node(MATCH_ARM)
+    rtoken(PIPE)
+        .then(pat())
+        .then(opt(guard))
+        .then(rtoken(ARROW).recover_with(skip_until([ARROW], err).consume_end()))
+        .then(expr)
+        .to_event()
+        .to_node(MATCH_ARM)
 }
 
 fn stmt(
@@ -499,7 +506,10 @@ fn block<'a>(
     item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
 ) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
     rtoken(LYT_START)
-        .then(item.separated(rtoken(LYT_SEP), true, 0))
+        .then(
+            item.recover_with(skip_until([LYT_SEP], err))
+                .separated(rtoken(LYT_SEP), true, 0),
+        )
         .then(rtoken(LYT_END))
         .to_event()
         .recover_with(nested_delimiters(

@@ -51,6 +51,19 @@ pub struct Cache(RwLock<CacheInner>);
 #[derive(Default, Debug)]
 pub struct CacheInner {}
 
+impl InferResult {
+    pub fn default(db: &dyn Db) -> Self {
+        let ty = Ty::new(db, TyKind::Error);
+
+        InferResult {
+            ty: GeneralizedType::Mono(ty),
+            type_of_expr: Default::default(),
+            type_of_pat: Default::default(),
+            kind_of_ty: Default::default(),
+        }
+    }
+}
+
 impl<'db> Ctx<'db> {
     pub fn new(db: &'db dyn Db, owner: TypedItemId) -> Self {
         let ty = Ty::new(db, TyKind::Error);
@@ -58,12 +71,7 @@ impl<'db> Ctx<'db> {
         Self {
             db,
             owner,
-            result: InferResult {
-                ty: GeneralizedType::Mono(ty),
-                type_of_expr: Default::default(),
-                type_of_pat: Default::default(),
-                kind_of_ty: Default::default(),
-            },
+            result: InferResult::default(db),
             subst: Substitution::default(),
             level: UnkLevel(1),
             ret_ty: ty,
@@ -74,8 +82,17 @@ impl<'db> Ctx<'db> {
         BodyCtx { ctx: self, body }
     }
 
-    pub fn finish(self) -> Arc<InferResult> {
-        Arc::new(self.result)
+    pub fn finish(mut self) -> Arc<InferResult> {
+        let mut result = std::mem::replace(&mut self.result, InferResult::default(self.db));
+        let mut finalize = |t: &mut Ty| {
+            *t = self.resolve_type_fully(*t);
+        };
+
+        result.type_of_expr.values_mut().for_each(&mut finalize);
+        result.type_of_pat.values_mut().for_each(&mut finalize);
+        result.ty = self.resolve_generalized_type_fully(result.ty);
+
+        Arc::new(result)
     }
 
     pub fn error(&self) -> Ty {
@@ -136,6 +153,7 @@ impl<'db> Ctx<'db> {
                 type_vars.push(var);
             }
 
+            type_vars.sort();
             GeneralizedType::Poly(type_vars.into(), ty)
         }
     }
@@ -171,9 +189,9 @@ impl<'db> Ctx<'db> {
     fn new_type_vars(&self, unknowns: NoHashHashSet<Unknown>) -> NoHashHashMap<Unknown, TypeVarId> {
         let mut res = NoHashHashMap::default();
 
-        for u in unknowns {
+        for (i, u) in unknowns.into_iter().enumerate() {
             let mut name = String::with_capacity(2);
-            let mut n = u.0;
+            let mut n = i as u32;
 
             unsafe {
                 name.push('\'');
