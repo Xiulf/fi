@@ -34,17 +34,7 @@ impl BodyCtx<'_, '_> {
             },
             | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),
-            | Expr::Path { def: Some(def), .. } => {
-                let ty = match def {
-                    | ValueDefId::ValueId(id) if self.owner == (*id).into() => self.result.ty,
-                    | ValueDefId::ValueId(id) => crate::infer(self.db, *id).ty,
-                    | ValueDefId::CtorId(id) => crate::ctor_ty(self.db, *id),
-                    | ValueDefId::PatId(id) => self.result.type_of_pat[*id],
-                    | d => todo!("{d:?}"),
-                };
-
-                ty
-            },
+            | Expr::Path { def: Some(def), .. } => self.infer_value_def_id(id, *def),
             | Expr::App { base, args } => {
                 let func = self.infer_expr_inner(*base, Expectation::None);
                 let params = args
@@ -107,6 +97,22 @@ impl BodyCtx<'_, '_> {
         ty
     }
 
+    fn infer_value_def_id(&mut self, expr: ExprId, def: ValueDefId) -> Ty {
+        let ty = match def {
+            | ValueDefId::FixityId(id) => match hir_def::data::fixity_data(self.db, id).def(self.db) {
+                | Some(def) => return self.infer_value_def_id(expr, def.unwrap_left()),
+                | None => return self.error(),
+            },
+            | ValueDefId::ValueId(id) if self.owner == id.into() => self.result.ty.clone(),
+            | ValueDefId::ValueId(id) => crate::infer(self.db, id).ty.clone(),
+            | ValueDefId::CtorId(id) => crate::ctor_ty(self.db, id),
+            | ValueDefId::PatId(id) => return self.result.type_of_pat[id],
+            | d => todo!("{d:?}"),
+        };
+
+        self.instantiate(ty)
+    }
+
     fn infer_block(&mut self, stmts: &[Stmt], expr: Option<ExprId>, expected: Expectation) -> Ty {
         for stmt in stmts {
             match *stmt {
@@ -147,6 +153,7 @@ impl BodyCtx<'_, '_> {
                 | VariantTag::Literal(_lit) => {},
                 | VariantTag::Ctor(id) => {
                     let ty = crate::ctor_ty(self.db, *id);
+                    let ty = self.instantiate(ty);
 
                     if let TyKind::Func(func) = ty.kind(self.db) {
                         assert_eq!(case.fields.len(), func.params.len());

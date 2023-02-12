@@ -6,10 +6,18 @@ import Prim
 main = ()
 
 
-fib (x :: Int32) :: Int32 =
+fib x :: Int32 =
     match x with
     | 0 -> 0
     | 1 -> 1
-    | 1 -> 3
     | n -> fib (n - 1) + fib (n - 2)
-    | n -> n
+
+
+trait Add a =
+    add :: a, a -> a
+
+trait Sub a =
+    sub :: a, a -> a
+
+infixl 6 (+) = add
+infixl 6 (-) = sub

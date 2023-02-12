@@ -1,5 +1,6 @@
 use arena::{Arena, ArenaMap, Idx};
 use diagnostics::Diagnostics;
+use either::Either;
 use ra_ap_stdx::hash::NoHashHashMap;
 use rustc_hash::FxHashMap;
 use syntax::ast::{self, Assoc, AstNode, Prec};
@@ -222,7 +223,7 @@ impl<'a> Ctx<'a> {
                     var
                 } else {
                     let local_id = self.map.type_vars.alloc(TypeVar { name });
-                    let var = TypeVarId::new(self.db, self.owner, local_id);
+                    let var = TypeVarId::new(self.db, self.owner, Either::Left(local_id));
                     let ptr = AstPtr::new(&name_ref);
 
                     self.src.var_to_src.insert(local_id, ptr);

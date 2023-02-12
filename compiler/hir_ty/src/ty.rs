@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use either::Either;
 use hir_def::display::HirDisplay;
 use hir_def::id::{TypeCtorId, TypeVarId};
 
@@ -30,6 +33,12 @@ pub struct FuncType {
     pub variadic: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum GeneralizedType {
+    Mono(Ty),
+    Poly(Box<[TypeVarId]>, Ty),
+}
+
 impl Ty {
     pub fn fold(self, db: &dyn Db, f: &mut dyn FnMut(Ty) -> Ty) -> Ty {
         match self.kind(db) {
@@ -57,6 +66,26 @@ impl Ty {
             | _ => f(self),
         }
     }
+
+    pub fn replace_vars(self, db: &dyn Db, replacements: &HashMap<TypeVarId, Ty>) -> Ty {
+        self.fold(db, &mut |ty| match ty.kind(db) {
+            | TyKind::Var(v) => match replacements.get(v) {
+                | Some(t) => *t,
+                | None => ty,
+            },
+            | _ => ty,
+        })
+    }
+}
+
+impl GeneralizedType {
+    pub fn new(ty: Ty, vars: &[TypeVarId]) -> Self {
+        if vars.is_empty() {
+            Self::Mono(ty)
+        } else {
+            Self::Poly(vars.into(), ty)
+        }
+    }
 }
 
 impl HirDisplay for Ty {
@@ -70,8 +99,12 @@ impl HirDisplay for Ty {
             | TyKind::Var(var) => {
                 let owner = var.owner(f.db);
                 let type_map = owner.type_map(f.db).0;
+                let name = match var.local_id(f.db) {
+                    | Either::Left(local_id) => type_map[local_id].name,
+                    | Either::Right(name) => name,
+                };
 
-                write!(f, "{}", type_map[var.local_id(f.db)].name.display(f.db))
+                write!(f, "{}", name.display(f.db))
             },
             | TyKind::Ctor(ctor) => {
                 let it = ctor.it(f.db);

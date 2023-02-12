@@ -9,13 +9,29 @@ use crate::TyOrigin;
 
 #[derive(Default)]
 pub struct Substitution {
-    solved: NoHashHashMap<Unknown, Ty>,
+    pub(crate) solved: NoHashHashMap<Unknown, Ty>,
     unsolved: NoHashHashMap<Unknown, Ty>,
     table: UnificationTable<InPlace<Unknown>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnkLevel(pub(crate) u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnifyResult {
+    Ok,
+    Fail,
+    RecursiveType,
+}
+
+impl UnifyResult {
+    fn and(self, other: Self) -> Self {
+        match self {
+            | Self::Ok => other,
+            | _ => self,
+        }
+    }
+}
 
 impl Ctx<'_> {
     pub fn fresh_type_with_kind(&mut self, level: UnkLevel, kind: Ty) -> Ty {
@@ -35,64 +51,82 @@ impl Ctx<'_> {
     }
 
     pub fn unify_types(&mut self, t1: Ty, t2: Ty, origin: TyOrigin) {
-        if !self.unify(t1, t2) {
-            Diagnostics::emit(self.db, TypeMismatch {
-                a: t1,
-                b: t2,
-                owner: self.owner,
-                origin,
-            });
+        match self.unify(t1, t2) {
+            | UnifyResult::Ok => {},
+            | UnifyResult::Fail => {
+                Diagnostics::emit(self.db, TypeMismatch {
+                    a: t1,
+                    b: t2,
+                    owner: self.owner,
+                    origin,
+                });
+            },
+            | UnifyResult::RecursiveType => todo!(),
         }
     }
 
-    fn unify(&mut self, t1: Ty, t2: Ty) -> bool {
+    fn unify(&mut self, t1: Ty, t2: Ty) -> UnifyResult {
         match (t1.kind(self.db), t2.kind(self.db)) {
-            | (TyKind::Error, _) | (_, TyKind::Error) => true,
-            | (TyKind::Unknown(u1), TyKind::Unknown(u2)) if u1 == u2 => true,
-            | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => true,
+            | (TyKind::Error, _) | (_, TyKind::Error) => UnifyResult::Ok,
+            | (TyKind::Unknown(u1), TyKind::Unknown(u2)) if u1 == u2 => UnifyResult::Ok,
+            | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => UnifyResult::Ok,
             | (TyKind::Unknown(u), _) => self.unify_unknown(*u, t1, t2),
             | (_, TyKind::Unknown(u)) => self.unify_unknown(*u, t2, t1),
-            | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => {
-                self.unify(*a_base, *b_base) && a_args.iter().zip(b_args.iter()).all(|(&a, &b)| self.unify(a, b))
-            },
+            | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
+                .unify(*a_base, *b_base)
+                .and(self.unify_all(a_args.iter(), b_args.iter())),
             | (TyKind::Func(a), TyKind::Func(b)) => {
                 if a.params.len() != b.params.len() {
                     if !(a.variadic && b.params.len() >= a.params.len())
                         && !(b.variadic && a.params.len() >= b.params.len())
                     {
-                        return false;
+                        return UnifyResult::Fail;
                     }
                 }
 
-                a.params.iter().zip(b.params.iter()).all(|(&a, &b)| self.unify(a, b))
-                    && self.unify(a.ret, b.ret)
-                    && self.unify(a.env, b.env)
+                self.unify_all(a.params.iter(), b.params.iter())
+                    .and(self.unify(a.ret, b.ret))
+                    .and(self.unify(a.env, b.env))
             },
-            | (_, _) => false,
+            | (_, _) => UnifyResult::Fail,
         }
     }
 
-    fn unify_unknown(&mut self, u: Unknown, t1: Ty, t2: Ty) -> bool {
+    fn unify_all<'a, 'b>(
+        &mut self,
+        mut a: impl Iterator<Item = &'a Ty>,
+        mut b: impl Iterator<Item = &'b Ty>,
+    ) -> UnifyResult {
+        while let (Some(&a), Some(&b)) = (a.next(), b.next()) {
+            let res = self.unify(a, b);
+            if res != UnifyResult::Ok {
+                return res;
+            }
+        }
+
+        UnifyResult::Ok
+    }
+
+    fn unify_unknown(&mut self, u: Unknown, t1: Ty, t2: Ty) -> UnifyResult {
         match self.find_binding(u) {
             | Ok(t) => self.unify(t, t2),
-            | Err((level, _kind)) => {
+            | Err((_level, _kind)) => {
                 let b = self.resolve_type_shallow(t2);
 
                 if t1 == b {
-                    return true;
+                    return UnifyResult::Ok;
                 }
 
                 // TODO: occurs check
                 // TODO: check kind
 
-                self.subst.table.unify_var_value(u, level).unwrap();
                 self.subst.solved.insert(u, b);
-                true
+                UnifyResult::Ok
             },
         }
     }
 
-    fn find_binding(&mut self, u: Unknown) -> Result<Ty, (UnkLevel, Ty)> {
+    pub(crate) fn find_binding(&mut self, u: Unknown) -> Result<Ty, (UnkLevel, Ty)> {
         match self.subst.solved.get(&u).copied() {
             | Some(t) => Ok(t),
             | None => Err((self.subst.table.probe_value(u), self.subst.unsolved[&u])),

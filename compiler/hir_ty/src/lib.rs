@@ -6,7 +6,7 @@ use hir_def::id::{CtorId, TypedItemId, ValueId};
 use hir_def::pat::PatId;
 use syntax::TextRange;
 use triomphe::Arc;
-use ty::{FuncType, Ty, TyKind};
+use ty::{FuncType, GeneralizedType, Ty, TyKind};
 use vfs::InFile;
 
 pub mod ctx;
@@ -51,23 +51,28 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         .collect::<Box<[_]>>();
 
     bcx.ret_ty = ret;
-    bcx.result.ty = ret;
+    bcx.result.ty = GeneralizedType::new(ret, data.type_vars(db));
 
     if !params.is_empty() {
-        bcx.result.ty = Ty::new(
-            db,
-            TyKind::Func(FuncType {
-                ret,
-                params,
-                env: bcx.ctx.fresh_type(bcx.level),
-                variadic: false,
-            }),
+        bcx.result.ty = GeneralizedType::new(
+            Ty::new(
+                db,
+                TyKind::Func(FuncType {
+                    ret,
+                    params,
+                    env: bcx.ctx.fresh_type(bcx.level),
+                    variadic: false,
+                }),
+            ),
+            data.type_vars(db),
         );
     }
 
     let _ = bcx.infer_expr(body.body_expr(), ctx::Expectation::HasType(ret));
-    let ty = ctx.resolve_type_fully(ctx.result.ty);
-
+    let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
+    ctx.result.ty = ctx.generalize(ty, data.type_vars(db));
+    let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
+    let ty = ctx.resolve_type_fully(ty);
     tracing::debug!("{}", ty.display(db));
 
     let type_of_pat = ctx.result.type_of_pat.clone();
@@ -87,7 +92,7 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
 }
 
 #[salsa::tracked]
-pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> Ty {
+pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
     let type_ctor = ctor.type_ctor(db);
     let data = hir_def::data::ctor_data(db, ctor);
     let types = data.types(db);
@@ -97,12 +102,12 @@ pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> Ty {
     let mut ctx = lower::LowerCtx::new(&mut ctx, type_map);
 
     if types.is_empty() {
-        return ty;
+        return GeneralizedType::Mono(ty);
     }
 
     let params = types.iter().map(|&t| ctx.lower_type_ref(t)).collect();
 
-    Ty::new(
+    GeneralizedType::Mono(Ty::new(
         db,
         TyKind::Func(FuncType {
             params,
@@ -110,7 +115,7 @@ pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> Ty {
             env: ctx.unit_type(),
             variadic: false,
         }),
-    )
+    ))
 }
 
 impl TyOrigin {

@@ -1,5 +1,6 @@
 use arena::Idx;
 use base_db::libs::LibId;
+use either::Either;
 
 use crate::item_tree::{self, ItemTreeId};
 use crate::name::Name;
@@ -68,7 +69,7 @@ pub struct ImplId {
 #[salsa::interned]
 pub struct TypeVarId {
     pub owner: TypedItemId,
-    pub local_id: LocalTypeVarId,
+    pub local_id: Either<LocalTypeVarId, Name>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -172,6 +173,28 @@ impl TypedItemId {
     pub fn as_value_id(self) -> Option<ValueId> {
         match self {
             | Self::ValueId(id) => Some(id),
+            | _ => None,
+        }
+    }
+}
+
+impl ItemId {
+    pub fn as_value_def_id(self) -> Option<ValueDefId> {
+        match self {
+            | Self::FixityId(id) => Some(ValueDefId::FixityId(id)),
+            | Self::ValueId(id) => Some(ValueDefId::ValueId(id)),
+            | Self::CtorId(id) => Some(ValueDefId::CtorId(id)),
+            | Self::FieldId(id) => Some(ValueDefId::FieldId(id)),
+            | _ => None,
+        }
+    }
+
+    pub fn as_type_def_id(self) -> Option<TypeDefId> {
+        match self {
+            | Self::FixityId(id) => Some(TypeDefId::FixityId(id)),
+            | Self::TypeAliasId(id) => Some(TypeDefId::TypeAliasId(id)),
+            | Self::TypeCtorId(id) => Some(TypeDefId::TypeCtorId(id)),
+            | Self::TraitId(id) => Some(TypeDefId::TraitId(id)),
             | _ => None,
         }
     }

@@ -9,6 +9,7 @@ edition = "2021"
 arena = { git = "https://github.com/Xiulf/arena", version = "0.1.0" }
 base_db = { version = "0.1.0", path = "../base_db" }
 diagnostics = { version = "0.1.0", path = "../diagnostics" }
+either = "1.8.1"
 ena = "0.14.0"
 hir_def = { version = "0.1.0", path = "../hir_def" }
 parking_lot = "0.12.1"

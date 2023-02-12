@@ -1,9 +1,10 @@
+use either::Either;
 use ra_ap_stdx::hash::NoHashHashMap;
 use syntax::ptr::AstPtr;
 
 use crate::attrs::Attrs;
 use crate::def_map::ModuleScope;
-use crate::id::{self, CtorId, FixityId, ImplId, TypeVarId, TypedItemId, ValueId};
+use crate::id::{self, CtorId, FixityId, ImplId, ItemId, TypeDefId, TypeVarId, TypedItemId, ValueDefId, ValueId};
 use crate::item_tree::{AttrOwner, FixityKind};
 use crate::name::Name;
 use crate::source::HasSource;
@@ -23,6 +24,7 @@ pub struct FixityData {
     #[id]
     pub id: id::FixityId,
     pub kind: FixityKind,
+    pub def: Option<Either<ValueDefId, TypeDefId>>,
 }
 
 #[salsa::tracked]
@@ -77,8 +79,20 @@ pub fn fixity_data(db: &dyn Db, id: FixityId) -> FixityData {
     let it = id.it(db);
     let item_tree = crate::item_tree::query(db, it.file);
     let data = &item_tree[it.value];
+    let module = id.module(db);
+    let def_map = crate::def_map::query(db, module.lib(db));
+    let def = def_map.resolve_path(db, &data.value, module);
+    let def = if data.is_type {
+        def.and_then(|d| d.types)
+            .and_then(ItemId::as_type_def_id)
+            .map(Either::Right)
+    } else {
+        def.and_then(|d| d.values)
+            .and_then(ItemId::as_value_def_id)
+            .map(Either::Left)
+    };
 
-    FixityData::new(db, id, data.kind)
+    FixityData::new(db, id, data.kind, def)
 }
 
 #[salsa::tracked]

@@ -1,14 +1,19 @@
+use std::collections::HashMap;
+
 use arena::ArenaMap;
+use either::Either;
 use hir_def::body::Body;
 use hir_def::expr::ExprId;
-use hir_def::id::{HasModule, TypeCtorId, TypedItemId};
+use hir_def::id::{HasModule, TypeCtorId, TypeVarId, TypedItemId};
 use hir_def::lang_item::{self, LangItem};
+use hir_def::name::AsName;
 use hir_def::pat::PatId;
 use hir_def::type_ref::TypeRefId;
 use parking_lot::RwLock;
+use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
 use triomphe::Arc;
 
-use crate::ty::{Ty, TyKind};
+use crate::ty::{GeneralizedType, Ty, TyKind, Unknown};
 use crate::unify::{Substitution, UnkLevel};
 use crate::Db;
 
@@ -28,7 +33,7 @@ pub struct BodyCtx<'db, 'ctx> {
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct InferResult {
-    pub ty: Ty,
+    pub ty: GeneralizedType,
     pub type_of_expr: ArenaMap<ExprId, Ty>,
     pub type_of_pat: ArenaMap<PatId, Ty>,
     pub kind_of_ty: ArenaMap<TypeRefId, Ty>,
@@ -54,7 +59,7 @@ impl<'db> Ctx<'db> {
             db,
             owner,
             result: InferResult {
-                ty,
+                ty: GeneralizedType::Mono(ty),
                 type_of_expr: Default::default(),
                 type_of_pat: Default::default(),
                 kind_of_ty: Default::default(),
@@ -99,6 +104,93 @@ impl<'db> Ctx<'db> {
 
     fn lang_ctor(&self, name: &'static str) -> Option<TypeCtorId> {
         self.lang_item(name).and_then(LangItem::as_type_ctor)
+    }
+
+    pub fn instantiate(&mut self, ty: GeneralizedType) -> Ty {
+        match ty {
+            | GeneralizedType::Mono(ty) => ty,
+            | GeneralizedType::Poly(vars, ty) => {
+                let mut replacements = HashMap::default();
+
+                for &var in vars.iter() {
+                    replacements.insert(var, self.fresh_type(self.level));
+                }
+
+                ty.replace_vars(self.db, &replacements)
+            },
+        }
+    }
+
+    pub fn generalize(&mut self, ty: Ty, type_vars: &[TypeVarId]) -> GeneralizedType {
+        let mut vars = NoHashHashSet::default();
+        self.find_all_unknowns(ty, &mut vars);
+        let vars = self.new_type_vars(vars);
+
+        if vars.is_empty() && type_vars.is_empty() {
+            GeneralizedType::Mono(ty)
+        } else {
+            let mut type_vars = type_vars.to_vec();
+
+            for (u, var) in vars {
+                self.subst.solved.insert(u, Ty::new(self.db, TyKind::Var(var)));
+                type_vars.push(var);
+            }
+
+            GeneralizedType::Poly(type_vars.into(), ty)
+        }
+    }
+
+    pub fn find_all_unknowns(&mut self, ty: Ty, res: &mut NoHashHashSet<Unknown>) {
+        match ty.kind(self.db) {
+            | TyKind::Unknown(u) => match self.find_binding(*u) {
+                | Ok(t) => self.find_all_unknowns(t, res),
+                | Err((level, _)) => {
+                    if level >= self.level {
+                        res.insert(*u);
+                    }
+                },
+            },
+            | TyKind::App(base, args) => {
+                self.find_all_unknowns(*base, res);
+                for &arg in args.iter() {
+                    self.find_all_unknowns(arg, res);
+                }
+            },
+            | TyKind::Func(func) => {
+                for &param in func.params.iter() {
+                    self.find_all_unknowns(param, res);
+                }
+
+                self.find_all_unknowns(func.ret, res);
+                self.find_all_unknowns(func.env, res);
+            },
+            | _ => {},
+        }
+    }
+
+    fn new_type_vars(&self, unknowns: NoHashHashSet<Unknown>) -> NoHashHashMap<Unknown, TypeVarId> {
+        let mut res = NoHashHashMap::default();
+
+        for u in unknowns {
+            let mut name = String::with_capacity(2);
+            let mut n = u.0;
+
+            unsafe {
+                name.push('\'');
+                while n >= 24 {
+                    name.push(char::from_u32_unchecked('a' as u32 + n % 24));
+                    n -= 24;
+                }
+                name.push(char::from_u32_unchecked('a' as u32 + n));
+            }
+
+            let name = name.as_name(self.db);
+            let var = TypeVarId::new(self.db, self.owner, Either::Right(name));
+
+            res.insert(u, var);
+        }
+
+        res
     }
 }
 
