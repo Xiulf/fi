@@ -18,6 +18,7 @@ pub struct Ctx<'db> {
     pub(crate) subst: Substitution,
     pub(crate) owner: TypedItemId,
     pub(crate) level: UnkLevel,
+    pub(crate) ret_ty: Ty,
 }
 
 pub struct BodyCtx<'db, 'ctx> {
@@ -25,11 +26,12 @@ pub struct BodyCtx<'db, 'ctx> {
     pub(crate) body: Arc<Body>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct InferResult {
-    pub kind_of_ty: ArenaMap<TypeRefId, Ty>,
+    pub ty: Ty,
     pub type_of_expr: ArenaMap<ExprId, Ty>,
     pub type_of_pat: ArenaMap<PatId, Ty>,
+    pub kind_of_ty: ArenaMap<TypeRefId, Ty>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,12 +48,20 @@ pub struct CacheInner {}
 
 impl<'db> Ctx<'db> {
     pub fn new(db: &'db dyn Db, owner: TypedItemId) -> Self {
+        let ty = Ty::new(db, TyKind::Error);
+
         Self {
             db,
             owner,
-            result: InferResult::default(),
+            result: InferResult {
+                ty,
+                type_of_expr: Default::default(),
+                type_of_pat: Default::default(),
+                kind_of_ty: Default::default(),
+            },
             subst: Substitution::default(),
             level: UnkLevel(1),
+            ret_ty: ty,
         }
     }
 

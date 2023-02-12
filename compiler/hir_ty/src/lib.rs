@@ -49,21 +49,24 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         .iter()
         .map(|&p| bcx.infer_pat(p, Expectation::None))
         .collect::<Box<[_]>>();
-    let mut ty = bcx.infer_expr(body.body_expr(), ctx::Expectation::HasType(ret));
+
+    bcx.ret_ty = ret;
+    bcx.result.ty = ret;
 
     if !params.is_empty() {
-        ty = Ty::new(
+        bcx.result.ty = Ty::new(
             db,
             TyKind::Func(FuncType {
+                ret,
                 params,
-                ret: ty,
                 env: bcx.ctx.fresh_type(bcx.level),
                 variadic: false,
             }),
         );
     }
 
-    let ty = ctx.resolve_type_fully(ty);
+    let _ = bcx.infer_expr(body.body_expr(), ctx::Expectation::HasType(ret));
+    let ty = ctx.resolve_type_fully(ctx.result.ty);
 
     tracing::debug!("{}", ty.display(db));
 

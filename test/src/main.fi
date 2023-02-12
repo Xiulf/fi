@@ -10,5 +10,5 @@ fib (x :: Int32) :: Int32 =
     match x with
     | 0 -> 0
     | 1 -> 1
-    // | n -> fib (n - 1) + fib (n - 2)
+    | n -> fib (n - 1) + fib (n - 2)
     | n -> n

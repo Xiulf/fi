@@ -36,6 +36,8 @@ impl BodyCtx<'_, '_> {
             | Expr::Path { def: None, .. } => self.error(),
             | Expr::Path { def: Some(def), .. } => {
                 let ty = match def {
+                    | ValueDefId::ValueId(id) if self.owner == (*id).into() => self.result.ty,
+                    | ValueDefId::ValueId(id) => crate::infer(self.db, *id).ty,
                     | ValueDefId::CtorId(id) => crate::ctor_ty(self.db, *id),
                     | ValueDefId::PatId(id) => self.result.type_of_pat[*id],
                     | d => todo!("{d:?}"),
