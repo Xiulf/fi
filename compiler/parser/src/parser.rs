@@ -266,7 +266,7 @@ fn trait_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
 fn impl_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
     let header = attrs()
         .then(token(IMPL_KW))
-        .then(token(TYPE))
+        .then(type_path())
         .then(typ_atom().repeated().at_least(1).collect())
         .to_event();
     let body = token(EQUALS).then(block(assoc_item())).to_event();
@@ -281,7 +281,11 @@ fn impl_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
 }
 
 fn type_vars() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
-    token(IDENT).repeated().labelled("type variables").collect()
+    name()
+        .repeated()
+        .collect()
+        .to_node(TYPE_VARS)
+        .labelled("type variables")
 }
 
 fn where_clause<'a>(

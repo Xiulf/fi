@@ -335,6 +335,10 @@ impl NameOwner for ItemType {
 }
 
 impl ItemType {
+    pub fn type_vars(&self) -> Option<TypeVars> {
+        child(self.syntax())
+    }
+
     pub fn ctors(&self) -> impl Iterator<Item = Ctor> + '_ {
         children(self.syntax())
     }
@@ -384,6 +388,10 @@ impl NameOwner for ItemTrait {
 }
 
 impl ItemTrait {
+    pub fn type_vars(&self) -> Option<TypeVars> {
+        child(self.syntax())
+    }
+
     pub fn items(&self) -> impl Iterator<Item = ItemValue> + '_ {
         children(self.syntax())
     }
@@ -393,7 +401,21 @@ impl AttrsOwner for ItemImpl {
 }
 
 impl ItemImpl {
+    pub fn trait_(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+
+    pub fn types(&self) -> impl Iterator<Item = Type> + '_ {
+        children(self.syntax())
+    }
+
     pub fn items(&self) -> impl Iterator<Item = ItemValue> + '_ {
+        children(self.syntax())
+    }
+}
+
+impl TypeVars {
+    pub fn iter(&self) -> impl Iterator<Item = Name> + '_ {
         children(self.syntax())
     }
 }

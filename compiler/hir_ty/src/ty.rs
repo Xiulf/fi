@@ -78,11 +78,11 @@ impl Ty {
 }
 
 impl GeneralizedType {
-    pub fn new(ty: Ty, vars: &[TypeVarId]) -> Self {
+    pub fn new(ty: Ty, vars: &Box<[TypeVarId]>) -> Self {
         if vars.is_empty() {
             Self::Mono(ty)
         } else {
-            Self::Poly(vars.into(), ty)
+            Self::Poly(vars.clone(), ty)
         }
     }
 }

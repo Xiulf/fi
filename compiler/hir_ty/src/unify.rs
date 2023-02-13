@@ -52,6 +52,29 @@ impl Ctx<'_> {
         self.fresh_type_with_kind(level, kind)
     }
 
+    pub fn unify_generalized_types(
+        &mut self,
+        t1: &GeneralizedType,
+        t2: &GeneralizedType,
+        origin: TyOrigin,
+    ) -> GeneralizedType {
+        match (t1, t2) {
+            | (GeneralizedType::Mono(t1), GeneralizedType::Mono(t2)) => {
+                self.unify_types(*t1, *t2, origin);
+                GeneralizedType::Mono(*t1)
+            },
+            | (GeneralizedType::Poly(v1, t1), GeneralizedType::Poly(v2, t2)) if v1.len() == v2.len() => {
+                // TODO: check vars
+                self.unify_types(*t1, *t2, origin);
+                GeneralizedType::Poly(v1.clone(), *t1)
+            },
+            | _ => {
+                // TODO: report error
+                todo!()
+            },
+        }
+    }
+
     pub fn unify_types(&mut self, t1: Ty, t2: Ty, origin: TyOrigin) {
         match self.unify(t1, t2) {
             | UnifyResult::Ok => {},

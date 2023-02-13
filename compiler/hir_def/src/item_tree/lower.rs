@@ -201,6 +201,7 @@ impl Ctx<'_> {
 
     fn lower_impl(&mut self, impl_: ast::ItemImpl) -> Option<Vec<Item>> {
         let ast_id = self.ast_map.ast_id(&impl_);
+        let trait_ = Path::from_ast(self.db, impl_.trait_()?);
         let items = impl_
             .items()
             .filter_map(|it| self.lower_value(it))
@@ -211,7 +212,7 @@ impl Ctx<'_> {
             })
             .collect();
 
-        let data = Impl { ast_id, items };
+        let data = Impl { ast_id, trait_, items };
 
         Some(vec![id(self.tree.data.impls.alloc(data)).into()])
     }

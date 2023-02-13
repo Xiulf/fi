@@ -5,12 +5,13 @@ use ra_ap_stdx::hash::NoHashHashMap;
 use rustc_hash::FxHashMap;
 use syntax::ast::{self, Assoc, AstNode, Prec};
 use syntax::ptr::AstPtr;
+use syntax::SyntaxNode;
 use triomphe::Arc;
 use vfs::File;
 
 use crate::def_map::DefMap;
 use crate::diagnostics::UnresolvedPath;
-use crate::id::{HasModule, ITypedItemId, ItemId, TraitId, TypeDefId, TypeVarId, TypedItemId};
+use crate::id::{ContainerId, HasModule, ITypedItemId, ItemId, TraitId, TypeDefId, TypeVarId, TypedItemId, ValueId};
 use crate::item_tree::FixityKind;
 use crate::name::{AsName, Name};
 use crate::path::Path;
@@ -89,9 +90,9 @@ impl TypedItemId {
 pub fn query(db: &dyn Db, item: ITypedItemId) -> (Arc<TypeMap>, Arc<TypeSourceMap>, Box<[TypeVarId]>) {
     let item = item.as_item_id(db);
     let src = match item {
+        | TypedItemId::CtorId(id) => return TypedItemId::TypeCtorId(id.type_ctor(db)).type_map(db),
+        | TypedItemId::FieldId(id) => return TypedItemId::CtorId(id.ctor(db)).type_map(db),
         | TypedItemId::ValueId(id) => id.source(db).map(|v| v.syntax().clone()),
-        | TypedItemId::CtorId(id) => id.source(db).map(|v| v.syntax().clone()),
-        | TypedItemId::FieldId(id) => id.source(db).map(|v| v.syntax().clone()),
         | TypedItemId::TypeAliasId(id) => id.source(db).map(|v| v.syntax().clone()),
         | TypedItemId::TypeCtorId(id) => id.source(db).map(|v| v.syntax().clone()),
         | TypedItemId::TraitId(id) => id.source(db).map(|v| v.syntax().clone()),
@@ -100,20 +101,109 @@ pub fn query(db: &dyn Db, item: ITypedItemId) -> (Arc<TypeMap>, Arc<TypeSourceMa
 
     let mut ctx = Ctx::new(db, item, src.file);
 
-    fn rec(ctx: &mut Ctx, node: &syntax::SyntaxNode) {
-        if let Some(ty) = ast::Type::cast(node) {
-            ctx.lower_type(ty);
-            return;
-        }
-
-        for child in node.children() {
-            rec(ctx, child);
-        }
+    match item {
+        | TypedItemId::CtorId(_) | TypedItemId::FieldId(_) => unreachable!(),
+        | TypedItemId::ValueId(id) => type_map_for_value(&mut ctx, id, src.value),
+        | TypedItemId::TypeAliasId(_) => type_map_for_type_alias(&mut ctx, src.value),
+        | TypedItemId::TypeCtorId(_) => type_map_for_type_ctor(&mut ctx, src.value),
+        | TypedItemId::TraitId(_) => type_map_for_trait(&mut ctx, src.value),
+        | TypedItemId::ImplId(_) => type_map_for_impl(&mut ctx, src.value),
     }
 
-    rec(&mut ctx, &src.value);
-
     (Arc::new(ctx.map), Arc::new(ctx.src), ctx.vars.into_values().collect())
+}
+
+fn recurse(ctx: &mut Ctx, node: &syntax::SyntaxNode) {
+    if let Some(ty) = ast::Type::cast(node) {
+        ctx.lower_type(ty);
+        return;
+    }
+
+    for child in node.children() {
+        recurse(ctx, child);
+    }
+}
+
+fn type_map_for_value(ctx: &mut Ctx, id: ValueId, src: SyntaxNode) {
+    let src = ast::ItemValue::cast(&src).unwrap();
+    let parent = match id.container(ctx.db) {
+        | ContainerId::ModuleId(_) => (
+            Default::default(),
+            Arc::new(TypeSourceMap::new(ctx.src.file)),
+            Default::default(),
+        ),
+        | ContainerId::TraitId(id) => TypedItemId::TraitId(id).type_map(ctx.db),
+        | ContainerId::ImplId(id) => TypedItemId::ImplId(id).type_map(ctx.db),
+    };
+
+    for &var in parent.2.iter() {
+        let name = parent.0[var.local_id(ctx.db).unwrap_left()].name;
+        ctx.vars.insert(name, var);
+    }
+
+    for param in src.params() {
+        recurse(ctx, param.syntax());
+    }
+
+    if let Some(ty) = src.ty() {
+        recurse(ctx, ty.syntax());
+    }
+
+    if let Some(expr) = src.body() {
+        recurse(ctx, expr.syntax());
+    }
+
+    for var in parent.2.iter() {
+        let name = parent.0[var.local_id(ctx.db).unwrap_left()].name;
+        ctx.vars.remove(&name);
+    }
+}
+
+fn type_map_for_type_alias(ctx: &mut Ctx, src: SyntaxNode) {
+    todo!()
+}
+
+fn type_map_for_type_ctor(ctx: &mut Ctx, src: SyntaxNode) {
+    let src = ast::ItemType::cast(&src).unwrap();
+
+    if let Some(type_vars) = src.type_vars() {
+        alloc_type_vars(ctx, type_vars);
+    }
+
+    for ctor in src.ctors() {
+        for ty in ctor.types() {
+            ctx.lower_type(ty);
+        }
+    }
+}
+
+fn type_map_for_trait(ctx: &mut Ctx, src: SyntaxNode) {
+    let src = ast::ItemTrait::cast(&src).unwrap();
+
+    if let Some(type_vars) = src.type_vars() {
+        alloc_type_vars(ctx, type_vars);
+    }
+}
+
+fn type_map_for_impl(ctx: &mut Ctx, src: SyntaxNode) {
+    let src = ast::ItemImpl::cast(&src).unwrap();
+
+    for ty in src.types() {
+        recurse(ctx, ty.syntax());
+    }
+}
+
+fn alloc_type_vars(ctx: &mut Ctx, type_vars: ast::TypeVars) {
+    for name_ref in type_vars.iter() {
+        let name = name_ref.as_name(ctx.db);
+        let local_id = ctx.map.type_vars.alloc(TypeVar { name });
+        let var = TypeVarId::new(ctx.db, ctx.owner, Either::Left(local_id));
+        let ptr = AstPtr::new(&name_ref);
+
+        ctx.src.var_to_src.insert(local_id, ptr);
+        ctx.src.src_to_var.insert(ptr, local_id);
+        ctx.vars.insert(name, var);
+    }
 }
 
 impl std::ops::Index<TypeRefId> for TypeMap {
@@ -133,6 +223,16 @@ impl std::ops::Index<LocalTypeVarId> for TypeMap {
 }
 
 impl TypeSourceMap {
+    fn new(file: File) -> Self {
+        Self {
+            file,
+            typ_to_src: Default::default(),
+            src_to_typ: Default::default(),
+            var_to_src: Default::default(),
+            src_to_var: Default::default(),
+        }
+    }
+
     pub fn typ_for_src(&self, src: AstPtr<ast::Type>) -> Option<TypeRefId> {
         self.src_to_typ.get(&src).copied()
     }
@@ -168,13 +268,7 @@ impl<'a> Ctx<'a> {
             owner,
             def_map,
             map: TypeMap::default(),
-            src: TypeSourceMap {
-                file,
-                typ_to_src: Default::default(),
-                src_to_typ: Default::default(),
-                var_to_src: Default::default(),
-                src_to_var: Default::default(),
-            },
+            src: TypeSourceMap::new(file),
             vars: NoHashHashMap::default(),
         }
     }

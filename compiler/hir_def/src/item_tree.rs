@@ -231,6 +231,7 @@ pub struct Trait {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Impl {
     pub ast_id: FileAstId<ast::ItemImpl>,
+    pub trait_: Path,
     pub items: Box<[LocalItemTreeId<Value>]>,
 }
 

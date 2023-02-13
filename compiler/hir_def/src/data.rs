@@ -4,7 +4,9 @@ use syntax::ptr::AstPtr;
 
 use crate::attrs::Attrs;
 use crate::def_map::ModuleScope;
-use crate::id::{self, CtorId, FixityId, ImplId, ItemId, TypeDefId, TypeVarId, TypedItemId, ValueDefId, ValueId};
+use crate::id::{
+    self, CtorId, FixityId, ImplId, ItemId, TraitId, TypeDefId, TypeVarId, TypedItemId, ValueDefId, ValueId,
+};
 use crate::item_tree::{AttrOwner, FixityKind};
 use crate::name::Name;
 use crate::source::HasSource;
@@ -64,12 +66,19 @@ pub struct CtorData {
 pub struct TraitData {
     #[id]
     pub id: id::TraitId,
+    #[return_ref]
+    pub type_vars: Box<[TypeVarId]>,
+    #[return_ref]
+    pub items: NoHashHashMap<Name, ValueId>,
 }
 
 #[salsa::tracked]
 pub struct ImplData {
     #[id]
     pub id: id::ImplId,
+    pub trait_: Option<TraitId>,
+    #[return_ref]
+    pub types: Box<[TypeRefId]>,
     #[return_ref]
     pub items: NoHashHashMap<Name, ValueId>,
 }
@@ -124,10 +133,11 @@ pub fn ctor_data(db: &dyn Db, id: CtorId) -> CtorData {
 }
 
 #[salsa::tracked]
-pub fn impl_data(db: &dyn Db, id: ImplId) -> ImplData {
+pub fn trait_data(db: &dyn Db, id: TraitId) -> TraitData {
     let it = id.it(db);
     let item_tree = crate::item_tree::query(db, it.file);
     let data = &item_tree[it.value];
+    let (_, _src_map, type_vars) = TypedItemId::from(id).type_map(db);
     let items = data
         .items
         .iter()
@@ -139,5 +149,37 @@ pub fn impl_data(db: &dyn Db, id: ImplId) -> ImplData {
         })
         .collect();
 
-    ImplData::new(db, id, items)
+    TraitData::new(db, id, type_vars, items)
+}
+
+#[salsa::tracked]
+pub fn impl_data(db: &dyn Db, id: ImplId) -> ImplData {
+    let it = id.it(db);
+    let item_tree = crate::item_tree::query(db, it.file);
+    let data = &item_tree[it.value];
+    let source = id.source(db).value;
+    let (_, src_map, _) = TypedItemId::from(id).type_map(db);
+    let module = id.module(db);
+    let def_map = crate::def_map::query(db, module.lib(db));
+    let def = def_map.resolve_path(db, &data.trait_, module);
+    let trait_ = def.and_then(|d| d.types).and_then(|t| match t {
+        | ItemId::TraitId(id) => Some(id),
+        | _ => None,
+    });
+    let types = source
+        .types()
+        .filter_map(|t| src_map.typ_for_src(AstPtr::new(&t)))
+        .collect();
+    let items = data
+        .items
+        .iter()
+        .map(|&local_id| {
+            (
+                item_tree[local_id].name,
+                ValueId::new(db, id.into(), it.with_value(local_id)),
+            )
+        })
+        .collect();
+
+    ImplData::new(db, id, trait_, types, items)
 }
