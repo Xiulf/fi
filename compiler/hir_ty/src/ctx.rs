@@ -100,18 +100,24 @@ impl<'db> Ctx<'db> {
     }
 
     pub fn type_kind(&self) -> Ty {
-        let type_kind = self.lang_ctor(lang_item::TYPE_KIND).unwrap();
-        Ty::new(self.db, TyKind::Ctor(type_kind))
+        match self.lang_ctor(lang_item::TYPE_KIND) {
+            | Some(type_kind) => Ty::new(self.db, TyKind::Ctor(type_kind)),
+            | None => self.error(),
+        }
     }
 
     pub fn unit_type(&self) -> Ty {
-        let unit_type = self.lang_ctor(lang_item::UNIT_TYPE).unwrap();
-        Ty::new(self.db, TyKind::Ctor(unit_type))
+        match self.lang_ctor(lang_item::UNIT_TYPE) {
+            | Some(unit_type) => Ty::new(self.db, TyKind::Ctor(unit_type)),
+            | None => self.error(),
+        }
     }
 
     pub fn bool_type(&self) -> Ty {
-        let bool_type = self.lang_ctor(lang_item::BOOL_TYPE).unwrap();
-        Ty::new(self.db, TyKind::Ctor(bool_type))
+        match self.lang_ctor(lang_item::BOOL_TYPE) {
+            | Some(bool_type) => Ty::new(self.db, TyKind::Ctor(bool_type)),
+            | None => self.error(),
+        }
     }
 
     fn lang_item(&self, name: &'static str) -> Option<LangItem> {

@@ -15,14 +15,14 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
         Self { ctx, type_map }
     }
 
-    pub fn lower_type_ref(&mut self, id: TypeRefId) -> Ty {
-        let ty = self.lower_type_ref_inner(id);
+    pub fn lower_type_ref(&mut self, id: TypeRefId, top_level: bool) -> Ty {
+        let ty = self.lower_type_ref_inner(id, top_level);
 
         // TODO: set kind
         ty
     }
 
-    fn lower_type_ref_inner(&mut self, id: TypeRefId) -> Ty {
+    fn lower_type_ref_inner(&mut self, id: TypeRefId, top_level: bool) -> Ty {
         let type_map = self.type_map.clone();
 
         match &type_map[id] {
@@ -35,15 +35,19 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
                 | _ => todo!(),
             },
             | TypeRef::App { base, args } => {
-                let base = self.lower_type_ref(*base);
-                let args = args.iter().map(|&t| self.lower_type_ref(t)).collect();
+                let base = self.lower_type_ref(*base, false);
+                let args = args.iter().map(|&t| self.lower_type_ref(t, false)).collect();
 
                 Ty::new(self.db, TyKind::App(base, args))
             },
             | TypeRef::Func { args, ret } => {
-                let params = args.iter().map(|&t| self.lower_type_ref(t)).collect();
-                let ret = self.lower_type_ref(*ret);
-                let env = self.unit_type();
+                let params = args.iter().map(|&t| self.lower_type_ref(t, false)).collect();
+                let ret = self.lower_type_ref(*ret, false);
+                let env = if top_level {
+                    self.unit_type()
+                } else {
+                    self.ctx.fresh_type(self.level, false)
+                };
                 let variadic = false;
 
                 Ty::new(
@@ -58,7 +62,7 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
             },
             | TypeRef::Where { clause: _, ty } => {
                 // TODO: lower constraints
-                self.lower_type_ref(*ty)
+                self.lower_type_ref(*ty, false)
             },
         }
     }

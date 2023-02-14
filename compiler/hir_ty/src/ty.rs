@@ -87,6 +87,26 @@ impl GeneralizedType {
     }
 }
 
+struct Parens(ParenMode, Ty);
+
+enum ParenMode {
+    Arg,
+    App,
+}
+
+impl HirDisplay for Parens {
+    type Db<'a> = dyn Db + 'a;
+
+    fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        match (&self.0, self.1.kind(f.db)) {
+            | (ParenMode::Arg, TyKind::Func(func)) => write!(f, "({})", func.display(f.db)),
+            | (ParenMode::App, TyKind::Func(_) | TyKind::App(..)) => write!(f, "({})", self.1.display(f.db)),
+            | _ => self.1.hir_fmt(f),
+        }
+    }
+}
+
 impl HirDisplay for Ty {
     type Db<'a> = dyn Db + 'a;
 
@@ -102,10 +122,10 @@ impl HirDisplay for Ty {
                 write!(f, "{}", item_tree[it.value].name.display(f.db))
             },
             | TyKind::App(base, args) => {
-                base.hir_fmt(f)?;
+                Parens(ParenMode::App, *base).hir_fmt(f)?;
                 for arg in args.iter() {
                     f.write_char(' ')?;
-                    arg.hir_fmt(f)?;
+                    Parens(ParenMode::App, *arg).hir_fmt(f)?;
                 }
                 Ok(())
             },
@@ -122,7 +142,7 @@ impl HirDisplay for FuncType {
         f.write_char('{')?;
         self.env.hir_fmt(f)?;
         f.write_str("} ")?;
-        f.write_joined(self.params.iter(), ", ")?;
+        f.write_joined(self.params.iter().map(|p| Parens(ParenMode::Arg, *p)), ", ")?;
         if self.variadic {
             f.write_str(", ..")?;
         }

@@ -251,6 +251,7 @@ fn trait_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
         .then(token(TRAIT_KW))
         .then(type_name())
         .then(type_vars())
+        .then(opt(where_clause(typ_atom())))
         .to_event();
     let body = token(EQUALS).then(block(assoc_item())).to_event();
 
@@ -268,6 +269,7 @@ fn impl_() -> impl Parser<SyntaxKind, Event, Error = ParseError> {
         .then(token(IMPL_KW))
         .then(type_path())
         .then(typ_atom().repeated().at_least(1).collect())
+        .then(opt(where_clause(typ_atom())))
         .to_event();
     let body = token(EQUALS).then(block(assoc_item())).to_event();
 

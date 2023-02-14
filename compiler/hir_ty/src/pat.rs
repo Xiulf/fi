@@ -50,7 +50,7 @@ impl BodyCtx<'_, '_> {
             | Pat::Typed { pat, ty } => {
                 let (type_map, _, _) = self.owner.type_map(self.db);
                 let mut lcx = LowerCtx::new(self, type_map);
-                let ty = lcx.lower_type_ref(*ty);
+                let ty = lcx.lower_type_ref(*ty, false);
 
                 self.infer_pat(*pat, Expectation::HasType(ty))
             },

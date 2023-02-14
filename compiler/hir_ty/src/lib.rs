@@ -41,7 +41,7 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
     let mut lcx = lower::LowerCtx::new(&mut ctx, type_map);
     let ret = data
         .ty(db)
-        .map(|t| lcx.lower_type_ref(t))
+        .map(|t| lcx.lower_type_ref(t, body.params().is_empty()))
         .unwrap_or_else(|| ctx.fresh_type(ctx.level, false));
 
     let mut bcx = ctx.with_body(body.clone());
@@ -96,7 +96,7 @@ fn impl_ty(db: &dyn Db, id: ImplId, name: Name) -> Option<GeneralizedType> {
     let type_map = TypedItemId::ImplId(id).type_map(db).0;
     let mut ctx = ctx::Ctx::new(db, id.into());
     let mut lcx = lower::LowerCtx::new(&mut ctx, type_map);
-    let types = data.types(db).iter().map(|t| lcx.lower_type_ref(*t));
+    let types = data.types(db).iter().map(|t| lcx.lower_type_ref(*t, false));
     let replacements = trait_data
         .type_vars(db)
         .iter()
@@ -137,7 +137,7 @@ pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
         return GeneralizedType::new(ty, type_vars);
     }
 
-    let params = types.iter().map(|&t| ctx.lower_type_ref(t)).collect();
+    let params = types.iter().map(|&t| ctx.lower_type_ref(t, false)).collect();
 
     GeneralizedType::new(
         Ty::new(

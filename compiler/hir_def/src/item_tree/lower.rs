@@ -24,6 +24,10 @@ pub fn query(db: &dyn Db, file: File) -> Arc<ItemTree> {
 
     let source_file = base_db::parse(db, file);
 
+    // use syntax::ast::AstNode;
+    // let resolver = db.syntax_interner().read();
+    // tracing::debug!("{}", source_file.syntax().debug(&*resolver, true));
+
     ctx.lower_source_file(source_file);
 
     Arc::new(ctx.tree)
@@ -51,10 +55,7 @@ impl Ctx<'_> {
     }
 
     fn lower_items(&mut self, items: impl Iterator<Item = ast::Item>) -> Vec<Item> {
-        items
-            .flat_map(|item| self.lower_item(item))
-            .flat_map(std::convert::identity)
-            .collect()
+        items.flat_map(|item| self.lower_item(item)).flatten().collect()
     }
 
     fn lower_item(&mut self, item: ast::Item) -> Option<Vec<Item>> {

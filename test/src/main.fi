@@ -35,3 +35,6 @@ trait Monoid m =
 
 impl Monoid Option =
     pure = Some
+
+trait Monad m where Monoid m =
+    bind :: m a, (a -> m b) -> m b
