@@ -160,7 +160,15 @@ fn type_map_for_value(ctx: &mut Ctx, id: ValueId, src: SyntaxNode) {
 }
 
 fn type_map_for_type_alias(ctx: &mut Ctx, src: SyntaxNode) {
-    todo!()
+    let src = ast::ItemType::cast(&src).unwrap();
+
+    if let Some(type_vars) = src.type_vars() {
+        alloc_type_vars(ctx, type_vars);
+    }
+
+    if let Some(ty) = src.ty() {
+        ctx.lower_type(ty);
+    }
 }
 
 fn type_map_for_type_ctor(ctx: &mut Ctx, src: SyntaxNode) {

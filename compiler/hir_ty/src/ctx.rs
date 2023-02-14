@@ -123,14 +123,14 @@ impl<'db> Ctx<'db> {
         self.lang_item(name).and_then(LangItem::as_type_ctor)
     }
 
-    pub fn instantiate(&mut self, ty: GeneralizedType) -> Ty {
+    pub fn instantiate(&mut self, ty: GeneralizedType, skolem: bool) -> Ty {
         match ty {
             | GeneralizedType::Mono(ty) => ty,
             | GeneralizedType::Poly(vars, ty) => {
                 let mut replacements = HashMap::default();
 
                 for &var in vars.iter() {
-                    replacements.insert(var, self.fresh_type(self.level));
+                    replacements.insert(var, self.fresh_type(self.level, skolem));
                 }
 
                 ty.replace_vars(self.db, &replacements)
@@ -160,7 +160,7 @@ impl<'db> Ctx<'db> {
 
     pub fn find_all_unknowns(&mut self, ty: Ty, res: &mut NoHashHashSet<Unknown>) {
         match ty.kind(self.db) {
-            | TyKind::Unknown(u) => match self.find_binding(*u) {
+            | TyKind::Unknown(u, _) => match self.find_binding(*u) {
                 | Ok(t) => self.find_all_unknowns(t, res),
                 | Err((level, _)) => {
                     if level >= self.level {
@@ -241,7 +241,7 @@ impl Expectation {
     pub fn adjust_for_branches(self, db: &dyn Db) -> Self {
         match self {
             | Self::HasType(ty) => {
-                if let TyKind::Unknown(_) = ty.kind(db) {
+                if let TyKind::Unknown(_, _) = ty.kind(db) {
                     Self::None
                 } else {
                     Self::HasType(ty)

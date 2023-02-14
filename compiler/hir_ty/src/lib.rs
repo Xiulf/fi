@@ -42,7 +42,7 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
     let ret = data
         .ty(db)
         .map(|t| lcx.lower_type_ref(t))
-        .unwrap_or_else(|| ctx.fresh_type(ctx.level));
+        .unwrap_or_else(|| ctx.fresh_type(ctx.level, false));
 
     let mut bcx = ctx.with_body(body.clone());
     let params = body
@@ -70,7 +70,6 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
     };
 
     let _ = bcx.infer_expr(body.body_expr(), ctx::Expectation::HasType(ret));
-    let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
 
     if let ContainerId::ImplId(id) = value.container(db) {
         let it = value.it(db);
@@ -79,9 +78,11 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
 
         if let Some(b) = impl_ty(db, id, name) {
             let a = ctx.result.ty.clone();
-            ctx.result.ty = ctx.unify_generalized_types(&a, &b, TyOrigin::ExprId(body.body_expr()));
+            ctx.result.ty = ctx.unify_generalized_types(&a, b, TyOrigin::ExprId(body.body_expr()));
         }
     }
+
+    let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
 
     ctx.result.ty = ctx.generalize(ty, &type_vars);
     ctx.finish()
@@ -117,28 +118,39 @@ fn impl_ty(db: &dyn Db, id: ImplId, name: Name) -> Option<GeneralizedType> {
 #[salsa::tracked]
 pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
     let type_ctor = ctor.type_ctor(db);
+    let type_ctor_data = hir_def::data::type_ctor_data(db, type_ctor);
     let data = hir_def::data::ctor_data(db, ctor);
     let types = data.types(db);
+    let type_vars = type_ctor_data.type_vars(db);
     let ty = Ty::new(db, TyKind::Ctor(type_ctor));
     let type_map = TypedItemId::from(ctor).type_map(db).0;
     let mut ctx = ctx::Ctx::new(db, ctor.into());
     let mut ctx = lower::LowerCtx::new(&mut ctx, type_map);
+    let ty = if type_vars.is_empty() {
+        ty
+    } else {
+        let args = type_vars.iter().map(|&v| Ty::new(db, TyKind::Var(v))).collect();
+        Ty::new(db, TyKind::App(ty, args))
+    };
 
     if types.is_empty() {
-        return GeneralizedType::Mono(ty);
+        return GeneralizedType::new(ty, type_vars);
     }
 
     let params = types.iter().map(|&t| ctx.lower_type_ref(t)).collect();
 
-    GeneralizedType::Mono(Ty::new(
-        db,
-        TyKind::Func(FuncType {
-            params,
-            ret: ty,
-            env: ctx.unit_type(),
-            variadic: false,
-        }),
-    ))
+    GeneralizedType::new(
+        Ty::new(
+            db,
+            TyKind::Func(FuncType {
+                params,
+                ret: ty,
+                env: ctx.unit_type(),
+                variadic: false,
+            }),
+        ),
+        type_vars,
+    )
 }
 
 fn all_type_vars(db: &dyn Db, id: ValueId) -> Box<[TypeVarId]> {

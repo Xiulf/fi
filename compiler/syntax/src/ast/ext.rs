@@ -339,6 +339,10 @@ impl ItemType {
         child(self.syntax())
     }
 
+    pub fn ty(&self) -> Option<Type> {
+        child(self.syntax())
+    }
+
     pub fn ctors(&self) -> impl Iterator<Item = Ctor> + '_ {
         children(self.syntax())
     }

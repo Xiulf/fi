@@ -24,8 +24,8 @@ impl BodyCtx<'_, '_> {
         let body = self.body.clone();
         let ty = match &body[id] {
             | Pat::Missing => self.error(),
-            | Pat::Wildcard => self.ctx.fresh_type(self.level),
-            | Pat::Bind { subpat: None, .. } => self.ctx.fresh_type(self.level),
+            | Pat::Wildcard => self.ctx.fresh_type(self.level, false),
+            | Pat::Bind { subpat: None, .. } => self.ctx.fresh_type(self.level, false),
             | Pat::Bind {
                 subpat: Some(subpat), ..
             } => self.infer_pat(*subpat, expected),
@@ -34,14 +34,14 @@ impl BodyCtx<'_, '_> {
                 ctor: Some(def), args, ..
             } => {
                 let ty = crate::ctor_ty(self.db, *def);
-                let ty = self.instantiate(ty);
+                let ty = self.instantiate(ty, false);
                 let _ = args;
 
                 ty
             },
             | Pat::Lit { lit } => match lit {
                 | Literal::Int(_) => {
-                    let var = self.ctx.fresh_type(self.level);
+                    let var = self.ctx.fresh_type(self.level, false);
                     // TODO: add AnyInt constraint
                     var
                 },

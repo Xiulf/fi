@@ -24,3 +24,14 @@ infixl 6 (-) = sub
 
 impl Sub Int32 =
     sub = Intrinsics.isub
+
+
+type Option t =
+    | None
+    | Some t
+
+trait Monoid m =
+    pure :: t -> m t
+
+impl Monoid Option =
+    pure = Some

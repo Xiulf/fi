@@ -36,37 +36,37 @@ impl UnifyResult {
 }
 
 impl Ctx<'_> {
-    pub fn fresh_type_with_kind(&mut self, level: UnkLevel, kind: Ty) -> Ty {
+    pub fn fresh_type_with_kind(&mut self, level: UnkLevel, kind: Ty, skolem: bool) -> Ty {
         let u = self.subst.table.new_key(level);
         self.subst.unsolved.insert(u, kind);
-        Ty::new(self.db, TyKind::Unknown(u))
+        Ty::new(self.db, TyKind::Unknown(u, skolem))
     }
 
-    pub fn fresh_type_without_kind(&mut self, level: UnkLevel) -> Ty {
-        let kind = self.fresh_type(level);
-        self.fresh_type_with_kind(level, kind)
-    }
-
-    pub fn fresh_type(&mut self, level: UnkLevel) -> Ty {
+    pub fn fresh_type(&mut self, level: UnkLevel, skolem: bool) -> Ty {
         let kind = self.type_kind();
-        self.fresh_type_with_kind(level, kind)
+        self.fresh_type_with_kind(level, kind, skolem)
     }
 
     pub fn unify_generalized_types(
         &mut self,
         t1: &GeneralizedType,
-        t2: &GeneralizedType,
+        t2: GeneralizedType,
         origin: TyOrigin,
     ) -> GeneralizedType {
         match (t1, t2) {
             | (GeneralizedType::Mono(t1), GeneralizedType::Mono(t2)) => {
-                self.unify_types(*t1, *t2, origin);
+                self.unify_types(*t1, t2, origin);
                 GeneralizedType::Mono(*t1)
             },
             | (GeneralizedType::Poly(v1, t1), GeneralizedType::Poly(v2, t2)) if v1.len() == v2.len() => {
                 // TODO: check vars
-                self.unify_types(*t1, *t2, origin);
+                self.unify_types(*t1, t2, origin);
                 GeneralizedType::Poly(v1.clone(), *t1)
+            },
+            | (GeneralizedType::Mono(t1), t2) => {
+                let t2 = self.instantiate(t2, true);
+                self.unify_types(*t1, t2, origin);
+                GeneralizedType::Mono(*t1)
             },
             | _ => {
                 // TODO: report error
@@ -99,10 +99,11 @@ impl Ctx<'_> {
     fn unify(&mut self, t1: Ty, t2: Ty) -> UnifyResult {
         match (t1.kind(self.db), t2.kind(self.db)) {
             | (TyKind::Error, _) | (_, TyKind::Error) => UnifyResult::Ok,
-            | (TyKind::Unknown(u1), TyKind::Unknown(u2)) if u1 == u2 => UnifyResult::Ok,
+            | (TyKind::Unknown(u1, _), TyKind::Unknown(u2, _)) if u1 == u2 => UnifyResult::Ok,
+            | (TyKind::Var(v1), TyKind::Var(v2)) if v1 == v2 => UnifyResult::Ok,
             | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => UnifyResult::Ok,
-            | (TyKind::Unknown(u), _) => self.unify_unknown(*u, t1, t2),
-            | (_, TyKind::Unknown(u)) => self.unify_unknown(*u, t2, t1),
+            | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2),
+            | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1),
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
                 .unify(*a_base, *b_base)
                 .and(self.unify_all(a_args.iter(), b_args.iter())),
@@ -168,7 +169,7 @@ impl Ctx<'_> {
         let n = n - 1;
 
         match ty.kind(self.db) {
-            | TyKind::Unknown(u2) => match self.find_binding(*u2) {
+            | TyKind::Unknown(u2, _) => match self.find_binding(*u2) {
                 | Ok(t) => self.occurs(u, level, t, n),
                 | Err((_, _)) => u == *u2,
             },
@@ -193,7 +194,7 @@ impl Ctx<'_> {
 
     pub fn resolve_type_shallow(&mut self, t: Ty) -> Ty {
         match t.kind(self.db) {
-            | TyKind::Unknown(u) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
+            | TyKind::Unknown(u, _) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
                 | Some(t) => self.resolve_type_shallow(t),
                 | None => t,
             },
@@ -203,7 +204,7 @@ impl Ctx<'_> {
 
     pub fn resolve_type_fully(&mut self, t: Ty) -> Ty {
         t.fold(self.db, &mut |t| match t.kind(self.db) {
-            | TyKind::Unknown(u) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
+            | TyKind::Unknown(u, _) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
                 | Some(t) => self.resolve_type_fully(t),
                 | None => t,
             },

@@ -5,7 +5,7 @@ use syntax::ptr::AstPtr;
 use crate::attrs::Attrs;
 use crate::def_map::ModuleScope;
 use crate::id::{
-    self, CtorId, FixityId, ImplId, ItemId, TraitId, TypeDefId, TypeVarId, TypedItemId, ValueDefId, ValueId,
+    self, CtorId, FixityId, ImplId, ItemId, TraitId, TypeCtorId, TypeDefId, TypeVarId, TypedItemId, ValueDefId, ValueId,
 };
 use crate::item_tree::{AttrOwner, FixityKind};
 use crate::name::Name;
@@ -52,6 +52,10 @@ pub struct TypeAliasData {
 pub struct TypeCtorData {
     #[id]
     pub id: id::TypeCtorId,
+    #[return_ref]
+    pub attrs: Attrs,
+    #[return_ref]
+    pub type_vars: Box<[TypeVarId]>,
 }
 
 #[salsa::tracked]
@@ -117,6 +121,18 @@ pub fn value_data(db: &dyn Db, id: ValueId) -> ValueData {
     let has_body = data.has_body;
 
     ValueData::new(db, id, attrs, ty, type_vars, is_foreign, has_body)
+}
+
+#[salsa::tracked]
+pub fn type_ctor_data(db: &dyn Db, id: TypeCtorId) -> TypeCtorData {
+    let it = id.it(db);
+    let item_tree = crate::item_tree::query(db, it.file);
+    // let data = &item_tree[it.value];
+    // let source = id.source(db).value;
+    let (_, _src_map, type_vars) = TypedItemId::from(id).type_map(db);
+    let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+
+    TypeCtorData::new(db, id, attrs, type_vars)
 }
 
 #[salsa::tracked]

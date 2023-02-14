@@ -26,7 +26,7 @@ impl BodyCtx<'_, '_> {
             | Expr::Missing => self.error(),
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
-                    let var = self.ctx.fresh_type(self.level);
+                    let var = self.ctx.fresh_type(self.level, false);
                     // TODO: add AnyInt constraint
                     var
                 },
@@ -41,13 +41,13 @@ impl BodyCtx<'_, '_> {
                     .iter()
                     .map(|a| self.infer_expr_inner(*a, Expectation::None))
                     .collect();
-                let ret = self.ctx.fresh_type(self.level);
+                let ret = self.ctx.fresh_type(self.level, false);
                 let new_func = Ty::new(
                     self.db,
                     TyKind::Func(FuncType {
                         params,
                         ret,
-                        env: self.ctx.fresh_type(self.level),
+                        env: self.ctx.fresh_type(self.level, false),
                         variadic: false,
                     }),
                 );
@@ -61,7 +61,7 @@ impl BodyCtx<'_, '_> {
 
                 self.infer_expr(*cond, Expectation::HasType(bool_type));
 
-                let result_ty = self.ctx.fresh_type(self.level);
+                let result_ty = self.ctx.fresh_type(self.level, false);
                 let then_ty = self.infer_expr_inner(*then, expected);
                 let else_ty = match else_ {
                     | Some(else_) => self.infer_expr_inner(*else_, expected),
@@ -79,7 +79,7 @@ impl BodyCtx<'_, '_> {
             } => {
                 let expected = expected.adjust_for_branches(self.db);
                 let pred = self.infer_expr(*expr, Expectation::None);
-                let res = self.ctx.fresh_type(self.level);
+                let res = self.ctx.fresh_type(self.level, false);
 
                 self.infer_decision_tree(decision_tree, Expectation::HasType(pred));
 
@@ -110,7 +110,7 @@ impl BodyCtx<'_, '_> {
             | d => todo!("{d:?}"),
         };
 
-        self.instantiate(ty)
+        self.instantiate(ty, false)
     }
 
     fn infer_block(&mut self, stmts: &[Stmt], expr: Option<ExprId>, expected: Expectation) -> Ty {
@@ -153,7 +153,7 @@ impl BodyCtx<'_, '_> {
                 | VariantTag::Literal(_lit) => {},
                 | VariantTag::Ctor(id) => {
                     let ty = crate::ctor_ty(self.db, *id);
-                    let ty = self.instantiate(ty);
+                    let ty = self.instantiate(ty, false);
 
                     if let TyKind::Func(func) = ty.kind(self.db) {
                         assert_eq!(case.fields.len(), func.params.len());

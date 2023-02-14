@@ -27,12 +27,18 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
 
         match &type_map[id] {
             | TypeRef::Missing => Ty::new(self.db, TyKind::Error),
-            | TypeRef::Hole => self.ctx.fresh_type_without_kind(self.level),
+            | TypeRef::Hole => self.ctx.fresh_type(self.level, false),
             | TypeRef::Path { def: None, .. } => Ty::new(self.db, TyKind::Error),
             | TypeRef::Path { def: Some(def), .. } => match def {
                 | TypeDefId::TypeVarId(id) => Ty::new(self.db, TyKind::Var(*id)),
                 | TypeDefId::TypeCtorId(id) => Ty::new(self.db, TyKind::Ctor(*id)),
                 | _ => todo!(),
+            },
+            | TypeRef::App { base, args } => {
+                let base = self.lower_type_ref(*base);
+                let args = args.iter().map(|&t| self.lower_type_ref(t)).collect();
+
+                Ty::new(self.db, TyKind::App(base, args))
             },
             | TypeRef::Func { args, ret } => {
                 let params = args.iter().map(|&t| self.lower_type_ref(t)).collect();
@@ -54,7 +60,6 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
                 // TODO: lower constraints
                 self.lower_type_ref(*ty)
             },
-            | t => todo!("{t:?}"),
         }
     }
 }
