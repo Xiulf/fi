@@ -68,8 +68,14 @@ impl Ctx<'_> {
                 self.unify_types(*t1, t2, origin);
                 GeneralizedType::Mono(*t1)
             },
-            | _ => {
+            | (GeneralizedType::Poly(vars, t1), GeneralizedType::Mono(t2)) => {
+                self.unify_types(*t1, t2, origin);
+                GeneralizedType::Poly(vars.clone(), *t1)
+            },
+            | (t1, t2) => {
                 // TODO: report error
+                use hir_def::display::HirDisplay;
+                tracing::error!("{} == {}", t1.display(self.db), t2.display(self.db));
                 todo!()
             },
         }

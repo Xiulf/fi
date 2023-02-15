@@ -22,7 +22,7 @@ trait Sub a =
 infixl 6 (+) = add
 infixl 6 (-) = sub
 
-impl Sub Int32 =
+impl Sub a where AnyInt a =
     sub = Intrinsics.isub
 
 

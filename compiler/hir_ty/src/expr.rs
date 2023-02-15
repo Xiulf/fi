@@ -27,7 +27,11 @@ impl BodyCtx<'_, '_> {
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
                     let var = self.ctx.fresh_type(self.level, false);
-                    // TODO: add AnyInt constraint
+
+                    if let Some(_any_int) = self.any_int_trait() {
+                        // TODO: add AnyInt constraint
+                    }
+
                     var
                 },
                 | l => todo!("{l:?}"),

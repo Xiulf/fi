@@ -4,7 +4,7 @@ use arena::ArenaMap;
 use either::Either;
 use hir_def::body::Body;
 use hir_def::expr::ExprId;
-use hir_def::id::{HasModule, TypeCtorId, TypeVarId, TypedItemId};
+use hir_def::id::{HasModule, TraitId, TypeCtorId, TypeVarId, TypedItemId};
 use hir_def::lang_item::{self, LangItem};
 use hir_def::name::AsName;
 use hir_def::pat::PatId;
@@ -13,7 +13,7 @@ use parking_lot::RwLock;
 use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
 use triomphe::Arc;
 
-use crate::ty::{GeneralizedType, Ty, TyKind, Unknown};
+use crate::ty::{Constraint, GeneralizedType, Ty, TyKind, Unknown};
 use crate::unify::{Substitution, UnkLevel};
 use crate::Db;
 
@@ -34,6 +34,7 @@ pub struct BodyCtx<'db, 'ctx> {
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct InferResult {
     pub ty: GeneralizedType,
+    pub constraints: Vec<Constraint>,
     pub type_of_expr: ArenaMap<ExprId, Ty>,
     pub type_of_pat: ArenaMap<PatId, Ty>,
     pub kind_of_ty: ArenaMap<TypeRefId, Ty>,
@@ -57,6 +58,7 @@ impl InferResult {
 
         InferResult {
             ty: GeneralizedType::Mono(ty),
+            constraints: Default::default(),
             type_of_expr: Default::default(),
             type_of_pat: Default::default(),
             kind_of_ty: Default::default(),
@@ -87,6 +89,10 @@ impl<'db> Ctx<'db> {
         let mut finalize = |t: &mut Ty| {
             *t = self.resolve_type_fully(*t);
         };
+
+        result.constraints.iter_mut().for_each(|c| {
+            c.args.iter_mut().for_each(&mut finalize);
+        });
 
         result.type_of_expr.values_mut().for_each(&mut finalize);
         result.type_of_pat.values_mut().for_each(&mut finalize);
@@ -120,6 +126,10 @@ impl<'db> Ctx<'db> {
         }
     }
 
+    pub fn any_int_trait(&self) -> Option<TraitId> {
+        self.lang_trait(lang_item::ANY_INT_TRAIT)
+    }
+
     fn lang_item(&self, name: &'static str) -> Option<LangItem> {
         let lib = self.owner.module(self.db).lib(self.db);
         lang_item::query(self.db, lib, name)
@@ -127,6 +137,10 @@ impl<'db> Ctx<'db> {
 
     fn lang_ctor(&self, name: &'static str) -> Option<TypeCtorId> {
         self.lang_item(name).and_then(LangItem::as_type_ctor)
+    }
+
+    fn lang_trait(&self, name: &'static str) -> Option<TraitId> {
+        self.lang_item(name).and_then(LangItem::as_trait)
     }
 
     pub fn instantiate(&mut self, ty: GeneralizedType, skolem: bool) -> Ty {

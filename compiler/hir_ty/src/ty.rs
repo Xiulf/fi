@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use hir_def::display::HirDisplay;
-use hir_def::id::{TypeCtorId, TypeVarId};
+use hir_def::id::{TraitId, TypeCtorId, TypeVarId};
 
 use crate::Db;
 
@@ -33,9 +33,17 @@ pub struct FuncType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum GeneralizedType {
-    Mono(Ty),
-    Poly(Box<[TypeVarId]>, Ty),
+pub struct Constraint {
+    pub trait_: TraitId,
+    pub args: Box<[Ty]>,
+}
+
+pub type GeneralizedType = Generalized<Ty>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Generalized<T> {
+    Mono(T),
+    Poly(Box<[TypeVarId]>, T),
 }
 
 impl Ty {
@@ -77,8 +85,8 @@ impl Ty {
     }
 }
 
-impl GeneralizedType {
-    pub fn new(ty: Ty, vars: &Box<[TypeVarId]>) -> Self {
+impl<T> Generalized<T> {
+    pub fn new(ty: T, vars: &Box<[TypeVarId]>) -> Self {
         if vars.is_empty() {
             Self::Mono(ty)
         } else {
