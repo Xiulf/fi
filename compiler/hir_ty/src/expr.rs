@@ -3,7 +3,7 @@ use hir_def::id::ValueDefId;
 use hir_def::pat::{Case, DecisionTree, VariantTag};
 
 use crate::ctx::{BodyCtx, Expectation};
-use crate::ty::{FuncType, Ty, TyKind};
+use crate::ty::{Constraint, ConstraintOrigin, FuncType, Ty, TyKind};
 
 impl BodyCtx<'_, '_> {
     pub fn infer_expr(&mut self, id: ExprId, expected: Expectation) -> Ty {
@@ -28,8 +28,29 @@ impl BodyCtx<'_, '_> {
                 | Literal::Int(_) => {
                     let var = self.ctx.fresh_type(self.level, false);
 
-                    if let Some(_any_int) = self.any_int_trait() {
-                        // TODO: add AnyInt constraint
+                    if let Some(any_int) = self.any_int_trait() {
+                        self.constrain(
+                            Constraint {
+                                trait_id: any_int,
+                                args: Box::new([var]),
+                            },
+                            ConstraintOrigin::ExprId(id),
+                        );
+                    }
+
+                    var
+                },
+                | Literal::Float(_) => {
+                    let var = self.ctx.fresh_type(self.level, false);
+
+                    if let Some(any_float) = self.any_float_trait() {
+                        self.constrain(
+                            Constraint {
+                                trait_id: any_float,
+                                args: Box::new([var]),
+                            },
+                            ConstraintOrigin::ExprId(id),
+                        );
                     }
 
                     var
@@ -102,17 +123,24 @@ impl BodyCtx<'_, '_> {
     }
 
     fn infer_value_def_id(&mut self, expr: ExprId, def: ValueDefId) -> Ty {
-        let ty = match def {
+        let (ty, constraints) = match def {
+            | ValueDefId::ValueId(id) if self.owner == id.into() => (self.result.ty.clone(), Vec::new()),
+            | ValueDefId::ValueId(id) => {
+                let infer = crate::infer(self.db, id);
+                (infer.ty.clone(), infer.constraints.clone())
+            },
             | ValueDefId::FixityId(id) => match hir_def::data::fixity_data(self.db, id).def(self.db) {
                 | Some(def) => return self.infer_value_def_id(expr, def.unwrap_left()),
                 | None => return self.error(),
             },
-            | ValueDefId::ValueId(id) if self.owner == id.into() => self.result.ty.clone(),
-            | ValueDefId::ValueId(id) => crate::infer(self.db, id).ty.clone(),
-            | ValueDefId::CtorId(id) => crate::ctor_ty(self.db, id),
+            | ValueDefId::CtorId(id) => (crate::ctor_ty(self.db, id), Vec::new()),
             | ValueDefId::PatId(id) => return self.result.type_of_pat[id],
             | d => todo!("{d:?}"),
         };
+
+        for constraint in constraints {
+            self.constrain(constraint, ConstraintOrigin::ExprId(expr));
+        }
 
         self.instantiate(ty, false)
     }
@@ -179,7 +207,7 @@ impl BodyCtx<'_, '_> {
 
         assert_eq!(case.fields.len(), 1);
         for &field in &case.fields[0] {
-            self.result.type_of_pat.insert(field, expected);
+            self.infer_pat(field, Expectation::HasType(expected));
         }
 
         self.infer_decision_tree(&case.branch, Expectation::None);

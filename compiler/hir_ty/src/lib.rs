@@ -15,6 +15,7 @@ pub mod diagnostics;
 pub mod expr;
 pub mod lower;
 pub mod pat;
+pub mod traits;
 pub mod ty;
 pub mod unify;
 
@@ -84,6 +85,7 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
 
     let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
 
+    ctx.solve_constraints();
     ctx.result.ty = ctx.generalize(ty, &type_vars);
     ctx.finish()
 }

@@ -13,7 +13,7 @@ use parking_lot::RwLock;
 use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
 use triomphe::Arc;
 
-use crate::ty::{Constraint, GeneralizedType, Ty, TyKind, Unknown};
+use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, Ty, TyKind, Unknown};
 use crate::unify::{Substitution, UnkLevel};
 use crate::Db;
 
@@ -24,6 +24,7 @@ pub struct Ctx<'db> {
     pub(crate) owner: TypedItemId,
     pub(crate) level: UnkLevel,
     pub(crate) ret_ty: Ty,
+    pub(crate) constraints: Vec<(Constraint, ConstraintOrigin)>,
 }
 
 pub struct BodyCtx<'db, 'ctx> {
@@ -77,6 +78,7 @@ impl<'db> Ctx<'db> {
             subst: Substitution::default(),
             level: UnkLevel(1),
             ret_ty: ty,
+            constraints: Vec::new(),
         }
     }
 
@@ -130,6 +132,10 @@ impl<'db> Ctx<'db> {
         self.lang_trait(lang_item::ANY_INT_TRAIT)
     }
 
+    pub fn any_float_trait(&self) -> Option<TraitId> {
+        self.lang_trait(lang_item::ANY_FLOAT_TRAIT)
+    }
+
     fn lang_item(&self, name: &'static str) -> Option<LangItem> {
         let lib = self.owner.module(self.db).lib(self.db);
         lang_item::query(self.db, lib, name)
@@ -141,6 +147,10 @@ impl<'db> Ctx<'db> {
 
     fn lang_trait(&self, name: &'static str) -> Option<TraitId> {
         self.lang_item(name).and_then(LangItem::as_trait)
+    }
+
+    pub fn constrain(&mut self, constraint: Constraint, origin: ConstraintOrigin) {
+        self.constraints.push((constraint, origin));
     }
 
     pub fn instantiate(&mut self, ty: GeneralizedType, skolem: bool) -> Ty {

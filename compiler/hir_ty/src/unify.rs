@@ -4,7 +4,7 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::{RecursiveType, TypeMismatch};
-use crate::ty::{GeneralizedType, Ty, TyKind, Unknown};
+use crate::ty::{Constraint, GeneralizedType, Ty, TyKind, Unknown};
 use crate::TyOrigin;
 
 const RECURSION_LIMIT: u32 = 32;
@@ -14,6 +14,11 @@ pub struct Substitution {
     pub(crate) solved: NoHashHashMap<Unknown, Ty>,
     unsolved: NoHashHashMap<Unknown, Ty>,
     table: UnificationTable<InPlace<Unknown>>,
+}
+
+pub struct SubstitutionSnapshot {
+    solved: NoHashHashMap<Unknown, Ty>,
+    table: ena::unify::Snapshot<InPlace<Unknown>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -32,6 +37,24 @@ impl UnifyResult {
             | Self::Ok => other,
             | _ => self,
         }
+    }
+}
+
+impl Substitution {
+    pub fn snapshot(&mut self) -> SubstitutionSnapshot {
+        SubstitutionSnapshot {
+            solved: self.solved.clone(),
+            table: self.table.snapshot(),
+        }
+    }
+
+    pub fn commit(&mut self, snapshot: SubstitutionSnapshot) {
+        self.table.commit(snapshot.table);
+    }
+
+    pub fn rollback(&mut self, snapshot: SubstitutionSnapshot) {
+        self.solved = snapshot.solved;
+        self.table.rollback_to(snapshot.table);
     }
 }
 
@@ -222,6 +245,13 @@ impl Ctx<'_> {
         match t {
             | GeneralizedType::Mono(t) => GeneralizedType::Mono(self.resolve_type_fully(t)),
             | GeneralizedType::Poly(vars, t) => GeneralizedType::Poly(vars, self.resolve_type_fully(t)),
+        }
+    }
+
+    pub fn resolve_constraint_fully(&mut self, c: Constraint) -> Constraint {
+        Constraint {
+            trait_id: c.trait_id,
+            args: c.args.iter().map(|&t| self.resolve_type_fully(t)).collect(),
         }
     }
 }

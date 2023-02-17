@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use hir_def::display::HirDisplay;
+use hir_def::expr::ExprId;
 use hir_def::id::{TraitId, TypeCtorId, TypeVarId};
+use hir_def::pat::PatId;
 
 use crate::Db;
 
@@ -34,9 +36,17 @@ pub struct FuncType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraint {
-    pub trait_: TraitId,
+    pub trait_id: TraitId,
     pub args: Box<[Ty]>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConstraintOrigin {
+    ExprId(ExprId),
+    PatId(PatId),
+}
+
+ra_ap_stdx::impl_from!(ExprId, PatId for ConstraintOrigin);
 
 pub type GeneralizedType = Generalized<Ty>;
 
@@ -72,6 +82,23 @@ impl Ty {
             },
             | _ => f(self),
         }
+    }
+
+    pub fn traverse(self, db: &dyn Db, f: &mut dyn FnMut(Ty)) {
+        match self.kind(db) {
+            | TyKind::App(base, args) => {
+                base.traverse(db, f);
+                args.iter().for_each(|a| a.traverse(db, f));
+            },
+            | TyKind::Func(func) => {
+                func.params.iter().for_each(|p| p.traverse(db, f));
+                func.ret.traverse(db, f);
+                func.env.traverse(db, f);
+            },
+            | _ => {},
+        }
+
+        f(self)
     }
 
     pub fn replace_vars(self, db: &dyn Db, replacements: &HashMap<TypeVarId, Ty>) -> Ty {
