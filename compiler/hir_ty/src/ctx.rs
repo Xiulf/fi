@@ -96,6 +96,9 @@ impl<'db> Ctx<'db> {
             c.args.iter_mut().for_each(&mut finalize);
         });
 
+        result.constraints.sort_unstable();
+        result.constraints.dedup();
+
         result.type_of_expr.values_mut().for_each(&mut finalize);
         result.type_of_pat.values_mut().for_each(&mut finalize);
         result.ty = self.resolve_generalized_type_fully(result.ty);
@@ -179,7 +182,7 @@ impl<'db> Ctx<'db> {
             let mut type_vars = type_vars.to_vec();
 
             for (u, var) in vars {
-                self.subst.solved.insert(u, Ty::new(self.db, TyKind::Var(var)));
+                self.subst.solved.0.insert(u, Ty::new(self.db, TyKind::Var(var)));
                 type_vars.push(var);
             }
 
@@ -188,9 +191,22 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    pub fn find_all_unknowns(&mut self, ty: Ty, res: &mut NoHashHashSet<Unknown>) {
-        match ty.kind(self.db) {
-            | TyKind::Unknown(u, _) => match self.find_binding(*u) {
+    pub fn find_all_type_vars(&self, ty: Ty, res: &mut NoHashHashSet<TypeVarId>) {
+        ty.traverse(self.db, &mut |t| match t.kind(self.db) {
+            | TyKind::Var(v) => {
+                res.insert(*v);
+            },
+            | TyKind::Unknown(u, _) => match self.find_binding(*u, &self.subst.solved) {
+                | Ok(t) => self.find_all_type_vars(t, res),
+                | Err(_) => {},
+            },
+            | _ => {},
+        });
+    }
+
+    pub fn find_all_unknowns(&self, ty: Ty, res: &mut NoHashHashSet<Unknown>) {
+        ty.traverse(self.db, &mut |t| match t.kind(self.db) {
+            | TyKind::Unknown(u, _) => match self.find_binding(*u, &self.subst.solved) {
                 | Ok(t) => self.find_all_unknowns(t, res),
                 | Err((level, _)) => {
                     if level >= self.level {
@@ -198,22 +214,8 @@ impl<'db> Ctx<'db> {
                     }
                 },
             },
-            | TyKind::App(base, args) => {
-                self.find_all_unknowns(*base, res);
-                for &arg in args.iter() {
-                    self.find_all_unknowns(arg, res);
-                }
-            },
-            | TyKind::Func(func) => {
-                for &param in func.params.iter() {
-                    self.find_all_unknowns(param, res);
-                }
-
-                self.find_all_unknowns(func.ret, res);
-                self.find_all_unknowns(func.env, res);
-            },
             | _ => {},
-        }
+        });
     }
 
     fn new_type_vars(&self, unknowns: NoHashHashSet<Unknown>) -> NoHashHashMap<Unknown, TypeVarId> {

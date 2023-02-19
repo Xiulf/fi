@@ -22,6 +22,9 @@ trait Sub a =
 infixl 6 (+) = add
 infixl 6 (-) = sub
 
+impl Add a where AnyInt a =
+    add = Intrinsics.iadd
+
 impl Sub a where AnyInt a =
     sub = Intrinsics.isub
 

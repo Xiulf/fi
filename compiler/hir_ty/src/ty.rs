@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-
 use hir_def::display::HirDisplay;
 use hir_def::expr::ExprId;
-use hir_def::id::{TraitId, TypeCtorId, TypeVarId};
+use hir_def::id::{ImplId, TraitId, TypeCtorId, TypeVarId};
 use hir_def::pat::PatId;
+use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::Db;
 
@@ -34,7 +33,7 @@ pub struct FuncType {
     pub variadic: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Constraint {
     pub trait_id: TraitId,
     pub args: Box<[Ty]>,
@@ -44,6 +43,7 @@ pub struct Constraint {
 pub enum ConstraintOrigin {
     ExprId(ExprId),
     PatId(PatId),
+    Impl(ImplId, usize),
 }
 
 ra_ap_stdx::impl_from!(ExprId, PatId for ConstraintOrigin);
@@ -101,7 +101,7 @@ impl Ty {
         f(self)
     }
 
-    pub fn replace_vars(self, db: &dyn Db, replacements: &HashMap<TypeVarId, Ty>) -> Ty {
+    pub fn replace_vars(self, db: &dyn Db, replacements: &NoHashHashMap<TypeVarId, Ty>) -> Ty {
         self.fold(db, &mut |ty| match ty.kind(db) {
             | TyKind::Var(v) => match replacements.get(v) {
                 | Some(t) => *t,
@@ -109,6 +109,17 @@ impl Ty {
             },
             | _ => ty,
         })
+    }
+}
+
+impl Constraint {
+    pub fn replace_vars(&self, db: &dyn Db, replacements: &NoHashHashMap<TypeVarId, Ty>) -> Self {
+        let args = self.args.iter().map(|t| t.replace_vars(db, replacements)).collect();
+
+        Self {
+            trait_id: self.trait_id,
+            args,
+        }
     }
 }
 
@@ -209,5 +220,25 @@ impl HirDisplay for GeneralizedType {
                 ty.hir_fmt(f)
             },
         }
+    }
+}
+
+impl HirDisplay for Constraint {
+    type Db<'a> = dyn Db + 'a;
+
+    fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        let it = self.trait_id.it(f.db);
+        let tree = hir_def::item_tree::query(f.db, it.file);
+        let node = &tree[it.value];
+
+        write!(f, "{}", node.name.display(f.db))?;
+
+        for ty in self.args.iter() {
+            f.write_char(' ')?;
+            Parens(ParenMode::App, *ty).hir_fmt(f)?;
+        }
+
+        Ok(())
     }
 }

@@ -2,12 +2,12 @@
 
 use ctx::Expectation;
 use hir_def::expr::ExprId;
-use hir_def::id::{ContainerId, CtorId, ImplId, TypeVarId, TypedItemId, ValueId};
+use hir_def::id::{ContainerId, CtorId, ImplId, TraitId, TypeVarId, TypedItemId, ValueId};
 use hir_def::name::Name;
 use hir_def::pat::PatId;
 use syntax::TextRange;
 use triomphe::Arc;
-use ty::{FuncType, GeneralizedType, Ty, TyKind};
+use ty::{Constraint, FuncType, GeneralizedType, Ty, TyKind};
 use vfs::InFile;
 
 pub mod ctx;
@@ -24,7 +24,15 @@ pub trait Db: hir_def::Db + salsa::DbWithJar<Jar> {
 }
 
 #[salsa::jar(db = Db)]
-pub struct Jar(ty::Ty, infer, ctor_ty);
+pub struct Jar(
+    ty::Ty,
+    infer,
+    ctor_ty,
+    trait_types,
+    impl_types,
+    traits::trait_impls,
+    traits::lib_impls,
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TyOrigin {
@@ -52,23 +60,22 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         .map(|&p| bcx.infer_pat(p, Expectation::None))
         .collect::<Box<[_]>>();
 
-    bcx.ret_ty = ret;
-    bcx.result.ty = if params.is_empty() {
-        GeneralizedType::new(ret, &type_vars)
+    let ty = if params.is_empty() {
+        ret
     } else {
-        GeneralizedType::new(
-            Ty::new(
-                db,
-                TyKind::Func(FuncType {
-                    ret,
-                    params,
-                    env: bcx.unit_type(),
-                    variadic: false,
-                }),
-            ),
-            &type_vars,
-        )
+        let func = FuncType {
+            ret,
+            params,
+            env: bcx.unit_type(),
+            variadic: false,
+        };
+
+        Ty::new(db, TyKind::Func(func))
     };
+
+    bcx.ret_ty = ret;
+    bcx.result.ty = GeneralizedType::new(ty, &type_vars);
+    bcx.result.constraints = all_constraints(db, value);
 
     let _ = bcx.infer_expr(body.body_expr(), ctx::Expectation::HasType(ret));
 
@@ -77,9 +84,10 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         let item_tree = hir_def::item_tree::query(db, it.file);
         let name = item_tree[it.value].name;
 
-        if let Some(b) = impl_ty(db, id, name) {
+        if let Some((b, mut constraints)) = impl_ty(db, id, name) {
             let a = ctx.result.ty.clone();
             ctx.result.ty = ctx.unify_generalized_types(&a, b, TyOrigin::ExprId(body.body_expr()));
+            ctx.result.constraints.append(&mut constraints);
         }
     }
 
@@ -90,29 +98,28 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
     ctx.finish()
 }
 
-fn impl_ty(db: &dyn Db, id: ImplId, name: Name) -> Option<GeneralizedType> {
+fn impl_ty(db: &dyn Db, id: ImplId, name: Name) -> Option<(GeneralizedType, Vec<Constraint>)> {
     let data = hir_def::data::impl_data(db, id);
-    let trait_data = hir_def::data::trait_data(db, data.trait_(db)?);
+    let trait_data = hir_def::data::trait_data(db, data.trait_id(db)?);
     let trait_item = *trait_data.items(db).get(&name)?;
-    let ty = infer(db, trait_item).ty.clone();
-    let type_map = TypedItemId::ImplId(id).type_map(db).0;
-    let mut ctx = ctx::Ctx::new(db, id.into());
-    let mut lcx = lower::LowerCtx::new(&mut ctx, type_map);
-    let types = data.types(db).iter().map(|t| lcx.lower_type_ref(*t, false));
+    let infer = infer(db, trait_item);
+    let ty = infer.ty.clone();
+    let constraints = infer.constraints[1..].to_vec();
+    let (types, _constraints) = impl_types(db, id);
     let replacements = trait_data
         .type_vars(db)
         .iter()
-        .zip(types)
-        .map(|(&var, ty)| (var, ty))
+        .zip(types.iter())
+        .map(|(&var, &ty)| (var, ty))
         .collect();
 
     match ty {
-        | GeneralizedType::Mono(ty) => Some(GeneralizedType::Mono(ty.replace_vars(db, &replacements))),
+        | GeneralizedType::Mono(ty) => Some((GeneralizedType::Mono(ty.replace_vars(db, &replacements)), constraints)),
         | GeneralizedType::Poly(vars, ty) => {
             let ty = ty.replace_vars(db, &replacements);
             let vars = vars[replacements.len()..].into();
 
-            Some(GeneralizedType::new(ty, &vars))
+            Some((GeneralizedType::new(ty, &vars), constraints))
         },
     }
 }
@@ -155,6 +162,36 @@ pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
     )
 }
 
+#[salsa::tracked]
+pub fn trait_types(db: &dyn Db, trait_id: TraitId) -> (Box<[Ty]>, Box<[Constraint]>) {
+    let data = hir_def::data::trait_data(db, trait_id);
+    // let type_map = TypedItemId::TraitId(trait_id).type_map(db).0;
+    // let mut ctx = ctx::Ctx::new(db, trait_id.into());
+    // let mut lcx = lower::LowerCtx::new(&mut ctx, type_map);
+    // let types = data.types(db).iter().map(|t| lcx.lower_type_ref(*t, false)).collect();
+    let types = Box::new([]);
+    let args = data
+        .type_vars(db)
+        .iter()
+        .map(|&v| Ty::new(db, TyKind::Var(v)))
+        .collect();
+
+    let constraints = [Constraint { trait_id, args }].into();
+
+    (types, constraints)
+}
+
+#[salsa::tracked]
+pub fn impl_types(db: &dyn Db, impl_id: ImplId) -> (Box<[Ty]>, Box<[Constraint]>) {
+    let data = hir_def::data::impl_data(db, impl_id);
+    let type_map = TypedItemId::ImplId(impl_id).type_map(db).0;
+    let mut ctx = ctx::Ctx::new(db, impl_id.into());
+    let mut lcx = lower::LowerCtx::new(&mut ctx, type_map);
+    let types = data.types(db).iter().map(|t| lcx.lower_type_ref(*t, false)).collect();
+
+    (types, Box::new([]))
+}
+
 fn all_type_vars(db: &dyn Db, id: ValueId) -> Box<[TypeVarId]> {
     let data = hir_def::data::value_data(db, id);
     let parent = match id.container(db) {
@@ -164,6 +201,16 @@ fn all_type_vars(db: &dyn Db, id: ValueId) -> Box<[TypeVarId]> {
     };
 
     [&*parent, data.type_vars(db)].concat().into_boxed_slice()
+}
+
+fn all_constraints(db: &dyn Db, id: ValueId) -> Vec<Constraint> {
+    let parent = match id.container(db) {
+        | ContainerId::ModuleId(_) => return Vec::new(),
+        | ContainerId::TraitId(id) => trait_types(db, id).1,
+        | ContainerId::ImplId(id) => impl_types(db, id).1,
+    };
+
+    [&*parent].concat()
 }
 
 impl TyOrigin {

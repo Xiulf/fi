@@ -209,3 +209,6 @@ ra_ap_stdx::impl_from!(FixityId, TypeAliasId, TypeCtorId, TraitId, TypeVarId for
 
 impl ra_ap_stdx::hash::NoHashHashable for ModuleId {
 }
+
+impl ra_ap_stdx::hash::NoHashHashable for TypeVarId {
+}

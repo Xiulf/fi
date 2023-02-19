@@ -1,25 +1,22 @@
 use diagnostics::Diagnostics;
-use ena::unify::{InPlace, UnificationTable, UnifyKey, UnifyValue};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::{RecursiveType, TypeMismatch};
 use crate::ty::{Constraint, GeneralizedType, Ty, TyKind, Unknown};
-use crate::TyOrigin;
+use crate::{Db, TyOrigin};
 
 const RECURSION_LIMIT: u32 = 32;
 
 #[derive(Default, Debug)]
 pub struct Substitution {
-    pub(crate) solved: NoHashHashMap<Unknown, Ty>,
-    unsolved: NoHashHashMap<Unknown, Ty>,
-    table: UnificationTable<InPlace<Unknown>>,
+    pub(crate) solved: UnifyBindings,
+    unsolved: NoHashHashMap<Unknown, (UnkLevel, Ty)>,
+    next_unknown: u32,
 }
 
-pub struct SubstitutionSnapshot {
-    solved: NoHashHashMap<Unknown, Ty>,
-    table: ena::unify::Snapshot<InPlace<Unknown>>,
-}
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct UnifyBindings(pub NoHashHashMap<Unknown, Ty>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnkLevel(pub(crate) u32);
@@ -40,28 +37,16 @@ impl UnifyResult {
     }
 }
 
-impl Substitution {
-    pub fn snapshot(&mut self) -> SubstitutionSnapshot {
-        SubstitutionSnapshot {
-            solved: self.solved.clone(),
-            table: self.table.snapshot(),
-        }
-    }
-
-    pub fn commit(&mut self, snapshot: SubstitutionSnapshot) {
-        self.table.commit(snapshot.table);
-    }
-
-    pub fn rollback(&mut self, snapshot: SubstitutionSnapshot) {
-        self.solved = snapshot.solved;
-        self.table.rollback_to(snapshot.table);
-    }
-}
-
 impl Ctx<'_> {
+    fn fresh_unknown(&mut self) -> Unknown {
+        let u = Unknown(self.subst.next_unknown);
+        self.subst.next_unknown += 1;
+        u
+    }
+
     pub fn fresh_type_with_kind(&mut self, level: UnkLevel, kind: Ty, skolem: bool) -> Ty {
-        let u = self.subst.table.new_key(level);
-        self.subst.unsolved.insert(u, kind);
+        let u = self.fresh_unknown();
+        self.subst.unsolved.insert(u, (level, kind));
         Ty::new(self.db, TyKind::Unknown(u, skolem))
     }
 
@@ -126,16 +111,21 @@ impl Ctx<'_> {
     }
 
     fn unify(&mut self, t1: Ty, t2: Ty) -> UnifyResult {
+        let bindings = unsafe { std::mem::transmute(&mut self.subst.solved) };
+        self.unify_into(t1, t2, bindings)
+    }
+
+    pub(crate) fn unify_into(&self, t1: Ty, t2: Ty, bindings: &mut UnifyBindings) -> UnifyResult {
         match (t1.kind(self.db), t2.kind(self.db)) {
             | (TyKind::Error, _) | (_, TyKind::Error) => UnifyResult::Ok,
             | (TyKind::Unknown(u1, _), TyKind::Unknown(u2, _)) if u1 == u2 => UnifyResult::Ok,
             | (TyKind::Var(v1), TyKind::Var(v2)) if v1 == v2 => UnifyResult::Ok,
             | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => UnifyResult::Ok,
-            | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2),
-            | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1),
+            | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2, bindings),
+            | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1, bindings),
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
-                .unify(*a_base, *b_base)
-                .and(self.unify_all(a_args.iter(), b_args.iter())),
+                .unify_into(*a_base, *b_base, bindings)
+                .and(self.unify_all(a_args.iter(), b_args.iter(), bindings)),
             | (TyKind::Func(a), TyKind::Func(b)) => {
                 if a.params.len() != b.params.len() {
                     if !(a.variadic && b.params.len() >= a.params.len())
@@ -145,21 +135,22 @@ impl Ctx<'_> {
                     }
                 }
 
-                self.unify_all(a.params.iter(), b.params.iter())
-                    .and(self.unify(a.ret, b.ret))
-                    .and(self.unify(a.env, b.env))
+                self.unify_all(a.params.iter(), b.params.iter(), bindings)
+                    .and(self.unify_into(a.ret, b.ret, bindings))
+                    .and(self.unify_into(a.env, b.env, bindings))
             },
             | (_, _) => UnifyResult::Fail,
         }
     }
 
-    fn unify_all<'a, 'b>(
-        &mut self,
+    pub(crate) fn unify_all<'a, 'b>(
+        &self,
         mut a: impl Iterator<Item = &'a Ty>,
         mut b: impl Iterator<Item = &'b Ty>,
+        bindings: &mut UnifyBindings,
     ) -> UnifyResult {
         while let (Some(&a), Some(&b)) = (a.next(), b.next()) {
-            let res = self.unify(a, b);
+            let res = self.unify_into(a, b, bindings);
             if res != UnifyResult::Ok {
                 return res;
             }
@@ -168,29 +159,30 @@ impl Ctx<'_> {
         UnifyResult::Ok
     }
 
-    fn unify_unknown(&mut self, u: Unknown, t1: Ty, t2: Ty) -> UnifyResult {
-        match self.find_binding(u) {
-            | Ok(t) => self.unify(t, t2),
+    fn unify_unknown(&self, u: Unknown, t1: Ty, t2: Ty, bindings: &mut UnifyBindings) -> UnifyResult {
+        match self.find_binding(u, bindings) {
+            | Ok(t) => self.unify_into(t, t2, bindings),
             | Err((level, _kind)) => {
-                let b = self.resolve_type_shallow(t2);
+                let b = bindings.resolve_type_shallow(self.db, t2);
+                let b = self.resolve_type_shallow(b);
 
                 if t1 == b {
                     return UnifyResult::Ok;
                 }
 
-                if self.occurs(u, level, b, RECURSION_LIMIT) {
+                if self.occurs(u, level, b, RECURSION_LIMIT, bindings) {
                     return UnifyResult::RecursiveType(b);
                 }
 
                 // TODO: check kind
 
-                self.subst.solved.insert(u, b);
+                bindings.0.insert(u, b);
                 UnifyResult::Ok
             },
         }
     }
 
-    fn occurs(&mut self, u: Unknown, level: UnkLevel, ty: Ty, n: u32) -> bool {
+    fn occurs(&self, u: Unknown, level: UnkLevel, ty: Ty, n: u32, bindings: &UnifyBindings) -> bool {
         if n == 0 {
             panic!("recursion limit reached in occurs");
         }
@@ -198,85 +190,82 @@ impl Ctx<'_> {
         let n = n - 1;
 
         match ty.kind(self.db) {
-            | TyKind::Unknown(u2, _) => match self.find_binding(*u2) {
-                | Ok(t) => self.occurs(u, level, t, n),
+            | TyKind::Unknown(u2, _) => match self.find_binding(*u2, bindings) {
+                | Ok(t) => self.occurs(u, level, t, n, bindings),
                 | Err((_, _)) => u == *u2,
             },
             | TyKind::App(base, args) => {
-                self.occurs(u, level, *base, n) || args.iter().any(|&a| self.occurs(u, level, a, n))
+                self.occurs(u, level, *base, n, bindings) || args.iter().any(|&a| self.occurs(u, level, a, n, bindings))
             },
             | TyKind::Func(func) => {
-                func.params.iter().any(|&a| self.occurs(u, level, a, n))
-                    || self.occurs(u, level, func.ret, n)
-                    || self.occurs(u, level, func.env, n)
+                func.params.iter().any(|&a| self.occurs(u, level, a, n, bindings))
+                    || self.occurs(u, level, func.ret, n, bindings)
+                    || self.occurs(u, level, func.env, n, bindings)
             },
             | _ => false,
         }
     }
 
-    pub(crate) fn find_binding(&mut self, u: Unknown) -> Result<Ty, (UnkLevel, Ty)> {
-        match self.subst.solved.get(&u).copied() {
+    pub(crate) fn find_binding(&self, u: Unknown, bindings: &UnifyBindings) -> Result<Ty, (UnkLevel, Ty)> {
+        match bindings.0.get(&u).copied() {
             | Some(t) => Ok(t),
-            | None => Err((self.subst.table.probe_value(u), self.subst.unsolved[&u])),
+            | None => match self.subst.solved.0.get(&u).copied() {
+                | Some(t) => Ok(t),
+                | None => Err(self.subst.unsolved[&u]),
+            },
         }
     }
 
-    pub fn resolve_type_shallow(&mut self, t: Ty) -> Ty {
-        match t.kind(self.db) {
-            | TyKind::Unknown(u, _) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
-                | Some(t) => self.resolve_type_shallow(t),
+    pub fn resolve_type_shallow(&self, t: Ty) -> Ty {
+        self.subst.solved.resolve_type_shallow(self.db, t)
+    }
+
+    pub fn resolve_type_fully(&self, t: Ty) -> Ty {
+        self.subst.solved.resolve_type_fully(self.db, t)
+    }
+
+    pub fn resolve_generalized_type_fully(&self, t: GeneralizedType) -> GeneralizedType {
+        self.subst.solved.resolve_generalized_type_fully(self.db, t)
+    }
+
+    pub fn resolve_constraint_fully(&self, c: Constraint) -> Constraint {
+        self.subst.solved.resolve_constraint_fully(self.db, c)
+    }
+}
+
+impl UnifyBindings {
+    pub fn resolve_type_shallow(&self, db: &dyn Db, t: Ty) -> Ty {
+        match t.kind(db) {
+            | TyKind::Unknown(u, _) => match self.0.get(u).copied() {
+                | Some(t) => self.resolve_type_shallow(db, t),
                 | None => t,
             },
             | _ => t,
         }
     }
 
-    pub fn resolve_type_fully(&mut self, t: Ty) -> Ty {
-        t.fold(self.db, &mut |t| match t.kind(self.db) {
-            | TyKind::Unknown(u, _) => match self.subst.solved.get(&self.subst.table.find(*u)).copied() {
-                | Some(t) => self.resolve_type_fully(t),
+    pub fn resolve_type_fully(&self, db: &dyn Db, t: Ty) -> Ty {
+        t.fold(db, &mut |t| match t.kind(db) {
+            | TyKind::Unknown(u, _) => match self.0.get(u).copied() {
+                | Some(t) => self.resolve_type_fully(db, t),
                 | None => t,
             },
             | _ => t,
         })
     }
 
-    pub fn resolve_generalized_type_fully(&mut self, t: GeneralizedType) -> GeneralizedType {
+    pub fn resolve_generalized_type_fully(&self, db: &dyn Db, t: GeneralizedType) -> GeneralizedType {
         match t {
-            | GeneralizedType::Mono(t) => GeneralizedType::Mono(self.resolve_type_fully(t)),
-            | GeneralizedType::Poly(vars, t) => GeneralizedType::Poly(vars, self.resolve_type_fully(t)),
+            | GeneralizedType::Mono(t) => GeneralizedType::Mono(self.resolve_type_fully(db, t)),
+            | GeneralizedType::Poly(vars, t) => GeneralizedType::Poly(vars, self.resolve_type_fully(db, t)),
         }
     }
 
-    pub fn resolve_constraint_fully(&mut self, c: Constraint) -> Constraint {
+    pub fn resolve_constraint_fully(&self, db: &dyn Db, c: Constraint) -> Constraint {
         Constraint {
             trait_id: c.trait_id,
-            args: c.args.iter().map(|&t| self.resolve_type_fully(t)).collect(),
+            args: c.args.iter().map(|&t| self.resolve_type_fully(db, t)).collect(),
         }
-    }
-}
-
-impl UnifyKey for Unknown {
-    type Value = UnkLevel;
-
-    fn index(&self) -> u32 {
-        self.0
-    }
-
-    fn from_index(u: u32) -> Self {
-        Self(u)
-    }
-
-    fn tag() -> &'static str {
-        "unknown"
-    }
-}
-
-impl UnifyValue for UnkLevel {
-    type Error = ena::unify::NoError;
-
-    fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
-        Ok(*value1.min(value2))
     }
 }
 

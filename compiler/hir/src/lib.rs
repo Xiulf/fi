@@ -113,6 +113,18 @@ impl Value {
         let result = hir_ty::infer(db, self.data.id(db));
         tracing::debug!("{}", result.ty.display(db));
 
+        if !result.constraints.is_empty() {
+            tracing::debug!(
+                "where {}",
+                result
+                    .constraints
+                    .iter()
+                    .map(|c| c.display(db).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+
         for (p, ty) in result.type_of_pat.iter() {
             tracing::debug!("${:0>2} :: {}", u32::from(p.into_raw()), ty.display(db));
         }

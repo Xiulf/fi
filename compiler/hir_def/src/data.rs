@@ -80,7 +80,7 @@ pub struct TraitData {
 pub struct ImplData {
     #[id]
     pub id: id::ImplId,
-    pub trait_: Option<TraitId>,
+    pub trait_id: Option<TraitId>,
     #[return_ref]
     pub types: Box<[TypeRefId]>,
     #[return_ref]

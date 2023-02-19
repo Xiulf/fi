@@ -1,15 +1,146 @@
-use hir_def::id::TypeVarId;
+use base_db::libs::LibId;
+use hir_def::display::HirDisplay;
+use hir_def::id::{HasModule, ImplId, TraitId, TypeVarId, TypedItemId};
+use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, Ty, TyKind, Unknown};
+use crate::unify::{UnifyBindings, UnifyResult};
+use crate::Db;
 
-impl Ctx<'_> {
+const RECURSION_LIMIT: u32 = 32;
+
+impl<'db> Ctx<'db> {
     pub fn solve_constraints(&mut self) {
         let constraints = self.sort_constraints();
+        let mut failing = self.try_solve_constraints(constraints.iter(), false);
+        let mut prev_len = failing.len();
 
-        for (c, o) in constraints {
-            tracing::debug!("{o:?}: {c:?}");
+        loop {
+            failing = self.try_solve_constraints(failing, false);
+
+            if failing.is_empty() || failing.len() == prev_len {
+                break;
+            }
+
+            prev_len = failing.len();
         }
+
+        failing = self.try_solve_constraints(failing, true);
+
+        for (c, o) in failing {
+            tracing::error!("{o:?}: {c:?}");
+        }
+    }
+
+    fn try_solve_constraints<'a>(
+        &mut self,
+        constraints: impl IntoIterator<Item = &'a (Constraint, ConstraintOrigin)>,
+        _allow_defaults: bool,
+    ) -> Vec<&'a (Constraint, ConstraintOrigin)> {
+        constraints
+            .into_iter()
+            .filter_map(|constraint| self.try_solve_constraint(constraint))
+            .collect()
+    }
+
+    fn try_solve_constraint<'a>(
+        &mut self,
+        c @ (constraint, origin): &'a (Constraint, ConstraintOrigin),
+    ) -> Option<&'a (Constraint, ConstraintOrigin)> {
+        let mut impls = self.find_impls(constraint, *origin, RECURSION_LIMIT);
+
+        if impls.len() != 1 {
+            return Some(c);
+        }
+
+        let (impls, bindings) = impls.remove(0);
+        self.subst.solved.0.extend(bindings.0);
+
+        for (impl_id, _, o) in impls {
+            tracing::debug!("{impl_id:?}, {o:?}");
+        }
+
+        None
+    }
+
+    fn find_impls(
+        &mut self,
+        constraint: &Constraint,
+        origin: ConstraintOrigin,
+        n: u32,
+    ) -> Vec<(Vec<(ImplId, Constraint, ConstraintOrigin)>, UnifyBindings)> {
+        if n == 0 {
+            tracing::warn!(
+                "Recursion limit reached when searching for impls for {}",
+                constraint.display(self.db)
+            );
+            return Vec::new();
+        }
+
+        self.all_impls(constraint.trait_id)
+            .filter_map(|&impl_id| {
+                let mut bindings = UnifyBindings::default();
+                let mut replacements = NoHashHashMap::default();
+                let type_vars = TypedItemId::ImplId(impl_id).type_map(self.db).2;
+                let (types, constraints) = crate::impl_types(self.db, impl_id);
+
+                for &var in type_vars.iter() {
+                    let replacement = self.fresh_type(self.level, false);
+                    replacements.insert(var, replacement);
+                }
+
+                let types = types
+                    .iter()
+                    .map(|t| t.replace_vars(self.db, &replacements))
+                    .collect::<Box<[_]>>();
+
+                let constraints = constraints
+                    .iter()
+                    .map(|c| c.replace_vars(self.db, &replacements))
+                    .collect();
+
+                if self.unify_all(types.iter(), constraint.args.iter(), &mut bindings) != UnifyResult::Ok {
+                    return None;
+                }
+
+                self.check_impl_constraints(constraint, origin, impl_id, constraints, bindings, n)
+            })
+            .collect()
+    }
+
+    fn check_impl_constraints(
+        &mut self,
+        constraint: &Constraint,
+        origin: ConstraintOrigin,
+        impl_id: ImplId,
+        constraints: Box<[Constraint]>,
+        mut bindings: UnifyBindings,
+        n: u32,
+    ) -> Option<(Vec<(ImplId, Constraint, ConstraintOrigin)>, UnifyBindings)> {
+        let mut impls = vec![(impl_id, constraint.clone(), origin)];
+
+        for (i, constraint) in constraints.iter().enumerate() {
+            let origin = ConstraintOrigin::Impl(impl_id, i);
+            let mut matching = self.find_impls(constraint, origin, n - 1);
+
+            if matching.len() != 1 {
+                return None;
+            }
+
+            let (mut impls2, bindings2) = matching.remove(0);
+            bindings.0.extend(bindings2.0);
+            impls.append(&mut impls2);
+        }
+
+        Some((impls, bindings))
+    }
+
+    fn all_impls(&self, trait_id: TraitId) -> impl Iterator<Item = &'db ImplId> {
+        let module = self.owner.module(self.db);
+        let lib = module.lib(self.db);
+
+        trait_impls(self.db, lib, trait_id).iter()
     }
 
     fn sort_constraints(&mut self) -> Vec<(Constraint, ConstraintOrigin)> {
@@ -61,4 +192,22 @@ impl Ctx<'_> {
 
         constraint.args.iter().any(|&t| check(t))
     }
+}
+
+#[salsa::tracked(return_ref)]
+pub(crate) fn trait_impls(db: &dyn Db, lib: LibId, trait_id: TraitId) -> Vec<ImplId> {
+    lib_impls(db, lib)
+        .iter()
+        .copied()
+        .filter(move |&i| hir_def::data::impl_data(db, i).trait_id(db) == Some(trait_id))
+        .collect()
+}
+
+#[salsa::tracked(return_ref)]
+pub(crate) fn lib_impls(db: &dyn Db, lib: LibId) -> Vec<ImplId> {
+    hir_def::def_map::query(db, lib)
+        .modules()
+        .flat_map(|(_, data)| data.scope(db).impls())
+        .chain(lib.deps(db).iter().flat_map(|&dep| lib_impls(db, dep).iter().copied()))
+        .collect()
 }
