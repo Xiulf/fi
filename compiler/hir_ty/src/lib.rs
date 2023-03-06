@@ -7,7 +7,7 @@ use hir_def::name::Name;
 use hir_def::pat::PatId;
 use syntax::TextRange;
 use triomphe::Arc;
-use ty::{Constraint, FuncType, GeneralizedType, Ty, TyKind};
+use ty::{Constraint, ConstraintOrigin, FuncType, GeneralizedType, Ty, TyKind};
 use vfs::InFile;
 
 pub mod ctx;
@@ -230,6 +230,28 @@ impl TyOrigin {
 
                 InFile::new(src_map.file(), src.text_range())
             },
+        }
+    }
+}
+
+impl ConstraintOrigin {
+    pub fn to_text_range(self, db: &dyn Db, owner: TypedItemId) -> InFile<TextRange> {
+        match self {
+            | Self::ExprId(id) => {
+                let value = owner.as_value_id().unwrap();
+                let (_, src_map) = hir_def::body::query(db, value);
+                let src = src_map.expr_src(id);
+
+                InFile::new(src_map.file(), src.text_range())
+            },
+            | Self::PatId(id) => {
+                let value = owner.as_value_id().unwrap();
+                let (_, src_map) = hir_def::body::query(db, value);
+                let src = src_map.pat_src(id);
+
+                InFile::new(src_map.file(), src.text_range())
+            },
+            | Self::Impl(_, _) => todo!(),
         }
     }
 }

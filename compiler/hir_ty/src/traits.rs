@@ -1,9 +1,11 @@
 use base_db::libs::LibId;
+use diagnostics::Diagnostics;
 use hir_def::display::HirDisplay;
 use hir_def::id::{HasModule, ImplId, TraitId, TypeVarId, TypedItemId};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
+use crate::diagnostics::UnsolvedConstraint;
 use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, Ty, TyKind, Unknown};
 use crate::unify::{UnifyBindings, UnifyResult};
 use crate::Db;
@@ -29,7 +31,11 @@ impl<'db> Ctx<'db> {
         failing = self.try_solve_constraints(failing, true);
 
         for (c, o) in failing {
-            tracing::error!("{o:?}: {c:?}");
+            Diagnostics::emit(self.db, UnsolvedConstraint {
+                constraint: c,
+                origin: *o,
+                owner: self.owner,
+            });
         }
     }
 

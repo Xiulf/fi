@@ -41,3 +41,9 @@ impl Monoid Option =
 
 trait Monad m where Monoid m =
     bind :: m a, (a -> m b) -> m b
+
+impl Monad Option =
+    bind o f =
+        match o with
+        | Some x -> f x
+        | None -> None

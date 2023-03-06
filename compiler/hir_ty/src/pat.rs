@@ -3,7 +3,7 @@ use hir_def::pat::{Pat, PatId};
 
 use crate::ctx::{BodyCtx, Expectation};
 use crate::lower::LowerCtx;
-use crate::ty::{Constraint, ConstraintOrigin, Ty, TyKind};
+use crate::ty::{Constraint, ConstraintOrigin, FuncType, Ty, TyKind};
 
 impl BodyCtx<'_, '_> {
     pub fn infer_pat(&mut self, id: PatId, expected: Expectation) -> Ty {
@@ -35,9 +35,28 @@ impl BodyCtx<'_, '_> {
             } => {
                 let ty = crate::ctor_ty(self.db, *def);
                 let ty = self.instantiate(ty, false);
-                let _ = args;
 
-                ty
+                if args.is_empty() {
+                    ty
+                } else {
+                    let params = args
+                        .iter()
+                        .map(|a| self.infer_pat_inner(*a, Expectation::None))
+                        .collect();
+                    let ret = self.ctx.fresh_type(self.level, false);
+                    let new_func = Ty::new(
+                        self.db,
+                        TyKind::Func(FuncType {
+                            params,
+                            ret,
+                            env: self.unit_type(),
+                            variadic: false,
+                        }),
+                    );
+
+                    self.unify_types(ty, new_func, id.into());
+                    ret
+                }
             },
             | Pat::Lit { lit } => match lit {
                 | Literal::Int(_) => {

@@ -1,6 +1,5 @@
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::ValueDefId;
-use hir_def::pat::{Case, DecisionTree, VariantTag};
 
 use crate::ctx::{BodyCtx, Expectation};
 use crate::ty::{Constraint, ConstraintOrigin, FuncType, Ty, TyKind};
@@ -100,15 +99,16 @@ impl BodyCtx<'_, '_> {
             | Expr::Match {
                 expr,
                 branches,
-                decision_tree,
+                decision_tree: _,
             } => {
                 let expected = expected.adjust_for_branches(self.db);
                 let pred = self.infer_expr(*expr, Expectation::None);
                 let res = self.ctx.fresh_type(self.level, false);
 
-                self.infer_decision_tree(decision_tree, Expectation::HasType(pred));
+                // self.infer_decision_tree(decision_tree, Expectation::HasType(pred));
 
-                for &branch in branches.iter() {
+                for &(pat, branch) in branches.iter() {
+                    self.infer_pat(pat, Expectation::HasType(pred));
                     let ty = self.infer_expr_inner(branch, expected);
                     self.unify_types(ty, res, branch.into());
                 }
@@ -163,53 +163,5 @@ impl BodyCtx<'_, '_> {
         }
 
         self.unit_type()
-    }
-
-    fn infer_decision_tree(&mut self, tree: &DecisionTree, expected: Expectation) {
-        match tree {
-            | DecisionTree::Guard(_guard, _next) => todo!("guards"),
-            | DecisionTree::Switch(pat, cases) => {
-                let ty = self.infer_pat(*pat, expected);
-
-                for case in cases {
-                    self.infer_case(case, ty);
-                }
-            },
-            | _ => {},
-        }
-    }
-
-    fn infer_case(&mut self, case: &Case, expected: Ty) {
-        if let Some(tag) = &case.tag {
-            match tag {
-                | VariantTag::Literal(_lit) => {},
-                | VariantTag::Ctor(id) => {
-                    let ty = crate::ctor_ty(self.db, *id);
-                    let ty = self.instantiate(ty, false);
-
-                    if let TyKind::Func(func) = ty.kind(self.db) {
-                        assert_eq!(case.fields.len(), func.params.len());
-
-                        for (fields, &param) in case.fields.iter().zip(func.params.iter()) {
-                            for &field in fields {
-                                self.infer_pat(field, Expectation::HasType(param));
-                            }
-                        }
-                    } else {
-                        assert!(case.fields.is_empty());
-                    }
-
-                    self.infer_decision_tree(&case.branch, Expectation::None);
-                    return;
-                },
-            }
-        }
-
-        assert_eq!(case.fields.len(), 1);
-        for &field in &case.fields[0] {
-            self.infer_pat(field, Expectation::HasType(expected));
-        }
-
-        self.infer_decision_tree(&case.branch, Expectation::None);
     }
 }

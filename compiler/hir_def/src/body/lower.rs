@@ -278,11 +278,15 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn lower_match(&mut self, e: ast::ExprMatch) -> (ExprId, Box<[ExprId]>, DecisionTree) {
+    fn lower_match(&mut self, e: ast::ExprMatch) -> (ExprId, Box<[(PatId, ExprId)]>, DecisionTree) {
         let expr = self.lower_expr_opt(e.expr());
         let mut matrix = self.lower_pattern_matrix(e.arms());
-        let branches = e.arms().map(|a| self.lower_expr_opt(a.expr())).collect::<Box<[_]>>();
-        let result = matrix.compile();
+        let branches = e
+            .arms()
+            .zip(matrix.rows.iter())
+            .map(|(a, r)| ((r.0).0[0].1, self.lower_expr_opt(a.expr())))
+            .collect::<Box<[_]>>();
+        let result = matrix.compile(self.db);
 
         if result.reachable_branches.len() != branches.len() {
             for (i, arm) in e.arms().enumerate() {
@@ -365,6 +369,52 @@ impl<'db> Ctx<'db> {
                 self.scopes.last_mut().unwrap().names.insert(name, id);
 
                 PatternStack(vec![(Constructor::MatchAll, id)])
+            },
+            | ast::Pat::Path(p) => {
+                let epath = p.path()?;
+                let path = Path::from_ast(self.db, epath.clone());
+                let def = self.resolve_path(&path, &epath);
+                let ctor = self.lower_pat_ctor(def);
+                let id = self.alloc_pat(
+                    Pat::Ctor {
+                        path,
+                        ctor,
+                        args: Box::new([]),
+                    },
+                    syntax_ptr,
+                );
+
+                if let None = ctor {
+                    return Some(PatternStack(vec![(Constructor::MatchAll, id)]));
+                }
+
+                PatternStack(vec![(
+                    Constructor::Variant(VariantTag::Ctor(ctor.unwrap()), PatternStack(Vec::new())),
+                    id,
+                )])
+            },
+            | ast::Pat::App(p) => {
+                let base = p.base()?;
+                let epath = base.path()?;
+                let path = Path::from_ast(self.db, epath.clone());
+                let def = self.resolve_path(&path, &epath);
+                let ctor = self.lower_pat_ctor(def);
+                let fields = p.args().collect::<Vec<_>>().into_iter();
+                let fields = fields
+                    .flat_map(|p| self.lower_pattern_stack(p))
+                    .rev()
+                    .collect::<Vec<_>>();
+                let args = fields.iter().map(|f| f.1).collect();
+                let id = self.alloc_pat(Pat::Ctor { path, ctor, args }, syntax_ptr);
+
+                if let None = ctor {
+                    return Some(PatternStack(vec![(Constructor::MatchAll, id)]));
+                }
+
+                PatternStack(vec![(
+                    Constructor::Variant(VariantTag::Ctor(ctor.unwrap()), PatternStack(fields)),
+                    id,
+                )])
             },
             | p => todo!("{p:?}"),
         })

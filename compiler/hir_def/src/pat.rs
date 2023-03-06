@@ -7,6 +7,7 @@ use crate::id::CtorId;
 use crate::name::Name;
 use crate::path::Path;
 use crate::type_ref::TypeRefId;
+use crate::Db;
 
 pub type PatId = Idx<Pat>;
 
@@ -76,7 +77,7 @@ pub struct DecisionTreeResult {
 }
 
 impl PatternMatrix {
-    pub fn compile(&mut self) -> DecisionTreeResult {
+    pub fn compile(&mut self, db: &dyn Db) -> DecisionTreeResult {
         if self.rows.is_empty() {
             DecisionTreeResult {
                 missed_case_count: 1,
@@ -94,25 +95,25 @@ impl PatternMatrix {
         } else {
             for (row, _) in self.rows.iter() {
                 match row.head() {
-                    | Some((Constructor::Variant(_, _), _)) => return self.switch_on_pattern(),
+                    | Some((Constructor::Variant(_, _), _)) => return self.switch_on_pattern(db),
                     | Some((Constructor::MatchAll, _)) => continue,
                     | None => unreachable!(),
                 }
             }
 
             match self.find_first_non_default_column() {
-                | Some(column) => self.swap_column(column),
-                | None => self.default_specialize().0,
+                | Some(column) => self.swap_column(db, column),
+                | None => self.default_specialize(db).0,
             }
         }
     }
 
-    fn swap_column(&mut self, column: usize) -> DecisionTreeResult {
+    fn swap_column(&mut self, db: &dyn Db, column: usize) -> DecisionTreeResult {
         for (row, _) in self.rows.iter_mut() {
             row.0.swap(0, column);
         }
 
-        self.compile()
+        self.compile(db)
     }
 
     fn first_row_matches_all(&self) -> bool {
@@ -146,7 +147,7 @@ impl PatternMatrix {
         matrix
     }
 
-    fn default_specialize(&self) -> (DecisionTreeResult, Vec<PatId>) {
+    fn default_specialize(&self, db: &dyn Db) -> (DecisionTreeResult, Vec<PatId>) {
         let mut matrix = Self::default();
         let mut variables = Vec::new();
 
@@ -157,10 +158,10 @@ impl PatternMatrix {
             }
         }
 
-        (matrix.compile(), variables)
+        (matrix.compile(db), variables)
     }
 
-    fn switch_on_pattern(&mut self) -> DecisionTreeResult {
+    fn switch_on_pattern(&mut self, db: &dyn Db) -> DecisionTreeResult {
         let mut matched_variants = BTreeMap::<_, Vec<_>>::default();
         let mut switch_on = None;
 
@@ -171,7 +172,7 @@ impl PatternMatrix {
             }
         }
 
-        let missed_cases = Self::get_missing_cases(&matched_variants);
+        let missed_cases = Self::get_missing_cases(db, &matched_variants);
         let mut missed_case_count = 0;
         let mut reachable_branches = BTreeSet::default();
         let mut cases = matched_variants
@@ -179,7 +180,7 @@ impl PatternMatrix {
             .map(|(tag, fields)| {
                 let arity = fields[0].len();
                 let mut fields = Self::collect_fields(fields);
-                let branch = self.specialize(tag, arity, &mut fields).compile();
+                let branch = self.specialize(tag, arity, &mut fields).compile(db);
 
                 fields.reverse();
                 missed_case_count += branch.missed_case_count;
@@ -194,7 +195,7 @@ impl PatternMatrix {
             .collect::<Vec<_>>();
 
         if !missed_cases.is_empty() {
-            let (branch, fields) = self.default_specialize();
+            let (branch, fields) = self.default_specialize(db);
             switch_on = fields.get(0).copied().or(switch_on);
             missed_case_count += branch.missed_case_count;
             reachable_branches = reachable_branches.union(&branch.reachable_branches).copied().collect();
@@ -204,6 +205,8 @@ impl PatternMatrix {
                 branch: branch.tree,
             });
         }
+
+        tracing::debug!("{missed_cases:?}, {missed_case_count}, {reachable_branches:?}");
 
         DecisionTreeResult {
             tree: DecisionTree::Switch(switch_on.unwrap(), cases),
@@ -228,15 +231,27 @@ impl PatternMatrix {
         variables
     }
 
-    fn get_missing_cases<T>(variants: &BTreeMap<&VariantTag, T>) -> BTreeSet<VariantTag> {
+    fn get_missing_cases<T>(db: &dyn Db, variants: &BTreeMap<&VariantTag, T>) -> BTreeSet<VariantTag> {
         let mut result = BTreeSet::default();
 
         match variants.iter().next().map(|(tag, _)| *tag).unwrap() {
             | VariantTag::Literal(lit) => {
                 result.insert(VariantTag::Literal(lit.clone()));
             },
-            | VariantTag::Ctor(_) => {
-                todo!();
+            | VariantTag::Ctor(id) => {
+                let type_ctor = id.type_ctor(db);
+                let it = type_ctor.it(db);
+                let item_tree = crate::item_tree::query(db, it.file);
+                let data = &item_tree[it.value];
+
+                for &ctor in data.ctors.iter() {
+                    let ctor_id = CtorId::new(db, type_ctor, ctor);
+                    result.insert(VariantTag::Ctor(ctor_id));
+                }
+
+                for (tag, _) in variants.iter() {
+                    result.remove(tag);
+                }
             },
         }
 

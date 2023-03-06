@@ -18,7 +18,7 @@ pub fn parse(text: &str) -> (Option<Event>, Vec<ParseError>) {
     let tokens = tokens_with_range(text);
     let stream = Stream::from_iter(text.len()..text.len(), tokens);
 
-    source_file().parse_recovery(stream)
+    source_file().parse_recovery_verbose(stream)
 }
 
 fn tokens_with_range(text: &str) -> impl Iterator<Item = (SyntaxKind, Range<usize>)> + '_ {
@@ -387,11 +387,12 @@ fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         let parens = parens(typed).to_node(PAT_PARENS);
         let ctor = type_path().to_node(PAT_PATH);
         let literal = literal().to_node(PAT_LITERAL);
-        let atom = choice((bind, underscore, unit, literal, parens, ctor.clone()));
+        let atom = choice((bind, underscore, unit, literal, parens, ctor.clone())).pad_ws();
         let app = ctor
             .then(atom.clone().repeated().at_least(1).collect())
             .to_event()
-            .to_node(PAT_APP);
+            .to_node(PAT_APP)
+            .pad_ws();
 
         app.or(atom)
     })
@@ -444,7 +445,7 @@ fn match_arm(
     rtoken(PIPE)
         .then(pat())
         .then(opt(guard))
-        .then(rtoken(ARROW).recover_with(skip_until([ARROW], err).consume_end()))
+        .then(rtoken(ARROW))
         .then(expr)
         .to_event()
         .to_node(MATCH_ARM)
@@ -512,10 +513,7 @@ fn block<'a>(
     item: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
 ) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
     rtoken(LYT_START)
-        .then(
-            item.recover_with(skip_until([LYT_SEP], err))
-                .separated(rtoken(LYT_SEP), true, 0),
-        )
+        .then(item.separated(rtoken(LYT_SEP), true, 0))
         .then(rtoken(LYT_END))
         .to_event()
         .recover_with(nested_delimiters(
@@ -534,7 +532,7 @@ fn literal() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         .or(rtoken(STRING).to_node(LIT_STRING))
         .labelled("literal");
 
-    trivia().then(lit).then(trivia()).to_event().labelled("literal")
+    lit.pad_ws().labelled("literal")
 }
 
 fn path() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {

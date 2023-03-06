@@ -39,7 +39,7 @@ pub enum Expr {
     },
     Match {
         expr: ExprId,
-        branches: Box<[ExprId]>,
+        branches: Box<[(PatId, ExprId)]>,
         decision_tree: DecisionTree,
     },
     Return {

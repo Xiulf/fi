@@ -153,9 +153,14 @@ impl Body {
                     decision_tree: _,
                 } => {
                     format_to!(out, "Match #{:0>3}", u32::from(expr.into_raw()));
-                    for branch in branches.iter() {
+                    for (pat, branch) in branches.iter() {
                         format_to!(out, "\n      └ ");
-                        format_to!(out, "#{:0>3}", u32::from(branch.into_raw()));
+                        format_to!(
+                            out,
+                            "${:0>2} -> #{:0>3}",
+                            u32::from(pat.into_raw()),
+                            u32::from(branch.into_raw())
+                        );
                     }
                 },
                 | Expr::Typed { expr, ty: _ } => {
