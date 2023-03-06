@@ -21,6 +21,7 @@ pub enum Expr {
         lit: Literal,
     },
     Lambda {
+        env: Box<[PatId]>,
         params: Box<[PatId]>,
         body: ExprId,
     },

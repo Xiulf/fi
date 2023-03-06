@@ -427,12 +427,26 @@ fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         let match_ = rtoken(MATCH_KW)
             .then(infix.clone())
             .then(rtoken(WITH_KW))
-            .then(rtoken(LYT_SEP).then(match_arm(expr)).repeated().collect())
+            .then(rtoken(LYT_SEP).then(match_arm(expr.clone())).repeated().collect())
             .to_event()
             .to_node(EXPR_MATCH)
             .pad_ws();
+        let lambda = rtoken(FN_KW)
+            .then(pat_atom().repeated().collect::<Event>())
+            .then(rtoken(ARROW))
+            .then(expr.clone())
+            .to_event()
+            .to_node(EXPR_LAMBDA)
+            .pad_ws();
+        let base = choice((ifelse, match_, lambda, infix));
 
-        choice((ifelse, match_, infix))
+        base.clone()
+            .then(token(DBL_COLON))
+            .then(typ())
+            .to_event()
+            .to_node(EXPR_TYPED)
+            .pad_ws()
+            .or(base)
     })
     .labelled("expression")
 }

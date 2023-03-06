@@ -206,7 +206,7 @@ impl PatternMatrix {
             });
         }
 
-        tracing::debug!("{missed_cases:?}, {missed_case_count}, {reachable_branches:?}");
+        // tracing::debug!("{missed_cases:?}, {missed_case_count}, {reachable_branches:?}");
 
         DecisionTreeResult {
             tree: DecisionTree::Switch(switch_on.unwrap(), cases),

@@ -156,9 +156,33 @@ impl<'db> Ctx<'db> {
         self.constraints.push((constraint, origin));
     }
 
-    pub fn instantiate(&mut self, ty: GeneralizedType, skolem: bool) -> Ty {
+    pub fn tuple_type(&mut self, mut types: Vec<Ty>) -> Ty {
+        match types.len() {
+            | 0 => self.unit_type(),
+            | 1 => types.remove(0),
+            | _ => {
+                let pair_type = match self.lang_ctor(lang_item::PAIR_TYPE) {
+                    | Some(pair_type) => Ty::new(self.db, TyKind::Ctor(pair_type)),
+                    | None => self.error(),
+                };
+
+                let last = types.remove(types.len() - 1);
+
+                types
+                    .into_iter()
+                    .rfold(last, |r, l| Ty::new(self.db, TyKind::App(pair_type, Box::new([l, r]))))
+            },
+        }
+    }
+
+    pub fn instantiate(
+        &mut self,
+        ty: GeneralizedType,
+        constraints: Vec<Constraint>,
+        skolem: bool,
+    ) -> (Ty, Vec<Constraint>) {
         match ty {
-            | GeneralizedType::Mono(ty) => ty,
+            | GeneralizedType::Mono(ty) => (ty, constraints),
             | GeneralizedType::Poly(vars, ty) => {
                 let mut replacements = HashMap::default();
 
@@ -166,7 +190,15 @@ impl<'db> Ctx<'db> {
                     replacements.insert(var, self.fresh_type(self.level, skolem));
                 }
 
-                ty.replace_vars(self.db, &replacements)
+                let constraints = constraints
+                    .into_iter()
+                    .map(|c| Constraint {
+                        trait_id: c.trait_id,
+                        args: c.args.iter().map(|a| a.replace_vars(self.db, &replacements)).collect(),
+                    })
+                    .collect();
+
+                (ty.replace_vars(self.db, &replacements), constraints)
             },
         }
     }

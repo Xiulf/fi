@@ -121,6 +121,20 @@ impl Body {
                 | Expr::Hole(_) => format_to!(out, "Hole"),
                 | Expr::Lit { lit } => format_to!(out, "Lit {lit}"),
                 | Expr::Path { path, def } => format_to!(out, "Path {}, {def:?}", path.display(db)),
+                | Expr::Lambda { params, env, body } => {
+                    format_to!(out, "Lambda {{");
+                    for (i, pat) in env.iter().enumerate() {
+                        if i != 0 {
+                            format_to!(out, ", ");
+                        }
+                        format_to!(out, "${:0>2}", u32::from(pat.into_raw()));
+                    }
+                    format_to!(out, "}} ");
+                    for param in params.iter() {
+                        format_to!(out, "${:0>2}, ", u32::from(param.into_raw()));
+                    }
+                    format_to!(out, "#{:0>3}", u32::from(body.into_raw()));
+                },
                 | Expr::App { base, args } => {
                     format_to!(out, "App #{:0>3}", u32::from(base.into_raw()));
                     for arg in args.iter() {

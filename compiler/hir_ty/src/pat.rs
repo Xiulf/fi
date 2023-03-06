@@ -34,7 +34,7 @@ impl BodyCtx<'_, '_> {
                 ctor: Some(def), args, ..
             } => {
                 let ty = crate::ctor_ty(self.db, *def);
-                let ty = self.instantiate(ty, false);
+                let (ty, _) = self.instantiate(ty, Vec::new(), false);
 
                 if args.is_empty() {
                     ty

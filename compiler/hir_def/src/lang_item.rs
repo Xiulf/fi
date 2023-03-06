@@ -10,6 +10,7 @@ use crate::Db;
 pub const TYPE_KIND: &'static str = "type-kind";
 pub const UNIT_TYPE: &'static str = "unit-type";
 pub const BOOL_TYPE: &'static str = "bool-type";
+pub const PAIR_TYPE: &'static str = "pair-type";
 
 pub const ANY_INT_TRAIT: &'static str = "any-int-trait";
 pub const ANY_FLOAT_TRAIT: &'static str = "any-float-trait";

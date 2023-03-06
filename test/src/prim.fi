@@ -11,6 +11,9 @@ infixr type 1 (*) = Array
 @lang = "unit-type"
 type Unit = | Unit
 
+@lang = "pair-type"
+type Pair a b = | Pair a b
+
 @lang = "any-int-trait"
 trait AnyInt i
 

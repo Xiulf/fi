@@ -39,6 +39,7 @@ struct Ctx<'db> {
     src_map: BodySourceMap,
     typ_map: Arc<TypeSourceMap>,
     scopes: Vec<Scope>,
+    lambdas: Vec<Vec<PatId>>,
 }
 
 #[derive(Default)]
@@ -72,6 +73,7 @@ impl<'db> Ctx<'db> {
                 src_to_pat: Default::default(),
             },
             scopes: Vec::new(),
+            lambdas: Vec::new(),
         }
     }
 
@@ -184,18 +186,24 @@ impl<'db> Ctx<'db> {
             | ast::Expr::Path(e) => {
                 let epath = e.path()?;
                 let path = Path::from_ast(self.db, epath.clone());
-                let def = self.resolve_path(&path, &epath);
+                let def = match self.resolve_path(&path, &epath) {
+                    | Some((def, boundaries)) => {
+                        if let Some(boundaries) = boundaries && let ValueDefId::PatId(pat) = def {
+                            let idx = self.lambdas.len() - boundaries;
+                            self.lambdas[idx].push(pat);
+                        }
+
+                        Some(def)
+                    },
+                    | None => None,
+                };
 
                 self.alloc_expr(Expr::Path { path, def }, syntax_ptr)
             },
-            | ast::Expr::Lambda(_) => {
-                self.scopes.push(Scope {
-                    boundary: true,
-                    ..Scope::default()
-                });
+            | ast::Expr::Lambda(e) => {
+                let (params, env, body) = self.lower_lambda(e);
 
-                let _ = self.scopes.last().unwrap().boundary;
-                todo!()
+                self.alloc_expr(Expr::Lambda { params, env, body }, syntax_ptr)
             },
             | ast::Expr::App(e) => {
                 let base = self.lower_expr_opt(e.base());
@@ -243,6 +251,20 @@ impl<'db> Ctx<'db> {
             },
             | e => todo!("{e:?}"),
         })
+    }
+
+    fn lower_lambda(&mut self, e: ast::ExprLambda) -> (Box<[PatId]>, Box<[PatId]>, ExprId) {
+        self.scopes.push(Scope {
+            boundary: true,
+            ..Scope::default()
+        });
+
+        self.lambdas.push(Vec::new());
+        let params = e.params().map(|p| self.lower_pat(p)).collect();
+        let body = self.lower_expr_opt(e.body());
+        let env = self.lambdas.pop().unwrap().into();
+
+        (params, env, body)
     }
 
     fn lower_block(&mut self, mut stmts: impl Iterator<Item = ast::Stmt>) -> (Box<[Stmt]>, Option<ExprId>) {
@@ -373,7 +395,7 @@ impl<'db> Ctx<'db> {
             | ast::Pat::Path(p) => {
                 let epath = p.path()?;
                 let path = Path::from_ast(self.db, epath.clone());
-                let def = self.resolve_path(&path, &epath);
+                let def = self.resolve_path(&path, &epath).map(|(d, _)| d);
                 let ctor = self.lower_pat_ctor(def);
                 let id = self.alloc_pat(
                     Pat::Ctor {
@@ -397,7 +419,7 @@ impl<'db> Ctx<'db> {
                 let base = p.base()?;
                 let epath = base.path()?;
                 let path = Path::from_ast(self.db, epath.clone());
-                let def = self.resolve_path(&path, &epath);
+                let def = self.resolve_path(&path, &epath).map(|(d, _)| d);
                 let ctor = self.lower_pat_ctor(def);
                 let fields = p.args().collect::<Vec<_>>().into_iter();
                 let fields = fields
@@ -481,7 +503,7 @@ impl<'db> Ctx<'db> {
             | ast::Pat::Path(p) => {
                 let epath = p.path()?;
                 let path = Path::from_ast(self.db, epath.clone());
-                let def = self.resolve_path(&path, &epath);
+                let def = self.resolve_path(&path, &epath).map(|(d, _)| d);
                 let ctor = self.lower_pat_ctor(def);
 
                 self.alloc_pat(
@@ -497,7 +519,7 @@ impl<'db> Ctx<'db> {
                 let base = p.base()?;
                 let epath = base.path()?;
                 let path = Path::from_ast(self.db, epath.clone());
-                let def = self.resolve_path(&path, &epath);
+                let def = self.resolve_path(&path, &epath).map(|(d, _)| d);
                 let ctor = self.lower_pat_ctor(def);
                 let args = p.args().map(|p| self.lower_pat(p)).collect();
 
@@ -545,7 +567,7 @@ impl<'db> Ctx<'db> {
         let fixities = ops
             .iter()
             .map(|(op, src)| {
-                let resolved = self.resolve_path(op, src);
+                let resolved = self.resolve_path(op, src).map(|(a, _)| a);
                 let (prec, assoc) = resolved
                     .map(|def| match def {
                         | ValueDefId::FixityId(id) => {
@@ -622,11 +644,21 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    fn resolve_path(&self, path: &Path, ast: &ast::Path) -> Option<ValueDefId> {
+    fn resolve_path(&self, path: &Path, ast: &ast::Path) -> Option<(ValueDefId, Option<usize>)> {
         if let Some(name) = path.as_name() {
+            let mut boundaries = 0;
+
             for scope in self.scopes.iter().rev() {
                 if let Some(&pat) = scope.names.get(&name) {
-                    return Some(ValueDefId::PatId(pat));
+                    if boundaries > 0 {
+                        return Some((ValueDefId::PatId(pat), Some(boundaries)));
+                    } else {
+                        return Some((ValueDefId::PatId(pat), None));
+                    }
+                }
+
+                if scope.boundary {
+                    boundaries += 1;
                 }
             }
         }
@@ -647,7 +679,7 @@ impl<'db> Ctx<'db> {
                 | _ => unreachable!(),
             };
 
-            return Some(id);
+            return Some((id, None));
         }
 
         Diagnostics::emit(self.db, UnresolvedPath {
