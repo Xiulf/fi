@@ -13,7 +13,7 @@ use parking_lot::RwLock;
 use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
 use triomphe::Arc;
 
-use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, Ty, TyKind, Unknown};
+use crate::ty::{Constraint, ConstraintOrigin, FloatKind, GeneralizedType, IntegerKind, Ty, TyKind, Unknown};
 use crate::unify::{Substitution, UnkLevel};
 use crate::Db;
 
@@ -51,7 +51,10 @@ pub enum Expectation {
 pub struct Cache(RwLock<CacheInner>);
 
 #[derive(Default, Debug)]
-pub struct CacheInner {}
+pub struct CacheInner {
+    pub ctor_int_kind: NoHashHashMap<TypeCtorId, Option<IntegerKind>>,
+    pub ctor_float_kind: NoHashHashMap<TypeCtorId, Option<FloatKind>>,
+}
 
 impl InferResult {
     pub fn default(db: &dyn Db) -> Self {
@@ -280,6 +283,14 @@ impl<'db> Ctx<'db> {
 
         res
     }
+
+    pub(crate) fn ctor_int_kind(&self, ctor_id: TypeCtorId) -> Option<IntegerKind> {
+        self.db.type_cache().ctor_int_kind(self.db, ctor_id)
+    }
+
+    pub(crate) fn ctor_float_kind(&self, ctor_id: TypeCtorId) -> Option<FloatKind> {
+        self.db.type_cache().ctor_float_kind(self.db, ctor_id)
+    }
 }
 
 impl<'db> std::ops::Deref for BodyCtx<'db, '_> {
@@ -300,10 +311,72 @@ impl Cache {
     pub fn clear(&self) {
         self.0.write().clear();
     }
+
+    pub fn ctor_int_kind(&self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<IntegerKind> {
+        self.0.write().ctor_int_kind(db, ctor_id)
+    }
+
+    pub fn ctor_float_kind(&self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<FloatKind> {
+        self.0.write().ctor_float_kind(db, ctor_id)
+    }
 }
 
 impl CacheInner {
     fn clear(&mut self) {
+        self.ctor_int_kind.clear();
+        self.ctor_float_kind.clear();
+    }
+
+    fn ctor_int_kind(&mut self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<IntegerKind> {
+        if let Some(kind) = self.ctor_int_kind.get(&ctor_id) {
+            return *kind;
+        }
+
+        let text = hir_def::data::type_ctor_data(db, ctor_id)
+            .attrs(db)
+            .by_key("int")
+            .string_value()
+            .next();
+
+        let kind = text.and_then(|t| match t {
+            | "i8" => Some(IntegerKind::I8),
+            | "i16" => Some(IntegerKind::I16),
+            | "i32" => Some(IntegerKind::I32),
+            | "i64" => Some(IntegerKind::I64),
+            | "i128" => Some(IntegerKind::I128),
+            | "isize" => Some(IntegerKind::Isize),
+            | "u8" => Some(IntegerKind::U8),
+            | "u16" => Some(IntegerKind::U16),
+            | "u32" => Some(IntegerKind::U32),
+            | "u64" => Some(IntegerKind::U64),
+            | "u128" => Some(IntegerKind::U128),
+            | "usize" => Some(IntegerKind::Usize),
+            | _ => None,
+        });
+
+        self.ctor_int_kind.insert(ctor_id, kind);
+        kind
+    }
+
+    fn ctor_float_kind(&mut self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<FloatKind> {
+        if let Some(kind) = self.ctor_float_kind.get(&ctor_id) {
+            return *kind;
+        }
+
+        let text = hir_def::data::type_ctor_data(db, ctor_id)
+            .attrs(db)
+            .by_key("float")
+            .string_value()
+            .next();
+
+        let kind = text.and_then(|t| match t {
+            | "f32" => Some(FloatKind::F32),
+            | "f64" => Some(FloatKind::F64),
+            | _ => None,
+        });
+
+        self.ctor_float_kind.insert(ctor_id, kind);
+        kind
     }
 }
 

@@ -3,7 +3,7 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::{RecursiveType, TypeMismatch};
-use crate::ty::{Constraint, GeneralizedType, Ty, TyKind, Unknown};
+use crate::ty::{Constraint, GeneralizedType, PrimitiveType, Ty, TyKind, Unknown};
 use crate::{Db, TyOrigin};
 
 const RECURSION_LIMIT: u32 = 32;
@@ -119,10 +119,25 @@ impl Ctx<'_> {
         match (t1.kind(self.db), t2.kind(self.db)) {
             | (TyKind::Error, _) | (_, TyKind::Error) => UnifyResult::Ok,
             | (TyKind::Unknown(u1, _), TyKind::Unknown(u2, _)) if u1 == u2 => UnifyResult::Ok,
+            | (TyKind::Primitive(p1), TyKind::Primitive(p2)) if p1 == p2 => UnifyResult::Ok,
             | (TyKind::Var(v1), TyKind::Var(v2)) if v1 == v2 => UnifyResult::Ok,
             | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => UnifyResult::Ok,
             | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2, bindings),
             | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1, bindings),
+            | (TyKind::Ctor(c), _) => {
+                use PrimitiveType::*;
+                let (base, kind) = if let Some(kind) = self.ctor_int_kind(*c) {
+                    (self.int_type(), Ty::new(self.db, TyKind::Primitive(Integer(kind))))
+                } else if let Some(kind) = self.ctor_float_kind(*c) {
+                    (self.float_type(), Ty::new(self.db, TyKind::Primitive(Float(kind))))
+                } else {
+                    return UnifyResult::Fail;
+                };
+
+                let app = Ty::new(self.db, TyKind::App(base, Box::new([kind])));
+                self.unify_into(app, t2, bindings)
+            },
+            | (_, TyKind::Ctor(_)) => self.unify_into(t2, t1, bindings),
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
                 .unify_into(*a_base, *b_base, bindings)
                 .and(self.unify_all(a_args.iter(), b_args.iter(), bindings)),

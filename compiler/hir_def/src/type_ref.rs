@@ -315,7 +315,11 @@ impl<'a> Ctx<'a> {
         let syntax_ptr = AstPtr::new(&ty);
 
         Some(match ty {
-            | ast::Type::Parens(t) => self.lower_type_opt(t.ty()),
+            | ast::Type::Parens(t) => {
+                let ty = self.lower_type_opt(t.ty());
+                self.src.src_to_typ.insert(syntax_ptr, ty);
+                ty
+            },
             | ast::Type::Hole(_) => self.alloc_type(TypeRef::Hole, syntax_ptr),
             | ast::Type::Var(t) => {
                 let name_ref = t.name()?;

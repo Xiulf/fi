@@ -1,3 +1,5 @@
+use std::fmt;
+
 use hir_def::display::HirDisplay;
 use hir_def::expr::ExprId;
 use hir_def::id::{ImplId, TraitId, TypeCtorId, TypeVarId};
@@ -18,11 +20,40 @@ pub struct Unknown(pub(crate) u32);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TyKind {
     Error,
+    Primitive(PrimitiveType),
     Unknown(Unknown, bool),
     Var(TypeVarId),
     Ctor(TypeCtorId),
     App(Ty, Box<[Ty]>),
     Func(FuncType),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PrimitiveType {
+    Integer(IntegerKind),
+    Float(FloatKind),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IntegerKind {
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    Isize,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    Usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FloatKind {
+    F32,
+    F64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -160,6 +191,7 @@ impl HirDisplay for Ty {
         use std::fmt::Write as _;
         match self.kind(f.db) {
             | TyKind::Error => write!(f, "{{error}}"),
+            | TyKind::Primitive(p) => write!(f, "{p}"),
             | TyKind::Unknown(u, _) => write!(f, "?{}", u.0),
             | TyKind::Var(var) => f.with_upcast::<_, dyn hir_def::Db>(|d| d, |f| var.hir_fmt(f)),
             | TyKind::Ctor(ctor) => {
@@ -177,6 +209,43 @@ impl HirDisplay for Ty {
             },
             | TyKind::Func(func) => func.hir_fmt(f),
         }
+    }
+}
+
+impl fmt::Display for PrimitiveType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            | Self::Integer(p) => p.fmt(f),
+            | Self::Float(p) => p.fmt(f),
+        }
+    }
+}
+
+impl fmt::Display for IntegerKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            | Self::I8 => "i8",
+            | Self::I16 => "i16",
+            | Self::I32 => "i32",
+            | Self::I64 => "i64",
+            | Self::I128 => "i128",
+            | Self::Isize => "isize",
+            | Self::U8 => "u8",
+            | Self::U16 => "u16",
+            | Self::U32 => "u32",
+            | Self::U64 => "u64",
+            | Self::U128 => "u128",
+            | Self::Usize => "usize",
+        })
+    }
+}
+
+impl fmt::Display for FloatKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            | Self::F32 => "f32",
+            | Self::F64 => "f64",
+        })
     }
 }
 
