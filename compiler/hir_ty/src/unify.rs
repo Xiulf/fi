@@ -94,8 +94,8 @@ impl Ctx<'_> {
             | UnifyResult::Ok => {},
             | UnifyResult::Fail => {
                 Diagnostics::emit(self.db, TypeMismatch {
-                    a: self.resolve_type_fully(t1),
-                    b: self.resolve_type_fully(t2),
+                    a: self.resolve_type_fully(t2),
+                    b: self.resolve_type_fully(t1),
                     owner: self.owner,
                     origin,
                 });

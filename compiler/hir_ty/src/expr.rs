@@ -4,7 +4,7 @@ use hir_def::pat::PatId;
 
 use crate::ctx::{BodyCtx, Expectation};
 use crate::lower::LowerCtx;
-use crate::ty::{Constraint, ConstraintOrigin, FuncType, Ty, TyKind};
+use crate::ty::{ConstraintOrigin, FuncType, Ty, TyKind};
 
 impl BodyCtx<'_, '_> {
     pub fn infer_expr(&mut self, id: ExprId, expected: Expectation) -> Ty {
@@ -35,77 +35,24 @@ impl BodyCtx<'_, '_> {
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
                     let var = self.ctx.fresh_type(self.level, false);
+                    let int = self.int_type();
 
-                    if let Some(any_int) = self.any_int_trait() {
-                        self.constrain(
-                            Constraint {
-                                trait_id: any_int,
-                                args: Box::new([var]),
-                            },
-                            ConstraintOrigin::ExprId(id),
-                        );
-                    }
-
-                    var
+                    Ty::new(self.db, TyKind::App(int, Box::new([var])))
                 },
                 | Literal::Float(_) => {
                     let var = self.ctx.fresh_type(self.level, false);
+                    let float = self.float_type();
 
-                    if let Some(any_float) = self.any_float_trait() {
-                        self.constrain(
-                            Constraint {
-                                trait_id: any_float,
-                                args: Box::new([var]),
-                            },
-                            ConstraintOrigin::ExprId(id),
-                        );
-                    }
-
-                    var
+                    Ty::new(self.db, TyKind::App(float, Box::new([var])))
                 },
                 | l => todo!("{l:?}"),
             },
             | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),
             | Expr::Path { def: Some(def), .. } => self.infer_value_def_id(id, *def),
-            | Expr::Lambda { env, params, body } => self.infer_lambda(id, env, params, *body),
-            | Expr::App { base, args } => {
-                let func = self.infer_expr_inner(*base, Expectation::None);
-                let params = args
-                    .iter()
-                    .map(|a| self.infer_expr_inner(*a, Expectation::None))
-                    .collect();
-                let ret = self.ctx.fresh_type(self.level, false);
-                let new_func = Ty::new(
-                    self.db,
-                    TyKind::Func(FuncType {
-                        params,
-                        ret,
-                        env: self.ctx.fresh_type(self.level, false),
-                        variadic: false,
-                    }),
-                );
-
-                self.unify_types(func, new_func, (*base).into());
-                ret
-            },
-            | Expr::If { cond, then, else_ } => {
-                let expected = expected.adjust_for_branches(self.db);
-                let bool_type = self.bool_type();
-
-                self.infer_expr(*cond, Expectation::HasType(bool_type));
-
-                let result_ty = self.ctx.fresh_type(self.level, false);
-                let then_ty = self.infer_expr_inner(*then, expected);
-                let else_ty = match else_ {
-                    | Some(else_) => self.infer_expr_inner(*else_, expected),
-                    | None => self.unit_type(),
-                };
-
-                self.unify_types(then_ty, result_ty, id.into());
-                self.unify_types(else_ty, result_ty, id.into());
-                result_ty
-            },
+            | Expr::Lambda { env, params, body } => self.infer_lambda(id, env, params, *body, expected),
+            | Expr::App { base, args } => self.infer_app(id, *base, args),
+            | Expr::If { cond, then, else_ } => self.infer_if(id, *cond, *then, *else_, expected),
             | Expr::Match {
                 expr,
                 branches,
@@ -157,9 +104,22 @@ impl BodyCtx<'_, '_> {
         ty
     }
 
-    fn infer_lambda(&mut self, _id: ExprId, env: &[PatId], params: &[PatId], body: ExprId) -> Ty {
+    fn infer_lambda(&mut self, id: ExprId, env: &[PatId], params: &[PatId], body: ExprId, expected: Expectation) -> Ty {
         let env = env.iter().map(|&p| self.infer_pat(p, Expectation::None)).collect();
         let env = self.tuple_type(env);
+
+        if let Expectation::HasType(ty) = expected {
+            if let TyKind::Func(func) = ty.kind(self.db) {
+                for (&param, &ty) in params.iter().zip(func.params.iter()) {
+                    self.infer_pat(param, Expectation::HasType(ty));
+                }
+
+                self.unify_types(env, func.env, id.into());
+                self.infer_expr(body, Expectation::HasType(func.ret));
+                return ty;
+            }
+        }
+
         let params = params.iter().map(|&p| self.infer_pat(p, Expectation::None)).collect();
         let ret = self.infer_expr_inner(body, Expectation::None);
 
@@ -172,6 +132,54 @@ impl BodyCtx<'_, '_> {
                 ret,
             }),
         )
+    }
+
+    fn infer_app(&mut self, _id: ExprId, base: ExprId, args: &[ExprId]) -> Ty {
+        let func = self.infer_expr_inner(base, Expectation::None);
+
+        if let TyKind::Func(func) = func.kind(self.db) {
+            for (&arg, &ty) in args.iter().zip(func.params.iter()) {
+                self.infer_expr(arg, Expectation::HasType(ty));
+            }
+
+            return func.ret;
+        }
+
+        let params = args
+            .iter()
+            .map(|a| self.infer_expr_inner(*a, Expectation::None))
+            .collect();
+        let ret = self.ctx.fresh_type(self.level, false);
+        let new_func = Ty::new(
+            self.db,
+            TyKind::Func(FuncType {
+                params,
+                ret,
+                env: self.ctx.fresh_type(self.level, false),
+                variadic: false,
+            }),
+        );
+
+        self.unify_types(func, new_func, base.into());
+        ret
+    }
+
+    fn infer_if(&mut self, id: ExprId, cond: ExprId, then: ExprId, else_: Option<ExprId>, expected: Expectation) -> Ty {
+        let expected = expected.adjust_for_branches(self.db);
+        let bool_type = self.bool_type();
+
+        self.infer_expr(cond, Expectation::HasType(bool_type));
+
+        let result_ty = self.ctx.fresh_type(self.level, false);
+        let then_ty = self.infer_expr_inner(then, expected);
+        let else_ty = match else_ {
+            | Some(else_) => self.infer_expr_inner(else_, expected),
+            | None => self.unit_type(),
+        };
+
+        self.unify_types(then_ty, result_ty, id.into());
+        self.unify_types(else_ty, result_ty, id.into());
+        result_ty
     }
 
     fn infer_block(&mut self, stmts: &[Stmt], expr: Option<ExprId>, expected: Expectation) -> Ty {

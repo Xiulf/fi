@@ -4,7 +4,7 @@ use arena::ArenaMap;
 use either::Either;
 use hir_def::body::Body;
 use hir_def::expr::ExprId;
-use hir_def::id::{HasModule, TraitId, TypeCtorId, TypeVarId, TypedItemId};
+use hir_def::id::{HasModule, TypeCtorId, TypeVarId, TypedItemId};
 use hir_def::lang_item::{self, LangItem};
 use hir_def::name::AsName;
 use hir_def::pat::PatId;
@@ -131,12 +131,18 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    pub fn any_int_trait(&self) -> Option<TraitId> {
-        self.lang_trait(lang_item::ANY_INT_TRAIT)
+    pub fn int_type(&self) -> Ty {
+        match self.lang_ctor(lang_item::INT_TYPE) {
+            | Some(int_type) => Ty::new(self.db, TyKind::Ctor(int_type)),
+            | None => self.error(),
+        }
     }
 
-    pub fn any_float_trait(&self) -> Option<TraitId> {
-        self.lang_trait(lang_item::ANY_FLOAT_TRAIT)
+    pub fn float_type(&self) -> Ty {
+        match self.lang_ctor(lang_item::FLOAT_TYPE) {
+            | Some(float_type) => Ty::new(self.db, TyKind::Ctor(float_type)),
+            | None => self.error(),
+        }
     }
 
     fn lang_item(&self, name: &'static str) -> Option<LangItem> {
@@ -148,9 +154,9 @@ impl<'db> Ctx<'db> {
         self.lang_item(name).and_then(LangItem::as_type_ctor)
     }
 
-    fn lang_trait(&self, name: &'static str) -> Option<TraitId> {
-        self.lang_item(name).and_then(LangItem::as_trait)
-    }
+    // fn lang_trait(&self, name: &'static str) -> Option<TraitId> {
+    //     self.lang_item(name).and_then(LangItem::as_trait)
+    // }
 
     pub fn constrain(&mut self, constraint: Constraint, origin: ConstraintOrigin) {
         self.constraints.push((constraint, origin));

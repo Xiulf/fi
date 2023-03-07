@@ -42,6 +42,7 @@ pub struct Jar(
     data::ValueData,
     data::value_data,
     data::TypeAliasData,
+    data::type_alias_data,
     data::TypeCtorData,
     data::type_ctor_data,
     data::CtorData,

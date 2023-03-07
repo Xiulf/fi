@@ -1,9 +1,20 @@
 module Prim =
 
+@lang = "kind-kind"
+foreign type Kind
+
 @lang = "type-kind"
 foreign type Type
 
-foreign type Int32
+@lang = "int-type"
+foreign type Int i
+
+@lang = "float-type"
+foreign type Float f
+
+foreign type ITag32
+
+type Int32 = Int ITag32
 
 foreign type Array len item
 infixr type 1 (*) = Array
@@ -13,14 +24,6 @@ type Unit = | Unit
 
 @lang = "pair-type"
 type Pair a b = | Pair a b
-
-@lang = "any-int-trait"
-trait AnyInt i
-
-@lang = "any-float-trait"
-trait AnyFloat f
-
-impl AnyInt Int32
 
 trait Termination t =
     report :: t -> ExitCode

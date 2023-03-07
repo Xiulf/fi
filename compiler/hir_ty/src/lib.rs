@@ -2,7 +2,7 @@
 
 use ctx::Expectation;
 use hir_def::expr::ExprId;
-use hir_def::id::{ContainerId, CtorId, ImplId, TraitId, TypeVarId, TypedItemId, ValueId};
+use hir_def::id::{ContainerId, CtorId, ImplId, TraitId, TypeAliasId, TypeVarId, TypedItemId, ValueId};
 use hir_def::name::Name;
 use hir_def::pat::PatId;
 use syntax::TextRange;
@@ -28,6 +28,7 @@ pub struct Jar(
     ty::Ty,
     infer,
     ctor_ty,
+    alias_ty,
     trait_types,
     impl_types,
     traits::trait_impls,
@@ -160,6 +161,20 @@ pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
         ),
         type_vars,
     )
+}
+
+#[salsa::tracked]
+pub fn alias_ty(db: &dyn Db, alias: TypeAliasId) -> GeneralizedType {
+    let data = hir_def::data::type_alias_data(db, alias);
+    let type_map = TypedItemId::from(alias).type_map(db).0;
+    let mut ctx = ctx::Ctx::new(db, alias.into());
+    let mut ctx = lower::LowerCtx::new(&mut ctx, type_map);
+    let ty = match data.ty(db) {
+        | Some(ty) => ctx.lower_type_ref(ty, true),
+        | None => ctx.error(),
+    };
+
+    GeneralizedType::new(ty, data.type_vars(db))
 }
 
 #[salsa::tracked]

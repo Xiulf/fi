@@ -193,7 +193,7 @@ fn value() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 
 fn type_ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     let header = type_header();
-    let body = choice((ctor().repeated().at_least(1).collect(), block(ctor())));
+    let body = choice((ctor().repeated().at_least(1).collect(), block(ctor()), typ()));
 
     attrs()
         .then(header)

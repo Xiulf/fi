@@ -3,7 +3,7 @@ use hir_def::type_ref::{TypeMap, TypeRef, TypeRefId};
 use triomphe::Arc;
 
 use crate::ctx::Ctx;
-use crate::ty::{FuncType, Ty, TyKind};
+use crate::ty::{FuncType, GeneralizedType, Ty, TyKind};
 
 pub struct LowerCtx<'db, 'ctx> {
     ctx: &'ctx mut Ctx<'db>,
@@ -32,6 +32,10 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
             | TypeRef::Path { def: Some(def), .. } => match def {
                 | TypeDefId::TypeVarId(id) => Ty::new(self.db, TyKind::Var(*id)),
                 | TypeDefId::TypeCtorId(id) => Ty::new(self.db, TyKind::Ctor(*id)),
+                | TypeDefId::TypeAliasId(id) => match crate::alias_ty(self.db, *id) {
+                    | GeneralizedType::Mono(ty) => ty,
+                    | GeneralizedType::Poly(_, ty) => ty, // @TODO: handle generics
+                },
                 | _ => todo!(),
             },
             | TypeRef::App { base, args } => {

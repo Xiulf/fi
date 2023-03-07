@@ -3,7 +3,7 @@ use hir_def::pat::{Pat, PatId};
 
 use crate::ctx::{BodyCtx, Expectation};
 use crate::lower::LowerCtx;
-use crate::ty::{Constraint, ConstraintOrigin, FuncType, Ty, TyKind};
+use crate::ty::{FuncType, Ty, TyKind};
 
 impl BodyCtx<'_, '_> {
     pub fn infer_pat(&mut self, id: PatId, expected: Expectation) -> Ty {
@@ -61,33 +61,15 @@ impl BodyCtx<'_, '_> {
             | Pat::Lit { lit } => match lit {
                 | Literal::Int(_) => {
                     let var = self.ctx.fresh_type(self.level, false);
+                    let int = self.int_type();
 
-                    if let Some(any_int) = self.any_int_trait() {
-                        self.constrain(
-                            Constraint {
-                                trait_id: any_int,
-                                args: Box::new([var]),
-                            },
-                            ConstraintOrigin::PatId(id),
-                        );
-                    }
-
-                    var
+                    Ty::new(self.db, TyKind::App(int, Box::new([var])))
                 },
                 | Literal::Float(_) => {
                     let var = self.ctx.fresh_type(self.level, false);
+                    let float = self.float_type();
 
-                    if let Some(any_float) = self.any_float_trait() {
-                        self.constrain(
-                            Constraint {
-                                trait_id: any_float,
-                                args: Box::new([var]),
-                            },
-                            ConstraintOrigin::PatId(id),
-                        );
-                    }
-
-                    var
+                    Ty::new(self.db, TyKind::App(float, Box::new([var])))
                 },
                 | l => todo!("{l:?}"),
             },

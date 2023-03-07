@@ -5,7 +5,7 @@ import Prim
 @main
 main =
     x = Some 4
-    b = 2
+    b = 2 :: Int32
     y = bind x (fn a -> pure (a + b))
     ()
 
@@ -26,10 +26,10 @@ trait Sub a =
 infixl 6 (+) = add
 infixl 6 (-) = sub
 
-impl Add a where AnyInt a =
+impl Add (Int a) =
     add = Intrinsics.iadd
 
-impl Sub a where AnyInt a =
+impl Sub (Int a) =
     sub = Intrinsics.isub
 
 
