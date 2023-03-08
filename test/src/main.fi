@@ -10,6 +10,11 @@ main =
     ()
 
 
+other = do
+    x <- Some 0
+    <- 2
+
+
 fib x :: Int32 =
     match x with
     | 0 -> 0

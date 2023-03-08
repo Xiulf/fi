@@ -237,6 +237,24 @@ impl<'db> Ctx<'db> {
 
                 self.alloc_expr(Expr::Block { stmts, expr }, syntax_ptr)
             },
+            | ast::Expr::Do(e) => {
+                let mut stmts = e.statements().collect::<Vec<_>>().into_iter().rev();
+                let mut expr = match stmts.next() {
+                    | Some(ast::Stmt::Expr(s)) => self.lower_expr_opt(s.expr()),
+                    | _ => {
+                        // TODO: report error
+                        self.missing_expr()
+                    },
+                };
+
+                // for stmt in stmts {
+                //     match stmt {
+                //         ast::Stmt::
+                //     }
+                // }
+
+                expr
+            },
             | ast::Expr::Match(e) => {
                 let (expr, branches, decision_tree) = self.lower_match(e);
 
@@ -295,7 +313,7 @@ impl<'db> Ctx<'db> {
 
                 Stmt::Let(pat, val)
             },
-            | ast::Stmt::Bind(_) => todo!(),
+            | ast::Stmt::Bind(_) => unreachable!(),
             | ast::Stmt::Expr(s) => Stmt::Expr(self.lower_expr_opt(s.expr())),
         }
     }

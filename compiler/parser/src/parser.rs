@@ -405,7 +405,7 @@ fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
         let lit = literal().to_node(EXPR_LITERAL);
         let hole = rtoken(UNDERSCORE).to_node(EXPR_HOLE);
         let unit = rtoken(L_PAREN).then(rtoken(R_PAREN)).to_event().to_node(EXPR_UNIT);
-        let block = block(stmt(expr.clone())).to_node(EXPR_BLOCK);
+        let block = block(stmt(expr.clone(), false)).to_node(EXPR_BLOCK);
         let parens = parens(expr.clone()).to_node(EXPR_PARENS);
         let atom = choice((ident, lit, hole, unit, block, parens)).pad_ws();
         let app = atom.clone().repeated().at_least(2).collect().to_node(EXPR_APP).pad_ws();
@@ -438,7 +438,11 @@ fn expr() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
             .to_event()
             .to_node(EXPR_LAMBDA)
             .pad_ws();
-        let base = choice((ifelse, match_, lambda, infix));
+        let do_block = rtoken(DO_KW)
+            .then(self::block(stmt(expr.clone(), true)))
+            .to_event()
+            .to_node(EXPR_DO);
+        let base = choice((ifelse, match_, lambda, do_block, infix));
 
         base.clone()
             .then(token(DBL_COLON))
@@ -465,17 +469,27 @@ fn match_arm(
         .to_node(MATCH_ARM)
 }
 
-fn stmt(
-    expr: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone,
-) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
+fn stmt<'a>(
+    expr: impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a,
+    allow_bind: bool,
+) -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone + 'a {
     let let_ = pat()
         .then(token(EQUALS))
         .then(expr.clone())
         .to_event()
         .to_node(STMT_LET);
+    let bind = opt(pat())
+        .then(token(LEFT_ARROW))
+        .then(expr.clone())
+        .to_event()
+        .to_node(STMT_BIND);
     let expr = expr.to_node(STMT_EXPR);
 
-    choice((let_, expr)).labelled("statement")
+    if allow_bind {
+        choice((let_, bind, expr)).boxed().labelled("statement")
+    } else {
+        choice((let_, expr)).boxed().labelled("statement")
+    }
 }
 
 fn parens<'a>(

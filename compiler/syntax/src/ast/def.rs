@@ -84,7 +84,7 @@ ast_node!(Expr {
     App(ExprApp, EXPR_APP),
     Method(ExprMethod, EXPR_METHOD),
     Block(ExprBlock, EXPR_BLOCK),
-    Try(ExprTry, EXPR_TRY),
+    Do(ExprDo, EXPR_DO),
     If(ExprIf, EXPR_IF),
     Match(ExprMatch, EXPR_MATCH),
     Return(ExprReturn, EXPR_RETURN),

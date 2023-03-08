@@ -628,7 +628,7 @@ impl ExprBlock {
     }
 }
 
-impl ExprTry {
+impl ExprDo {
     pub fn statements(&self) -> impl Iterator<Item = Stmt> + '_ {
         children(self.syntax())
     }
@@ -669,6 +669,16 @@ impl MatchGuard {
 
     pub fn expr(&self) -> Option<Expr> {
         children(self.syntax()).nth(1)
+    }
+}
+
+impl StmtBind {
+    pub fn pat(&self) -> Option<Pat> {
+        child(self.syntax())
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
     }
 }
 

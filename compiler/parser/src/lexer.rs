@@ -182,9 +182,12 @@ impl<'input> Lexer<'input> {
         }
 
         match self.current_text() {
+            | "do" => {
+                self.should_indent = true;
+                self.token(DO_KW)
+            },
             | "as" => self.token(AS_KW),
             | "const" => self.token(CONST_KW),
-            | "do" => self.token(DO_KW),
             | "else" => self.token(ELSE_KW),
             | "fn" => self.token(FN_KW),
             | "foreign" => self.token(FOREIGN_KW),
@@ -205,7 +208,6 @@ impl<'input> Lexer<'input> {
             | "static" => self.token(STATIC_KW),
             | "then" => self.token(THEN_KW),
             | "trait" => self.token(TRAIT_KW),
-            | "try" => self.token(TRY_KW),
             | "type" => self.token(TYPE_KW),
             | "where" => self.token(WHERE_KW),
             | "with" => self.token(WITH_KW),
