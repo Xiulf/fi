@@ -6,9 +6,7 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::UnsolvedConstraint;
-use crate::ty::{
-    Constraint, ConstraintOrigin, FloatKind, GeneralizedType, IntegerKind, PrimitiveType, Ty, TyKind, Unknown,
-};
+use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, Ty, TyKind, Unknown};
 use crate::unify::{UnifyBindings, UnifyResult};
 use crate::Db;
 
@@ -60,28 +58,39 @@ impl<'db> Ctx<'db> {
             .collect()
     }
 
-    fn default_literals(&mut self, ty: Ty) {
+    pub(crate) fn default_literals(&mut self, ty: Ty) {
         let int_type = self.int_type();
         let float_type = self.float_type();
-        let default_int_type = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Integer(IntegerKind::I32)));
-        let default_float_type = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Float(FloatKind::F64)));
+        let default_int_type = self.db.type_cache().default_int_ty(self.db);
+        let default_float_type = self.db.type_cache().default_float_ty(self.db);
+        let env = (int_type, default_int_type, float_type, default_float_type);
+        type Env = (Ty, Ty, Ty, Ty);
 
-        ty.traverse(self.db, &mut |ty| {
-            if let TyKind::App(base, args) = ty.kind(self.db) {
-                let base = self.resolve_type_shallow(*base);
-                let arg = self.resolve_type_shallow(args[0]);
+        fn rec(db: &dyn Db, bindings: &mut UnifyBindings, env: Env, ty: Ty) {
+            match ty.kind(db) {
+                | TyKind::Unknown(u, _) => match bindings.0.get(u) {
+                    | Some(t) => rec(db, bindings, env, *t),
+                    | None => {},
+                },
+                | TyKind::App(base, args) => {
+                    let base = bindings.resolve_type_shallow(db, *base);
+                    let arg = bindings.resolve_type_shallow(db, args[0]);
 
-                if base == int_type {
-                    if let TyKind::Unknown(u, false) = arg.kind(self.db) {
-                        self.subst.solved.0.insert(*u, default_int_type);
+                    if base == env.0 {
+                        if let TyKind::Unknown(u, false) = arg.kind(db) {
+                            bindings.0.insert(*u, env.1);
+                        }
+                    } else if base == env.2 {
+                        if let TyKind::Unknown(u, false) = arg.kind(db) {
+                            bindings.0.insert(*u, env.3);
+                        }
                     }
-                } else if base == float_type {
-                    if let TyKind::Unknown(u, false) = arg.kind(self.db) {
-                        self.subst.solved.0.insert(*u, default_float_type);
-                    }
-                }
+                },
+                | _ => {},
             }
-        })
+        }
+
+        ty.traverse(self.db, &mut |t| rec(self.db, &mut self.subst.solved, env, t))
     }
 
     fn try_solve_constraint<'a>(

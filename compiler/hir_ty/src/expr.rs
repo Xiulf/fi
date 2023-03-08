@@ -50,13 +50,7 @@ impl BodyCtx<'_, '_> {
             },
             | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),
-            | Expr::Path { def: Some(def), path } => {
-                use hir_def::display::HirDisplay;
-                let ty = self.infer_value_def_id(id, *def);
-                let ty = self.resolve_type_fully(ty);
-                tracing::debug!("{} ({def:?}) :: {}", path.display(self.db), ty.display(self.db));
-                ty
-            },
+            | Expr::Path { def: Some(def), .. } => self.infer_value_def_id(id, *def),
             | Expr::Lambda { env, params, body } => self.infer_lambda(id, env, params, *body, expected),
             | Expr::App { base, args } => self.infer_app(id, *base, args),
             | Expr::If { cond, then, else_ } => self.infer_if(id, *cond, *then, *else_, expected),

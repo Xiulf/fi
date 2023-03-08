@@ -1,4 +1,4 @@
-#![feature(trait_upcasting)]
+#![feature(trait_upcasting, let_chains)]
 
 use ctx::Expectation;
 use hir_def::expr::ExprId;

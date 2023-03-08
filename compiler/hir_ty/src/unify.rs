@@ -266,6 +266,20 @@ impl UnifyBindings {
                 | Some(t) => self.resolve_type_fully(db, t),
                 | None => t,
             },
+            | TyKind::App(_, args) if args.len() == 1 => {
+                if let TyKind::Primitive(prim) = args[0].kind(db) {
+                    let ctor = match prim {
+                        | PrimitiveType::Integer(i) => db.type_cache().ctor_for_int_kind(*i),
+                        | PrimitiveType::Float(f) => db.type_cache().ctor_for_float_kind(*f),
+                    };
+
+                    if let Some(ctor) = ctor {
+                        return Ty::new(db, TyKind::Ctor(ctor));
+                    }
+                }
+
+                t
+            },
             | _ => t,
         })
     }

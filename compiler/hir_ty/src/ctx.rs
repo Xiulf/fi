@@ -14,7 +14,9 @@ use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
 use rustc_hash::FxHashMap;
 use triomphe::Arc;
 
-use crate::ty::{Constraint, ConstraintOrigin, FloatKind, GeneralizedType, IntegerKind, Ty, TyKind, Unknown};
+use crate::ty::{
+    Constraint, ConstraintOrigin, FloatKind, GeneralizedType, IntegerKind, PrimitiveType, Ty, TyKind, Unknown,
+};
 use crate::unify::{Substitution, UnkLevel};
 use crate::Db;
 
@@ -53,10 +55,13 @@ pub struct Cache(RwLock<CacheInner>);
 
 #[derive(Default, Debug)]
 pub struct CacheInner {
-    pub ctor_int_kind: NoHashHashMap<TypeCtorId, Option<IntegerKind>>,
-    pub int_kind_ctor: FxHashMap<IntegerKind, TypeCtorId>,
-    pub ctor_float_kind: NoHashHashMap<TypeCtorId, Option<FloatKind>>,
-    pub float_kind_ctor: FxHashMap<FloatKind, TypeCtorId>,
+    default_int_ty: Option<Ty>,
+    default_float_ty: Option<Ty>,
+
+    ctor_int_kind: NoHashHashMap<TypeCtorId, Option<IntegerKind>>,
+    int_kind_ctor: FxHashMap<IntegerKind, TypeCtorId>,
+    ctor_float_kind: NoHashHashMap<TypeCtorId, Option<FloatKind>>,
+    float_kind_ctor: FxHashMap<FloatKind, TypeCtorId>,
 }
 
 impl InferResult {
@@ -95,6 +100,7 @@ impl<'db> Ctx<'db> {
     pub fn finish(mut self) -> Arc<InferResult> {
         let mut result = std::mem::replace(&mut self.result, InferResult::default(self.db));
         let mut finalize = |t: &mut Ty| {
+            self.default_literals(*t);
             *t = self.resolve_type_fully(*t);
         };
 
@@ -331,6 +337,22 @@ impl<'db> std::ops::DerefMut for BodyCtx<'db, '_> {
 impl Cache {
     pub fn clear(&self) {
         self.0.write().clear();
+    }
+
+    pub fn default_int_ty(&self, db: &dyn Db) -> Ty {
+        *self
+            .0
+            .write()
+            .default_int_ty
+            .get_or_insert_with(|| Ty::new(db, TyKind::Primitive(PrimitiveType::Integer(IntegerKind::I32))))
+    }
+
+    pub fn default_float_ty(&self, db: &dyn Db) -> Ty {
+        *self
+            .0
+            .write()
+            .default_float_ty
+            .get_or_insert_with(|| Ty::new(db, TyKind::Primitive(PrimitiveType::Float(FloatKind::F64))))
     }
 
     pub fn ctor_for_int_kind(&self, kind: IntegerKind) -> Option<TypeCtorId> {
