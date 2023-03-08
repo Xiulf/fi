@@ -5,7 +5,7 @@ import Prim
 @main
 main =
     x = Some 4
-    b = 2
+    b = 2 :: Int64
     y = bind x (fn a -> pure (a + b))
     ()
 

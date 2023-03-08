@@ -6,7 +6,9 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::UnsolvedConstraint;
-use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, Ty, TyKind, Unknown};
+use crate::ty::{
+    Constraint, ConstraintOrigin, FloatKind, GeneralizedType, IntegerKind, PrimitiveType, Ty, TyKind, Unknown,
+};
 use crate::unify::{UnifyBindings, UnifyResult};
 use crate::Db;
 
@@ -42,12 +44,44 @@ impl<'db> Ctx<'db> {
     fn try_solve_constraints<'a>(
         &mut self,
         constraints: impl IntoIterator<Item = &'a (Constraint, ConstraintOrigin)>,
-        _allow_defaults: bool,
+        allow_defaults: bool,
     ) -> Vec<&'a (Constraint, ConstraintOrigin)> {
         constraints
             .into_iter()
-            .filter_map(|constraint| self.try_solve_constraint(constraint))
+            .filter_map(|constraint| {
+                if allow_defaults {
+                    for &arg in constraint.0.args.iter() {
+                        self.default_literals(arg);
+                    }
+                }
+
+                self.try_solve_constraint(constraint)
+            })
             .collect()
+    }
+
+    fn default_literals(&mut self, ty: Ty) {
+        let int_type = self.int_type();
+        let float_type = self.float_type();
+        let default_int_type = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Integer(IntegerKind::I32)));
+        let default_float_type = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Float(FloatKind::F64)));
+
+        ty.traverse(self.db, &mut |ty| {
+            if let TyKind::App(base, args) = ty.kind(self.db) {
+                let base = self.resolve_type_shallow(*base);
+                let arg = self.resolve_type_shallow(args[0]);
+
+                if base == int_type {
+                    if let TyKind::Unknown(u, false) = arg.kind(self.db) {
+                        self.subst.solved.0.insert(*u, default_int_type);
+                    }
+                } else if base == float_type {
+                    if let TyKind::Unknown(u, false) = arg.kind(self.db) {
+                        self.subst.solved.0.insert(*u, default_float_type);
+                    }
+                }
+            }
+        })
     }
 
     fn try_solve_constraint<'a>(

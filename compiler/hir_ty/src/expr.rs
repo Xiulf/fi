@@ -13,7 +13,7 @@ impl BodyCtx<'_, '_> {
         if let Expectation::HasType(expected) = expected {
             self.unify_types(ty, expected, id.into());
 
-            if matches!(self.resolve_type_shallow(ty).kind(self.db), TyKind::Error) {
+            if let TyKind::Error = self.resolve_type_shallow(ty).kind(self.db) {
                 return expected;
             }
         }
@@ -30,7 +30,8 @@ impl BodyCtx<'_, '_> {
                 let mut lcx = LowerCtx::new(self, type_map);
                 let ty = lcx.lower_type_ref(*ty, false);
 
-                self.infer_expr(*expr, Expectation::HasType(ty))
+                self.infer_expr(*expr, Expectation::HasType(ty));
+                ty
             },
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
@@ -49,7 +50,13 @@ impl BodyCtx<'_, '_> {
             },
             | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),
-            | Expr::Path { def: Some(def), .. } => self.infer_value_def_id(id, *def),
+            | Expr::Path { def: Some(def), path } => {
+                use hir_def::display::HirDisplay;
+                let ty = self.infer_value_def_id(id, *def);
+                let ty = self.resolve_type_fully(ty);
+                tracing::debug!("{} ({def:?}) :: {}", path.display(self.db), ty.display(self.db));
+                ty
+            },
             | Expr::Lambda { env, params, body } => self.infer_lambda(id, env, params, *body, expected),
             | Expr::App { base, args } => self.infer_app(id, *base, args),
             | Expr::If { cond, then, else_ } => self.infer_if(id, *cond, *then, *else_, expected),

@@ -11,6 +11,7 @@ use hir_def::pat::PatId;
 use hir_def::type_ref::TypeRefId;
 use parking_lot::RwLock;
 use ra_ap_stdx::hash::{NoHashHashMap, NoHashHashSet};
+use rustc_hash::FxHashMap;
 use triomphe::Arc;
 
 use crate::ty::{Constraint, ConstraintOrigin, FloatKind, GeneralizedType, IntegerKind, Ty, TyKind, Unknown};
@@ -53,7 +54,9 @@ pub struct Cache(RwLock<CacheInner>);
 #[derive(Default, Debug)]
 pub struct CacheInner {
     pub ctor_int_kind: NoHashHashMap<TypeCtorId, Option<IntegerKind>>,
+    pub int_kind_ctor: FxHashMap<IntegerKind, TypeCtorId>,
     pub ctor_float_kind: NoHashHashMap<TypeCtorId, Option<FloatKind>>,
+    pub float_kind_ctor: FxHashMap<FloatKind, TypeCtorId>,
 }
 
 impl InferResult {
@@ -312,23 +315,16 @@ impl Cache {
         self.0.write().clear();
     }
 
+    pub fn ctor_for_int_kind(&self, kind: IntegerKind) -> Option<TypeCtorId> {
+        self.0.read().int_kind_ctor.get(&kind).copied()
+    }
+
+    pub fn ctor_for_float_kind(&self, kind: FloatKind) -> Option<TypeCtorId> {
+        self.0.read().float_kind_ctor.get(&kind).copied()
+    }
+
     pub fn ctor_int_kind(&self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<IntegerKind> {
-        self.0.write().ctor_int_kind(db, ctor_id)
-    }
-
-    pub fn ctor_float_kind(&self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<FloatKind> {
-        self.0.write().ctor_float_kind(db, ctor_id)
-    }
-}
-
-impl CacheInner {
-    fn clear(&mut self) {
-        self.ctor_int_kind.clear();
-        self.ctor_float_kind.clear();
-    }
-
-    fn ctor_int_kind(&mut self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<IntegerKind> {
-        if let Some(kind) = self.ctor_int_kind.get(&ctor_id) {
+        if let Some(kind) = self.0.read().ctor_int_kind.get(&ctor_id) {
             return *kind;
         }
 
@@ -354,12 +350,16 @@ impl CacheInner {
             | _ => None,
         });
 
-        self.ctor_int_kind.insert(ctor_id, kind);
+        if let Some(kind) = kind {
+            self.0.write().int_kind_ctor.insert(kind, ctor_id);
+        }
+
+        self.0.write().ctor_int_kind.insert(ctor_id, kind);
         kind
     }
 
-    fn ctor_float_kind(&mut self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<FloatKind> {
-        if let Some(kind) = self.ctor_float_kind.get(&ctor_id) {
+    pub fn ctor_float_kind(&self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<FloatKind> {
+        if let Some(kind) = self.0.read().ctor_float_kind.get(&ctor_id) {
             return *kind;
         }
 
@@ -375,8 +375,19 @@ impl CacheInner {
             | _ => None,
         });
 
-        self.ctor_float_kind.insert(ctor_id, kind);
+        if let Some(kind) = kind {
+            self.0.write().float_kind_ctor.insert(kind, ctor_id);
+        }
+
+        self.0.write().ctor_float_kind.insert(ctor_id, kind);
         kind
+    }
+}
+
+impl CacheInner {
+    fn clear(&mut self) {
+        self.ctor_int_kind.clear();
+        self.ctor_float_kind.clear();
     }
 }
 

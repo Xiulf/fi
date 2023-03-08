@@ -14,6 +14,7 @@ ena = "0.14.0"
 hir_def = { version = "0.1.0", path = "../hir_def" }
 parking_lot = "0.12.1"
 ra_ap_stdx = "0.0.149"
+rustc-hash = "1.1.0"
 salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
 syntax = { version = "0.1.0", path = "../syntax" }
 tracing = "0.1.37"

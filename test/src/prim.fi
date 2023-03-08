@@ -5,6 +5,7 @@ module Prim =
 @lang = "float-type" foreign type Float f
 
 @int = "i32" foreign type Int32
+@int = "i64" foreign type Int64
 
 foreign type Array len item
 infixr type 1 (*) = Array
