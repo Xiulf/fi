@@ -105,7 +105,7 @@ impl BodyCtx<'_, '_> {
     }
 
     fn infer_lambda(&mut self, id: ExprId, env: &[PatId], params: &[PatId], body: ExprId, expected: Expectation) -> Ty {
-        let env = env.iter().map(|&p| self.infer_pat(p, Expectation::None)).collect();
+        let env = env.iter().map(|&p| self.result.type_of_pat[p]).collect();
         let env = self.tuple_type(env);
 
         if let Expectation::HasType(ty) = expected {

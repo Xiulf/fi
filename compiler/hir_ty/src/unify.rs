@@ -1,4 +1,5 @@
 use diagnostics::Diagnostics;
+use hir_def::display::HirDisplay;
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
@@ -82,7 +83,6 @@ impl Ctx<'_> {
             },
             | (t1, t2) => {
                 // TODO: report error
-                use hir_def::display::HirDisplay;
                 tracing::error!("{} == {}", t1.display(self.db), t2.display(self.db));
                 todo!()
             },
@@ -116,6 +116,7 @@ impl Ctx<'_> {
     }
 
     pub(crate) fn unify_into(&self, t1: Ty, t2: Ty, bindings: &mut UnifyBindings) -> UnifyResult {
+        tracing::trace!("unify_into({}, {})", t1.display(self.db), t2.display(self.db));
         match (t1.kind(self.db), t2.kind(self.db)) {
             | (TyKind::Error, _) | (_, TyKind::Error) => UnifyResult::Ok,
             | (TyKind::Unknown(u1, _), TyKind::Unknown(u2, _)) if u1 == u2 => UnifyResult::Ok,
