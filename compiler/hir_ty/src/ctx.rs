@@ -119,35 +119,50 @@ impl<'db> Ctx<'db> {
     pub fn type_kind(&self) -> Ty {
         match self.lang_ctor(lang_item::TYPE_KIND) {
             | Some(type_kind) => Ty::new(self.db, TyKind::Ctor(type_kind)),
-            | None => self.error(),
+            | None => {
+                tracing::error!("unkown language item '{}'", lang_item::TYPE_KIND);
+                self.error()
+            },
         }
     }
 
     pub fn unit_type(&self) -> Ty {
         match self.lang_ctor(lang_item::UNIT_TYPE) {
             | Some(unit_type) => Ty::new(self.db, TyKind::Ctor(unit_type)),
-            | None => self.error(),
+            | None => {
+                tracing::error!("unkown language item '{}'", lang_item::UNIT_TYPE);
+                self.error()
+            },
         }
     }
 
     pub fn bool_type(&self) -> Ty {
         match self.lang_ctor(lang_item::BOOL_TYPE) {
             | Some(bool_type) => Ty::new(self.db, TyKind::Ctor(bool_type)),
-            | None => self.error(),
+            | None => {
+                tracing::error!("unkown language item '{}'", lang_item::BOOL_TYPE);
+                self.error()
+            },
         }
     }
 
     pub fn int_type(&self) -> Ty {
         match self.lang_ctor(lang_item::INT_TYPE) {
             | Some(int_type) => Ty::new(self.db, TyKind::Ctor(int_type)),
-            | None => self.error(),
+            | None => {
+                tracing::error!("unkown language item '{}'", lang_item::INT_TYPE);
+                self.error()
+            },
         }
     }
 
     pub fn float_type(&self) -> Ty {
         match self.lang_ctor(lang_item::FLOAT_TYPE) {
             | Some(float_type) => Ty::new(self.db, TyKind::Ctor(float_type)),
-            | None => self.error(),
+            | None => {
+                tracing::error!("unkown language item '{}'", lang_item::FLOAT_TYPE);
+                self.error()
+            },
         }
     }
 
@@ -175,7 +190,10 @@ impl<'db> Ctx<'db> {
             | _ => {
                 let pair_type = match self.lang_ctor(lang_item::PAIR_TYPE) {
                     | Some(pair_type) => Ty::new(self.db, TyKind::Ctor(pair_type)),
-                    | None => self.error(),
+                    | None => {
+                        tracing::error!("unkown language item '{}'", lang_item::PAIR_TYPE);
+                        self.error()
+                    },
                 };
 
                 let last = types.remove(types.len() - 1);
