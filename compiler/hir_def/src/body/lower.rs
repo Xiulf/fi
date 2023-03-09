@@ -529,7 +529,7 @@ impl<'db> Ctx<'db> {
                     .flat_map(|p| self.lower_pattern_stack(p))
                     .rev()
                     .collect::<Vec<_>>();
-                let args = fields.iter().map(|f| f.1).collect();
+                let args = fields.iter().rev().map(|f| f.1).collect();
                 let id = self.alloc_pat(Pat::Ctor { path, ctor, args }, syntax_ptr);
 
                 if let None = ctor {

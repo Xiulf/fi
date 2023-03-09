@@ -377,14 +377,7 @@ fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
             .to_node(PAT_BIND);
         let underscore = token(UNDERSCORE).to_node(PAT_WILDCARD);
         let unit = token(L_PAREN).then(token(R_PAREN)).to_event().to_node(PAT_UNIT);
-        let typed = pat
-            .clone()
-            .then(token(DBL_COLON))
-            .then(typ())
-            .to_event()
-            .to_node(PAT_TYPED)
-            .or(pat);
-        let parens = parens(typed).to_node(PAT_PARENS);
+        let parens = parens(pat.clone()).to_node(PAT_PARENS);
         let ctor = type_path().to_node(PAT_PATH);
         let literal = literal().to_node(PAT_LITERAL);
         let atom = choice((bind, underscore, unit, literal, parens, ctor.clone())).pad_ws();
@@ -393,8 +386,15 @@ fn pat() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
             .to_event()
             .to_node(PAT_APP)
             .pad_ws();
+        let typed = app
+            .clone()
+            .or(atom.clone())
+            .then(token(DBL_COLON))
+            .then(typ())
+            .to_event()
+            .to_node(PAT_TYPED);
 
-        app.or(atom)
+        choice((typed, app, atom))
     })
     .labelled("pattern")
 }

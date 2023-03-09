@@ -29,8 +29,10 @@ trait Add a =
 trait Sub a =
     sub :: a, a -> a
 
+
 infixl 6 (+) = add
 infixl 6 (-) = sub
+
 
 impl Add (Int a) =
     add = Intrinsics.iadd
@@ -43,11 +45,20 @@ type Option t =
     | None
     | Some t
 
+type List t =
+    | Nil
+    | Cons t (List t)
+
+
 trait Monoid m =
     pure :: t -> m t
 
 impl Monoid Option =
     pure = Some
+
+impl Monoid List =
+    pure x = Cons x Nil
+
 
 trait Monad m where Monoid m =
     @lang = "bind-fn"
@@ -58,3 +69,14 @@ impl Monad Option =
         match o with
         | Some x -> f x
         | None -> None
+
+impl Monad List =
+    bind l f =
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> append (f x) (bind xs f)
+
+append (a :: List a) (b :: List a) :: List a =
+    match a with
+    | Nil -> b
+    | Cons x xs -> Cons x (append xs b)
