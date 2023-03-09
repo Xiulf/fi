@@ -76,7 +76,7 @@ impl Monad List =
         | Nil -> Nil
         | Cons x xs -> append (f x) (bind xs f)
 
-append (a :: List a) (b :: List a) :: List a =
+append a b =
     match a with
     | Nil -> b
     | Cons x xs -> Cons x (append xs b)
