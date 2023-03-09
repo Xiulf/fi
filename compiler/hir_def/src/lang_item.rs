@@ -14,6 +14,8 @@ pub const PAIR_TYPE: &'static str = "pair-type";
 pub const INT_TYPE: &'static str = "int-type";
 pub const FLOAT_TYPE: &'static str = "int-type";
 
+pub const BIND_FN: &'static str = "bind-fn";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LangItem {
     ValueId(ValueId),
@@ -87,7 +89,13 @@ pub(crate) fn lib_lang_items(db: &dyn Db, lib: LibId) -> Arc<LangItems> {
                 | ItemId::ValueId(id) => lang_items.collect(db, id.into(), LangItem::ValueId),
                 | ItemId::TypeAliasId(id) => lang_items.collect(db, id.into(), LangItem::TypeAliasId),
                 | ItemId::TypeCtorId(id) => lang_items.collect(db, id.into(), LangItem::TypeCtorId),
-                | ItemId::TraitId(id) => lang_items.collect(db, id.into(), LangItem::TraitId),
+                | ItemId::TraitId(id) => {
+                    lang_items.collect(db, id.into(), LangItem::TraitId);
+
+                    for (_, &child) in crate::data::trait_data(db, id).items(db) {
+                        lang_items.collect(db, child.into(), LangItem::ValueId);
+                    }
+                },
                 | _ => {},
             }
         }

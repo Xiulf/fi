@@ -79,6 +79,27 @@ impl Ctx<'_> {
         items
     }
 
+    fn lower_assoc_item(&mut self, item: ast::ItemValue) -> Option<Vec<LocalItemTreeId<Value>>> {
+        let attrs = RawAttrs::new(self.db, &item);
+        let items = self.lower_value(item)?;
+
+        if !attrs.is_empty() {
+            for item in items.iter() {
+                self.tree.attrs.insert((*item).into(), attrs.clone());
+            }
+        }
+
+        Some(
+            items
+                .into_iter()
+                .map(|it| match it {
+                    | Item::Value(v) => v,
+                    | _ => unreachable!(),
+                })
+                .collect(),
+        )
+    }
+
     fn lower_module(&mut self, module: ast::ItemModule) -> Option<Vec<Item>> {
         let ast_id = self.ast_map.ast_id(&module);
         let name = Path::from_ast(self.db, module.name()?).as_name()?;
@@ -194,12 +215,8 @@ impl Ctx<'_> {
         let name = trait_.name()?.as_name(self.db);
         let items = trait_
             .items()
-            .filter_map(|it| self.lower_value(it))
+            .filter_map(|it| self.lower_assoc_item(it))
             .flatten()
-            .map(|it| match it {
-                | Item::Value(it) => it,
-                | _ => unreachable!(),
-            })
             .collect();
 
         let data = Trait { ast_id, name, items };
@@ -212,12 +229,8 @@ impl Ctx<'_> {
         let trait_ = Path::from_ast(self.db, impl_.trait_()?);
         let items = impl_
             .items()
-            .filter_map(|it| self.lower_value(it))
+            .filter_map(|it| self.lower_assoc_item(it))
             .flatten()
-            .map(|it| match it {
-                | Item::Value(it) => it,
-                | _ => unreachable!(),
-            })
             .collect();
 
         let data = Impl { ast_id, trait_, items };

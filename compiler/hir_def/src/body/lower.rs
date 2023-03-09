@@ -238,22 +238,107 @@ impl<'db> Ctx<'db> {
                 self.alloc_expr(Expr::Block { stmts, expr }, syntax_ptr)
             },
             | ast::Expr::Do(e) => {
-                let mut stmts = e.statements().collect::<Vec<_>>().into_iter().rev();
-                let mut expr = match stmts.next() {
-                    | Some(ast::Stmt::Expr(s)) => self.lower_expr_opt(s.expr()),
+                let mut stmts = e.statements().collect::<Vec<_>>().into_iter().rev().peekable();
+                let mut new_stmts = Vec::new();
+                let mut expr = match stmts.peek() {
+                    | Some(ast::Stmt::Expr(s)) => {
+                        let e = s.expr();
+                        stmts.next().unwrap();
+                        e
+                    },
                     | _ => {
                         // TODO: report error
-                        self.missing_expr()
+                        None
                     },
                 };
 
-                // for stmt in stmts {
-                //     match stmt {
-                //         ast::Stmt::
-                //     }
-                // }
+                let mut bounds = Vec::new();
 
-                expr
+                for stmt in stmts {
+                    match stmt {
+                        | ast::Stmt::Expr(_) => new_stmts.push(stmt),
+                        | ast::Stmt::Let(_) => new_stmts.push(stmt),
+                        | ast::Stmt::Bind(s) => {
+                            let p = s.pat();
+                            let e = s.expr();
+                            bounds.push((s, p, e, new_stmts.drain(..).rev().collect::<Vec<_>>()));
+                        },
+                    }
+                }
+
+                let last = bounds.len() - 1;
+                let mut end_expr = None;
+                let bounds = bounds
+                    .into_iter()
+                    .rev()
+                    .enumerate()
+                    .map(|(i, (s, p, e, rest))| {
+                        let e = self.lower_expr_opt(e);
+
+                        self.lambdas.push(Vec::new());
+                        self.scopes.push(Scope {
+                            boundary: true,
+                            ..Scope::default()
+                        });
+
+                        let params: Box<[_]> = match p {
+                            | Some(p) => Box::new([self.lower_pat(p)]),
+                            | None => Box::new([self.alloc_pat_desugared(Pat::Wildcard)]),
+                        };
+
+                        let (stmts, end) = self.lower_block(rest.into_iter());
+                        let mut stmts = stmts.into_vec();
+
+                        if let Some(end) = end {
+                            stmts.push(Stmt::Expr(end));
+                        }
+
+                        if i == last {
+                            end_expr = expr.take().map(|e| self.lower_expr(e));
+                        }
+
+                        let env = self.lambdas.pop().unwrap().into_boxed_slice();
+                        let stmts = stmts.into_boxed_slice();
+
+                        (s, e, env, params, stmts)
+                    })
+                    .collect::<Vec<_>>();
+
+                let lib = self.value.container(self.db).module(self.db).lib(self.db);
+                let bind = crate::lang_item::query(self.db, lib, crate::lang_item::BIND_FN);
+                let bind = bind.and_then(|b| b.as_value()).map(Into::into);
+                let mk_bind = move |this: &mut Ctx, expr: ExprId, lam: ExprId, s: ast::StmtBind| {
+                    let bind = this.make_expr(
+                        Expr::Path {
+                            path: Path::default(),
+                            def: bind,
+                        },
+                        ExprSrc::Bind(AstPtr::new(&s)),
+                    );
+
+                    this.make_expr(
+                        Expr::App {
+                            base: bind,
+                            args: Box::new([expr, lam]),
+                        },
+                        ExprSrc::Bind(AstPtr::new(&s)),
+                    )
+                };
+
+                bounds
+                    .into_iter()
+                    .rfold(end_expr, |end, (s, expr, env, params, stmts)| {
+                        let body = if let Some(end) = end && stmts.is_empty() {
+                            end
+                        } else {
+                            self.alloc_expr_desugared(Expr::Block { stmts, expr: end })
+                        };
+
+                        let lam = self.make_expr(Expr::Lambda { env, params, body }, ExprSrc::Bind(AstPtr::new(&s)));
+
+                        Some(mk_bind(self, expr, lam, s))
+                    })
+                    .unwrap_or_else(|| self.missing_expr())
             },
             | ast::Expr::Match(e) => {
                 let (expr, branches, decision_tree) = self.lower_match(e);

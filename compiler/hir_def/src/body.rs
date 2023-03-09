@@ -34,6 +34,7 @@ pub enum ExprSrc {
     Single(AstPtr<syntax::ast::Expr>),
     Infix(AstPtr<syntax::ast::Expr>, AstPtr<syntax::ast::Expr>),
     Operator(AstPtr<syntax::ast::Path>),
+    Bind(AstPtr<syntax::ast::StmtBind>),
     Synthetic(ValueId),
 }
 
@@ -203,6 +204,7 @@ impl ExprSrc {
             | Self::Single(ptr) => ptr.syntax_node_ptr().range(),
             | Self::Infix(a, b) => a.syntax_node_ptr().range().cover(b.syntax_node_ptr().range()),
             | Self::Operator(ptr) => ptr.syntax_node_ptr().range(),
+            | Self::Bind(ptr) => ptr.syntax_node_ptr().range(),
             | Self::Synthetic(_) => unreachable!(),
         }
     }

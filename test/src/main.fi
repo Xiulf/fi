@@ -11,8 +11,9 @@ main =
 
 
 other = do
-    x <- Some 0
-    <- 2
+    x <- pure 0
+    <- pure 4
+    pure x
 
 
 fib x :: Int32 =
@@ -49,6 +50,7 @@ impl Monoid Option =
     pure = Some
 
 trait Monad m where Monoid m =
+    @lang = "bind-fn"
     bind :: m a, (a -> m b) -> m b
 
 impl Monad Option =
