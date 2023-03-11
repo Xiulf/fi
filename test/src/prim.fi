@@ -1,13 +1,29 @@
 module Prim =
 
-@lang = "type-kind"  foreign type Type
-@lang = "int-type"   foreign type Int i
-@lang = "float-type" foreign type Float f
+@lang = "kind-kind"      foreign type Kind     :: Kind
+@lang = "type-kind"      foreign type Type     :: Kind
+@lang = "int-kind"       foreign type TypeInt  :: Kind
+@lang = "int-tag-kind"   foreign type IntTag   :: Kind
+@lang = "float-tag-kind" foreign type FloatTag :: Kind
 
-@int = "i32" foreign type Int32
-@int = "i64" foreign type Int64
+@lang = "int-type"   foreign type Int   :: IntTag -> Type
+@lang = "float-type" foreign type Float :: FloatTag -> Type
 
-foreign type Array len item
+@int_tag = "i8"   foreign type Int8   :: Type
+@int_tag = "i16"  foreign type Int16  :: Type
+@int_tag = "i32"  foreign type Int32  :: Type
+@int_Tag = "i64"  foreign type Int64  :: Type
+@int_Tag = "i128" foreign type Int128 :: Type
+@int_tag = "u8"   foreign type Uint8   :: Type
+@int_tag = "u16"  foreign type Uint16  :: Type
+@int_tag = "u32"  foreign type Uint32  :: Type
+@int_Tag = "u64"  foreign type Uint64  :: Type
+@int_Tag = "u128" foreign type Uint128 :: Type
+
+@float_tag = "f32" foreign type Float32 :: Type
+@float_tag = "f64" foreign type Float64 :: Type
+
+foreign type Array :: TypeInt -> Type -> Type
 infixr type 1 (*) = Array
 
 @lang = "unit-type"
@@ -15,6 +31,8 @@ type Unit = | Unit
 
 @lang = "pair-type"
 type Pair a b = | Pair a b
+
+infixr 0 (,) = Pair
 
 trait Termination t =
     report :: t -> ExitCode

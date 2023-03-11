@@ -21,6 +21,10 @@ impl BodyCtx<'_, '_> {
     }
 
     fn infer_pat_inner(&mut self, id: PatId, expected: Expectation) -> Ty {
+        if let Some(&ty) = self.result.type_of_pat.get(id) {
+            return ty;
+        }
+
         let body = self.body.clone();
         let ty = match &body[id] {
             | Pat::Missing => self.error(),
@@ -60,13 +64,15 @@ impl BodyCtx<'_, '_> {
             },
             | Pat::Lit { lit } => match lit {
                 | Literal::Int(_) => {
-                    let var = self.ctx.fresh_type(self.level, false);
+                    let kind = self.int_tag_kind();
+                    let var = self.ctx.fresh_type_with_kind(self.level, kind, false);
                     let int = self.int_type();
 
                     Ty::new(self.db, TyKind::App(int, Box::new([var])))
                 },
                 | Literal::Float(_) => {
-                    let var = self.ctx.fresh_type(self.level, false);
+                    let kind = self.float_tag_kind();
+                    let var = self.ctx.fresh_type_with_kind(self.level, kind, false);
                     let float = self.float_type();
 
                     Ty::new(self.db, TyKind::App(float, Box::new([var])))

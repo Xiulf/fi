@@ -339,8 +339,19 @@ impl ItemType {
         child(self.syntax())
     }
 
+    pub fn foreign_token(&self) -> Option<&SyntaxToken> {
+        token(self.syntax(), SyntaxKind::FOREIGN_KW)
+    }
+
+    pub fn kind(&self) -> Option<Type> {
+        self.foreign_token().and_then(|_| child(self.syntax()))
+    }
+
     pub fn ty(&self) -> Option<Type> {
-        child(self.syntax())
+        match self.foreign_token() {
+            | None => child(self.syntax()),
+            | Some(_) => None,
+        }
     }
 
     pub fn ctors(&self) -> impl Iterator<Item = Ctor> + '_ {

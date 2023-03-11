@@ -62,6 +62,7 @@ pub struct TypeCtorData {
     pub attrs: Attrs,
     #[return_ref]
     pub type_vars: Box<[TypeVarId]>,
+    pub kind: Option<TypeRefId>,
 }
 
 #[salsa::tracked]
@@ -134,11 +135,12 @@ pub fn type_ctor_data(db: &dyn Db, id: TypeCtorId) -> TypeCtorData {
     let it = id.it(db);
     let item_tree = crate::item_tree::query(db, it.file);
     // let data = &item_tree[it.value];
-    // let source = id.source(db).value;
-    let (_, _src_map, type_vars) = TypedItemId::from(id).type_map(db);
+    let source = id.source(db).value;
+    let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
     let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let kind = source.kind().and_then(|t| src_map.typ_for_src(AstPtr::new(&t)));
 
-    TypeCtorData::new(db, id, attrs, type_vars)
+    TypeCtorData::new(db, id, attrs, type_vars, kind)
 }
 
 #[salsa::tracked]

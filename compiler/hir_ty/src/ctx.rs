@@ -122,54 +122,36 @@ impl<'db> Ctx<'db> {
         Ty::new(self.db, TyKind::Error)
     }
 
+    pub fn kind_kind(&self) -> Ty {
+        self.lang_ty(lang_item::KIND_KIND)
+    }
+
     pub fn type_kind(&self) -> Ty {
-        match self.lang_ctor(lang_item::TYPE_KIND) {
-            | Some(type_kind) => Ty::new(self.db, TyKind::Ctor(type_kind)),
-            | None => {
-                tracing::error!("unkown language item '{}'", lang_item::TYPE_KIND);
-                self.error()
-            },
-        }
+        self.lang_ty(lang_item::TYPE_KIND)
+    }
+
+    pub fn int_tag_kind(&self) -> Ty {
+        self.lang_ty(lang_item::INT_TAG_KIND)
+    }
+
+    pub fn float_tag_kind(&self) -> Ty {
+        self.lang_ty(lang_item::FLOAT_TAG_KIND)
     }
 
     pub fn unit_type(&self) -> Ty {
-        match self.lang_ctor(lang_item::UNIT_TYPE) {
-            | Some(unit_type) => Ty::new(self.db, TyKind::Ctor(unit_type)),
-            | None => {
-                tracing::error!("unkown language item '{}'", lang_item::UNIT_TYPE);
-                self.error()
-            },
-        }
+        self.lang_ty(lang_item::UNIT_TYPE)
     }
 
     pub fn bool_type(&self) -> Ty {
-        match self.lang_ctor(lang_item::BOOL_TYPE) {
-            | Some(bool_type) => Ty::new(self.db, TyKind::Ctor(bool_type)),
-            | None => {
-                tracing::error!("unkown language item '{}'", lang_item::BOOL_TYPE);
-                self.error()
-            },
-        }
+        self.lang_ty(lang_item::BOOL_TYPE)
     }
 
     pub fn int_type(&self) -> Ty {
-        match self.lang_ctor(lang_item::INT_TYPE) {
-            | Some(int_type) => Ty::new(self.db, TyKind::Ctor(int_type)),
-            | None => {
-                tracing::error!("unkown language item '{}'", lang_item::INT_TYPE);
-                self.error()
-            },
-        }
+        self.lang_ty(lang_item::INT_TYPE)
     }
 
     pub fn float_type(&self) -> Ty {
-        match self.lang_ctor(lang_item::FLOAT_TYPE) {
-            | Some(float_type) => Ty::new(self.db, TyKind::Ctor(float_type)),
-            | None => {
-                tracing::error!("unkown language item '{}'", lang_item::FLOAT_TYPE);
-                self.error()
-            },
-        }
+        self.lang_ty(lang_item::FLOAT_TYPE)
     }
 
     fn lang_item(&self, name: &'static str) -> Option<LangItem> {
@@ -179,6 +161,16 @@ impl<'db> Ctx<'db> {
 
     fn lang_ctor(&self, name: &'static str) -> Option<TypeCtorId> {
         self.lang_item(name).and_then(LangItem::as_type_ctor)
+    }
+
+    fn lang_ty(&self, name: &'static str) -> Ty {
+        match self.lang_ctor(name) {
+            | Some(ty) => Ty::new(self.db, TyKind::Ctor(ty)),
+            | None => {
+                tracing::error!("unkown language item '{}'", name);
+                self.error()
+            },
+        }
     }
 
     // fn lang_trait(&self, name: &'static str) -> Option<TraitId> {
@@ -370,7 +362,7 @@ impl Cache {
 
         let text = hir_def::data::type_ctor_data(db, ctor_id)
             .attrs(db)
-            .by_key("int")
+            .by_key("int_tag")
             .string_value()
             .next();
 
@@ -405,7 +397,7 @@ impl Cache {
 
         let text = hir_def::data::type_ctor_data(db, ctor_id)
             .attrs(db)
-            .by_key("float")
+            .by_key("float_tag")
             .string_value()
             .next();
 

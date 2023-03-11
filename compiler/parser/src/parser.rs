@@ -207,7 +207,10 @@ fn type_ctor() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
 fn foreign_type() -> impl Parser<SyntaxKind, Event, Error = ParseError> + Clone {
     attrs()
         .then(token(FOREIGN_KW))
-        .then(type_header())
+        .then(token(TYPE_KW))
+        .then(type_name())
+        .then(token(DBL_COLON))
+        .then(typ())
         .to_event()
         .to_node(ITEM_TYPE)
         .labelled("type definition")

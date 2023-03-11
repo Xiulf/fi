@@ -12,7 +12,7 @@ const RECURSION_LIMIT: u32 = 32;
 #[derive(Default, Debug)]
 pub struct Substitution {
     pub(crate) solved: UnifyBindings,
-    unsolved: NoHashHashMap<Unknown, (UnkLevel, Ty)>,
+    pub(crate) unsolved: NoHashHashMap<Unknown, (UnkLevel, Ty)>,
     next_unknown: u32,
 }
 
@@ -110,7 +110,7 @@ impl Ctx<'_> {
         }
     }
 
-    fn unify(&mut self, t1: Ty, t2: Ty) -> UnifyResult {
+    pub(crate) fn unify(&mut self, t1: Ty, t2: Ty) -> UnifyResult {
         let bindings = unsafe { std::mem::transmute(&mut self.subst.solved) };
         self.unify_into(t1, t2, bindings)
     }
@@ -178,7 +178,7 @@ impl Ctx<'_> {
     fn unify_unknown(&self, u: Unknown, t1: Ty, t2: Ty, bindings: &mut UnifyBindings) -> UnifyResult {
         match self.find_binding(u, bindings) {
             | Ok(t) => self.unify_into(t, t2, bindings),
-            | Err((level, _kind)) => {
+            | Err((level, kind)) => {
                 let b = bindings.resolve_type_shallow(self.db, t2);
                 let b = self.resolve_type_shallow(b);
 
@@ -190,7 +190,11 @@ impl Ctx<'_> {
                     return UnifyResult::RecursiveType(b);
                 }
 
-                // TODO: check kind
+                let kind_result = self.check_kind(b, kind, &mut UnifyBindings::default());
+
+                if kind_result != UnifyResult::Ok {
+                    // return kind_result;
+                }
 
                 bindings.0.insert(u, b);
                 UnifyResult::Ok

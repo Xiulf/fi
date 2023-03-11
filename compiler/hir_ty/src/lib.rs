@@ -1,8 +1,11 @@
 #![feature(trait_upcasting, let_chains)]
 
+use arena::ArenaMap;
 use ctx::Expectation;
 use hir_def::expr::ExprId;
-use hir_def::id::{ContainerId, CtorId, ImplId, TraitId, TypeAliasId, TypeVarId, TypedItemId, ValueId};
+use hir_def::id::{
+    ContainerId, CtorId, ImplId, LocalCtorId, TraitId, TypeAliasId, TypeCtorId, TypeVarId, TypedItemId, ValueId,
+};
 use hir_def::name::Name;
 use hir_def::pat::PatId;
 use syntax::TextRange;
@@ -13,6 +16,7 @@ use vfs::InFile;
 pub mod ctx;
 pub mod diagnostics;
 pub mod expr;
+pub mod kind;
 pub mod lower;
 pub mod pat;
 pub mod traits;
@@ -27,6 +31,7 @@ pub trait Db: hir_def::Db + salsa::DbWithJar<Jar> {
 pub struct Jar(
     ty::Ty,
     infer,
+    type_ctor_ty,
     ctor_ty,
     alias_ty,
     trait_types,
@@ -125,17 +130,28 @@ fn impl_ty(db: &dyn Db, id: ImplId, name: Name) -> Option<(GeneralizedType, Vec<
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct TypeCtorResult {
+    pub kind: Ty,
+    pub ctors: ArenaMap<LocalCtorId, GeneralizedType>,
+}
+
 #[salsa::tracked]
-pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
-    let type_ctor = ctor.type_ctor(db);
-    let type_ctor_data = hir_def::data::type_ctor_data(db, type_ctor);
-    let data = hir_def::data::ctor_data(db, ctor);
-    let types = data.types(db);
-    let type_vars = type_ctor_data.type_vars(db);
+pub fn type_ctor_ty(db: &dyn Db, type_ctor: TypeCtorId) -> Arc<TypeCtorResult> {
+    let it = type_ctor.it(db);
+    let item_tree = hir_def::item_tree::query(db, it.file);
+    let data = hir_def::data::type_ctor_data(db, type_ctor);
+    let type_vars = data.type_vars(db);
+    let type_map = TypedItemId::from(type_ctor).type_map(db).0;
+    let mut ctx = ctx::Ctx::new(db, type_ctor.into());
+    let mut lcx = lower::LowerCtx::new(&mut ctx, type_map);
+    let kind = data
+        .kind(db)
+        .map(|k| lcx.lower_type_ref(k, true))
+        .unwrap_or_else(|| lcx.ctx.fresh_type(lcx.ctx.level, false));
+
+    let mut ctors = ArenaMap::default();
     let ty = Ty::new(db, TyKind::Ctor(type_ctor));
-    let type_map = TypedItemId::from(ctor).type_map(db).0;
-    let mut ctx = ctx::Ctx::new(db, ctor.into());
-    let mut ctx = lower::LowerCtx::new(&mut ctx, type_map);
     let ty = if type_vars.is_empty() {
         ty
     } else {
@@ -143,24 +159,37 @@ pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
         Ty::new(db, TyKind::App(ty, args))
     };
 
-    if types.is_empty() {
-        return GeneralizedType::new(ty, type_vars);
+    for &ctor in item_tree[it.value].ctors.iter() {
+        let ctor_id = CtorId::new(db, type_ctor, ctor);
+        let data = hir_def::data::ctor_data(db, ctor_id);
+        let types = data.types(db);
+        let ty = if types.is_empty() {
+            ty
+        } else {
+            let params = types.iter().map(|&t| lcx.lower_type_ref(t, true)).collect();
+
+            Ty::new(
+                db,
+                TyKind::Func(FuncType {
+                    params,
+                    ret: ty,
+                    env: lcx.unit_type(),
+                    variadic: false,
+                }),
+            )
+        };
+
+        ctors.insert(ctor, GeneralizedType::new(ty, type_vars));
     }
 
-    let params = types.iter().map(|&t| ctx.lower_type_ref(t, false)).collect();
+    let kind = ctx.resolve_type_fully(kind);
 
-    GeneralizedType::new(
-        Ty::new(
-            db,
-            TyKind::Func(FuncType {
-                params,
-                ret: ty,
-                env: ctx.unit_type(),
-                variadic: false,
-            }),
-        ),
-        type_vars,
-    )
+    Arc::new(TypeCtorResult { kind, ctors })
+}
+
+#[salsa::tracked]
+pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
+    type_ctor_ty(db, ctor.type_ctor(db)).ctors[ctor.local_id(db)].clone()
 }
 
 #[salsa::tracked]

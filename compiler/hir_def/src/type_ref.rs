@@ -178,6 +178,10 @@ fn type_map_for_type_ctor(ctx: &mut Ctx, src: SyntaxNode) {
         alloc_type_vars(ctx, type_vars);
     }
 
+    if let Some(kind) = src.kind() {
+        ctx.lower_type(kind);
+    }
+
     for ctor in src.ctors() {
         for ty in ctor.types() {
             ctx.lower_type(ty);

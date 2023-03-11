@@ -6,7 +6,7 @@ use crate::ctx::Ctx;
 use crate::ty::{FuncType, GeneralizedType, Ty, TyKind};
 
 pub struct LowerCtx<'db, 'ctx> {
-    ctx: &'ctx mut Ctx<'db>,
+    pub(crate) ctx: &'ctx mut Ctx<'db>,
     type_map: Arc<TypeMap>,
 }
 

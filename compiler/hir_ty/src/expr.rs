@@ -22,6 +22,10 @@ impl BodyCtx<'_, '_> {
     }
 
     fn infer_expr_inner(&mut self, id: ExprId, expected: Expectation) -> Ty {
+        if let Some(&ty) = self.result.type_of_expr.get(id) {
+            return ty;
+        }
+
         let body = self.body.clone();
         let ty = match &body[id] {
             | Expr::Missing => self.error(),
@@ -35,13 +39,15 @@ impl BodyCtx<'_, '_> {
             },
             | Expr::Lit { lit } => match lit {
                 | Literal::Int(_) => {
-                    let var = self.ctx.fresh_type(self.level, false);
+                    let kind = self.int_tag_kind();
+                    let var = self.ctx.fresh_type_with_kind(self.level, kind, false);
                     let int = self.int_type();
 
                     Ty::new(self.db, TyKind::App(int, Box::new([var])))
                 },
                 | Literal::Float(_) => {
-                    let var = self.ctx.fresh_type(self.level, false);
+                    let kind = self.float_tag_kind();
+                    let var = self.ctx.fresh_type_with_kind(self.level, kind, false);
                     let float = self.float_type();
 
                     Ty::new(self.db, TyKind::App(float, Box::new([var])))
@@ -62,8 +68,6 @@ impl BodyCtx<'_, '_> {
                 let expected = expected.adjust_for_branches(self.db);
                 let pred = self.infer_expr(*expr, Expectation::None);
                 let res = self.ctx.fresh_type(self.level, false);
-
-                // self.infer_decision_tree(decision_tree, Expectation::HasType(pred));
 
                 for &(pat, branch) in branches.iter() {
                     self.infer_pat(pat, Expectation::HasType(pred));
