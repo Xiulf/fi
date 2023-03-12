@@ -206,7 +206,7 @@ pub fn alias_ty(db: &dyn Db, alias: TypeAliasId) -> GeneralizedType {
     GeneralizedType::new(ty, data.type_vars(db))
 }
 
-#[salsa::tracked]
+#[salsa::tracked(return_ref)]
 pub fn trait_types(db: &dyn Db, trait_id: TraitId) -> (Box<[Ty]>, Box<[Constraint]>) {
     let data = hir_def::data::trait_data(db, trait_id);
     // let type_map = TypedItemId::TraitId(trait_id).type_map(db).0;
@@ -225,7 +225,7 @@ pub fn trait_types(db: &dyn Db, trait_id: TraitId) -> (Box<[Ty]>, Box<[Constrain
     (types, constraints)
 }
 
-#[salsa::tracked]
+#[salsa::tracked(return_ref)]
 pub fn impl_types(db: &dyn Db, impl_id: ImplId) -> (Box<[Ty]>, Box<[Constraint]>) {
     let data = hir_def::data::impl_data(db, impl_id);
     let type_map = TypedItemId::ImplId(impl_id).type_map(db).0;
@@ -250,11 +250,11 @@ fn all_type_vars(db: &dyn Db, id: ValueId) -> Box<[TypeVarId]> {
 fn all_constraints(db: &dyn Db, id: ValueId) -> Vec<Constraint> {
     let parent = match id.container(db) {
         | ContainerId::ModuleId(_) => return Vec::new(),
-        | ContainerId::TraitId(id) => trait_types(db, id).1,
-        | ContainerId::ImplId(id) => impl_types(db, id).1,
+        | ContainerId::TraitId(id) => &trait_types(db, id).1,
+        | ContainerId::ImplId(id) => &impl_types(db, id).1,
     };
 
-    [&*parent].concat()
+    [&**parent].concat()
 }
 
 impl TyOrigin {

@@ -2,8 +2,15 @@
 
 use base_db::libs::LibId;
 use diagnostics::{DiagnosticSink, Diagnostics};
+use hir_def::attrs::Attrs;
+use hir_def::body::Body;
 use hir_def::data;
-use hir_def::id::ItemId;
+use hir_def::id::{
+    CtorId, FixityId, HasModule, ImplId, ItemId, ModuleId, TraitId, TypeAliasId, TypeCtorId, TypeVarId, ValueId,
+};
+use hir_def::item_tree::FixityKind;
+use hir_ty::ty::{Constraint, Generalized, GeneralizedType, Ty};
+use triomphe::Arc;
 
 pub trait Db: hir_ty::Db + salsa::DbWithJar<Jar> {}
 
@@ -20,22 +27,56 @@ pub struct Lib {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Module {
-    data: data::ModuleData,
+    id: ModuleId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Item {
+    Fixity(Fixity),
     Value(Value),
+    TypeCtor(TypeCtor),
+    TypeAlias(TypeAlias),
+    Trait(Trait),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Fixity {
+    id: FixityId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Value {
-    data: data::ValueData,
+    id: ValueId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ctor {
+    id: CtorId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeCtor {
+    id: TypeCtorId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeAlias {
+    id: TypeAliasId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Trait {
+    id: TraitId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Impl {
-    data: data::ImplData,
+    id: ImplId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeVar {
+    id: TypeVarId,
 }
 
 #[salsa::tracked]
@@ -55,7 +96,7 @@ impl Lib {
     pub fn modules(self, db: &dyn Db) -> Vec<Module> {
         let def_map = hir_def::def_map::query(db, self.id);
 
-        def_map.modules().map(|(_, data)| Module { data }).collect()
+        def_map.modules().map(|(id, _)| Module { id }).collect()
     }
 
     pub fn diagnostics(self, db: &dyn Db, sink: &mut dyn DiagnosticSink) {
@@ -69,18 +110,27 @@ impl Lib {
 }
 
 impl Module {
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.id.lib(db).into()
+    }
+
     pub fn items(self, db: &dyn Db) -> impl Iterator<Item = Item> + '_ {
-        self.data.scope(db).items().filter_map(|it| match it {
-            | ItemId::ValueId(id) => Some(Item::Value(data::value_data(db, id).into())),
+        self.data(db).scope(db).items().filter_map(|it| match it {
+            | ItemId::FixityId(id) => Some(Item::Fixity(id.into())),
+            | ItemId::ValueId(id) => Some(Item::Value(id.into())),
+            | ItemId::TypeCtorId(id) => Some(Item::TypeCtor(id.into())),
+            | ItemId::TypeAliasId(id) => Some(Item::TypeAlias(id.into())),
+            | ItemId::TraitId(id) => Some(Item::Trait(id.into())),
             | _ => None,
         })
     }
 
     pub fn impls(self, db: &dyn Db) -> impl Iterator<Item = Impl> + '_ {
-        self.data
-            .scope(db)
-            .impls()
-            .map(|id| Impl::from(data::impl_data(db, id)))
+        self.data(db).scope(db).impls().map(Into::into)
+    }
+
+    fn data(self, db: &dyn Db) -> data::ModuleData {
+        hir_def::def_map::query(db, self.id.lib(db))[self.id]
     }
 
     fn run_all_queries(self, db: &dyn Db) {
@@ -97,20 +147,93 @@ impl Module {
 impl Item {
     fn run_all_queries(self, db: &dyn Db) {
         match self {
+            | Self::Fixity(_) => {},
             | Self::Value(it) => it.run_all_queries(db),
+            | Self::TypeCtor(it) => it.run_all_queries(db),
+            | Self::TypeAlias(it) => it.run_all_queries(db),
+            | Self::Trait(it) => it.run_all_queries(db),
         }
     }
 }
 
-impl Value {
-    fn run_all_queries(self, db: &dyn Db) {
-        let item = hir_def::id::ITypedItemId::new(db, self.data.id(db).into());
+impl Fixity {
+    pub fn id(self) -> FixityId {
+        self.id
+    }
 
-        hir_def::body::query(db, self.data.id(db));
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.module(db).lib(db)
+    }
+
+    pub fn module(self, db: &dyn Db) -> Module {
+        self.id.module(db).into()
+    }
+
+    pub fn kind(self, db: &dyn Db) -> FixityKind {
+        self.data(db).kind(db)
+    }
+
+    pub fn attrs(self, db: &dyn Db) -> &Attrs {
+        self.data(db).attrs(db)
+    }
+
+    fn data(self, db: &dyn Db) -> data::FixityData {
+        data::fixity_data(db, self.id)
+    }
+}
+
+impl Value {
+    pub fn id(self) -> ValueId {
+        self.id
+    }
+
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.id.container(db).module(db).lib(db).into()
+    }
+
+    pub fn module(self, db: &dyn Db) -> Module {
+        self.id.container(db).module(db).into()
+    }
+
+    pub fn ty(self, db: &dyn Db) -> GeneralizedType {
+        hir_ty::infer(db, self.id).ty.clone()
+    }
+
+    pub fn type_vars(self, db: &dyn Db) -> Vec<TypeVar> {
+        match hir_ty::infer(db, self.id).ty {
+            | Generalized::Mono(_) => Vec::new(),
+            | Generalized::Poly(ref vars, _) => vars.iter().map(|&v| v.into()).collect(),
+        }
+    }
+
+    pub fn body(self, db: &dyn Db) -> Arc<Body> {
+        hir_def::body::query(db, self.id).0
+    }
+
+    pub fn attrs(self, db: &dyn Db) -> &Attrs {
+        self.data(db).attrs(db)
+    }
+
+    pub fn is_foreign(self, db: &dyn Db) -> bool {
+        self.data(db).is_foreign(db)
+    }
+
+    pub fn is_intrinsic(self, db: &dyn Db) -> bool {
+        self.attrs(db).by_key("intrinsic").exists()
+    }
+
+    fn data(self, db: &dyn Db) -> data::ValueData {
+        data::value_data(db, self.id)
+    }
+
+    fn run_all_queries(self, db: &dyn Db) {
+        let item = hir_def::id::ITypedItemId::new(db, self.id.into());
+
+        hir_def::body::query(db, self.id);
         hir_def::type_ref::query(db, item);
 
         use hir_def::display::HirDisplay;
-        let result = hir_ty::infer(db, self.data.id(db));
+        let result = hir_ty::infer(db, self.id);
         tracing::debug!("{}", result.ty.display(db));
 
         if !result.constraints.is_empty() {
@@ -135,12 +258,216 @@ impl Value {
     }
 }
 
-impl Impl {
-    pub fn items(self, db: &dyn Db) -> impl Iterator<Item = Value> + '_ {
-        self.data.items(db).values().map(|&id| data::value_data(db, id).into())
+impl Ctor {
+    pub fn id(self) -> CtorId {
+        self.id
+    }
+
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.module(db).lib(db)
+    }
+
+    pub fn module(self, db: &dyn Db) -> Module {
+        self.type_ctor(db).module(db)
+    }
+
+    pub fn type_ctor(self, db: &dyn Db) -> TypeCtor {
+        self.id.type_ctor(db).into()
+    }
+
+    pub fn ty(self, db: &dyn Db) -> GeneralizedType {
+        hir_ty::ctor_ty(db, self.id)
+    }
+
+    pub fn types(self, db: &dyn Db) -> &[Ty] {
+        let ty = match self.ty(db) {
+            | Generalized::Mono(ty) => ty,
+            | Generalized::Poly(_, ty) => ty,
+        };
+
+        match ty.kind(db) {
+            | hir_ty::ty::TyKind::Func(func) => &*func.params,
+            | _ => &[],
+        }
+    }
+
+    pub fn attrs(self, db: &dyn Db) -> &Attrs {
+        self.data(db).attrs(db)
+    }
+
+    fn data(self, db: &dyn Db) -> data::CtorData {
+        data::ctor_data(db, self.id)
+    }
+}
+
+impl TypeCtor {
+    pub fn id(self) -> TypeCtorId {
+        self.id
+    }
+
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.module(db).lib(db)
+    }
+
+    pub fn module(self, db: &dyn Db) -> Module {
+        self.id.module(db).into()
+    }
+
+    pub fn type_vars(self, db: &dyn Db) -> Vec<TypeVar> {
+        self.data(db).type_vars(db).iter().map(|&v| v.into()).collect()
+    }
+
+    pub fn kind(self, db: &dyn Db) -> Ty {
+        hir_ty::type_ctor_ty(db, self.id).kind
+    }
+
+    pub fn ctors(self, db: &dyn Db) -> Vec<Ctor> {
+        let it = self.id.it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[it.value]
+            .ctors
+            .iter()
+            .map(|&id| CtorId::new(db, self.id, id).into())
+            .collect()
+    }
+
+    pub fn attrs(self, db: &dyn Db) -> &Attrs {
+        self.data(db).attrs(db)
+    }
+
+    fn data(self, db: &dyn Db) -> data::TypeCtorData {
+        data::type_ctor_data(db, self.id)
     }
 
     fn run_all_queries(self, db: &dyn Db) {
+        hir_ty::type_ctor_ty(db, self.id);
+    }
+}
+
+impl TypeAlias {
+    pub fn id(self) -> TypeAliasId {
+        self.id
+    }
+
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.module(db).lib(db)
+    }
+
+    pub fn module(self, db: &dyn Db) -> Module {
+        self.id.module(db).into()
+    }
+
+    pub fn type_vars(self, db: &dyn Db) -> Vec<TypeVar> {
+        self.data(db).type_vars(db).iter().map(|&v| v.into()).collect()
+    }
+
+    pub fn ty(self, db: &dyn Db) -> GeneralizedType {
+        hir_ty::alias_ty(db, self.id)
+    }
+
+    pub fn attrs(self, db: &dyn Db) -> &Attrs {
+        self.data(db).attrs(db)
+    }
+
+    fn data(self, db: &dyn Db) -> data::TypeAliasData {
+        data::type_alias_data(db, self.id)
+    }
+
+    fn run_all_queries(self, db: &dyn Db) {
+        hir_ty::alias_ty(db, self.id);
+    }
+}
+
+impl Trait {
+    pub fn id(self) -> TraitId {
+        self.id
+    }
+
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.module(db).lib(db)
+    }
+
+    pub fn module(self, db: &dyn Db) -> Module {
+        self.id.module(db).into()
+    }
+
+    pub fn constraints(self, db: &dyn Db) -> &[Constraint] {
+        &hir_ty::trait_types(db, self.id).1
+    }
+
+    pub fn type_vars(self, db: &dyn Db) -> Vec<TypeVar> {
+        self.data(db).type_vars(db).iter().map(|&v| v.into()).collect()
+    }
+
+    pub fn items(self, db: &dyn Db) -> Vec<Value> {
+        self.data(db).items(db).values().map(|&id| id.into()).collect()
+    }
+
+    pub fn attrs(self, db: &dyn Db) -> &Attrs {
+        self.data(db).attrs(db)
+    }
+
+    pub fn impls(self, db: &dyn Db, in_lib: Lib) -> Vec<Impl> {
+        hir_ty::traits::trait_impls(db, in_lib.id, self.id)
+            .iter()
+            .map(|&id| id.into())
+            .collect()
+    }
+
+    fn data(self, db: &dyn Db) -> data::TraitData {
+        data::trait_data(db, self.id)
+    }
+
+    fn run_all_queries(self, db: &dyn Db) {
+        hir_ty::trait_types(db, self.id);
+
+        for item in self.items(db) {
+            item.run_all_queries(db);
+        }
+    }
+}
+
+impl Impl {
+    pub fn id(self) -> ImplId {
+        self.id
+    }
+
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.module(db).lib(db)
+    }
+
+    pub fn module(self, db: &dyn Db) -> Module {
+        self.id.module(db).into()
+    }
+
+    pub fn types(self, db: &dyn Db) -> &[Ty] {
+        &hir_ty::impl_types(db, self.id).0
+    }
+
+    pub fn constraints(self, db: &dyn Db) -> &[Constraint] {
+        &hir_ty::impl_types(db, self.id).1
+    }
+
+    pub fn type_vars(self, db: &dyn Db) -> Vec<TypeVar> {
+        self.data(db).type_vars(db).iter().map(|&v| v.into()).collect()
+    }
+
+    pub fn items(self, db: &dyn Db) -> Vec<Value> {
+        self.data(db).items(db).values().map(|&id| id.into()).collect()
+    }
+
+    pub fn attrs(self, db: &dyn Db) -> &Attrs {
+        self.data(db).attrs(db)
+    }
+
+    fn data(self, db: &dyn Db) -> data::ImplData {
+        data::impl_data(db, self.id)
+    }
+
+    fn run_all_queries(self, db: &dyn Db) {
+        hir_ty::impl_types(db, self.id);
+
         for item in self.items(db) {
             item.run_all_queries(db);
         }
@@ -153,20 +480,56 @@ impl From<LibId> for Lib {
     }
 }
 
-impl From<data::ModuleData> for Module {
-    fn from(data: data::ModuleData) -> Self {
-        Self { data }
+impl From<ModuleId> for Module {
+    fn from(id: ModuleId) -> Self {
+        Self { id }
     }
 }
 
-impl From<data::ValueData> for Value {
-    fn from(data: data::ValueData) -> Self {
-        Self { data }
+impl From<FixityId> for Fixity {
+    fn from(id: FixityId) -> Self {
+        Self { id }
     }
 }
 
-impl From<data::ImplData> for Impl {
-    fn from(data: data::ImplData) -> Self {
-        Self { data }
+impl From<ValueId> for Value {
+    fn from(id: ValueId) -> Self {
+        Self { id }
+    }
+}
+
+impl From<CtorId> for Ctor {
+    fn from(id: CtorId) -> Self {
+        Self { id }
+    }
+}
+
+impl From<TypeCtorId> for TypeCtor {
+    fn from(id: TypeCtorId) -> Self {
+        Self { id }
+    }
+}
+
+impl From<TypeAliasId> for TypeAlias {
+    fn from(id: TypeAliasId) -> Self {
+        Self { id }
+    }
+}
+
+impl From<TraitId> for Trait {
+    fn from(id: TraitId) -> Self {
+        Self { id }
+    }
+}
+
+impl From<ImplId> for Impl {
+    fn from(id: ImplId) -> Self {
+        Self { id }
+    }
+}
+
+impl From<TypeVarId> for TypeVar {
+    fn from(id: TypeVarId) -> Self {
+        Self { id }
     }
 }

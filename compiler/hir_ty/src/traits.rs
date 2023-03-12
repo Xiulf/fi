@@ -244,7 +244,7 @@ impl<'db> Ctx<'db> {
 }
 
 #[salsa::tracked(return_ref)]
-pub(crate) fn trait_impls(db: &dyn Db, lib: LibId, trait_id: TraitId) -> Vec<ImplId> {
+pub fn trait_impls(db: &dyn Db, lib: LibId, trait_id: TraitId) -> Vec<ImplId> {
     lib_impls(db, lib)
         .iter()
         .copied()
