@@ -6,9 +6,12 @@ use hir_def::attrs::Attrs;
 use hir_def::body::Body;
 use hir_def::data;
 use hir_def::id::{
-    CtorId, FixityId, HasModule, ImplId, ItemId, ModuleId, TraitId, TypeAliasId, TypeCtorId, TypeVarId, ValueId,
+    CtorId, FixityId, HasModule, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId, TypeCtorId, TypeVarId,
+    ValueId,
 };
 use hir_def::item_tree::FixityKind;
+use hir_def::name::{AsName, Name};
+use hir_def::path::Path;
 use hir_ty::ty::{Constraint, Generalized, GeneralizedType, Ty};
 use triomphe::Arc;
 
@@ -89,6 +92,10 @@ fn lib_diagnostics(db: &dyn Db, id: LibId) {
 }
 
 impl Lib {
+    pub fn name(self, db: &dyn Db) -> Name {
+        self.id.name(db).as_name(db)
+    }
+
     pub fn deps(self, db: &dyn Db) -> Vec<Lib> {
         self.id.deps(db).into_iter().map(|&l| l.into()).collect()
     }
@@ -110,8 +117,32 @@ impl Lib {
 }
 
 impl Module {
+    pub fn id(self) -> ModuleId {
+        self.id
+    }
+
     pub fn lib(self, db: &dyn Db) -> Lib {
         self.id.lib(db).into()
+    }
+
+    pub fn parent(self, db: &dyn Db) -> Option<Module> {
+        match self.id.parent(db) {
+            | ModuleParentId::ModuleId(id) => Some(id.into()),
+            | _ => None,
+        }
+    }
+
+    pub fn path(self, db: &dyn Db) -> Path {
+        let mut segments = std::iter::successors(Some(self), |m| m.parent(db))
+            .map(|m| m.name(db))
+            .collect::<Vec<_>>();
+
+        segments.reverse();
+        Path::from(segments)
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        self.id.name(db)
     }
 
     pub fn items(self, db: &dyn Db) -> impl Iterator<Item = Item> + '_ {
@@ -169,6 +200,19 @@ impl Fixity {
         self.id.module(db).into()
     }
 
+    pub fn path(self, db: &dyn Db) -> Path {
+        let mut path = self.module(db).path(db);
+        path.push(self.name(db));
+        path
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        let it = self.id.it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[it.value].name
+    }
+
     pub fn kind(self, db: &dyn Db) -> FixityKind {
         self.data(db).kind(db)
     }
@@ -193,6 +237,32 @@ impl Value {
 
     pub fn module(self, db: &dyn Db) -> Module {
         self.id.container(db).module(db).into()
+    }
+
+    pub fn path(self, db: &dyn Db) -> Path {
+        let mut path = self.module(db).path(db);
+        path.push(self.name(db));
+        path
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        let it = self.id.it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[it.value].name
+    }
+
+    pub fn link_name(self, db: &dyn Db) -> String {
+        if let Some(name) = self.attrs(db).by_key("link_name").string_value().next() {
+            return name.to_string();
+        }
+
+        if self.is_foreign(db) {
+            return self.name(db).display(db).to_string();
+        }
+
+        let name = self.path(db).display(db).to_string();
+        mangling::mangle(name.bytes())
     }
 
     pub fn ty(self, db: &dyn Db) -> GeneralizedType {
@@ -271,6 +341,24 @@ impl Ctor {
         self.type_ctor(db).module(db)
     }
 
+    pub fn path(self, db: &dyn Db) -> Path {
+        let mut path = self.module(db).path(db);
+        path.push(self.name(db));
+        path
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        let it = self.id.type_ctor(db).it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[self.id.local_id(db)].name
+    }
+
+    pub fn link_name(self, db: &dyn Db) -> String {
+        let name = self.path(db).display(db).to_string();
+        mangling::mangle(name.bytes())
+    }
+
     pub fn type_ctor(self, db: &dyn Db) -> TypeCtor {
         self.id.type_ctor(db).into()
     }
@@ -311,6 +399,19 @@ impl TypeCtor {
 
     pub fn module(self, db: &dyn Db) -> Module {
         self.id.module(db).into()
+    }
+
+    pub fn path(self, db: &dyn Db) -> Path {
+        let mut path = self.module(db).path(db);
+        path.push(self.name(db));
+        path
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        let it = self.id.it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[it.value].name
     }
 
     pub fn type_vars(self, db: &dyn Db) -> Vec<TypeVar> {
@@ -358,6 +459,19 @@ impl TypeAlias {
         self.id.module(db).into()
     }
 
+    pub fn path(self, db: &dyn Db) -> Path {
+        let mut path = self.module(db).path(db);
+        path.push(self.name(db));
+        path
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        let it = self.id.it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[it.value].name
+    }
+
     pub fn type_vars(self, db: &dyn Db) -> Vec<TypeVar> {
         self.data(db).type_vars(db).iter().map(|&v| v.into()).collect()
     }
@@ -390,6 +504,19 @@ impl Trait {
 
     pub fn module(self, db: &dyn Db) -> Module {
         self.id.module(db).into()
+    }
+
+    pub fn path(self, db: &dyn Db) -> Path {
+        let mut path = self.module(db).path(db);
+        path.push(self.name(db));
+        path
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        let it = self.id.it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[it.value].name
     }
 
     pub fn constraints(self, db: &dyn Db) -> &[Constraint] {
@@ -439,6 +566,24 @@ impl Impl {
 
     pub fn module(self, db: &dyn Db) -> Module {
         self.id.module(db).into()
+    }
+
+    pub fn trait_(self, db: &dyn Db) -> Option<Trait> {
+        self.data(db).trait_id(db).map(Into::into)
+    }
+
+    pub fn vtable_link_name(self, db: &dyn Db) -> String {
+        use salsa::id::AsId;
+        let name = match self.trait_(db) {
+            | Some(trait_) => format!("{}.$impl$.{}", trait_.path(db).display(db), self.id.as_id().as_u32()),
+            | None => format!(
+                "{}.$impl$.{}",
+                self.module(db).path(db).display(db),
+                self.id.as_id().as_u32(),
+            ),
+        };
+
+        mangling::mangle(name.bytes())
     }
 
     pub fn types(self, db: &dyn Db) -> &[Ty] {
