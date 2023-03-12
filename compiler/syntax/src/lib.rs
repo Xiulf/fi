@@ -8,10 +8,10 @@ pub mod syntax_node;
 pub use cstree::interning::{new_interner, Rodeo as Interner};
 pub use cstree::{TextRange, TextSize};
 use diagnostics::{Db, Diagnostic, ToDiagnostic};
-use parser::error::{ErrorReason, SyntaxError};
+use parser::error::SyntaxError;
 pub use parser::token::SyntaxKind;
 pub use syntax_node::*;
-use vfs::{File, InFile};
+use vfs::File;
 
 impl ast::SourceFile {
     pub fn parse(db: &dyn Db, file: File, interner: &mut Interner) -> Self {
@@ -29,46 +29,30 @@ impl ToDiagnostic for SyntaxDiagnostic {
         let SyntaxDiagnostic(error, file) = self;
 
         match error {
-            | SyntaxError::ParseError(e) => match e.reason() {
-                | ErrorReason::Custom(msg) => Diagnostic::new(msg, file, e.span()),
-                | ErrorReason::Unexpected => {
-                    let msg = format!(
-                        "{}, expected {}",
-                        if e.found().is_some() {
-                            "Unexpected token in input"
-                        } else {
-                            "Unexpected end of input"
-                        },
-                        if e.expected().len() == 0 {
-                            "something else".to_string()
-                        } else {
-                            e.expected()
-                                .filter(|e| match e {
-                                    | Some(e) => !e.is_trivia(),
-                                    | None => true,
-                                })
-                                .map(|expected| match expected {
-                                    | Some(expected) => expected.to_string(),
-                                    | None => "end of input".to_string(),
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        }
-                    );
+            | SyntaxError::ParseError(e) => {
+                let msg = format!(
+                    "{}, expected {}",
+                    if e.found.is_some() {
+                        "unexpected token in input"
+                    } else {
+                        "unexpected end of input"
+                    },
+                    if e.expected.is_empty() {
+                        "something else".to_string()
+                    } else {
+                        e.expected
+                            .iter()
+                            .filter(|e| !e.is_trivia())
+                            .map(|e| e.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
+                );
 
-                    Diagnostic::new(msg, file, e.span()).with_primary_label(e.span(), match e.found() {
-                        | Some(found) => format!("Unexpected token {found}"),
-                        | None => "Unexpected end of input".to_string(),
-                    })
-                },
-                | ErrorReason::Unclosed { span, delimiter } => {
-                    Diagnostic::new(format!("Unclosed delimiter {}", delimiter), file, *span)
-                        .with_primary_label(*span, format!("Unclosed delimiter {}", delimiter))
-                        .with_secondary_label(InFile::new(file, e.span()), match e.found() {
-                            | Some(found) => format!("Must be closed before this {found}"),
-                            | None => "Must be closed before the end of the input".to_string(),
-                        })
-                },
+                Diagnostic::new(msg, file, e.range).with_primary_label(e.range, match e.found {
+                    | Some(found) => format!("unexpected token {found}"),
+                    | None => "unexpected end of input".to_string(),
+                })
             },
         }
     }

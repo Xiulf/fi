@@ -6,7 +6,7 @@ import Prim
 main =
     x = Some 4
     b = 2
-    y = bind x (fn a -> pure (a + b))
+    y = bind x fn a -> pure (a + b)
     ()
 
 

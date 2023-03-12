@@ -52,7 +52,8 @@ impl BodyCtx<'_, '_> {
 
                     Ty::new(self.db, TyKind::App(float, Box::new([var])))
                 },
-                | l => todo!("{l:?}"),
+                | Literal::Char(_) => self.char_type(),
+                | Literal::String(_) => self.str_type(),
             },
             | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),

@@ -1,82 +1,54 @@
-use text_size::TextSize;
-
+use crate::error::{ParseError, SyntaxError};
 use crate::token::SyntaxKind;
 use crate::TreeSink;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
 pub enum Event {
-    Token(SyntaxKind, TextSize),
-    Start(SyntaxKind),
+    Token(SyntaxKind),
+    Start(SyntaxKind, Option<usize>),
     Finish,
-    Empty,
-    Node(Box<[Event]>),
+    Error(ParseError),
 }
 
-pub fn process(sink: &mut dyn TreeSink, event: Event) {
-    match event {
-        | Event::Token(kind, len) => sink.token(kind, len),
-        | Event::Start(kind) => sink.start_node(kind),
-        | Event::Finish => sink.finish_node(),
-        | Event::Empty => {},
-        | Event::Node(events) => {
-            for event in events.into_vec() {
-                process(sink, event);
-            }
-        },
+impl Event {
+    pub fn tombstone() -> Self {
+        Self::Start(SyntaxKind::TOMBSTONE, None)
     }
 }
 
-impl From<(Self, Self)> for Event {
-    fn from((a, b): (Self, Self)) -> Self {
-        Self::Node(Box::new([a, b]))
-    }
-}
+pub fn process(sink: &mut dyn TreeSink, mut events: Vec<Event>) {
+    let mut forward_parents = Vec::new();
 
-impl From<((Self, Self), Self)> for Event {
-    fn from(((a, b), c): ((Self, Self), Self)) -> Self {
-        Self::Node(Box::new([a, b, c]))
-    }
-}
+    for i in 0..events.len() {
+        match std::mem::replace(&mut events[i], Event::tombstone()) {
+            | Event::Start(SyntaxKind::TOMBSTONE, _) => {},
+            | Event::Start(kind, forward_parent) => {
+                let mut idx = i;
+                let mut fp = forward_parent;
 
-impl From<(((Self, Self), Self), Self)> for Event {
-    fn from((((a, b), c), d): (((Self, Self), Self), Self)) -> Self {
-        Self::Node(Box::new([a, b, c, d]))
-    }
-}
+                forward_parents.push(kind);
 
-impl From<((((Self, Self), Self), Self), Self)> for Event {
-    fn from(((((a, b), c), d), e): ((((Self, Self), Self), Self), Self)) -> Self {
-        Self::Node(Box::new([a, b, c, d, e]))
-    }
-}
+                while let Some(fwd) = fp {
+                    idx += fwd;
+                    fp = match std::mem::replace(&mut events[idx], Event::tombstone()) {
+                        | Event::Start(kind, forward_parent) => {
+                            if kind != SyntaxKind::TOMBSTONE {
+                                forward_parents.push(kind);
+                            }
 
-impl From<(((((Self, Self), Self), Self), Self), Self)> for Event {
-    fn from((((((a, b), c), d), e), f): (((((Self, Self), Self), Self), Self), Self)) -> Self {
-        Self::Node(Box::new([a, b, c, d, e, f]))
-    }
-}
+                            forward_parent
+                        },
+                        | _ => unreachable!(),
+                    };
+                }
 
-impl FromIterator<Self> for Event {
-    fn from_iter<T: IntoIterator<Item = Self>>(iter: T) -> Self {
-        let events = <Box<[Event]>>::from_iter(iter);
-
-        if events.is_empty() {
-            Self::Empty
-        } else {
-            Self::Node(events)
-        }
-    }
-}
-
-impl FromIterator<(Self, Self)> for Event {
-    fn from_iter<T: IntoIterator<Item = (Self, Self)>>(iter: T) -> Self {
-        let iter = iter.into_iter().flat_map(|(a, b)| [a, b]);
-        let events = <Box<[Self]>>::from_iter(iter);
-
-        if events.is_empty() {
-            Self::Empty
-        } else {
-            Self::Node(events)
+                for kind in forward_parents.drain(..).rev() {
+                    sink.start_node(kind);
+                }
+            },
+            | Event::Finish => sink.finish_node(),
+            | Event::Token(kind) => sink.token(kind),
+            | Event::Error(error) => sink.error(SyntaxError::ParseError(error)),
         }
     }
 }

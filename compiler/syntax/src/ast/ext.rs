@@ -717,6 +717,23 @@ impl LitInt {
     }
 }
 
+impl LitFloat {
+    pub fn value(&self, resolver: &dyn Resolver) -> Option<u64> {
+        let text = token(self.syntax(), SyntaxKind::FLOAT)?.resolve_text(resolver);
+
+        text.parse::<f64>().ok().map(|f| f.to_bits())
+    }
+}
+
+impl LitChar {
+    pub fn value(&self, resolver: &dyn Resolver) -> Option<char> {
+        let text = token(self.syntax(), SyntaxKind::CHAR)?.resolve_text(resolver);
+        let text = &text[1..];
+
+        text.chars().next()
+    }
+}
+
 impl LitString {
     pub fn value(&self, resolver: &dyn Resolver) -> Option<String> {
         let text = token(self.syntax(), SyntaxKind::STRING)?.resolve_text(resolver);

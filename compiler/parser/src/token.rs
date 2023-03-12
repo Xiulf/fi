@@ -13,6 +13,7 @@ pub struct Token {
 #[repr(u16)]
 pub enum SyntaxKind {
     ERROR,
+    TOMBSTONE,
     // EOF,
     WHITESPACE,
     COMMENT,

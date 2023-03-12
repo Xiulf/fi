@@ -178,7 +178,9 @@ impl<'db> Ctx<'db> {
                 let resolver = self.db.syntax_interner().read();
                 let lit = match e.literal()? {
                     | ast::Literal::Int(l) => Literal::Int(l.value(&*resolver)?),
-                    | _ => todo!(),
+                    | ast::Literal::Float(l) => Literal::Float(l.value(&*resolver)?),
+                    | ast::Literal::Char(l) => Literal::Char(l.value(&*resolver)?),
+                    | ast::Literal::String(l) => Literal::String(l.value(&*resolver)?),
                 };
 
                 self.alloc_expr(Expr::Lit { lit }, syntax_ptr)
@@ -409,6 +411,7 @@ impl<'db> Ctx<'db> {
         let branches = e
             .arms()
             .zip(matrix.rows.iter())
+            .filter(|(_, r)| !(r.0).0.is_empty())
             .map(|(a, r)| ((r.0).0[0].1, self.lower_expr_opt(a.expr())))
             .collect::<Box<[_]>>();
         let result = matrix.compile(self.db);

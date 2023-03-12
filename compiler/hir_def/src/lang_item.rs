@@ -16,7 +16,9 @@ pub const UNIT_TYPE: &'static str = "unit-type";
 pub const BOOL_TYPE: &'static str = "bool-type";
 pub const PAIR_TYPE: &'static str = "pair-type";
 pub const INT_TYPE: &'static str = "int-type";
-pub const FLOAT_TYPE: &'static str = "int-type";
+pub const FLOAT_TYPE: &'static str = "float-type";
+pub const CHAR_TYPE: &'static str = "char-type";
+pub const STR_TYPE: &'static str = "str-type";
 
 pub const BIND_FN: &'static str = "bind-fn";
 

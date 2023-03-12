@@ -154,6 +154,14 @@ impl<'db> Ctx<'db> {
         self.lang_ty(lang_item::FLOAT_TYPE)
     }
 
+    pub fn char_type(&self) -> Ty {
+        self.lang_ty(lang_item::CHAR_TYPE)
+    }
+
+    pub fn str_type(&self) -> Ty {
+        self.lang_ty(lang_item::STR_TYPE)
+    }
+
     fn lang_item(&self, name: &'static str) -> Option<LangItem> {
         let lib = self.owner.module(self.db).lib(self.db);
         lang_item::query(self.db, lib, name)

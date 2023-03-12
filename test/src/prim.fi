@@ -8,6 +8,8 @@ module Prim =
 
 @lang = "int-type"   foreign type Int   :: IntTag -> Type
 @lang = "float-type" foreign type Float :: FloatTag -> Type
+@lang = "char-type"  foreign type Char  :: Type
+@lang = "str-type"   foreign type Str   :: Type
 
 @int_tag = "i8"   foreign type Int8   :: Type
 @int_tag = "i16"  foreign type Int16  :: Type
