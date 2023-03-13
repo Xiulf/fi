@@ -1,0 +1,15 @@
+[package]
+name = "mir"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arena = { git = "https://github.com/Xiulf/arena", version = "0.1.0" }
+diagnostics = { version = "0.1.0", path = "../diagnostics" }
+hir_def = { version = "0.1.0", path = "../hir_def" }
+hir_ty = { version = "0.1.0", path = "../hir_ty" }
+rustc-hash = "1.1.0"
+salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
+tracing = "0.1.37"
