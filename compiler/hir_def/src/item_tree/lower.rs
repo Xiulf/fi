@@ -185,7 +185,13 @@ impl Ctx<'_> {
             Some(vec![id(self.tree.data.type_aliases.alloc(data)).into()])
         } else {
             let ctors = typ.ctors().filter_map(|c| self.lower_ctor(c)).collect();
-            let data = TypeCtor { ast_id, name, ctors };
+            let is_foreign = typ.foreign_token().is_some();
+            let data = TypeCtor {
+                ast_id,
+                name,
+                ctors,
+                is_foreign,
+            };
 
             Some(vec![id(self.tree.data.type_ctors.alloc(data)).into()])
         }

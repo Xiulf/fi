@@ -164,6 +164,18 @@ impl<T> Generalized<T> {
     }
 }
 
+impl GeneralizedType {
+    pub fn replace_vars(self, db: &dyn Db, args: &[Ty]) -> Ty {
+        match self {
+            | Self::Mono(ty) => ty,
+            | Self::Poly(vars, ty) => {
+                let replacements = vars.iter().zip(args).map(|(&v, &a)| (v, a)).collect();
+                ty.replace_vars(db, &replacements)
+            },
+        }
+    }
+}
+
 struct Parens(ParenMode, Ty);
 
 enum ParenMode {

@@ -206,6 +206,7 @@ pub struct TypeCtor {
     pub ast_id: FileAstId<ast::ItemType>,
     pub name: Name,
     pub ctors: Box<[Idx<Ctor>]>,
+    pub is_foreign: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

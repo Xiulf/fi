@@ -13,3 +13,4 @@ hir_ty = { version = "0.1.0", path = "../hir_ty" }
 rustc-hash = "1.1.0"
 salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
 tracing = "0.1.37"
+triomphe = "0.1.8"

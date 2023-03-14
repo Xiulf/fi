@@ -1,6 +1,10 @@
 use arena::{Arena, Idx};
 use hir_def::id::CtorId;
+use hir_ty::ty::Ty;
 use rustc_hash::FxHashMap;
+use triomphe::Arc;
+
+use crate::repr::Repr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
@@ -46,6 +50,7 @@ pub struct Local(pub Idx<LocalData>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LocalData {
     pub kind: LocalKind,
+    pub repr: Arc<Repr>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -112,11 +117,11 @@ pub enum Stmt {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RValue {
     Use(Operand),
-    Ref(Place),
+    AddrOf(Place),
     Discriminant(Place),
     Cast(CastKind, Operand),
     BinOp(BinOp, Operand, Operand),
-    NullOp(NullOp),
+    NullOp(NullOp, Arc<Repr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -165,7 +170,7 @@ pub enum NullOp {
 pub enum Operand {
     Copy(Place),
     Move(Place),
-    Const(Const),
+    Const(Const, Arc<Repr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
