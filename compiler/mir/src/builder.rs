@@ -3,7 +3,7 @@ use hir_def::id::CtorId;
 use triomphe::Arc;
 
 use crate::ir::{
-    BinOp, Block, BlockData, Body, CastKind, JumpTarget, Local, LocalData, LocalKind, NullOp, Operand, Place,
+    BinOp, Block, BlockData, Body, CastKind, Const, JumpTarget, Local, LocalData, LocalKind, NullOp, Operand, Place,
     Projection, RValue, Stmt, Term,
 };
 use crate::repr::Repr;
@@ -49,10 +49,6 @@ impl Builder {
 
     pub fn add_local(&mut self, kind: LocalKind, repr: Arc<Repr>) -> Local {
         Local(self.locals.alloc(LocalData { kind, repr }))
-    }
-
-    fn block(&self) -> &BlockData {
-        &self.blocks[self.block.unwrap().0]
     }
 
     fn block_mut(&mut self) -> &mut BlockData {
@@ -139,6 +135,51 @@ impl Builder {
     }
 }
 
+impl Builder {
+    pub fn place_repr(&self, db: &dyn Db, place: &Place) -> Arc<Repr> {
+        let mut repr = self.locals[place.local.0].repr.clone();
+
+        for proj in &place.projection {
+            if let Repr::ReprOf(ty) = &*repr {
+                repr = crate::repr::repr_of(db, *ty);
+            }
+
+            match proj {
+                | Projection::Deref => match &*repr {
+                    | Repr::Ptr(pointee, _, _) => repr = pointee.clone(),
+                    | _ => unreachable!(),
+                },
+                | Projection::Field(field) => match &*repr {
+                    | Repr::Struct(fields) => repr = fields[*field].clone(),
+                    | _ => unreachable!(),
+                },
+                | Projection::Index(_) => match &*repr {
+                    | Repr::Array(_, elem) => repr = elem.clone(),
+                    | _ => unreachable!(),
+                },
+                | Projection::Slice(_, _) => match &*repr {
+                    | Repr::Array(_, elem) => repr = Arc::new(Repr::Ptr(elem.clone(), true, true)),
+                    | Repr::Ptr(_, true, _) => {},
+                    | _ => unreachable!(),
+                },
+                | Projection::Downcast(ctor) => match &*repr {
+                    | Repr::Enum(variants) => repr = variants[u32::from(ctor.local_id(db).into_raw()) as usize].clone(),
+                    | _ => unreachable!(),
+                },
+            }
+        }
+
+        repr
+    }
+
+    pub fn operand_repr(&self, db: &dyn Db, operand: &Operand) -> Arc<Repr> {
+        match operand {
+            | Operand::Copy(place) | Operand::Move(place) => self.place_repr(db, place),
+            | Operand::Const(_, repr) => repr.clone(),
+        }
+    }
+}
+
 impl SwitchBuilder {
     pub fn build(mut self, builder: &mut Builder, discr: impl Into<Operand>, default_branch: impl Into<JumpTarget>) {
         self.targets.push(default_branch.into());
@@ -186,5 +227,35 @@ impl Place {
     pub fn downcast(mut self, ctor: CtorId) -> Self {
         self.projection.push(Projection::Downcast(ctor));
         self
+    }
+}
+
+impl From<Place> for Operand {
+    fn from(value: Place) -> Self {
+        Self::Copy(value)
+    }
+}
+
+impl From<(Const, Arc<Repr>)> for Operand {
+    fn from(value: (Const, Arc<Repr>)) -> Self {
+        Self::Const(value.0, value.1)
+    }
+}
+
+impl From<Block> for JumpTarget {
+    fn from(block: Block) -> Self {
+        Self {
+            block,
+            args: Vec::new(),
+        }
+    }
+}
+
+impl<T: Into<Vec<Operand>>> From<(Block, T)> for JumpTarget {
+    fn from((block, args): (Block, T)) -> Self {
+        Self {
+            block,
+            args: args.into(),
+        }
     }
 }

@@ -44,6 +44,13 @@ impl Name {
         }
     }
 
+    pub fn as_str(self, db: &dyn Db) -> &str {
+        match self.repr(db) {
+            | Repr::Text(text) => text.as_str(),
+            | Repr::Symbol(text) => text.as_str(),
+        }
+    }
+
     pub fn display(self, db: &dyn Db) -> Display {
         Display(db, self)
     }

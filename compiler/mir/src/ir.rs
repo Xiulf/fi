@@ -1,9 +1,9 @@
 use arena::{Arena, Idx};
 use hir_def::id::CtorId;
-use hir_ty::ty::Ty;
 use rustc_hash::FxHashMap;
 use triomphe::Arc;
 
+use crate::instance::Instance;
 use crate::repr::Repr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,7 +145,7 @@ pub enum BinOp {
     Ge,
 
     Lsh,
-    Rhs,
+    Rsh,
     And,
     Or,
     Xor,
@@ -198,6 +198,7 @@ pub enum Const {
     Char(char),
     String(String),
     Ctor(CtorId),
+    Instance(Instance),
 }
 
 impl Block {

@@ -6,13 +6,14 @@ use hir_def::attrs::Attrs;
 use hir_def::body::Body;
 use hir_def::data;
 use hir_def::id::{
-    CtorId, FixityId, HasModule, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId, TypeCtorId, TypeVarId,
-    ValueId,
+    ContainerId, CtorId, FixityId, HasModule, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId,
+    TypeCtorId, TypeVarId, ValueId,
 };
 use hir_def::item_tree::FixityKind;
 use hir_def::name::{AsName, Name};
 use hir_def::path::Path;
 use hir_ty::ty::{Constraint, Generalized, GeneralizedType, Ty};
+use salsa::AsId;
 use triomphe::Arc;
 
 pub trait Db: hir_ty::Db + salsa::DbWithJar<Jar> {}
@@ -40,6 +41,13 @@ pub enum Item {
     TypeCtor(TypeCtor),
     TypeAlias(TypeAlias),
     Trait(Trait),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Container {
+    Module(Module),
+    Trait(Trait),
+    Impl(Impl),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -239,8 +247,22 @@ impl Value {
         self.id.container(db).module(db).into()
     }
 
+    pub fn container(self, db: &dyn Db) -> Container {
+        match self.id.container(db) {
+            | ContainerId::ModuleId(id) => Container::Module(id.into()),
+            | ContainerId::TraitId(id) => Container::Trait(id.into()),
+            | ContainerId::ImplId(id) => Container::Impl(id.into()),
+        }
+    }
+
     pub fn path(self, db: &dyn Db) -> Path {
         let mut path = self.module(db).path(db);
+
+        if let Container::Impl(impl_) = self.container(db) {
+            path.push("$impl$".as_name(db));
+            path.push(impl_.id().as_id().as_u32().to_string().as_name(db));
+        }
+
         path.push(self.name(db));
         path
     }
@@ -262,7 +284,8 @@ impl Value {
         }
 
         let name = self.path(db).display(db).to_string();
-        mangling::mangle(name.bytes())
+        // mangling::mangle(name.bytes())
+        name
     }
 
     pub fn ty(self, db: &dyn Db) -> GeneralizedType {
@@ -282,6 +305,10 @@ impl Value {
 
     pub fn attrs(self, db: &dyn Db) -> &Attrs {
         self.data(db).attrs(db)
+    }
+
+    pub fn has_body(self, db: &dyn Db) -> bool {
+        self.data(db).has_body(db)
     }
 
     pub fn is_foreign(self, db: &dyn Db) -> bool {
@@ -365,6 +392,18 @@ impl Ctor {
 
     pub fn ty(self, db: &dyn Db) -> GeneralizedType {
         hir_ty::ctor_ty(db, self.id)
+    }
+
+    pub fn ret(self, db: &dyn Db) -> Ty {
+        let ty = match self.ty(db) {
+            | Generalized::Mono(ty) => ty,
+            | Generalized::Poly(_, ty) => ty,
+        };
+
+        match ty.kind(db) {
+            | hir_ty::ty::TyKind::Func(func) => func.ret,
+            | _ => ty,
+        }
     }
 
     pub fn types(self, db: &dyn Db) -> &[Ty] {
@@ -573,7 +612,6 @@ impl Impl {
     }
 
     pub fn vtable_link_name(self, db: &dyn Db) -> String {
-        use salsa::id::AsId;
         let name = match self.trait_(db) {
             | Some(trait_) => format!("{}.$impl$.{}", trait_.path(db).display(db), self.id.as_id().as_u32()),
             | None => format!(

@@ -4,23 +4,23 @@ import Prim
 
 @main
 main =
-    x = Some 4
-    b = 2
-    y = bind x fn a -> pure (a + b)
+    // x = Some 4
+    // b = 2
+    // y = bind x fn a -> pure (a + b)
     ()
 
 
-other = do
-    x <- pure 0
-    <- pure 4
-    pure x
+// other = do
+//     x <- pure 0
+//     <- pure 4
+//     pure x
 
 
-fib x :: Int32 =
-    match x with
-    | 0 -> 0
-    | 1 -> 1
-    | n -> fib (n - 1) + fib (n - 2)
+// fib x :: Int32 =
+//     match x with
+//     | 0 -> 0
+//     | 1 -> 1
+//     | n -> fib (n - 1) + fib (n - 2)
 
 
 trait Add a =
@@ -35,10 +35,10 @@ infixl 6 (-) = sub
 
 
 impl Add (Int a) =
-    add = Intrinsics.iadd
+    add a b = Intrinsics.iadd a b
 
 impl Sub (Int a) =
-    sub = Intrinsics.isub
+    sub a b = Intrinsics.isub a b
 
 
 type Option t =
@@ -64,19 +64,19 @@ trait Monad m where Monoid m =
     @lang = "bind-fn"
     bind :: m a, (a -> m b) -> m b
 
-impl Monad Option =
-    bind o f =
-        match o with
-        | Some x -> f x
-        | None -> None
+// impl Monad Option =
+//     bind o f =
+//         match o with
+//         | Some x -> f x
+//         | None -> None
 
-impl Monad List =
-    bind l f =
-        match l with
-        | Nil -> Nil
-        | Cons x xs -> append (f x) (bind xs f)
+// impl Monad List =
+//     bind l f =
+//         match l with
+//         | Nil -> Nil
+//         | Cons x xs -> append (f x) (bind xs f)
 
-append a b =
-    match a with
-    | Nil -> b
-    | Cons x xs -> Cons x (append xs b)
+// append a b =
+//     match a with
+//     | Nil -> b
+//     | Cons x xs -> Cons x (append xs b)

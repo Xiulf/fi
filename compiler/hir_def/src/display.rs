@@ -149,6 +149,17 @@ where
     }
 }
 
+impl<T> HirDisplay for triomphe::Arc<T>
+where
+    T: HirDisplay,
+{
+    type Db<'b> = T::Db<'b>;
+
+    fn hir_fmt(&self, f: &mut HirFormatter<Self::Db<'_>>) -> fmt::Result {
+        (**self).hir_fmt(f)
+    }
+}
+
 impl<'a, T> fmt::Display for HirDisplayWrapper<'a, T>
 where
     T: HirDisplay,

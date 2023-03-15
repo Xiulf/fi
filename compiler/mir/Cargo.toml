@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 arena = { git = "https://github.com/Xiulf/arena", version = "0.1.0" }
 diagnostics = { version = "0.1.0", path = "../diagnostics" }
+hir = { version = "0.1.0", path = "../hir" }
 hir_def = { version = "0.1.0", path = "../hir_def" }
 hir_ty = { version = "0.1.0", path = "../hir_ty" }
 rustc-hash = "1.1.0"

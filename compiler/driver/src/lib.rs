@@ -44,9 +44,33 @@ impl Driver {
     }
 
     pub fn debug(&self, lib: LibId) {
-        let def_map = hir_def::def_map::query(&self.db, lib);
+        // let def_map = hir_def::def_map::query(&self.db, lib);
 
         // eprintln!("{:#?}", lib.debug_all(&self.db));
-        tracing::debug!("\n{}", def_map.debug(&self.db));
+        // tracing::debug!("\n{}", def_map.debug(&self.db));
+        use hir_def::display::HirDisplay;
+        let lib = hir::Lib::from(lib);
+
+        for module in lib.modules(&self.db) {
+            for item in module.items(&self.db) {
+                if let hir::Item::Value(value) = item {
+                    let def = mir::lower::value_mir(&self.db, value.id());
+                    tracing::debug!("{}", def.display(&self.db));
+                    if let Some(body) = def.body(&self.db) {
+                        tracing::debug!("\n{}", body.display(&self.db));
+                    }
+                }
+            }
+
+            for impl_ in module.impls(&self.db) {
+                for item in impl_.items(&self.db) {
+                    let def = mir::lower::value_mir(&self.db, item.id());
+                    tracing::debug!("{}", def.display(&self.db));
+                    if let Some(body) = def.body(&self.db) {
+                        tracing::debug!("\n{}", body.display(&self.db));
+                    }
+                }
+            }
+        }
     }
 }

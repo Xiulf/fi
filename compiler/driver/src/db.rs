@@ -1,6 +1,14 @@
 use parking_lot::RwLock;
 
-#[salsa::db(vfs::Jar, ::diagnostics::Jar, base_db::Jar, hir_def::Jar, hir_ty::Jar, hir::Jar)]
+#[salsa::db(
+    vfs::Jar,
+    ::diagnostics::Jar,
+    base_db::Jar,
+    hir_def::Jar,
+    hir_ty::Jar,
+    hir::Jar,
+    mir::Jar
+)]
 pub struct Database {
     storage: salsa::Storage<Self>,
     syntax_interner: RwLock<syntax::Interner>,

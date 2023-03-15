@@ -20,7 +20,7 @@ pub enum Repr {
     Array(ArrayLen, Arc<Repr>),
     Ptr(Arc<Repr>, bool, bool),
     Box(Arc<Repr>),
-    Func(Arc<Signature>, bool),
+    Func(Signature, bool),
     Discr(Arc<Repr>),
     ReprOf(Ty),
 }
@@ -88,11 +88,12 @@ impl Repr {
     }
 }
 
-#[salsa::tracked]
+#[salsa::tracked(recovery_fn = repr_of_cycle)]
 pub fn repr_of(db: &dyn Db, ty: Ty) -> Arc<Repr> {
-    tracing::debug!("{}", ty.display(db));
+    tracing::trace!("{}", ty.display(db));
     match ty.kind(db) {
         | TyKind::Error => unreachable!(),
+        | TyKind::Var(var) => Arc::new(Repr::TypeVar(*var)),
         | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[]),
         | TyKind::App(mut base, args) => {
             let mut args = args.to_vec();
@@ -106,14 +107,20 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Arc<Repr> {
                 | _ => unreachable!("{}", base.display(db)),
             }
         },
-        | TyKind::Var(var) => Arc::new(Repr::TypeVar(*var)),
+        | TyKind::Func(func) => {
+            let params = func.params.iter().map(|&p| repr_of(db, p)).collect();
+            let ret = repr_of(db, func.ret);
+            let signature = Signature { params, ret };
+
+            Arc::new(Repr::Func(signature, false))
+        },
         | k => todo!("{k:?}"),
     }
 }
 
-// pub fn repr_of_cycle(_db: &dyn MirDatabase, _cycle: &Vec<String>, ty: &Ty) -> Repr {
-//     Repr::ReprOf(*ty)
-// }
+pub fn repr_of_cycle(_db: &dyn Db, _cycle: &salsa::Cycle, ty: Ty) -> Arc<Repr> {
+    Arc::new(Repr::ReprOf(ty))
+}
 
 fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty]) -> Arc<Repr> {
     let attrs = attrs::query(db, id.into());

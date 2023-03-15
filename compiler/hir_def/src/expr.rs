@@ -60,7 +60,7 @@ pub enum Literal {
     String(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Stmt {
     Let(PatId, ExprId),
     Expr(ExprId),
