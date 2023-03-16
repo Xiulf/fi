@@ -76,7 +76,7 @@ impl Monad Option =
 //         | Nil -> Nil
 //         | Cons x xs -> append (f x) (bind xs f)
 
-// append a b =
-//     match a with
-//     | Nil -> b
-//     | Cons x xs -> Cons x (append xs b)
+append a b =
+    match a with
+    | Nil -> b
+    | Cons x xs -> Cons x (append xs b)

@@ -20,7 +20,7 @@ pub enum Repr {
     Array(ArrayLen, Arc<Repr>),
     Ptr(Arc<Repr>, bool, bool),
     Box(Arc<Repr>),
-    Func(Signature, bool),
+    Func(Signature, Option<Arc<Repr>>),
     Discr(Arc<Repr>),
     ReprOf(Ty),
 }
@@ -108,22 +108,13 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Arc<Repr> {
             }
         },
         | TyKind::Func(func) => {
-            if Some(func.env) == db.type_cache().lang_type(lang_item::UNIT_TYPE) {
-                let params = func.params.iter().map(|&p| repr_of(db, p)).collect();
-                let ret = repr_of(db, func.ret);
-                let signature = Signature { params, ret };
+            let params = func.params.iter().map(|&p| repr_of(db, p)).collect();
+            let ret = repr_of(db, func.ret);
+            let signature = Signature { params, ret };
+            let env = repr_of(db, func.env);
+            let env = if *env == Repr::unit() { None } else { Some(env) };
 
-                Arc::new(Repr::Func(signature, false))
-            } else {
-                let params = std::iter::once(&func.env)
-                    .chain(func.params.iter())
-                    .map(|&p| repr_of(db, p))
-                    .collect();
-                let ret = repr_of(db, func.ret);
-                let signature = Signature { params, ret };
-
-                Arc::new(Repr::Func(signature, true))
-            }
+            Arc::new(Repr::Func(signature, env))
         },
         | k => todo!("{k:?}"),
     }

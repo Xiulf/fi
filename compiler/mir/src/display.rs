@@ -360,8 +360,8 @@ impl HirDisplay for Repr {
             | Self::Ptr(el, true, _) => write!(f, "*fat {}", el.display(f.db)),
             | Self::Ptr(el, false, _) => write!(f, "*{}", el.display(f.db)),
             | Self::Box(el) => write!(f, "box({})", el.display(f.db)),
-            | Self::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
-            | Self::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),
+            | Self::Func(sig, None) => write!(f, "fn {}", sig.display(f.db)),
+            | Self::Func(sig, Some(env)) => write!(f, "lambda [{}] {}", env.display(f.db), sig.display(f.db)),
             | Self::Discr(repr) => write!(f, "discriminant({})", repr.display(f.db)),
             | Self::Struct(fields) if fields.is_empty() => write!(f, "()"),
             | Self::Struct(fields) => {

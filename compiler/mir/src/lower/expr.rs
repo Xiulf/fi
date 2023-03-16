@@ -114,21 +114,12 @@ impl Ctx<'_> {
         expr: ExprId,
         base_expr: ExprId,
         def: ValueDefId,
-        mut args: Vec<Arg>,
+        args: Vec<Arg>,
         store_in: &mut Option<Place>,
     ) -> Operand {
         match def {
             | ValueDefId::PatId(pat) => {
                 let place = self.locals[pat].clone();
-                let repr = self.builder.place_repr(self.db, &place);
-
-                if let Repr::Func(_, true) = &*repr {
-                    let func = place.clone().field(0);
-                    let env = place.field(1);
-                    args.insert(0, Arg::Op(env.into()));
-                    return self.make_app(expr, func.into(), args, store_in);
-                }
-
                 self.make_app(expr, place.into(), args, store_in)
             },
             | ValueDefId::ValueId(id) => {
@@ -142,6 +133,7 @@ impl Ctx<'_> {
             | ValueDefId::CtorId(id) => {
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
                 let ret = self.store_in(store_in, ret_repr);
+                self.builder.init(ret.local);
                 let downcast = if Ctor::from(id).type_ctor(self.db).ctors(self.db).len() == 1 {
                     ret.clone()
                 } else {
