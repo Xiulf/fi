@@ -39,8 +39,8 @@ impl Builder {
         }))
     }
 
-    pub fn switch_block(&mut self, block: Block) {
-        self.block = Some(block);
+    pub fn switch_block(&mut self, block: Block) -> Option<Block> {
+        self.block.replace(block)
     }
 
     pub fn add_block_param(&mut self, block: Block, param: Local) {

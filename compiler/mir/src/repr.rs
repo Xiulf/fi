@@ -108,11 +108,22 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Arc<Repr> {
             }
         },
         | TyKind::Func(func) => {
-            let params = func.params.iter().map(|&p| repr_of(db, p)).collect();
-            let ret = repr_of(db, func.ret);
-            let signature = Signature { params, ret };
+            if Some(func.env) == db.type_cache().lang_type(lang_item::UNIT_TYPE) {
+                let params = func.params.iter().map(|&p| repr_of(db, p)).collect();
+                let ret = repr_of(db, func.ret);
+                let signature = Signature { params, ret };
 
-            Arc::new(Repr::Func(signature, false))
+                Arc::new(Repr::Func(signature, false))
+            } else {
+                let params = std::iter::once(&func.env)
+                    .chain(func.params.iter())
+                    .map(|&p| repr_of(db, p))
+                    .collect();
+                let ret = repr_of(db, func.ret);
+                let signature = Signature { params, ret };
+
+                Arc::new(Repr::Func(signature, true))
+            }
         },
         | k => todo!("{k:?}"),
     }

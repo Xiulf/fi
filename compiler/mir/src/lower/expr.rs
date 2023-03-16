@@ -1,5 +1,7 @@
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::ValueDefId;
+use hir_def::pat::{DecisionTree, PatId, VariantTag};
+use salsa::AsId;
 
 use super::*;
 use crate::instance::Instance;
@@ -32,6 +34,11 @@ impl Ctx<'_> {
             | Expr::Path { def: Some(def), .. } => self.lower_path(id, def, store_in),
             | Expr::App { base, ref args } => self.lower_app(id, base, args, store_in),
             | Expr::Block { ref stmts, expr } => self.lower_block(stmts, expr, store_in),
+            | Expr::Match {
+                expr,
+                ref branches,
+                ref decision_tree,
+            } => self.lower_match(id, expr, branches, decision_tree, store_in),
             | ref e => todo!("{e:?}"),
         }
     }
@@ -160,6 +167,112 @@ impl Ctx<'_> {
         self.builder.call(ret.clone(), func, args);
 
         Operand::Copy(ret)
+    }
+
+    fn lower_match(
+        &mut self,
+        expr: ExprId,
+        value: ExprId,
+        branches: &[(PatId, ExprId)],
+        tree: &DecisionTree,
+        _store_in: &mut Option<Place>,
+    ) -> Operand {
+        let pred = self.lower_expr(value, &mut None);
+        let pred = self.place_op(pred);
+        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let ret = self.builder.add_local(LocalKind::Arg, ret_repr);
+        let blocks = branches.iter().map(|_| self.builder.create_block()).collect::<Vec<_>>();
+        self.lower_decision_tree(pred, &blocks, tree);
+        let exit_block = self.builder.create_block();
+
+        for (&(_, branch), block) in branches.iter().zip(blocks) {
+            self.builder.switch_block(block);
+            let op = self.lower_expr(branch, &mut None);
+            self.builder.jump((exit_block, [op]));
+        }
+
+        self.builder.add_block_param(exit_block, ret);
+        self.builder.switch_block(exit_block);
+        Place::new(ret).into()
+    }
+
+    fn lower_decision_tree(&mut self, pred: Place, blocks: &[Block], tree: &DecisionTree) {
+        match tree {
+            | DecisionTree::Fail => {
+                self.builder.abort();
+            },
+            | DecisionTree::Leaf(i) => {
+                self.builder.jump(blocks[*i]);
+            },
+            | DecisionTree::Guard(_, _) => todo!(),
+            | DecisionTree::Switch(_pat, cases) => {
+                let mut default_branch = None;
+                let mut switch = self.builder.switch();
+                let block = self.builder.current_block();
+                let discr = pred.clone();
+
+                for case in cases {
+                    let Some(tag) = &case.tag else {
+                        for (i, pats) in case.fields.iter().enumerate() {
+                            for &pat in pats {
+                                self.locals.insert(pat, pred.clone().field(i));
+                            }
+                        }
+
+                        default_branch = Some(self.lower_case_branch(blocks, &case.branch));
+                        break;
+                    };
+
+                    let value = match tag {
+                        | VariantTag::Literal(lit) => match lit {
+                            | Literal::Int(l) => *l,
+                            | _ => todo!(),
+                        },
+                        | VariantTag::Ctor(id) => {
+                            let downcast = if Ctor::from(*id).type_ctor(self.db).ctors(self.db).len() == 1 {
+                                pred.clone()
+                            } else {
+                                pred.clone().downcast(*id)
+                            };
+
+                            for (i, pats) in case.fields.iter().enumerate() {
+                                for &pat in pats {
+                                    self.locals.insert(pat, downcast.clone().field(i));
+                                }
+                            }
+
+                            id.as_id().as_u32() as i128
+                        },
+                    };
+
+                    let branch = self.lower_case_branch(blocks, &case.branch);
+
+                    switch.branch(value, branch);
+                }
+
+                let default_branch = default_branch.unwrap_or_else(|| {
+                    let block = self.builder.create_block();
+                    let old = self.builder.switch_block(block).unwrap();
+                    self.builder.unreachable();
+                    self.builder.switch_block(old);
+                    block
+                });
+
+                self.builder.switch_block(block);
+                switch.build(&mut self.builder, discr, default_branch);
+            },
+        }
+    }
+
+    fn lower_case_branch(&mut self, blocks: &[Block], tree: &DecisionTree) -> Block {
+        match tree {
+            | DecisionTree::Leaf(i) => blocks[*i],
+            | _ => {
+                let block = self.builder.create_block();
+                self.builder.switch_block(block);
+                block
+            },
+        }
     }
 
     pub(super) fn lower_arg(&mut self, arg: Arg) -> Operand {

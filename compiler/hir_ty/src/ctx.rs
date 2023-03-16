@@ -55,6 +55,8 @@ pub struct Cache(RwLock<CacheInner>);
 
 #[derive(Default, Debug)]
 pub struct CacheInner {
+    lang_types: FxHashMap<&'static str, Ty>,
+
     default_int_ty: Option<Ty>,
     default_float_ty: Option<Ty>,
 
@@ -172,13 +174,20 @@ impl<'db> Ctx<'db> {
     }
 
     fn lang_ty(&self, name: &'static str) -> Ty {
-        match self.lang_ctor(name) {
+        if let Some(ty) = self.db.type_cache().lang_type(name) {
+            return ty;
+        }
+
+        let ty = match self.lang_ctor(name) {
             | Some(ty) => Ty::new(self.db, TyKind::Ctor(ty)),
             | None => {
                 tracing::error!("unkown language item '{}'", name);
                 self.error()
             },
-        }
+        };
+
+        self.db.type_cache().0.write().lang_types.insert(name, ty);
+        ty
     }
 
     // fn lang_trait(&self, name: &'static str) -> Option<TraitId> {
@@ -337,6 +346,10 @@ impl<'db> std::ops::DerefMut for BodyCtx<'db, '_> {
 impl Cache {
     pub fn clear(&self) {
         self.0.write().clear();
+    }
+
+    pub fn lang_type(&self, name: &'static str) -> Option<Ty> {
+        self.0.read().lang_types.get(name).copied()
     }
 
     pub fn default_int_ty(&self, db: &dyn Db) -> Ty {
