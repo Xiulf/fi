@@ -485,7 +485,8 @@ impl<'db> Ctx<'db> {
 
                 let id = self.alloc_pat(Pat::Lit { lit: lit.clone() }, syntax_ptr);
                 let tag = VariantTag::Literal(lit);
-                let fields = PatternStack(vec![(Constructor::MatchAll, id)]);
+                // let fields = PatternStack(vec![(Constructor::MatchAll, id)]);
+                let fields = PatternStack(Vec::new());
 
                 PatternStack(vec![(Constructor::Variant(tag, fields), id)])
             },

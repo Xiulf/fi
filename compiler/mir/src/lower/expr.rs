@@ -147,6 +147,15 @@ impl Ctx<'_> {
 
                 ret.into()
             },
+            | ValueDefId::FixityId(id) => {
+                let data = hir_def::data::fixity_data(self.db, id);
+                if let Some(def) = data.def(self.db).and_then(|d| d.left()) {
+                    self.lower_path_app(expr, base_expr, def, args, store_in)
+                } else {
+                    let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                    (Const::Undefined, ret_repr).into()
+                }
+            },
             | _ => todo!("{def:?}"),
         }
     }
@@ -171,8 +180,6 @@ impl Ctx<'_> {
     ) -> Operand {
         let pred = self.lower_expr(value, &mut None);
         let pred = self.place_op(pred);
-        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
-        let ret = self.builder.add_local(LocalKind::Arg, ret_repr);
         let blocks = branches.iter().map(|_| self.builder.create_block()).collect::<Vec<_>>();
         self.lower_decision_tree(pred, &blocks, tree);
         let exit_block = self.builder.create_block();
@@ -183,6 +190,8 @@ impl Ctx<'_> {
             self.builder.jump((exit_block, [op]));
         }
 
+        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let ret = self.builder.add_local(LocalKind::Arg, ret_repr);
         self.builder.add_block_param(exit_block, ret);
         self.builder.switch_block(exit_block);
         Place::new(ret).into()
@@ -205,9 +214,10 @@ impl Ctx<'_> {
 
                 for case in cases {
                     let Some(tag) = &case.tag else {
-                        for (i, pats) in case.fields.iter().enumerate() {
+                        assert!(case.fields.len() <= 1);
+                        for pats in case.fields.iter() {
                             for &pat in pats {
-                                self.locals.insert(pat, pred.clone().field(i));
+                                self.locals.insert(pat, pred.clone());
                             }
                         }
 

@@ -4,9 +4,9 @@ import Prim
 
 @main
 main =
-    // x = Some 4
-    // b = 2
-    // y = bind x fn a -> pure (a + b)
+    x = Some 4
+    b = 2
+    y = bind x fn a -> pure (a + b)
     ()
 
 
@@ -16,11 +16,11 @@ main =
 //     pure x
 
 
-// fib x :: Int32 =
-//     match x with
-//     | 0 -> 0
-//     | 1 -> 1
-//     | n -> fib (n - 1) + fib (n - 2)
+fib x :: Int32 =
+    match x with
+    | 0 -> 0
+    | 1 -> 1
+    | n -> fib (n - 1) + fib (n - 2)
 
 
 trait Add a =
@@ -70,11 +70,11 @@ impl Monad Option =
         | Some x -> f x
         | None -> None
 
-// impl Monad List =
-//     bind l f =
-//         match l with
-//         | Nil -> Nil
-//         | Cons x xs -> append (f x) (bind xs f)
+impl Monad List =
+    bind l f =
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> append (f x) (bind xs f)
 
 append a b =
     match a with
