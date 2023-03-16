@@ -15,7 +15,11 @@ impl Ctx<'_> {
         let mut args = args.into_iter();
 
         match name.as_str(self.db) {
+            | "iadd" => self.lower_intrinsic_binop(expr, BinOp::Add, args, store_in),
             | "isub" => self.lower_intrinsic_binop(expr, BinOp::Sub, args, store_in),
+            | "imul" => self.lower_intrinsic_binop(expr, BinOp::Mul, args, store_in),
+            | "idiv" => self.lower_intrinsic_binop(expr, BinOp::Div, args, store_in),
+            | "irem" => self.lower_intrinsic_binop(expr, BinOp::Rem, args, store_in),
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap());
                 let place = self.place_op(place);

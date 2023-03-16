@@ -383,7 +383,8 @@ impl Ctor {
 
     pub fn link_name(self, db: &dyn Db) -> String {
         let name = self.path(db).display(db).to_string();
-        mangling::mangle(name.bytes())
+        // mangling::mangle(name.bytes())
+        name
     }
 
     pub fn type_ctor(self, db: &dyn Db) -> TypeCtor {
@@ -621,7 +622,8 @@ impl Impl {
             ),
         };
 
-        mangling::mangle(name.bytes())
+        // mangling::mangle(name.bytes())
+        name
     }
 
     pub fn types(self, db: &dyn Db) -> &[Ty] {

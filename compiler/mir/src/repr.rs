@@ -3,8 +3,8 @@ use std::ops::RangeInclusive;
 use hir_def::attrs::{self, AttrInput, AttrInputGroup};
 use hir_def::display::HirDisplay;
 use hir_def::id::{CtorId, TypeCtorId, TypeVarId};
-use hir_def::item_tree;
-use hir_ty::ty::{Ty, TyKind};
+use hir_def::{item_tree, lang_item};
+use hir_ty::ty::{FloatKind, IntegerKind, PrimitiveType, Ty, TyKind};
 use triomphe::Arc;
 
 use crate::Db;
@@ -123,11 +123,27 @@ pub fn repr_of_cycle(_db: &dyn Db, _cycle: &salsa::Cycle, ty: Ty) -> Arc<Repr> {
 }
 
 fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty]) -> Arc<Repr> {
+    let lib = id.module(db).lib(db);
     let attrs = attrs::query(db, id.into());
-    let mut attrs = attrs.by_key("repr").attrs();
 
-    if let Some(attr) = attrs.next().and_then(|a| a.group()) {
+    if let Some(attr) = attrs.by_key("repr").groups().next() {
         return repr_from_attrs(db, attr, args);
+    }
+
+    if let Some(kind) = db.type_cache().ctor_int_kind(db, id) {
+        return repr_from_int_kind(kind);
+    }
+
+    if let Some(kind) = db.type_cache().ctor_float_kind(db, id) {
+        return repr_from_float_kind(kind);
+    }
+
+    if Some(id) == lang_item::query(db, lib, lang_item::INT_TYPE).and_then(lang_item::LangItem::as_type_ctor) {
+        return repr_from_int(db, args);
+    }
+
+    if Some(id) == lang_item::query(db, lib, lang_item::FLOAT_TYPE).and_then(lang_item::LangItem::as_type_ctor) {
+        return repr_from_float(db, args);
     }
 
     let it = id.it(db);
@@ -164,6 +180,56 @@ fn repr_of_variant(db: &dyn Db, ctor: CtorId, args: &[Ty]) -> Arc<Repr> {
     let fields = fields.iter().map(|&f| repr_of(db, f)).collect();
 
     Arc::new(Repr::Struct(fields))
+}
+
+fn repr_from_int_kind(kind: IntegerKind) -> Arc<Repr> {
+    let (int, sign) = match kind {
+        | IntegerKind::I8 => (Integer::I8, true),
+        | IntegerKind::I16 => (Integer::I16, true),
+        | IntegerKind::I32 => (Integer::I32, true),
+        | IntegerKind::I64 => (Integer::I64, true),
+        | IntegerKind::I128 => (Integer::I128, true),
+        | IntegerKind::Isize => (Integer::Int, true),
+        | IntegerKind::U8 => (Integer::I8, false),
+        | IntegerKind::U16 => (Integer::I16, false),
+        | IntegerKind::U32 => (Integer::I32, false),
+        | IntegerKind::U64 => (Integer::I64, false),
+        | IntegerKind::U128 => (Integer::I128, false),
+        | IntegerKind::Usize => (Integer::Int, false),
+    };
+
+    Arc::new(Repr::Scalar(Scalar {
+        value: Primitive::Int(int, sign),
+        valid_range: 0..=u128::MAX,
+    }))
+}
+
+fn repr_from_float_kind(kind: FloatKind) -> Arc<Repr> {
+    let value = match kind {
+        | FloatKind::F32 => Primitive::Float,
+        | FloatKind::F64 => Primitive::Double,
+    };
+
+    Arc::new(Repr::Scalar(Scalar {
+        value,
+        valid_range: 0..=u128::MAX,
+    }))
+}
+
+fn repr_from_int(db: &dyn Db, args: &[Ty]) -> Arc<Repr> {
+    match args[0].kind(db) {
+        | TyKind::Primitive(PrimitiveType::Integer(i)) => repr_from_int_kind(*i),
+        | TyKind::Var(v) => Arc::new(Repr::TypeVar(*v)),
+        | _ => unreachable!(),
+    }
+}
+
+fn repr_from_float(db: &dyn Db, args: &[Ty]) -> Arc<Repr> {
+    match args[0].kind(db) {
+        | TyKind::Primitive(PrimitiveType::Float(f)) => repr_from_float_kind(*f),
+        | TyKind::Var(v) => Arc::new(Repr::TypeVar(*v)),
+        | _ => unreachable!(),
+    }
 }
 
 fn repr_from_attrs(db: &dyn Db, group: &AttrInputGroup, args: &[Ty]) -> Arc<Repr> {

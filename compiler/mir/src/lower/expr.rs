@@ -133,8 +133,20 @@ impl Ctx<'_> {
                 self.make_app(expr, func, args, store_in)
             },
             | ValueDefId::CtorId(id) => {
-                let func = self.lower_path(base_expr, def, store_in);
-                self.make_app(expr, func, args, store_in)
+                let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let ret = self.store_in(store_in, ret_repr);
+                let downcast = if Ctor::from(id).type_ctor(self.db).ctors(self.db).len() == 1 {
+                    ret.clone()
+                } else {
+                    ret.clone().downcast(id)
+                };
+
+                for (i, arg) in args.into_iter().enumerate() {
+                    let arg = self.lower_arg(arg);
+                    self.builder.assign(downcast.clone().field(i), arg);
+                }
+
+                ret.into()
             },
             | _ => todo!("{def:?}"),
         }
