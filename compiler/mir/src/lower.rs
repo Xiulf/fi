@@ -78,8 +78,7 @@ pub struct Ctx<'db> {
     infer: Arc<hir_ty::ctx::InferResult>,
     builder: Builder,
     locals: ArenaMap<hir_def::pat::PatId, Place>,
-    env: Option<Local>,
-    store_in: Option<Place>,
+    lambdas: Vec<(hir_def::expr::ExprId, Body)>,
 }
 
 impl<'db> Ctx<'db> {
@@ -94,8 +93,7 @@ impl<'db> Ctx<'db> {
             id: MirValueId::ValueId(value.id()),
             builder: Builder::default(),
             locals: ArenaMap::default(),
-            env: None,
-            store_in: None,
+            lambdas: Vec::new(),
         }
     }
 
@@ -113,8 +111,7 @@ impl<'db> Ctx<'db> {
             builder: Builder::default(),
             locals: ArenaMap::default(),
             id: MirValueId::Lambda(id, expr),
-            env: None,
-            store_in: None,
+            lambdas: Vec::new(),
         }
     }
 
@@ -130,6 +127,11 @@ impl<'db> Ctx<'db> {
         }
 
         let res = self.lower_expr(self.body.body_expr(), &mut None);
+
+        for (_, body) in self.lambdas {
+            use hir_def::display::HirDisplay;
+            tracing::debug!("\n{}", body.display(self.db));
+        }
 
         self.builder.ret(res);
         self.builder.build(self.db)

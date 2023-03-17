@@ -19,6 +19,7 @@ pub enum MirValueId {
     ValueId(hir_def::id::ValueId),
     CtorId(hir_def::id::CtorId),
     FieldId(hir_def::id::FieldId),
+    Body(Body),
 }
 
 #[salsa::tracked]

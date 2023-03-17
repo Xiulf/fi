@@ -41,6 +41,7 @@ impl HirDisplay for MirValueId {
             | Self::ValueId(id) => write!(f, "{}", hir::Value::from(id).link_name(f.db)),
             | Self::CtorId(id) => write!(f, "{}", hir::Ctor::from(id).link_name(f.db)),
             | Self::FieldId(_) => todo!(),
+            | Self::Body(body) => write!(f, "{}", body),
         }
     }
 }
@@ -346,6 +347,7 @@ impl HirDisplay for Const {
         }
     }
 }
+
 impl HirDisplay for Repr {
     type Db<'a> = dyn Db + 'a;
 

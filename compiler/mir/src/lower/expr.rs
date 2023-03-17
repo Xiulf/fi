@@ -34,6 +34,11 @@ impl Ctx<'_> {
             | Expr::Path { def: Some(def), .. } => self.lower_path(id, def, store_in),
             | Expr::App { base, ref args } => self.lower_app(id, base, args, store_in),
             | Expr::Block { ref stmts, expr } => self.lower_block(stmts, expr, store_in),
+            | Expr::Lambda {
+                ref env,
+                ref params,
+                body,
+            } => self.lower_lambda(id, env, params, body, store_in),
             | Expr::Match {
                 expr,
                 ref branches,
@@ -166,8 +171,78 @@ impl Ctx<'_> {
         let ret = self.store_in(store_in, ret_repr);
 
         self.builder.call(ret.clone(), func, args);
-
         Operand::Copy(ret)
+    }
+
+    fn lower_lambda(
+        &mut self,
+        expr: ExprId,
+        env: &[PatId],
+        params: &[PatId],
+        body: ExprId,
+        store_in: &mut Option<Place>,
+    ) -> Operand {
+        let mut ctx = self.for_lambda(expr);
+        let env_ty = match self.infer.type_of_expr[expr].kind(self.db) {
+            | hir_ty::ty::TyKind::Func(func) => func.env,
+            | _ => unreachable!(),
+        };
+
+        let env_repr = repr_of(self.db, env_ty);
+        let env_repr = Arc::new(Repr::Box(env_repr));
+        let env_param = ctx.builder.add_local(LocalKind::Arg, env_repr.clone());
+        let entry = ctx.builder.create_block();
+
+        ctx.builder.switch_block(entry);
+        ctx.builder.add_block_param(entry, env_param);
+
+        for &param in params.iter() {
+            let param_repr = repr_of(self.db, self.infer.type_of_pat[param]);
+            let local = ctx.builder.add_local(LocalKind::Arg, param_repr);
+            ctx.builder.add_block_param(entry, local);
+            ctx.locals.insert(param, Place::new(local));
+        }
+
+        let env_place = Place::new(env_param).deref();
+
+        if env.len() == 1 {
+            ctx.locals.insert(env[0], env_place);
+        } else {
+            for (i, &pat) in env.iter().enumerate() {
+                ctx.locals.insert(pat, env_place.clone().field(i));
+            }
+        }
+
+        let res = ctx.lower_expr(body, &mut None);
+        ctx.builder.ret(res);
+        let body = ctx.builder.build(self.db);
+        self.lambdas.push((expr, body));
+        self.lambdas.append(&mut ctx.lambdas);
+        let instance = Instance::new(self.db, MirValueId::Body(body), None);
+        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let func_repr = match &*ret_repr {
+            | Repr::Func(_, None) => return (Const::Instance(instance), ret_repr).into(),
+            | Repr::Func(sig, _) => Arc::new(Repr::Func(sig.clone(), None)),
+            | _ => unreachable!(),
+        };
+
+        let var = self.store_in(store_in, ret_repr);
+        let func = (Const::Instance(instance), func_repr);
+        let env_field = var.clone().field(1).deref();
+
+        self.builder.init(var.local);
+        self.builder.assign(var.clone().field(0), func);
+
+        if env.len() == 1 {
+            self.builder.assign(env_field, self.locals[env[0]].clone());
+        } else {
+            for (i, &pat) in env.iter().enumerate() {
+                let val = self.locals[pat].clone();
+                self.builder.assign(env_field.clone().field(i), val);
+            }
+        }
+
+        var.into()
     }
 
     fn lower_match(
