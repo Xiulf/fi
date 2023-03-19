@@ -1,5 +1,6 @@
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::ValueDefId;
+use hir_def::name::Name;
 use hir_def::pat::PatId;
 
 use crate::ctx::{BodyCtx, Expectation};
@@ -57,7 +58,7 @@ impl BodyCtx<'_, '_> {
             },
             | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),
-            | Expr::Path { def: Some(def), .. } => self.infer_value_def_id(id, *def),
+            | Expr::Path { def: Some(def), path } => self.infer_value_def_id(id, *def, path.segments().last().copied()),
             | Expr::Lambda { env, params, body } => self.infer_lambda(id, env, params, *body, expected),
             | Expr::App { base, args } => self.infer_app(id, *base, args),
             | Expr::If { cond, then, else_ } => self.infer_if(id, *cond, *then, *else_, expected),
@@ -85,7 +86,7 @@ impl BodyCtx<'_, '_> {
         ty
     }
 
-    fn infer_value_def_id(&mut self, expr: ExprId, def: ValueDefId) -> Ty {
+    fn infer_value_def_id(&mut self, expr: ExprId, def: ValueDefId, name: Option<Name>) -> Ty {
         let (ty, constraints) = match def {
             | ValueDefId::ValueId(id) if self.owner == id.into() => {
                 self.recursive_calls.push(expr);
@@ -95,9 +96,14 @@ impl BodyCtx<'_, '_> {
                 let infer = crate::infer(self.db, id);
                 (infer.ty.clone(), infer.constraints.clone())
             },
-            | ValueDefId::FixityId(id) => match hir_def::data::fixity_data(self.db, id).def(self.db) {
-                | Some(def) => return self.infer_value_def_id(expr, def.unwrap_left()),
-                | None => return self.error(),
+            | ValueDefId::FixityId(id) => {
+                let data = hir_def::data::fixity_data(self.db, id);
+                let name = data.def_path(self.db).segments().last().copied();
+
+                match data.def(self.db) {
+                    | Some(def) => return self.infer_value_def_id(expr, def.unwrap_left(), name),
+                    | None => return self.error(),
+                }
             },
             | ValueDefId::CtorId(id) => (crate::ctor_ty(self.db, id), Vec::new()),
             | ValueDefId::PatId(id) => return self.result.type_of_pat[id],
@@ -107,7 +113,7 @@ impl BodyCtx<'_, '_> {
         let (ty, constraints) = self.instantiate(ty, constraints, Some(expr), false);
 
         for constraint in constraints {
-            self.constrain(constraint, ConstraintOrigin::ExprId(expr));
+            self.constrain(constraint, ConstraintOrigin::ExprId(expr, name));
         }
 
         ty

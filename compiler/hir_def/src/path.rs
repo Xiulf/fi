@@ -22,6 +22,10 @@ impl Path {
         self.segments.len()
     }
 
+    pub fn segments(&self) -> &[Name] {
+        &self.segments
+    }
+
     pub fn display<'a>(&'a self, db: &'a dyn Db) -> Display<'a> {
         Display(db, self)
     }

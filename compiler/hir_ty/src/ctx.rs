@@ -4,7 +4,7 @@ use arena::ArenaMap;
 use either::Either;
 use hir_def::body::Body;
 use hir_def::expr::ExprId;
-use hir_def::id::{HasModule, TypeCtorId, TypeVarId, TypedItemId};
+use hir_def::id::{HasModule, TypeCtorId, TypeVarId, TypedItemId, ValueId};
 use hir_def::lang_item::{self, LangItem};
 use hir_def::name::AsName;
 use hir_def::pat::PatId;
@@ -44,6 +44,7 @@ pub struct InferResult {
     pub type_of_expr: ArenaMap<ExprId, Ty>,
     pub type_of_pat: ArenaMap<PatId, Ty>,
     pub kind_of_ty: ArenaMap<TypeRefId, Ty>,
+    pub methods: ArenaMap<ExprId, ValueId>,
     pub instances: ArenaMap<ExprId, Instance>,
 }
 
@@ -79,6 +80,7 @@ impl InferResult {
             type_of_expr: Default::default(),
             type_of_pat: Default::default(),
             kind_of_ty: Default::default(),
+            methods: Default::default(),
             instances: Default::default(),
         }
     }

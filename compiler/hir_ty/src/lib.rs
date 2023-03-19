@@ -281,7 +281,7 @@ impl TyOrigin {
 impl ConstraintOrigin {
     pub fn to_text_range(self, db: &dyn Db, owner: TypedItemId) -> InFile<TextRange> {
         match self {
-            | Self::ExprId(id) => {
+            | Self::ExprId(id, _) => {
                 let value = owner.as_value_id().unwrap();
                 let (_, src_map) = hir_def::body::query(db, value);
                 let src = src_map.expr_src(id);

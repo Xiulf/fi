@@ -107,7 +107,14 @@ impl<'db> Ctx<'db> {
         self.subst.solved.0.extend(bindings.0);
 
         for (impl_id, _, o) in impls {
-            if let ConstraintOrigin::ExprId(expr) = o {
+            if let ConstraintOrigin::ExprId(expr, name) = o {
+                if let Some(name) = name {
+                    let data = hir_def::data::impl_data(self.db, impl_id);
+                    let method = *data.items(self.db).get(&name).unwrap();
+
+                    self.result.methods.insert(expr, method);
+                }
+
                 self.result.instances[expr].impls.push(InstanceImpl::ImplId(impl_id));
             }
             // tracing::debug!("{impl_id:?}, {o:?}");
@@ -222,12 +229,12 @@ impl<'db> Ctx<'db> {
         for (constraint, origin) in constraints {
             if self.should_propagate(&constraint, &type_vars, &unknowns) {
                 if let Some(i) = self.result.constraints.iter().position(|c| c == &constraint) {
-                    if let ConstraintOrigin::ExprId(expr) = origin {
+                    if let ConstraintOrigin::ExprId(expr, _) = origin {
                         self.result.instances[expr].impls.push(InstanceImpl::Param(i));
                     }
                 } else {
                     let i = self.result.constraints.len();
-                    if let ConstraintOrigin::ExprId(expr) = origin {
+                    if let ConstraintOrigin::ExprId(expr, _) = origin {
                         self.result.instances[expr].impls.push(InstanceImpl::Param(i));
                     }
                     self.result.constraints.push(constraint);

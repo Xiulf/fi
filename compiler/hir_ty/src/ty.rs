@@ -3,6 +3,7 @@ use std::fmt;
 use hir_def::display::HirDisplay;
 use hir_def::expr::ExprId;
 use hir_def::id::{ImplId, TraitId, TypeCtorId, TypeVarId};
+use hir_def::name::Name;
 use hir_def::pat::PatId;
 use ra_ap_stdx::hash::NoHashHashMap;
 
@@ -72,12 +73,18 @@ pub struct Constraint {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConstraintOrigin {
-    ExprId(ExprId),
+    ExprId(ExprId, Option<Name>),
     PatId(PatId),
     Impl(ImplId, usize),
 }
 
-ra_ap_stdx::impl_from!(ExprId, PatId for ConstraintOrigin);
+impl From<ExprId> for ConstraintOrigin {
+    fn from(value: ExprId) -> Self {
+        Self::ExprId(value, None)
+    }
+}
+
+ra_ap_stdx::impl_from!(PatId for ConstraintOrigin);
 
 pub type GeneralizedType = Generalized<Ty>;
 

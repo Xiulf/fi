@@ -88,7 +88,13 @@ impl Ctx<'_> {
         let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
         let (mir_id, ty_inst) = match def {
             | ValueDefId::PatId(id) => return self.locals[id].clone().into(),
-            | ValueDefId::ValueId(id) => (MirValueId::ValueId(id), &self.infer.instances[expr]),
+            | ValueDefId::ValueId(id) => match self.infer.methods.get(expr) {
+                | Some(&method) => {
+                    // TODO: adjust instance types for method
+                    (MirValueId::ValueId(method), &self.infer.instances[expr])
+                },
+                | None => (MirValueId::ValueId(id), &self.infer.instances[expr]),
+            },
             | ValueDefId::CtorId(id) => {
                 if Ctor::from(id).types(self.db).is_empty() {
                     return (Const::Ctor(id), repr).into();

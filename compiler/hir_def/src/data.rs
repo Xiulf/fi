@@ -10,6 +10,7 @@ use crate::id::{
 };
 use crate::item_tree::{AttrOwner, FixityKind};
 use crate::name::Name;
+use crate::path::Path;
 use crate::source::HasSource;
 use crate::type_ref::TypeRefId;
 use crate::Db;
@@ -29,6 +30,8 @@ pub struct FixityData {
     #[return_ref]
     pub attrs: Attrs,
     pub kind: FixityKind,
+    #[return_ref]
+    pub def_path: Path,
     pub def: Option<Either<ValueDefId, TypeDefId>>,
 }
 
@@ -112,6 +115,7 @@ pub fn fixity_data(db: &dyn Db, id: FixityId) -> FixityData {
     let module = id.module(db);
     let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
     let def_map = crate::def_map::query(db, module.lib(db));
+    let def_path = data.value.clone();
     let def = def_map.resolve_path(db, &data.value, module);
     let def = if data.is_type {
         def.and_then(|d| d.types)
@@ -123,7 +127,7 @@ pub fn fixity_data(db: &dyn Db, id: FixityId) -> FixityData {
             .map(Either::Left)
     };
 
-    FixityData::new(db, id, attrs, data.kind, def)
+    FixityData::new(db, id, attrs, data.kind, def_path, def)
 }
 
 #[salsa::tracked]
