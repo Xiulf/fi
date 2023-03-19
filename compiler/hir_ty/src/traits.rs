@@ -6,7 +6,7 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::UnsolvedConstraint;
-use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, Ty, TyKind, Unknown};
+use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, InstanceImpl, Ty, TyKind, Unknown};
 use crate::unify::{UnifyBindings, UnifyResult};
 use crate::Db;
 
@@ -107,7 +107,10 @@ impl<'db> Ctx<'db> {
         self.subst.solved.0.extend(bindings.0);
 
         for (impl_id, _, o) in impls {
-            tracing::debug!("{impl_id:?}, {o:?}");
+            if let ConstraintOrigin::ExprId(expr) = o {
+                self.result.instances[expr].impls.push(InstanceImpl::ImplId(impl_id));
+            }
+            // tracing::debug!("{impl_id:?}, {o:?}");
         }
 
         None
@@ -218,7 +221,17 @@ impl<'db> Ctx<'db> {
 
         for (constraint, origin) in constraints {
             if self.should_propagate(&constraint, &type_vars, &unknowns) {
-                self.result.constraints.push(constraint);
+                if let Some(i) = self.result.constraints.iter().position(|c| c == &constraint) {
+                    if let ConstraintOrigin::ExprId(expr) = origin {
+                        self.result.instances[expr].impls.push(InstanceImpl::Param(i));
+                    }
+                } else {
+                    let i = self.result.constraints.len();
+                    if let ConstraintOrigin::ExprId(expr) = origin {
+                        self.result.instances[expr].impls.push(InstanceImpl::Param(i));
+                    }
+                    self.result.constraints.push(constraint);
+                }
             } else {
                 res.push((constraint, origin));
             }

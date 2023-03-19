@@ -4,7 +4,7 @@ use hir_def::pat::{DecisionTree, PatId, VariantTag};
 use salsa::AsId;
 
 use super::*;
-use crate::instance::Instance;
+use crate::instance::{Instance, Subst};
 use crate::repr::Repr;
 
 pub enum Arg {
@@ -84,22 +84,27 @@ impl Ctx<'_> {
         }
     }
 
-    fn lower_path(&mut self, id: ExprId, def: ValueDefId, _store_in: &mut Option<Place>) -> Operand {
-        let repr = repr_of(self.db, self.infer.type_of_expr[id]);
-        let mir_id = match def {
+    fn lower_path(&mut self, expr: ExprId, def: ValueDefId, _store_in: &mut Option<Place>) -> Operand {
+        let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let (mir_id, ty_inst) = match def {
             | ValueDefId::PatId(id) => return self.locals[id].clone().into(),
-            | ValueDefId::ValueId(id) => MirValueId::ValueId(id),
+            | ValueDefId::ValueId(id) => (MirValueId::ValueId(id), &self.infer.instances[expr]),
             | ValueDefId::CtorId(id) => {
                 if Ctor::from(id).types(self.db).is_empty() {
                     return (Const::Ctor(id), repr).into();
                 }
 
-                MirValueId::CtorId(id)
+                (MirValueId::CtorId(id), &self.infer.instances[expr])
             },
             | _ => todo!("{def:?}"),
         };
 
-        let instance = Instance::new(self.db, mir_id, None);
+        let subst = Subst {
+            types: ty_inst.types.clone(),
+            impls: Vec::new(),
+        };
+
+        let instance = Instance::new(self.db, mir_id, Some(subst).filter(|s| !s.is_empty()));
 
         (Const::Instance(instance), repr).into()
     }

@@ -232,7 +232,7 @@ impl Place {
 
 impl From<Place> for Operand {
     fn from(value: Place) -> Self {
-        Self::Copy(value)
+        Self::Move(value)
     }
 }
 

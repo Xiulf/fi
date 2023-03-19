@@ -26,4 +26,11 @@ pub struct Subst {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ImplSource {
     Instance(ImplInstance),
+    Param(usize),
+}
+
+impl Subst {
+    pub fn is_empty(&self) -> bool {
+        self.types.is_empty() && self.impls.is_empty()
+    }
 }

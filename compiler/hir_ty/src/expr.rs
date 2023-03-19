@@ -87,7 +87,10 @@ impl BodyCtx<'_, '_> {
 
     fn infer_value_def_id(&mut self, expr: ExprId, def: ValueDefId) -> Ty {
         let (ty, constraints) = match def {
-            | ValueDefId::ValueId(id) if self.owner == id.into() => (self.result.ty.clone(), Vec::new()),
+            | ValueDefId::ValueId(id) if self.owner == id.into() => {
+                self.recursive_calls.push(expr);
+                (self.result.ty.clone(), Vec::new())
+            },
             | ValueDefId::ValueId(id) => {
                 let infer = crate::infer(self.db, id);
                 (infer.ty.clone(), infer.constraints.clone())
@@ -101,7 +104,7 @@ impl BodyCtx<'_, '_> {
             | d => todo!("{d:?}"),
         };
 
-        let (ty, constraints) = self.instantiate(ty, constraints, false);
+        let (ty, constraints) = self.instantiate(ty, constraints, Some(expr), false);
 
         for constraint in constraints {
             self.constrain(constraint, ConstraintOrigin::ExprId(expr));

@@ -87,6 +87,18 @@ pub enum Generalized<T> {
     Poly(Box<[TypeVarId]>, T),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Instance {
+    pub types: Vec<Ty>,
+    pub impls: Vec<InstanceImpl>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InstanceImpl {
+    ImplId(ImplId),
+    Param(usize),
+}
+
 impl Ty {
     pub fn fold(self, db: &dyn Db, f: &mut dyn FnMut(Ty) -> Ty) -> Ty {
         match self.kind(db) {

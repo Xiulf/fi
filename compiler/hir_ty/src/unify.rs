@@ -73,7 +73,7 @@ impl Ctx<'_> {
                 GeneralizedType::Poly(v1.clone(), *t1)
             },
             | (GeneralizedType::Mono(t1), t2) => {
-                let (t2, _) = self.instantiate(t2, Vec::new(), true);
+                let (t2, _) = self.instantiate(t2, Vec::new(), None, true);
                 self.unify_types(*t1, t2, origin);
                 GeneralizedType::Mono(*t1)
             },

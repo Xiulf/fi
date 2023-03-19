@@ -15,7 +15,8 @@ use rustc_hash::FxHashMap;
 use triomphe::Arc;
 
 use crate::ty::{
-    Constraint, ConstraintOrigin, FloatKind, GeneralizedType, IntegerKind, PrimitiveType, Ty, TyKind, Unknown,
+    Constraint, ConstraintOrigin, FloatKind, Generalized, GeneralizedType, Instance, InstanceImpl, IntegerKind,
+    PrimitiveType, Ty, TyKind, Unknown,
 };
 use crate::unify::{Substitution, UnkLevel};
 use crate::Db;
@@ -28,6 +29,7 @@ pub struct Ctx<'db> {
     pub(crate) level: UnkLevel,
     pub(crate) ret_ty: Ty,
     pub(crate) constraints: Vec<(Constraint, ConstraintOrigin)>,
+    pub(crate) recursive_calls: Vec<ExprId>,
 }
 
 pub struct BodyCtx<'db, 'ctx> {
@@ -42,6 +44,7 @@ pub struct InferResult {
     pub type_of_expr: ArenaMap<ExprId, Ty>,
     pub type_of_pat: ArenaMap<PatId, Ty>,
     pub kind_of_ty: ArenaMap<TypeRefId, Ty>,
+    pub instances: ArenaMap<ExprId, Instance>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +79,7 @@ impl InferResult {
             type_of_expr: Default::default(),
             type_of_pat: Default::default(),
             kind_of_ty: Default::default(),
+            instances: Default::default(),
         }
     }
 }
@@ -92,6 +96,7 @@ impl<'db> Ctx<'db> {
             level: UnkLevel(1),
             ret_ty: ty,
             constraints: Vec::new(),
+            recursive_calls: Vec::new(),
         }
     }
 
@@ -110,12 +115,29 @@ impl<'db> Ctx<'db> {
             c.args.iter_mut().for_each(&mut finalize);
         });
 
-        result.constraints.sort_unstable();
-        result.constraints.dedup();
+        result.instances.values_mut().for_each(|inst| {
+            inst.types.iter_mut().for_each(&mut finalize);
+        });
 
         result.type_of_expr.values_mut().for_each(&mut finalize);
         result.type_of_pat.values_mut().for_each(&mut finalize);
         result.ty = self.resolve_generalized_type_fully(result.ty);
+
+        let instance_types = match &result.ty {
+            | Generalized::Mono(_) => Vec::new(),
+            | Generalized::Poly(vars, _) => vars.iter().map(|&v| Ty::new(self.db, TyKind::Var(v))).collect(),
+        };
+
+        let instance_impls = (0..result.constraints.len())
+            .map(InstanceImpl::Param)
+            .collect::<Vec<_>>();
+
+        for expr in self.recursive_calls {
+            result.instances.insert(expr, Instance {
+                types: instance_types.clone(),
+                impls: instance_impls.clone(),
+            });
+        }
 
         Arc::new(result)
     }
@@ -224,15 +246,19 @@ impl<'db> Ctx<'db> {
         &mut self,
         ty: GeneralizedType,
         constraints: Vec<Constraint>,
+        expr: Option<ExprId>,
         skolem: bool,
     ) -> (Ty, Vec<Constraint>) {
         match ty {
             | GeneralizedType::Mono(ty) => (ty, constraints),
             | GeneralizedType::Poly(vars, ty) => {
                 let mut replacements = HashMap::default();
+                let mut types = Vec::new();
 
                 for &var in vars.iter() {
-                    replacements.insert(var, self.fresh_type(self.level, skolem));
+                    let ty = self.fresh_type(self.level, skolem);
+                    replacements.insert(var, ty);
+                    types.push(ty);
                 }
 
                 let constraints = constraints
@@ -242,6 +268,13 @@ impl<'db> Ctx<'db> {
                         args: c.args.iter().map(|a| a.replace_vars(self.db, &replacements)).collect(),
                     })
                     .collect();
+
+                if let Some(expr) = expr {
+                    self.result.instances.insert(expr, Instance {
+                        types,
+                        impls: Vec::new(),
+                    });
+                }
 
                 (ty.replace_vars(self.db, &replacements), constraints)
             },
