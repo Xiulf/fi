@@ -4,7 +4,7 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::{RecursiveType, TypeMismatch};
-use crate::ty::{Constraint, GeneralizedType, PrimitiveType, Ty, TyKind, Unknown};
+use crate::ty::{Constraint, GeneralizedType, Ty, TyKind, Unknown};
 use crate::{Db, TyOrigin};
 
 const RECURSION_LIMIT: u32 = 32;
@@ -125,20 +125,20 @@ impl Ctx<'_> {
             | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => UnifyResult::Ok,
             | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2, bindings),
             | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1, bindings),
-            | (TyKind::Ctor(c), _) => {
-                use PrimitiveType::*;
-                let (base, kind) = if let Some(kind) = self.ctor_int_kind(*c) {
-                    (self.int_type(), Ty::new(self.db, TyKind::Primitive(Integer(kind))))
-                } else if let Some(kind) = self.ctor_float_kind(*c) {
-                    (self.float_type(), Ty::new(self.db, TyKind::Primitive(Float(kind))))
-                } else {
-                    return UnifyResult::Fail;
-                };
+            // | (TyKind::Ctor(c), _) => {
+            //     use PrimitiveType::*;
+            //     let (base, kind) = if let Some(kind) = self.ctor_int_kind(*c) {
+            //         (self.int_type(), Ty::new(self.db, TyKind::Primitive(Integer(kind))))
+            //     } else if let Some(kind) = self.ctor_float_kind(*c) {
+            //         (self.float_type(), Ty::new(self.db, TyKind::Primitive(Float(kind))))
+            //     } else {
+            //         return UnifyResult::Fail;
+            //     };
 
-                let app = Ty::new(self.db, TyKind::App(base, Box::new([kind])));
-                self.unify_into(app, t2, bindings)
-            },
-            | (_, TyKind::Ctor(_)) => self.unify_into(t2, t1, bindings),
+            //     let app = Ty::new(self.db, TyKind::App(base, Box::new([kind])));
+            //     self.unify_into(app, t2, bindings)
+            // },
+            // | (_, TyKind::Ctor(_)) => self.unify_into(t2, t1, bindings),
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
                 .unify_into(*a_base, *b_base, bindings)
                 .and(self.unify_all(a_args.iter(), b_args.iter(), bindings)),
@@ -270,20 +270,20 @@ impl UnifyBindings {
                 | Some(t) => self.resolve_type_fully(db, t),
                 | None => t,
             },
-            | TyKind::App(_, args) if args.len() == 1 => {
-                if let TyKind::Primitive(prim) = args[0].kind(db) {
-                    let ctor = match prim {
-                        | PrimitiveType::Integer(i) => db.type_cache().ctor_for_int_kind(*i),
-                        | PrimitiveType::Float(f) => db.type_cache().ctor_for_float_kind(*f),
-                    };
+            // | TyKind::App(_, args) if args.len() == 1 => {
+            //     if let TyKind::Primitive(prim) = args[0].kind(db) {
+            //         let ctor = match prim {
+            //             | PrimitiveType::Integer(i) => db.type_cache().ctor_for_int_kind(*i),
+            //             | PrimitiveType::Float(f) => db.type_cache().ctor_for_float_kind(*f),
+            //         };
 
-                    if let Some(ctor) = ctor {
-                        return Ty::new(db, TyKind::Ctor(ctor));
-                    }
-                }
+            //         if let Some(ctor) = ctor {
+            //             return Ty::new(db, TyKind::Ctor(ctor));
+            //         }
+            //     }
 
-                t
-            },
+            //     t
+            // },
             | _ => t,
         })
     }

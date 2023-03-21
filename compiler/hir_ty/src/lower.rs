@@ -3,7 +3,7 @@ use hir_def::type_ref::{TypeMap, TypeRef, TypeRefId};
 use triomphe::Arc;
 
 use crate::ctx::Ctx;
-use crate::ty::{FuncType, GeneralizedType, Ty, TyKind};
+use crate::ty::{FuncType, GeneralizedType, PrimitiveType, Ty, TyKind};
 
 pub struct LowerCtx<'db, 'ctx> {
     pub(crate) ctx: &'ctx mut Ctx<'db>,
@@ -25,28 +25,57 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
     fn lower_type_ref_inner(&mut self, id: TypeRefId, top_level: bool) -> Ty {
         let type_map = self.type_map.clone();
 
-        match &type_map[id] {
+        match type_map[id] {
             | TypeRef::Missing => Ty::new(self.db, TyKind::Error),
             | TypeRef::Hole => self.ctx.fresh_type(self.level, false),
             | TypeRef::Path { def: None, .. } => Ty::new(self.db, TyKind::Error),
             | TypeRef::Path { def: Some(def), .. } => match def {
-                | TypeDefId::TypeVarId(id) => Ty::new(self.db, TyKind::Var(*id)),
-                | TypeDefId::TypeCtorId(id) => Ty::new(self.db, TyKind::Ctor(*id)),
-                | TypeDefId::TypeAliasId(id) => match crate::alias_ty(self.db, *id) {
+                | TypeDefId::TypeVarId(id) => Ty::new(self.db, TyKind::Var(id)),
+                | TypeDefId::TypeCtorId(id) => {
+                    if let Some(kind) = self.ctor_int_kind(id) {
+                        let int = self.int_type();
+                        let tag = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Integer(kind)));
+                        return Ty::new(self.db, TyKind::App(int, Box::new([tag])));
+                    }
+
+                    if let Some(kind) = self.ctor_float_kind(id) {
+                        let float = self.float_type();
+                        let tag = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Float(kind)));
+                        return Ty::new(self.db, TyKind::App(float, Box::new([tag])));
+                    }
+
+                    Ty::new(self.db, TyKind::Ctor(id))
+                },
+                | TypeDefId::TypeAliasId(id) => match crate::alias_ty(self.db, id) {
                     | GeneralizedType::Mono(ty) => ty,
-                    | GeneralizedType::Poly(_, ty) => ty, // @TODO: handle generics
+                    | GeneralizedType::Poly(_, ty) => ty, // @TODO: report error
                 },
                 | _ => todo!(),
             },
-            | TypeRef::App { base, args } => {
-                let base = self.lower_type_ref(*base, false);
-                let args = args.iter().map(|&t| self.lower_type_ref(t, false)).collect();
+            | TypeRef::App { base, ref args } => match type_map[base] {
+                | TypeRef::Path {
+                    def: Some(TypeDefId::TypeAliasId(def)),
+                    ..
+                } => {
+                    let args = args.iter().map(|&t| self.lower_type_ref(t, false)).collect();
 
-                Ty::new(self.db, TyKind::App(base, args))
+                    match crate::alias_ty(self.db, def) {
+                        | GeneralizedType::Mono(ty) => Ty::new(self.db, TyKind::App(ty, args)),
+                        | GeneralizedType::Poly(vars, ty) => {
+                            let replacements = vars.iter().zip(args.iter()).map(|(&v, &a)| (v, a)).collect();
+                            ty.replace_vars(self.db, &replacements)
+                        },
+                    }
+                },
+                | _ => {
+                    let base = self.lower_type_ref(base, false);
+                    let args = args.iter().map(|&t| self.lower_type_ref(t, false)).collect();
+                    Ty::new(self.db, TyKind::App(base, args))
+                },
             },
-            | TypeRef::Func { args, ret } => {
+            | TypeRef::Func { ref args, ret } => {
                 let params = args.iter().map(|&t| self.lower_type_ref(t, false)).collect();
-                let ret = self.lower_type_ref(*ret, false);
+                let ret = self.lower_type_ref(ret, false);
                 let env = if top_level {
                     self.unit_type()
                 } else {
@@ -66,7 +95,7 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
             },
             | TypeRef::Where { clause: _, ty } => {
                 // TODO: lower constraints
-                self.lower_type_ref(*ty, false)
+                self.lower_type_ref(ty, false)
             },
         }
     }
