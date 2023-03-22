@@ -2,7 +2,7 @@ use std::fmt;
 
 use hir_def::display::HirDisplay;
 use hir_def::expr::ExprId;
-use hir_def::id::{ImplId, TraitId, TypeCtorId, TypeVarId};
+use hir_def::id::{ImplId, TraitId, TypeCtorId, TypeVarId, TypedItemId};
 use hir_def::name::Name;
 use hir_def::pat::PatId;
 use ra_ap_stdx::hash::NoHashHashMap;
@@ -191,6 +191,39 @@ impl GeneralizedType {
                 let replacements = vars.iter().zip(args).map(|(&v, &a)| (v, a)).collect();
                 ty.replace_vars(db, &replacements)
             },
+        }
+    }
+}
+
+impl Instance {
+    pub fn adjust_for_impl(&self, db: &dyn Db, impl_id: ImplId) -> Self {
+        let mut ctx = crate::ctx::Ctx::new(db, impl_id.into());
+        let mut bindings = crate::unify::UnifyBindings::default();
+        let mut replacements = NoHashHashMap::default();
+        let type_vars = TypedItemId::ImplId(impl_id).type_map(db).2;
+        let (types, _) = crate::impl_types(db, impl_id);
+
+        for &var in type_vars.iter() {
+            let replacement = ctx.fresh_type(ctx.level, false);
+            replacements.insert(var, replacement);
+        }
+
+        let types = types
+            .iter()
+            .map(|t| t.replace_vars(db, &replacements))
+            .collect::<Box<[_]>>();
+
+        ctx.unify_all(types.iter(), self.types[..types.len()].iter(), &mut bindings);
+
+        let new_types = type_vars
+            .iter()
+            .map(|v| bindings.resolve_type_fully(db, replacements[v]))
+            .chain(self.types[types.len()..].iter().copied())
+            .collect();
+
+        Self {
+            types: new_types,
+            impls: self.impls.clone(),
         }
     }
 }

@@ -1,5 +1,5 @@
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
-use hir_def::id::ValueDefId;
+use hir_def::id::{ContainerId, ValueDefId};
 use hir_def::pat::{DecisionTree, PatId, VariantTag};
 use salsa::AsId;
 
@@ -90,23 +90,27 @@ impl Ctx<'_> {
             | ValueDefId::PatId(id) => return self.locals[id].clone().into(),
             | ValueDefId::ValueId(id) => match self.infer.methods.get(expr) {
                 | Some(&method) => {
-                    // TODO: adjust instance types for method
-                    (MirValueId::ValueId(method), &self.infer.instances[expr])
+                    let impl_id = match method.container(self.db) {
+                        | ContainerId::ImplId(id) => id,
+                        | _ => unreachable!(),
+                    };
+                    let inst = self.infer.instances[expr].adjust_for_impl(self.db, impl_id);
+                    (MirValueId::ValueId(method), inst)
                 },
-                | None => (MirValueId::ValueId(id), &self.infer.instances[expr]),
+                | None => (MirValueId::ValueId(id), self.infer.instances[expr].clone()),
             },
             | ValueDefId::CtorId(id) => {
                 if Ctor::from(id).types(self.db).is_empty() {
                     return (Const::Ctor(id), repr).into();
                 }
 
-                (MirValueId::CtorId(id), &self.infer.instances[expr])
+                (MirValueId::CtorId(id), self.infer.instances[expr].clone())
             },
             | _ => todo!("{def:?}"),
         };
 
         let subst = Subst {
-            types: ty_inst.types.clone(),
+            types: ty_inst.types,
             impls: Vec::new(),
         };
 
