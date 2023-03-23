@@ -3,7 +3,7 @@ mod intrinsics;
 
 use arena::ArenaMap;
 use hir::{Ctor, Value};
-use hir_def::id::{CtorId, ValueId};
+use hir_def::id::{CtorId, ValueDefId, ValueId};
 use triomphe::Arc;
 
 use crate::builder::Builder;
@@ -19,6 +19,13 @@ pub fn value_mir(db: &dyn Db, id: ValueId) -> ValueDef {
     let body = if !value.has_body(db) {
         None
     } else {
+        let body = hir_def::body::query(db, id).0;
+        if let hir_def::expr::Expr::Path { def: Some(def), .. } = body[body.body_expr()] {
+            if let Some(def) = value_def_mir(db, def) {
+                return def;
+            }
+        }
+
         Some(Ctx::new(db, value).lower())
     };
 
@@ -69,6 +76,19 @@ pub fn ctor_mir(db: &dyn Db, id: CtorId) -> ValueDef {
     let name = ctor.link_name(db);
 
     ValueDef::new(db, Linkage::Export, name, Some(body))
+}
+
+fn value_def_mir(db: &dyn Db, def: ValueDefId) -> Option<ValueDef> {
+    match def {
+        | ValueDefId::ValueId(id) => Some(value_mir(db, id)),
+        | ValueDefId::CtorId(id) => Some(ctor_mir(db, id)),
+        | ValueDefId::FixityId(id) => {
+            let data = hir_def::data::fixity_data(db, id);
+
+            value_def_mir(db, data.def(db)?.left()?)
+        },
+        | _ => None,
+    }
 }
 
 pub struct Ctx<'db> {
