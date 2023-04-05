@@ -82,6 +82,14 @@ impl HirDisplay for Body {
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
         writeln!(f, "body @{} {{", self.as_id().as_u32())?;
 
+        for (i, constraint) in self.constraints(f.db).iter().enumerate() {
+            writeln!(f, "    ${} = where {}", i, constraint.display(f.db))?;
+        }
+
+        if !self.constraints(f.db).is_empty() {
+            writeln!(f)?;
+        }
+
         for (id, local) in self.locals(f.db).iter() {
             writeln!(f, "    {} :: {}", Local(id), local.display(f.db))?;
         }
@@ -236,10 +244,11 @@ impl HirDisplay for RValue {
         match self {
             | Self::Use(op) => op.hir_fmt(f),
             | Self::AddrOf(p) => write!(f, "&{}", p.display(f.db)),
-            | Self::Discriminant(p) => write!(f, "discriminant {}", p.display(f.db)),
             | Self::Cast(kind, op) => write!(f, "cast {} ({:?})", op.display(f.db), kind),
             | Self::BinOp(op, lhs, rhs) => write!(f, "{} {} {}", lhs.display(f.db), op, rhs.display(f.db)),
             | Self::NullOp(op, repr) => write!(f, "{} {}", op, repr.display(f.db)),
+            | Self::Discriminant(p) => write!(f, "discriminant {}", p.display(f.db)),
+            | Self::VtableMethod(p, i) => write!(f, "vtable[{p}].method[{i}]"),
         }
     }
 }

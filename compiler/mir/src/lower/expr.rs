@@ -1,6 +1,7 @@
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::{ContainerId, ValueDefId};
 use hir_def::pat::{DecisionTree, PatId, VariantTag};
+use hir_ty::ty::InstanceImpl;
 use salsa::AsId;
 
 use super::*;
@@ -84,7 +85,7 @@ impl Ctx<'_> {
         }
     }
 
-    fn lower_path(&mut self, expr: ExprId, def: ValueDefId, _store_in: &mut Option<Place>) -> Operand {
+    fn lower_path(&mut self, expr: ExprId, def: ValueDefId, store_in: &mut Option<Place>) -> Operand {
         let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
         let (mir_id, ty_inst) = match def {
             | ValueDefId::PatId(id) => return self.locals[id].clone().into(),
@@ -97,7 +98,22 @@ impl Ctx<'_> {
                     let inst = self.infer.instances[expr].adjust_for_impl(self.db, impl_id);
                     (MirValueId::ValueId(method), inst)
                 },
-                | None => (MirValueId::ValueId(id), self.infer.instances[expr].clone()),
+                | None => match self.infer.instances[expr].impls.get(0) {
+                    | Some(&InstanceImpl::Param(idx)) => match id.container(self.db) {
+                        | ContainerId::TraitId(_) => {
+                            let trait_id = self.builder.constraints()[idx].trait_id;
+                            let methods = hir::Trait::from(trait_id).items(self.db);
+                            tracing::debug!("{:?}, {:?}", id, methods);
+                            let method = methods.iter().position(|m| m.id() == id).unwrap();
+                            let res = self.store_in(store_in, repr);
+
+                            self.builder.vtable_method(res.clone(), idx, method);
+                            return res.into();
+                        },
+                        | _ => (MirValueId::ValueId(id), self.infer.instances[expr].clone()),
+                    },
+                    | _ => (MirValueId::ValueId(id), self.infer.instances[expr].clone()),
+                },
             },
             | ValueDefId::CtorId(id) => {
                 if Ctor::from(id).types(self.db).is_empty() {
@@ -108,6 +124,8 @@ impl Ctx<'_> {
             },
             | _ => todo!("{def:?}"),
         };
+
+        tracing::debug!("{:#?}", ty_inst.impls);
 
         let subst = Subst {
             types: ty_inst.types,

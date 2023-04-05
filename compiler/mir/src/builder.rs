@@ -1,5 +1,6 @@
 use arena::Arena;
 use hir_def::id::CtorId;
+use hir_ty::ty::Constraint;
 use triomphe::Arc;
 
 use crate::ir::{
@@ -11,6 +12,7 @@ use crate::Db;
 
 #[derive(Default)]
 pub struct Builder {
+    constraints: Vec<Constraint>,
     locals: Arena<LocalData>,
     blocks: Arena<BlockData>,
     block: Option<Block>,
@@ -24,11 +26,19 @@ pub struct SwitchBuilder {
 
 impl Builder {
     pub fn build(self, db: &dyn Db) -> Body {
-        Body::new(db, self.locals, self.blocks)
+        Body::new(db, self.constraints, self.locals, self.blocks)
     }
 
     pub fn current_block(&self) -> Block {
         self.block.unwrap()
+    }
+
+    pub fn constraints(&self) -> &[Constraint] {
+        &self.constraints
+    }
+
+    pub fn add_constraint(&mut self, constraint: Constraint) {
+        self.constraints.push(constraint);
     }
 
     pub fn create_block(&mut self) -> Block {
@@ -118,10 +128,6 @@ impl Builder {
         self.stmt(Stmt::Assign(res, RValue::AddrOf(place)));
     }
 
-    pub fn get_discriminant(&mut self, res: Place, place: Place) {
-        self.stmt(Stmt::Assign(res, RValue::Discriminant(place)));
-    }
-
     pub fn cast(&mut self, res: Place, kind: CastKind, op: impl Into<Operand>) {
         self.stmt(Stmt::Assign(res, RValue::Cast(kind, op.into())));
     }
@@ -132,6 +138,14 @@ impl Builder {
 
     pub fn nullop(&mut self, res: Place, op: NullOp, repr: Arc<Repr>) {
         self.stmt(Stmt::Assign(res, RValue::NullOp(op, repr)));
+    }
+
+    pub fn get_discriminant(&mut self, res: Place, place: Place) {
+        self.stmt(Stmt::Assign(res, RValue::Discriminant(place)));
+    }
+
+    pub fn vtable_method(&mut self, res: Place, vtable: usize, method: usize) {
+        self.stmt(Stmt::Assign(res, RValue::VtableMethod(vtable, method)))
     }
 }
 

@@ -221,9 +221,13 @@ impl Instance {
             .chain(self.types[types.len()..].iter().copied())
             .collect();
 
+        let mut impls = self.impls.clone();
+        assert!(matches!(impls.get(0), Some(InstanceImpl::ImplId(i)) if *i == impl_id));
+        impls.remove(0);
+
         Self {
             types: new_types,
-            impls: self.impls.clone(),
+            impls,
         }
     }
 }

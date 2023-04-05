@@ -1,5 +1,6 @@
 use arena::{Arena, Idx};
 use hir_def::id::CtorId;
+use hir_ty::ty::Constraint;
 use rustc_hash::FxHashMap;
 use triomphe::Arc;
 
@@ -39,6 +40,8 @@ pub enum Linkage {
 
 #[salsa::tracked]
 pub struct Body {
+    #[return_ref]
+    pub constraints: Vec<Constraint>,
     #[return_ref]
     pub locals: Arena<LocalData>,
     #[return_ref]
@@ -119,10 +122,11 @@ pub enum Stmt {
 pub enum RValue {
     Use(Operand),
     AddrOf(Place),
-    Discriminant(Place),
     Cast(CastKind, Operand),
     BinOp(BinOp, Operand, Operand),
     NullOp(NullOp, Arc<Repr>),
+    Discriminant(Place),
+    VtableMethod(usize, usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

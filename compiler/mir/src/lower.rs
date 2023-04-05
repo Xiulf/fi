@@ -136,6 +136,10 @@ impl<'db> Ctx<'db> {
     }
 
     pub fn lower(mut self) -> Body {
+        for c in self.infer.constraints.iter() {
+            self.builder.add_constraint(c.clone());
+        }
+
         let entry = self.builder.create_block();
         self.builder.switch_block(entry);
 
