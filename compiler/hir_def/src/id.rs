@@ -1,5 +1,5 @@
 use arena::Idx;
-use base_db::libs::LibId;
+pub use base_db::libs::LibId;
 use either::Either;
 
 use crate::item_tree::{self, ItemTreeId};

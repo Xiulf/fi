@@ -7,13 +7,15 @@ use parking_lot::RwLock;
     hir_def::Jar,
     hir_ty::Jar,
     hir::Jar,
-    mir::Jar
+    mir::Jar,
+    codegen::Jar
 )]
 pub struct Database {
     storage: salsa::Storage<Self>,
     syntax_interner: RwLock<syntax::Interner>,
     type_cache: hir_ty::ctx::Cache,
     libs: base_db::libs::LibSet,
+    target: codegen::target::Target,
 }
 
 impl Default for Database {
@@ -23,6 +25,7 @@ impl Default for Database {
             syntax_interner: RwLock::new(syntax::new_interner()),
             type_cache: Default::default(),
             libs: Default::default(),
+            target: codegen::target::Target::host_target(),
         }
     }
 }
@@ -43,5 +46,11 @@ impl base_db::Db for Database {
 impl hir_ty::Db for Database {
     fn type_cache(&self) -> &hir_ty::ctx::Cache {
         &self.type_cache
+    }
+}
+
+impl codegen::Db for Database {
+    fn target(&self) -> &codegen::target::Target {
+        &self.target
     }
 }

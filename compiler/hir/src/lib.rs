@@ -5,6 +5,7 @@ use diagnostics::{DiagnosticSink, Diagnostics};
 use hir_def::attrs::Attrs;
 use hir_def::body::Body;
 use hir_def::data;
+pub use hir_def::id;
 use hir_def::id::{
     ContainerId, CtorId, FixityId, HasModule, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId,
     TypeCtorId, TypeVarId, ValueId,

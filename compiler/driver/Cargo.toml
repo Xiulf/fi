@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 ariadne = { git = "https://github.com/Cyberduc-k/ariadne.git" }
 base_db = { version = "0.1.0", path = "../base_db" }
+codegen = { version = "0.1.0", path = "../codegen" }
 diagnostics = { version = "0.1.0", path = "../diagnostics" }
 hir = { version = "0.1.0", path = "../hir" }
 hir_def = { version = "0.1.0", path = "../hir_def" }

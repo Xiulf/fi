@@ -43,6 +43,10 @@ impl Driver {
         self.libs.add_lib(&self.db, "", LibKind::Executable, source_root)
     }
 
+    pub fn build(&self, lib: LibId) {
+        codegen::codegen_lib(&self.db, lib);
+    }
+
     pub fn debug(&self, lib: LibId) {
         // let def_map = hir_def::def_map::query(&self.db, lib);
 

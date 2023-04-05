@@ -115,7 +115,12 @@ fn check(_args: CheckArgs, driver: Driver, lib: LibId) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build(_args: BuildArgs, _driver: Driver, _lib: LibId) -> anyhow::Result<()> {
+fn build(_args: BuildArgs, driver: Driver, lib: LibId) -> anyhow::Result<()> {
+    if driver.report_diagnostics(lib)? {
+        driver.debug(lib);
+    }
+
+    driver.build(lib);
     Ok(())
 }
 
