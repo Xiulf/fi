@@ -3,7 +3,7 @@ use std::fmt::Write;
 use hir_def::display::HirDisplay;
 use salsa::AsId;
 
-use crate::instance::{ImplInstance, ImplSource, Instance, InstanceId};
+use crate::instance::{ImplInstance, ImplSource, Instance, InstanceId, Subst};
 use crate::ir::{
     BinOp, Block, BlockData, Body, Const, JumpTarget, Linkage, Local, LocalData, LocalKind, MirValueId, NullOp,
     Operand, Place, Projection, RValue, Stmt, Term, ValueDef,
@@ -18,15 +18,7 @@ impl HirDisplay for Instance {
         self.id(f.db).hir_fmt(f)?;
 
         if let Some(subst) = self.subst(f.db) {
-            f.write_char('<')?;
-            f.with_upcast::<_, dyn hir_ty::Db>(|d| d, |f| f.write_joined(subst.types.iter(), ", "))?;
-
-            if !subst.impls.is_empty() {
-                write!(f, "; ")?;
-                f.write_joined(subst.impls.iter(), ", ")?;
-            }
-
-            f.write_char('>')?;
+            subst.hir_fmt(f)?;
         }
 
         Ok(())
@@ -38,6 +30,11 @@ impl HirDisplay for ImplInstance {
 
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
         write!(f, "{}", hir::Impl::from(self.id(f.db)).vtable_link_name(f.db))?;
+
+        if let Some(subst) = self.subst(f.db) {
+            subst.hir_fmt(f)?;
+        }
+
         Ok(())
     }
 }
@@ -50,6 +47,22 @@ impl HirDisplay for ImplSource {
             | Self::Instance(i) => i.hir_fmt(f),
             | Self::Param(i) => write!(f, "${i}"),
         }
+    }
+}
+
+impl HirDisplay for Subst {
+    type Db<'a> = dyn Db + 'a;
+
+    fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
+        f.write_char('<')?;
+        f.with_upcast::<_, dyn hir_ty::Db>(|d| d, |f| f.write_joined(self.types.iter(), ", "))?;
+
+        if !self.impls.is_empty() {
+            write!(f, "; ")?;
+            f.write_joined(self.impls.iter(), ", ")?;
+        }
+
+        f.write_char('>')
     }
 }
 

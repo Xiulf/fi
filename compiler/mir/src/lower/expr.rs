@@ -126,14 +126,12 @@ impl Ctx<'_> {
             | _ => todo!("{def:?}"),
         };
 
-        let impls = ty_inst
-            .impls
-            .into_iter()
-            .map(|i| match i {
-                | InstanceImpl::ImplId(id) => ImplSource::Instance(ImplInstance::new(self.db, id, None)),
-                | InstanceImpl::Param(idx) => ImplSource::Param(idx),
-            })
-            .collect();
+        let mut impls_iter = ty_inst.impls.into_iter();
+        let mut impls = Vec::new();
+
+        while let Some(src) = impls_iter.next() {
+            impls.push(self.lower_impl_source(src, &mut impls_iter));
+        }
 
         let subst = Subst {
             types: ty_inst.types,
@@ -143,6 +141,32 @@ impl Ctx<'_> {
         let instance = Instance::new(self.db, mir_id, Some(subst).filter(|s| !s.is_empty()));
 
         (Const::Instance(instance), repr).into()
+    }
+
+    fn lower_impl_source(
+        &mut self,
+        imp: InstanceImpl,
+        impls_iter: &mut impl Iterator<Item = InstanceImpl>,
+    ) -> ImplSource {
+        match imp {
+            | InstanceImpl::ImplId(id) => {
+                let imp = hir::Impl::from(id);
+                let mut impls = Vec::new();
+
+                for _ in 0..imp.constraints(self.db).len() {
+                    let imp = impls_iter.next().unwrap();
+                    impls.push(self.lower_impl_source(imp, impls_iter));
+                }
+
+                let subst = Subst {
+                    types: Vec::new(),
+                    impls,
+                };
+
+                ImplSource::Instance(ImplInstance::new(self.db, id, Some(subst).filter(|s| !s.is_empty())))
+            },
+            | InstanceImpl::Param(idx) => ImplSource::Param(idx),
+        }
     }
 
     fn lower_app(&mut self, id: ExprId, base: ExprId, args: &[ExprId], store_in: &mut Option<Place>) -> Operand {
