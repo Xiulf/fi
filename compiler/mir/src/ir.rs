@@ -20,7 +20,6 @@ pub enum MirValueId {
     ValueId(hir_def::id::ValueId),
     CtorId(hir_def::id::CtorId),
     FieldId(hir_def::id::FieldId),
-    Body(Body),
 }
 
 #[salsa::tracked]
@@ -126,7 +125,6 @@ pub enum RValue {
     BinOp(BinOp, Operand, Operand),
     NullOp(NullOp, Arc<Repr>),
     Discriminant(Place),
-    VtableMethod(usize, usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

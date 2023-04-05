@@ -1,13 +1,20 @@
 use hir_def::id::ImplId;
 use hir_ty::ty::Ty;
 
-use crate::ir::MirValueId;
+use crate::ir::{Body, MirValueId};
 
 #[salsa::interned]
 pub struct Instance {
-    pub value: MirValueId,
+    pub id: InstanceId,
     #[return_ref]
     pub subst: Option<Subst>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InstanceId {
+    MirValueId(MirValueId),
+    VtableMethod(MirValueId, usize, usize),
+    Body(Body),
 }
 
 #[salsa::interned]
@@ -34,3 +41,5 @@ impl Subst {
         self.types.is_empty() && self.impls.is_empty()
     }
 }
+
+ra_ap_stdx::impl_from!(MirValueId, Body for InstanceId);

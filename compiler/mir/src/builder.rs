@@ -143,10 +143,6 @@ impl Builder {
     pub fn get_discriminant(&mut self, res: Place, place: Place) {
         self.stmt(Stmt::Assign(res, RValue::Discriminant(place)));
     }
-
-    pub fn vtable_method(&mut self, res: Place, vtable: usize, method: usize) {
-        self.stmt(Stmt::Assign(res, RValue::VtableMethod(vtable, method)))
-    }
 }
 
 impl Builder {

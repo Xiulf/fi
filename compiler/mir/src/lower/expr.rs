@@ -5,7 +5,7 @@ use hir_ty::ty::InstanceImpl;
 use salsa::AsId;
 
 use super::*;
-use crate::instance::{Instance, Subst};
+use crate::instance::{Instance, InstanceId, Subst};
 use crate::repr::Repr;
 
 pub enum Arg {
@@ -85,7 +85,7 @@ impl Ctx<'_> {
         }
     }
 
-    fn lower_path(&mut self, expr: ExprId, def: ValueDefId, store_in: &mut Option<Place>) -> Operand {
+    fn lower_path(&mut self, expr: ExprId, def: ValueDefId, _store_in: &mut Option<Place>) -> Operand {
         let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
         let (mir_id, ty_inst) = match def {
             | ValueDefId::PatId(id) => return self.locals[id].clone().into(),
@@ -96,23 +96,24 @@ impl Ctx<'_> {
                         | _ => unreachable!(),
                     };
                     let inst = self.infer.instances[expr].adjust_for_impl(self.db, impl_id);
-                    (MirValueId::ValueId(method), inst)
+                    (InstanceId::MirValueId(MirValueId::ValueId(method)), inst)
                 },
                 | None => match self.infer.instances[expr].impls.get(0) {
                     | Some(&InstanceImpl::Param(idx)) => match id.container(self.db) {
                         | ContainerId::TraitId(_) => {
-                            let trait_id = self.builder.constraints()[idx].trait_id;
+                            let constraint = &self.builder.constraints()[idx];
+                            let trait_id = constraint.trait_id;
                             let methods = hir::Trait::from(trait_id).items(self.db);
-                            tracing::debug!("{:?}, {:?}", id, methods);
                             let method = methods.iter().position(|m| m.id() == id).unwrap();
-                            let res = self.store_in(store_in, repr);
+                            let mut inst = self.infer.instances[expr].clone();
+                            inst.types.drain(..constraint.args.len());
+                            inst.impls.remove(0);
 
-                            self.builder.vtable_method(res.clone(), idx, method);
-                            return res.into();
+                            (InstanceId::VtableMethod(self.id, idx, method), inst)
                         },
-                        | _ => (MirValueId::ValueId(id), self.infer.instances[expr].clone()),
+                        | _ => (MirValueId::ValueId(id).into(), self.infer.instances[expr].clone()),
                     },
-                    | _ => (MirValueId::ValueId(id), self.infer.instances[expr].clone()),
+                    | _ => (MirValueId::ValueId(id).into(), self.infer.instances[expr].clone()),
                 },
             },
             | ValueDefId::CtorId(id) => {
@@ -120,7 +121,7 @@ impl Ctx<'_> {
                     return (Const::Ctor(id), repr).into();
                 }
 
-                (MirValueId::CtorId(id), self.infer.instances[expr].clone())
+                (MirValueId::CtorId(id).into(), self.infer.instances[expr].clone())
             },
             | _ => todo!("{def:?}"),
         };
@@ -220,7 +221,7 @@ impl Ctx<'_> {
         let body = ctx.builder.build(self.db);
         self.lambdas.push((expr, body));
         self.lambdas.append(&mut ctx.lambdas);
-        let instance = Instance::new(self.db, MirValueId::Body(body), None);
+        let instance = Instance::new(self.db, InstanceId::Body(body), None);
         let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
         let func_repr = match &*ret_repr {
             | Repr::Func(_, None) => return (Const::Instance(instance), ret_repr).into(),

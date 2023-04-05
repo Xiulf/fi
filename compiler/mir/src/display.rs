@@ -3,7 +3,7 @@ use std::fmt::Write;
 use hir_def::display::HirDisplay;
 use salsa::AsId;
 
-use crate::instance::Instance;
+use crate::instance::{Instance, InstanceId};
 use crate::ir::{
     BinOp, Block, BlockData, Body, Const, JumpTarget, Linkage, Local, LocalData, LocalKind, MirValueId, NullOp,
     Operand, Place, Projection, RValue, Stmt, Term, ValueDef,
@@ -15,7 +15,7 @@ impl HirDisplay for Instance {
     type Db<'a> = dyn Db + 'a;
 
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
-        self.value(f.db).hir_fmt(f)?;
+        self.id(f.db).hir_fmt(f)?;
 
         if let Some(subst) = self.subst(f.db) {
             f.write_char('<')?;
@@ -24,6 +24,20 @@ impl HirDisplay for Instance {
         }
 
         Ok(())
+    }
+}
+
+impl HirDisplay for InstanceId {
+    type Db<'a> = dyn Db + 'a;
+
+    fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
+        match *self {
+            | Self::MirValueId(id) => id.hir_fmt(f),
+            | Self::VtableMethod(id, vtable, method) => {
+                write!(f, "{}.vtable.{vtable}.method.{method}", id.display(f.db))
+            },
+            | Self::Body(body) => write!(f, "{}", body),
+        }
     }
 }
 
@@ -41,7 +55,6 @@ impl HirDisplay for MirValueId {
             | Self::ValueId(id) => write!(f, "{}", hir::Value::from(id).link_name(f.db)),
             | Self::CtorId(id) => write!(f, "{}", hir::Ctor::from(id).link_name(f.db)),
             | Self::FieldId(_) => todo!(),
-            | Self::Body(body) => write!(f, "{}", body),
         }
     }
 }
@@ -248,7 +261,6 @@ impl HirDisplay for RValue {
             | Self::BinOp(op, lhs, rhs) => write!(f, "{} {} {}", lhs.display(f.db), op, rhs.display(f.db)),
             | Self::NullOp(op, repr) => write!(f, "{} {}", op, repr.display(f.db)),
             | Self::Discriminant(p) => write!(f, "discriminant {}", p.display(f.db)),
-            | Self::VtableMethod(p, i) => write!(f, "vtable[{p}].method[{i}]"),
         }
     }
 }
