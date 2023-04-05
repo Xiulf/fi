@@ -19,7 +19,7 @@ pub enum InstanceId {
 
 #[salsa::interned]
 pub struct ImplInstance {
-    pub value: ImplId,
+    pub id: ImplId,
     #[return_ref]
     pub subst: Option<Subst>,
 }
@@ -27,7 +27,7 @@ pub struct ImplInstance {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Subst {
     pub types: Vec<Ty>,
-    pub impls: Vec<ImplInstance>,
+    pub impls: Vec<ImplSource>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

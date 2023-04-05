@@ -5,7 +5,7 @@ use hir_ty::ty::InstanceImpl;
 use salsa::AsId;
 
 use super::*;
-use crate::instance::{Instance, InstanceId, Subst};
+use crate::instance::{ImplInstance, ImplSource, Instance, InstanceId, Subst};
 use crate::repr::Repr;
 
 pub enum Arg {
@@ -126,11 +126,18 @@ impl Ctx<'_> {
             | _ => todo!("{def:?}"),
         };
 
-        tracing::debug!("{:#?}", ty_inst.impls);
+        let impls = ty_inst
+            .impls
+            .into_iter()
+            .map(|i| match i {
+                | InstanceImpl::ImplId(id) => ImplSource::Instance(ImplInstance::new(self.db, id, None)),
+                | InstanceImpl::Param(idx) => ImplSource::Param(idx),
+            })
+            .collect();
 
         let subst = Subst {
             types: ty_inst.types,
-            impls: Vec::new(),
+            impls,
         };
 
         let instance = Instance::new(self.db, mir_id, Some(subst).filter(|s| !s.is_empty()));
