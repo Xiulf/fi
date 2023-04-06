@@ -169,6 +169,14 @@ impl Module {
         self.data(db).scope(db).impls().map(Into::into)
     }
 
+    pub fn is_virtual(self, _db: &dyn Db) -> bool {
+        false
+    }
+
+    fn is_item_exported(self, db: &dyn Db, name: Name) -> bool {
+        self.data(db).scope(db).is_exported(name)
+    }
+
     fn data(self, db: &dyn Db) -> data::ModuleData {
         hir_def::def_map::query(db, self.id.lib(db))[self.id]
     }
@@ -300,6 +308,19 @@ impl Value {
         }
     }
 
+    pub fn is_func(self, db: &dyn Db) -> bool {
+        if self.has_body(db) {
+            !self.body(db).params().is_empty()
+        } else {
+            let ty = match hir_ty::infer(db, self.id).ty {
+                | Generalized::Mono(t) => t,
+                | Generalized::Poly(_, t) => t,
+            };
+
+            matches!(ty.kind(db), hir_ty::ty::TyKind::Func(_))
+        }
+    }
+
     pub fn body(self, db: &dyn Db) -> Arc<Body> {
         hir_def::body::query(db, self.id).0
     }
@@ -318,6 +339,10 @@ impl Value {
 
     pub fn is_intrinsic(self, db: &dyn Db) -> bool {
         self.attrs(db).by_key("intrinsic").exists()
+    }
+
+    pub fn is_exported(self, db: &dyn Db) -> bool {
+        self.module(db).is_item_exported(db, self.name(db)) || matches!(self.container(db), Container::Impl(_))
     }
 
     fn data(self, db: &dyn Db) -> data::ValueData {
@@ -422,6 +447,10 @@ impl Ctor {
 
     pub fn attrs(self, db: &dyn Db) -> &Attrs {
         self.data(db).attrs(db)
+    }
+
+    pub fn is_exported(self, db: &dyn Db) -> bool {
+        self.module(db).is_item_exported(db, self.name(db))
     }
 
     fn data(self, db: &dyn Db) -> data::CtorData {

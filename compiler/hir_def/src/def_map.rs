@@ -99,6 +99,10 @@ impl ModuleScope {
     pub fn impls(&self) -> impl Iterator<Item = ImplId> + '_ {
         self.impls.iter().copied()
     }
+
+    pub fn is_exported(&self, name: Name) -> bool {
+        self.exports.is_exported(name)
+    }
 }
 
 #[salsa::tracked]

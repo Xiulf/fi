@@ -16,6 +16,7 @@ pub struct Database {
     type_cache: hir_ty::ctx::Cache,
     libs: base_db::libs::LibSet,
     target: codegen::target::Target,
+    target_dir: std::path::PathBuf,
 }
 
 impl Default for Database {
@@ -26,6 +27,7 @@ impl Default for Database {
             type_cache: Default::default(),
             libs: Default::default(),
             target: codegen::target::Target::host_target(),
+            target_dir: std::env::current_dir().unwrap().join("target"),
         }
     }
 }
@@ -52,5 +54,9 @@ impl hir_ty::Db for Database {
 impl codegen::Db for Database {
     fn target(&self) -> &codegen::target::Target {
         &self.target
+    }
+
+    fn target_dir(&self) -> &std::path::Path {
+        &self.target_dir
     }
 }

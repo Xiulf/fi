@@ -1,14 +1,25 @@
-use std::collections::HashMap;
+use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 
+use arena::{ArenaMap, Idx};
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::Module;
+use inkwell::module::{Linkage, Module};
 use inkwell::passes::{PassManager, PassManagerBuilder};
-use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple};
-use inkwell::{values, OptimizationLevel};
+use inkwell::targets::{
+    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
+};
+use inkwell::{types, values, OptimizationLevel};
+use mir::instance::Instance;
+use mir::ir::{self, MirValueId};
+use rustc_hash::FxHashMap;
 use target_lexicon::Architecture;
+use triomphe::Arc;
 
+use crate::abi::FnAbi;
+use crate::layout::ReprAndLayout;
+use crate::local::LocalRef;
 use crate::Db;
 
 pub struct CodegenCtx<'a, 'ctx> {
@@ -25,21 +36,121 @@ pub struct CodegenCtx<'a, 'ctx> {
 
 #[derive(Default)]
 pub struct CodegenCtxData<'ctx> {
-    pub intrinsics: HashMap<&'static str, values::FunctionValue<'ctx>>,
+    pub intrinsics: FxHashMap<&'static str, values::FunctionValue<'ctx>>,
+    pub funcs: FxHashMap<Instance, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
+    pub types: RefCell<FxHashMap<Arc<ReprAndLayout>, types::BasicTypeEnum<'ctx>>>,
 }
 
-pub fn with_codegen_ctx<T>(db: &dyn Db, f: impl FnOnce(CodegenCtx) -> T) -> T {
+pub struct BodyCtx<'a, 'b, 'ctx> {
+    pub cx: &'b mut CodegenCtx<'a, 'ctx>,
+    pub func: values::FunctionValue<'ctx>,
+    pub fn_abi: FnAbi<'ctx>,
+    pub instance: Instance,
+    pub body: ir::Body,
+    pub blocks: ArenaMap<Idx<ir::BlockData>, BasicBlock<'ctx>>,
+    pub locals: ArenaMap<Idx<ir::LocalData>, LocalRef<'ctx>>,
+}
+
+impl<'ctx> CodegenCtx<'_, 'ctx> {
+    pub fn write(&mut self, file: &tempfile::TempPath) {
+        tracing::debug!("{}", self.module.to_string());
+
+        self.target_machine
+            .write_to_file(&self.module, FileType::Object, file.as_ref())
+            .unwrap();
+    }
+
+    pub fn codegen(&mut self, module: hir::Module) {
+        self.codegen_module(module);
+
+        let mpm = PassManager::create(());
+
+        mpm.add_always_inliner_pass();
+        mpm.run_on(self.module);
+    }
+
+    pub fn codegen_module(&mut self, module: hir::Module) {
+        for item in module.items(self.db) {
+            match item {
+                | hir::Item::Value(id) => self.codegen_value(id),
+                | _ => {},
+            }
+        }
+    }
+
+    fn codegen_value(&mut self, value: hir::Value) {
+        tracing::debug!("codegen_value({})", value.name(self.db).display(self.db));
+
+        if value.is_intrinsic(self.db) {
+            return;
+        }
+
+        if !value.type_vars(self.db).is_empty() {
+            return;
+        }
+
+        if !value.has_body(self.db) {
+            return;
+        }
+
+        let instance = Instance::new(self.db, MirValueId::ValueId(value.id()).into(), None);
+
+        if instance.is_func(self.db) {
+            let (func, fn_abi) = self.declare_func(instance);
+            let body = mir::lower::value_mir(self.db, value.id()).body(self.db).unwrap();
+            let mut bcx = BodyCtx {
+                body,
+                func,
+                fn_abi,
+                instance,
+                blocks: ArenaMap::default(),
+                locals: ArenaMap::default(),
+                cx: self,
+            };
+        } else {
+            todo!("statics");
+        }
+    }
+
+    fn declare_func(&mut self, instance: Instance) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {
+        if let Some(value) = self.funcs.get(&instance) {
+            return value.clone();
+        }
+
+        let linkage = if instance.is_foreign(self.db) || instance.is_exported(self.db) {
+            Linkage::External
+        } else {
+            Linkage::Internal
+        };
+
+        let name = instance.link_name(self.db);
+        let repr = instance.repr(self.db);
+        let signature = match &*repr {
+            | mir::repr::Repr::Func(s, _) => s,
+            | _ => unreachable!(),
+        };
+
+        let abi = self.compute_fn_abi(signature);
+        let ty = self.fn_type_for_abi(&abi);
+        let value = self.module.add_function(&name, ty, Some(linkage));
+
+        self.funcs.insert(instance, (value, abi.clone()));
+        (value, abi)
+    }
+}
+
+pub fn with_codegen_ctx<T>(db: &dyn Db, module_name: &str, f: impl FnOnce(CodegenCtx) -> T) -> T {
     init_backend(db);
     let target = db.target();
     let target_triple = TargetTriple::create(&target.triple.to_string());
-    let host_cpu = target.cpu;
-    let host_features = target.features;
+    let cpu = target.cpu;
+    let features = target.features;
     let target = Target::from_triple(&target_triple).unwrap();
     let target_machine = target
         .create_target_machine(
             &target_triple,
-            host_cpu,
-            host_features,
+            cpu,
+            features,
             OptimizationLevel::Default,
             RelocMode::PIC,
             CodeModel::Default,
@@ -48,7 +159,7 @@ pub fn with_codegen_ctx<T>(db: &dyn Db, f: impl FnOnce(CodegenCtx) -> T) -> T {
 
     let target_data = target_machine.get_target_data();
     let context = Context::create();
-    let module = context.create_module("test");
+    let module = context.create_module(module_name);
     let builder = context.create_builder();
     let pmb = PassManagerBuilder::create();
     let fpm = PassManager::create(&module);
@@ -107,5 +218,19 @@ impl<'ctx> Deref for CodegenCtx<'_, 'ctx> {
 impl DerefMut for CodegenCtx<'_, '_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
+    }
+}
+
+impl<'a, 'ctx> Deref for BodyCtx<'a, '_, 'ctx> {
+    type Target = CodegenCtx<'a, 'ctx>;
+
+    fn deref(&self) -> &Self::Target {
+        self.cx
+    }
+}
+
+impl DerefMut for BodyCtx<'_, '_, '_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.cx
     }
 }

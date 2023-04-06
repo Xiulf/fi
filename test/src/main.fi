@@ -3,7 +3,7 @@ module Main =
 import Prim
 
 @main
-main =
+main () =
     x = Some 4
     b = 2
     y = bind x fn a -> pure (a + b)

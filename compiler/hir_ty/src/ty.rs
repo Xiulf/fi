@@ -184,6 +184,13 @@ impl<T> Generalized<T> {
 }
 
 impl GeneralizedType {
+    pub fn ty(&self) -> Ty {
+        match *self {
+            | Self::Mono(ty) => ty,
+            | Self::Poly(_, ty) => ty,
+        }
+    }
+
     pub fn replace_vars(self, db: &dyn Db, args: &[Ty]) -> Ty {
         match self {
             | Self::Mono(ty) => ty,
