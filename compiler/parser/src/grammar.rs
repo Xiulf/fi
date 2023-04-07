@@ -569,7 +569,7 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn expr(p: &mut Parser) {
-    expr_infix(p);
+    expr_typed(p);
 }
 
 fn expr_app(p: &mut Parser) -> Option<CompletedMarker> {
@@ -596,6 +596,18 @@ fn expr_infix(p: &mut Parser) -> Option<CompletedMarker> {
             expr_app(p);
         }
         m = n.complete(p, EXPR_INFIX);
+    }
+
+    Some(m)
+}
+
+fn expr_typed(p: &mut Parser) -> Option<CompletedMarker> {
+    let mut m = expr_infix(p)?;
+
+    if p.eat(DBL_COLON) {
+        let n = m.precede(p);
+        typ(p);
+        m = n.complete(p, EXPR_TYPED);
     }
 
     Some(m)

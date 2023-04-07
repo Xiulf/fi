@@ -175,8 +175,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn place_layout(&self, place: &Place) -> Arc<ReprAndLayout> {
-        let repr = self.body.locals(self.db)[place.local.0].repr.clone();
-        // let repr = self.instance.subst_repr(self.db, repr);
+        let repr = self.instance.subst_repr(self.db, &self.body.locals[place.local.0].repr);
         let mut base = repr_and_layout(self.db, repr);
 
         for proj in place.projection.iter() {
@@ -199,8 +198,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         match operand {
             | Operand::Copy(p) | Operand::Move(p) => self.place_layout(p),
             | Operand::Const(_, r) => {
-                let r = r.clone();
-                // let r = self.instance.subst_repr(self.db, r);
+                let r = self.instance.subst_repr(self.db, r);
                 repr_and_layout(self.db, r)
             },
         }

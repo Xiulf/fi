@@ -5,7 +5,6 @@ use diagnostics::{DiagnosticSink, Diagnostics};
 use hir_def::attrs::Attrs;
 use hir_def::body::Body;
 use hir_def::data;
-pub use hir_def::id;
 use hir_def::id::{
     ContainerId, CtorId, FixityId, HasModule, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId,
     TypeCtorId, TypeVarId, ValueId,
@@ -13,6 +12,7 @@ use hir_def::id::{
 use hir_def::item_tree::FixityKind;
 use hir_def::name::{AsName, Name};
 use hir_def::path::Path;
+pub use hir_def::{display, id};
 use hir_ty::ty::{Constraint, Generalized, GeneralizedType, Ty};
 use salsa::AsId;
 use triomphe::Arc;
@@ -686,6 +686,12 @@ impl Impl {
         for item in self.items(db) {
             item.run_all_queries(db);
         }
+    }
+}
+
+impl TypeVar {
+    pub fn id(self) -> TypeVarId {
+        self.id
     }
 }
 

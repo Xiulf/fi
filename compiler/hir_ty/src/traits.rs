@@ -110,9 +110,10 @@ impl<'db> Ctx<'db> {
             if let ConstraintOrigin::ExprId(expr, name) = o {
                 if let Some(name) = name {
                     let data = hir_def::data::impl_data(self.db, impl_id);
-                    let method = *data.items(self.db).get(&name).unwrap();
 
-                    self.result.methods.insert(expr, method);
+                    if let Some(&method) = data.items(self.db).get(&name) {
+                        self.result.methods.insert(expr, method);
+                    }
                 }
 
                 self.result.instances[expr].impls.push(InstanceImpl::ImplId(impl_id));

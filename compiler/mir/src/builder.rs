@@ -5,7 +5,7 @@ use triomphe::Arc;
 
 use crate::ir::{
     BinOp, Block, BlockData, Body, CastKind, Const, JumpTarget, Local, LocalData, LocalKind, NullOp, Operand, Place,
-    Projection, RValue, Stmt, Term,
+    Projection, RValue, Statement, Terminator,
 };
 use crate::repr::Repr;
 use crate::Db;
@@ -44,8 +44,8 @@ impl Builder {
     pub fn create_block(&mut self) -> Block {
         Block(self.blocks.alloc(BlockData {
             params: Vec::new(),
-            stmts: Vec::new(),
-            term: Term::None,
+            statements: Vec::new(),
+            terminator: Terminator::None,
         }))
     }
 
@@ -65,32 +65,32 @@ impl Builder {
         &mut self.blocks[self.block.unwrap().0]
     }
 
-    fn stmt(&mut self, stmt: Stmt) {
-        self.block_mut().stmts.push(stmt);
+    fn stmt(&mut self, stmt: Statement) {
+        self.block_mut().statements.push(stmt);
     }
 
-    fn term(&mut self, term: Term) {
+    fn term(&mut self, term: Terminator) {
         let block = self.block_mut();
 
-        if let Term::None = block.term {
-            block.term = term;
+        if let Terminator::None = block.terminator {
+            block.terminator = term;
         }
     }
 
     pub fn unreachable(&mut self) {
-        self.term(Term::Unreachable);
+        self.term(Terminator::Unreachable);
     }
 
     pub fn abort(&mut self) {
-        self.term(Term::Abort);
+        self.term(Terminator::Abort);
     }
 
     pub fn ret(&mut self, op: impl Into<Operand>) {
-        self.term(Term::Return(op.into()));
+        self.term(Terminator::Return(op.into()));
     }
 
     pub fn jump(&mut self, target: impl Into<JumpTarget>) {
-        self.term(Term::Jump(target.into()));
+        self.term(Terminator::Jump(target.into()));
     }
 
     pub fn switch(&mut self) -> SwitchBuilder {
@@ -98,50 +98,50 @@ impl Builder {
     }
 
     pub fn init(&mut self, local: Local) {
-        self.stmt(Stmt::Init(local));
+        self.stmt(Statement::Init(local));
     }
 
     pub fn drop(&mut self, place: Place) {
-        self.stmt(Stmt::Drop(place));
+        self.stmt(Statement::Drop(place));
     }
 
     pub fn set_discriminant(&mut self, place: Place, ctor: CtorId) {
-        self.stmt(Stmt::SetDiscriminant(place, ctor));
+        self.stmt(Statement::SetDiscriminant(place, ctor));
     }
 
     pub fn intrinsic(&mut self, place: Place, name: String, args: impl Into<Vec<Operand>>) {
         let args = args.into();
-        self.stmt(Stmt::Intrinsic { place, name, args });
+        self.stmt(Statement::Intrinsic { place, name, args });
     }
 
     pub fn call(&mut self, place: Place, func: impl Into<Operand>, args: impl Into<Vec<Operand>>) {
         let func = func.into();
         let args = args.into();
-        self.stmt(Stmt::Call { place, func, args });
+        self.stmt(Statement::Call { place, func, args });
     }
 
     pub fn assign(&mut self, res: Place, op: impl Into<Operand>) {
-        self.stmt(Stmt::Assign(res, RValue::Use(op.into())));
+        self.stmt(Statement::Assign(res, RValue::Use(op.into())));
     }
 
     pub fn addrof(&mut self, res: Place, place: Place) {
-        self.stmt(Stmt::Assign(res, RValue::AddrOf(place)));
+        self.stmt(Statement::Assign(res, RValue::AddrOf(place)));
     }
 
     pub fn cast(&mut self, res: Place, kind: CastKind, op: impl Into<Operand>) {
-        self.stmt(Stmt::Assign(res, RValue::Cast(kind, op.into())));
+        self.stmt(Statement::Assign(res, RValue::Cast(kind, op.into())));
     }
 
     pub fn binop(&mut self, res: Place, op: BinOp, lhs: impl Into<Operand>, rhs: impl Into<Operand>) {
-        self.stmt(Stmt::Assign(res, RValue::BinOp(op, lhs.into(), rhs.into())));
+        self.stmt(Statement::Assign(res, RValue::BinOp(op, lhs.into(), rhs.into())));
     }
 
     pub fn nullop(&mut self, res: Place, op: NullOp, repr: Arc<Repr>) {
-        self.stmt(Stmt::Assign(res, RValue::NullOp(op, repr)));
+        self.stmt(Statement::Assign(res, RValue::NullOp(op, repr)));
     }
 
     pub fn get_discriminant(&mut self, res: Place, place: Place) {
-        self.stmt(Stmt::Assign(res, RValue::Discriminant(place)));
+        self.stmt(Statement::Assign(res, RValue::Discriminant(place)));
     }
 }
 
@@ -193,7 +193,7 @@ impl Builder {
 impl SwitchBuilder {
     pub fn build(mut self, builder: &mut Builder, discr: impl Into<Operand>, default_branch: impl Into<JumpTarget>) {
         self.targets.push(default_branch.into());
-        builder.term(Term::Switch {
+        builder.term(Terminator::Switch {
             discr: discr.into(),
             values: self.values,
             targets: self.targets,

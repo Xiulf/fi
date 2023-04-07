@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 
-use arena::{ArenaMap, Idx};
+use arena::{Arena, ArenaMap, Idx};
+use hir::display::HirDisplay;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -11,7 +12,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
 };
 use inkwell::{types, values, OptimizationLevel};
-use mir::instance::Instance;
+use mir::instance::{Instance, InstanceData, InstanceId};
 use mir::ir::{self, MirValueId};
 use rustc_hash::FxHashMap;
 use target_lexicon::Architecture;
@@ -20,6 +21,7 @@ use triomphe::Arc;
 use crate::abi::FnAbi;
 use crate::layout::ReprAndLayout;
 use crate::local::LocalRef;
+use crate::place::PlaceRef;
 use crate::Db;
 
 pub struct CodegenCtx<'a, 'ctx> {
@@ -36,6 +38,7 @@ pub struct CodegenCtx<'a, 'ctx> {
 
 #[derive(Default)]
 pub struct CodegenCtxData<'ctx> {
+    pub queue: Vec<Instance>,
     pub intrinsics: FxHashMap<&'static str, values::FunctionValue<'ctx>>,
     pub funcs: FxHashMap<Instance, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
     pub types: RefCell<FxHashMap<Arc<ReprAndLayout>, types::BasicTypeEnum<'ctx>>>,
@@ -45,10 +48,16 @@ pub struct BodyCtx<'a, 'b, 'ctx> {
     pub cx: &'b mut CodegenCtx<'a, 'ctx>,
     pub func: values::FunctionValue<'ctx>,
     pub fn_abi: FnAbi<'ctx>,
-    pub instance: Instance,
-    pub body: ir::Body,
+    pub instance: InstanceData,
+    pub body: BodyData<'a>,
     pub blocks: ArenaMap<Idx<ir::BlockData>, BasicBlock<'ctx>>,
     pub locals: ArenaMap<Idx<ir::LocalData>, LocalRef<'ctx>>,
+    pub ret_ptr: Option<PlaceRef<'ctx>>,
+}
+
+pub struct BodyData<'a> {
+    pub locals: &'a Arena<ir::LocalData>,
+    pub blocks: &'a Arena<ir::BlockData>,
 }
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
@@ -62,6 +71,10 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
     pub fn codegen(&mut self, module: hir::Module) {
         self.codegen_module(module);
+
+        while let Some(inst) = self.queue.pop() {
+            self.codegen_instance(inst);
+        }
 
         let mpm = PassManager::create(());
 
@@ -79,8 +92,6 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 
     fn codegen_value(&mut self, value: hir::Value) {
-        tracing::debug!("codegen_value({})", value.name(self.db).display(self.db));
-
         if value.is_intrinsic(self.db) {
             return;
         }
@@ -94,27 +105,51 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
 
         let instance = Instance::new(self.db, MirValueId::ValueId(value.id()).into(), None);
+        self.codegen_instance(instance);
+    }
+
+    fn codegen_instance(&mut self, instance: Instance) {
+        tracing::debug!("codegen_instance({})", instance.display(self.db));
+        let body = match instance.id(self.db) {
+            | InstanceId::MirValueId(id) => match id {
+                | MirValueId::ValueId(id) => mir::lower::value_mir(self.db, id).body(self.db).unwrap(),
+                | MirValueId::CtorId(id) => mir::lower::ctor_mir(self.db, id).body(self.db).unwrap(),
+                | MirValueId::FieldId(_id) => todo!(),
+                | MirValueId::Lambda(_, _) => unreachable!(),
+            },
+            | InstanceId::Body(body) => body,
+            | InstanceId::VtableMethod(_, _, _) => unreachable!(),
+        };
 
         if instance.is_func(self.db) {
             let (func, fn_abi) = self.declare_func(instance);
-            let body = mir::lower::value_mir(self.db, value.id()).body(self.db).unwrap();
             let mut bcx = BodyCtx {
-                body,
                 func,
                 fn_abi,
-                instance,
+                instance: instance.data(self.db),
+                body: BodyData {
+                    locals: body.locals(self.db),
+                    blocks: body.blocks(self.db),
+                },
                 blocks: ArenaMap::default(),
                 locals: ArenaMap::default(),
+                ret_ptr: None,
                 cx: self,
             };
+
+            bcx.codegen();
         } else {
             todo!("statics");
         }
     }
 
-    fn declare_func(&mut self, instance: Instance) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {
+    pub fn declare_func(&mut self, instance: Instance) -> (values::FunctionValue<'ctx>, FnAbi<'ctx>) {
         if let Some(value) = self.funcs.get(&instance) {
             return value.clone();
+        }
+
+        if instance.has_body(self.db) {
+            self.queue.push(instance);
         }
 
         let linkage = if instance.is_foreign(self.db) || instance.is_exported(self.db) {
@@ -132,6 +167,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
         let abi = self.compute_fn_abi(signature);
         let ty = self.fn_type_for_abi(&abi);
+        tracing::info!("declare_func({})", repr.display(self.db));
+        tracing::debug!("declare_func({}, {}, {})", name, signature.display(self.db), ty);
         let value = self.module.add_function(&name, ty, Some(linkage));
 
         self.funcs.insert(instance, (value, abi.clone()));

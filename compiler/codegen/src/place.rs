@@ -131,8 +131,9 @@ impl<'ctx> PlaceRef<'ctx> {
         slice
     }
 
-    pub fn downcast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, ctor: hir::Ctor) -> Self {
+    pub fn downcast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, ctor: hir::id::CtorId) -> Self {
         let mut downcast = self.clone();
+        let ctor = hir::Ctor::from(ctor);
         let ctors = ctor.type_ctor(ctx.db).ctors(ctx.db);
         let index = ctors.iter().position(|&c| c == ctor).unwrap();
 

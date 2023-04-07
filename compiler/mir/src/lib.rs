@@ -6,6 +6,7 @@ pub mod instance;
 pub mod ir;
 pub mod lower;
 pub mod repr;
+pub mod visitor;
 
 pub trait Db: hir::Db + salsa::DbWithJar<Jar> {}
 

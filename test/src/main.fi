@@ -3,11 +3,11 @@ module Main =
 import Prim
 
 @main
-main () =
-    x = Some 4
-    b = 2
-    y = bind x fn a -> pure (a + b)
-    ()
+main () :: Int32 =
+    // x = Some 4
+    // b = 2
+    // y = bind x fn a -> pure (a + b)
+    fib (5 :: Int32)
 
 
 // other = do

@@ -112,6 +112,26 @@ where
         Ok(())
     }
 
+    pub fn write_joined_map<'b, T>(
+        &mut self,
+        iter: impl IntoIterator<Item = T>,
+        map: impl Fn(T, &mut Self) -> fmt::Result,
+        sep: &str,
+    ) -> fmt::Result {
+        let mut first = true;
+
+        for e in iter {
+            if !first {
+                fmt::Write::write_str(self, sep)?;
+            }
+
+            first = false;
+            map(e, self)?;
+        }
+
+        Ok(())
+    }
+
     pub fn should_truncate(&self) -> bool {
         if let Some(max_size) = self.max_size {
             self.curr_size >= max_size

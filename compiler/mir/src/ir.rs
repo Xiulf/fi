@@ -69,18 +69,18 @@ pub struct Block(pub Idx<BlockData>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlockData {
     pub params: Vec<Local>,
-    pub stmts: Vec<Stmt>,
-    pub term: Term,
+    pub statements: Vec<Statement>,
+    pub terminator: Terminator,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Location {
     pub block: Block,
-    pub stmt: usize,
+    pub statement: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Term {
+pub enum Terminator {
     None,
     Unreachable,
     Abort,
@@ -100,7 +100,7 @@ pub struct JumpTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Stmt {
+pub enum Statement {
     Init(Local),
     Drop(Place),
     Assign(Place, RValue),
@@ -208,19 +208,22 @@ impl Block {
     pub const ENTRY: Self = Self(Idx::DUMMY);
 
     pub fn start_location(self) -> Location {
-        Location { block: self, stmt: 0 }
+        Location {
+            block: self,
+            statement: 0,
+        }
     }
 }
 
 impl Location {
     pub const START: Self = Self {
         block: Block::ENTRY,
-        stmt: 0,
+        statement: 0,
     };
 
     pub fn next_stmt(self) -> Self {
         Self {
-            stmt: self.stmt + 1,
+            statement: self.statement + 1,
             ..self
         }
     }

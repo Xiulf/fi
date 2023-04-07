@@ -20,9 +20,11 @@ pub fn value_mir(db: &dyn Db, id: ValueId) -> ValueDef {
         None
     } else {
         let body = hir_def::body::query(db, id).0;
-        if let hir_def::expr::Expr::Path { def: Some(def), .. } = body[body.body_expr()] {
-            if let Some(def) = value_def_mir(db, def) {
-                return def;
+        if body.params().is_empty() {
+            if let hir_def::expr::Expr::Path { def: Some(def), .. } = body[body.body_expr()] {
+                if let Some(def) = value_def_mir(db, def) {
+                    return def;
+                }
             }
         }
 

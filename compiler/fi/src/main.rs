@@ -75,6 +75,29 @@ fn main() -> anyhow::Result<()> {
         .with_line_number(true)
         .init();
 
+    std::panic::set_hook(Box::new(|info| {
+        let loc = info.location().unwrap();
+
+        // if let Some(ice) = info.payload().downcast_ref::<ICE>() {
+        //     eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", ice.0, loc);
+        //     return;
+        // }
+
+        // if let Some(err) = info.payload().downcast_ref::<Error>() {
+        //     eprintln!("\x1B[31mError:\x1B[0m '{}'", err.0);
+        //     return;
+        // }
+
+        let msg = match info.payload().downcast_ref::<&'static str>() {
+            | Some(s) => *s,
+            | None => match info.payload().downcast_ref::<String>() {
+                | Some(s) => &s[..],
+                | None => "...",
+            },
+        };
+
+        eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", msg, loc);
+    }));
     match cli.command {
         | Command::Basic(cmd) => basic(cli.args, cmd),
     }

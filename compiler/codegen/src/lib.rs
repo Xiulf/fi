@@ -4,11 +4,13 @@ use triomphe::Arc;
 
 pub mod abi;
 pub mod assembly;
+pub mod body;
 pub mod ctx;
 pub mod layout;
 pub mod local;
 pub mod operand;
 pub mod place;
+pub mod ssa;
 pub mod target;
 pub mod ty;
 

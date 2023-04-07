@@ -95,6 +95,10 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Arc<Repr> {
         | TyKind::Error => unreachable!(),
         | TyKind::Var(var) => Arc::new(Repr::TypeVar(*var)),
         | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[]),
+        | TyKind::Primitive(prim) => match prim {
+            | PrimitiveType::Integer(kind) => repr_from_int_kind(*kind),
+            | PrimitiveType::Float(kind) => repr_from_float_kind(*kind),
+        },
         | TyKind::App(mut base, args) => {
             let mut args = args.to_vec();
             while let TyKind::App(b, a) = base.kind(db) {
@@ -222,7 +226,7 @@ fn repr_from_int(db: &dyn Db, args: &[Ty]) -> Arc<Repr> {
     match args[0].kind(db) {
         | TyKind::Primitive(PrimitiveType::Integer(i)) => repr_from_int_kind(*i),
         | TyKind::Var(v) => Arc::new(Repr::TypeVar(*v)),
-        | _ => unreachable!(),
+        | k => unreachable!("{k:?}"),
     }
 }
 

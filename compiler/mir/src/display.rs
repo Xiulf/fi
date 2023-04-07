@@ -6,7 +6,7 @@ use salsa::AsId;
 use crate::instance::{ImplInstance, ImplSource, Instance, InstanceId, Subst};
 use crate::ir::{
     BinOp, Block, BlockData, Body, Const, JumpTarget, Linkage, Local, LocalData, LocalKind, MirValueId, NullOp,
-    Operand, Place, Projection, RValue, Stmt, Term, ValueDef,
+    Operand, Place, Projection, RValue, Statement, Terminator, ValueDef,
 };
 use crate::repr::{ArrayLen, Integer, Primitive, Repr, Scalar, Signature};
 use crate::Db;
@@ -202,25 +202,25 @@ impl HirDisplay for BlockData {
             write!(f, "):")?;
         }
 
-        for stmt in self.stmts.iter() {
+        for stmt in self.statements.iter() {
             write!(f, "\n    {}", stmt.display(f.db))?;
         }
 
-        write!(f, "\n    {}", self.term.display(f.db))
+        write!(f, "\n    {}", self.terminator.display(f.db))
     }
 }
 
-impl HirDisplay for Term {
+impl HirDisplay for Terminator {
     type Db<'a> = dyn Db + 'a;
 
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
         match self {
-            | Term::None => f.write_str("<no terminator>"),
-            | Term::Unreachable => f.write_str("unreachable"),
-            | Term::Abort => f.write_str("abort"),
-            | Term::Return(op) => write!(f, "return {}", op.display(f.db)),
-            | Term::Jump(target) => write!(f, "jump {}", target.display(f.db)),
-            | Term::Switch { discr, values, targets } => {
+            | Terminator::None => f.write_str("<no terminator>"),
+            | Terminator::Unreachable => f.write_str("unreachable"),
+            | Terminator::Abort => f.write_str("abort"),
+            | Terminator::Return(op) => write!(f, "return {}", op.display(f.db)),
+            | Terminator::Jump(target) => write!(f, "jump {}", target.display(f.db)),
+            | Terminator::Switch { discr, values, targets } => {
                 write!(f, "switch {} ", discr.display(f.db))?;
                 for (val, target) in values.iter().zip(targets) {
                     write!(f, "case {val}: {}, ", target.display(f.db))?;
@@ -245,7 +245,7 @@ impl HirDisplay for JumpTarget {
     }
 }
 
-impl HirDisplay for Stmt {
+impl HirDisplay for Statement {
     type Db<'a> = dyn Db + 'a;
 
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {

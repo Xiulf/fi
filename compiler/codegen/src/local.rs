@@ -26,16 +26,14 @@ impl<'ctx> LocalRef<'ctx> {
 
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn arg_local_refs(&mut self, by_ref_locals: &FxHashSet<Local>) -> Vec<LocalRef<'ctx>> {
-        let body = self.body.clone();
-        let block = body.blocks(self.db).iter().next().unwrap().1;
+        let block = self.body.blocks.iter().next().unwrap().1;
         let mut index = self.fn_abi.ret.is_indirect() as u32;
 
         block
             .params
             .iter()
             .map(|arg| {
-                let repr = body.locals(self.db)[arg.0].repr.clone();
-                // let repr = self.instance.subst_repr(self.db, &body.locals[arg.0].repr);
+                let repr = self.instance.subst_repr(self.db, &self.body.locals[arg.0].repr);
                 let layout = repr_and_layout(self.db, repr);
                 let pass_mode = self.pass_mode(&layout);
 
