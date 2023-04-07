@@ -169,6 +169,16 @@ impl Module {
         self.data(db).scope(db).impls().map(Into::into)
     }
 
+    pub fn exports(self, db: &dyn Db) -> Vec<Item> {
+        self.items(db)
+            .filter(|i| i.is_exported(db))
+            .chain(
+                self.impls(db)
+                    .flat_map(|imp| imp.items(db).into_iter().map(Item::Value)),
+            )
+            .collect()
+    }
+
     pub fn is_virtual(self, _db: &dyn Db) -> bool {
         false
     }
@@ -193,6 +203,30 @@ impl Module {
 }
 
 impl Item {
+    pub fn module(self, db: &dyn Db) -> Module {
+        match self {
+            | Self::Fixity(it) => it.module(db),
+            | Self::Value(it) => it.module(db),
+            | Self::TypeAlias(it) => it.module(db),
+            | Self::TypeCtor(it) => it.module(db),
+            | Self::Trait(it) => it.module(db),
+        }
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        match self {
+            | Self::Fixity(it) => it.name(db),
+            | Self::Value(it) => it.name(db),
+            | Self::TypeAlias(it) => it.name(db),
+            | Self::TypeCtor(it) => it.name(db),
+            | Self::Trait(it) => it.name(db),
+        }
+    }
+
+    pub fn is_exported(self, db: &dyn Db) -> bool {
+        self.module(db).is_item_exported(db, self.name(db))
+    }
+
     fn run_all_queries(self, db: &dyn Db) {
         match self {
             | Self::Fixity(_) => {},

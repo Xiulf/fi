@@ -37,14 +37,15 @@ impl Driver {
         Ok(set)
     }
 
-    pub fn create_lib(&mut self, file_set: vfs::FileSet) -> LibId {
+    pub fn create_lib(&mut self, file_set: vfs::FileSet, name: &str) -> LibId {
         let source_root = SourceRoot::new(&self.db, file_set);
 
-        self.libs.add_lib(&self.db, "", LibKind::Executable, source_root)
+        self.libs.add_lib(&self.db, name, LibKind::Executable, source_root)
     }
 
     pub fn build(&self, lib: LibId) {
-        codegen::codegen_lib(&self.db, lib);
+        let asm = codegen::codegen_lib(&self.db, lib);
+        asm.link(&self.db);
     }
 
     pub fn debug(&self, lib: LibId) {

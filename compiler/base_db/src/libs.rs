@@ -22,7 +22,7 @@ pub struct LibId {
 pub enum LibKind {
     Executable,
     #[default]
-    DynamibLib,
+    DynamicLib,
     StaticLib,
 }
 

@@ -236,7 +236,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_statement(&mut self, stmt: &ir::Statement) {
         match stmt {
-            | ir::Statement::Init(_) => todo!(),
+            | ir::Statement::Init(_) => {}, // nop for now
             | ir::Statement::Drop(_) => todo!(),
             | ir::Statement::Assign(place, rvalue) => self.codegen_assign(place, rvalue),
             | ir::Statement::Call { place, func, args } => self.codegen_call(place, func, args),

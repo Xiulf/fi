@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 arena = { git = "https://github.com/Xiulf/arena", version = "0.1.0" }
+base_db = { version = "0.1.0", path = "../base_db" }
+cc = "1.0.79"
 hir = { version = "0.1.0", path = "../hir" }
 inkwell = { version = "0.1.1", features = ["llvm14-0"] }
 mir = { version = "0.1.0", path = "../mir" }

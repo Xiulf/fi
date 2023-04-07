@@ -11,7 +11,7 @@ use inkwell::passes::{PassManager, PassManagerBuilder};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
 };
-use inkwell::{types, values, OptimizationLevel};
+use inkwell::{types, values, AddressSpace, OptimizationLevel};
 use mir::instance::{Instance, InstanceData, InstanceId};
 use mir::ir::{self, MirValueId};
 use rustc_hash::FxHashMap;
@@ -76,8 +76,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             self.codegen_instance(inst);
         }
 
+        let pmb = PassManagerBuilder::create();
         let mpm = PassManager::create(());
 
+        pmb.set_optimization_level(OptimizationLevel::None);
+        pmb.set_inliner_with_threshold(225);
+        pmb.populate_module_pass_manager(&mpm);
         mpm.add_always_inliner_pass();
         mpm.run_on(self.module);
     }
@@ -87,6 +91,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             match item {
                 | hir::Item::Value(id) => self.codegen_value(id),
                 | _ => {},
+            }
+        }
+
+        for imp in module.impls(self.db) {
+            for item in imp.items(self.db) {
+                self.codegen_value(item);
             }
         }
     }
@@ -108,6 +118,10 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let idx = self.queue.len();
         self.codegen_instance(instance);
         self.queue.swap_remove(idx);
+
+        if value.attrs(self.db).by_key("main").exists() {
+            self.codegen_main_shim(instance);
+        }
     }
 
     fn codegen_instance(&mut self, instance: Instance) {
@@ -174,6 +188,23 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
         self.funcs.insert(instance, (value, abi.clone()));
         (value, abi)
+    }
+
+    pub fn codegen_main_shim(&mut self, main: Instance) {
+        let i32t = self.context.i32_type();
+        let i8t = self.context.i8_type();
+        let i8ppt = i8t.ptr_type(AddressSpace::default()).ptr_type(AddressSpace::default());
+        let ty = i32t.fn_type(&[i32t.into(), i8ppt.into()], false);
+        let value = self.module.add_function("main", ty, None);
+        let (main_value, ref _main_abi) = self.funcs[&main];
+
+        let entry = self.context.append_basic_block(value, "entry");
+        self.builder.position_at_end(entry);
+        let res = self.builder.build_call(main_value, &[], "");
+        let res = res.try_as_basic_value().left().unwrap();
+
+        self.builder.build_return(Some(&res));
+        value.verify(true);
     }
 }
 

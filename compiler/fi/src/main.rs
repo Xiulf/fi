@@ -36,8 +36,11 @@ enum BasicCommand {
 
 #[derive(Args, Debug, Clone)]
 struct BasicCommandArgs {
-    #[arg(value_hint = clap::ValueHint::FilePath)]
+    #[arg(required = true, value_hint = clap::ValueHint::FilePath)]
     files: Vec<PathBuf>,
+
+    #[arg(long = "lib-name", required_unless_present("output"))]
+    lib_name: Option<String>,
 
     #[arg(short = 'o', value_hint = clap::ValueHint::FilePath)]
     output: Option<PathBuf>,
@@ -121,7 +124,8 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
     }
 
     let files = driver.load_files(files)?;
-    let lib = driver.create_lib(files);
+    let lib_name = args.lib_name.as_deref().unwrap_or("");
+    let lib = driver.create_lib(files, lib_name);
 
     match cmd {
         | BasicCommand::Check(args) => check(args, driver, lib),

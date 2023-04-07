@@ -1,4 +1,4 @@
-use target_lexicon::Triple;
+use target_lexicon::{OperatingSystem, Triple};
 
 mod linux_base;
 mod windows_msvc_base;
@@ -80,5 +80,9 @@ impl Target {
 
     pub fn host_target() -> Target {
         Self::load(&Triple::host())
+    }
+
+    pub fn is_windows(&self) -> bool {
+        matches!(self.triple.operating_system, OperatingSystem::Windows)
     }
 }
