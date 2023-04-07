@@ -105,7 +105,9 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
 
         let instance = Instance::new(self.db, MirValueId::ValueId(value.id()).into(), None);
+        let idx = self.queue.len();
         self.codegen_instance(instance);
+        self.queue.swap_remove(idx);
     }
 
     fn codegen_instance(&mut self, instance: Instance) {

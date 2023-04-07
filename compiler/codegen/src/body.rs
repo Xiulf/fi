@@ -1,5 +1,6 @@
 use arena::Idx;
 use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
+use inkwell::IntPredicate;
 use mir::instance::Instance;
 use mir::ir::{self, LocalKind};
 use mir::repr::Repr;
@@ -7,7 +8,7 @@ use triomphe::Arc;
 
 use crate::abi::{ArgAbi, EmptySinglePair, PassMode};
 use crate::ctx::BodyCtx;
-use crate::layout::{repr_and_layout, ReprAndLayout};
+use crate::layout::{repr_and_layout, Abi, ReprAndLayout};
 use crate::local::LocalRef;
 use crate::operand::{OperandRef, OperandValue};
 use crate::place::PlaceRef;
@@ -15,6 +16,7 @@ use crate::place::PlaceRef;
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen(&mut self) {
         let by_ref_locals = crate::ssa::analyze(self);
+        tracing::debug!("{:?}", by_ref_locals);
         let entry = self.context.append_basic_block(self.func, "entry");
         let first_block = Idx::from_raw(0u32.into());
         self.builder.position_at_end(entry);
@@ -55,7 +57,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         }
 
         for (block, data) in self.body.blocks.iter() {
-            let bb = self.context.append_basic_block(self.func, "");
+            let name = format!("block{}", u32::from(block.into_raw()));
+            let bb = self.context.append_basic_block(self.func, &name);
             self.builder.position_at_end(bb);
             self.blocks.insert(block, bb);
 
@@ -185,9 +188,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     | _ => unreachable!(),
                 };
             } else {
-                let cmp = self
-                    .builder
-                    .build_int_compare(inkwell::IntPredicate::EQ, discr_val, val, "");
+                let cmp = self.builder.build_int_compare(IntPredicate::EQ, discr_val, val, "");
                 self.builder.build_conditional_branch(cmp, then, else_);
             }
 
@@ -353,6 +354,31 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         }
     }
 
+    pub fn rvalue_creates_operand(&self, place: &ir::Place, rvalue: &ir::RValue) -> bool {
+        match rvalue {
+            | ir::RValue::Cast(ir::CastKind::Bitcast, op) => {
+                let op_lyt = self.operand_layout(op);
+                let cast_lyt = self.place_layout(place);
+
+                if op_lyt.size != cast_lyt.size {
+                    return false;
+                }
+
+                match (&op_lyt.abi, &cast_lyt.abi) {
+                    | (Abi::Uninhabited, _) => false,
+                    | (_, Abi::Uninhabited) => false,
+                    | (Abi::Aggregate { sized: _ }, _) => true,
+                    | (Abi::Scalar(_) | Abi::ScalarPair(_, _), Abi::Aggregate { sized: _ }) => false,
+                    | (Abi::Scalar(_), Abi::Scalar(_)) => true,
+                    | (Abi::ScalarPair(_, _), Abi::ScalarPair(_, _)) => true,
+                    | (Abi::Scalar(_), Abi::ScalarPair(_, _)) => false,
+                    | (Abi::ScalarPair(_, _), Abi::Scalar(_)) => false,
+                }
+            },
+            | _ => true,
+        }
+    }
+
     pub fn codegen_rvalue(&mut self, place: PlaceRef<'ctx>, rvalue: &ir::RValue) {
         match rvalue {
             | ir::RValue::Use(op) => {
@@ -373,7 +399,85 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 let ptr = self.codegen_place(place).ptr.as_basic_value_enum();
                 OperandRef::new_imm(layout, ptr)
             },
+            | ir::RValue::BinOp(op, lhs, rhs) => self.codegen_binop(layout, *op, lhs, rhs),
             | _ => todo!("{rvalue:?}"),
+        }
+    }
+
+    pub fn codegen_binop(
+        &mut self,
+        layout: Arc<ReprAndLayout>,
+        op: ir::BinOp,
+        lhs: &ir::Operand,
+        rhs: &ir::Operand,
+    ) -> OperandRef<'ctx> {
+        let is_float = layout.is_float();
+        let is_signed = layout.is_signed();
+        let lhs = self.codegen_operand(lhs).load(self.cx);
+        let rhs = self.codegen_operand(rhs).load(self.cx);
+
+        if let ir::BinOp::Offset = op {
+            let lhs = lhs.into_pointer_value();
+            let rhs = rhs.into_int_value();
+            let value = unsafe { self.builder.build_gep(lhs, &[rhs], "") };
+
+            OperandRef::new_imm(layout, value.as_basic_value_enum())
+        } else if is_float {
+            let lhs = lhs.into_float_value();
+            let rhs = rhs.into_float_value();
+            let val = match op {
+                | ir::BinOp::Add => self.builder.build_float_add(lhs, rhs, ""),
+                | ir::BinOp::Sub => self.builder.build_float_sub(lhs, rhs, ""),
+                | ir::BinOp::Mul => self.builder.build_float_mul(lhs, rhs, ""),
+                | ir::BinOp::Div => self.builder.build_float_div(lhs, rhs, ""),
+                | ir::BinOp::Rem => self.builder.build_float_rem(lhs, rhs, ""),
+                // | ir::BinOp::Eq => self.builder.build_float_compare(FloatPredicate::OEQ, lhs, rhs, ""),
+                // | ir::BinOp::Ne => self.builder.build_float_compare(FloatPredicate::UNE, lhs, rhs, ""),
+                // | ir::BinOp::Lt => self.builder.build_float_compare(FloatPredicate::OLT, lhs, rhs, ""),
+                // | ir::BinOp::Le => self.builder.build_float_compare(FloatPredicate::OLE, lhs, rhs, ""),
+                // | ir::BinOp::Gt => self.builder.build_float_compare(FloatPredicate::OGT, lhs, rhs, ""),
+                // | ir::BinOp::Ge => self.builder.build_float_compare(FloatPredicate::OGE, lhs, rhs, ""),
+                | _ => unreachable!(),
+            };
+
+            OperandRef::new_imm(layout, val.as_basic_value_enum())
+        } else {
+            let lhs = lhs.into_int_value();
+            let rhs = rhs.into_int_value();
+            let val = match op {
+                | ir::BinOp::Add => self.builder.build_int_add(lhs, rhs, ""),
+                | ir::BinOp::Sub => self.builder.build_int_sub(lhs, rhs, ""),
+                | ir::BinOp::Mul => self.builder.build_int_mul(lhs, rhs, ""),
+                | ir::BinOp::Div if is_signed => self.builder.build_int_signed_div(lhs, rhs, ""),
+                | ir::BinOp::Div => self.builder.build_int_unsigned_div(lhs, rhs, ""),
+                | ir::BinOp::Rem if is_signed => self.builder.build_int_signed_rem(lhs, rhs, ""),
+                | ir::BinOp::Rem => self.builder.build_int_unsigned_rem(lhs, rhs, ""),
+                | ir::BinOp::Lsh => self.builder.build_left_shift(lhs, rhs, ""),
+                | ir::BinOp::Rsh => self.builder.build_right_shift(lhs, rhs, is_signed, ""),
+                | ir::BinOp::And => self.builder.build_and(lhs, rhs, ""),
+                | ir::BinOp::Or => self.builder.build_or(lhs, rhs, ""),
+                | ir::BinOp::Xor => self.builder.build_xor(lhs, rhs, ""),
+                | ir::BinOp::Eq | ir::BinOp::Ne | ir::BinOp::Lt | ir::BinOp::Le | ir::BinOp::Gt | ir::BinOp::Ge => {
+                    let pred = match op {
+                        | ir::BinOp::Eq => IntPredicate::EQ,
+                        | ir::BinOp::Ne => IntPredicate::NE,
+                        | ir::BinOp::Lt if is_signed => IntPredicate::SLT,
+                        | ir::BinOp::Lt => IntPredicate::ULT,
+                        | ir::BinOp::Le if is_signed => IntPredicate::SLE,
+                        | ir::BinOp::Le => IntPredicate::ULE,
+                        | ir::BinOp::Gt if is_signed => IntPredicate::SGT,
+                        | ir::BinOp::Gt => IntPredicate::UGT,
+                        | ir::BinOp::Ge if is_signed => IntPredicate::SGE,
+                        | ir::BinOp::Ge => IntPredicate::UGE,
+                        | _ => unreachable!(),
+                    };
+
+                    self.builder.build_int_compare(pred, lhs, rhs, "")
+                },
+                | ir::BinOp::Offset => unreachable!(),
+            };
+
+            OperandRef::new_imm(layout, val.as_basic_value_enum())
         }
     }
 

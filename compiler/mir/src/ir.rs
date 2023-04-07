@@ -47,7 +47,7 @@ pub struct Body {
     pub blocks: Arena<BlockData>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Local(pub Idx<LocalData>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -63,7 +63,7 @@ pub enum LocalKind {
     Tmp,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Block(pub Idx<BlockData>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -226,5 +226,17 @@ impl Location {
             statement: self.statement + 1,
             ..self
         }
+    }
+}
+
+impl std::fmt::Debug for Local {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Local").field(&u32::from(self.0.into_raw())).finish()
+    }
+}
+
+impl std::fmt::Debug for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Block").field(&u32::from(self.0.into_raw())).finish()
     }
 }
