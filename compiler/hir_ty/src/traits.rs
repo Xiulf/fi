@@ -250,14 +250,10 @@ impl<'db> Ctx<'db> {
 
     fn should_propagate(&self, constraint: &Constraint, type_vars: &[TypeVarId], unknowns: &[Unknown]) -> bool {
         let db = self.db;
-        let check = move |t: Ty| {
-            let mut res = false;
-            t.traverse(db, &mut |t| match t.kind(db) {
-                | TyKind::Var(v) => res |= type_vars.contains(v),
-                | TyKind::Unknown(u, false) => res |= unknowns.contains(u),
-                | _ => {},
-            });
-            res
+        let check = move |t: Ty| match t.kind(db) {
+            | TyKind::Var(v) => type_vars.contains(v),
+            | TyKind::Unknown(u, false) => unknowns.contains(u),
+            | _ => false,
         };
 
         constraint.args.iter().any(|&t| check(t))

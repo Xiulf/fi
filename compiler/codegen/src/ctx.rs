@@ -167,7 +167,6 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
         let abi = self.compute_fn_abi(signature);
         let ty = self.fn_type_for_abi(&abi);
-        tracing::info!("declare_func({})", repr.display(self.db));
         tracing::debug!("declare_func({}, {}, {})", name, signature.display(self.db), ty);
         let value = self.module.add_function(&name, ty, Some(linkage));
 
