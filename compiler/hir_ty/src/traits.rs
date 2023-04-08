@@ -13,8 +13,13 @@ use crate::Db;
 const RECURSION_LIMIT: u32 = 32;
 
 impl<'db> Ctx<'db> {
-    pub fn solve_constraints(&mut self) {
-        let constraints = self.sort_constraints();
+    pub fn solve_constraints(&mut self, allow_propagation: bool) {
+        let constraints = if allow_propagation {
+            self.sort_constraints()
+        } else {
+            Vec::new()
+        };
+
         let mut failing = self.try_solve_constraints(constraints.iter(), false);
         let mut prev_len = failing.len();
 
