@@ -108,8 +108,11 @@ impl<'db> Ctx<'db> {
 
     pub fn finish(mut self) -> Arc<InferResult> {
         let mut result = std::mem::replace(&mut self.result, InferResult::default(self.db));
+
+        result.type_of_expr.values().for_each(|&t| self.default_literals(t));
+        result.type_of_pat.values().for_each(|&t| self.default_literals(t));
+
         let mut finalize = |t: &mut Ty| {
-            self.default_literals(*t);
             *t = self.resolve_type_fully(*t);
         };
 
