@@ -8,8 +8,8 @@ main () =
     // b = 2
     y = fn a -> a + 1
     // y = bind x fn a -> pure (a + b)
-    // fib (6 :: Int32)
-    fib 20
+    fib (6 :: Int32)
+    y 6
 
 
 // other = do

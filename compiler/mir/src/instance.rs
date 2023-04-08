@@ -104,7 +104,8 @@ impl Instance {
                 // | MirValueId::FieldId(id) => hir::Field::from(id).is_exported(db),
                 | _ => false,
             },
-            | _ => false,
+            | InstanceId::VtableMethod(_, _, _) => true,
+            | InstanceId::Body(_) => true,
         }
     }
 

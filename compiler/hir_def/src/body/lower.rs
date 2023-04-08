@@ -42,7 +42,7 @@ struct Ctx<'db> {
     lambdas: Vec<Vec<PatId>>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Scope {
     boundary: bool,
     names: NoHashHashMap<Name, PatId>,
@@ -368,6 +368,7 @@ impl<'db> Ctx<'db> {
         let params = e.params().map(|p| self.lower_pat(p)).collect();
         let body = self.lower_expr_opt(e.body());
         let env = self.lambdas.pop().unwrap().into();
+        self.scopes.pop().unwrap();
 
         (params, env, body)
     }
