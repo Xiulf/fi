@@ -240,6 +240,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | ir::Statement::Drop(_) => todo!(),
             | ir::Statement::Assign(place, rvalue) => self.codegen_assign(place, rvalue),
             | ir::Statement::Call { place, func, args } => self.codegen_call(place, func, args),
+            | ir::Statement::SetDiscriminant(place, ctor) => self.codegen_set_discriminant(place, *ctor),
             | _ => todo!("{stmt:?}"),
         }
     }
@@ -352,6 +353,14 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | LocalRef::Operand(None) => self.locals[place.local.0] = LocalRef::Operand(Some(op)),
             | LocalRef::Operand(Some(_)) => unreachable!(),
         }
+    }
+
+    pub fn codegen_set_discriminant(&mut self, place: &ir::Place, ctor: hir::id::CtorId) {
+        let place = self.codegen_place(place);
+        let ctors = hir::Ctor::from(ctor).type_ctor(self.db).ctors(self.db);
+        let index = ctors.iter().position(|c| c.id() == ctor).unwrap();
+
+        place.set_discr(self.cx, index);
     }
 
     pub fn rvalue_creates_operand(&self, place: &ir::Place, rvalue: &ir::RValue) -> bool {

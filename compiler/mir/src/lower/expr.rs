@@ -205,7 +205,8 @@ impl Ctx<'_> {
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
                 let ret = self.store_in(store_in, ret_repr);
                 self.builder.init(ret.local);
-                let downcast = if Ctor::from(id).type_ctor(self.db).ctors(self.db).len() == 1 {
+                let single_variant = Ctor::from(id).type_ctor(self.db).ctors(self.db).len() == 1;
+                let downcast = if single_variant {
                     ret.clone()
                 } else {
                     ret.clone().downcast(id)
@@ -214,6 +215,10 @@ impl Ctx<'_> {
                 for (i, arg) in args.into_iter().enumerate() {
                     let arg = self.lower_arg(arg);
                     self.builder.assign(downcast.clone().field(i), arg);
+                }
+
+                if !single_variant {
+                    self.builder.set_discriminant(ret.clone(), id);
                 }
 
                 ret.into()

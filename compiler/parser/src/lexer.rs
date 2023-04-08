@@ -41,7 +41,9 @@ impl Iterator for Lexer<'_> {
             return self.newline();
         }
 
-        self.should_indent = false;
+        if self.current != '/' && self.next != '/' {
+            self.should_indent = false;
+        }
 
         match (self.current, self.next) {
             | (c, _) if c.is_whitespace() => self.whitespace(),
@@ -356,22 +358,30 @@ impl<'input> Lexer<'input> {
 
 #[test]
 fn test_lexer() {
+    // let input = r#"
+    //     module Core.Cmp =
+
+    //     main = 0
+
+    //     type X =
+    //         | Y { a :: Int
+    //             , b :: Float
+    //             }
+    //         | Z
+
+    //     trait Iterator self it =
+    //         next :: self -> Option it
+
+    //     impl Iterator Iter Item =
+    //         next self = _
+    // "#;
     let input = r#"
-        module Core.Cmp =
-
-        main = 0
-
-        type X =
-            | Y { a :: Int
-                , b :: Float
-                }
-            | Z
-
-        trait Iterator self it =
-            next :: self -> Option it
-
-        impl Iterator Iter Item =
-            next self = _
+        module Main =
+        
+        main =
+            // abc
+            a = b
+            c
     "#;
     let input = unindent::unindent(input.trim());
     let lexer = Lexer::new(&input);

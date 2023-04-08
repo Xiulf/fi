@@ -29,13 +29,25 @@ pub struct Jar(codegen_lib, codegen_module);
 pub fn codegen_lib(db: &dyn Db, lib: hir::id::LibId) -> Arc<assembly::Assembly> {
     let mut objects = Vec::new();
 
-    for module in hir::Lib::from(lib).modules(db) {
-        if module.is_virtual(db) {
-            continue;
+    ctx::with_codegen_ctx(db, lib.name(db), |mut ctx| {
+        for module in hir::Lib::from(lib).modules(db) {
+            if module.is_virtual(db) {
+                continue;
+            }
+
+            // objects.push(codegen_module(db, module.id()));
+            ctx.codegen(module);
         }
 
-        objects.push(codegen_module(db, module.id()));
-    }
+        let file = tempfile::Builder::new()
+            .suffix(".o")
+            .tempfile_in(db.target_dir())
+            .unwrap()
+            .into_temp_path();
+
+        ctx.write(&file);
+        objects.push(Arc::new(assembly::ObjectFile::new(file)));
+    });
 
     Arc::new(assembly::Assembly::new(lib, objects))
 }

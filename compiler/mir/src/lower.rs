@@ -55,24 +55,29 @@ pub fn ctor_mir(db: &dyn Db, id: CtorId) -> ValueDef {
         .collect::<Vec<_>>();
 
     let ret_repr = repr_of(db, ctor.ret(db));
-    let ret = builder.add_local(LocalKind::Var, ret_repr.clone());
-
-    builder.init(ret);
 
     if params.is_empty() {
-        builder.assign(Place::new(ret), (Const::Ctor(id), ret_repr));
-    } else if type_ctor.ctors(db).len() == 1 {
-        for (i, param) in params.into_iter().enumerate() {
-            builder.assign(Place::new(ret).field(i), Place::new(param));
-        }
+        builder.ret((Const::Ctor(id), ret_repr));
     } else {
-        let downcast = Place::new(ret).downcast(id);
+        let ret = builder.add_local(LocalKind::Var, ret_repr.clone());
+        builder.init(ret);
+        let single_variant = type_ctor.ctors(db).len() == 1;
+        let downcast = if single_variant {
+            Place::new(ret)
+        } else {
+            Place::new(ret).downcast(id)
+        };
+
         for (i, param) in params.into_iter().enumerate() {
             builder.assign(downcast.clone().field(i), Place::new(param));
         }
-    }
 
-    builder.ret(Place::new(ret));
+        if !single_variant {
+            builder.set_discriminant(Place::new(ret), id);
+        }
+
+        builder.ret(Place::new(ret));
+    }
 
     let body = builder.build(db);
     let name = ctor.link_name(db);
