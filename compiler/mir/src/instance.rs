@@ -105,7 +105,10 @@ impl Instance {
                 | _ => false,
             },
             | InstanceId::VtableMethod(_, _, _) => true,
-            | InstanceId::Body(_) => true,
+            | InstanceId::Body(body) => match &*body.repr(db) {
+                | Repr::Func(_, _) => true,
+                | _ => false,
+            },
         }
     }
 
@@ -117,7 +120,8 @@ impl Instance {
                 // | MirValueId::FieldId(id) => hir::Field::from(id).is_exported(db),
                 | _ => todo!(),
             },
-            | _ => todo!(),
+            | InstanceId::VtableMethod(_, _, _) => todo!(),
+            | InstanceId::Body(body) => return body.repr(db),
         };
 
         self.data(db).subst_repr(db, &repr_of(db, ty))

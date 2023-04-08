@@ -8,7 +8,7 @@ use triomphe::Arc;
 
 use crate::builder::Builder;
 use crate::ir::*;
-use crate::repr::repr_of;
+use crate::repr::{repr_of, Repr};
 use crate::Db;
 
 #[salsa::tracked]
@@ -28,7 +28,8 @@ pub fn value_mir(db: &dyn Db, id: ValueId) -> ValueDef {
             }
         }
 
-        Some(Ctx::new(db, value).lower())
+        let repr = repr_of(db, value.ty(db).ty());
+        Some(Ctx::new(db, value).lower(repr))
     };
 
     ValueDef::new(db, Linkage::Export, name, body)
@@ -79,7 +80,8 @@ pub fn ctor_mir(db: &dyn Db, id: CtorId) -> ValueDef {
         builder.ret(Place::new(ret));
     }
 
-    let body = builder.build(db);
+    let repr = repr_of(db, ctor.ty(db).ty());
+    let body = builder.build(db, MirValueId::CtorId(id), repr);
     let name = ctor.link_name(db);
 
     ValueDef::new(db, Linkage::Export, name, Some(body))
@@ -142,7 +144,7 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    pub fn lower(mut self) -> Body {
+    pub fn lower(mut self, repr: Arc<Repr>) -> Body {
         for c in self.infer.constraints.iter() {
             self.builder.add_constraint(c.clone());
         }
@@ -165,6 +167,6 @@ impl<'db> Ctx<'db> {
         }
 
         self.builder.ret(res);
-        self.builder.build(self.db)
+        self.builder.build(self.db, self.id, repr)
     }
 }

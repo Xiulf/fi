@@ -75,7 +75,7 @@ impl HirDisplay for InstanceId {
             | Self::VtableMethod(id, vtable, method) => {
                 write!(f, "{}.vtable.{vtable}.method.{method}", id.display(f.db))
             },
-            | Self::Body(body) => write!(f, "{}", body),
+            | Self::Body(body) => body.id(f.db).hir_fmt(f),
         }
     }
 }

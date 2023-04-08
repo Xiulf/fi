@@ -15,8 +15,8 @@ use crate::place::PlaceRef;
 
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen(&mut self) {
+        tracing::debug!("{}", self.func);
         let by_ref_locals = crate::ssa::analyze(self);
-        tracing::debug!("{:?}", by_ref_locals);
         let entry = self.context.append_basic_block(self.func, "entry");
         let first_block = Idx::from_raw(0u32.into());
         self.builder.position_at_end(entry);

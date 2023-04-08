@@ -255,11 +255,11 @@ impl Ctx<'_> {
     ) -> Operand {
         let mut ctx = self.for_lambda(expr);
         ctx.lower_lambda_body(expr, env, params, body);
-        let body = ctx.builder.build(self.db);
+        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let body = ctx.builder.build(self.db, ctx.id, ret_repr.clone());
         self.lambdas.push((expr, body));
         self.lambdas.append(&mut ctx.lambdas);
         let instance = Instance::new(self.db, InstanceId::Body(body), None);
-        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
         let func_repr = match &*ret_repr {
             | Repr::Func(_, None) => return (Const::Instance(instance), ret_repr).into(),
             | Repr::Func(sig, _) => Arc::new(Repr::Func(sig.clone(), None)),

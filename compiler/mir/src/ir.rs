@@ -39,6 +39,8 @@ pub enum Linkage {
 
 #[salsa::tracked]
 pub struct Body {
+    pub id: MirValueId,
+    pub repr: Arc<Repr>,
     #[return_ref]
     pub constraints: Vec<Constraint>,
     #[return_ref]
