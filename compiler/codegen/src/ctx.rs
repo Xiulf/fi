@@ -79,8 +79,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let pmb = PassManagerBuilder::create();
         let mpm = PassManager::create(());
 
-        pmb.set_optimization_level(OptimizationLevel::None);
-        pmb.set_inliner_with_threshold(225);
+        pmb.set_optimization_level(self.db.optimization_level());
+
+        if let OptimizationLevel::Default | OptimizationLevel::Aggressive = self.db.optimization_level() {
+            pmb.set_inliner_with_threshold(225);
+        }
+
         pmb.populate_module_pass_manager(&mpm);
         mpm.add_always_inliner_pass();
         mpm.run_on(self.module);
@@ -233,7 +237,7 @@ pub fn with_codegen_ctx<T>(db: &dyn Db, module_name: &str, f: impl FnOnce(Codege
     let pmb = PassManagerBuilder::create();
     let fpm = PassManager::create(&module);
 
-    pmb.set_optimization_level(OptimizationLevel::None);
+    pmb.set_optimization_level(db.optimization_level());
     pmb.populate_function_pass_manager(&fpm);
     fpm.initialize();
 

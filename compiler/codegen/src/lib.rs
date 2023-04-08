@@ -1,5 +1,6 @@
 #![feature(trait_upcasting)]
 
+pub use inkwell::OptimizationLevel;
 use triomphe::Arc;
 
 pub mod abi;
@@ -18,6 +19,7 @@ pub mod ty;
 pub trait Db: mir::Db + salsa::DbWithJar<Jar> {
     fn target(&self) -> &target::Target;
     fn target_dir(&self) -> &std::path::Path;
+    fn optimization_level(&self) -> OptimizationLevel;
 }
 
 #[salsa::jar(db = Db)]

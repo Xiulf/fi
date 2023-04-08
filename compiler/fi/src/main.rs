@@ -1,5 +1,6 @@
 #![feature(iterator_try_collect)]
 
+use std::fmt::Write;
 use std::path::PathBuf;
 
 use base_db::libs::LibId;
@@ -44,6 +45,9 @@ struct BasicCommandArgs {
 
     #[arg(short = 'o', value_hint = clap::ValueHint::FilePath)]
     output: Option<PathBuf>,
+
+    #[arg(short = 'O', long = "opt-level", default_value_t, value_parser = optimization_level_parser)]
+    optimization_level: OptLevel,
 }
 
 #[derive(Args, Debug)]
@@ -62,6 +66,16 @@ struct BuildArgs {
 struct RunArgs {
     #[command(flatten)]
     basic: BasicCommandArgs,
+}
+
+#[derive(Default, Debug, Clone)]
+#[repr(u32)]
+enum OptLevel {
+    None,
+    Less,
+    #[default]
+    Default,
+    Aggressive,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -113,7 +127,12 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
         | BasicCommand::Run(args) => args.basic.clone(),
     };
 
-    let mut driver = Driver::default();
+    let options = driver::Options {
+        optimization_level: args.optimization_level.into(),
+        ..Default::default()
+    };
+
+    let mut driver = Driver::new(options);
     let mut files = Vec::with_capacity(args.files.len());
 
     for file in args.files {
@@ -153,4 +172,31 @@ fn build(_args: BuildArgs, driver: Driver, lib: LibId) -> anyhow::Result<()> {
 
 fn run(_args: RunArgs, _driver: Driver, _lib: LibId) -> anyhow::Result<()> {
     Ok(())
+}
+
+impl Into<driver::opts::OptimizationLevel> for OptLevel {
+    fn into(self) -> driver::opts::OptimizationLevel {
+        unsafe { std::mem::transmute(self) }
+    }
+}
+
+impl std::fmt::Display for OptLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            | Self::None => f.write_char('0'),
+            | Self::Less => f.write_char('1'),
+            | Self::Default => f.write_char('2'),
+            | Self::Aggressive => f.write_char('3'),
+        }
+    }
+}
+
+fn optimization_level_parser(str: &str) -> Result<OptLevel, String> {
+    match str {
+        | "0" => Ok(OptLevel::None),
+        | "1" => Ok(OptLevel::Less),
+        | "2" => Ok(OptLevel::Default),
+        | "3" => Ok(OptLevel::Aggressive),
+        | _ => Err(format!("invalid optimization level")),
+    }
 }

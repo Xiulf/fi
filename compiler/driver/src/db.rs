@@ -1,5 +1,7 @@
 use parking_lot::RwLock;
 
+use crate::Options;
+
 #[salsa::db(
     vfs::Jar,
     ::diagnostics::Jar,
@@ -15,8 +17,7 @@ pub struct Database {
     syntax_interner: RwLock<syntax::Interner>,
     type_cache: hir_ty::ctx::Cache,
     libs: base_db::libs::LibSet,
-    target: codegen::target::Target,
-    target_dir: std::path::PathBuf,
+    options: Options,
 }
 
 impl Default for Database {
@@ -26,8 +27,16 @@ impl Default for Database {
             syntax_interner: RwLock::new(syntax::new_interner()),
             type_cache: Default::default(),
             libs: Default::default(),
-            target: codegen::target::Target::host_target(),
-            target_dir: std::env::current_dir().unwrap().join("target"),
+            options: Default::default(),
+        }
+    }
+}
+
+impl Database {
+    pub fn new(options: Options) -> Self {
+        Self {
+            options,
+            ..Default::default()
         }
     }
 }
@@ -53,10 +62,14 @@ impl hir_ty::Db for Database {
 
 impl codegen::Db for Database {
     fn target(&self) -> &codegen::target::Target {
-        &self.target
+        &self.options.target
     }
 
     fn target_dir(&self) -> &std::path::Path {
-        &self.target_dir
+        &self.options.target_dir
+    }
+
+    fn optimization_level(&self) -> codegen::OptimizationLevel {
+        self.options.optimization_level
     }
 }

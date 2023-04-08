@@ -3,9 +3,11 @@ use std::path::{Path, PathBuf};
 
 use base_db::input::SourceRoot;
 use base_db::libs::{LibId, LibKind};
+pub use opts::Options;
 
 mod db;
 mod diagnostics;
+pub mod opts;
 
 #[derive(Default)]
 pub struct Driver {
@@ -15,6 +17,14 @@ pub struct Driver {
 }
 
 impl Driver {
+    pub fn new(options: Options) -> Self {
+        Self {
+            db: db::Database::new(options),
+            vfs: Default::default(),
+            libs: Default::default(),
+        }
+    }
+
     pub fn load_file(&mut self, path: impl AsRef<Path>) -> io::Result<vfs::File> {
         let path = paths::AbsPathBuf::assert(path.as_ref().canonicalize()?);
         let content = std::fs::read_to_string(&path)?;
