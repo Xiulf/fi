@@ -180,12 +180,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
         let name = instance.link_name(self.db);
         let repr = instance.repr(self.db);
-        let signature = match &*repr {
-            | mir::repr::Repr::Func(s, _) => s,
+        let (signature, env) = match &*repr {
+            | mir::repr::Repr::Func(s, e) => (s, e.as_ref()),
             | _ => unreachable!(),
         };
 
-        let abi = self.compute_fn_abi(signature);
+        let abi = self.compute_fn_abi(signature, env);
         let ty = self.fn_type_for_abi(&abi);
         tracing::debug!("declare_func({}, {}, {})", name, signature.display(self.db), ty);
         let value = self.module.add_function(&name, ty, Some(linkage));

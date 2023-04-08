@@ -87,7 +87,7 @@ impl HirDisplay for MirValueId {
         match *self {
             | Self::Lambda(id, expr) => write!(
                 f,
-                "{}.#{:0>4}",
+                "{}.#{}",
                 hir::Value::from(id).link_name(f.db),
                 u32::from(expr.into_raw())
             ),

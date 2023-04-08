@@ -387,6 +387,13 @@ fn enum_layout(mut lyts: Vec<(Arc<Repr>, Layout)>, triple: &Triple) -> Layout {
 }
 
 impl ReprAndLayout {
+    pub fn unit() -> Arc<Self> {
+        Arc::new(Self {
+            layout: Layout::UNIT,
+            repr: Arc::new(Repr::unit()),
+        })
+    }
+
     pub fn elem(&self, db: &dyn Db) -> Option<Arc<ReprAndLayout>> {
         let el = match &*self.repr {
             | Repr::Ptr(el, _, _) | Repr::Box(el) | Repr::Array(_, el) => el,

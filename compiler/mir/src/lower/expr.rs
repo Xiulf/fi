@@ -114,7 +114,10 @@ impl Ctx<'_> {
                         },
                         | _ => (MirValueId::ValueId(id).into(), self.infer.instances[expr].clone()),
                     },
-                    | _ => (MirValueId::ValueId(id).into(), self.infer.instances[expr].clone()),
+                    | _ => match id.container(self.db) {
+                        | ContainerId::TraitId(_) => panic!("cannot create instance of a trait method"),
+                        | _ => (MirValueId::ValueId(id).into(), self.infer.instances[expr].clone()),
+                    },
                 },
             },
             | ValueDefId::CtorId(id) => {
@@ -286,18 +289,26 @@ impl Ctx<'_> {
     }
 
     fn lower_lambda_body(&mut self, expr: ExprId, env: &[PatId], params: &[PatId], body: ExprId) {
-        let env_ty = match self.infer.type_of_expr[expr].kind(self.db) {
-            | hir_ty::ty::TyKind::Func(func) => func.env,
-            | _ => unreachable!(),
+        let env_param = if env.is_empty() {
+            None
+        } else {
+            let env_ty = match self.infer.type_of_expr[expr].kind(self.db) {
+                | hir_ty::ty::TyKind::Func(func) => func.env,
+                | _ => unreachable!(),
+            };
+
+            let env_repr = repr_of(self.db, env_ty);
+            let env_repr = Arc::new(Repr::Box(env_repr));
+
+            Some(self.builder.add_local(LocalKind::Arg, env_repr.clone()))
         };
 
-        let env_repr = repr_of(self.db, env_ty);
-        let env_repr = Arc::new(Repr::Box(env_repr));
-        let env_param = self.builder.add_local(LocalKind::Arg, env_repr.clone());
         let entry = self.builder.create_block();
-
         self.builder.switch_block(entry);
-        self.builder.add_block_param(entry, env_param);
+
+        if let Some(env_param) = env_param {
+            self.builder.add_block_param(entry, env_param);
+        }
 
         for &param in params.iter() {
             let param_repr = repr_of(self.db, self.infer.type_of_pat[param]);
@@ -306,13 +317,15 @@ impl Ctx<'_> {
             self.locals.insert(param, Place::new(local));
         }
 
-        let env_place = Place::new(env_param).deref();
+        if let Some(env_param) = env_param {
+            let env_place = Place::new(env_param).deref();
 
-        if env.len() == 1 {
-            self.locals.insert(env[0], env_place);
-        } else {
-            for (i, &pat) in env.iter().enumerate() {
-                self.locals.insert(pat, env_place.clone().field(i));
+            if env.len() == 1 {
+                self.locals.insert(env[0], env_place);
+            } else {
+                for (i, &pat) in env.iter().enumerate() {
+                    self.locals.insert(pat, env_place.clone().field(i));
+                }
             }
         }
 

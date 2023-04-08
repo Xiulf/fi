@@ -45,8 +45,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
-    pub fn fn_type_for_signature(&self, sig: &Signature) -> types::FunctionType<'ctx> {
-        let abi = self.compute_fn_abi(sig);
+    pub fn fn_type_for_signature(&self, sig: &Signature, env: Option<&Arc<Repr>>) -> types::FunctionType<'ctx> {
+        let abi = self.compute_fn_abi(sig, env);
         self.fn_type_for_abi(&abi)
     }
 
@@ -69,8 +69,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                         .basic_type_for_ral(&repr_and_layout(self.db, to.clone()))
                         .ptr_type(AddressSpace::default())
                         .as_basic_type_enum(),
-                    | Repr::Func(sig, _) => self
-                        .fn_type_for_signature(sig)
+                    | Repr::Func(sig, env) => self
+                        .fn_type_for_signature(sig, env.as_ref())
                         .ptr_type(AddressSpace::default())
                         .as_basic_type_enum(),
                     | _ => self.basic_type_for_scalar(scalar),

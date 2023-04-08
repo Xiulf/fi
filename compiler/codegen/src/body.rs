@@ -270,12 +270,12 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_call(&mut self, place: &ir::Place, func: &ir::Operand, args: &[ir::Operand]) {
         let func = self.codegen_operand(func);
-        let func_sig = match &*func.layout.repr {
-            | Repr::Func(sig, _) => sig,
+        let (func_sig, env) = match &*func.layout.repr {
+            | Repr::Func(sig, env) => (sig, env.as_ref()),
             | _ => unreachable!(),
         };
 
-        let func_abi = self.compute_fn_abi(func_sig);
+        let func_abi = self.compute_fn_abi(func_sig, env);
         let func = match func.val {
             | OperandValue::Ref(ptr, None) => self.builder.build_load(ptr, ""),
             | _ => func.immediate(),

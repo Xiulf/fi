@@ -17,7 +17,7 @@ impl<'db> Ctx<'db> {
         let constraints = if allow_propagation {
             self.sort_constraints()
         } else {
-            Vec::new()
+            std::mem::replace(&mut self.constraints, Vec::new())
         };
 
         let mut failing = self.try_solve_constraints(constraints.iter(), false);

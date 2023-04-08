@@ -1,5 +1,5 @@
 use inkwell::types;
-use mir::repr::Signature;
+use mir::repr::{Repr, Signature};
 use triomphe::Arc;
 
 use crate::ctx::CodegenCtx;
@@ -54,16 +54,21 @@ impl<T> Iterator for EmptySinglePair<T> {
 }
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
-    pub fn compute_fn_abi(&self, sig: &Signature) -> FnAbi<'ctx> {
+    pub fn compute_fn_abi(&self, sig: &Signature, env: Option<&Arc<Repr>>) -> FnAbi<'ctx> {
         let ret_layout = repr_and_layout(self.db, sig.ret.clone());
         let ret = self.compute_layout_abi(ret_layout);
-        let args = sig
-            .params
-            .iter()
-            .map(|a| {
+        let env = env.map(|e| {
+            let repr = Arc::new(Repr::Ptr(e.clone(), false, true));
+            let layout = repr_and_layout(self.db, repr);
+            self.compute_layout_abi(layout)
+        });
+
+        let args = env
+            .into_iter()
+            .chain(sig.params.iter().map(|a| {
                 let layout = repr_and_layout(self.db, a.clone());
                 self.compute_layout_abi(layout)
-            })
+            }))
             .collect();
 
         FnAbi { args, ret }
