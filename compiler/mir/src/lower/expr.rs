@@ -245,7 +245,7 @@ impl Ctx<'_> {
         let ret = self.store_in(store_in, ret_repr);
 
         self.builder.call(ret.clone(), func, args);
-        Operand::Copy(ret)
+        Operand::Move(ret)
     }
 
     fn lower_lambda(
@@ -460,7 +460,7 @@ impl Ctx<'_> {
 
     pub(super) fn place_op(&mut self, op: Operand) -> Place {
         match op {
-            | Operand::Copy(place) | Operand::Move(place) => place,
+            | Operand::Move(place) | Operand::Copy(place) => place,
             | Operand::Const(_, ref repr) => {
                 let res = self.builder.add_local(LocalKind::Tmp, repr.clone());
                 self.builder.assign(Place::new(res), op);

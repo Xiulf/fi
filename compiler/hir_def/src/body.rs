@@ -190,12 +190,12 @@ impl Body {
 }
 
 impl ExprSrc {
-    pub fn as_expr_ptr(self, lhs: bool) -> AstPtr<syntax::ast::Expr> {
+    pub fn as_expr_ptr(self, lhs: bool) -> Option<AstPtr<syntax::ast::Expr>> {
         match self {
-            | Self::Single(ptr) => ptr,
-            | Self::Infix(ptr, _) if lhs => ptr,
-            | Self::Infix(_, ptr) => ptr,
-            | _ => unreachable!(),
+            | Self::Single(ptr) => Some(ptr),
+            | Self::Infix(ptr, _) if lhs => Some(ptr),
+            | Self::Infix(_, ptr) => Some(ptr),
+            | _ => None,
         }
     }
 
@@ -211,12 +211,12 @@ impl ExprSrc {
 }
 
 impl PatSrc {
-    pub fn as_pat_ptr(self, lhs: bool) -> AstPtr<syntax::ast::Pat> {
+    pub fn as_pat_ptr(self, lhs: bool) -> Option<AstPtr<syntax::ast::Pat>> {
         match self {
-            | Self::Single(ptr) => ptr,
-            | Self::Infix(ptr, _) if lhs => ptr,
-            | Self::Infix(_, ptr) => ptr,
-            | _ => unreachable!(),
+            | Self::Single(ptr) => Some(ptr),
+            | Self::Infix(ptr, _) if lhs => Some(ptr),
+            | Self::Infix(_, ptr) => Some(ptr),
+            | _ => None,
         }
     }
 

@@ -229,8 +229,13 @@ impl<'db> Ctx<'db> {
                         let args = Box::new([lhs, rhs]);
                         let lhs_ptr = ctx.src_map.expr_to_src[lhs].as_expr_ptr(true);
                         let rhs_ptr = ctx.src_map.expr_to_src[rhs].as_expr_ptr(false);
+                        let src = if let (Some(lhs_ptr), Some(rhs_ptr)) = (lhs_ptr, rhs_ptr) {
+                            ExprSrc::Infix(lhs_ptr, rhs_ptr)
+                        } else {
+                            ExprSrc::Single(syntax_ptr)
+                        };
 
-                        ctx.make_expr(Expr::App { base, args }, ExprSrc::Infix(lhs_ptr, rhs_ptr))
+                        ctx.make_expr(Expr::App { base, args }, src)
                     },
                 )
             },
@@ -649,8 +654,13 @@ impl<'db> Ctx<'db> {
                         let rhs_ptr = ctx.src_map.pat_to_src[rhs].as_pat_ptr(false);
                         let args = Box::new([lhs, rhs]);
                         let ctor = ctx.lower_pat_ctor(def);
+                        let src = if let (Some(lhs_ptr), Some(rhs_ptr)) = (lhs_ptr, rhs_ptr) {
+                            PatSrc::Infix(lhs_ptr, rhs_ptr)
+                        } else {
+                            PatSrc::Single(syntax_ptr)
+                        };
 
-                        ctx.make_pat(Pat::Ctor { path, ctor, args }, PatSrc::Infix(lhs_ptr, rhs_ptr))
+                        ctx.make_pat(Pat::Ctor { path, ctor, args }, src)
                     },
                 )
             },
