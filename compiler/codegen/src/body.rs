@@ -567,12 +567,47 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | ir::Const::Undefined => unreachable!(),
             | ir::Const::Zeroed => ty.const_zero(),
             | ir::Const::Unit => return OperandRef::new_zst(self.cx, layout),
-            | ir::Const::Int(i) => ty.into_int_type().const_int(i as u64, true).as_basic_value_enum(),
+            | ir::Const::Int(i) => ty
+                .into_int_type()
+                .const_int(i as u64, layout.is_signed())
+                .as_basic_value_enum(),
+            | ir::Const::Float(f) => ty
+                .into_float_type()
+                .const_float(f64::from_bits(f))
+                .as_basic_value_enum(),
+            | ir::Const::Char(c) => ty.into_int_type().const_int(c as u64, false).as_basic_value_enum(),
+            | ir::Const::String(ref s) => return self.codegen_string(s, layout),
             | ir::Const::Instance(i) => self.codegen_instance(i),
-            | _ => todo!("{const_:?}"),
+            | ir::Const::Ctor(ctor) => {
+                let type_ctor = hir::Ctor::from(ctor).type_ctor(self.db);
+                let ctors = type_ctor.ctors(self.db);
+                let idx = ctors.iter().position(|c| c.id() == ctor).unwrap();
+
+                ty.into_int_type().const_int(idx as u64, false).as_basic_value_enum()
+            },
         };
 
         OperandRef::new_imm(layout, value)
+    }
+
+    pub fn codegen_string(&mut self, string: &str, layout: Arc<ReprAndLayout>) -> OperandRef<'ctx> {
+        let ptr = if let Some(value) = self.strings.get(string) {
+            value.clone()
+        } else {
+            let name = format!("string.{}", self.strings.len());
+            let value = self.builder.build_global_string_ptr(string, &name);
+
+            self.strings.insert(String::from(string), value);
+            value
+        };
+
+        let len = self
+            .context
+            .ptr_sized_int_type(&self.target_data, None)
+            .const_int(string.len() as u64, false)
+            .as_basic_value_enum();
+
+        OperandRef::new_pair(layout, ptr.as_basic_value_enum(), len)
     }
 
     pub fn codegen_instance(&mut self, inst: Instance) -> values::BasicValueEnum<'ctx> {

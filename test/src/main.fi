@@ -12,9 +12,9 @@ main () =
     y 6
 
 
-test () =
-    if True then return 4
-    6
+test () :: Str =
+    if True then return "then"
+    "else"
 
 // other = do
 //     x <- pure 0

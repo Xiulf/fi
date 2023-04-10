@@ -42,6 +42,7 @@ pub struct CodegenCtxData<'ctx> {
     pub intrinsics: FxHashMap<&'static str, values::FunctionValue<'ctx>>,
     pub funcs: FxHashMap<Instance, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
     pub types: RefCell<FxHashMap<Arc<ReprAndLayout>, types::BasicTypeEnum<'ctx>>>,
+    pub strings: FxHashMap<String, values::GlobalValue<'ctx>>,
 }
 
 pub struct BodyCtx<'a, 'b, 'ctx> {
