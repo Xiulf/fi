@@ -21,6 +21,7 @@ pub struct Unknown(pub(crate) u32);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TyKind {
     Error,
+    Never,
     Primitive(PrimitiveType),
     Unknown(Unknown, bool),
     Var(TypeVarId),
@@ -266,6 +267,7 @@ impl HirDisplay for Ty {
         use std::fmt::Write as _;
         match self.kind(f.db) {
             | TyKind::Error => write!(f, "{{error}}"),
+            | TyKind::Never => write!(f, "!"),
             | TyKind::Primitive(p) => write!(f, "{p}"),
             | TyKind::Unknown(u, _) => write!(f, "?{}", u.0),
             | TyKind::Var(var) => f.with_upcast::<_, dyn hir_def::Db>(|d| d, |f| var.hir_fmt(f)),

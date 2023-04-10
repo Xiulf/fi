@@ -79,6 +79,10 @@ impl BodyCtx<'_, '_> {
 
                 res
             },
+            | Expr::Return { expr } => {
+                self.infer_expr(*expr, Expectation::HasType(self.ret_ty));
+                self.never_type()
+            },
             | e => todo!("{e:?}"),
         };
 
@@ -192,8 +196,8 @@ impl BodyCtx<'_, '_> {
             | None => self.unit_type(),
         };
 
-        self.unify_types(then_ty, result_ty, id.into());
-        self.unify_types(else_ty, result_ty, id.into());
+        self.coerce(then_ty, result_ty, id.into());
+        self.coerce(else_ty, result_ty, id.into());
         result_ty
     }
 

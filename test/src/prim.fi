@@ -31,6 +31,9 @@ infixr type 1 (*) = Array
 @lang = "unit-type"
 type Unit = | Unit
 
+@lang = "bool-type"
+type Bool = | False | True
+
 @lang = "pair-type"
 type Pair a b = | Pair a b
 

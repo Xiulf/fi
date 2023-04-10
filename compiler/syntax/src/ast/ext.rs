@@ -645,6 +645,20 @@ impl ExprDo {
     }
 }
 
+impl ExprIf {
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+
+    pub fn then(&self) -> Option<Expr> {
+        children(self.syntax()).nth(1)
+    }
+
+    pub fn else_(&self) -> Option<Expr> {
+        children(self.syntax()).nth(2)
+    }
+}
+
 impl ExprMatch {
     pub fn expr(&self) -> Option<Expr> {
         child(self.syntax())
@@ -652,6 +666,12 @@ impl ExprMatch {
 
     pub fn arms(&self) -> impl Iterator<Item = MatchArm> + '_ {
         children(self.syntax())
+    }
+}
+
+impl ExprReturn {
+    pub fn expr(&self) -> Option<Expr> {
+        child(self.syntax())
     }
 }
 

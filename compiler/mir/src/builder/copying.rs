@@ -16,6 +16,12 @@ pub fn run_copy_analyzer(builder: &mut Builder) {
         if let Some((ptr, loc, to_move)) = locs.pop() {
             rewriter.to_move.push((ptr, loc, to_move));
         }
+
+        for (ptr, loc, to_move) in locs {
+            if builder.blocks[loc.block.0].is_terminator() {
+                rewriter.to_move.push((ptr, loc, to_move));
+            }
+        }
     }
 
     rewriter.rewrite(builder);

@@ -12,6 +12,7 @@ impl Ctx<'_> {
     fn infer_kind_inner(&self, ty: Ty) -> Ty {
         let kind = match ty.kind(self.db) {
             | TyKind::Error => ty,
+            | TyKind::Never => self.type_kind(),
             | TyKind::Unknown(u, _) => self.subst.unsolved[u].1,
             | TyKind::Var(_) => self.error(),
             | TyKind::Ctor(id) => crate::type_ctor_ty(self.db, *id).kind,

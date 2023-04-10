@@ -41,11 +41,22 @@ impl Ctx<'_> {
                 ref params,
                 body,
             } => self.lower_lambda(id, env, params, body, store_in),
+            | Expr::If {
+                cond,
+                then,
+                else_: None,
+            } => self.lower_if(cond, then),
+            | Expr::If {
+                cond,
+                then,
+                else_: Some(else_),
+            } => self.lower_if_else(id, cond, then, else_, store_in),
             | Expr::Match {
                 expr,
                 ref branches,
                 ref decision_tree,
             } => self.lower_match(id, expr, branches, decision_tree, store_in),
+            | Expr::Return { expr } => self.lower_return(expr),
             | ref e => todo!("{e:?}"),
         }
     }
@@ -334,6 +345,58 @@ impl Ctx<'_> {
         self.builder.ret(res);
     }
 
+    fn lower_if(&mut self, cond: ExprId, then: ExprId) -> Operand {
+        let cond = self.lower_expr(cond, &mut None);
+        let then_block = self.builder.create_block();
+        let exit_block = self.builder.create_block();
+        let mut switch = self.builder.switch();
+
+        switch.branch(0, exit_block);
+        switch.build(&mut self.builder, cond, then_block);
+        self.builder.switch_block(then_block);
+        self.lower_expr(then, &mut None);
+        self.builder.jump(exit_block);
+        self.builder.switch_block(exit_block);
+
+        Operand::Const(Const::Unit, Arc::new(Repr::unit()))
+    }
+
+    fn lower_if_else(
+        &mut self,
+        expr: ExprId,
+        cond: ExprId,
+        then: ExprId,
+        else_: ExprId,
+        store_in: &mut Option<Place>,
+    ) -> Operand {
+        let cond = self.lower_expr(cond, &mut None);
+        let then_block = self.builder.create_block();
+        let else_block = self.builder.create_block();
+        let exit_block = self.builder.create_block();
+        let mut switch = self.builder.switch();
+
+        switch.branch(0, else_block);
+        switch.build(&mut self.builder, cond, then_block);
+
+        self.builder.switch_block(then_block);
+        let then = self.lower_expr(then, &mut store_in.clone());
+        self.builder.jump((exit_block, [then]));
+        self.builder.switch_block(else_block);
+        let else_ = self.lower_expr(else_, &mut store_in.clone());
+        self.builder.jump((exit_block, [else_]));
+
+        if let Some(place) = store_in.take() {
+            self.builder.switch_block(exit_block);
+            place.into()
+        } else {
+            let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+            let ret = self.builder.add_local(LocalKind::Arg, ret_repr);
+            self.builder.add_block_param(exit_block, ret);
+            self.builder.switch_block(exit_block);
+            Place::new(ret).into()
+        }
+    }
+
     fn lower_match(
         &mut self,
         expr: ExprId,
@@ -439,6 +502,12 @@ impl Ctx<'_> {
                 block
             },
         }
+    }
+
+    fn lower_return(&mut self, expr: ExprId) -> Operand {
+        let op = self.lower_expr(expr, &mut None);
+        self.builder.ret(op);
+        Operand::Const(Const::Undefined, Arc::new(Repr::Uninhabited))
     }
 
     pub(super) fn lower_arg(&mut self, arg: Arg) -> Operand {

@@ -501,8 +501,8 @@ fn pat_app(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-const EXPR_TOKENS: [SyntaxKind; 12] = [
-    TYPE, IDENT, INT, FLOAT, CHAR, STRING, L_PAREN, LYT_START, FN_KW, DO_KW, MATCH_KW, IF_KW,
+const EXPR_TOKENS: [SyntaxKind; 13] = [
+    TYPE, IDENT, INT, FLOAT, CHAR, STRING, L_PAREN, LYT_START, FN_KW, DO_KW, MATCH_KW, IF_KW, RETURN_KW,
 ];
 const PEEK_EXPR: TokenSet = TokenSet::new(&EXPR_TOKENS);
 
@@ -547,6 +547,16 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
             block(p, PEEK_PAT | PEEK_EXPR | LEFT_ARROW, stmt(true));
             m.complete(p, EXPR_DO)
         },
+        | Some(IF_KW) => {
+            p.bump(IF_KW);
+            expr(p);
+            p.expect(THEN_KW);
+            expr(p);
+            if p.eat(ELSE_KW) {
+                expr(p);
+            }
+            m.complete(p, EXPR_IF)
+        },
         | Some(MATCH_KW) => {
             p.bump(MATCH_KW);
             expr(p);
@@ -559,6 +569,11 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
                 }
             }
             m.complete(p, EXPR_MATCH)
+        },
+        | Some(RETURN_KW) => {
+            p.bump(RETURN_KW);
+            expr(p);
+            m.complete(p, EXPR_RETURN)
         },
         | _ => {
             p.error(EXPR_TOKENS);

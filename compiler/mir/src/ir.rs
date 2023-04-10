@@ -217,6 +217,15 @@ impl Block {
     }
 }
 
+impl BlockData {
+    pub fn is_terminator(&self) -> bool {
+        matches!(
+            self.terminator,
+            Terminator::Abort | Terminator::Unreachable | Terminator::Return(_)
+        )
+    }
+}
+
 impl Location {
     pub const START: Self = Self {
         block: Block::ENTRY,

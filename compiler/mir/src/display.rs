@@ -133,6 +133,7 @@ impl HirDisplay for Body {
 
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
         writeln!(f, "body {} {{", self.id(f.db).display(f.db))?;
+        writeln!(f, "    {}", self.repr(f.db).display(f.db))?;
 
         for (i, constraint) in self.constraints(f.db).iter().enumerate() {
             writeln!(f, "    ${} = where {}", i, constraint.display(f.db))?;

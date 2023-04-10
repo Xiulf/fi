@@ -167,6 +167,10 @@ impl<'db> Ctx<'db> {
         self.lang_ty(lang_item::FLOAT_TAG_KIND)
     }
 
+    pub fn never_type(&self) -> Ty {
+        Ty::new(self.db, TyKind::Never)
+    }
+
     pub fn unit_type(&self) -> Ty {
         self.lang_ty(lang_item::UNIT_TYPE)
     }
@@ -485,12 +489,9 @@ impl CacheInner {
 impl Expectation {
     pub fn adjust_for_branches(self, db: &dyn Db) -> Self {
         match self {
-            | Self::HasType(ty) => {
-                if let TyKind::Unknown(_, _) = ty.kind(db) {
-                    Self::None
-                } else {
-                    Self::HasType(ty)
-                }
+            | Self::HasType(ty) => match ty.kind(db) {
+                | TyKind::Unknown(_, _) => Self::None,
+                | _ => Self::HasType(ty),
             },
             | _ => Self::None,
         }

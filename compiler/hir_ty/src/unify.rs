@@ -56,6 +56,17 @@ impl Ctx<'_> {
         self.fresh_type_with_kind(level, kind, skolem)
     }
 
+    pub fn coerce(&mut self, ty: Ty, expected: Ty, origin: TyOrigin) {
+        let ty = self.resolve_type_shallow(ty);
+        let expected = self.resolve_type_shallow(expected);
+
+        if let TyKind::Never = ty.kind(self.db) {
+            return;
+        }
+
+        self.unify_types(ty, expected, origin);
+    }
+
     pub fn unify_generalized_types(
         &mut self,
         t1: &GeneralizedType,

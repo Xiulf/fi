@@ -359,6 +359,18 @@ impl<'db> Ctx<'db> {
                     syntax_ptr,
                 )
             },
+            | ast::Expr::If(e) => {
+                let cond = self.lower_expr_opt(e.expr());
+                let then = self.lower_expr_opt(e.then());
+                let else_ = e.else_().map(|e| self.lower_expr(e));
+
+                self.alloc_expr(Expr::If { cond, then, else_ }, syntax_ptr)
+            },
+            | ast::Expr::Return(e) => {
+                let expr = self.lower_expr_opt(e.expr());
+
+                self.alloc_expr(Expr::Return { expr }, syntax_ptr)
+            },
             | e => todo!("{e:?}"),
         })
     }

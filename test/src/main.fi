@@ -12,6 +12,10 @@ main () =
     y 6
 
 
+test () =
+    if True then return 4
+    6
+
 // other = do
 //     x <- pure 0
 //     <- pure 4
