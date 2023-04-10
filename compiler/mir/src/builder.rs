@@ -10,6 +10,8 @@ use crate::ir::{
 use crate::repr::Repr;
 use crate::Db;
 
+mod copying;
+
 #[derive(Default)]
 pub struct Builder {
     constraints: Vec<Constraint>,
@@ -25,7 +27,9 @@ pub struct SwitchBuilder {
 }
 
 impl Builder {
-    pub fn build(self, db: &dyn Db, id: MirValueId, repr: Arc<Repr>) -> Body {
+    pub fn build(mut self, db: &dyn Db, id: MirValueId, repr: Arc<Repr>) -> Body {
+        copying::run_copy_analyzer(&mut self);
+
         Body::new(db, id, repr, self.constraints, self.locals, self.blocks)
     }
 
@@ -242,7 +246,7 @@ impl Place {
 
 impl From<Place> for Operand {
     fn from(value: Place) -> Self {
-        Self::Move(value)
+        Self::Copy(value)
     }
 }
 

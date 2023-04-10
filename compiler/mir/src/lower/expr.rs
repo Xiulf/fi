@@ -245,7 +245,7 @@ impl Ctx<'_> {
         let ret = self.store_in(store_in, ret_repr);
 
         self.builder.call(ret.clone(), func, args);
-        Operand::Move(ret)
+        ret.into()
     }
 
     fn lower_lambda(
