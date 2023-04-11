@@ -13,7 +13,7 @@ use inkwell::targets::{
 };
 use inkwell::{types, values, AddressSpace, OptimizationLevel};
 use mir::instance::{Instance, InstanceData, InstanceId};
-use mir::ir::{self, MirValueId};
+use mir::ir::{self, BasicBlocks, MirValueId};
 use rustc_hash::FxHashMap;
 use target_lexicon::Architecture;
 use triomphe::Arc;
@@ -58,7 +58,7 @@ pub struct BodyCtx<'a, 'b, 'ctx> {
 
 pub struct BodyData<'a> {
     pub locals: &'a Arena<ir::LocalData>,
-    pub blocks: &'a Arena<ir::BlockData>,
+    pub blocks: &'a BasicBlocks,
 }
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {

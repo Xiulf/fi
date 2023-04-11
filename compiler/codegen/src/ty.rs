@@ -1,6 +1,6 @@
 use inkwell::types::{self, BasicType};
 use inkwell::AddressSpace;
-use mir::ir::{Operand, Place, Projection};
+use mir::ir::{Operand, Place, PlaceRef, Projection};
 use mir::repr::{Integer, Primitive, Repr, Scalar, Signature};
 use triomphe::Arc;
 
@@ -175,6 +175,10 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn place_layout(&self, place: &Place) -> Arc<ReprAndLayout> {
+        self.place_ref_layout(place.as_ref())
+    }
+
+    pub fn place_ref_layout(&self, place: PlaceRef) -> Arc<ReprAndLayout> {
         let repr = self.instance.subst_repr(self.db, &self.body.locals[place.local.0].repr);
         let mut base = repr_and_layout(self.db, repr);
 

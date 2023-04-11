@@ -147,7 +147,7 @@ impl HirDisplay for Body {
             writeln!(f, "    {} :: {}", Local(id), local.display(f.db))?;
         }
 
-        for (id, block) in self.blocks(f.db).iter() {
+        for (id, block) in self.blocks(f.db).blocks.iter() {
             writeln!(f, "\n{}{}", Block(id), block.display(f.db))?;
         }
 

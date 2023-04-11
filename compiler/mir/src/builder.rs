@@ -4,8 +4,8 @@ use hir_ty::ty::Constraint;
 use triomphe::Arc;
 
 use crate::ir::{
-    BinOp, Block, BlockData, Body, CastKind, Const, JumpTarget, Local, LocalData, LocalKind, MirValueId, NullOp,
-    Operand, Place, Projection, RValue, Statement, Terminator,
+    BasicBlocks, BinOp, Block, BlockData, Body, CastKind, Const, JumpTarget, Local, LocalData, LocalKind, MirValueId,
+    NullOp, Operand, Place, Projection, RValue, Statement, Terminator,
 };
 use crate::repr::Repr;
 use crate::Db;
@@ -30,7 +30,12 @@ impl Builder {
     pub fn build(mut self, db: &dyn Db, id: MirValueId, repr: Arc<Repr>) -> Body {
         copying::run_copy_analyzer(&mut self);
 
-        Body::new(db, id, repr, self.constraints, self.locals, self.blocks)
+        let blocks = BasicBlocks {
+            blocks: self.blocks,
+            cache: Default::default(),
+        };
+
+        Body::new(db, id, repr, self.constraints, self.locals, blocks)
     }
 
     pub fn current_block(&self) -> Block {

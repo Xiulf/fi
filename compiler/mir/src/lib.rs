@@ -1,11 +1,13 @@
-#![feature(trait_upcasting)]
+#![feature(trait_upcasting, once_cell, type_alias_impl_trait, let_chains)]
 
 pub mod builder;
 pub mod display;
+pub mod graph;
 pub mod instance;
 pub mod ir;
 pub mod lower;
 pub mod repr;
+pub mod traversal;
 pub mod visitor;
 
 pub trait Db: hir::Db + salsa::DbWithJar<Jar> {}

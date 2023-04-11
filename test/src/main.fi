@@ -5,16 +5,16 @@ import Prim
 @main
 main () =
     // x = Some 4
-    // b = 2
-    y = fn a -> a + 1
+    b = 2
+    y = fn a -> a + b
     // y = bind x fn a -> pure (a + b)
     // fib (6 :: Int32)
     y 6
 
 
-test () :: Str =
-    if True then return "then"
-    "else"
+// test x :: Str =
+//     if x then return "then"
+//     "else"
 
 // other = do
 //     x <- pure 0
@@ -22,11 +22,11 @@ test () :: Str =
 //     pure x
 
 
-fib x :: Int32 =
-    match x with
-    | 0 -> 0
-    | 1 -> 1
-    | n -> fib (n - 1) + fib (n - 2)
+// fib x :: Int32 =
+//     match x with
+//     | 0 -> 0
+//     | 1 -> 1
+//     | n -> fib (n - 1) + fib (n - 2)
 
 
 trait Add a =
@@ -47,42 +47,42 @@ impl Sub (Int a) =
     sub a b = Intrinsics.isub a b
 
 
-type Option t =
-    | None
-    | Some t
+// type Option t =
+//     | None
+//     | Some t
 
-type List t =
-    | Nil
-    | Cons t (List t)
-
-
-trait Monoid m =
-    pure :: t -> m t
-
-impl Monoid Option =
-    pure = Some
-
-impl Monoid List =
-    pure x = Cons x Nil
+// type List t =
+//     | Nil
+//     | Cons t (List t)
 
 
-trait Monad m where Monoid m =
-    @lang = "bind-fn"
-    bind :: m a, (a -> m b) -> m b
+// trait Monoid m =
+//     pure :: t -> m t
 
-impl Monad Option =
-    bind o f =
-        match o with
-        | Some x -> f x
-        | None -> None
+// impl Monoid Option =
+//     pure = Some
 
-impl Monad List =
-    bind l f =
-        match l with
-        | Nil -> Nil
-        | Cons x xs -> append (f x) (bind xs f)
+// impl Monoid List =
+//     pure x = Cons x Nil
 
-append a b =
-    match a with
-    | Nil -> b
-    | Cons x xs -> Cons x (append xs b)
+
+// trait Monad m where Monoid m =
+//     @lang = "bind-fn"
+//     bind :: m a, (a -> m b) -> m b
+
+// impl Monad Option =
+//     bind o f =
+//         match o with
+//         | Some x -> f x
+//         | None -> None
+
+// impl Monad List =
+//     bind l f =
+//         match l with
+//         | Nil -> Nil
+//         | Cons x xs -> append (f x) (bind xs f)
+
+// append a b =
+//     match a with
+//     | Nil -> b
+//     | Cons x xs -> Cons x (append xs b)

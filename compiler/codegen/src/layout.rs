@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::iter::once;
 use std::ops::RangeInclusive;
 
 use mir::repr::*;
@@ -126,7 +127,11 @@ pub fn _layout_of(db: &dyn Db, triple: &Triple, repr: &Repr) -> Layout {
             scalar.valid_range = 1..=*scalar.valid_range.end();
             Layout::scalar(scalar, triple)
         },
-        | Repr::Func(_, Some(_)) => todo!(),
+        | Repr::Func(_, Some(_)) => {
+            let mut ptr = scalar_new(Primitive::Pointer, triple);
+            ptr.valid_range = 1..=*ptr.valid_range.end();
+            scalar_pair(ptr.clone(), ptr, triple)
+        },
         | Repr::Array(ArrayLen::Const(len), el) => {
             let len = *len as u64;
             let elem = _layout_of(db, triple, el);
@@ -413,6 +418,17 @@ impl ReprAndLayout {
             | Repr::Ptr(el, true, nn) => match field {
                 | 0 => Some(repr_and_layout(db, Arc::new(Repr::Ptr(el.clone(), false, *nn)))),
                 | 1 => Some(repr_and_layout(db, Arc::new(Repr::usize()))),
+                | _ => unreachable!(),
+            },
+            | Repr::Func(sig, Some(env)) => match field {
+                | 0 => {
+                    let mut sig = sig.clone();
+                    sig.params = once(Arc::new(Repr::Box(env.clone())))
+                        .chain(sig.params.into_vec())
+                        .collect();
+                    Some(repr_and_layout(db, Arc::new(Repr::Func(sig, None))))
+                },
+                | 1 => Some(repr_and_layout(db, Arc::new(Repr::Box(env.clone())))),
                 | _ => unreachable!(),
             },
             | Repr::Enum(reprs) => match self.variants {

@@ -11,8 +11,10 @@ diagnostics = { version = "0.1.0", path = "../diagnostics" }
 hir = { version = "0.1.0", path = "../hir" }
 hir_def = { version = "0.1.0", path = "../hir_def" }
 hir_ty = { version = "0.1.0", path = "../hir_ty" }
+index_vec = "0.1.3"
 ra_ap_stdx = "0.0.149"
 rustc-hash = "1.1.0"
 salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
+smallvec = { version = "1.10.0", features = ["const_generics"] }
 tracing = "0.1.37"
 triomphe = "0.1.8"

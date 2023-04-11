@@ -4,6 +4,7 @@ use hir_ty::ty::Constraint;
 use rustc_hash::FxHashMap;
 use triomphe::Arc;
 
+use crate::graph::Cache;
 use crate::instance::Instance;
 use crate::repr::Repr;
 
@@ -46,7 +47,13 @@ pub struct Body {
     #[return_ref]
     pub locals: Arena<LocalData>,
     #[return_ref]
-    pub blocks: Arena<BlockData>,
+    pub blocks: BasicBlocks,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BasicBlocks {
+    pub(crate) blocks: Arena<BlockData>,
+    pub(crate) cache: Cache,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -184,6 +191,12 @@ pub struct Place {
     pub projection: Vec<Projection>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlaceRef<'a> {
+    pub local: Local,
+    pub projection: &'a [Projection],
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Projection {
     Deref,
@@ -226,6 +239,29 @@ impl BlockData {
     }
 }
 
+impl Place {
+    pub fn as_ref(&self) -> PlaceRef {
+        PlaceRef {
+            local: self.local,
+            projection: &self.projection,
+        }
+    }
+}
+
+impl<'a> PlaceRef<'a> {
+    pub fn last_projection(&self) -> Option<(Self, &'a Projection)> {
+        let (elem, projection) = self.projection.split_last()?;
+
+        Some((
+            Self {
+                local: self.local,
+                projection,
+            },
+            elem,
+        ))
+    }
+}
+
 impl Location {
     pub const START: Self = Self {
         block: Block::ENTRY,
@@ -237,6 +273,22 @@ impl Location {
             statement: self.statement + 1,
             ..self
         }
+    }
+
+    pub fn dominates(&self, other: Self, dominators: &crate::graph::Dominators) -> bool {
+        if self.block == other.block {
+            self.statement <= other.statement
+        } else {
+            dominators.dominates(self.block, other.block)
+        }
+    }
+}
+
+impl std::ops::Deref for BasicBlocks {
+    type Target = Arena<BlockData>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.blocks
     }
 }
 

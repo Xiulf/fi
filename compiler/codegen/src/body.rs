@@ -17,6 +17,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen(&mut self) {
         tracing::debug!("{}", self.func);
         let by_ref_locals = crate::ssa::analyze(self);
+        tracing::debug!("{:?}", by_ref_locals);
         let entry = self.context.append_basic_block(self.func, "entry");
         let first_block = Idx::from_raw(0u32.into());
         self.builder.position_at_end(entry);
@@ -237,7 +238,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_statement(&mut self, stmt: &ir::Statement) {
         match stmt {
             | ir::Statement::Init(_) => {}, // nop for now
-            | ir::Statement::Drop(_) => todo!(),
+            | ir::Statement::Drop(_) => {}, // nop for now,
             | ir::Statement::Assign(place, rvalue) => self.codegen_assign(place, rvalue),
             | ir::Statement::Call { place, func, args } => self.codegen_call(place, func, args),
             | ir::Statement::SetDiscriminant(place, ctor) => self.codegen_set_discriminant(place, *ctor),
@@ -276,9 +277,10 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         };
 
         let func_abi = self.compute_fn_abi(func_sig, env);
-        let func = match func.val {
-            | OperandValue::Ref(ptr, None) => self.builder.build_load(ptr, ""),
-            | _ => func.immediate(),
+        let (func, env) = match func.val {
+            | OperandValue::Ref(ptr, None) => (self.builder.build_load(ptr, ""), None),
+            | OperandValue::Pair(ptr, env) => (ptr, Some(env)),
+            | _ => (func.immediate(), None),
         };
 
         let func = match func {
@@ -294,6 +296,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
         let args = ret_ptr
             .into_iter()
+            .chain(env.map(Into::into))
             .chain(
                 args.iter()
                     .zip(func_abi.args.iter())

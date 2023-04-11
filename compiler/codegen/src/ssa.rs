@@ -1,5 +1,7 @@
 use arena::{ArenaMap, Idx};
-use mir::ir::{Block, Local, LocalData, Location, Place, RValue};
+use mir::graph::Dominators;
+use mir::ir::{Local, LocalData, Location, Place, PlaceRef, Projection, RValue};
+use mir::traversal;
 use mir::visitor::{MutUseContext, PlaceContext, UseContext, Visitor};
 use rustc_hash::FxHashSet;
 
@@ -11,15 +13,23 @@ enum LocalKind {
     ZST,
     Unused,
     Memory,
-    SSA(Location),
+    SSA(DefLocation),
 }
 
 struct LocalAnalyzer<'a, 'b, 'c, 'ctx> {
     bcx: &'c BodyCtx<'a, 'b, 'ctx>,
+    dominators: Dominators,
     locals: ArenaMap<Idx<LocalData>, LocalKind>,
 }
 
+#[derive(Debug)]
+enum DefLocation {
+    Arg,
+    Body(Location),
+}
+
 pub fn analyze(bcx: &BodyCtx<'_, '_, '_>) -> FxHashSet<Local> {
+    let dominators = bcx.body.blocks.dominators();
     let mut locals = ArenaMap::default();
 
     for (id, local) in bcx.body.locals.iter() {
@@ -36,14 +46,18 @@ pub fn analyze(bcx: &BodyCtx<'_, '_, '_>) -> FxHashSet<Local> {
         locals.insert(id, kind);
     }
 
-    let mut analyzer = LocalAnalyzer { bcx, locals };
+    let mut analyzer = LocalAnalyzer {
+        bcx,
+        dominators,
+        locals,
+    };
 
-    for (block, data) in bcx.body.blocks.iter() {
+    for (block, data) in traversal::reverse_postorder(bcx.body.blocks) {
         for &arg in data.params.iter() {
-            analyzer.assign(arg, Block(block).start_location());
+            analyzer.assign(arg, DefLocation::Arg);
         }
 
-        analyzer.visit_block(Block(block), data);
+        analyzer.visit_block(block, data);
     }
 
     analyzer
@@ -54,8 +68,17 @@ pub fn analyze(bcx: &BodyCtx<'_, '_, '_>) -> FxHashSet<Local> {
         .collect()
 }
 
+impl DefLocation {
+    fn dominates(&self, loc: Location, dominators: &Dominators) -> bool {
+        match self {
+            | Self::Arg => true,
+            | Self::Body(def) => def.next_stmt().dominates(loc, dominators),
+        }
+    }
+}
+
 impl LocalAnalyzer<'_, '_, '_, '_> {
-    fn assign(&mut self, local: Local, loc: Location) {
+    fn assign(&mut self, local: Local, loc: DefLocation) {
         let kind = &mut self.locals[local.0];
         match kind {
             | LocalKind::ZST => {},
@@ -64,12 +87,39 @@ impl LocalAnalyzer<'_, '_, '_, '_> {
             | LocalKind::SSA(_) => *kind = LocalKind::Memory,
         }
     }
+
+    fn process_place(&mut self, place: PlaceRef, ctx: PlaceContext, loc: Location) {
+        if let Some((place_base, elem)) = place.last_projection() {
+            let mut base_ctx = if matches!(ctx, PlaceContext::MutUse(_)) {
+                PlaceContext::MutUse(MutUseContext::Projection)
+            } else {
+                PlaceContext::Use(UseContext::Projection)
+            };
+
+            if matches!(ctx, PlaceContext::Use(UseContext::Move | UseContext::Copy)) {
+                let base_lyt = self.bcx.place_ref_layout(place_base);
+                let elem_lyt = base_lyt.elem(self.bcx.db).unwrap();
+
+                if elem_lyt.is_zst() {
+                    return;
+                }
+            }
+
+            if let Projection::Deref = elem {
+                base_ctx = PlaceContext::Use(UseContext::Copy);
+            }
+
+            self.process_place(place_base, base_ctx, loc);
+        } else {
+            self.visit_local(&place.local, ctx, loc);
+        }
+    }
 }
 
 impl Visitor for LocalAnalyzer<'_, '_, '_, '_> {
     fn visit_assign(&mut self, place: &Place, rvalue: &RValue, loc: Location) {
         if place.projection.is_empty() {
-            self.assign(place.local, loc);
+            self.assign(place.local, DefLocation::Body(loc));
 
             if !matches!(self.locals[place.local.0], LocalKind::Memory) {
                 if !self.bcx.rvalue_creates_operand(place, rvalue) {
@@ -83,15 +133,20 @@ impl Visitor for LocalAnalyzer<'_, '_, '_, '_> {
         self.visit_rvalue(rvalue, loc);
     }
 
+    fn visit_place(&mut self, place: &Place, ctx: PlaceContext, loc: Location) {
+        self.process_place(place.as_ref(), ctx, loc);
+    }
+
     fn visit_local(&mut self, &local: &Local, ctx: PlaceContext, loc: Location) {
+        tracing::info!("{:?}, {:?}", local, ctx);
         match ctx {
             | PlaceContext::MutUse(MutUseContext::Call) => {
-                self.assign(local, loc);
+                self.assign(local, DefLocation::Body(loc));
             },
             | PlaceContext::NonUse(_) => {},
             | PlaceContext::Use(UseContext::Copy | UseContext::Move) => match &mut self.locals[local.0] {
                 | LocalKind::ZST | LocalKind::Memory => {},
-                | LocalKind::SSA(_) if true => {},
+                | LocalKind::SSA(def) if def.dominates(loc, &self.dominators) => {},
                 | kind @ (LocalKind::Unused | LocalKind::SSA(_)) => {
                     *kind = LocalKind::Memory;
                 },
