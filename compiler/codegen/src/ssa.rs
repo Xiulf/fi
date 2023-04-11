@@ -97,8 +97,7 @@ impl LocalAnalyzer<'_, '_, '_, '_> {
             };
 
             if matches!(ctx, PlaceContext::Use(UseContext::Move | UseContext::Copy)) {
-                let base_lyt = self.bcx.place_ref_layout(place_base);
-                let elem_lyt = base_lyt.elem(self.bcx.db).unwrap();
+                let elem_lyt = self.bcx.place_ref_layout(place);
 
                 if elem_lyt.is_zst() {
                     return;
@@ -150,6 +149,13 @@ impl Visitor for LocalAnalyzer<'_, '_, '_, '_> {
                 | kind @ (LocalKind::Unused | LocalKind::SSA(_)) => {
                     *kind = LocalKind::Memory;
                 },
+            },
+            | PlaceContext::MutUse(MutUseContext::Drop) => {
+                let kind = &mut self.locals[local.0];
+                if !matches!(*kind, LocalKind::Memory) {
+                    let _repr = &self.bcx.body.locals[local.0].repr;
+                    // TODO: check for drop
+                }
             },
             | _ => {
                 self.locals[local.0] = LocalKind::Memory;
