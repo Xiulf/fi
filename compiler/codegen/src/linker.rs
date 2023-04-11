@@ -9,7 +9,7 @@ use crate::target::{LinkerFlavor, Target};
 pub fn create(target: &Target) -> Box<dyn Linker> {
     match target.linker_flavor {
         | LinkerFlavor::Msvc => Box::new(MsvcLinker::new(target)),
-        | LinkerFlavor::Ld => todo!(),
+        | LinkerFlavor::Ld => Box::new(CcLinker::new()),
     }
 }
 

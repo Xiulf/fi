@@ -21,8 +21,13 @@ impl Assembly {
     }
 
     pub fn path(&self, db: &dyn Db) -> std::path::PathBuf {
+        let prefix = match self.lib.kind(db) {
+            | LibKind::Executable => "",
+            | _ => db.target().dll_prefix,
+        };
+
         db.target_dir()
-            .join(format!("{}{}", db.target().dll_prefix, self.lib.name(db)))
+            .join(format!("{}{}", prefix, self.lib.name(db)))
             .with_extension(self.extension(db))
     }
 
