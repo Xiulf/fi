@@ -24,13 +24,13 @@ pub struct Cache {
 
 impl BasicBlocks {
     pub fn successors(&self, block: Block) -> Successors {
-        self.blocks[block.0].terminator.successors()
+        self.arena[block.0].terminator.successors()
     }
 
     pub fn predecessors(&self) -> &Predecessors {
         self.cache.predecessors.get_or_init(|| {
-            let mut preds = ArenaMap::from_iter(self.blocks.iter().map(|(idx, _)| (idx, SmallVec::new())));
-            for (block, data) in self.blocks.iter() {
+            let mut preds = ArenaMap::from_iter(self.arena.iter().map(|(idx, _)| (idx, SmallVec::new())));
+            for (block, data) in self.arena.iter() {
                 for succ in data.terminator.successors() {
                     preds[succ.0].push(Block(block));
                 }
@@ -41,7 +41,7 @@ impl BasicBlocks {
 
     pub fn postorder(&self) -> &[Block] {
         self.cache.postorder.get_or_init(|| {
-            Postorder::new(&self.blocks, Block::ENTRY)
+            Postorder::new(&self.arena, Block::ENTRY)
                 .map(|(block, _)| block)
                 .collect()
         })

@@ -50,9 +50,9 @@ pub struct Body {
     pub blocks: BasicBlocks,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BasicBlocks {
-    pub(crate) blocks: Arena<BlockData>,
+    pub(crate) arena: Arena<BlockData>,
     pub(crate) cache: Cache,
 }
 
@@ -288,7 +288,7 @@ impl std::ops::Deref for BasicBlocks {
     type Target = Arena<BlockData>;
 
     fn deref(&self) -> &Self::Target {
-        &self.blocks
+        &self.arena
     }
 }
 

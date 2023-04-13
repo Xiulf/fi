@@ -16,7 +16,7 @@ mod copying;
 pub struct Builder {
     constraints: Vec<Constraint>,
     locals: Arena<LocalData>,
-    blocks: Arena<BlockData>,
+    blocks: BasicBlocks,
     block: Option<Block>,
 }
 
@@ -30,12 +30,7 @@ impl Builder {
     pub fn build(mut self, db: &dyn Db, id: MirValueId, repr: Arc<Repr>) -> Body {
         copying::run_copy_analyzer(&mut self);
 
-        let blocks = BasicBlocks {
-            blocks: self.blocks,
-            cache: Default::default(),
-        };
-
-        Body::new(db, id, repr, self.constraints, self.locals, blocks)
+        Body::new(db, id, repr, self.constraints, self.locals, self.blocks)
     }
 
     pub fn current_block(&self) -> Block {
@@ -51,7 +46,7 @@ impl Builder {
     }
 
     pub fn create_block(&mut self) -> Block {
-        Block(self.blocks.alloc(BlockData {
+        Block(self.blocks.arena.alloc(BlockData {
             params: Vec::new(),
             statements: Vec::new(),
             terminator: Terminator::None,
@@ -63,7 +58,7 @@ impl Builder {
     }
 
     pub fn add_block_param(&mut self, block: Block, param: Local) {
-        self.blocks[block.0].params.push(param);
+        self.blocks.arena[block.0].params.push(param);
     }
 
     pub fn add_local(&mut self, kind: LocalKind, repr: Arc<Repr>) -> Local {
@@ -71,7 +66,7 @@ impl Builder {
     }
 
     fn block_mut(&mut self) -> &mut BlockData {
-        &mut self.blocks[self.block.unwrap().0]
+        &mut self.blocks.arena[self.block.unwrap().0]
     }
 
     fn stmt(&mut self, stmt: Statement) {

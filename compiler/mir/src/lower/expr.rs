@@ -284,21 +284,20 @@ impl Ctx<'_> {
         let func = (Const::Instance(instance), func_repr);
         let env_repr = Arc::new(Repr::Box(env_repr));
         let env_var = self.store_in(&mut None, env_repr);
-
         self.builder.init(env_var.local);
-        self.builder.assign(var.clone().field(0), func);
-        self.builder.assign(var.clone().field(1), env_var.clone());
-
-        let env_var = env_var.deref();
+        let env_deref = env_var.clone().deref();
 
         if env.len() == 1 {
-            self.builder.assign(env_var, self.locals[env[0]].clone());
+            self.builder.assign(env_deref, self.locals[env[0]].clone());
         } else {
             for (i, &pat) in env.iter().enumerate() {
                 let val = self.locals[pat].clone();
-                self.builder.assign(env_var.clone().field(i), val);
+                self.builder.assign(env_deref.clone().field(i), val);
             }
         }
+
+        self.builder.assign(var.clone().field(0), func);
+        self.builder.assign(var.clone().field(1), env_var);
 
         var.into()
     }

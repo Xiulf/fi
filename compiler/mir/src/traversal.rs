@@ -5,7 +5,7 @@ use crate::graph::Successors;
 use crate::ir::{BasicBlocks, Block, BlockData};
 
 pub fn postorder(blocks: &BasicBlocks) -> Postorder {
-    Postorder::new(&blocks.blocks, Block::ENTRY)
+    Postorder::new(&blocks.arena, Block::ENTRY)
 }
 
 pub fn reverse_postorder(block_data: &BasicBlocks) -> ReversePostorderIter {

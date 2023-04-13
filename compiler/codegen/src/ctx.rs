@@ -82,7 +82,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
         pmb.set_optimization_level(self.db.optimization_level());
 
-        if let OptimizationLevel::Default | OptimizationLevel::Aggressive = self.db.optimization_level() {
+        if let OptimizationLevel::Aggressive = self.db.optimization_level() {
             pmb.set_inliner_with_threshold(225);
         }
 

@@ -1,15 +1,16 @@
 use arena::{ArenaMap, Idx};
 
 use super::Builder;
-use crate::ir::{Block, LocalData, Location, Operand, Place, Statement};
+use crate::ir::{LocalData, Location, Operand, Place, Statement};
+use crate::traversal;
 use crate::visitor::{MutUseContext, PlaceContext, Visitor};
 
 pub fn run_copy_analyzer(builder: &mut Builder) {
     let mut analyzer = CopyAnalyzer::default();
     let mut rewriter = CopyRewriter::default();
 
-    for (block, data) in builder.blocks.iter() {
-        analyzer.visit_block(Block(block), data);
+    for (block, data) in traversal::reverse_postorder(&builder.blocks) {
+        analyzer.visit_block(block, data);
     }
 
     for (_, mut locs) in analyzer.locals {
@@ -84,7 +85,7 @@ impl CopyRewriter {
         }
 
         for (local, loc) in to_drop {
-            builder.blocks[loc.block.0]
+            builder.blocks.arena[loc.block.0]
                 .statements
                 .push(Statement::Drop(Place::new(local)));
         }

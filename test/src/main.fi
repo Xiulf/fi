@@ -6,7 +6,8 @@ import Prim
 main () =
     // x = Some 4
     x = 2
-    y = fn a -> a + x
+    z = 5
+    y = fn a -> a + x - z
     // y = bind x fn a -> pure (a + b)
     // fib (6 :: Int32)
     a = y 6
