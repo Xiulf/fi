@@ -6,7 +6,7 @@ use hir_def::attrs::Attrs;
 use hir_def::body::Body;
 use hir_def::data;
 use hir_def::id::{
-    ContainerId, CtorId, FixityId, HasModule, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId,
+    ContainerId, CtorId, FieldId, FixityId, HasModule, ImplId, ItemId, ModuleId, ModuleParentId, TraitId, TypeAliasId,
     TypeCtorId, TypeVarId, ValueId,
 };
 use hir_def::item_tree::FixityKind;
@@ -64,6 +64,11 @@ pub struct Value {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ctor {
     id: CtorId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Field {
+    id: FieldId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -493,6 +498,63 @@ impl Ctor {
 
     fn data(self, db: &dyn Db) -> data::CtorData {
         data::ctor_data(db, self.id)
+    }
+}
+
+impl Field {
+    pub fn id(self) -> FieldId {
+        self.id
+    }
+
+    pub fn lib(self, db: &dyn Db) -> Lib {
+        self.module(db).lib(db)
+    }
+
+    pub fn module(self, db: &dyn Db) -> Module {
+        self.type_ctor(db).module(db)
+    }
+
+    pub fn path(self, db: &dyn Db) -> Path {
+        let mut path = self.module(db).path(db);
+        path.push(self.name(db));
+        path
+    }
+
+    pub fn name(self, db: &dyn Db) -> Name {
+        let it = self.id.ctor(db).type_ctor(db).it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[self.id.local_id(db)].name
+    }
+
+    pub fn link_name(self, db: &dyn Db) -> String {
+        let name = self.path(db).display(db).to_string();
+        // mangling::mangle(name.bytes())
+        name
+    }
+
+    pub fn type_ctor(self, db: &dyn Db) -> TypeCtor {
+        self.id.ctor(db).type_ctor(db).into()
+    }
+
+    pub fn ctor(self, db: &dyn Db) -> Ctor {
+        self.id.ctor(db).into()
+    }
+
+    pub fn ty(self, db: &dyn Db) -> GeneralizedType {
+        hir_ty::field_ty(db, self.id)
+    }
+
+    pub fn attrs(self, db: &dyn Db) -> &Attrs {
+        self.data(db).attrs(db)
+    }
+
+    pub fn is_exported(self, db: &dyn Db) -> bool {
+        self.module(db).is_item_exported(db, self.name(db))
+    }
+
+    fn data(self, db: &dyn Db) -> data::FieldData {
+        data::field_data(db, self.id)
     }
 }
 

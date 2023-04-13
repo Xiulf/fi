@@ -2,7 +2,7 @@ use arena::Idx;
 use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
 use inkwell::IntPredicate;
 use mir::instance::Instance;
-use mir::ir::{self, LocalKind};
+use mir::ir::{self, Local, LocalKind};
 use mir::repr::Repr;
 use triomphe::Arc;
 
@@ -237,12 +237,29 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_statement(&mut self, stmt: &ir::Statement) {
         match stmt {
-            | ir::Statement::Init(_) => {}, // nop for now
+            | ir::Statement::Init(local) => self.codegen_init(*local),
             | ir::Statement::Drop(_) => {}, // nop for now,
             | ir::Statement::Assign(place, rvalue) => self.codegen_assign(place, rvalue),
             | ir::Statement::Call { place, func, args } => self.codegen_call(place, func, args),
             | ir::Statement::SetDiscriminant(place, ctor) => self.codegen_set_discriminant(place, *ctor),
             | _ => todo!("{stmt:?}"),
+        }
+    }
+
+    pub fn codegen_init(&mut self, local: Local) {
+        let repr = self.instance.subst_repr(self.db, &self.body.locals[local.0].repr);
+
+        if let Repr::Box(inner) = &*repr {
+            let inner_layout = repr_and_layout(self.db, inner.clone());
+            let layout = repr_and_layout(self.db, repr);
+            let place = PlaceRef::new_alloca(self.cx, inner_layout);
+            let op = OperandRef::new_imm(layout, place.ptr.as_basic_value_enum());
+
+            match &self.locals[local.0] {
+                | LocalRef::Place(place) => op.store(self.cx, place),
+                | LocalRef::Operand(None) => self.locals[local.0] = LocalRef::Operand(Some(op)),
+                | LocalRef::Operand(Some(_)) => unreachable!(),
+            }
         }
     }
 

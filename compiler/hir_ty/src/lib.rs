@@ -4,7 +4,8 @@ use arena::ArenaMap;
 use ctx::Expectation;
 use hir_def::expr::ExprId;
 use hir_def::id::{
-    ContainerId, CtorId, ImplId, LocalCtorId, TraitId, TypeAliasId, TypeCtorId, TypeVarId, TypedItemId, ValueId,
+    ContainerId, CtorId, FieldId, ImplId, LocalCtorId, TraitId, TypeAliasId, TypeCtorId, TypeVarId, TypedItemId,
+    ValueId,
 };
 use hir_def::name::Name;
 use hir_def::pat::PatId;
@@ -33,6 +34,7 @@ pub struct Jar(
     infer,
     type_ctor_ty,
     ctor_ty,
+    field_ty,
     alias_ty,
     trait_types,
     impl_types,
@@ -196,6 +198,11 @@ pub fn type_ctor_ty(db: &dyn Db, type_ctor: TypeCtorId) -> Arc<TypeCtorResult> {
 #[salsa::tracked]
 pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
     type_ctor_ty(db, ctor.type_ctor(db)).ctors[ctor.local_id(db)].clone()
+}
+
+#[salsa::tracked]
+pub fn field_ty(db: &dyn Db, field: FieldId) -> GeneralizedType {
+    todo!()
 }
 
 #[salsa::tracked]

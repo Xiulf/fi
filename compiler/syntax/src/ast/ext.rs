@@ -393,6 +393,12 @@ impl NameOwner for CtorField {
     }
 }
 
+impl CtorField {
+    pub fn ty(&self) -> Option<Type> {
+        child(self.syntax())
+    }
+}
+
 impl AttrsOwner for ItemTrait {
 }
 

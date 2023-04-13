@@ -5,11 +5,13 @@ import Prim
 @main
 main () =
     // x = Some 4
-    b = 2
-    y = fn a -> a + b
+    x = 2
+    y = fn a -> a + x
     // y = bind x fn a -> pure (a + b)
     // fib (6 :: Int32)
-    y 6
+    a = y 6
+    b = y 3
+    a + b
 
 
 // test x :: Str =
