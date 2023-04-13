@@ -274,25 +274,29 @@ impl Ctx<'_> {
         self.lambdas.push((expr, body));
         self.lambdas.append(&mut ctx.lambdas);
         let instance = Instance::new(self.db, InstanceId::Body(body), None);
-        let func_repr = match &*ret_repr {
+        let (func_repr, env_repr) = match &*ret_repr {
             | Repr::Func(_, None) => return (Const::Instance(instance), ret_repr).into(),
-            | Repr::Func(sig, _) => Arc::new(Repr::Func(sig.clone(), None)),
+            | Repr::Func(sig, Some(env)) => (Arc::new(Repr::Func(sig.clone(), None)), env.clone()),
             | _ => unreachable!(),
         };
 
         let var = self.store_in(store_in, ret_repr);
         let func = (Const::Instance(instance), func_repr);
-        let env_field = var.clone().field(1).deref();
+        let env_repr = Arc::new(Repr::Box(env_repr));
+        let env_var = self.store_in(&mut None, env_repr);
 
-        self.builder.init(var.local);
+        self.builder.init(env_var.local);
         self.builder.assign(var.clone().field(0), func);
+        self.builder.assign(var.clone().field(1), env_var.clone());
+
+        let env_var = env_var.deref();
 
         if env.len() == 1 {
-            self.builder.assign(env_field, self.locals[env[0]].clone());
+            self.builder.assign(env_var, self.locals[env[0]].clone());
         } else {
             for (i, &pat) in env.iter().enumerate() {
                 let val = self.locals[pat].clone();
-                self.builder.assign(env_field.clone().field(i), val);
+                self.builder.assign(env_var.clone().field(i), val);
             }
         }
 

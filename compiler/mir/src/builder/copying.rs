@@ -2,7 +2,7 @@ use arena::{ArenaMap, Idx};
 
 use super::Builder;
 use crate::ir::{Block, LocalData, Location, Operand, Place, Statement};
-use crate::visitor::Visitor;
+use crate::visitor::{MutUseContext, PlaceContext, Visitor};
 
 pub fn run_copy_analyzer(builder: &mut Builder) {
     let mut analyzer = CopyAnalyzer::default();
@@ -52,6 +52,16 @@ impl Visitor for CopyAnalyzer {
             } else {
                 let to_move = place.projection.is_empty();
                 self.locals[place.local.0].push((op, loc, to_move));
+            }
+        }
+    }
+
+    fn visit_place(&mut self, place: &Place, ctx: PlaceContext, _loc: Location) {
+        if let PlaceContext::MutUse(MutUseContext::Store) = ctx {
+            if let Some(locs) = self.locals.get_mut(place.local.0) {
+                if let Some(loc) = locs.iter_mut().rfind(|l| l.2) {
+                    loc.2 = false;
+                }
             }
         }
     }

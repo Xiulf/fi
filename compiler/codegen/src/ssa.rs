@@ -132,10 +132,13 @@ impl Visitor for LocalAnalyzer<'_, '_, '_, '_> {
         self.visit_rvalue(rvalue, loc);
     }
 
+    #[track_caller]
     fn visit_place(&mut self, place: &Place, ctx: PlaceContext, loc: Location) {
+        tracing::info!("{:?}", loc);
         self.process_place(place.as_ref(), ctx, loc);
     }
 
+    #[track_caller]
     fn visit_local(&mut self, &local: &Local, ctx: PlaceContext, loc: Location) {
         tracing::info!("{:?}, {:?}", local, ctx);
         match ctx {
