@@ -201,7 +201,7 @@ pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
 }
 
 #[salsa::tracked]
-pub fn field_ty(db: &dyn Db, field: FieldId) -> GeneralizedType {
+pub fn field_ty(_db: &dyn Db, _field: FieldId) -> GeneralizedType {
     todo!()
 }
 

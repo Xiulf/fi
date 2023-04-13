@@ -238,7 +238,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_statement(&mut self, stmt: &ir::Statement) {
         match stmt {
             | ir::Statement::Init(local) => self.codegen_init(*local),
-            | ir::Statement::Drop(_) => {}, // nop for now,
+            | ir::Statement::Drop(place) => self.codegen_drop(place),
             | ir::Statement::Assign(place, rvalue) => self.codegen_assign(place, rvalue),
             | ir::Statement::Call { place, func, args } => self.codegen_call(place, func, args),
             | ir::Statement::SetDiscriminant(place, ctor) => self.codegen_set_discriminant(place, *ctor),
@@ -260,6 +260,18 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | LocalRef::Operand(None) => self.locals[local.0] = LocalRef::Operand(Some(op)),
                 | LocalRef::Operand(Some(_)) => unreachable!(),
             }
+        }
+    }
+
+    pub fn codegen_drop(&mut self, place: &ir::Place) {
+        let layout = self.place_layout(place);
+
+        if let Repr::Box(_) = &*layout.repr {
+            assert!(place.projection.is_empty());
+
+            // if let LocalRef::Operand(Some(op)) = &self.locals[place.local.0] {
+            //     self.builder.build_free(op.load(self.cx).into_pointer_value());
+            // }
         }
     }
 

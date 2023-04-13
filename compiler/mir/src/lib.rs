@@ -1,4 +1,4 @@
-#![feature(trait_upcasting, once_cell, type_alias_impl_trait, let_chains)]
+#![feature(trait_upcasting, type_alias_impl_trait, let_chains)]
 
 pub mod builder;
 pub mod display;
