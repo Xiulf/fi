@@ -4,7 +4,8 @@ use std::fmt::Write;
 use std::path::PathBuf;
 
 use base_db::libs::LibId;
-use clap::{Args, Parser, Subcommand};
+use clap::error::ErrorKind;
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use driver::Driver;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -37,10 +38,10 @@ enum BasicCommand {
 
 #[derive(Args, Debug, Clone)]
 struct BasicCommandArgs {
-    #[arg(required = true, value_hint = clap::ValueHint::FilePath)]
+    #[arg(value_hint = clap::ValueHint::AnyPath)]
     files: Vec<PathBuf>,
 
-    #[arg(long = "lib-name", required_unless_present("output"))]
+    #[arg(long = "lib-name")]
     lib_name: Option<String>,
 
     #[arg(short = 'o', value_hint = clap::ValueHint::FilePath)]
@@ -48,6 +49,18 @@ struct BasicCommandArgs {
 
     #[arg(short = 'O', long = "opt-level", default_value_t, value_parser = optimization_level_parser)]
     optimization_level: OptLevel,
+}
+
+#[derive(Debug, Clone)]
+enum ProjectArgs {
+    Files {
+        files: Vec<PathBuf>,
+        lib_name: Option<String>,
+        output: Option<PathBuf>,
+    },
+    Project {
+        dir: PathBuf,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -68,7 +81,7 @@ struct RunArgs {
     basic: BasicCommandArgs,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Copy)]
 #[repr(u32)]
 enum OptLevel {
     None,
@@ -115,16 +128,56 @@ fn main() -> anyhow::Result<()> {
 
         eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", msg, loc);
     }));
+
     match cli.command {
         | Command::Basic(cmd) => basic(cli.args, cmd),
     }
 }
 
+fn verify_basic_args(args: &BasicCommandArgs) -> anyhow::Result<ProjectArgs> {
+    match (&args.output, &args.lib_name) {
+        | (None, None) if args.files.len() == 1 && !args.files[0].join("fi.toml").exists() => {
+            let mut cmd = Cli::command();
+            cmd.error(
+                ErrorKind::MissingRequiredArgument,
+                "when compiling individual files, either 'lib-name' or 'output' must be present",
+            )
+            .exit();
+        },
+        | (None, None) if args.files.len() <= 1 => {
+            let dir = args
+                .files
+                .get(0)
+                .cloned()
+                .map(Ok)
+                .unwrap_or_else(|| std::env::current_dir())?;
+
+            Ok(ProjectArgs::Project { dir })
+        },
+        | (_, _) => {
+            let mut files = Vec::with_capacity(args.files.len());
+
+            for file in &args.files {
+                let str = file.as_os_str().to_str().unwrap();
+                let mut glob = glob::glob(str)?;
+
+                files.append(&mut glob.try_collect()?);
+            }
+
+            Ok(ProjectArgs::Files {
+                files,
+                lib_name: args.lib_name.clone(),
+                output: args.output.clone(),
+            })
+        },
+    }
+}
+
 fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
     let args = match &cmd {
-        | BasicCommand::Check(args) => args.basic.clone(),
-        | BasicCommand::Build(args) => args.basic.clone(),
-        | BasicCommand::Run(args) => args.basic.clone(),
+        | BasicCommand::Check(args) => &args.basic,
+        | BasicCommand::Build(args) => &args.basic,
+        | BasicCommand::Run(args) => &args.basic,
     };
 
     let options = driver::Options {
@@ -133,18 +186,20 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
     };
 
     let mut driver = Driver::new(options);
-    let mut files = Vec::with_capacity(args.files.len());
+    let project_args = verify_basic_args(args)?;
+    let lib = match project_args {
+        | ProjectArgs::Files {
+            files,
+            lib_name,
+            output: _,
+        } => {
+            let files = driver.load_files(files)?;
+            let lib_name = lib_name.as_deref().unwrap_or("");
 
-    for file in args.files {
-        let str = file.as_os_str().to_str().unwrap();
-        let mut glob = glob::glob(str)?;
-
-        files.append(&mut glob.try_collect()?);
-    }
-
-    let files = driver.load_files(files)?;
-    let lib_name = args.lib_name.as_deref().unwrap_or("");
-    let lib = driver.create_lib(files, lib_name);
+            driver.create_lib(files, lib_name)
+        },
+        | ProjectArgs::Project { dir: _ } => todo!(),
+    };
 
     match cmd {
         | BasicCommand::Check(args) => check(args, driver, lib),

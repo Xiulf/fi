@@ -1,0 +1,19 @@
+module Data.Int =
+
+import Core.Ops
+
+
+impl Add (Int a) =
+    add a b = Intrinsics.iadd a b
+
+impl Sub (Int a) =
+    sub a b = Intrinsics.isub a b
+
+impl Mul (Int a) =
+    mul a b = Intrinsics.imul a b
+
+impl Div (Int a) =
+    div a b = Intrinsics.idiv a b
+
+impl Rem (Int a) =
+    rem a b = Intrinsics.irem a b

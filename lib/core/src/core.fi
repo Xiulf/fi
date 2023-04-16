@@ -1,0 +1,3 @@
+module Core (module C) =
+
+import Core.Ops ((+), (-), (*), (/), (%)) as C

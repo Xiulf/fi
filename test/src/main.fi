@@ -1,17 +1,17 @@
 module Main =
 
-import Prim
+import Core
 
 @main
 main () =
     // x = Some 4
     x = 2
-    z = 5
-    y = fn a -> a + x - z
+    y = 5
+    f = fn a -> a + x - y
     // y = bind x fn a -> pure (a + b)
     // fib (6 :: Int32)
-    a = y 6
-    b = y 3
+    a = f 6
+    b = f 3
     a + b
 
 
@@ -30,24 +30,6 @@ main () =
 //     | 0 -> 0
 //     | 1 -> 1
 //     | n -> fib (n - 1) + fib (n - 2)
-
-
-trait Add a =
-    add :: a, a -> a
-
-trait Sub a =
-    sub :: a, a -> a
-
-
-infixl 6 (+) = add
-infixl 6 (-) = sub
-
-
-impl Add (Int a) =
-    add a b = Intrinsics.iadd a b
-
-impl Sub (Int a) =
-    sub a b = Intrinsics.isub a b
 
 
 // type Option t =

@@ -1,0 +1,23 @@
+module Core.Ops =
+
+infixl 6 (+) = add
+infixl 6 (-) = sub
+
+infixl 7 (*) = mul
+infixl 7 (/) = div
+infixl 7 (%) = rem
+
+trait Add a =
+    add :: a, a -> a
+
+trait Sub a =
+    sub :: a, a, -> a
+
+trait Mul a =
+    mul :: a, a -> a
+
+trait Div a =
+    div :: a, a -> a
+
+trait Rem a =
+    rem :: a, a -> a
