@@ -58,7 +58,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let ret_layout = repr_and_layout(self.db, sig.ret.clone());
         let ret = self.compute_layout_abi(ret_layout);
         let env = env.map(|e| {
-            let repr = Arc::new(Repr::Ptr(e.clone(), false, true));
+            let repr = Arc::new(Repr::Box(e.clone()));
             let layout = repr_and_layout(self.db, repr);
             self.compute_layout_abi(layout)
         });

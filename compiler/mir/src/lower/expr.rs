@@ -285,7 +285,7 @@ impl Ctx<'_> {
         let env_repr = Arc::new(Repr::Box(env_repr));
         let env_var = self.store_in(&mut None, env_repr);
         self.builder.init(env_var.local);
-        let env_deref = env_var.clone().deref();
+        let env_deref = env_var.clone().deref().field(1);
 
         if env.len() == 1 {
             self.builder.assign(env_deref, self.locals[env[0]].clone());
@@ -332,7 +332,7 @@ impl Ctx<'_> {
         }
 
         if let Some(env_param) = env_param {
-            let env_place = Place::new(env_param).deref();
+            let env_place = Place::new(env_param).deref().field(1);
 
             if env.len() == 1 {
                 self.locals.insert(env[0], env_place);

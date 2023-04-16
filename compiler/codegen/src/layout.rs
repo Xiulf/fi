@@ -401,14 +401,17 @@ impl ReprAndLayout {
 
     pub fn elem(&self, db: &dyn Db) -> Option<Arc<ReprAndLayout>> {
         let el = match &*self.repr {
-            | Repr::Ptr(el, _, _) | Repr::Box(el) | Repr::Array(_, el) => el,
+            | Repr::Ptr(el, _, _) | Repr::Array(_, el) => el.clone(),
+            | Repr::Box(el) => {
+                let usize = Arc::new(Repr::usize());
+                Arc::new(Repr::Struct(Box::new([usize, el.clone()])))
+            },
             | _ => return None,
         };
 
-        Some(repr_and_layout(db, el.clone()))
+        Some(repr_and_layout(db, el))
     }
 
-    #[track_caller]
     pub fn field(&self, db: &dyn Db, field: usize) -> Option<Arc<ReprAndLayout>> {
         assert!(field < self.fields.count());
 

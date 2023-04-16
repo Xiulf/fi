@@ -249,11 +249,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_init(&mut self, local: Local) {
         let repr = self.instance.subst_repr(self.db, &self.body.locals[local.0].repr);
 
-        if let Repr::Box(inner) = &*repr {
-            let inner_layout = repr_and_layout(self.db, inner.clone());
+        if let Repr::Box(_) = &*repr {
             let layout = repr_and_layout(self.db, repr);
-            let place = PlaceRef::new_alloca(self.cx, inner_layout);
-            let op = OperandRef::new_imm(layout, place.ptr.as_basic_value_enum());
+            let inner_layout = layout.elem(self.db).unwrap();
+            let ty = self.basic_type_for_ral(&inner_layout);
+            // let ptr = self.builder.build_malloc(ty, "").unwrap();
+            let ptr = self.builder.build_alloca(ty, "");
+            let op = OperandRef::new_imm(layout, ptr.as_basic_value_enum());
 
             match &self.locals[local.0] {
                 | LocalRef::Place(place) => op.store(self.cx, place),
@@ -524,7 +526,11 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_operand(&mut self, op: &ir::Operand) -> OperandRef<'ctx> {
         match op {
-            | ir::Operand::Move(p) | ir::Operand::Copy(p) => self.codegen_consume(p),
+            | ir::Operand::Move(p) => self.codegen_consume(p),
+            | ir::Operand::Copy(p) => {
+                self.codegen_copy(p);
+                self.codegen_consume(p)
+            },
             | ir::Operand::Const(c, r) => self.codegen_const(c, r),
         }
     }
@@ -555,6 +561,25 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | LocalRef::Operand(None) => unreachable!(),
             | LocalRef::Place(_) => None,
         }
+    }
+
+    pub fn codegen_copy(&mut self, place: &ir::Place) -> OperandRef<'ctx> {
+        if let Some(o) = self.maybe_codegen_consume(place) {
+            assert!(!matches!(&*o.layout.repr, Repr::Box(_)));
+            return o;
+        }
+
+        let place = self.codegen_place(place);
+
+        if let Repr::Box(_) = &*place.layout.repr {
+            let ptr = place.field(self.cx, 0).ptr;
+            let old = self.builder.build_load(ptr, "").into_int_value();
+            let one = old.get_type().const_int(1, false);
+            let new = self.builder.build_int_add(old, one, "");
+            self.builder.build_store(ptr, new);
+        }
+
+        place.load_operand(self.cx)
     }
 
     pub fn codegen_place(&mut self, place: &ir::Place) -> PlaceRef<'ctx> {

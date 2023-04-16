@@ -65,8 +65,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | Abi::Uninhabited => return self.context.i8_type().as_basic_type_enum(),
             | Abi::Scalar(ref scalar) => {
                 return match &*layout.repr {
-                    | Repr::Ptr(to, _, _) | Repr::Box(to) => self
-                        .basic_type_for_ral(&repr_and_layout(self.db, to.clone()))
+                    | Repr::Ptr(_, _, _) | Repr::Box(_) => self
+                        .basic_type_for_ral(&layout.elem(self.db).unwrap())
                         .ptr_type(AddressSpace::default())
                         .as_basic_type_enum(),
                     | Repr::Func(sig, env) => self
