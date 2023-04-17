@@ -3,8 +3,10 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use anyhow::Context;
+use paths::AbsPathBuf;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use vfs::{Db, File, VirtualFileSystem};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
@@ -61,6 +63,26 @@ impl Into<base_db::libs::LibKind> for ProjectType {
             | Self::DynamicLib => base_db::libs::LibKind::DynamicLib,
             | Self::StaticLib => base_db::libs::LibKind::StaticLib,
         }
+    }
+}
+
+pub(crate) fn load_files(vfs: &mut VirtualFileSystem, db: &mut dyn Db, path: AbsPathBuf) -> anyhow::Result<()> {
+    if path.as_path().as_ref().is_file()
+        && path.extension().and_then(|p| p.to_str()) == Some(File::SOURCE_FILE_EXTENSION)
+    {
+        let content = std::fs::read_to_string(&path).with_context(|| path.display().to_string())?;
+        let content = content.into_boxed_str();
+        let path = path.into();
+
+        vfs.set_file_content(db, path, Some(content));
+        Ok(())
+    } else {
+        for entry in std::fs::read_dir(path)? {
+            let path = AbsPathBuf::assert(entry?.path());
+            load_files(vfs, db, path)?;
+        }
+
+        Ok(())
     }
 }
 

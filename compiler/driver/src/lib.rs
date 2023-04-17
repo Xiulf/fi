@@ -45,9 +45,10 @@ impl Driver {
             .load_files(&mut self.vfs, &mut self.db, files, name, type_, dependencies, root_dir)
     }
 
-    pub fn finish_loading(&mut self) {
+    pub fn finish_loading(&mut self) -> anyhow::Result<()> {
         self.source_roots = self.packages.to_source_roots(&self.vfs, &self.db);
-        self.libs = self.packages.to_lib_set(&self.db, &self.source_roots);
+        self.libs = self.packages.to_lib_set(&mut self.db, &self.source_roots)?;
+        Ok(())
     }
 
     pub fn libs_for_package(&self, package: Package) -> Vec<LibId> {

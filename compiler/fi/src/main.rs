@@ -250,7 +250,7 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
         },
     };
 
-    driver.finish_loading();
+    driver.finish_loading()?;
 
     let lib = driver.libs_for_package(package)[0];
 
