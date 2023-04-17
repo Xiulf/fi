@@ -8,6 +8,7 @@ use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use driver::Driver;
 use paths::AbsPathBuf;
+use project::manifest::ProjectType;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
@@ -53,6 +54,13 @@ struct BasicCommandArgs {
 
     #[arg(short = 'O', long = "opt-level", default_value_t, value_parser = optimization_level_parser)]
     optimization_level: OptLevel,
+
+    #[arg(long, alias = "executable", conflicts_with_all = ["dylib", "lib"])]
+    exe: bool,
+    #[arg(long, alias = "dynamiclib", conflicts_with_all = ["exe", "lib"])]
+    dylib: bool,
+    #[arg(long, alias = "staticlib", conflicts_with_all = ["exe", "dylib"])]
+    lib: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +69,7 @@ enum ProjectArgs {
         files: Vec<PathBuf>,
         lib_name: Option<String>,
         output: Option<PathBuf>,
+        type_: project::manifest::ProjectType,
         dependencies: Vec<String>,
     },
     Project {
@@ -169,8 +178,30 @@ fn verify_basic_args(args: &BasicCommandArgs) -> anyhow::Result<ProjectArgs> {
                 files.append(&mut glob.try_collect()?);
             }
 
+            let type_ = if args.exe {
+                ProjectType::Executable
+            } else if args.dylib {
+                ProjectType::DynamicLib
+            } else if args.lib {
+                ProjectType::StaticLib
+            } else if let Some(output) = &args.output {
+                match output.extension().and_then(|e| e.to_str()) {
+                    | Some("exe") => ProjectType::Executable,
+                    | Some("so") => ProjectType::DynamicLib,
+                    | Some("dll") => ProjectType::DynamicLib,
+                    | Some("dylib") => ProjectType::DynamicLib,
+                    | Some("a") => ProjectType::StaticLib,
+                    | Some("lib") => ProjectType::StaticLib,
+                    | None => ProjectType::Executable,
+                    | _ => ProjectType::DynamicLib,
+                }
+            } else {
+                ProjectType::DynamicLib
+            };
+
             Ok(ProjectArgs::Files {
                 files,
+                type_,
                 lib_name: args.lib_name.clone(),
                 output: args.output.clone(),
                 dependencies: args.dependencies.clone(),
@@ -198,6 +229,7 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
             files,
             lib_name,
             output,
+            type_,
             dependencies,
         } => {
             let files = files
@@ -210,7 +242,7 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
                 .unwrap();
             let root_dir = AbsPathBuf::assert(std::env::current_dir()?);
 
-            driver.load_files(files, lib_name.to_string(), Default::default(), dependencies, root_dir)?
+            driver.load_files(files, lib_name.to_string(), type_, dependencies, root_dir)?
         },
         | ProjectArgs::Project { dir } => {
             let dir = AbsPathBuf::assert(dir.canonicalize()?);
