@@ -1,6 +1,7 @@
 module Data.Int =
 
 import Core.Ops
+import Prim
 
 
 impl Add (Int a) =

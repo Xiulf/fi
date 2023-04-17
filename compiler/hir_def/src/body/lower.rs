@@ -797,7 +797,7 @@ impl<'db> Ctx<'db> {
 
         if let Some(item) = self.def_map.resolve_path(self.db, path, module) {
             if let None = item.values {
-                // TODO: report error: not a value
+                tracing::error!("{} is not a value", path.display(self.db));
                 return None;
             }
 

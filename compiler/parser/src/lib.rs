@@ -13,20 +13,18 @@ pub mod token;
 pub mod token_set;
 
 pub fn parse(tokens: &[token::Token]) -> Vec<event::Event> {
+    let mut pos = TextSize::from(0);
     let tokens = tokens
         .iter()
-        .filter_map({
-            let mut pos = TextSize::from(0);
-            move |t| {
-                let token = if t.kind.is_trivia() {
-                    None
-                } else {
-                    Some((t.kind, TextRange::at(pos, t.len)))
-                };
+        .filter_map(move |t| {
+            let token = if t.kind.is_trivia() {
+                None
+            } else {
+                Some((t.kind, TextRange::at(pos, t.len)))
+            };
 
-                pos += t.len;
-                token
-            }
+            pos += t.len;
+            token
         })
         .collect::<Vec<_>>();
     let mut parser = parser::Parser::new(&tokens);

@@ -18,9 +18,13 @@ impl Driver {
         };
 
         let mut sink = Sink(cache, 0, 0);
-        let lib = hir::Lib::from(lib);
 
-        lib.diagnostics(&self.db, &mut sink);
+        for lib in self.libs.toposort(&self.db, Some(lib)) {
+            hir::Lib::from(lib).diagnostics(&self.db, &mut sink);
+            if sink.1 != 0 {
+                return Ok(false);
+            }
+        }
 
         Ok(sink.1 == 0)
     }
@@ -95,13 +99,14 @@ impl<'db> Cache<File> for DbCache<'db> {
         let path = id.path(self.db);
         let path = match path {
             | VfsPath::PathBuf(p) => {
-                let curr_dir = AbsPathBuf::assert(std::env::current_dir().ok()?.canonicalize().ok()?);
+                let curr_dir = AbsPathBuf::assert(std::env::current_dir().unwrap().canonicalize().unwrap());
 
-                p.normalize()
-                    .strip_prefix(&curr_dir)?
-                    .as_ref()
-                    .to_string_lossy()
-                    .into_owned()
+                match p.strip_prefix(&curr_dir) {
+                    | Some(path) => path.as_ref(),
+                    | None => p.as_path().as_ref(),
+                }
+                .to_string_lossy()
+                .into_owned()
             },
             | VfsPath::Virtual(p) => p.clone().into(),
         };

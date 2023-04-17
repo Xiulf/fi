@@ -30,6 +30,7 @@ impl Ctx<'_> {
         match body[id] {
             | Expr::Missing => unreachable!(),
             | Expr::Hole(_) => unreachable!(),
+            | Expr::Path { def: None, .. } => unreachable!(),
             | Expr::Typed { expr, ty: _ } => self.lower_expr_inner(expr, store_in),
             | Expr::Unit => (Const::Unit, Arc::new(Repr::unit())).into(),
             | Expr::Lit { ref lit } => self.lower_lit(id, lit),
@@ -57,7 +58,6 @@ impl Ctx<'_> {
                 ref decision_tree,
             } => self.lower_match(id, expr, branches, decision_tree, store_in),
             | Expr::Return { expr } => self.lower_return(expr),
-            | ref e => todo!("{e:?}"),
         }
     }
 

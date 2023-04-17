@@ -5,7 +5,7 @@ use base_db::libs::LibSet;
 use base_db::Db;
 use index_vec::IndexVec;
 use manifest::{Manifest, ProjectType};
-use paths::AbsPathBuf;
+use paths::{AbsPath, AbsPathBuf};
 use semver::Version;
 use vfs::file_set::FileSetConfig;
 use vfs::{FileSet, VirtualFileSystem};
@@ -42,6 +42,7 @@ impl Packages {
         db: &mut dyn Db,
         path: AbsPathBuf,
     ) -> anyhow::Result<Package> {
+        tracing::trace!("load project {}", path.display());
         let manifest = Manifest::load(path.join(Manifest::FILE_NAME))?;
         let package = self.alloc_package(&manifest, path.clone());
 
@@ -64,14 +65,16 @@ impl Packages {
         name: String,
         type_: ProjectType,
         dependencies: Vec<String>,
-        root_dir: AbsPathBuf,
+        search_dir: AbsPathBuf,
     ) -> anyhow::Result<Package> {
-        for file in files {
-            let content = std::fs::read_to_string(&file)?;
-            let content = content.into_boxed_str();
-            let path = file.into();
+        let mut root_dir = files[0].parent().unwrap().to_path_buf();
 
-            vfs.set_file_content(db, path, Some(content));
+        for file in files {
+            while !file.starts_with(&root_dir) {
+                root_dir = root_dir.parent().unwrap().to_path_buf();
+            }
+
+            manifest::load_files(vfs, db, file)?;
         }
 
         let manifest = Manifest {
@@ -84,11 +87,11 @@ impl Packages {
             dependencies: Default::default(),
         };
 
-        let package = self.alloc_package(&manifest, root_dir.clone());
+        let package = self.alloc_package(&manifest, root_dir);
 
         for dep in dependencies {
             let (name, dep) = manifest::parse_dependency(&dep)?;
-            let dep = self.load_dependency(vfs, db, name, dep, &root_dir)?;
+            let dep = self.load_dependency(vfs, db, name, dep, &search_dir)?;
 
             self.add_dependency(package, Dependency { package: dep });
         }
@@ -102,7 +105,7 @@ impl Packages {
         db: &mut dyn Db,
         name: &str,
         dep: manifest::Dependency,
-        parent_dir: &AbsPathBuf,
+        parent_dir: &AbsPath,
     ) -> anyhow::Result<Package> {
         match dep {
             | manifest::Dependency::Local { path } => {

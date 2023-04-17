@@ -177,7 +177,7 @@ fn item_import(p: &mut Parser, m: Marker) {
 fn import_items(p: &mut Parser) {
     let m = p.start();
     p.expect(L_PAREN);
-    separated(p, COMMA, R_PAREN, IDENT | TYPE | SYMBOL, import_item);
+    separated(p, COMMA, R_PAREN, IDENT | TYPE | L_PAREN, import_item);
     p.expect(R_PAREN);
     m.complete(p, IMPORT_ITEMS);
 }

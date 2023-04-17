@@ -22,6 +22,7 @@ use crate::{item_tree, Db};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefMap {
+    lib: LibId,
     root_modules: NoHashHashMap<Name, ModuleId>,
     modules: NoHashHashMap<ModuleId, ModuleData>,
 }
@@ -68,7 +69,12 @@ impl DefMap {
                 | _ => unreachable!(),
             };
 
-            res = self[module].scope(db).get(segment);
+            if module.lib(db) == self.lib {
+                res = self[module].scope(db).get(segment);
+            } else {
+                let def_map = query(db, module.lib(db));
+                return def_map.resolve_path(db, &segments.collect(), module);
+            }
         }
 
         res.to_option()
@@ -116,6 +122,7 @@ pub fn query(db: &dyn Db, lib: LibId) -> Arc<DefMap> {
 
     let mut ctx = Ctx {
         db,
+        lib,
         modules: NoHashHashMap::default(),
         root_modules: NoHashHashMap::default(),
         external_modules,
@@ -133,14 +140,20 @@ pub fn query(db: &dyn Db, lib: LibId) -> Arc<DefMap> {
     let modules = ctx
         .modules
         .into_iter()
+        .filter(|(id, _)| id.lib(db) == lib)
         .map(|(k, v)| (k, ModuleData::new(db, k, v.scope)))
         .collect();
 
-    Arc::new(DefMap { root_modules, modules })
+    Arc::new(DefMap {
+        lib,
+        root_modules,
+        modules,
+    })
 }
 
 struct Ctx<'a> {
     db: &'a dyn Db,
+    lib: LibId,
     modules: NoHashHashMap<ModuleId, RawModuleData>,
     root_modules: NoHashHashMap<Name, ModuleId>,
     external_modules: NoHashHashMap<Name, ModuleId>,
@@ -203,14 +216,14 @@ impl Ctx<'_> {
         let source_file = base_db::parse(ctx.base.db, file);
         let module = source_file.module()?;
         let path = Path::from_ast(ctx.base.db, module.name()?);
-        eprintln!("{}", path.display(ctx.base.db));
+        tracing::trace!("lower_module {}", path.display(ctx.base.db));
 
         ctx.lower(lib.into(), path, &module, item_tree.items());
         Some(())
     }
 
     fn data_of(&mut self, m: ModuleId) -> &mut RawModuleData {
-        self.modules.get_mut(&m).unwrap()
+        self.modules.entry(m).or_default()
     }
 }
 
@@ -539,27 +552,26 @@ impl Ctx<'_> {
             | _ => unreachable!(),
         };
 
-        fn exports(
-            modules: &NoHashHashMap<ModuleId, RawModuleData>,
-            m: ModuleId,
-        ) -> Box<dyn Iterator<Item = (Name, PerNs<ItemId>)> + '_> {
-            Box::new(
-                modules[&m]
-                    .scope
-                    .resolutions()
-                    .filter(move |(n, _)| modules[&m].scope.exports.is_exported(*n))
-                    .chain(
-                        modules[&m]
-                            .scope
-                            .exports
-                            .modules
-                            .iter()
-                            .flat_map(|&m2| exports(modules, m2)),
-                    ),
-            )
+        fn exports<'a>(ctx: &'a Ctx, m: ModuleId) -> Box<dyn Iterator<Item = (Name, PerNs<ItemId>)> + 'a> {
+            let output = |scope: &'a ModuleScope| {
+                Box::new(
+                    scope
+                        .resolutions()
+                        .filter(move |(n, _)| scope.exports.is_exported(*n))
+                        .chain(scope.exports.modules.iter().flat_map(|&m2| exports(ctx, m2))),
+                )
+            };
+
+            if m.lib(ctx.db) != ctx.lib {
+                let def_map = query(ctx.db, m.lib(ctx.db));
+                let scope = def_map[m].scope(ctx.db);
+                output(scope)
+            } else {
+                output(&ctx.modules[&m].scope)
+            }
         }
 
-        let resolutions = exports(&self.modules, module)
+        let resolutions = exports(self, module)
             .filter(|(n, _)| !directive.import.hiding.contains(n))
             .collect::<Vec<_>>();
 

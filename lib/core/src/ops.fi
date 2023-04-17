@@ -11,7 +11,7 @@ trait Add a =
     add :: a, a -> a
 
 trait Sub a =
-    sub :: a, a, -> a
+    sub :: a, a -> a
 
 trait Mul a =
     mul :: a, a -> a

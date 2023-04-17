@@ -70,6 +70,7 @@ pub(crate) fn load_files(vfs: &mut VirtualFileSystem, db: &mut dyn Db, path: Abs
     if path.as_path().as_ref().is_file()
         && path.extension().and_then(|p| p.to_str()) == Some(File::SOURCE_FILE_EXTENSION)
     {
+        tracing::trace!("load {}", path.display());
         let content = std::fs::read_to_string(&path).with_context(|| path.display().to_string())?;
         let content = content.into_boxed_str();
         let path = path.into();

@@ -149,8 +149,10 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn verify_basic_args(args: &BasicCommandArgs) -> anyhow::Result<ProjectArgs> {
+    let is_project = || args.files.len() == 1 && args.files[0].join(project::manifest::Manifest::FILE_NAME).exists();
+
     match (&args.output, &args.lib_name) {
-        | (None, None) if args.files.len() == 1 && !args.files[0].join("fi.toml").exists() => {
+        | (None, None) if !is_project() => {
             let mut cmd = Cli::command();
             cmd.error(
                 ErrorKind::MissingRequiredArgument,
@@ -240,9 +242,9 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
                 .as_deref()
                 .or_else(|| output.as_ref()?.file_stem()?.to_str())
                 .unwrap();
-            let root_dir = AbsPathBuf::assert(std::env::current_dir()?);
+            let search_dir = AbsPathBuf::assert(std::env::current_dir()?);
 
-            driver.load_files(files, lib_name.to_string(), type_, dependencies, root_dir)?
+            driver.load_files(files, lib_name.to_string(), type_, dependencies, search_dir)?
         },
         | ProjectArgs::Project { dir } => {
             let dir = AbsPathBuf::assert(dir.canonicalize()?);

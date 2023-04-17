@@ -119,6 +119,11 @@ pub fn query(db: &dyn Db, lib: LibId, item: &'static str) -> Option<LangItem> {
         return Some(target);
     }
 
-    // TODO: check deps
+    for &dep in lib.deps(db) {
+        if let Some(item) = query(db, dep, item) {
+            return Some(item);
+        }
+    }
+
     None
 }
