@@ -107,10 +107,18 @@ impl ModuleScope {
 
 #[salsa::tracked]
 pub fn query(db: &dyn Db, lib: LibId) -> Arc<DefMap> {
+    let mut external_modules = NoHashHashMap::default();
+
+    for &dep in lib.deps(db) {
+        let def_map = query(db, dep);
+        external_modules.extend(def_map.root_modules());
+    }
+
     let mut ctx = Ctx {
         db,
         modules: NoHashHashMap::default(),
         root_modules: NoHashHashMap::default(),
+        external_modules,
         imports: Vec::new(),
     };
 
@@ -135,6 +143,7 @@ struct Ctx<'a> {
     db: &'a dyn Db,
     modules: NoHashHashMap<ModuleId, RawModuleData>,
     root_modules: NoHashHashMap<Name, ModuleId>,
+    external_modules: NoHashHashMap<Name, ModuleId>,
     imports: Vec<ImportDirective>,
 }
 
@@ -194,6 +203,7 @@ impl Ctx<'_> {
         let source_file = base_db::parse(ctx.base.db, file);
         let module = source_file.module()?;
         let path = Path::from_ast(ctx.base.db, module.name()?);
+        eprintln!("{}", path.display(ctx.base.db));
 
         ctx.lower(lib.into(), path, &module, item_tree.items());
         Some(())
@@ -497,6 +507,7 @@ impl Ctx<'_> {
         let mut segments = import.path.iter();
         let root_name = segments.next()?;
         let root = self.root_modules.get(&root_name).copied();
+        let root = root.or_else(|| self.external_modules.get(&root_name).copied());
         let res = PerNs::new(None, None, root.map(ItemId::ModuleId));
         let mut res = res.or(self.modules[&module].scope.get(root_name));
 

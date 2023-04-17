@@ -45,6 +45,8 @@ impl Packages {
         let manifest = Manifest::load(path.join(Manifest::FILE_NAME))?;
         let package = self.alloc_package(&manifest, path.clone());
 
+        manifest::load_files(vfs, db, path.join(&manifest.project.src_dir))?;
+
         for (name, dep) in manifest.dependencies {
             let dep = self.load_dependency(vfs, db, &name, dep, &path)?;
 
@@ -133,7 +135,7 @@ impl Packages {
             .collect()
     }
 
-    pub fn to_lib_set(&self, db: &dyn Db, source_roots: &[SourceRoot]) -> LibSet {
+    pub fn to_lib_set(&self, db: &mut dyn Db, source_roots: &[SourceRoot]) -> anyhow::Result<LibSet> {
         let mut set = LibSet::default();
         let mut map = index_vec::index_vec![None; self.packages.len()];
 
@@ -144,7 +146,14 @@ impl Packages {
             map[pkg] = Some(lib);
         }
 
-        set
+        for (pkg, data) in self.packages.iter_enumerated() {
+            for dep in &data.dependencies {
+                set.add_dep(db, map[pkg].unwrap(), map[dep.package].unwrap())
+                    .map_err(|_| anyhow::anyhow!("cyclic dependencies"))?;
+            }
+        }
+
+        Ok(set)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (Package, &PackageData)> {
