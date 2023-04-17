@@ -1,0 +1,7 @@
+[project]
+name = "core"
+type = "dylib"
+version = "0.1.0"
+
+[dependencies]
+prim = { path = "../prim" }

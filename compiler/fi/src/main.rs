@@ -7,6 +7,7 @@ use base_db::libs::LibId;
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use driver::Driver;
+use paths::AbsPathBuf;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
@@ -47,6 +48,9 @@ struct BasicCommandArgs {
     #[arg(short = 'o', value_hint = clap::ValueHint::FilePath)]
     output: Option<PathBuf>,
 
+    #[arg(short = 'D', long = "dependency", alias = "dep")]
+    dependencies: Vec<String>,
+
     #[arg(short = 'O', long = "opt-level", default_value_t, value_parser = optimization_level_parser)]
     optimization_level: OptLevel,
 }
@@ -57,6 +61,7 @@ enum ProjectArgs {
         files: Vec<PathBuf>,
         lib_name: Option<String>,
         output: Option<PathBuf>,
+        dependencies: Vec<String>,
     },
     Project {
         dir: PathBuf,
@@ -168,6 +173,7 @@ fn verify_basic_args(args: &BasicCommandArgs) -> anyhow::Result<ProjectArgs> {
                 files,
                 lib_name: args.lib_name.clone(),
                 output: args.output.clone(),
+                dependencies: args.dependencies.clone(),
             })
         },
     }
@@ -187,19 +193,34 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
 
     let mut driver = Driver::new(options);
     let project_args = verify_basic_args(args)?;
-    let lib = match project_args {
+    let package = match project_args {
         | ProjectArgs::Files {
             files,
             lib_name,
-            output: _,
+            output,
+            dependencies,
         } => {
-            let files = driver.load_files(files)?;
-            let lib_name = lib_name.as_deref().unwrap_or("");
+            let files = files
+                .into_iter()
+                .map(|f| Ok::<_, std::io::Error>(AbsPathBuf::assert(f.canonicalize()?)))
+                .try_collect()?;
+            let lib_name = lib_name
+                .as_deref()
+                .or_else(|| output.as_ref()?.file_stem()?.to_str())
+                .unwrap();
+            let root_dir = AbsPathBuf::assert(std::env::current_dir()?);
 
-            driver.create_lib(files, lib_name)
+            driver.load_files(files, lib_name.to_string(), Default::default(), dependencies, root_dir)?
         },
-        | ProjectArgs::Project { dir: _ } => todo!(),
+        | ProjectArgs::Project { dir } => {
+            let dir = AbsPathBuf::assert(dir.canonicalize()?);
+            driver.load_project(dir)?
+        },
     };
+
+    driver.finish_loading();
+
+    let lib = driver.libs_for_package(package)[0];
 
     match cmd {
         | BasicCommand::Check(args) => check(args, driver, lib),
