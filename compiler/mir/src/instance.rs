@@ -128,6 +128,13 @@ impl Instance {
     }
 
     pub fn link_name(self, db: &dyn Db) -> String {
+        if let InstanceId::MirValueId(MirValueId::ValueId(id)) = self.id(db) {
+            let value = hir::Value::from(id);
+            if value.is_foreign(db) || value.attrs(db).by_key("no_mangle").exists() {
+                return value.name(db).display(db).to_string();
+            }
+        }
+
         self.display(db).to_string()
     }
 
