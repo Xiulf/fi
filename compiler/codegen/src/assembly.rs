@@ -1,4 +1,7 @@
+use std::path::Path;
+
 use base_db::libs::LibKind;
+use base_db::Error;
 use triomphe::Arc;
 
 use crate::linker::Linker;
@@ -31,7 +34,7 @@ impl Assembly {
             .with_extension(self.extension(db))
     }
 
-    pub fn link(&self, db: &dyn Db) -> std::path::PathBuf {
+    pub fn link(&self, db: &dyn Db, deps: &[Arc<Assembly>]) -> std::path::PathBuf {
         let mut linker = crate::linker::create(db.target());
         let out = self.path(db);
 
@@ -43,8 +46,17 @@ impl Assembly {
         linker.runtime_path(db.target_dir());
         linker.add_path(db.target_dir());
 
+        for dep in deps {
+            let kind = dep.lib.kind(db);
+            let name = dep.lib.name(db);
+            let path = dep.path(db);
+
+            linker.add_lib(kind, name, &path);
+        }
+
         if db.target().is_windows() {
             linker.subsystem("console");
+            linker.add_module(Path::new("ucrt.lib"));
         }
 
         linker.out_kind(self.lib.kind(db), &out);
@@ -53,7 +65,7 @@ impl Assembly {
         tracing::debug!("{:?}", linker);
 
         if let Err(e) = linker.run() {
-            tracing::error!("error while linking:\n{}", e);
+            Error::throw(format!("error while linking:\n{}", e));
         }
 
         out

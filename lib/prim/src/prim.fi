@@ -14,19 +14,24 @@ module Prim =
 @repr(fatptr(elem(scalar = "u8")), valid_range_start = 1)
 foreign type Str :: Type
 
-@int_tag = "i8"   foreign type Int8   :: Type
-@int_tag = "i16"  foreign type Int16  :: Type
-@int_tag = "i32"  foreign type Int32  :: Type
-@int_Tag = "i64"  foreign type Int64  :: Type
-@int_Tag = "i128" foreign type Int128 :: Type
-@int_tag = "u8"   foreign type Uint8   :: Type
-@int_tag = "u16"  foreign type Uint16  :: Type
-@int_tag = "u32"  foreign type Uint32  :: Type
-@int_Tag = "u64"  foreign type Uint64  :: Type
-@int_Tag = "u128" foreign type Uint128 :: Type
+@int_tag = "i8"    foreign type Int8    :: Type
+@int_tag = "i16"   foreign type Int16   :: Type
+@int_tag = "i32"   foreign type Int32   :: Type
+@int_tag = "i64"   foreign type Int64   :: Type
+@int_tag = "i128"  foreign type Int128  :: Type
+@int_tag = "isize" foreign type Iptr    :: Type
+@int_tag = "u8"    foreign type Uint8   :: Type
+@int_tag = "u16"   foreign type Uint16  :: Type
+@int_tag = "u32"   foreign type Uint32  :: Type
+@int_tag = "u64"   foreign type Uint64  :: Type
+@int_tag = "u128"  foreign type Uint128 :: Type
+@int_tag = "usize" foreign type Uptr    :: Type
 
 @float_tag = "f32" foreign type Float32 :: Type
 @float_tag = "f64" foreign type Float64 :: Type
+
+@repr(ptr(elem = 0))
+foreign type Ptr :: Type -> Type
 
 foreign type Array :: TypeInt -> Type -> Type
 infixr type 1 (*) = Array

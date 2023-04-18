@@ -1,3 +1,4 @@
 module Core (module C) =
 
+import Prim as C
 import Core.Ops ((+), (-), (*), (/), (%)) as C

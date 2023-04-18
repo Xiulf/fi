@@ -22,6 +22,78 @@ pub fn parse(db: &dyn Db, file: File) -> syntax::ast::SourceFile {
     syntax::ast::SourceFile::parse(db, file, &mut interner)
 }
 
+#[derive(Debug)]
+pub struct ICE(pub std::borrow::Cow<'static, str>);
+
+impl ICE {
+    pub fn throw(msg: impl Into<std::borrow::Cow<'static, str>>) -> ! {
+        std::panic::panic_any(Self(msg.into()))
+    }
+}
+
+impl std::fmt::Display for ICE {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "internal compiler error: '{}'", self.0)
+    }
+}
+
+impl std::error::Error for ICE {
+}
+
+#[derive(Debug)]
+pub struct Error(pub std::borrow::Cow<'static, str>);
+
+impl Error {
+    pub fn throw(msg: impl Into<std::borrow::Cow<'static, str>>) -> ! {
+        std::panic::panic_any(Self(msg.into()))
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "error: '{}'", self.0)
+    }
+}
+
+impl std::error::Error for Error {
+}
+
+pub fn setup_panic_hook(
+    on_ice: impl Fn(&ICE) -> bool + Send + Sync + 'static,
+    on_error: impl Fn(&Error) -> bool + Send + Sync + 'static,
+) {
+    std::panic::set_hook(Box::new(move |info| {
+        let loc = info.location().unwrap();
+
+        if let Some(ice) = info.payload().downcast_ref::<ICE>() {
+            if on_ice(ice) {
+                eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", ice.0, loc);
+            }
+            return;
+        }
+
+        if let Some(err) = info.payload().downcast_ref::<Error>() {
+            if on_error(err) {
+                eprintln!("\x1B[31mError:\x1B[0m '{}'", err.0);
+            }
+            return;
+        }
+
+        let msg = match info.payload().downcast_ref::<&'static str>() {
+            | Some(s) => (*s).into(),
+            | None => match info.payload().downcast_ref::<String>() {
+                | Some(s) => s.clone().into(),
+                | None => "...".into(),
+            },
+        };
+
+        let ice = ICE(msg);
+        if on_ice(&ice) {
+            eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", ice.0, loc);
+        }
+    }));
+}
+
 #[cfg(test)]
 mod tests {
     use syntax::ast::AstNode;

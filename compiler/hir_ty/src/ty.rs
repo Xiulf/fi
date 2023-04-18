@@ -95,7 +95,7 @@ pub enum Generalized<T> {
     Poly(Box<[TypeVarId]>, T),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Instance {
     pub types: Vec<Ty>,
     pub impls: Vec<InstanceImpl>,

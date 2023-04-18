@@ -2,3 +2,6 @@
 name = "test"
 type = "exe"
 version = "0.1.0"
+
+[dependencies]
+core = { path = "../lib/core" }

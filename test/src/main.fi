@@ -1,73 +1,23 @@
 module Main =
 
 import Core
+import Intrinsics (transmute)
+
+module C =
+    import Core
+
+    foreign malloc :: Uptr -> Ptr ()
+    foreign free :: Ptr () -> ()
+
+
+malloc s = C.malloc s . transmute
+free p = C.free (p . transmute)
+
 
 @main
 main () =
-    // x = Some 4
-    x = 2
-    y = 5
-    f = fn a -> a + x - y
-    // y = bind x fn a -> pure (a + b)
-    // fib (6 :: Int32)
-    a = f 6
-    b = f 3
-    a + b
-
-
-// test x :: Str =
-//     if x then return "then"
-//     "else"
-
-// other = do
-//     x <- pure 0
-//     <- pure 4
-//     pure x
-
-
-// fib x :: Int32 =
-//     match x with
-//     | 0 -> 0
-//     | 1 -> 1
-//     | n -> fib (n - 1) + fib (n - 2)
-
-
-// type Option t =
-//     | None
-//     | Some t
-
-// type List t =
-//     | Nil
-//     | Cons t (List t)
-
-
-// trait Monoid m =
-//     pure :: t -> m t
-
-// impl Monoid Option =
-//     pure = Some
-
-// impl Monoid List =
-//     pure x = Cons x Nil
-
-
-// trait Monad m where Monoid m =
-//     @lang = "bind-fn"
-//     bind :: m a, (a -> m b) -> m b
-
-// impl Monad Option =
-//     bind o f =
-//         match o with
-//         | Some x -> f x
-//         | None -> None
-
-// impl Monad List =
-//     bind l f =
-//         match l with
-//         | Nil -> Nil
-//         | Cons x xs -> append (f x) (bind xs f)
-
-// append a b =
-//     match a with
-//     | Nil -> b
-//     | Cons x xs -> Cons x (append xs b)
+    x = malloc 8 :: Ptr Int64
+    y = malloc 4 :: Ptr Int32
+    free x
+    free y
+    0

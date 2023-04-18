@@ -2,6 +2,7 @@
 
 use std::fmt::Write;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use base_db::libs::LibId;
 use clap::error::ErrorKind;
@@ -105,7 +106,7 @@ enum OptLevel {
     Aggressive,
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<ExitCode> {
     let cli = Cli::parse();
 
     tracing_subscriber::fmt()
@@ -119,29 +120,7 @@ fn main() -> anyhow::Result<()> {
         .with_line_number(true)
         .init();
 
-    std::panic::set_hook(Box::new(|info| {
-        let loc = info.location().unwrap();
-
-        // if let Some(ice) = info.payload().downcast_ref::<ICE>() {
-        //     eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", ice.0, loc);
-        //     return;
-        // }
-
-        // if let Some(err) = info.payload().downcast_ref::<Error>() {
-        //     eprintln!("\x1B[31mError:\x1B[0m '{}'", err.0);
-        //     return;
-        // }
-
-        let msg = match info.payload().downcast_ref::<&'static str>() {
-            | Some(s) => *s,
-            | None => match info.payload().downcast_ref::<String>() {
-                | Some(s) => &s[..],
-                | None => "...",
-            },
-        };
-
-        eprintln!("\x1B[31mInternal Compiler Error:\x1B[0m '{}' at {}", msg, loc);
-    }));
+    base_db::setup_panic_hook(|_| true, |_| true);
 
     match cli.command {
         | Command::Basic(cmd) => basic(cli.args, cmd),
@@ -212,7 +191,7 @@ fn verify_basic_args(args: &BasicCommandArgs) -> anyhow::Result<ProjectArgs> {
     }
 }
 
-fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
+fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<ExitCode> {
     let args = match &cmd {
         | BasicCommand::Check(args) => &args.basic,
         | BasicCommand::Build(args) => &args.basic,
@@ -260,25 +239,42 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
     }
 }
 
-fn check(_args: CheckArgs, driver: Driver, lib: LibId) -> anyhow::Result<()> {
+fn check(_args: CheckArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
     if driver.report_diagnostics(lib)? {
-        driver.debug(lib);
+        return Ok(ExitCode::FAILURE);
     }
 
-    Ok(())
+    driver.debug(lib);
+    Ok(ExitCode::SUCCESS)
 }
 
-fn build(_args: BuildArgs, driver: Driver, lib: LibId) -> anyhow::Result<()> {
+fn build(_args: BuildArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
     if driver.report_diagnostics(lib)? {
-        driver.debug(lib);
-        driver.build(lib);
+        return Ok(ExitCode::FAILURE);
     }
 
-    Ok(())
+    driver.debug(lib);
+    driver.build(lib);
+    Ok(ExitCode::SUCCESS)
 }
 
-fn run(_args: RunArgs, _driver: Driver, _lib: LibId) -> anyhow::Result<()> {
-    Ok(())
+fn run(_args: RunArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
+    if driver.report_diagnostics(lib)? {
+        return Ok(ExitCode::FAILURE);
+    }
+
+    driver.debug(lib);
+    let asm = driver.build(lib);
+    let path = asm.path(driver.db());
+    let status = std::process::Command::new(path).status()?;
+
+    if let Some(code) = status.code() {
+        Ok(ExitCode::from(code as u8))
+    } else if status.success() {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        Ok(ExitCode::FAILURE)
+    }
 }
 
 impl Into<driver::opts::OptimizationLevel> for OptLevel {

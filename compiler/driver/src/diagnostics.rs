@@ -22,11 +22,11 @@ impl Driver {
         for lib in self.libs.toposort(&self.db, Some(lib)) {
             hir::Lib::from(lib).diagnostics(&self.db, &mut sink);
             if sink.1 != 0 {
-                return Ok(false);
+                return Ok(true);
             }
         }
 
-        Ok(sink.1 == 0)
+        Ok(sink.1 != 0)
     }
 }
 

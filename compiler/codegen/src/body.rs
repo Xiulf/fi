@@ -442,8 +442,29 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 let ptr = self.codegen_place(place).ptr.as_basic_value_enum();
                 OperandRef::new_imm(layout, ptr)
             },
+            | ir::RValue::Cast(kind, op) => self.codegen_cast(layout, *kind, op),
             | ir::RValue::BinOp(op, lhs, rhs) => self.codegen_binop(layout, *op, lhs, rhs),
             | _ => todo!("{rvalue:?}"),
+        }
+    }
+
+    pub fn codegen_cast(
+        &mut self,
+        layout: Arc<ReprAndLayout>,
+        kind: ir::CastKind,
+        op: &ir::Operand,
+    ) -> OperandRef<'ctx> {
+        let value = self.codegen_operand(op);
+
+        match kind {
+            | ir::CastKind::Bitcast => value.bitcast(self.cx, layout),
+            | ir::CastKind::Pointer => {
+                let ty = self.basic_type_for_ral(&layout).into_pointer_type();
+                let ptr = value.load(self.cx).into_pointer_value();
+                let ptr = self.builder.build_pointer_cast(ptr, ty, "");
+                OperandRef::new_imm(layout, ptr.as_basic_value_enum())
+            },
+            | _ => todo!(),
         }
     }
 

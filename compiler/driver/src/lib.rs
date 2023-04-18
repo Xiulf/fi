@@ -4,6 +4,7 @@ use base_db::libs::LibId;
 pub use opts::Options;
 use paths::AbsPathBuf;
 use project::Package;
+use triomphe::Arc;
 
 mod db;
 mod diagnostics;
@@ -58,6 +59,10 @@ impl Driver {
         Ok(())
     }
 
+    pub fn db(&self) -> &db::Database {
+        &self.db
+    }
+
     pub fn libs_for_package(&self, package: Package) -> Vec<LibId> {
         let db = &self.db as &dyn base_db::Db;
         let source_root = self.source_roots[package.index()];
@@ -68,12 +73,19 @@ impl Driver {
             .collect()
     }
 
-    pub fn build(&self, lib: LibId) {
+    pub fn build(&self, lib: LibId) -> Arc<codegen::assembly::Assembly> {
+        let deps = lib.deps(&self.db).iter().map(|&l| self.build(l)).collect::<Vec<_>>();
         let asm = codegen::codegen_lib(&self.db, lib);
-        asm.link(&self.db);
+
+        asm.link(&self.db, &deps);
+        asm
     }
 
     pub fn debug(&self, lib: LibId) {
+        for &dep in lib.deps(&self.db) {
+            self.debug(dep);
+        }
+
         // let def_map = hir_def::def_map::query(&self.db, lib);
 
         // eprintln!("{:#?}", lib.debug_all(&self.db));

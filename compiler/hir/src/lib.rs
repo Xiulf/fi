@@ -124,7 +124,7 @@ impl Lib {
         lib_diagnostics(db, self.id);
         let diagnostics = lib_diagnostics::accumulated::<Diagnostics>(db, self.id);
 
-        for diag in diagnostics.into_iter().rev() {
+        for diag in diagnostics.into_iter() {
             sink.add_diagnostic(diag);
         }
     }
@@ -327,7 +327,7 @@ impl Value {
             return name.to_string();
         }
 
-        if self.is_foreign(db) {
+        if self.is_foreign(db) || self.attrs(db).by_key("no_mangle").exists() {
             return self.name(db).display(db).to_string();
         }
 
