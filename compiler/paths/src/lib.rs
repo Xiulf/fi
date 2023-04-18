@@ -1,8 +1,9 @@
 use std::borrow::Borrow;
 use std::ffi::OsStr;
-use std::ops;
 use std::path::{Component, Path, PathBuf};
+use std::{io, ops};
 
+use path_absolutize::Absolutize;
 use serde::{Deserialize, Serialize};
 
 /// Wrapper around an absolute [`PathBuf`].
@@ -17,6 +18,7 @@ impl From<AbsPathBuf> for PathBuf {
 
 impl ops::Deref for AbsPathBuf {
     type Target = AbsPath;
+
     fn deref(&self) -> &AbsPath {
         self.as_path()
     }
@@ -41,19 +43,18 @@ impl Borrow<AbsPath> for AbsPathBuf {
 }
 
 impl TryFrom<PathBuf> for AbsPathBuf {
-    type Error = PathBuf;
-    fn try_from(path_buf: PathBuf) -> Result<AbsPathBuf, PathBuf> {
-        if !path_buf.is_absolute() {
-            return Err(path_buf);
-        }
-        Ok(AbsPathBuf(path_buf))
+    type Error = io::Error;
+
+    fn try_from(path_buf: PathBuf) -> io::Result<Self> {
+        Self::new(path_buf)
     }
 }
 
 impl TryFrom<&str> for AbsPathBuf {
-    type Error = PathBuf;
-    fn try_from(path: &str) -> Result<AbsPathBuf, PathBuf> {
-        AbsPathBuf::try_from(PathBuf::from(path))
+    type Error = io::Error;
+
+    fn try_from(path: &str) -> io::Result<Self> {
+        Self::try_from(PathBuf::from(path))
     }
 }
 
@@ -64,15 +65,21 @@ impl PartialEq<AbsPath> for AbsPathBuf {
 }
 
 impl AbsPathBuf {
+    /// Wrap the given absolute path in `AbsPathBuf`.
+    ///
+    /// Turns the path into an absolute path if it is not.
+    pub fn new(path: PathBuf) -> io::Result<Self> {
+        Ok(Self(path.absolutize()?.into_owned()))
+    }
+
     /// Wrap the given absolute path in `AbsPathBuf`
     ///
     /// # Panics
     ///
     /// Panics if `path` is not absolute.
-    #[track_caller]
-    pub fn assert(path: PathBuf) -> AbsPathBuf {
+    pub fn assert(path: PathBuf) -> Self {
         assert!(path.is_absolute(), "expected absolute path, got {}", path.display());
-        AbsPathBuf(path)
+        Self(path)
     }
 
     /// Coerces to an `AbsPath` slice.

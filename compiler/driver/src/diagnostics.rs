@@ -99,7 +99,7 @@ impl<'db> Cache<File> for DbCache<'db> {
         let path = id.path(self.db);
         let path = match path {
             | VfsPath::PathBuf(p) => {
-                let curr_dir = AbsPathBuf::assert(std::env::current_dir().unwrap().canonicalize().unwrap());
+                let curr_dir = AbsPathBuf::try_from(".").unwrap();
 
                 match p.strip_prefix(&curr_dir) {
                     | Some(path) => path.as_ref(),

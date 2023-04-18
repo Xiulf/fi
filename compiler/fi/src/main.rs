@@ -234,20 +234,17 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<()> {
             type_,
             dependencies,
         } => {
-            let files = files
-                .into_iter()
-                .map(|f| Ok::<_, std::io::Error>(AbsPathBuf::assert(f.canonicalize()?)))
-                .try_collect()?;
+            let files = files.into_iter().map(|f| AbsPathBuf::new(f)).try_collect()?;
             let lib_name = lib_name
                 .as_deref()
                 .or_else(|| output.as_ref()?.file_stem()?.to_str())
                 .unwrap();
-            let search_dir = AbsPathBuf::assert(std::env::current_dir()?);
+            let search_dir = AbsPathBuf::try_from(".")?;
 
             driver.load_files(files, lib_name.to_string(), type_, dependencies, search_dir)?
         },
         | ProjectArgs::Project { dir } => {
-            let dir = AbsPathBuf::assert(dir.canonicalize()?);
+            let dir = AbsPathBuf::new(dir)?;
             driver.load_project(dir)?
         },
     };
