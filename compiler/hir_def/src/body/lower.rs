@@ -18,7 +18,7 @@ use crate::path::Path;
 use crate::per_ns::Namespace;
 use crate::source::HasSource;
 use crate::type_ref::TypeSourceMap;
-use crate::Db;
+use crate::{lang_item, Db};
 
 #[salsa::tracked]
 pub fn query(db: &dyn Db, id: ValueId) -> (Arc<Body>, Arc<BodySourceMap>) {
@@ -159,7 +159,7 @@ impl<'db> Ctx<'db> {
             },
             | ast::Expr::Unit(_) => {
                 let lib = self.value.container(self.db).module(self.db).lib(self.db);
-                let unit = crate::lang_item::query(self.db, lib, "unit-type")?;
+                let unit = lang_item::query(self.db, lib, lang_item::UNIT_TYPE)?;
                 let unit = unit.as_type_ctor()?;
                 let it = unit.it(self.db);
                 let item_tree = crate::item_tree::query(self.db, it.file);
@@ -210,6 +210,15 @@ impl<'db> Ctx<'db> {
             | ast::Expr::App(e) => {
                 let base = self.lower_expr_opt(e.base());
                 let args = e.args().map(|e| self.lower_expr(e)).collect();
+
+                self.alloc_expr(Expr::App { base, args }, syntax_ptr)
+            },
+            | ast::Expr::Method(e) => {
+                let base = self.lower_expr_opt(e.method());
+                let arg = self.lower_expr_opt(e.arg());
+                let args = std::iter::once(arg)
+                    .chain(e.args().map(|a| self.lower_expr(a)))
+                    .collect();
 
                 self.alloc_expr(Expr::App { base, args }, syntax_ptr)
             },
@@ -592,7 +601,7 @@ impl<'db> Ctx<'db> {
             },
             | ast::Pat::Unit(_) => {
                 let lib = self.value.container(self.db).module(self.db).lib(self.db);
-                let unit = crate::lang_item::query(self.db, lib, "unit-type")?;
+                let unit = lang_item::query(self.db, lib, lang_item::UNIT_TYPE)?;
                 let unit = unit.as_type_ctor()?;
                 let it = unit.it(self.db);
                 let item_tree = crate::item_tree::query(self.db, it.file);

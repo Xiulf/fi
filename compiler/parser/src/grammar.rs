@@ -390,7 +390,7 @@ fn typ_atom(p: &mut Parser) -> Option<CompletedMarker> {
         | Some(L_PAREN) => {
             p.bump(L_PAREN);
             if p.eat(R_PAREN) {
-                m.complete(p, TYPE_PARENS)
+                m.complete(p, TYPE_UNIT)
             } else {
                 typ(p);
                 p.expect(R_PAREN);
@@ -616,8 +616,27 @@ fn expr_infix(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-fn expr_typed(p: &mut Parser) -> Option<CompletedMarker> {
+fn expr_method(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = expr_infix(p)?;
+
+    while !p.eof() && p.eat(DOT) {
+        let n = m.precede(p);
+        let e = p.start();
+        path(p);
+        e.complete(p, EXPR_PATH);
+
+        while !p.eof() && p.at_ts(PEEK_EXPR) {
+            expr_atom(p);
+        }
+
+        m = n.complete(p, EXPR_METHOD);
+    }
+
+    Some(m)
+}
+
+fn expr_typed(p: &mut Parser) -> Option<CompletedMarker> {
+    let mut m = expr_method(p)?;
 
     if p.eat(DBL_COLON) {
         let n = m.precede(p);

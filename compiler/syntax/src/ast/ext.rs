@@ -629,6 +629,20 @@ impl ExprInfix {
     }
 }
 
+impl ExprMethod {
+    pub fn arg(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+
+    pub fn method(&self) -> Option<Expr> {
+        children(self.syntax()).nth(1)
+    }
+
+    pub fn args(&self) -> impl Iterator<Item = Expr> + '_ {
+        children(self.syntax()).skip(2)
+    }
+}
+
 impl ExprApp {
     pub fn base(&self) -> Option<Expr> {
         child(self.syntax())
