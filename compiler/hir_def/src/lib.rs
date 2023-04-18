@@ -1,4 +1,4 @@
-#![feature(trait_upcasting, let_chains, iter_intersperse)]
+#![feature(trait_upcasting, let_chains, iter_intersperse, exact_size_is_empty)]
 
 pub mod ast_id;
 pub mod attrs;

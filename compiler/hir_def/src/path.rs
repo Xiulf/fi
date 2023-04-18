@@ -30,7 +30,7 @@ impl Path {
         Display(db, self)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = Name> + '_ {
+    pub fn iter(&self) -> std::iter::Copied<std::slice::Iter<Name>> {
         self.segments.iter().copied()
     }
 

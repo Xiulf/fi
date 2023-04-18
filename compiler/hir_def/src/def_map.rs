@@ -63,18 +63,18 @@ impl DefMap {
         let res = PerNs::new(None, None, root.map(ItemId::ModuleId));
         let mut res = res.or(self[module].scope(db).get(root_name));
 
+        if let Some(ItemId::ModuleId(m)) = res.modules && m.lib(db) != self.lib && !segments.is_empty() {
+            let def_map = query(db, m.lib(db));
+            return def_map.resolve_path(db, &segments.collect(), m);
+        }
+
         while let Some(segment) = segments.next() {
             module = match res.modules? {
                 | ItemId::ModuleId(id) => id,
                 | _ => unreachable!(),
             };
 
-            if module.lib(db) == self.lib {
-                res = self[module].scope(db).get(segment);
-            } else {
-                let def_map = query(db, module.lib(db));
-                return def_map.resolve_path(db, &segments.collect(), module);
-            }
+            res = self[module].scope(db).get(segment);
         }
 
         res.to_option()
@@ -523,6 +523,11 @@ impl Ctx<'_> {
         let root = root.or_else(|| self.external_modules.get(&root_name).copied());
         let res = PerNs::new(None, None, root.map(ItemId::ModuleId));
         let mut res = res.or(self.modules[&module].scope.get(root_name));
+
+        if let Some(ItemId::ModuleId(m)) = res.modules && m.lib(self.db) != self.lib && !segments.is_empty() {
+            let def_map = query(self.db, m.lib(self.db));
+            return def_map.resolve_path(self.db, &segments.collect(), m);
+        }
 
         while let Some(segment) = segments.next() {
             module = match res.modules? {
