@@ -149,7 +149,7 @@ impl<'input> Lexer<'input> {
     }
 
     fn whitespace(&mut self) -> Option<Token> {
-        while !self.eof() && self.current.is_whitespace() {
+        while !self.eof() && self.current.is_whitespace() && self.current != '\r' && self.current != '\n' {
             self.advance();
         }
 
