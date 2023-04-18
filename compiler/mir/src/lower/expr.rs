@@ -110,7 +110,7 @@ impl Ctx<'_> {
                     let inst = self.infer.instances[expr].adjust_for_impl(self.db, impl_id);
                     (InstanceId::MirValueId(MirValueId::ValueId(method)), inst)
                 },
-                | None => match self.infer.instances[expr].impls.get(0) {
+                | None => match self.infer.instances.get(expr).and_then(|i| i.impls.get(0)) {
                     | Some(&InstanceImpl::Param(idx)) => match id.container(self.db) {
                         | ContainerId::TraitId(_) => {
                             let constraint = &self.builder.constraints()[idx];
@@ -127,7 +127,10 @@ impl Ctx<'_> {
                     },
                     | _ => match id.container(self.db) {
                         | ContainerId::TraitId(_) => panic!("cannot create instance of a trait method"),
-                        | _ => (MirValueId::ValueId(id).into(), self.infer.instances[expr].clone()),
+                        | _ => (
+                            MirValueId::ValueId(id).into(),
+                            self.infer.instances.get(expr).cloned().unwrap_or_default(),
+                        ),
                     },
                 },
             },

@@ -18,3 +18,4 @@ import Prim
 @intrinsic foreign fconvert :: Float a -> Float b
 @intrinsic foreign ifconvert :: Int a -> Float b
 @intrinsic foreign ficonvert :: Float a -> Int b
+@intrinsic foreign transmute :: a -> b

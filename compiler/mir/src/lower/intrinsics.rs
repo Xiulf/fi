@@ -30,6 +30,11 @@ impl Ctx<'_> {
                 self.builder.addrof(Place::new(res), place);
                 Place::new(res).into()
             },
+            | "iconvert" => self.lower_cast(expr, CastKind::IntToInt, args, store_in),
+            | "fconvert" => self.lower_cast(expr, CastKind::FloatToFloat, args, store_in),
+            | "ifconvert" => self.lower_cast(expr, CastKind::IntToFloat, args, store_in),
+            | "ficonvert" => self.lower_cast(expr, CastKind::FloatToInt, args, store_in),
+            | "transmute" => self.lower_cast(expr, CastKind::Bitcast, args, store_in),
             | s => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
@@ -55,5 +60,20 @@ impl Ctx<'_> {
 
         self.builder.binop(res.clone(), op, lhs, rhs);
         res.into()
+    }
+
+    fn lower_cast(
+        &mut self,
+        expr: ExprId,
+        kind: CastKind,
+        mut args: impl Iterator<Item = Arg>,
+        store_in: &mut Option<Place>,
+    ) -> Operand {
+        let arg = self.lower_arg(args.next().unwrap());
+        let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let res = self.store_in(store_in, repr);
+
+        self.builder.cast(res.clone(), kind, arg);
+        Operand::Move(res)
     }
 }
