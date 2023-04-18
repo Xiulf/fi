@@ -17,7 +17,7 @@ use crate::name::{AsName, Name};
 use crate::path::Path;
 use crate::per_ns::Namespace;
 use crate::source::HasSource;
-use crate::Db;
+use crate::{lang_item, Db};
 
 pub type TypeRefId = Idx<TypeRef>;
 pub type LocalTypeVarId = Idx<TypeVar>;
@@ -325,6 +325,19 @@ impl<'a> Ctx<'a> {
                 ty
             },
             | ast::Type::Hole(_) => self.alloc_type(TypeRef::Hole, syntax_ptr),
+            | ast::Type::Unit(_) => {
+                let lib = self.owner.module(self.db).lib(self.db);
+                let unit = lang_item::query(self.db, lib, lang_item::UNIT_TYPE)?;
+                let unit = unit.as_type_ctor()?;
+
+                self.alloc_type(
+                    TypeRef::Path {
+                        path: Path::default(),
+                        def: Some(TypeDefId::TypeCtorId(unit)),
+                    },
+                    syntax_ptr,
+                )
+            },
             | ast::Type::Var(t) => {
                 let name_ref = t.name()?;
                 let name = name_ref.as_name(self.db);
