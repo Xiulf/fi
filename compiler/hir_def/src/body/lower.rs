@@ -421,9 +421,9 @@ impl<'db> Ctx<'db> {
     fn lower_stmt(&mut self, stmt: ast::Stmt) -> Stmt {
         match stmt {
             | ast::Stmt::Let(s) => {
+                let val = self.lower_expr_opt(s.expr());
                 self.scopes.push(Scope::default());
                 let pat = self.lower_pat_opt(s.pat());
-                let val = self.lower_expr_opt(s.expr());
 
                 Stmt::Let(pat, val)
             },
@@ -692,7 +692,10 @@ impl<'db> Ctx<'db> {
     fn lower_pat_ctor(&self, def: Option<ValueDefId>) -> Option<CtorId> {
         match def? {
             | ValueDefId::CtorId(id) => Some(id),
-            | _ => None, // TODO: report error
+            | id => {
+                tracing::error!("value is not a ctor, {:?}", id);
+                None // TODO: report error
+            },
         }
     }
 
@@ -706,11 +709,12 @@ impl<'db> Ctx<'db> {
         let fixities = ops
             .iter()
             .map(|(op, src)| {
-                let resolved = self.resolve_path(op, src).map(|(a, _)| a);
+                let mut resolved = self.resolve_path(op, src).map(|(a, _)| a);
                 let (prec, assoc) = resolved
                     .map(|def| match def {
                         | ValueDefId::FixityId(id) => {
                             let data = crate::data::fixity_data(self.db, id);
+                            resolved = data.def(self.db).and_then(|d| d.left());
                             match data.kind(self.db) {
                                 | FixityKind::Infix(assoc, prec) => (prec, assoc),
                                 | _ => (Prec::ZERO, Assoc::Left), // TODO: report error

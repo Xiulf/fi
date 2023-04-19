@@ -48,6 +48,7 @@ impl Iterator for Lexer<'_> {
         match (self.current, self.next) {
             | (c, _) if c.is_whitespace() => self.whitespace(),
             | (c, _) if c.is_xid_start() => self.ident(),
+            | (c, n) if c == '_' && n.is_xid_continue() => self.ident(),
             | (c, _) if c.is_ascii_digit() => self.number(),
             | ('\'', _) => self.character(),
             | ('"', _) => self.string(),
@@ -174,13 +175,31 @@ impl<'input> Lexer<'input> {
 
     fn ident(&mut self) -> Option<Token> {
         let is_type = self.current.is_uppercase();
+        let mut n_upper = is_type as usize;
+        let mut n_quot = 0;
+
+        self.advance();
+
+        if self.current == '_' && self.next.is_uppercase() {
+            n_upper += 2;
+            self.advance();
+            self.advance();
+        }
 
         while !self.eof() && self.current.is_xid_continue() {
+            if self.current.is_uppercase() {
+                n_upper += 1;
+            }
             self.advance();
         }
 
         while !self.eof() && self.current == '\'' {
+            n_quot += 1;
             self.advance();
+        }
+
+        if n_upper > 2 && n_upper == (self.pos - self.start).into() && n_quot == 0 {
+            return self.token(CONST);
         }
 
         match self.current_text() {

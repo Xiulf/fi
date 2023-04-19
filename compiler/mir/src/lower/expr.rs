@@ -1,6 +1,6 @@
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::{ContainerId, ValueDefId};
-use hir_def::pat::{DecisionTree, PatId, VariantTag};
+use hir_def::pat::{DecisionTree, Pat, PatId, VariantTag};
 use hir_ty::ty::InstanceImpl;
 use salsa::AsId;
 
@@ -89,12 +89,31 @@ impl Ctx<'_> {
                 let repr = repr_of(self.db, self.infer.type_of_pat[pat]);
                 let local = self.builder.add_local(LocalKind::Var, repr);
                 self.lower_expr(expr, &mut Some(Place::new(local)));
-                self.locals.insert(pat, Place::new(local));
+                self.bind_pat(pat, Place::new(local));
             },
             | Stmt::Expr(expr) => {
                 self.lower_expr_inner(expr, &mut None);
             },
         }
+    }
+
+    fn bind_pat(&mut self, pat: PatId, place: Place) {
+        let body = self.body.clone();
+        match body[pat] {
+            | Pat::Missing => unreachable!(),
+            | Pat::Wildcard | Pat::Bind { subpat: None, .. } | Pat::Lit { .. } => {},
+            | Pat::Typed { pat, .. } => self.bind_pat(pat, place.clone()),
+            | Pat::Bind {
+                subpat: Some(subpat), ..
+            } => self.bind_pat(subpat, place.clone()),
+            | Pat::Ctor { ref args, .. } => {
+                for (i, &arg) in args.iter().enumerate() {
+                    self.bind_pat(arg, place.clone().field(i));
+                }
+            },
+        }
+
+        self.locals.insert(pat, place);
     }
 
     fn lower_path(&mut self, expr: ExprId, def: ValueDefId, _store_in: &mut Option<Place>) -> Operand {
@@ -331,7 +350,7 @@ impl Ctx<'_> {
             let param_repr = repr_of(self.db, self.infer.type_of_pat[param]);
             let local = self.builder.add_local(LocalKind::Arg, param_repr);
             self.builder.add_block_param(entry, local);
-            self.locals.insert(param, Place::new(local));
+            self.bind_pat(param, Place::new(local));
         }
 
         if let Some(env_param) = env_param {
@@ -450,7 +469,7 @@ impl Ctx<'_> {
                         assert!(case.fields.len() <= 1);
                         for pats in case.fields.iter() {
                             for &pat in pats {
-                                self.locals.insert(pat, pred.clone());
+                                self.bind_pat(pat, pred.clone());
                             }
                         }
 
@@ -472,7 +491,7 @@ impl Ctx<'_> {
 
                             for (i, pats) in case.fields.iter().enumerate() {
                                 for &pat in pats {
-                                    self.locals.insert(pat, downcast.clone().field(i));
+                                    self.bind_pat(pat, downcast.clone().field(i));
                                 }
                             }
 

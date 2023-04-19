@@ -465,7 +465,40 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 let ptr = self.builder.build_pointer_cast(ptr, ty, "");
                 OperandRef::new_imm(layout, ptr.as_basic_value_enum())
             },
-            | _ => todo!(),
+            | ir::CastKind::IntToInt => {
+                let ty = self.basic_type_for_ral(&layout).into_int_type();
+                let val = value.load(self.cx).into_int_value();
+                let val = self.builder.build_int_cast(val, ty, "");
+                OperandRef::new_imm(layout, val.as_basic_value_enum())
+            },
+            | ir::CastKind::FloatToFloat => {
+                let ty = self.basic_type_for_ral(&layout).into_float_type();
+                let val = value.load(self.cx).into_float_value();
+                let val = self.builder.build_float_cast(val, ty, "");
+                OperandRef::new_imm(layout, val.as_basic_value_enum())
+            },
+            | ir::CastKind::IntToFloat => {
+                let ty = self.basic_type_for_ral(&layout).into_float_type();
+                let val = value.load(self.cx).into_int_value();
+                let val = if value.layout.is_signed() {
+                    self.builder.build_signed_int_to_float(val, ty, "")
+                } else {
+                    self.builder.build_unsigned_int_to_float(val, ty, "")
+                };
+
+                OperandRef::new_imm(layout, val.as_basic_value_enum())
+            },
+            | ir::CastKind::FloatToInt => {
+                let ty = self.basic_type_for_ral(&layout).into_int_type();
+                let val = value.load(self.cx).into_float_value();
+                let val = if layout.is_signed() {
+                    self.builder.build_float_to_signed_int(val, ty, "")
+                } else {
+                    self.builder.build_float_to_unsigned_int(val, ty, "")
+                };
+
+                OperandRef::new_imm(layout, val.as_basic_value_enum())
+            },
         }
     }
 

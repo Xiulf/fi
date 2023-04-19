@@ -796,7 +796,7 @@ impl PathSegment {
 
 impl Name {
     pub fn ident_token(&self) -> Option<&SyntaxToken> {
-        token(self.syntax(), SyntaxKind::IDENT).or_else(|| token(self.syntax(), SyntaxKind::TYPE))
+        token2(self.syntax(), &[SyntaxKind::IDENT, SyntaxKind::CONST, SyntaxKind::TYPE])
     }
 
     pub fn symbol_token(&self) -> Option<&SyntaxToken> {
@@ -811,7 +811,7 @@ impl Name {
 
 impl NameRef {
     pub fn ident_token(&self) -> Option<&SyntaxToken> {
-        token(self.syntax(), SyntaxKind::IDENT).or_else(|| token(self.syntax(), SyntaxKind::TYPE))
+        token2(self.syntax(), &[SyntaxKind::IDENT, SyntaxKind::CONST, SyntaxKind::TYPE])
     }
 
     pub fn symbol_token(&self) -> Option<&SyntaxToken> {

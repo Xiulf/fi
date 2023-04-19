@@ -23,6 +23,7 @@ pub enum SyntaxKind {
     LYT_END,
 
     IDENT,
+    CONST,
     TYPE,
     SYMBOL,
     INT,
@@ -187,6 +188,7 @@ impl fmt::Display for SyntaxKind {
             | Self::LYT_SEP => "newline",
             | Self::LYT_END => "unindent",
             | Self::IDENT => "identifier",
+            | Self::CONST => "constant",
             | Self::TYPE => "type name",
             | Self::SYMBOL => "symbol",
             | Self::INT => "int literal",

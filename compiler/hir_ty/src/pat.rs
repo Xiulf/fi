@@ -33,7 +33,13 @@ impl BodyCtx<'_, '_> {
             | Pat::Bind {
                 subpat: Some(subpat), ..
             } => self.infer_pat(*subpat, expected),
-            | Pat::Ctor { ctor: None, .. } => self.error(),
+            | Pat::Ctor { ctor: None, args, .. } => {
+                for &arg in args.iter() {
+                    self.infer_pat_inner(arg, Expectation::None);
+                }
+
+                self.error()
+            },
             | Pat::Ctor {
                 ctor: Some(def), args, ..
             } => {

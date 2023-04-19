@@ -1,7 +1,7 @@
 module Main =
 
 import Core
-import Intrinsics (transmute, size_of, Type)
+import Intrinsics
 
 
 module C =
@@ -9,6 +9,9 @@ module C =
 
     foreign malloc :: Uptr -> Ptr ()
     foreign free :: Ptr () -> ()
+    foreign malloca :: Uptr -> Ptr ()
+
+    foreign _write :: Int32, Ptr (), Uint32 -> Int32
 
 
 malloc () :: Ptr a = C.malloc (size_of (Proxy :: Proxy a)) . transmute
@@ -17,8 +20,8 @@ free p = C.free (p . transmute)
 
 @main
 main () =
-    x = malloc () :: Ptr Int64
-    y = malloc () :: Ptr Int32
-    free x
-    free y
+    ptr, len = transmute "test" :: Pair (Ptr Int8) Uptr
+    ptr = transmute ptr
+    len = iconvert len
+    x = C._write 1 ptr len
     0

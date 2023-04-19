@@ -63,8 +63,8 @@ fn attr_arg(p: &mut Parser) {
     }
 }
 
-const ITEM_TOKENS: [SyntaxKind; 11] = [
-    AT, MODULE_KW, IMPORT_KW, INFIX_KW, INFIXL_KW, INFIXR_KW, TYPE_KW, FOREIGN_KW, TRAIT_KW, IMPL_KW, IDENT,
+const ITEM_TOKENS: [SyntaxKind; 12] = [
+    AT, MODULE_KW, IMPORT_KW, INFIX_KW, INFIXL_KW, INFIXR_KW, TYPE_KW, FOREIGN_KW, TRAIT_KW, IMPL_KW, IDENT, CONST,
 ];
 const PEEK_ITEM: TokenSet = TokenSet::new(&ITEM_TOKENS);
 
@@ -80,7 +80,7 @@ fn item(p: &mut Parser) {
         | Some(TYPE_KW) => item_type(p, m),
         | Some(TRAIT_KW) => item_trait(p, m),
         | Some(IMPL_KW) => item_impl(p, m),
-        | Some(IDENT) => item_value(p, m),
+        | Some(IDENT | CONST) => item_value(p, m),
         | Some(FOREIGN_KW) => match p.nth(1) {
             | Some(TYPE_KW) => item_type(p, m),
             | Some(IDENT) => item_value(p, m),
@@ -138,7 +138,7 @@ fn module_name(p: &mut Parser) {
 fn exports(p: &mut Parser) {
     let m = p.start();
     p.expect(L_PAREN);
-    separated(p, COMMA, R_PAREN, IDENT | TYPE | SYMBOL | MODULE_KW, export);
+    separated(p, COMMA, R_PAREN, IDENT | CONST | TYPE | SYMBOL | MODULE_KW, export);
     p.expect(R_PAREN);
     m.complete(p, EXPORTS);
 }
@@ -177,7 +177,7 @@ fn item_import(p: &mut Parser, m: Marker) {
 fn import_items(p: &mut Parser) {
     let m = p.start();
     p.expect(L_PAREN);
-    separated(p, COMMA, R_PAREN, IDENT | TYPE | L_PAREN, import_item);
+    separated(p, COMMA, R_PAREN, IDENT | CONST | TYPE | L_PAREN, import_item);
     p.expect(R_PAREN);
     m.complete(p, IMPORT_ITEMS);
 }
@@ -231,7 +231,7 @@ fn item_fixity(p: &mut Parser, m: Marker) {
 
 fn item_value(p: &mut Parser, m: Marker) {
     p.eat(FOREIGN_KW);
-    ident_name(p);
+    ident_or_const_name(p);
 
     while !p.eof() && p.at_ts(PEEK_PAT) {
         pat_atom(p);
@@ -423,11 +423,26 @@ fn typ_app(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
+fn typ_infix(p: &mut Parser, comma: TokenSet) -> Option<CompletedMarker> {
+    let mut m = typ_app(p)?;
+
+    if p.at_ts(SYMBOL | AT | PIPE | TICK | comma) {
+        let n = m.precede(p);
+        while !p.eof() && p.at_ts(SYMBOL | AT | PIPE | TICK | comma) {
+            operator(p);
+            typ_app(p);
+        }
+        m = n.complete(p, TYPE_INFIX);
+    }
+
+    Some(m)
+}
+
 fn typ_func(p: &mut Parser) -> Option<CompletedMarker> {
     let start = p.checkpoint();
     let m = p.start();
 
-    typ_app(p);
+    typ_infix(p, TokenSet::EMPTY);
     while !p.eof() && p.eat(COMMA) {
         typ_app(p);
     }
@@ -439,7 +454,7 @@ fn typ_func(p: &mut Parser) -> Option<CompletedMarker> {
 
     m.abandon(p);
     start.restore(p);
-    typ_app(p)
+    typ_infix(p, COMMA.into())
 }
 
 const PAT_TOKENS: [SyntaxKind; 7] = [IDENT, TYPE, INT, FLOAT, CHAR, STRING, L_PAREN];
@@ -484,7 +499,7 @@ fn pat_atom(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn pat(p: &mut Parser) {
-    pat_app(p);
+    pat_infix(p);
 }
 
 fn pat_app(p: &mut Parser) -> Option<CompletedMarker> {
@@ -501,8 +516,23 @@ fn pat_app(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-const EXPR_TOKENS: [SyntaxKind; 13] = [
-    TYPE, IDENT, INT, FLOAT, CHAR, STRING, L_PAREN, LYT_START, FN_KW, DO_KW, MATCH_KW, IF_KW, RETURN_KW,
+fn pat_infix(p: &mut Parser) -> Option<CompletedMarker> {
+    let mut m = pat_app(p)?;
+
+    if p.at_ts(SYMBOL | COMMA | AT | PIPE | TICK) {
+        let n = m.precede(p);
+        while !p.eof() && p.at_ts(SYMBOL | COMMA | AT | PIPE | TICK) {
+            operator(p);
+            pat_app(p);
+        }
+        m = n.complete(p, PAT_INFIX);
+    }
+
+    Some(m)
+}
+
+const EXPR_TOKENS: [SyntaxKind; 14] = [
+    TYPE, IDENT, CONST, INT, FLOAT, CHAR, STRING, L_PAREN, LYT_START, FN_KW, DO_KW, MATCH_KW, IF_KW, RETURN_KW,
 ];
 const PEEK_EXPR: TokenSet = TokenSet::new(&EXPR_TOKENS);
 
@@ -510,7 +540,7 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
 
     Some(match p.current() {
-        | Some(TYPE | IDENT) => {
+        | Some(TYPE | IDENT | CONST) => {
             path(p);
             m.complete(p, EXPR_PATH)
         },
@@ -776,14 +806,14 @@ fn name(p: &mut Parser) {
 fn name_ref(p: &mut Parser) {
     let m = p.start();
     match p.current() {
-        | Some(IDENT | TYPE) => p.bump_any(),
+        | Some(IDENT | CONST | TYPE) => p.bump_any(),
         | Some(L_PAREN) if p.nth_at_ts(1, SYMBOL | COMMA) && p.nth_at(2, R_PAREN) => {
             p.bump(L_PAREN);
             p.bump_any();
             p.bump(R_PAREN);
         },
         | _ => {
-            p.error([IDENT, TYPE, L_PAREN]);
+            p.error([IDENT, CONST, TYPE, L_PAREN]);
             m.abandon(p);
             return;
         },
@@ -794,6 +824,12 @@ fn name_ref(p: &mut Parser) {
 fn ident_name(p: &mut Parser) {
     let m = p.start();
     p.expect(IDENT);
+    m.complete(p, NAME);
+}
+
+fn ident_or_const_name(p: &mut Parser) {
+    let m = p.start();
+    p.expect_ts(IDENT | CONST);
     m.complete(p, NAME);
 }
 

@@ -12,6 +12,7 @@ use crate::SyntaxDiagnostic;
 pub fn parse_text<I: Interner>(db: &dyn Db, file: File, interner: &mut I) -> SyntaxNode {
     let text = file.text(db).as_deref().unwrap_or_default();
     let tokens = parser::lexer::Lexer::new(text).collect::<Vec<_>>();
+    // dbg!(&tokens);
     let events = parser::parse(&tokens);
     let mut tree_sink = TextTreeSink::new(db, file, text, &tokens, interner);
 

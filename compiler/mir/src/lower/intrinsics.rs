@@ -23,6 +23,14 @@ impl Ctx<'_> {
             | "imul" => self.lower_intrinsic_binop(expr, BinOp::Mul, args, store_in),
             | "idiv" => self.lower_intrinsic_binop(expr, BinOp::Div, args, store_in),
             | "irem" => self.lower_intrinsic_binop(expr, BinOp::Rem, args, store_in),
+            | "iconvert" => self.lower_cast(expr, CastKind::IntToInt, args, store_in),
+            | "fconvert" => self.lower_cast(expr, CastKind::FloatToFloat, args, store_in),
+            | "ifconvert" => self.lower_cast(expr, CastKind::IntToFloat, args, store_in),
+            | "ficonvert" => self.lower_cast(expr, CastKind::FloatToInt, args, store_in),
+            | "transmute" => self.lower_cast(expr, CastKind::Bitcast, args, store_in),
+            | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
+            | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
+            | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap());
                 let place = self.place_op(place);
@@ -33,14 +41,18 @@ impl Ctx<'_> {
                 self.builder.addrof(Place::new(res), place);
                 Place::new(res).into()
             },
-            | "iconvert" => self.lower_cast(expr, CastKind::IntToInt, args, store_in),
-            | "fconvert" => self.lower_cast(expr, CastKind::FloatToFloat, args, store_in),
-            | "ifconvert" => self.lower_cast(expr, CastKind::IntToFloat, args, store_in),
-            | "ficonvert" => self.lower_cast(expr, CastKind::FloatToInt, args, store_in),
-            | "transmute" => self.lower_cast(expr, CastKind::Bitcast, args, store_in),
-            | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
-            | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
-            | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
+            | "ptr_read" => {
+                let arg = self.lower_arg(args.next().unwrap());
+                self.place_op(arg).deref().into()
+            },
+            | "ptr_write" => {
+                let place = self.lower_arg(args.next().unwrap());
+                let place = self.place_op(place);
+                let op = self.lower_arg(args.next().unwrap());
+
+                self.builder.assign(place.deref(), op);
+                Operand::Const(Const::Unit, Arc::new(Repr::unit()))
+            },
             | s => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);

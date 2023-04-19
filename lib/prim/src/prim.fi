@@ -46,6 +46,7 @@ type Bool = | False | True
 type Pair a b = | Pair a b
 
 infixr 0 (,) = Pair
+infixr type 0 (,) = Pair
 
 @lang = "proxy-type"
 type Proxy t = | Proxy
