@@ -1,5 +1,8 @@
+use hir::id::{HasModule, LibId};
 use hir_def::expr::ExprId;
+use hir_def::lang_item;
 use hir_def::name::Name;
+use hir_ty::ty::Ty;
 
 use super::expr::Arg;
 use super::*;
@@ -35,6 +38,9 @@ impl Ctx<'_> {
             | "ifconvert" => self.lower_cast(expr, CastKind::IntToFloat, args, store_in),
             | "ficonvert" => self.lower_cast(expr, CastKind::FloatToInt, args, store_in),
             | "transmute" => self.lower_cast(expr, CastKind::Bitcast, args, store_in),
+            | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
+            | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
+            | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
             | s => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
@@ -62,6 +68,27 @@ impl Ctx<'_> {
         res.into()
     }
 
+    fn lower_intrinsic_nullop(
+        &mut self,
+        expr: ExprId,
+        op: NullOp,
+        mut args: impl Iterator<Item = Arg>,
+        store_in: &mut Option<Place>,
+    ) -> Operand {
+        let proxy = match args.next().unwrap() {
+            | Arg::ExprId(e) => self.infer.type_of_expr[e],
+            | Arg::Op(_) => unreachable!(),
+        };
+
+        let proxy = self.get_proxy_type(proxy);
+        let proxy_repr = repr_of(self.db, proxy);
+        let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let res = self.store_in(store_in, repr);
+
+        self.builder.nullop(res.clone(), op, proxy_repr);
+        res.into()
+    }
+
     fn lower_cast(
         &mut self,
         expr: ExprId,
@@ -74,6 +101,27 @@ impl Ctx<'_> {
         let res = self.store_in(store_in, repr);
 
         self.builder.cast(res.clone(), kind, arg);
-        Operand::Move(res)
+        res.into()
+    }
+
+    fn lib(&self) -> LibId {
+        match self.id {
+            | MirValueId::ValueId(id) | MirValueId::Lambda(id, _) => id.container(self.db).module(self.db).lib(self.db),
+            | MirValueId::CtorId(id) => id.type_ctor(self.db).module(self.db).lib(self.db),
+            | MirValueId::FieldId(id) => id.ctor(self.db).type_ctor(self.db).module(self.db).lib(self.db),
+        }
+    }
+
+    fn get_proxy_type(&self, proxy: Ty) -> Ty {
+        let lib = self.lib();
+        let proxy_id = match lang_item::query(self.db, lib, lang_item::PROXY_TYPE).and_then(|it| it.as_type_ctor()) {
+            | Some(id) => id,
+            | None => {
+                tracing::error!("unkown language item '{}'", lang_item::PROXY_TYPE);
+                return Ty::new(self.db, hir_ty::ty::TyKind::Error);
+            },
+        };
+
+        proxy.match_ctor(self.db, proxy_id).unwrap()[0]
     }
 }

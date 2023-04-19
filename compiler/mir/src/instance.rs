@@ -74,6 +74,10 @@ impl Instance {
     }
 
     pub fn is_exported(self, db: &dyn Db) -> bool {
+        if self.subst(db).is_some() {
+            return false;
+        }
+
         match self.id(db) {
             | InstanceId::MirValueId(id) => match id {
                 | MirValueId::ValueId(id) => hir::Value::from(id).is_exported(db),

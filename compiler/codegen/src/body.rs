@@ -444,6 +444,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             },
             | ir::RValue::Cast(kind, op) => self.codegen_cast(layout, *kind, op),
             | ir::RValue::BinOp(op, lhs, rhs) => self.codegen_binop(layout, *op, lhs, rhs),
+            | ir::RValue::NullOp(op, repr) => self.codegen_nullop(layout, *op, repr),
             | _ => todo!("{rvalue:?}"),
         }
     }
@@ -543,6 +544,18 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
             OperandRef::new_imm(layout, val.as_basic_value_enum())
         }
+    }
+
+    pub fn codegen_nullop(&mut self, layout: Arc<ReprAndLayout>, op: ir::NullOp, repr: &Arc<Repr>) -> OperandRef<'ctx> {
+        let repr = repr_and_layout(self.db, self.instance.subst_repr(self.db, repr));
+        let ty = self.basic_type_for_ral(&layout).into_int_type();
+        let val = match op {
+            | ir::NullOp::SizeOf => ty.const_int(repr.size.bytes(), layout.is_signed()),
+            | ir::NullOp::AlignOf => ty.const_int(repr.align.bytes(), layout.is_signed()),
+            | ir::NullOp::StrideOf => ty.const_int(repr.stride.bytes(), layout.is_signed()),
+        };
+
+        OperandRef::new_imm(layout, val.as_basic_value_enum())
     }
 
     pub fn codegen_operand(&mut self, op: &ir::Operand) -> OperandRef<'ctx> {

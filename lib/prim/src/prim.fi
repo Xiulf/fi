@@ -47,6 +47,9 @@ type Pair a b = | Pair a b
 
 infixr 0 (,) = Pair
 
+@lang = "proxy-type"
+type Proxy t = | Proxy
+
 trait Termination t =
     report :: t -> ExitCode
 

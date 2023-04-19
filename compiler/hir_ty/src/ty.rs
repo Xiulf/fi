@@ -161,6 +161,17 @@ impl Ty {
             | _ => ty,
         })
     }
+
+    pub fn match_ctor(self, db: &dyn Db, ctor_id: TypeCtorId) -> Option<&[Ty]> {
+        match self.kind(db) {
+            | TyKind::Ctor(id) if *id == ctor_id => Some(&[]),
+            | TyKind::App(base, args) => match base.kind(db) {
+                | TyKind::Ctor(id) if *id == ctor_id => Some(args),
+                | _ => None,
+            },
+            | _ => None,
+        }
+    }
 }
 
 impl Constraint {

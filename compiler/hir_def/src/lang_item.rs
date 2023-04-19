@@ -19,6 +19,7 @@ pub const INT_TYPE: &'static str = "int-type";
 pub const FLOAT_TYPE: &'static str = "float-type";
 pub const CHAR_TYPE: &'static str = "char-type";
 pub const STR_TYPE: &'static str = "str-type";
+pub const PROXY_TYPE: &'static str = "proxy-type";
 
 pub const BIND_FN: &'static str = "bind-fn";
 
