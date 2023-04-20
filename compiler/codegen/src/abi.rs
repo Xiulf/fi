@@ -24,6 +24,7 @@ pub enum EmptySinglePair<T> {
 pub struct FnAbi<'ctx> {
     pub args: Box<[ArgAbi<'ctx>]>,
     pub ret: ArgAbi<'ctx>,
+    pub is_varargs: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +57,7 @@ impl<T> Iterator for EmptySinglePair<T> {
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn compute_fn_abi(&self, sig: &Signature, env: Option<&Arc<Repr>>) -> FnAbi<'ctx> {
         let ret_layout = repr_and_layout(self.db, sig.ret.clone());
+        let is_varargs = sig.is_varargs;
         let ret = self.compute_layout_abi(ret_layout);
         let env = env.map(|e| {
             let repr = Arc::new(Repr::Box(e.clone()));
@@ -71,7 +73,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             }))
             .collect();
 
-        FnAbi { args, ret }
+        FnAbi { args, ret, is_varargs }
     }
 
     pub fn compute_layout_abi(&self, layout: Arc<ReprAndLayout>) -> ArgAbi<'ctx> {

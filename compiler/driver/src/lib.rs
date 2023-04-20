@@ -63,6 +63,13 @@ impl Driver {
         &self.db
     }
 
+    pub fn package_for_lib(&self, lib: LibId) -> Option<Package> {
+        let source_root = lib.source_root(&self.db);
+        let idx = self.source_roots.iter().position(|&s| s == source_root)?;
+
+        Some(Package::new(idx))
+    }
+
     pub fn libs_for_package(&self, package: Package) -> Vec<LibId> {
         let db = &self.db as &dyn base_db::Db;
         let source_root = self.source_roots[package.index()];
@@ -74,11 +81,51 @@ impl Driver {
     }
 
     pub fn build(&self, lib: LibId) -> Arc<codegen::assembly::Assembly> {
-        let deps = lib.deps(&self.db).iter().map(|&l| self.build(l)).collect::<Vec<_>>();
+        let start = time::Instant::now();
+        let asm = self.build_rec(lib);
+        let duration = Self::print_duration(start.elapsed());
+
+        eprintln!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {}", duration);
+        asm
+    }
+
+    fn build_rec(&self, lib: LibId) -> Arc<codegen::assembly::Assembly> {
+        let deps = lib
+            .deps(&self.db)
+            .iter()
+            .map(|&l| self.build_rec(l))
+            .collect::<Vec<_>>();
+
+        let pkg = self.package_for_lib(lib).unwrap();
+        eprintln!(
+            "  \x1B[1;32m\x1B[1mCompiling\x1B[0m {} v{} ({})",
+            lib.name(&self.db),
+            self.packages[pkg].version,
+            self.packages[pkg].root_dir.display(),
+        );
+
         let asm = codegen::codegen_lib(&self.db, lib);
 
         asm.link(&self.db, &deps);
         asm
+    }
+
+    fn print_duration(duration: time::Duration) -> String {
+        if duration.whole_minutes() > 0 {
+            format!(
+                "{}m {}.{:0>2}s",
+                duration.whole_minutes(),
+                duration.whole_seconds(),
+                duration.subsec_milliseconds()
+            )
+        } else if duration.whole_seconds() > 0 || duration.subsec_milliseconds() >= 100 {
+            let m = ((duration.subsec_milliseconds() as f32) / 10.0).round() as i16;
+            format!("{}.{:0>2}s", duration.whole_seconds(), m)
+        } else if duration.whole_milliseconds() > 0 {
+            format!("{}ms", duration.whole_milliseconds())
+        } else {
+            format!("{}ns", duration.whole_nanoseconds())
+        }
     }
 
     pub fn debug(&self, lib: LibId) {

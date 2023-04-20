@@ -73,14 +73,17 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
                     Ty::new(self.db, TyKind::App(base, args))
                 },
             },
-            | TypeRef::Func { ref args, ret } => {
+            | TypeRef::Func { env, ref args, ret } => {
                 let params = args.iter().map(|&t| self.lower_type_ref(t, false)).collect();
                 let ret = self.lower_type_ref(ret, false);
-                let env = if top_level {
+                let env = if let Some(env) = env {
+                    self.lower_type_ref(env, false)
+                } else if top_level {
                     self.unit_type()
                 } else {
                     self.ctx.fresh_type(self.level, false)
                 };
+
                 let variadic = false;
 
                 Ty::new(

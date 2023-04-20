@@ -59,6 +59,7 @@ pub enum Integer {
 pub struct Signature {
     pub params: Box<[Arc<Repr>]>,
     pub ret: Arc<Repr>,
+    pub is_varargs: bool,
 }
 
 impl Repr {
@@ -114,7 +115,12 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Arc<Repr> {
         | TyKind::Func(func) => {
             let params = func.params.iter().map(|&p| repr_of(db, p)).collect();
             let ret = repr_of(db, func.ret);
-            let signature = Signature { params, ret };
+            let signature = Signature {
+                params,
+                ret,
+                is_varargs: func.variadic,
+            };
+
             let env = repr_of(db, func.env);
             let env = if *env == Repr::unit() { None } else { Some(env) };
 

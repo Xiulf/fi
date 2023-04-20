@@ -442,6 +442,14 @@ fn typ_func(p: &mut Parser) -> Option<CompletedMarker> {
     let start = p.checkpoint();
     let m = p.start();
 
+    if p.at(L_BRACE) {
+        let e = p.start();
+        p.bump(L_BRACE);
+        typ(p);
+        p.expect(R_BRACE);
+        e.complete(p, TYPE_FUNC_ENV);
+    }
+
     typ_infix(p, TokenSet::EMPTY);
     while !p.eof() && p.eat(COMMA) {
         typ_app(p);
@@ -457,13 +465,17 @@ fn typ_func(p: &mut Parser) -> Option<CompletedMarker> {
     typ_infix(p, COMMA.into())
 }
 
-const PAT_TOKENS: [SyntaxKind; 7] = [IDENT, TYPE, INT, FLOAT, CHAR, STRING, L_PAREN];
+const PAT_TOKENS: [SyntaxKind; 8] = [UNDERSCORE, IDENT, TYPE, INT, FLOAT, CHAR, STRING, L_PAREN];
 const PEEK_PAT: TokenSet = TokenSet::new(&PAT_TOKENS);
 
 fn pat_atom(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
 
     Some(match p.current() {
+        | Some(UNDERSCORE) => {
+            p.bump(UNDERSCORE);
+            m.complete(p, PAT_WILDCARD)
+        },
         | Some(IDENT) => {
             ident_name(p);
             if p.at(AT) && p.nth_at_ts(1, PEEK_PAT) {

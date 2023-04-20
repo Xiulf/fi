@@ -153,7 +153,7 @@ impl BodyCtx<'_, '_> {
         )
     }
 
-    fn infer_app(&mut self, _id: ExprId, base: ExprId, args: &[ExprId]) -> Ty {
+    fn infer_app(&mut self, id: ExprId, base: ExprId, args: &[ExprId]) -> Ty {
         let func = self.infer_expr_inner(base, Expectation::None);
 
         if let TyKind::Func(func) = func.kind(self.db) {
@@ -161,7 +161,31 @@ impl BodyCtx<'_, '_> {
                 self.infer_expr(arg, Expectation::HasType(ty));
             }
 
-            return func.ret;
+            if args.len() <= func.params.len() {
+                return func.ret;
+            }
+
+            let ret = self.ctx.fresh_type(self.ctx.level, false);
+            let params = args[func.params.len()..]
+                .iter()
+                .map(|&e| self.infer_expr(e, Expectation::None))
+                .collect::<Vec<_>>();
+            let func2 = params.into_iter().rfold(ret, |ret, param| {
+                let env = self.ctx.fresh_type(self.ctx.level, false);
+
+                Ty::new(
+                    self.db,
+                    TyKind::Func(FuncType {
+                        env,
+                        ret,
+                        params: Box::new([param]),
+                        variadic: false,
+                    }),
+                )
+            });
+
+            self.unify_types(func.ret, func2, id.into());
+            return ret;
         }
 
         let params = args

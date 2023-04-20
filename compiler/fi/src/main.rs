@@ -1,5 +1,6 @@
 #![feature(iterator_try_collect)]
 
+use std::ffi::OsString;
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -94,6 +95,8 @@ struct BuildArgs {
 struct RunArgs {
     #[command(flatten)]
     basic: BasicCommandArgs,
+    #[arg(last = true)]
+    args: Vec<OsString>,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -258,7 +261,7 @@ fn build(_args: BuildArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCod
     Ok(ExitCode::SUCCESS)
 }
 
-fn run(_args: RunArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
+fn run(args: RunArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
     if driver.report_diagnostics(lib)? {
         return Ok(ExitCode::FAILURE);
     }
@@ -266,7 +269,18 @@ fn run(_args: RunArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
     driver.debug(lib);
     let asm = driver.build(lib);
     let path = asm.path(driver.db());
-    let status = std::process::Command::new(path).status()?;
+    let mut command = std::process::Command::new(path);
+    command.args(args.args);
+    eprintln!(
+        "    \x1B[1;32m\x1B[1mRunning\x1B[0m `{}{}`",
+        command.get_program().to_str().unwrap(),
+        command
+            .get_args()
+            .map(|s| format!(" {}", s.to_str().unwrap()))
+            .collect::<Vec<_>>()
+            .join(""),
+    );
+    let status = command.status()?;
 
     if let Some(code) = status.code() {
         Ok(ExitCode::from(code as u8))

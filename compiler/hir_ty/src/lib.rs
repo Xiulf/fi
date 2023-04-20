@@ -102,7 +102,7 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
     let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
     let is_main = hir_def::attrs::query(db, value.into()).by_key("main").exists();
 
-    if is_main {
+    if is_main || matches!(value.container(db), ContainerId::ImplId(_)) {
         ctx.solve_constraints(false);
     } else {
         ctx.solve_constraints(true);

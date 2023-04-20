@@ -224,6 +224,7 @@ impl InstanceData {
         Signature {
             params: sig.params.iter().map(|p| self.subst_repr(db, p)).collect(),
             ret: self.subst_repr(db, &sig.ret),
+            is_varargs: sig.is_varargs,
         }
     }
 

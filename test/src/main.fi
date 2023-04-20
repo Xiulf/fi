@@ -20,8 +20,27 @@ free p = C.free (p . transmute)
 
 @main
 main () =
-    ptr, len = transmute "test" :: Pair (Ptr Int8) Uptr
+    printf "a" "b" "c" :: ()
+    0
+
+
+// printf fmt ..args =
+//     ()
+
+printstr s =
+    ptr, len = transmute s :: Pair (Ptr Int8) Uptr
     ptr = transmute ptr
     len = iconvert len
-    x = C._write 1 ptr len
-    0
+    _ = C._write 1 ptr len
+
+
+trait PrintF r =
+    printf :: Str -> r
+
+impl PrintF () =
+    printf s = printstr s
+
+impl PrintF ({Str} Str -> r) where PrintF r =
+    printf s = fn x ->
+        printstr s
+        printf x

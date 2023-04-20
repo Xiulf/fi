@@ -325,6 +325,10 @@ impl Ctx<'_> {
     }
 
     fn lower_lambda_body(&mut self, expr: ExprId, env: &[PatId], params: &[PatId], body: ExprId) {
+        for c in self.infer.constraints.iter() {
+            self.builder.add_constraint(c.clone());
+        }
+
         let env_param = if env.is_empty() {
             None
         } else {

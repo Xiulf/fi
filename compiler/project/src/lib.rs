@@ -186,3 +186,11 @@ impl Packages {
         self.packages[pkg].dependencies.push(dep);
     }
 }
+
+impl std::ops::Index<Package> for Packages {
+    type Output = PackageData;
+
+    fn index(&self, pkg: Package) -> &Self::Output {
+        &self.packages[pkg]
+    }
+}

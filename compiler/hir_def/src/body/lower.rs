@@ -589,6 +589,7 @@ impl<'db> Ctx<'db> {
 
         Some(match pat {
             | ast::Pat::Parens(p) => self.lower_pat_opt(p.pat()),
+            | ast::Pat::Wildcard(_) => self.alloc_pat(Pat::Wildcard, syntax_ptr),
             | ast::Pat::Typed(p) => {
                 let pat = self.lower_pat_opt(p.pat());
                 let ty = p.ty().and_then(|t| self.typ_map.typ_for_src(AstPtr::new(&t)));
@@ -685,7 +686,6 @@ impl<'db> Ctx<'db> {
                     },
                 )
             },
-            | p => todo!("{p:?}"),
         })
     }
 

@@ -502,6 +502,10 @@ impl TypeInfix {
 }
 
 impl TypeFunc {
+    pub fn env(&self) -> Option<TypeFuncEnv> {
+        child(self.syntax())
+    }
+
     pub fn args(&self) -> impl Iterator<Item = Type> + '_ {
         let len = children::<Type>(self.syntax()).count();
         let len = if len > 0 { len - 1 } else { len };
@@ -510,6 +514,12 @@ impl TypeFunc {
 
     pub fn ret(&self) -> Option<Type> {
         children(self.syntax()).last()
+    }
+}
+
+impl TypeFuncEnv {
+    pub fn ty(&self) -> Option<Type> {
+        child(self.syntax())
     }
 }
 
@@ -777,8 +787,25 @@ impl LitChar {
 impl LitString {
     pub fn value(&self, resolver: &dyn Resolver) -> Option<String> {
         let text = token(self.syntax(), SyntaxKind::STRING)?.resolve_text(resolver);
+        let mut result = String::with_capacity(text.len() - 2);
+        let mut chars = text[1..text.len() - 1].chars();
 
-        Some(text[1..text.len() - 1].to_string())
+        while let Some(ch) = chars.next() {
+            if ch == '\\' {
+                result.push(match chars.next()? {
+                    | '0' => '\0',
+                    | 'r' => '\r',
+                    | 'n' => '\n',
+                    | '\'' => '\'',
+                    | '\"' => '\"',
+                    | _ => return None,
+                });
+            } else {
+                result.push(ch);
+            }
+        }
+
+        Some(result)
     }
 }
 

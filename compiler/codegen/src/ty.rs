@@ -40,8 +40,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
 
         match ret {
-            | Ok(ret) => ret.fn_type(&args, false),
-            | Err(ret) => ret.fn_type(&args, false),
+            | Ok(ret) => ret.fn_type(&args, fn_abi.is_varargs),
+            | Err(ret) => ret.fn_type(&args, fn_abi.is_varargs),
         }
     }
 

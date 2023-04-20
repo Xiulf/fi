@@ -115,6 +115,7 @@ pub enum SyntaxKind {
     TYPE_PARENS,
     TYPE_WHERE,
     TYPE_FUNC,
+    TYPE_FUNC_ENV,
     TYPE_LIST,
     TYPE_APP,
     TYPE_INFIX,

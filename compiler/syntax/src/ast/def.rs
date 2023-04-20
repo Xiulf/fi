@@ -58,6 +58,8 @@ ast_node!(Type {
     Where(TypeWhere, TYPE_WHERE),
 });
 
+ast_node!(TypeFuncEnv, TYPE_FUNC_ENV);
+
 ast_node!(Pat {
     Typed(PatTyped, PAT_TYPED),
     Parens(PatParens, PAT_PARENS),

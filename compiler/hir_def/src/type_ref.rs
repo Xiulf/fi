@@ -26,10 +26,23 @@ pub type LocalTypeVarId = Idx<TypeVar>;
 pub enum TypeRef {
     Missing,
     Hole,
-    Path { path: Path, def: Option<TypeDefId> },
-    App { base: TypeRefId, args: Box<[TypeRefId]> },
-    Func { args: Box<[TypeRefId]>, ret: TypeRefId },
-    Where { clause: WhereClause, ty: TypeRefId },
+    Path {
+        path: Path,
+        def: Option<TypeDefId>,
+    },
+    App {
+        base: TypeRefId,
+        args: Box<[TypeRefId]>,
+    },
+    Func {
+        env: Option<TypeRefId>,
+        args: Box<[TypeRefId]>,
+        ret: TypeRefId,
+    },
+    Where {
+        clause: WhereClause,
+        ty: TypeRefId,
+    },
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -379,10 +392,11 @@ impl<'a> Ctx<'a> {
                 self.lower_infix(types, ops)
             },
             | ast::Type::Func(t) => {
+                let env = t.env().map(|t| self.lower_type_opt(t.ty()));
                 let args = t.args().map(|t| self.lower_type(t)).collect();
                 let ret = self.lower_type_opt(t.ret());
 
-                self.alloc_type(TypeRef::Func { args, ret }, syntax_ptr)
+                self.alloc_type(TypeRef::Func { env, args, ret }, syntax_ptr)
             },
             | ast::Type::Where(t) => {
                 let ty = self.lower_type_opt(t.ty());

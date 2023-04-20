@@ -59,7 +59,10 @@ impl Iterator for Lexer<'_> {
             | ('/', '/') => self.comment(),
             | (':', ':') => self.advance2_with(DBL_COLON),
             | ('.', '.') => self.advance2_with(DBL_DOT),
-            | ('-', '>') => self.advance2_with(ARROW),
+            | ('-', '>') => {
+                self.should_indent = true;
+                self.advance2_with(ARROW)
+            },
             | ('<', '-') => self.advance2_with(LEFT_ARROW),
             | ('(', _) => self.advance_with(L_PAREN),
             | (')', _) => self.advance_with(R_PAREN),
