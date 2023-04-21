@@ -121,8 +121,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
         let instance = Instance::new(self.db, MirValueId::ValueId(value.id()).into(), None);
         let idx = self.queue.len();
+
         self.codegen_instance(instance);
-        self.queue.swap_remove(idx);
+
+        if idx < self.queue.len() {
+            self.queue.swap_remove(idx);
+        }
 
         if value.attrs(self.db).by_key("main").exists() {
             self.codegen_main_shim(instance);

@@ -511,7 +511,7 @@ fn pat_atom(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn pat(p: &mut Parser) {
-    pat_infix(p);
+    pat_typed(p);
 }
 
 fn pat_app(p: &mut Parser) -> Option<CompletedMarker> {
@@ -538,6 +538,18 @@ fn pat_infix(p: &mut Parser) -> Option<CompletedMarker> {
             pat_app(p);
         }
         m = n.complete(p, PAT_INFIX);
+    }
+
+    Some(m)
+}
+
+fn pat_typed(p: &mut Parser) -> Option<CompletedMarker> {
+    let mut m = pat_infix(p)?;
+
+    if p.eat(DBL_COLON) {
+        let n = m.precede(p);
+        typ(p);
+        m = n.complete(p, PAT_TYPED);
     }
 
     Some(m)
@@ -658,27 +670,31 @@ fn expr_infix(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-fn expr_method(p: &mut Parser) -> Option<CompletedMarker> {
+fn expr_pipe(p: &mut Parser) -> Option<CompletedMarker> {
     let mut m = expr_infix(p)?;
 
-    while !p.eof() && p.eat(DOT) {
+    if p.eat(PIPE_LEFT) {
         let n = m.precede(p);
-        let e = p.start();
-        path(p);
-        e.complete(p, EXPR_PATH);
-
-        while !p.eof() && p.at_ts(PEEK_EXPR) {
+        expr_pipe(p);
+        m = n.complete(p, EXPR_PIPE);
+    } else {
+        while !p.eof() && p.eat_ts(PIPE_RIGHT | DOT) {
+            let n = m.precede(p);
             expr_atom(p);
-        }
 
-        m = n.complete(p, EXPR_METHOD);
+            while !p.eof() && p.at_ts(PEEK_EXPR) {
+                expr_atom(p);
+            }
+
+            m = n.complete(p, EXPR_PIPE);
+        }
     }
 
     Some(m)
 }
 
 fn expr_typed(p: &mut Parser) -> Option<CompletedMarker> {
-    let mut m = expr_method(p)?;
+    let mut m = expr_pipe(p)?;
 
     if p.eat(DBL_COLON) {
         let n = m.precede(p);

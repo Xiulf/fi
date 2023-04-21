@@ -11,36 +11,45 @@ module C =
     foreign free :: Ptr () -> ()
     foreign malloca :: Uptr -> Ptr ()
 
-    foreign _write :: Int32, Ptr (), Uint32 -> Int32
+    @link_name = "_write"
+    foreign write :: Int32, Ptr Int8, Uptr -> Int32
 
 
-malloc () :: Ptr a = C.malloc (size_of (Proxy :: Proxy a)) . transmute
-free p = C.free (p . transmute)
+malloc () :: Ptr a = size_of (Proxy :: Proxy a) |> C.malloc |> transmute
+free p = C.free <| transmute p
 
 
 @main
 main () =
-    printf "a" "b" "c" :: ()
+    printstr "test\n"
     0
 
 
-// printf fmt ..args =
-//     ()
-
-printstr s =
+printstr (s :: Str) =
     ptr, len = transmute s :: Pair (Ptr Int8) Uptr
-    ptr = transmute ptr
-    len = iconvert len
-    _ = C._write 1 ptr len
+    _ = C.write 1 ptr len
 
 
-trait PrintF r =
-    printf :: Str -> r
+trait Print p =
+    print :: p, w -> () where Write w
 
-impl PrintF () =
-    printf s = printstr s
+impl Print Str =
+    print s w =
+        _ = s.transmute |> write w
 
-impl PrintF ({Str} Str -> r) where PrintF r =
-    printf s = fn x ->
-        printstr s
-        printf x
+
+trait Write w =
+    write :: w, Slice Int8 -> Int32
+
+type Stdout = | Stdout
+type Stderr = | Stderr
+
+impl Write Stdout =
+    write _ slice =
+        ptr, len = slice.transmute
+        C.write 1 ptr len
+
+impl Write Stderr =
+    write _ slice =
+        ptr, len = slice.transmute
+        C.write 2 ptr len

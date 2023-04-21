@@ -84,7 +84,7 @@ ast_node!(Expr {
     Prefix(ExprPrefix, EXPR_PREFIX),
     Postfix(ExprPostfix, EXPR_POSTFIX),
     App(ExprApp, EXPR_APP),
-    Method(ExprMethod, EXPR_METHOD),
+    Pipe(ExprPipe, EXPR_PIPE),
     Block(ExprBlock, EXPR_BLOCK),
     Do(ExprDo, EXPR_DO),
     If(ExprIf, EXPR_IF),

@@ -149,17 +149,18 @@ impl<'db> Ctx<'db> {
             self.builder.add_constraint(c.clone());
         }
 
+        let body = self.body.clone();
         let entry = self.builder.create_block();
         self.builder.switch_block(entry);
 
-        for &param in self.body.params() {
+        for &param in body.params() {
             let repr = repr_of(self.db, self.infer.type_of_pat[param]);
             let local = self.builder.add_local(LocalKind::Arg, repr);
-            self.locals.insert(param, Place::new(local));
+            self.bind_pat(param, Place::new(local));
             self.builder.add_block_param(entry, local);
         }
 
-        let res = self.lower_expr(self.body.body_expr(), &mut None);
+        let res = self.lower_expr(body.body_expr(), &mut None);
 
         for (_, body) in self.lambdas {
             use hir_def::display::HirDisplay;

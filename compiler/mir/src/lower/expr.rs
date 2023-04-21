@@ -97,7 +97,7 @@ impl Ctx<'_> {
         }
     }
 
-    fn bind_pat(&mut self, pat: PatId, place: Place) {
+    pub(super) fn bind_pat(&mut self, pat: PatId, place: Place) {
         let body = self.body.clone();
         match body[pat] {
             | Pat::Missing => unreachable!(),

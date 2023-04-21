@@ -639,18 +639,35 @@ impl ExprInfix {
     }
 }
 
-impl ExprMethod {
-    pub fn arg(&self) -> Option<Expr> {
+impl ExprPipe {
+    pub fn direction(&self) -> PipeDirection {
+        if token(self.syntax(), SyntaxKind::PIPE_LEFT).is_some() {
+            PipeDirection::Left
+        } else if token(self.syntax(), SyntaxKind::PIPE_RIGHT).is_some() {
+            PipeDirection::Right
+        } else {
+            PipeDirection::Method
+        }
+    }
+
+    pub fn left(&self) -> Option<Expr> {
         child(self.syntax())
     }
 
-    pub fn method(&self) -> Option<Expr> {
+    pub fn right(&self) -> Option<Expr> {
         children(self.syntax()).nth(1)
     }
 
     pub fn args(&self) -> impl Iterator<Item = Expr> + '_ {
         children(self.syntax()).skip(2)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PipeDirection {
+    Left,
+    Right,
+    Method,
 }
 
 impl ExprApp {

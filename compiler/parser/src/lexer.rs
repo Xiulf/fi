@@ -57,13 +57,6 @@ impl Iterator for Lexer<'_> {
             // | ('\0', _) => self.emit_eof(),
             | ('\0', _) => None,
             | ('/', '/') => self.comment(),
-            | (':', ':') => self.advance2_with(DBL_COLON),
-            | ('.', '.') => self.advance2_with(DBL_DOT),
-            | ('-', '>') => {
-                self.should_indent = true;
-                self.advance2_with(ARROW)
-            },
-            | ('<', '-') => self.advance2_with(LEFT_ARROW),
             | ('(', _) => self.advance_with(L_PAREN),
             | (')', _) => self.advance_with(R_PAREN),
             | ('{', _) => self.advance_with(L_BRACE),
@@ -127,10 +120,10 @@ impl<'input> Lexer<'input> {
         self.token(kind)
     }
 
-    fn advance2_with(&mut self, kind: SyntaxKind) -> Option<Token> {
-        self.advance();
-        self.advance_with(kind)
-    }
+    // fn advance2_with(&mut self, kind: SyntaxKind) -> Option<Token> {
+    //     self.advance();
+    //     self.advance_with(kind)
+    // }
 
     fn expect(&mut self, ch: char) {
         if self.current != ch {
@@ -173,7 +166,17 @@ impl<'input> Lexer<'input> {
             self.advance();
         }
 
-        self.token(SYMBOL)
+        match self.current_text() {
+            | "::" => self.token(DBL_COLON),
+            | "->" => {
+                self.should_indent = true;
+                self.token(ARROW)
+            },
+            | "<-" => self.token(LEFT_ARROW),
+            | "|>" => self.token(PIPE_RIGHT),
+            | "<|" => self.token(PIPE_LEFT),
+            | _ => self.token(SYMBOL),
+        }
     }
 
     fn ident(&mut self) -> Option<Token> {

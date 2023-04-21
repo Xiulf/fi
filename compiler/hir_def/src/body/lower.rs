@@ -213,14 +213,34 @@ impl<'db> Ctx<'db> {
 
                 self.alloc_expr(Expr::App { base, args }, syntax_ptr)
             },
-            | ast::Expr::Method(e) => {
-                let base = self.lower_expr_opt(e.method());
-                let arg = self.lower_expr_opt(e.arg());
-                let args = std::iter::once(arg)
-                    .chain(e.args().map(|a| self.lower_expr(a)))
-                    .collect();
+            | ast::Expr::Pipe(e) => match e.direction() {
+                | ast::PipeDirection::Left => {
+                    let base = self.lower_expr_opt(e.left());
+                    let arg = self.lower_expr_opt(e.right());
+                    let args = Box::new([arg]);
 
-                self.alloc_expr(Expr::App { base, args }, syntax_ptr)
+                    self.alloc_expr(Expr::App { base, args }, syntax_ptr)
+                },
+                | ast::PipeDirection::Right => {
+                    let base = self.lower_expr_opt(e.right());
+                    let arg = self.lower_expr_opt(e.left());
+                    let args = e
+                        .args()
+                        .map(|a| self.lower_expr(a))
+                        .chain(std::iter::once(arg))
+                        .collect();
+
+                    self.alloc_expr(Expr::App { base, args }, syntax_ptr)
+                },
+                | ast::PipeDirection::Method => {
+                    let base = self.lower_expr_opt(e.right());
+                    let arg = self.lower_expr_opt(e.left());
+                    let args = std::iter::once(arg)
+                        .chain(e.args().map(|a| self.lower_expr(a)))
+                        .collect();
+
+                    self.alloc_expr(Expr::App { base, args }, syntax_ptr)
+                },
             },
             | ast::Expr::Infix(e) => {
                 let exprs = e.exprs().map(|e| self.lower_expr(e)).collect::<Vec<_>>();
