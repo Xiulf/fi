@@ -21,15 +21,19 @@ free p = C.free <| transmute p
 
 @main
 main () =
-    Stdout .print "test\n"
+    print "test\n"
     0
 
 
-trait Print p =
-    print :: w, p -> () where Write w
+print f = Stdout .fmt f
+eprint f = Stderr .fmt f
 
-impl Print Str =
-    print w s =
+
+trait Format f =
+    fmt :: w, f -> () where Write w
+
+impl Format Str =
+    fmt w s =
         _ = s.transmute |> write w
 
 

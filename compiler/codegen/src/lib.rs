@@ -1,4 +1,4 @@
-#![feature(trait_upcasting)]
+#![feature(trait_upcasting, drain_filter)]
 
 pub use inkwell::OptimizationLevel;
 use triomphe::Arc;
