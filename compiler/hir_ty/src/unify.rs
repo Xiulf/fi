@@ -71,25 +71,30 @@ impl Ctx<'_> {
         &mut self,
         t1: &GeneralizedType,
         t2: GeneralizedType,
+        mut constraints: Vec<Constraint>,
         origin: TyOrigin,
     ) -> GeneralizedType {
         match (t1, t2) {
             | (GeneralizedType::Mono(t1), GeneralizedType::Mono(t2)) => {
                 self.unify_types(*t1, t2, origin);
+                self.result.constraints.append(&mut constraints);
                 GeneralizedType::Mono(*t1)
             },
             | (GeneralizedType::Poly(v1, t1), GeneralizedType::Poly(v2, t2)) if v1.len() == v2.len() => {
                 // TODO: check vars
                 self.unify_types(*t1, t2, origin);
+                self.result.constraints.append(&mut constraints);
                 GeneralizedType::Poly(v1.clone(), *t1)
             },
             | (GeneralizedType::Mono(t1), t2) => {
-                let (t2, _) = self.instantiate(t2, Vec::new(), None, true);
+                let (t2, mut constraints) = self.instantiate(t2, constraints, None, true);
                 self.unify_types(*t1, t2, origin);
+                self.result.constraints.append(&mut constraints);
                 GeneralizedType::Mono(*t1)
             },
             | (GeneralizedType::Poly(vars, t1), GeneralizedType::Mono(t2)) => {
                 self.unify_types(*t1, t2, origin);
+                self.result.constraints.append(&mut constraints);
                 GeneralizedType::Poly(vars.clone(), *t1)
             },
             | (t1, t2) => {

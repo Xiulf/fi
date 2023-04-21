@@ -241,6 +241,10 @@ fn item_value(p: &mut Parser, m: Marker) {
         typ(p);
     }
 
+    if p.at(WHERE_KW) {
+        where_clause(p);
+    }
+
     if p.eat(EQUALS) {
         expr(p);
     }
@@ -784,7 +788,7 @@ fn operator(p: &mut Parser) {
 fn path(p: &mut Parser) {
     let m = p.start();
 
-    while !p.eof() && p.at(TYPE) && p.nth_at(1, DOT) {
+    while !p.eof() && p.at(TYPE) && p.nth_at(1, DOT) && p.nth_immediate(1) {
         let s = p.start();
         type_ref(p);
         s.complete(p, PATH_SEGMENT);
@@ -800,7 +804,7 @@ fn path(p: &mut Parser) {
 fn type_path(p: &mut Parser) {
     let m = p.start();
 
-    while !p.eof() && p.at(TYPE) && p.nth_at(1, DOT) {
+    while !p.eof() && p.at(TYPE) && p.nth_at(1, DOT) && p.nth_immediate(1) {
         let s = p.start();
         type_ref(p);
         s.complete(p, PATH_SEGMENT);

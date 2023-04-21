@@ -92,17 +92,16 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         let item_tree = hir_def::item_tree::query(db, it.file);
         let name = item_tree[it.value].name;
 
-        if let Some((b, mut constraints)) = impl_ty(db, id, name) {
+        if let Some((b, c)) = impl_ty(db, id, name) {
             let a = ctx.result.ty.clone();
-            ctx.result.ty = ctx.unify_generalized_types(&a, b, TyOrigin::ExprId(body.body_expr()));
-            ctx.result.constraints.append(&mut constraints);
+            ctx.result.ty = ctx.unify_generalized_types(&a, b, c, TyOrigin::ExprId(body.body_expr()));
         }
     }
 
     let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
     let is_main = hir_def::attrs::query(db, value.into()).by_key("main").exists();
 
-    if is_main || matches!(value.container(db), ContainerId::ImplId(_)) {
+    if is_main {
         ctx.solve_constraints(false);
     } else {
         ctx.solve_constraints(true);
@@ -126,6 +125,11 @@ fn impl_ty(db: &dyn Db, id: ImplId, name: Name) -> Option<(GeneralizedType, Vec<
         .zip(types.iter())
         .map(|(&var, &ty)| (var, ty))
         .collect();
+
+    let constraints = constraints
+        .into_iter()
+        .map(|c| c.replace_vars(db, &replacements))
+        .collect::<Vec<_>>();
 
     match ty {
         | GeneralizedType::Mono(ty) => Some((GeneralizedType::Mono(ty.replace_vars(db, &replacements)), constraints)),
@@ -267,7 +271,22 @@ fn all_constraints(db: &dyn Db, id: ValueId) -> Vec<Constraint> {
         | ContainerId::ImplId(id) => &impl_types(db, id).1,
     };
 
-    [&**parent].concat()
+    let data = hir_def::data::value_data(db, id);
+    let where_clause = data.where_clause(db);
+    let constraints = match where_clause {
+        | Some(ref wc) => &*wc.constraints,
+        | None => &[],
+    };
+
+    let type_map = TypedItemId::ValueId(id).type_map(db).0;
+    let mut ctx = ctx::Ctx::new(db, id.into());
+    let mut lcx = lower::LowerCtx::new(&mut ctx, type_map);
+    let constraints = constraints
+        .iter()
+        .filter_map(|c| lcx.lower_constraint(c))
+        .collect::<Vec<_>>();
+
+    [&**parent, &constraints].concat()
 }
 
 impl TyOrigin {

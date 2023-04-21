@@ -1,6 +1,7 @@
 use either::Either;
 use ra_ap_stdx::hash::NoHashHashMap;
 use syntax::ptr::AstPtr;
+use triomphe::Arc;
 
 use crate::attrs::Attrs;
 use crate::def_map::ModuleScope;
@@ -12,7 +13,7 @@ use crate::item_tree::{AttrOwner, FixityKind};
 use crate::name::Name;
 use crate::path::Path;
 use crate::source::HasSource;
-use crate::type_ref::TypeRefId;
+use crate::type_ref::{TypeRefId, WhereClause};
 use crate::Db;
 
 #[salsa::tracked]
@@ -44,6 +45,7 @@ pub struct ValueData {
     pub ty: Option<TypeRefId>,
     #[return_ref]
     pub type_vars: Box<[TypeVarId]>,
+    pub where_clause: Option<Arc<WhereClause>>,
     pub is_foreign: bool,
     pub has_body: bool,
 }
@@ -97,6 +99,7 @@ pub struct TraitData {
     pub attrs: Attrs,
     #[return_ref]
     pub type_vars: Box<[TypeVarId]>,
+    pub where_clause: Option<Arc<WhereClause>>,
     #[return_ref]
     pub items: NoHashHashMap<Name, ValueId>,
 }
@@ -112,6 +115,7 @@ pub struct ImplData {
     pub types: Box<[TypeRefId]>,
     #[return_ref]
     pub type_vars: Box<[TypeVarId]>,
+    pub where_clause: Option<Arc<WhereClause>>,
     #[return_ref]
     pub items: NoHashHashMap<Name, ValueId>,
 }
@@ -148,10 +152,13 @@ pub fn value_data(db: &dyn Db, id: ValueId) -> ValueData {
     let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
     let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
     let ty = source.ty().and_then(|t| src_map.typ_for_src(AstPtr::new(&t)));
+    let where_clause = source
+        .where_clause()
+        .and_then(|wc| src_map.where_clause_for_src(AstPtr::new(&wc)));
     let is_foreign = data.is_foreign;
     let has_body = data.has_body;
 
-    ValueData::new(db, id, attrs, ty, type_vars, is_foreign, has_body)
+    ValueData::new(db, id, attrs, ty, type_vars, where_clause, is_foreign, has_body)
 }
 
 #[salsa::tracked]
@@ -212,8 +219,12 @@ pub fn trait_data(db: &dyn Db, id: TraitId) -> TraitData {
     let it = id.it(db);
     let item_tree = crate::item_tree::query(db, it.file);
     let data = &item_tree[it.value];
-    let (_, _src_map, type_vars) = TypedItemId::from(id).type_map(db);
+    let source = id.source(db).value;
+    let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
     let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let where_clause = source
+        .where_clause()
+        .and_then(|wc| src_map.where_clause_for_src(AstPtr::new(&wc)));
     let items = data
         .items
         .iter()
@@ -225,7 +236,7 @@ pub fn trait_data(db: &dyn Db, id: TraitId) -> TraitData {
         })
         .collect();
 
-    TraitData::new(db, id, attrs, type_vars, items)
+    TraitData::new(db, id, attrs, type_vars, where_clause, items)
 }
 
 #[salsa::tracked]
@@ -247,6 +258,9 @@ pub fn impl_data(db: &dyn Db, id: ImplId) -> ImplData {
         .types()
         .filter_map(|t| src_map.typ_for_src(AstPtr::new(&t)))
         .collect();
+    let where_clause = source
+        .where_clause()
+        .and_then(|wc| src_map.where_clause_for_src(AstPtr::new(&wc)));
     let items = data
         .items
         .iter()
@@ -258,5 +272,5 @@ pub fn impl_data(db: &dyn Db, id: ImplId) -> ImplData {
         })
         .collect();
 
-    ImplData::new(db, id, attrs, trait_, types, type_vars, items)
+    ImplData::new(db, id, attrs, trait_, types, type_vars, where_clause, items)
 }

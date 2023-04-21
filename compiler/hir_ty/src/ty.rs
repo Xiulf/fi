@@ -280,7 +280,8 @@ impl HirDisplay for Ty {
             | TyKind::Error => write!(f, "{{error}}"),
             | TyKind::Never => write!(f, "!"),
             | TyKind::Primitive(p) => write!(f, "{p}"),
-            | TyKind::Unknown(u, _) => write!(f, "?{}", u.0),
+            | TyKind::Unknown(u, false) => write!(f, "?{}", u.0),
+            | TyKind::Unknown(u, true) => write!(f, "'{}", u.0),
             | TyKind::Var(var) => f.with_upcast::<_, dyn hir_def::Db>(|d| d, |f| var.hir_fmt(f)),
             | TyKind::Ctor(ctor) => {
                 let it = ctor.it(f.db);

@@ -3,7 +3,7 @@ use hir_def::type_ref::{TypeMap, TypeRef, TypeRefId};
 use triomphe::Arc;
 
 use crate::ctx::Ctx;
-use crate::ty::{FuncType, GeneralizedType, PrimitiveType, Ty, TyKind};
+use crate::ty::{Constraint, FuncType, GeneralizedType, PrimitiveType, Ty, TyKind};
 
 pub struct LowerCtx<'db, 'ctx> {
     pub(crate) ctx: &'ctx mut Ctx<'db>,
@@ -96,11 +96,14 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
                     }),
                 )
             },
-            | TypeRef::Where { clause: _, ty } => {
-                // TODO: lower constraints
-                self.lower_type_ref(ty, false)
-            },
         }
+    }
+
+    pub fn lower_constraint(&mut self, constraint: &hir_def::type_ref::Constraint) -> Option<Constraint> {
+        Some(Constraint {
+            trait_id: constraint.trait_id?,
+            args: constraint.args.iter().map(|&a| self.lower_type_ref(a, false)).collect(),
+        })
     }
 }
 

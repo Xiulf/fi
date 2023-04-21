@@ -1,4 +1,4 @@
-use text_size::TextRange;
+use text_size::{TextRange, TextSize};
 
 use crate::error::ParseError;
 use crate::event::Event;
@@ -8,6 +8,7 @@ use crate::token_set::TokenSet;
 pub struct Parser<'input> {
     tokens: &'input [(SyntaxKind, TextRange)],
     pos: usize,
+    last_offset: TextSize,
     events: Vec<Event>,
 }
 
@@ -32,6 +33,7 @@ impl<'input> Parser<'input> {
         Self {
             tokens,
             pos: 0,
+            last_offset: TextSize::from(0),
             events: Vec::new(),
         }
     }
@@ -66,6 +68,25 @@ impl<'input> Parser<'input> {
 
     pub fn nth_at_ts(&self, n: usize, set: TokenSet) -> bool {
         self.tokens.get(self.pos + n).map_or(false, |t| set.contains(t.0))
+    }
+
+    pub fn is_immediate(&self) -> bool {
+        self.tokens
+            .get(self.pos)
+            .map_or(false, |t| t.1.start() == self.last_offset)
+    }
+
+    pub fn nth_immediate(&self, n: usize) -> bool {
+        if n == 0 {
+            return self.is_immediate();
+        }
+
+        let last = match self.tokens.get(self.pos + n - 1) {
+            | Some(t) => t.1.end(),
+            | None => return false,
+        };
+
+        self.tokens.get(self.pos + n).map_or(false, |t| t.1.start() == last)
     }
 
     pub fn eat(&mut self, kind: SyntaxKind) -> bool {
@@ -131,6 +152,7 @@ impl<'input> Parser<'input> {
     }
 
     fn do_bump(&mut self, kind: SyntaxKind) {
+        self.last_offset = self.tokens[self.pos].1.end();
         self.pos += 1;
         self.push_event(Event::Token(kind));
     }

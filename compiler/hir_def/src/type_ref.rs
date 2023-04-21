@@ -39,10 +39,6 @@ pub enum TypeRef {
         args: Box<[TypeRefId]>,
         ret: TypeRefId,
     },
-    Where {
-        clause: WhereClause,
-        ty: TypeRefId,
-    },
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -54,8 +50,8 @@ pub struct WhereClause {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraint {
     pub path: Path,
-    pub trait_: Option<TraitId>,
-    pub types: Box<[TypeRefId]>,
+    pub trait_id: Option<TraitId>,
+    pub args: Box<[TypeRefId]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -82,6 +78,7 @@ pub struct TypeSourceMap {
     src_to_typ: FxHashMap<AstPtr<ast::Type>, TypeRefId>,
     var_to_src: ArenaMap<LocalTypeVarId, AstPtr<ast::Name>>,
     src_to_var: FxHashMap<AstPtr<ast::Name>, LocalTypeVarId>,
+    src_to_where_clause: FxHashMap<AstPtr<ast::WhereClause>, Arc<WhereClause>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -162,6 +159,10 @@ fn type_map_for_value(ctx: &mut Ctx, id: ValueId, src: SyntaxNode) {
         recurse(ctx, ty.syntax());
     }
 
+    if let Some(where_clause) = src.where_clause() {
+        ctx.lower_where_clause(where_clause);
+    }
+
     if let Some(expr) = src.body() {
         recurse(ctx, expr.syntax());
     }
@@ -208,6 +209,10 @@ fn type_map_for_trait(ctx: &mut Ctx, src: SyntaxNode) {
     if let Some(type_vars) = src.type_vars() {
         alloc_type_vars(ctx, type_vars);
     }
+
+    if let Some(where_clause) = src.where_clause() {
+        ctx.lower_where_clause(where_clause);
+    }
 }
 
 fn type_map_for_impl(ctx: &mut Ctx, src: SyntaxNode) {
@@ -215,6 +220,10 @@ fn type_map_for_impl(ctx: &mut Ctx, src: SyntaxNode) {
 
     for ty in src.types() {
         recurse(ctx, ty.syntax());
+    }
+
+    if let Some(where_clause) = src.where_clause() {
+        ctx.lower_where_clause(where_clause);
     }
 }
 
@@ -255,11 +264,16 @@ impl TypeSourceMap {
             src_to_typ: Default::default(),
             var_to_src: Default::default(),
             src_to_var: Default::default(),
+            src_to_where_clause: Default::default(),
         }
     }
 
     pub fn typ_for_src(&self, src: AstPtr<ast::Type>) -> Option<TypeRefId> {
         self.src_to_typ.get(&src).copied()
+    }
+
+    pub fn where_clause_for_src(&self, src: AstPtr<ast::WhereClause>) -> Option<Arc<WhereClause>> {
+        self.src_to_where_clause.get(&src).cloned()
     }
 }
 
@@ -398,17 +412,11 @@ impl<'a> Ctx<'a> {
 
                 self.alloc_type(TypeRef::Func { env, args, ret }, syntax_ptr)
             },
-            | ast::Type::Where(t) => {
-                let ty = self.lower_type_opt(t.ty());
-                let clause = self.lower_where_clause(t.where_clause()?);
-
-                self.alloc_type(TypeRef::Where { clause, ty }, syntax_ptr)
-            },
             | t => todo!("{t:?}"),
         })
     }
 
-    fn lower_where_clause(&mut self, ast: ast::WhereClause) -> WhereClause {
+    fn lower_where_clause(&mut self, ast: ast::WhereClause) {
         let mut constraints = Vec::new();
         let mut var_kinds = Vec::new();
 
@@ -427,10 +435,13 @@ impl<'a> Ctx<'a> {
             }
         }
 
-        WhereClause {
-            constraints: constraints.into(),
-            type_var_kinds: var_kinds.into(),
-        }
+        self.src.src_to_where_clause.insert(
+            AstPtr::new(&ast),
+            Arc::new(WhereClause {
+                constraints: constraints.into(),
+                type_var_kinds: var_kinds.into(),
+            }),
+        );
     }
 
     fn lower_constraint(&mut self, ast: ast::WhereClauseConstraint) -> Option<Constraint> {
@@ -443,7 +454,7 @@ impl<'a> Ctx<'a> {
             | _ => None, // TODO: report error
         });
 
-        Some(Constraint { path, trait_, types })
+        Some(Constraint { path, trait_id: trait_, args: types })
     }
 
     fn lower_var_kind(&mut self, _ast: ast::WhereClauseVarKind) -> Option<TypeVarKind> {

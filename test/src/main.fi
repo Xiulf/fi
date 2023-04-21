@@ -21,20 +21,15 @@ free p = C.free <| transmute p
 
 @main
 main () =
-    printstr "test\n"
+    Stdout .print "test\n"
     0
 
 
-printstr (s :: Str) =
-    ptr, len = transmute s :: Pair (Ptr Int8) Uptr
-    _ = C.write 1 ptr len
-
-
 trait Print p =
-    print :: p, w -> () where Write w
+    print :: w, p -> () where Write w
 
 impl Print Str =
-    print s w =
+    print w s =
         _ = s.transmute |> write w
 
 

@@ -55,7 +55,6 @@ ast_node!(Type {
     App(TypeApp, TYPE_APP),
     Infix(TypeInfix, TYPE_INFIX),
     Func(TypeFunc, TYPE_FUNC),
-    Where(TypeWhere, TYPE_WHERE),
 });
 
 ast_node!(TypeFuncEnv, TYPE_FUNC_ENV);

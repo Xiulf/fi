@@ -320,6 +320,10 @@ impl ItemValue {
         child(self.syntax())
     }
 
+    pub fn where_clause(&self) -> Option<WhereClause> {
+        child(self.syntax())
+    }
+
     pub fn foreign_token(&self) -> Option<&SyntaxToken> {
         token(self.syntax(), SyntaxKind::FOREIGN_KW)
     }
@@ -413,6 +417,10 @@ impl ItemTrait {
         child(self.syntax())
     }
 
+    pub fn where_clause(&self) -> Option<WhereClause> {
+        child(self.syntax())
+    }
+
     pub fn items(&self) -> impl Iterator<Item = ItemValue> + '_ {
         children(self.syntax())
     }
@@ -428,6 +436,10 @@ impl ItemImpl {
 
     pub fn types(&self) -> impl Iterator<Item = Type> + '_ {
         children(self.syntax())
+    }
+
+    pub fn where_clause(&self) -> Option<WhereClause> {
+        child(self.syntax())
     }
 
     pub fn items(&self) -> impl Iterator<Item = ItemValue> + '_ {
@@ -519,16 +531,6 @@ impl TypeFunc {
 
 impl TypeFuncEnv {
     pub fn ty(&self) -> Option<Type> {
-        child(self.syntax())
-    }
-}
-
-impl TypeWhere {
-    pub fn ty(&self) -> Option<Type> {
-        child(self.syntax())
-    }
-
-    pub fn where_clause(&self) -> Option<WhereClause> {
         child(self.syntax())
     }
 }
