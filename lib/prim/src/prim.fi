@@ -8,7 +8,10 @@ module Prim =
 
 @lang = "int-type"   foreign type Int   :: IntTag -> Type
 @lang = "float-type" foreign type Float :: FloatTag -> Type
-@lang = "char-type"  foreign type Char  :: Type
+
+@lang = "char-type" 
+@repr(scalar = "u32")
+foreign type Char  :: Type
 
 @lang = "str-type"
 @repr(fatptr(elem(scalar = "u8")), valid_range_start = 1)

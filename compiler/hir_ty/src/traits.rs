@@ -228,7 +228,7 @@ impl<'db> Ctx<'db> {
         let ty = self.resolve_type_fully(ty);
 
         ty.traverse(self.db, &mut |t| match t.kind(self.db) {
-            | TyKind::Unknown(u, true) => unknowns.push(*u),
+            | TyKind::Unknown(u, _) => unknowns.push(*u),
             | _ => {},
         });
 
@@ -257,7 +257,7 @@ impl<'db> Ctx<'db> {
         let db = self.db;
         let check = move |t: Ty| match t.kind(db) {
             | TyKind::Var(v) => type_vars.contains(v),
-            | TyKind::Unknown(u, true) => unknowns.contains(u),
+            | TyKind::Unknown(u, _) => unknowns.contains(u),
             | _ => false,
         };
 

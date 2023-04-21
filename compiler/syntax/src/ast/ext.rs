@@ -797,9 +797,12 @@ impl LitFloat {
 impl LitChar {
     pub fn value(&self, resolver: &dyn Resolver) -> Option<char> {
         let text = token(self.syntax(), SyntaxKind::CHAR)?.resolve_text(resolver);
-        let text = &text[1..];
+        let mut chars = text[1..].chars();
 
-        text.chars().next()
+        match chars.next()? {
+            | '\\' => parse_escape_sequence(&mut chars),
+            | ch => Some(ch),
+        }
     }
 }
 
@@ -811,14 +814,7 @@ impl LitString {
 
         while let Some(ch) = chars.next() {
             if ch == '\\' {
-                result.push(match chars.next()? {
-                    | '0' => '\0',
-                    | 'r' => '\r',
-                    | 'n' => '\n',
-                    | '\'' => '\'',
-                    | '\"' => '\"',
-                    | _ => return None,
-                });
+                result.push(parse_escape_sequence(&mut chars)?);
             } else {
                 result.push(ch);
             }
@@ -826,6 +822,17 @@ impl LitString {
 
         Some(result)
     }
+}
+
+fn parse_escape_sequence(chars: &mut dyn Iterator<Item = char>) -> Option<char> {
+    Some(match chars.next()? {
+        | '0' => '\0',
+        | 'r' => '\r',
+        | 'n' => '\n',
+        | '\'' => '\'',
+        | '\"' => '\"',
+        | _ => return None,
+    })
 }
 
 impl Path {

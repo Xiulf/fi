@@ -21,12 +21,22 @@ free p = C.free <| transmute p
 
 @main
 main () =
-    print "test\n"
+    println "test"
+    println "other"
+    print   "two"
+    println "three"
     0
 
 
 print f = Stdout .fmt f
+println f =
+    Stdout .fmt f
+    Stdout .fmt '\n'
+
 eprint f = Stderr .fmt f
+eprintln f =
+    Stderr .fmt f
+    Stderr .fmt '\n'
 
 
 trait Format f =
@@ -35,6 +45,12 @@ trait Format f =
 impl Format Str =
     fmt w s =
         _ = s.transmute |> write w
+
+impl Format Char =
+    fmt w c =
+        ptr = addr_of c .transmute :: Ptr Int8
+        slice = (ptr, (1 :: Uptr)) .transmute
+        _ = write w slice
 
 
 trait Write w =
