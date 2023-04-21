@@ -454,7 +454,11 @@ impl<'a> Ctx<'a> {
             | _ => None, // TODO: report error
         });
 
-        Some(Constraint { path, trait_id: trait_, args: types })
+        Some(Constraint {
+            path,
+            trait_id: trait_,
+            args: types,
+        })
     }
 
     fn lower_var_kind(&mut self, _ast: ast::WhereClauseVarKind) -> Option<TypeVarKind> {

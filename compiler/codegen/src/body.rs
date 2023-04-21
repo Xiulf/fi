@@ -1,4 +1,5 @@
 use arena::Idx;
+use base_db::Error;
 use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
 use inkwell::IntPredicate;
 use mir::instance::Instance;
@@ -458,7 +459,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         let value = self.codegen_operand(op);
 
         match kind {
-            | ir::CastKind::Bitcast => value.bitcast(self.cx, layout),
+            | ir::CastKind::Bitcast => {
+                if value.layout.size != layout.size {
+                    Error::throw("bitcast to type of different size");
+                }
+
+                value.bitcast(self.cx, layout)
+            },
             | ir::CastKind::Pointer => {
                 let ty = self.basic_type_for_ral(&layout).into_pointer_type();
                 let ptr = value.load(self.cx).into_pointer_value();

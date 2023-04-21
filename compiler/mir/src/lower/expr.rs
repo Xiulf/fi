@@ -31,7 +31,7 @@ impl Ctx<'_> {
             | Expr::Missing => unreachable!(),
             | Expr::Hole(_) => unreachable!(),
             | Expr::Path { def: None, .. } => unreachable!(),
-            | Expr::Typed { expr, ty: _ } => self.lower_expr_inner(expr, store_in),
+            | Expr::Typed { expr, ty: _ } => self.lower_expr(expr, store_in),
             | Expr::Unit => (Const::Unit, Arc::new(Repr::unit())).into(),
             | Expr::Lit { ref lit } => self.lower_lit(id, lit),
             | Expr::Path { def: Some(def), .. } => self.lower_path(id, def, store_in),

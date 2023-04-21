@@ -12,7 +12,7 @@ use hir_def::id::{
 use hir_def::item_tree::FixityKind;
 use hir_def::name::{AsName, Name};
 use hir_def::path::Path;
-pub use hir_def::{display, id};
+pub use hir_def::{body, display, expr, id, pat, source};
 use hir_ty::ty::{Constraint, Generalized, GeneralizedType, Ty};
 use salsa::AsId;
 use triomphe::Arc;

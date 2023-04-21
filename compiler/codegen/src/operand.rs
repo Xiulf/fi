@@ -175,7 +175,14 @@ impl<'ctx> OperandRef<'ctx> {
                 OperandValue::Ref(ctx.builder.build_pointer_cast(ptr, ty, ""), extra)
             },
             | OperandValue::Phi(phi) => OperandValue::Phi(phi),
-            | OperandValue::Pair(a, b) => OperandValue::Pair(a, b),
+            | OperandValue::Pair(a, b) => {
+                let a_ty = ctx.basic_type_for_ral(&layout.field(ctx.db, 0).unwrap());
+                let b_ty = ctx.basic_type_for_ral(&layout.field(ctx.db, 1).unwrap());
+                let a = ctx.builder.build_bitcast(a, a_ty, "");
+                let b = ctx.builder.build_bitcast(b, b_ty, "");
+
+                OperandValue::Pair(a, b)
+            },
         };
 
         Self { layout, val }

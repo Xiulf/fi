@@ -1,19 +1,11 @@
 use arena::{Arena, Idx};
 use hir_def::id::CtorId;
 use hir_ty::ty::Constraint;
-use rustc_hash::FxHashMap;
 use triomphe::Arc;
 
 use crate::graph::Cache;
 use crate::instance::Instance;
 use crate::repr::Repr;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Module {
-    pub id: hir_def::id::ModuleId,
-    pub functions: FxHashMap<MirValueId, ValueDef>,
-    pub statics: FxHashMap<MirValueId, ValueDef>,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MirValueId {
