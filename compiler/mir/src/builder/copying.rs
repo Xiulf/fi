@@ -1,9 +1,11 @@
+use std::cell::OnceCell;
+
 use arena::{ArenaMap, Idx};
 
 use super::Builder;
-use crate::ir::{LocalData, Location, Operand, Place, Statement};
+use crate::ir::{Block, BlockData, Local, LocalData, Location, Operand, Place, RValue, Statement, Terminator};
 use crate::traversal;
-use crate::visitor::{MutUseContext, PlaceContext, Visitor};
+use crate::visitor::{PlaceContext, UseContext, Visitor};
 
 pub fn run_copy_analyzer(builder: &mut Builder) {
     let mut analyzer = CopyAnalyzer::default();
@@ -13,81 +15,159 @@ pub fn run_copy_analyzer(builder: &mut Builder) {
         analyzer.visit_block(block, data);
     }
 
-    for (_, mut locs) in analyzer.locals {
-        if let Some((ptr, loc, to_move)) = locs.pop() {
-            rewriter.to_move.push((ptr, loc, to_move));
-        }
-
-        for (ptr, loc, to_move) in locs {
-            if builder.blocks[loc.block.0].is_terminator() {
-                rewriter.to_move.push((ptr, loc, to_move));
-            }
-        }
-    }
-
-    rewriter.rewrite(builder);
+    rewriter.usage = analyzer.usage;
+    rewriter.run(builder);
 }
 
 #[derive(Default, Debug)]
 pub struct CopyAnalyzer {
-    locals: ArenaMap<Idx<LocalData>, Vec<(*const Operand, Location, bool)>>,
+    usage: ArenaMap<Idx<LocalData>, Vec<Usage>>,
+    op_idx: Option<usize>,
 }
 
 #[derive(Default, Debug)]
 pub struct CopyRewriter {
-    to_move: Vec<(*const Operand, Location, bool)>,
+    usage: ArenaMap<Idx<LocalData>, Vec<Usage>>,
+}
+
+#[derive(Debug)]
+struct Usage {
+    loc: Location,
+    op_idx: Option<usize>,
 }
 
 impl Visitor for CopyAnalyzer {
-    fn visit_operand(&mut self, op: &Operand, loc: Location) {
-        if let Operand::Copy(place) = op {
-            if self.locals.get(place.local.0).is_none() {
-                self.locals.insert(place.local.0, Vec::new());
-            }
-
-            let locs = &mut self.locals[place.local.0];
-
-            if let Some(idx) = locs.iter().position(|(ptr, _, _)| *ptr == op) {
-                let loc = locs.remove(idx);
-                locs.push(loc);
-            } else {
-                let to_move = place.projection.is_empty();
-                self.locals[place.local.0].push((op, loc, to_move));
-            }
+    fn visit_block(&mut self, block: Block, data: &BlockData) {
+        for (i, stmt) in data.statements.iter().enumerate() {
+            self.op_idx = None;
+            self.visit_stmt(stmt, Location { block, statement: i });
         }
+
+        self.op_idx = None;
+        self.visit_terminator(&data.terminator, data.terminator_location(block));
     }
 
-    fn visit_place(&mut self, place: &Place, ctx: PlaceContext, _loc: Location) {
-        if let PlaceContext::MutUse(MutUseContext::Store) = ctx {
-            if let Some(locs) = self.locals.get_mut(place.local.0) {
-                if let Some(loc) = locs.iter_mut().rfind(|l| l.2) {
-                    loc.2 = false;
-                }
-            }
+    fn visit_operand(&mut self, op: &Operand, loc: Location) {
+        match self.op_idx {
+            | None => self.op_idx = Some(0),
+            | Some(i) => self.op_idx = Some(i + 1),
         }
+
+        self.super_operand(op, loc);
+    }
+
+    fn visit_local(&mut self, local: &Local, ctx: PlaceContext, loc: Location) {
+        if self.usage.get(local.0).is_none() {
+            self.usage.insert(local.0, Vec::new());
+        }
+
+        let op_idx = if matches!(ctx, PlaceContext::Use(UseContext::Projection)) {
+            None
+        } else {
+            self.op_idx
+        };
+
+        self.usage[local.0].push(Usage { loc, op_idx });
     }
 }
 
 impl CopyRewriter {
-    fn rewrite(self, builder: &mut Builder) {
+    fn run(self, builder: &mut Builder) {
         let mut to_drop = Vec::new();
+        let terminators = OnceCell::new();
+        let terminators = || {
+            terminators.get_or_init(|| {
+                let mut res = Vec::new();
+                for (block, data) in builder.blocks.iter() {
+                    if data.is_terminator() {
+                        res.push(Block(block));
+                    }
+                }
+                res
+            })
+        };
 
-        for (ptr, loc, to_move) in self.to_move {
-            let op = unsafe { &mut *(ptr as *mut Operand) };
-
-            if let Operand::Copy(place) = op {
-                if to_move {
-                    *op = Operand::Move(place.clone());
-                } else {
-                    to_drop.push((place.local, loc));
+        for (local, _) in builder.locals.iter() {
+            if self.usage.get(local).is_none() {
+                for &block in terminators() {
+                    to_drop.push((block, Local(local)));
                 }
             }
         }
 
-        for (local, loc) in to_drop {
-            builder.blocks.arena[loc.block.0]
-                .statements
-                .push(Statement::Drop(Place::new(local)));
+        for (local, mut usages) in self.usage {
+            let mut moved = None;
+
+            while let Some(usage) = usages.pop() {
+                if builder.blocks[usage.loc.block.0].is_terminator() && moved != Some(usage.loc.block) {
+                    moved = None;
+                }
+
+                if let Some(op_idx) = usage.op_idx && moved.is_none() {
+                    moved = Some(usage.loc.block);
+                    Self::to_move(builder, usage.loc, op_idx);
+                } else if moved.is_none() {
+                    moved = Some(usage.loc.block);
+                    to_drop.push((usage.loc.block, Local(local)));
+                }
+            }
+        }
+
+        for (block, local) in to_drop {
+            let block = &mut builder.blocks[block.0];
+            block.statements.push(Statement::Drop(Place::new(local)));
+        }
+    }
+
+    fn to_move(builder: &mut Builder, loc: Location, idx: usize) {
+        let block = &mut builder.blocks[loc.block.0];
+
+        if loc.statement == block.statements.len() {
+            Self::to_move_term(&mut block.terminator, idx);
+        } else {
+            Self::to_move_stmt(&mut block.statements[loc.statement], idx);
+        }
+    }
+
+    fn to_move_op(op: &mut Operand) {
+        if let Operand::Copy(place) = op {
+            *op = Operand::Move(place.clone());
+        }
+    }
+
+    fn to_move_term(term: &mut Terminator, mut idx: usize) {
+        match term {
+            | Terminator::Return(op) => Self::to_move_op(op),
+            | Terminator::Jump(target) => Self::to_move_op(&mut target.args[idx]),
+            | Terminator::Switch { discr, .. } if idx == 0 => Self::to_move_op(discr),
+            | Terminator::Switch { targets, .. } => {
+                for target in targets {
+                    if idx >= target.args.len() {
+                        idx -= target.args.len();
+                        continue;
+                    }
+
+                    Self::to_move_op(&mut target.args[idx]);
+                    break;
+                }
+            },
+            | _ => {},
+        }
+    }
+
+    fn to_move_stmt(stmt: &mut Statement, idx: usize) {
+        match stmt {
+            | Statement::Assign(_, rvalue) => match rvalue {
+                | RValue::Use(op) => Self::to_move_op(op),
+                | RValue::Cast(_, op) => Self::to_move_op(op),
+                | RValue::BinOp(_, op, _) if idx == 0 => Self::to_move_op(op),
+                | RValue::BinOp(_, _, op) => Self::to_move_op(op),
+                | _ => {},
+            },
+            | Statement::Call { func, .. } if idx == 0 => Self::to_move_op(func),
+            | Statement::Call { args, .. } => Self::to_move_op(&mut args[idx - 1]),
+            | Statement::Intrinsic { args, .. } => Self::to_move_op(&mut args[idx]),
+            | _ => {},
         }
     }
 }

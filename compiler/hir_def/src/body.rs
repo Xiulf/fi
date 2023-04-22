@@ -162,6 +162,17 @@ impl Body {
                         }
                     }
                 },
+                | Expr::If { cond, then, else_ } => {
+                    format_to!(
+                        out,
+                        "If #{:0>3}, #{:0>3}",
+                        u32::from(cond.into_raw()),
+                        u32::from(then.into_raw())
+                    );
+                    if let Some(else_) = else_ {
+                        format_to!(out, ", #{:0>3}", u32::from(else_.into_raw()));
+                    }
+                },
                 | Expr::Match {
                     expr,
                     branches,
@@ -177,6 +188,9 @@ impl Body {
                             u32::from(branch.into_raw())
                         );
                     }
+                },
+                | Expr::Return { expr } => {
+                    format_to!(out, "Return #{:0>3}", u32::from(expr.into_raw()));
                 },
                 | Expr::Typed { expr, ty: _ } => {
                     format_to!(out, "Typed #{:0>3}", u32::from(expr.into_raw()));

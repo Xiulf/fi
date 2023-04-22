@@ -229,6 +229,13 @@ impl BlockData {
             Terminator::Abort | Terminator::Unreachable | Terminator::Return(_)
         )
     }
+
+    pub fn terminator_location(&self, id: Block) -> Location {
+        Location {
+            block: id,
+            statement: self.statements.len(),
+        }
+    }
 }
 
 impl Place {
@@ -281,6 +288,12 @@ impl std::ops::Deref for BasicBlocks {
 
     fn deref(&self) -> &Self::Target {
         &self.arena
+    }
+}
+
+impl std::ops::DerefMut for BasicBlocks {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.arena
     }
 }
 

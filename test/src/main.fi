@@ -20,8 +20,18 @@ malloc () :: Ptr a = size_of (Proxy :: Proxy a) |> C.malloc |> transmute
 free p = C.free <| transmute p
 
 
+test () =
+    if True then return 3
+    if True then 4 else 5
+
+
+@boxed
+type Test = | Test Int32
+
+
 @main
 main () =
+    _ = Test 4
     println "test"
     println "other"
     print   "two"

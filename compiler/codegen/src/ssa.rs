@@ -134,13 +134,13 @@ impl Visitor for LocalAnalyzer<'_, '_, '_, '_> {
 
     #[track_caller]
     fn visit_place(&mut self, place: &Place, ctx: PlaceContext, loc: Location) {
-        tracing::info!("{:?}", loc);
+        // tracing::info!("{:?}", loc);
         self.process_place(place.as_ref(), ctx, loc);
     }
 
     #[track_caller]
     fn visit_local(&mut self, &local: &Local, ctx: PlaceContext, loc: Location) {
-        tracing::info!("{:?}, {:?}", local, ctx);
+        // tracing::info!("{:?}, {:?}", local, ctx);
         match ctx {
             | PlaceContext::MutUse(MutUseContext::Call) => {
                 self.assign(local, DefLocation::Body(loc));

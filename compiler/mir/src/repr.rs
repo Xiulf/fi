@@ -161,8 +161,7 @@ fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty]) -> Arc<Repr> {
     let it = id.it(db);
     let item_tree = item_tree::query(db, it.file);
     let data = &item_tree[it.value];
-
-    if data.is_foreign {
+    let mut repr = if data.is_foreign {
         Arc::new(Repr::Opaque)
     } else if data.ctors.is_empty() {
         Arc::new(Repr::unit())
@@ -178,7 +177,13 @@ fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty]) -> Arc<Repr> {
             .collect();
 
         Arc::new(Repr::Enum(variants))
+    };
+
+    if attrs.by_key("boxed").exists() {
+        repr = Arc::new(Repr::Box(repr));
     }
+
+    repr
 }
 
 fn repr_of_variant(db: &dyn Db, ctor: CtorId, args: &[Ty]) -> Arc<Repr> {
