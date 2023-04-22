@@ -168,6 +168,7 @@ impl<'input> Lexer<'input> {
 
         match self.current_text() {
             | "::" => self.token(DBL_COLON),
+            | ".." => self.token(DBL_DOT),
             | "->" => {
                 self.should_indent = true;
                 self.token(ARROW)

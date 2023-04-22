@@ -60,7 +60,7 @@ impl BodyCtx<'_, '_> {
                             params,
                             ret,
                             env: self.unit_type(),
-                            variadic: false,
+                            is_varargs: false,
                         }),
                     );
 

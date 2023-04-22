@@ -118,7 +118,7 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Arc<Repr> {
             let signature = Signature {
                 params,
                 ret,
-                is_varargs: func.variadic,
+                is_varargs: func.is_varargs,
             };
 
             let env = repr_of(db, func.env);

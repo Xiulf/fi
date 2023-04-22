@@ -454,9 +454,14 @@ fn typ_func(p: &mut Parser) -> Option<CompletedMarker> {
         e.complete(p, TYPE_FUNC_ENV);
     }
 
-    typ_infix(p, TokenSet::EMPTY);
-    while !p.eof() && p.eat(COMMA) {
-        typ_app(p);
+    if !p.eat(DBL_DOT) {
+        typ_infix(p, TokenSet::EMPTY);
+        while !p.eof() && p.eat(COMMA) {
+            if p.eat(DBL_DOT) {
+                continue;
+            }
+            typ_app(p);
+        }
     }
 
     if p.eat(ARROW) {

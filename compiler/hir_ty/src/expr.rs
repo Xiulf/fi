@@ -145,7 +145,7 @@ impl BodyCtx<'_, '_> {
         Ty::new(
             self.db,
             TyKind::Func(FuncType {
-                variadic: false,
+                is_varargs: false,
                 env,
                 params,
                 ret,
@@ -165,6 +165,15 @@ impl BodyCtx<'_, '_> {
                 return func.ret;
             }
 
+            if func.is_varargs {
+                args[func.params.len()..]
+                    .iter()
+                    .map(|&e| self.infer_expr(e, Expectation::None))
+                    .count();
+
+                return func.ret;
+            }
+
             let ret = self.ctx.fresh_type(self.ctx.level, false);
             let params = args[func.params.len()..]
                 .iter()
@@ -179,7 +188,7 @@ impl BodyCtx<'_, '_> {
                         env,
                         ret,
                         params: Box::new([param]),
-                        variadic: false,
+                        is_varargs: false,
                     }),
                 )
             });
@@ -199,7 +208,7 @@ impl BodyCtx<'_, '_> {
                 params,
                 ret,
                 env: self.ctx.fresh_type(self.level, false),
-                variadic: false,
+                is_varargs: false,
             }),
         );
 

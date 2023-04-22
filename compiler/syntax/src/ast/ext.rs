@@ -527,6 +527,10 @@ impl TypeFunc {
     pub fn ret(&self) -> Option<Type> {
         children(self.syntax()).last()
     }
+
+    pub fn dbl_dot_token(&self) -> Option<&SyntaxToken> {
+        token(self.syntax(), SyntaxKind::DBL_DOT)
+    }
 }
 
 impl TypeFuncEnv {

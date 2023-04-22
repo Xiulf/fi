@@ -1,7 +1,7 @@
 use arena::Idx;
 use base_db::Error;
 use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
-use inkwell::IntPredicate;
+use inkwell::{types, IntPredicate};
 use mir::instance::Instance;
 use mir::ir::{self, Local, LocalKind};
 use mir::repr::Repr;
@@ -332,7 +332,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             .chain(
                 args.iter()
                     .zip(func_abi.args.iter())
-                    .flat_map(|(arg, abi)| self.pass_arg(arg, abi)),
+                    .flat_map(|(arg, abi)| self.pass_arg(arg, abi))
+                    .collect::<Vec<_>>(),
+            )
+            .chain(
+                args[func_abi.args.len()..]
+                    .iter()
+                    .flat_map(|arg| self.pass_extra_arg(arg)),
             )
             .collect::<Vec<_>>();
 
@@ -370,6 +376,25 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             },
             | PassMode::ByRef { size: Some(_) } => {
                 let op = self.codegen_operand(arg);
+                let ptr = self.make_ref(op).ptr.as_basic_value_enum();
+                EmptySinglePair::Single(ptr.into())
+            },
+            | PassMode::ByRef { size: None } => todo!(),
+        }
+    }
+
+    pub fn pass_extra_arg(&mut self, arg: &ir::Operand) -> EmptySinglePair<values::BasicMetadataValueEnum<'ctx>> {
+        let op = self.codegen_operand(arg);
+        let abi = self.compute_layout_abi(op.layout.clone());
+
+        match abi.mode {
+            | PassMode::NoPass => EmptySinglePair::Empty,
+            | PassMode::ByVal(_) => EmptySinglePair::Single(op.load(self.cx).into()),
+            | PassMode::ByValPair(_, _) => {
+                let (a, b) = op.pair();
+                EmptySinglePair::Pair(a.into(), b.into())
+            },
+            | PassMode::ByRef { size: Some(_) } => {
                 let ptr = self.make_ref(op).ptr.as_basic_value_enum();
                 EmptySinglePair::Single(ptr.into())
             },
@@ -761,5 +786,52 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 place
             },
         }
+    }
+}
+
+// https://llvm.org/docs/LangRef.html#variable-argument-handling-intrinsics
+impl<'ctx> BodyCtx<'_, '_, 'ctx> {
+    fn va_list(&self) -> types::StructType<'ctx> {
+        if let Some(ty) = self.context.get_struct_type("va_list") {
+            return ty;
+        }
+
+        let ptr = self.context.i8_type().ptr_type(Default::default()).into();
+        let i32 = self.context.i32_type().into();
+        let ty = self.context.opaque_struct_type("va_list");
+
+        if self.target.triple.architecture == target_lexicon::Architecture::X86_64 {
+            ty.set_body(&[i32, i32, ptr, ptr], false);
+        } else {
+            ty.set_body(&[ptr], false);
+        }
+
+        ty
+    }
+
+    fn build_va_start(&self, arglist: values::PointerValue<'ctx>) {
+        let llvm_va_start = match self.module.get_function("llvm.va_start") {
+            | Some(func) => func,
+            | None => {
+                let ptr = self.context.i8_type().ptr_type(Default::default());
+                let ty = self.context.void_type().fn_type(&[ptr.into()], false);
+                self.module.add_function("llvm.va_start", ty, None)
+            },
+        };
+
+        self.builder.build_call(llvm_va_start, &[arglist.into()], "");
+    }
+
+    fn build_va_end(&self, arglist: values::PointerValue<'ctx>) {
+        let llvm_va_end = match self.module.get_function("llvm.va_end") {
+            | Some(func) => func,
+            | None => {
+                let ptr = self.context.i8_type().ptr_type(Default::default());
+                let ty = self.context.void_type().fn_type(&[ptr.into()], false);
+                self.module.add_function("llvm.va_end", ty, None)
+            },
+        };
+
+        self.builder.build_call(llvm_va_end, &[arglist.into()], "");
     }
 }

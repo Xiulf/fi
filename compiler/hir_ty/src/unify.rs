@@ -160,8 +160,8 @@ impl Ctx<'_> {
                 .and(self.unify_all(a_args.iter(), b_args.iter(), bindings)),
             | (TyKind::Func(a), TyKind::Func(b)) => {
                 if a.params.len() != b.params.len() {
-                    if !(a.variadic && b.params.len() >= a.params.len())
-                        && !(b.variadic && a.params.len() >= b.params.len())
+                    if !(a.is_varargs && b.params.len() >= a.params.len())
+                        && !(b.is_varargs && a.params.len() >= b.params.len())
                     {
                         return UnifyResult::Fail;
                     }

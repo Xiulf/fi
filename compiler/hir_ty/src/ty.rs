@@ -63,7 +63,7 @@ pub struct FuncType {
     pub params: Box<[Ty]>,
     pub ret: Ty,
     pub env: Ty,
-    pub variadic: bool,
+    pub is_varargs: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -127,7 +127,7 @@ impl Ty {
                         params,
                         ret,
                         env,
-                        variadic: func.variadic,
+                        is_varargs: func.is_varargs,
                     }),
                 ))
             },
@@ -347,7 +347,7 @@ impl HirDisplay for FuncType {
         self.env.hir_fmt(f)?;
         f.write_str("} ")?;
         f.write_joined(self.params.iter().map(|p| Parens(ParenMode::Arg, *p)), ", ")?;
-        if self.variadic {
+        if self.is_varargs {
             f.write_str(", ..")?;
         }
         f.write_str(" -> ")?;

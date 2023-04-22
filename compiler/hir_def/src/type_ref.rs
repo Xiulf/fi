@@ -38,6 +38,7 @@ pub enum TypeRef {
         env: Option<TypeRefId>,
         args: Box<[TypeRefId]>,
         ret: TypeRefId,
+        is_varargs: bool,
     },
 }
 
@@ -409,8 +410,17 @@ impl<'a> Ctx<'a> {
                 let env = t.env().map(|t| self.lower_type_opt(t.ty()));
                 let args = t.args().map(|t| self.lower_type(t)).collect();
                 let ret = self.lower_type_opt(t.ret());
+                let is_varargs = t.dbl_dot_token().is_some();
 
-                self.alloc_type(TypeRef::Func { env, args, ret }, syntax_ptr)
+                self.alloc_type(
+                    TypeRef::Func {
+                        env,
+                        args,
+                        ret,
+                        is_varargs,
+                    },
+                    syntax_ptr,
+                )
             },
             | t => todo!("{t:?}"),
         })

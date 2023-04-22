@@ -1,4 +1,4 @@
-module Main =
+module Main (main) =
 
 import Core
 import Intrinsics
@@ -9,7 +9,8 @@ module C =
 
     foreign malloc :: Uptr -> Ptr ()
     foreign free :: Ptr () -> ()
-    foreign malloca :: Uptr -> Ptr ()
+
+    foreign printf :: Ptr Int8, .. -> Int32
 
     @link_name = "_write"
     foreign write :: Int32, Ptr Int8, Uptr -> Int32
@@ -37,6 +38,20 @@ eprint f = Stderr .fmt f
 eprintln f =
     Stderr .fmt f
     Stderr .fmt '\n'
+
+
+// printf (s :: Str) :: r where PrintfType r =
+//     printf' s ()
+
+// trait PrintfType t =
+//     printf' :: Str, Slice Str -> t
+
+// impl PrintfType () =
+//     printf' fmt args = ()
+
+// impl PrintfType ({Pair Str (Slice Str)} a -> r) where Format a, PrintfType r =
+//     printf' fmt args = fn x ->
+//         printf' fmt args
 
 
 trait Format f =
