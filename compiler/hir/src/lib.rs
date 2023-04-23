@@ -603,6 +603,10 @@ impl TypeCtor {
             .collect()
     }
 
+    pub fn is_boxed(self, db: &dyn Db) -> bool {
+        self.attrs(db).by_key("boxed").exists()
+    }
+
     pub fn attrs(self, db: &dyn Db) -> &Attrs {
         self.data(db).attrs(db)
     }

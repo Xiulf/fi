@@ -16,7 +16,6 @@ use mir::instance::{Instance, InstanceData, InstanceId};
 use mir::ir::{self, BasicBlocks, MirValueId};
 use rustc_hash::FxHashMap;
 use target_lexicon::Architecture;
-use triomphe::Arc;
 
 use crate::abi::FnAbi;
 use crate::layout::ReprAndLayout;
@@ -41,7 +40,7 @@ pub struct CodegenCtxData<'ctx> {
     pub queue: Vec<Instance>,
     pub intrinsics: FxHashMap<&'static str, values::FunctionValue<'ctx>>,
     pub funcs: FxHashMap<Instance, (values::FunctionValue<'ctx>, FnAbi<'ctx>)>,
-    pub types: RefCell<FxHashMap<Arc<ReprAndLayout>, types::BasicTypeEnum<'ctx>>>,
+    pub types: RefCell<FxHashMap<ReprAndLayout, types::BasicTypeEnum<'ctx>>>,
     pub strings: FxHashMap<String, values::GlobalValue<'ctx>>,
 }
 
@@ -181,8 +180,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
         let name = instance.link_name(self.db);
         let repr = instance.repr(self.db);
-        let (signature, env) = match &*repr {
-            | mir::repr::Repr::Func(s, e) => (s, e.as_ref()),
+        let (signature, env) = match repr.kind(self.db) {
+            | mir::repr::ReprKind::Func(s, e) => (s, *e),
             | _ => unreachable!(),
         };
 

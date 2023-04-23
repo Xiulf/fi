@@ -1,7 +1,6 @@
 use arena::{Arena, Idx};
 use hir_def::id::CtorId;
 use hir_ty::ty::Constraint;
-use triomphe::Arc;
 
 use crate::graph::Cache;
 use crate::instance::Instance;
@@ -33,7 +32,7 @@ pub enum Linkage {
 #[salsa::tracked]
 pub struct Body {
     pub id: MirValueId,
-    pub repr: Arc<Repr>,
+    pub repr: Repr,
     #[return_ref]
     pub constraints: Vec<Constraint>,
     #[return_ref]
@@ -54,7 +53,7 @@ pub struct Local(pub Idx<LocalData>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LocalData {
     pub kind: LocalKind,
-    pub repr: Arc<Repr>,
+    pub repr: Repr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -124,7 +123,7 @@ pub enum RValue {
     AddrOf(Place),
     Cast(CastKind, Operand),
     BinOp(BinOp, Operand, Operand),
-    NullOp(NullOp, Arc<Repr>),
+    NullOp(NullOp, Repr),
     Discriminant(Place),
 }
 
@@ -174,7 +173,7 @@ pub enum NullOp {
 pub enum Operand {
     Copy(Place),
     Move(Place),
-    Const(Const, Arc<Repr>),
+    Const(Const, Repr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

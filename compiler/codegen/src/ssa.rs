@@ -33,7 +33,7 @@ pub fn analyze(bcx: &BodyCtx<'_, '_, '_>) -> FxHashSet<Local> {
     let mut locals = ArenaMap::default();
 
     for (id, local) in bcx.body.locals.iter() {
-        let repr = bcx.instance.subst_repr(bcx.db, &local.repr);
+        let repr = bcx.instance.subst_repr(bcx.db, local.repr);
         let layout = repr_and_layout(bcx.db, repr);
         let kind = if layout.is_zst() {
             LocalKind::ZST
@@ -132,17 +132,14 @@ impl Visitor for LocalAnalyzer<'_, '_, '_, '_> {
         self.visit_rvalue(rvalue, loc);
     }
 
-    #[track_caller]
     fn visit_place(&mut self, place: &Place, ctx: PlaceContext, loc: Location) {
-        // tracing::info!("{:?}", loc);
         self.process_place(place.as_ref(), ctx, loc);
     }
 
-    #[track_caller]
     fn visit_local(&mut self, &local: &Local, ctx: PlaceContext, loc: Location) {
-        // tracing::info!("{:?}, {:?}", local, ctx);
+        // tracing::info!("{}: {:?}, {:?}, {:?}", local, ctx, loc, self.locals[local.0]);
         match ctx {
-            | PlaceContext::MutUse(MutUseContext::Call) => {
+            | PlaceContext::MutUse(MutUseContext::Call) | PlaceContext::MutUse(MutUseContext::Init) => {
                 self.assign(local, DefLocation::Body(loc));
             },
             | PlaceContext::NonUse(_) => {},

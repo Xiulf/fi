@@ -4,8 +4,7 @@ use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
 use inkwell::{types, IntPredicate};
 use mir::instance::Instance;
 use mir::ir::{self, Local, LocalKind};
-use mir::repr::Repr;
-use triomphe::Arc;
+use mir::repr::{Repr, ReprKind};
 
 use crate::abi::{ArgAbi, EmptySinglePair, PassMode};
 use crate::ctx::BodyCtx;
@@ -40,7 +39,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
         for (local, data) in self.body.locals.iter() {
             if !self.body.blocks[first_block].params.contains(&ir::Local(local)) {
-                let repr = self.instance.subst_repr(self.db, &data.repr);
+                let repr = self.instance.subst_repr(self.db, data.repr);
                 let layout = repr_and_layout(self.db, repr);
                 let value = if by_ref_locals.contains(&ir::Local(local)) {
                     if layout.abi.is_unsized() {
@@ -67,7 +66,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             if block != first_block {
                 for local in data.params.iter() {
                     if !by_ref_locals.contains(local) {
-                        let repr = self.instance.subst_repr(self.db, &self.body.locals[local.0].repr);
+                        let repr = self.instance.subst_repr(self.db, self.body.locals[local.0].repr);
                         let layout = repr_and_layout(self.db, repr);
 
                         if layout.is_zst() {
@@ -248,9 +247,9 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     }
 
     pub fn codegen_init(&mut self, local: Local) {
-        let repr = self.instance.subst_repr(self.db, &self.body.locals[local.0].repr);
+        let repr = self.instance.subst_repr(self.db, self.body.locals[local.0].repr);
 
-        if let Repr::Box(_) = &*repr {
+        if let ReprKind::Box(_) = repr.kind(self.db) {
             let layout = repr_and_layout(self.db, repr);
             let inner_layout = layout.elem(self.db).unwrap();
             let ty = self.basic_type_for_ral(&inner_layout);
@@ -269,7 +268,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_drop(&mut self, place: &ir::Place) {
         let layout = self.place_layout(place);
 
-        if let Repr::Box(_) = &*layout.repr {
+        if let ReprKind::Box(_) = layout.repr.kind(self.db) {
             assert!(place.projection.is_empty());
 
             // if let LocalRef::Operand(Some(op)) = &self.locals[place.local.0] {
@@ -283,14 +282,14 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             match &self.locals[place.local.0] {
                 | LocalRef::Place(place) => self.codegen_rvalue(place.clone(), rvalue),
                 | LocalRef::Operand(None) => {
-                    let repr = self.instance.subst_repr(self.db, &self.body.locals[place.local.0].repr);
+                    let repr = self.instance.subst_repr(self.db, self.body.locals[place.local.0].repr);
                     let layout = repr_and_layout(self.db, repr);
                     let op = self.codegen_rvalue_operand(layout, rvalue);
                     self.locals[place.local.0] = LocalRef::Operand(Some(op));
                 },
                 | LocalRef::Operand(Some(op)) => {
                     assert!(op.layout.is_zst());
-                    let repr = self.instance.subst_repr(self.db, &self.body.locals[place.local.0].repr);
+                    let repr = self.instance.subst_repr(self.db, self.body.locals[place.local.0].repr);
                     let layout = repr_and_layout(self.db, repr);
                     self.codegen_rvalue_operand(layout, rvalue);
                 },
@@ -303,8 +302,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_call(&mut self, place: &ir::Place, func: &ir::Operand, args: &[ir::Operand]) {
         let func = self.codegen_operand(func);
-        let (func_sig, env) = match &*func.layout.repr {
-            | Repr::Func(sig, env) => (sig, env.as_ref()),
+        let (func_sig, env) = match func.layout.repr.kind(self.db) {
+            | ReprKind::Func(sig, env) => (sig, *env),
             | _ => unreachable!(),
         };
 
@@ -461,7 +460,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         }
     }
 
-    pub fn codegen_rvalue_operand(&mut self, layout: Arc<ReprAndLayout>, rvalue: &ir::RValue) -> OperandRef<'ctx> {
+    pub fn codegen_rvalue_operand(&mut self, layout: ReprAndLayout, rvalue: &ir::RValue) -> OperandRef<'ctx> {
         match rvalue {
             | ir::RValue::Use(op) => self.codegen_operand(op),
             | ir::RValue::AddrOf(place) => {
@@ -470,17 +469,12 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             },
             | ir::RValue::Cast(kind, op) => self.codegen_cast(layout, *kind, op),
             | ir::RValue::BinOp(op, lhs, rhs) => self.codegen_binop(layout, *op, lhs, rhs),
-            | ir::RValue::NullOp(op, repr) => self.codegen_nullop(layout, *op, repr),
+            | ir::RValue::NullOp(op, repr) => self.codegen_nullop(layout, *op, *repr),
             | _ => todo!("{rvalue:?}"),
         }
     }
 
-    pub fn codegen_cast(
-        &mut self,
-        layout: Arc<ReprAndLayout>,
-        kind: ir::CastKind,
-        op: &ir::Operand,
-    ) -> OperandRef<'ctx> {
+    pub fn codegen_cast(&mut self, layout: ReprAndLayout, kind: ir::CastKind, op: &ir::Operand) -> OperandRef<'ctx> {
         let value = self.codegen_operand(op);
 
         match kind {
@@ -536,7 +530,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_binop(
         &mut self,
-        layout: Arc<ReprAndLayout>,
+        layout: ReprAndLayout,
         op: ir::BinOp,
         lhs: &ir::Operand,
         rhs: &ir::Operand,
@@ -611,7 +605,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         }
     }
 
-    pub fn codegen_nullop(&mut self, layout: Arc<ReprAndLayout>, op: ir::NullOp, repr: &Arc<Repr>) -> OperandRef<'ctx> {
+    pub fn codegen_nullop(&mut self, layout: ReprAndLayout, op: ir::NullOp, repr: Repr) -> OperandRef<'ctx> {
         let repr = repr_and_layout(self.db, self.instance.subst_repr(self.db, repr));
         let ty = self.basic_type_for_ral(&layout).into_int_type();
         let val = match op {
@@ -630,7 +624,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 self.codegen_copy(p);
                 self.codegen_consume(p)
             },
-            | ir::Operand::Const(c, r) => self.codegen_const(c, r),
+            | ir::Operand::Const(c, r) => self.codegen_const(c, *r),
         }
     }
 
@@ -664,13 +658,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_copy(&mut self, place: &ir::Place) -> OperandRef<'ctx> {
         if let Some(o) = self.maybe_codegen_consume(place) {
-            assert!(!matches!(&*o.layout.repr, Repr::Box(_)));
+            assert!(!matches!(o.layout.repr.kind(self.db), ReprKind::Box(_)));
             return o;
         }
 
         let place = self.codegen_place(place);
 
-        if let Repr::Box(_) = &*place.layout.repr {
+        if let ReprKind::Box(_) = place.layout.repr.kind(self.db) {
             let ptr = place.field(self.cx, 0).ptr;
             let old = self.builder.build_load(ptr, "").into_int_value();
             let one = old.get_type().const_int(1, false);
@@ -715,7 +709,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         res
     }
 
-    pub fn codegen_const(&mut self, const_: &ir::Const, repr: &Arc<Repr>) -> OperandRef<'ctx> {
+    pub fn codegen_const(&mut self, const_: &ir::Const, repr: Repr) -> OperandRef<'ctx> {
         let repr = self.instance.subst_repr(self.db, repr);
         let layout = repr_and_layout(self.db, repr);
         let ty = self.basic_type_for_ral(&layout);
@@ -746,7 +740,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         OperandRef::new_imm(layout, value)
     }
 
-    pub fn codegen_string(&mut self, string: &str, layout: Arc<ReprAndLayout>) -> OperandRef<'ctx> {
+    pub fn codegen_string(&mut self, string: &str, layout: ReprAndLayout) -> OperandRef<'ctx> {
         let ptr = if let Some(value) = self.strings.get(string) {
             value.clone()
         } else {

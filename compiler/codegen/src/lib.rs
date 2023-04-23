@@ -23,7 +23,7 @@ pub trait Db: mir::Db + salsa::DbWithJar<Jar> {
 }
 
 #[salsa::jar(db = Db)]
-pub struct Jar(codegen_lib, codegen_module);
+pub struct Jar(codegen_lib, codegen_module, layout::layout_of);
 
 #[salsa::tracked]
 pub fn codegen_lib(db: &dyn Db, lib: hir::id::LibId) -> Arc<assembly::Assembly> {

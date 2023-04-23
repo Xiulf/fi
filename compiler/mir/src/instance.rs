@@ -3,10 +3,9 @@ use hir_def::display::HirDisplay;
 use hir_def::id::ImplId;
 use hir_ty::ty::Ty;
 use ra_ap_stdx::hash::NoHashHashMap;
-use triomphe::Arc;
 
 use crate::ir::{Body, MirValueId};
-use crate::repr::{repr_of, ArrayLen, Repr, Signature};
+use crate::repr::{repr_of, ArrayLen, Repr, ReprKind, Signature};
 use crate::Db;
 
 #[salsa::interned]
@@ -109,14 +108,14 @@ impl Instance {
                 | _ => false,
             },
             | InstanceId::VtableMethod(_, _, _) => true,
-            | InstanceId::Body(body) => match &*body.repr(db) {
-                | Repr::Func(_, _) => true,
+            | InstanceId::Body(body) => match body.repr(db).kind(db) {
+                | ReprKind::Func(_, _) => true,
                 | _ => false,
             },
         }
     }
 
-    pub fn repr(self, db: &dyn Db) -> Arc<Repr> {
+    pub fn repr(self, db: &dyn Db) -> Repr {
         let ty = match self.id(db) {
             | InstanceId::MirValueId(id) => match id {
                 | MirValueId::ValueId(id) => hir::Value::from(id).ty(db).ty(),
@@ -128,7 +127,7 @@ impl Instance {
             | InstanceId::Body(body) => return body.repr(db),
         };
 
-        self.data(db).subst_repr(db, &repr_of(db, ty))
+        self.data(db).subst_repr(db, repr_of(db, ty))
     }
 
     pub fn link_name(self, db: &dyn Db) -> String {
@@ -192,27 +191,29 @@ impl InstanceData {
         Instance::new(db, id, subst)
     }
 
-    pub fn subst_repr(&self, db: &dyn Db, repr: &Arc<Repr>) -> Arc<Repr> {
-        match &**repr {
-            | Repr::TypeVar(tv) => match self.find_var(tv) {
-                | Some(ty) => repr_of(db, ty),
-                | None => repr.clone(),
+    pub fn subst_repr(&self, db: &dyn Db, repr: Repr) -> Repr {
+        let kind = match repr.kind(db) {
+            | ReprKind::TypeVar(tv) => match self.find_var(tv) {
+                | Some(ty) => return repr_of(db, ty),
+                | None => return repr,
             },
-            | Repr::ReprOf(ty) => self.subst_repr(db, &repr_of(db, *ty)),
-            | Repr::Discr(repr) => Arc::new(Repr::Discr(self.subst_repr(db, repr))),
-            | Repr::Ptr(to, fat, nn) => Arc::new(Repr::Ptr(self.subst_repr(db, to), *fat, *nn)),
-            | Repr::Box(of) => Arc::new(Repr::Box(self.subst_repr(db, of))),
-            | Repr::Struct(reprs) => Arc::new(Repr::Struct(reprs.iter().map(|r| self.subst_repr(db, r)).collect())),
-            | Repr::Enum(reprs) => Arc::new(Repr::Enum(reprs.iter().map(|r| self.subst_repr(db, r)).collect())),
-            | Repr::Array(len, of) => Arc::new(Repr::Array(self.subst_array_len(db, len), self.subst_repr(db, of))),
-            | Repr::Func(sig, env) => Arc::new(Repr::Func(
+            | ReprKind::ReprOf(ty) => return self.subst_repr(db, repr_of(db, *ty)),
+            | ReprKind::Discr(repr) => ReprKind::Discr(self.subst_repr(db, *repr)),
+            | ReprKind::Ptr(to, fat, nn) => ReprKind::Ptr(self.subst_repr(db, *to), *fat, *nn),
+            | ReprKind::Box(of) => ReprKind::Box(self.subst_repr(db, *of)),
+            | ReprKind::Struct(reprs) => ReprKind::Struct(reprs.iter().map(|&r| self.subst_repr(db, r)).collect()),
+            | ReprKind::Enum(reprs) => ReprKind::Enum(reprs.iter().map(|&r| self.subst_repr(db, r)).collect()),
+            | ReprKind::Array(len, of) => ReprKind::Array(self.subst_array_len(db, len), self.subst_repr(db, *of)),
+            | ReprKind::Func(sig, env) => ReprKind::Func(
                 self.subst_signature(db, sig),
                 env.as_ref()
-                    .map(|e| self.subst_repr(db, e))
-                    .filter(|e| !matches!(&**e, Repr::Struct(f) if f.is_empty())),
-            )),
-            | _ => repr.clone(),
-        }
+                    .map(|&e| self.subst_repr(db, e))
+                    .filter(|e| !matches!(e.kind(db), ReprKind::Struct(f) if f.is_empty())),
+            ),
+            | _ => return repr,
+        };
+
+        Repr::new(db, kind)
     }
 
     pub fn subst_array_len(&self, _db: &dyn Db, len: &ArrayLen) -> ArrayLen {
@@ -227,8 +228,8 @@ impl InstanceData {
 
     pub fn subst_signature(&self, db: &dyn Db, sig: &Signature) -> Signature {
         Signature {
-            params: sig.params.iter().map(|p| self.subst_repr(db, p)).collect(),
-            ret: self.subst_repr(db, &sig.ret),
+            params: sig.params.iter().map(|&p| self.subst_repr(db, p)).collect(),
+            ret: self.subst_repr(db, sig.ret),
             is_varargs: sig.is_varargs,
         }
     }

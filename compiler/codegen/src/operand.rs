@@ -1,7 +1,6 @@
 use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{self, BasicValue};
 use inkwell::AddressSpace;
-use triomphe::Arc;
 
 use crate::ctx::CodegenCtx;
 use crate::layout::{Abi, ReprAndLayout};
@@ -17,12 +16,12 @@ pub enum OperandValue<'ctx> {
 
 #[derive(Debug, Clone)]
 pub struct OperandRef<'ctx> {
-    pub layout: Arc<ReprAndLayout>,
+    pub layout: ReprAndLayout,
     pub val: OperandValue<'ctx>,
 }
 
 impl<'ctx> OperandRef<'ctx> {
-    pub fn new_zst(ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
+    pub fn new_zst(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         let undef = match ctx.basic_type_for_ral(&layout) {
             | BasicTypeEnum::IntType(t) => t.get_undef().as_basic_value_enum(),
             | BasicTypeEnum::FloatType(t) => t.get_undef().as_basic_value_enum(),
@@ -38,25 +37,21 @@ impl<'ctx> OperandRef<'ctx> {
         }
     }
 
-    pub fn new_imm(layout: Arc<ReprAndLayout>, imm: values::BasicValueEnum<'ctx>) -> Self {
+    pub fn new_imm(layout: ReprAndLayout, imm: values::BasicValueEnum<'ctx>) -> Self {
         Self {
             val: OperandValue::Imm(imm),
             layout,
         }
     }
 
-    pub fn new_phi(layout: Arc<ReprAndLayout>, phi: values::PhiValue<'ctx>) -> Self {
+    pub fn new_phi(layout: ReprAndLayout, phi: values::PhiValue<'ctx>) -> Self {
         Self {
             val: OperandValue::Phi(phi),
             layout,
         }
     }
 
-    pub fn new_pair(
-        layout: Arc<ReprAndLayout>,
-        a: values::BasicValueEnum<'ctx>,
-        b: values::BasicValueEnum<'ctx>,
-    ) -> Self {
+    pub fn new_pair(layout: ReprAndLayout, a: values::BasicValueEnum<'ctx>, b: values::BasicValueEnum<'ctx>) -> Self {
         Self {
             val: OperandValue::Pair(a, b),
             layout,
@@ -156,7 +151,7 @@ impl<'ctx> OperandRef<'ctx> {
         Self { val, layout: field }
     }
 
-    pub fn bitcast(self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
+    pub fn bitcast(self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         let ty = ctx.basic_type_for_ral(&layout);
         let val = match self.val {
             | OperandValue::Imm(val) => OperandValue::Imm(ctx.builder.build_bitcast(val, ty, "")),

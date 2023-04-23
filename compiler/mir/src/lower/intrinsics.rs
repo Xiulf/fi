@@ -36,8 +36,6 @@ impl Ctx<'_> {
                 let place = self.place_op(place);
                 let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
                 let res = self.builder.add_local(LocalKind::Tmp, repr);
-
-                self.builder.init(res);
                 self.builder.addrof(Place::new(res), place);
                 Place::new(res).into()
             },
@@ -51,7 +49,7 @@ impl Ctx<'_> {
                 let op = self.lower_arg(args.next().unwrap());
 
                 self.builder.assign(place.deref(), op);
-                Operand::Const(Const::Unit, Arc::new(Repr::unit()))
+                Operand::Const(Const::Unit, Repr::unit(self.db))
             },
             | s => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();

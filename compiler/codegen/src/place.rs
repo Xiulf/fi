@@ -1,8 +1,7 @@
 use inkwell::types::BasicType;
 use inkwell::values::BasicValue;
 use inkwell::{values, AddressSpace};
-use mir::repr::Repr;
-use triomphe::Arc;
+use mir::repr::{Repr, ReprKind};
 
 use crate::ctx::CodegenCtx;
 use crate::layout::{primitive_align, primitive_size, repr_and_layout, Abi, ReprAndLayout, TagEncoding, Variants};
@@ -10,14 +9,14 @@ use crate::operand::{OperandRef, OperandValue};
 
 #[derive(Debug, Clone)]
 pub struct PlaceRef<'ctx> {
-    pub layout: Arc<ReprAndLayout>,
+    pub layout: ReprAndLayout,
     pub ptr: values::PointerValue<'ctx>,
     pub extra: Option<values::BasicValueEnum<'ctx>>,
 }
 
 impl<'ctx> PlaceRef<'ctx> {
     #[allow(dead_code)]
-    pub fn new_uninit(ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
+    pub fn new_uninit(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         let ty = ctx.basic_type_for_ral(&layout).ptr_type(AddressSpace::default());
 
         Self {
@@ -28,14 +27,14 @@ impl<'ctx> PlaceRef<'ctx> {
     }
 
     pub fn new(
-        layout: Arc<ReprAndLayout>,
+        layout: ReprAndLayout,
         ptr: values::PointerValue<'ctx>,
         extra: Option<values::BasicValueEnum<'ctx>>,
     ) -> Self {
         Self { layout, ptr, extra }
     }
 
-    pub fn new_alloca(ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
+    pub fn new_alloca(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         let ty = ctx.basic_type_for_ral(&layout);
         let ptr = ctx.builder.build_alloca(ty, "");
 
@@ -47,7 +46,7 @@ impl<'ctx> PlaceRef<'ctx> {
     }
 
     #[allow(dead_code)]
-    pub fn cast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
+    pub fn cast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         if self.layout == layout {
             return self.clone();
         }
@@ -119,7 +118,10 @@ impl<'ctx> PlaceRef<'ctx> {
         lo: values::BasicValueEnum<'ctx>,
         hi: values::BasicValueEnum<'ctx>,
     ) -> Self {
-        let repr = Arc::new(Repr::Ptr(self.layout.elem(ctx.db).unwrap().repr.clone(), true, false));
+        let repr = Repr::new(
+            ctx.db,
+            ReprKind::Ptr(self.layout.elem(ctx.db).unwrap().repr, true, false),
+        );
         let layout = repr_and_layout(ctx.db, repr);
         let mut slice = self.index(ctx, lo);
         let lo = lo.into_int_value();
@@ -146,7 +148,7 @@ impl<'ctx> PlaceRef<'ctx> {
         downcast
     }
 
-    pub fn get_discr(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: &Arc<ReprAndLayout>) -> values::IntValue<'ctx> {
+    pub fn get_discr(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: &ReprAndLayout) -> values::IntValue<'ctx> {
         let discr_ty = ctx.basic_type_for_ral(&layout).into_int_type();
         let (_tag_scalar, tag_encoding, tag_field) = match self.layout.variants {
             | Variants::Single { index } => {

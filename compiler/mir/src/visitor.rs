@@ -78,7 +78,7 @@ macro_rules! make_visitor {
 
             fn super_stmt(&mut self, stmt: &$($mut)? Statement, loc: Location) {
                 match stmt {
-                    | Statement::Init(local) => self.visit_local(local, PlaceContext::NonUse(NonUseContext::Init), loc),
+                    | Statement::Init(local) => self.visit_local(local, PlaceContext::MutUse(MutUseContext::Init), loc),
                     | Statement::Drop(place) => self.visit_place(place, PlaceContext::MutUse(MutUseContext::Drop), loc),
                     | Statement::Assign(place, rvalue) => self.visit_assign(place, rvalue, loc),
                     | Statement::SetDiscriminant(place, _) => self.visit_place(place, PlaceContext::MutUse(MutUseContext::SetDiscriminant), loc),
@@ -213,11 +213,12 @@ pub enum NonUseContext {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MutUseContext {
-    Store,
-    SetDiscriminant,
+    Init,
     Drop,
+    Store,
     Call,
     Projection,
+    SetDiscriminant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -6,7 +6,7 @@ use salsa::AsId;
 
 use super::*;
 use crate::instance::{ImplInstance, ImplSource, Instance, InstanceId, Subst};
-use crate::repr::Repr;
+use crate::repr::{Repr, ReprKind};
 
 pub enum Arg {
     ExprId(ExprId),
@@ -32,7 +32,7 @@ impl Ctx<'_> {
             | Expr::Hole(_) => unreachable!(),
             | Expr::Path { def: None, .. } => unreachable!(),
             | Expr::Typed { expr, ty: _ } => self.lower_expr(expr, store_in),
-            | Expr::Unit => (Const::Unit, Arc::new(Repr::unit())).into(),
+            | Expr::Unit => (Const::Unit, Repr::unit(self.db)).into(),
             | Expr::Lit { ref lit } => self.lower_lit(id, lit),
             | Expr::Path { def: Some(def), .. } => self.lower_path(id, def, store_in),
             | Expr::App { base, ref args } => self.lower_app(id, base, args, store_in),
@@ -79,7 +79,7 @@ impl Ctx<'_> {
 
         match expr {
             | Some(expr) => self.lower_expr(expr, store_in),
-            | None => (Const::Unit, Arc::new(Repr::unit())).into(),
+            | None => (Const::Unit, Repr::unit(self.db)).into(),
         }
     }
 
@@ -240,12 +240,19 @@ impl Ctx<'_> {
             | ValueDefId::CtorId(id) => {
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
                 let ret = self.store_in(store_in, ret_repr);
-                self.builder.init(ret.local);
                 let single_variant = Ctor::from(id).type_ctor(self.db).ctors(self.db).len() == 1;
-                let downcast = if single_variant {
-                    ret.clone()
+                let is_boxed = Ctor::from(id).type_ctor(self.db).is_boxed(self.db);
+                let deref = if is_boxed {
+                    self.builder.init(ret.local);
+                    ret.clone().deref().field(1)
                 } else {
-                    ret.clone().downcast(id)
+                    ret.clone()
+                };
+
+                let downcast = if single_variant {
+                    deref.clone()
+                } else {
+                    deref.clone().downcast(id)
                 };
 
                 for (i, arg) in args.into_iter().enumerate() {
@@ -254,7 +261,7 @@ impl Ctx<'_> {
                 }
 
                 if !single_variant {
-                    self.builder.set_discriminant(ret.clone(), id);
+                    self.builder.set_discriminant(deref, id);
                 }
 
                 ret.into()
@@ -296,15 +303,15 @@ impl Ctx<'_> {
         self.lambdas.push((expr, body));
         self.lambdas.append(&mut ctx.lambdas);
         let instance = Instance::new(self.db, InstanceId::Body(body), None);
-        let (func_repr, env_repr) = match &*ret_repr {
-            | Repr::Func(_, None) => return (Const::Instance(instance), ret_repr).into(),
-            | Repr::Func(sig, Some(env)) => (Arc::new(Repr::Func(sig.clone(), None)), env.clone()),
+        let (func_repr, env_repr) = match ret_repr.kind(self.db) {
+            | ReprKind::Func(_, None) => return (Const::Instance(instance), ret_repr).into(),
+            | ReprKind::Func(sig, Some(env)) => (Repr::new(self.db, ReprKind::Func(sig.clone(), None)), *env),
             | _ => unreachable!(),
         };
 
         let var = self.store_in(store_in, ret_repr);
         let func = (Const::Instance(instance), func_repr);
-        let env_repr = Arc::new(Repr::Box(env_repr));
+        let env_repr = Repr::new(self.db, ReprKind::Box(env_repr));
         let env_var = self.store_in(&mut None, env_repr);
         self.builder.init(env_var.local);
         let env_deref = env_var.clone().deref().field(1);
@@ -338,7 +345,7 @@ impl Ctx<'_> {
             };
 
             let env_repr = repr_of(self.db, env_ty);
-            let env_repr = Arc::new(Repr::Box(env_repr));
+            let env_repr = Repr::new(self.db, ReprKind::Box(env_repr));
 
             Some(self.builder.add_local(LocalKind::Arg, env_repr.clone()))
         };
@@ -387,7 +394,7 @@ impl Ctx<'_> {
         self.builder.jump(exit_block);
         self.builder.switch_block(exit_block);
 
-        Operand::Const(Const::Unit, Arc::new(Repr::unit()))
+        Operand::Const(Const::Unit, Repr::unit(self.db))
     }
 
     fn lower_if_else(
@@ -536,7 +543,7 @@ impl Ctx<'_> {
     fn lower_return(&mut self, expr: ExprId) -> Operand {
         let op = self.lower_expr(expr, &mut None);
         self.builder.ret(op);
-        Operand::Const(Const::Undefined, Arc::new(Repr::Uninhabited))
+        Operand::Const(Const::Undefined, Repr::new(self.db, ReprKind::Uninhabited))
     }
 
     pub(super) fn lower_arg(&mut self, arg: Arg) -> Operand {
@@ -546,7 +553,7 @@ impl Ctx<'_> {
         }
     }
 
-    pub(super) fn store_in(&mut self, store_in: &mut Option<Place>, repr: Arc<Repr>) -> Place {
+    pub(super) fn store_in(&mut self, store_in: &mut Option<Place>, repr: Repr) -> Place {
         match store_in.take() {
             | Some(place) => place,
             | None => {

@@ -19,7 +19,9 @@ impl<T: hir::Db + salsa::DbWithJar<Jar>> Db for T {
 pub struct Jar(
     instance::Instance,
     instance::ImplInstance,
+    repr::Repr,
     repr::repr_of,
+    repr::needs_drop,
     ir::ValueDef,
     ir::Body,
     lower::value_mir,

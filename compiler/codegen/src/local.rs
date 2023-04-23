@@ -1,6 +1,5 @@
 use mir::ir::Local;
 use rustc_hash::FxHashSet;
-use triomphe::Arc;
 
 use crate::abi::PassMode;
 use crate::ctx::{BodyCtx, CodegenCtx};
@@ -15,7 +14,7 @@ pub enum LocalRef<'ctx> {
 }
 
 impl<'ctx> LocalRef<'ctx> {
-    pub fn new_operand(ctx: &mut CodegenCtx<'_, 'ctx>, layout: Arc<ReprAndLayout>) -> Self {
+    pub fn new_operand(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         if layout.is_zst() {
             Self::Operand(Some(OperandRef::new_zst(ctx, layout)))
         } else {
@@ -33,7 +32,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             .params
             .iter()
             .map(|arg| {
-                let repr = self.instance.subst_repr(self.db, &self.body.locals[arg.0].repr);
+                let repr = self.instance.subst_repr(self.db, self.body.locals[arg.0].repr);
                 let layout = repr_and_layout(self.db, repr);
                 let pass_mode = self.pass_mode(&layout);
 

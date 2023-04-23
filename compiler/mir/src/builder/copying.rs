@@ -4,10 +4,11 @@ use arena::{ArenaMap, Idx};
 
 use super::Builder;
 use crate::ir::{Block, BlockData, Local, LocalData, Location, Operand, Place, RValue, Statement, Terminator};
-use crate::traversal;
+use crate::repr::needs_drop;
 use crate::visitor::{PlaceContext, UseContext, Visitor};
+use crate::{traversal, Db};
 
-pub fn run_copy_analyzer(builder: &mut Builder) {
+pub fn run_copy_analyzer(builder: &mut Builder, db: &dyn Db) {
     let mut analyzer = CopyAnalyzer::default();
     let mut rewriter = CopyRewriter::default();
 
@@ -16,7 +17,7 @@ pub fn run_copy_analyzer(builder: &mut Builder) {
     }
 
     rewriter.usage = analyzer.usage;
-    rewriter.run(builder);
+    rewriter.run(builder, db);
 }
 
 #[derive(Default, Debug)]
@@ -72,7 +73,7 @@ impl Visitor for CopyAnalyzer {
 }
 
 impl CopyRewriter {
-    fn run(self, builder: &mut Builder) {
+    fn run(self, builder: &mut Builder, db: &dyn Db) {
         let mut to_drop = Vec::new();
         let terminators = OnceCell::new();
         let terminators = || {
@@ -114,8 +115,10 @@ impl CopyRewriter {
         }
 
         for (block, local) in to_drop {
-            let block = &mut builder.blocks[block.0];
-            block.statements.push(Statement::Drop(Place::new(local)));
+            if needs_drop(db, builder.locals[local.0].repr) {
+                let block = &mut builder.blocks[block.0];
+                block.statements.push(Statement::Drop(Place::new(local)));
+            }
         }
     }
 

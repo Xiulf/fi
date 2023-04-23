@@ -61,12 +61,19 @@ pub fn ctor_mir(db: &dyn Db, id: CtorId) -> ValueDef {
         builder.ret((Const::Ctor(id), ret_repr));
     } else {
         let ret = builder.add_local(LocalKind::Var, ret_repr.clone());
-        builder.init(ret);
         let single_variant = type_ctor.ctors(db).len() == 1;
-        let downcast = if single_variant {
-            Place::new(ret)
+        let is_boxed = type_ctor.is_boxed(db);
+        let deref = if is_boxed {
+            builder.init(ret);
+            Place::new(ret).deref().field(1)
         } else {
-            Place::new(ret).downcast(id)
+            Place::new(ret)
+        };
+
+        let downcast = if single_variant {
+            deref.clone()
+        } else {
+            deref.clone().downcast(id)
         };
 
         for (i, param) in params.into_iter().enumerate() {
@@ -74,7 +81,7 @@ pub fn ctor_mir(db: &dyn Db, id: CtorId) -> ValueDef {
         }
 
         if !single_variant {
-            builder.set_discriminant(Place::new(ret), id);
+            builder.set_discriminant(deref, id);
         }
 
         builder.ret(Place::new(ret));
@@ -144,7 +151,7 @@ impl<'db> Ctx<'db> {
         }
     }
 
-    pub fn lower(mut self, repr: Arc<Repr>) -> Body {
+    pub fn lower(mut self, repr: Repr) -> Body {
         for c in self.infer.constraints.iter() {
             self.builder.add_constraint(c.clone());
         }

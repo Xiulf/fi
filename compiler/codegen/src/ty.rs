@@ -1,8 +1,7 @@
 use inkwell::types::{self, BasicType};
 use inkwell::AddressSpace;
 use mir::ir::{Operand, Place, PlaceRef, Projection};
-use mir::repr::{Integer, Primitive, Repr, Scalar, Signature};
-use triomphe::Arc;
+use mir::repr::{Integer, Primitive, Repr, ReprKind, Scalar, Signature};
 
 use crate::abi::{FnAbi, PassMode};
 use crate::ctx::{BodyCtx, CodegenCtx};
@@ -45,12 +44,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
-    pub fn fn_type_for_signature(&self, sig: &Signature, env: Option<&Arc<Repr>>) -> types::FunctionType<'ctx> {
+    pub fn fn_type_for_signature(&self, sig: &Signature, env: Option<Repr>) -> types::FunctionType<'ctx> {
         let abi = self.compute_fn_abi(sig, env);
         self.fn_type_for_abi(&abi)
     }
 
-    pub fn basic_type_for_ral(&self, layout: &Arc<ReprAndLayout>) -> types::BasicTypeEnum<'ctx> {
+    pub fn basic_type_for_ral(&self, layout: &ReprAndLayout) -> types::BasicTypeEnum<'ctx> {
         if let Some(ty) = self.types.borrow().get(layout) {
             return *ty;
         }
@@ -64,13 +63,13 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         match layout.abi {
             | Abi::Uninhabited => return self.context.i8_type().as_basic_type_enum(),
             | Abi::Scalar(ref scalar) => {
-                return match &*layout.repr {
-                    | Repr::Ptr(_, _, _) | Repr::Box(_) => self
+                return match layout.repr.kind(self.db) {
+                    | ReprKind::Ptr(_, _, _) | ReprKind::Box(_) => self
                         .basic_type_for_ral(&layout.elem(self.db).unwrap())
                         .ptr_type(AddressSpace::default())
                         .as_basic_type_enum(),
-                    | Repr::Func(sig, env) => self
-                        .fn_type_for_signature(sig, env.as_ref())
+                    | ReprKind::Func(sig, env) => self
+                        .fn_type_for_signature(sig, *env)
                         .ptr_type(AddressSpace::default())
                         .as_basic_type_enum(),
                     | _ => self.basic_type_for_scalar(scalar),
@@ -174,12 +173,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 }
 
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
-    pub fn place_layout(&self, place: &Place) -> Arc<ReprAndLayout> {
+    pub fn place_layout(&self, place: &Place) -> ReprAndLayout {
         self.place_ref_layout(place.as_ref())
     }
 
-    pub fn place_ref_layout(&self, place: PlaceRef) -> Arc<ReprAndLayout> {
-        let repr = self.instance.subst_repr(self.db, &self.body.locals[place.local.0].repr);
+    pub fn place_ref_layout(&self, place: PlaceRef) -> ReprAndLayout {
+        let repr = self.instance.subst_repr(self.db, self.body.locals[place.local.0].repr);
         let mut base = repr_and_layout(self.db, repr);
 
         for proj in place.projection.iter() {
@@ -188,7 +187,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 | Projection::Field(i) => base.field(self.db, i).unwrap(),
                 | Projection::Index(_) => base.elem(self.db).unwrap(),
                 | Projection::Slice(_, _) => {
-                    let repr = Arc::new(Repr::Ptr(base.elem(self.db).unwrap().repr.clone(), true, false));
+                    let repr = Repr::new(self.db, ReprKind::Ptr(base.elem(self.db).unwrap().repr, true, false));
                     repr_and_layout(self.db, repr)
                 },
                 | Projection::Downcast(_) => todo!(),
@@ -198,11 +197,11 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         base
     }
 
-    pub fn operand_layout(&self, operand: &Operand) -> Arc<ReprAndLayout> {
+    pub fn operand_layout(&self, operand: &Operand) -> ReprAndLayout {
         match operand {
             | Operand::Copy(p) | Operand::Move(p) => self.place_layout(p),
             | Operand::Const(_, r) => {
-                let r = self.instance.subst_repr(self.db, r);
+                let r = self.instance.subst_repr(self.db, *r);
                 repr_and_layout(self.db, r)
             },
         }

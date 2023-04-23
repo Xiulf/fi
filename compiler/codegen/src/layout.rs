@@ -11,15 +11,15 @@ use crate::Db;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReprAndLayout {
-    pub repr: Arc<Repr>,
-    pub layout: Layout,
+    pub repr: Repr,
+    pub layout: Arc<Layout>,
 }
 
 impl std::ops::Deref for ReprAndLayout {
     type Target = Layout;
 
     fn deref(&self) -> &Self::Target {
-        &self.layout
+        &*self.layout
     }
 }
 
@@ -69,7 +69,7 @@ pub enum Variants {
         tag: Scalar,
         tag_encoding: TagEncoding,
         tag_field: usize,
-        variants: Vec<Arc<ReprAndLayout>>,
+        variants: Vec<ReprAndLayout>,
     },
 }
 
@@ -89,54 +89,51 @@ pub struct Niche {
     pub scalar: Scalar,
 }
 
-pub fn repr_and_layout(db: &dyn Db, repr: Arc<Repr>) -> Arc<ReprAndLayout> {
-    let layout = layout_of(db, &repr);
+pub fn repr_and_layout(db: &dyn Db, repr: Repr) -> ReprAndLayout {
+    let layout = layout_of(db, repr);
 
-    Arc::new(ReprAndLayout { repr, layout })
+    ReprAndLayout { repr, layout }
 }
 
-pub fn layout_of(db: &dyn Db, repr: &Repr) -> Layout {
-    let target = db.target();
+#[salsa::tracked]
+pub fn layout_of(db: &dyn Db, repr: Repr) -> Arc<Layout> {
+    let triple = &db.target().triple;
 
-    _layout_of(db, &target.triple, repr)
-}
-
-pub fn _layout_of(db: &dyn Db, triple: &Triple, repr: &Repr) -> Layout {
-    match repr {
-        | Repr::Opaque => {
+    match repr.kind(db) {
+        | ReprKind::Opaque => {
             let mut layout = Layout::UNIT;
             layout.abi = Abi::Aggregate { sized: true };
-            layout
+            Arc::new(layout)
         },
-        | Repr::Uninhabited | Repr::TypeVar(_) => {
+        | ReprKind::Uninhabited | ReprKind::TypeVar(_) => {
             let mut layout = Layout::UNIT;
             layout.abi = Abi::Uninhabited;
-            layout
+            Arc::new(layout)
         },
-        | Repr::Scalar(scalar) => Layout::scalar(scalar.clone(), &triple),
-        | Repr::ReprOf(ty) => _layout_of(db, triple, &repr_of(db, *ty)),
-        | Repr::Ptr(_, false, false) => Layout::scalar(scalar_new(Primitive::Pointer, triple), triple),
-        | Repr::Ptr(_, true, nonnull) => {
+        | ReprKind::Scalar(scalar) => Arc::new(Layout::scalar(scalar.clone(), &triple)),
+        | ReprKind::ReprOf(ty) => layout_of(db, repr_of(db, *ty)),
+        | ReprKind::Ptr(_, false, false) => Arc::new(Layout::scalar(scalar_new(Primitive::Pointer, triple), triple)),
+        | ReprKind::Ptr(_, true, nonnull) => {
             let mut scalar = scalar_new(Primitive::Pointer, triple);
             scalar.valid_range = *nonnull as u128..=*scalar.valid_range.end();
             let meta = scalar_new(Primitive::Int(Integer::Int, false), triple);
-            scalar_pair(scalar, meta, triple)
+            Arc::new(scalar_pair(scalar, meta, triple))
         },
-        | Repr::Ptr(_, false, true) | Repr::Box(_) | Repr::Func(_, None) => {
+        | ReprKind::Ptr(_, false, true) | ReprKind::Box(_) | ReprKind::Func(_, None) => {
             let mut scalar = scalar_new(Primitive::Pointer, triple);
             scalar.valid_range = 1..=*scalar.valid_range.end();
-            Layout::scalar(scalar, triple)
+            Arc::new(Layout::scalar(scalar, triple))
         },
-        | Repr::Func(_, Some(_)) => {
+        | ReprKind::Func(_, Some(_)) => {
             let mut ptr = scalar_new(Primitive::Pointer, triple);
             ptr.valid_range = 1..=*ptr.valid_range.end();
-            scalar_pair(ptr.clone(), ptr, triple)
+            Arc::new(scalar_pair(ptr.clone(), ptr, triple))
         },
-        | Repr::Array(ArrayLen::Const(len), el) => {
+        | ReprKind::Array(ArrayLen::Const(len), el) => {
             let len = *len as u64;
-            let elem = _layout_of(db, triple, el);
+            let elem = layout_of(db, *el);
 
-            Layout {
+            Arc::new(Layout {
                 size: elem.stride * len,
                 align: elem.align,
                 stride: elem.stride * len,
@@ -147,12 +144,12 @@ pub fn _layout_of(db: &dyn Db, triple: &Triple, repr: &Repr) -> Layout {
                 },
                 variants: Variants::Single { index: 0 },
                 largest_niche: None,
-            }
+            })
         },
-        | Repr::Array(ArrayLen::TypeVar(_), el) => {
-            let elem = _layout_of(db, triple, el);
+        | ReprKind::Array(ArrayLen::TypeVar(_), el) => {
+            let elem = layout_of(db, *el);
 
-            Layout {
+            Arc::new(Layout {
                 size: Size::ZERO,
                 align: elem.align,
                 stride: Size::ZERO,
@@ -163,38 +160,35 @@ pub fn _layout_of(db: &dyn Db, triple: &Triple, repr: &Repr) -> Layout {
                 },
                 variants: Variants::Single { index: 0 },
                 largest_niche: None,
-            }
+            })
         },
-        | Repr::Struct(fields) => {
+        | ReprKind::Struct(fields) => {
             let layouts = fields
                 .iter()
-                .map(|f| {
-                    let layout = _layout_of(db, triple, f);
-                    ReprAndLayout {
-                        layout,
-                        repr: f.clone(),
-                    }
+                .map(|&f| {
+                    let layout = layout_of(db, f);
+                    ReprAndLayout { layout, repr: f }
                 })
                 .collect();
 
             struct_layout(layouts, triple)
         },
-        | Repr::Enum(variants) => {
+        | ReprKind::Enum(variants) => {
             let layouts = variants
                 .iter()
-                .map(|v| {
-                    let layout = _layout_of(db, triple, v);
-                    (v.clone(), layout)
+                .map(|&v| {
+                    let layout = layout_of(db, v);
+                    (v, layout)
                 })
                 .collect();
 
             enum_layout(layouts, triple)
         },
-        | Repr::Discr(repr) => {
-            let layout = layout_of(db, &**repr);
+        | ReprKind::Discr(repr) => {
+            let layout = layout_of(db, *repr);
 
             match layout.variants {
-                | Variants::Multiple { ref tag, .. } => Layout::scalar(tag.clone(), triple),
+                | Variants::Multiple { ref tag, .. } => Arc::new(Layout::scalar(tag.clone(), triple)),
                 | _ => todo!(),
             }
         },
@@ -224,7 +218,7 @@ fn scalar_pair(a: Scalar, b: Scalar, triple: &Triple) -> Layout {
     }
 }
 
-fn struct_layout(lyts: Vec<ReprAndLayout>, triple: &Triple) -> Layout {
+fn struct_layout(lyts: Vec<ReprAndLayout>, triple: &Triple) -> Arc<Layout> {
     let abi = Abi::Aggregate { sized: true };
 
     // match (lyts.get(0), lyts.get(1), lyts.get(2)) {
@@ -266,7 +260,7 @@ fn struct_layout(lyts: Vec<ReprAndLayout>, triple: &Triple) -> Layout {
     let offsets = fields.into_iter().map(|f| f.0).collect();
     let largest_niche = niches.into_iter().max_by_key(|n| n.available(triple));
 
-    Layout {
+    Arc::new(Layout {
         size,
         align,
         stride,
@@ -274,12 +268,12 @@ fn struct_layout(lyts: Vec<ReprAndLayout>, triple: &Triple) -> Layout {
         fields: Fields::Arbitrary { offsets },
         variants: Variants::Single { index: 0 },
         largest_niche,
-    }
+    })
 }
 
-fn enum_layout(mut lyts: Vec<(Arc<Repr>, Layout)>, triple: &Triple) -> Layout {
+fn enum_layout(mut lyts: Vec<(Repr, Arc<Layout>)>, triple: &Triple) -> Arc<Layout> {
     if lyts.is_empty() {
-        Layout::default()
+        Arc::new(Layout::default())
     } else if lyts.len() == 1 {
         lyts.pop().unwrap().1
     } else {
@@ -288,6 +282,8 @@ fn enum_layout(mut lyts: Vec<(Arc<Repr>, Layout)>, triple: &Triple) -> Layout {
             .filter_map(|v| v.1.largest_niche.clone())
             .max_by_key(|n| n.available(triple));
 
+        let mut lyts = lyts.into_iter().map(|(r, l)| (r, (*l).clone())).collect::<Vec<_>>();
+
         for (i, lyt) in lyts.iter_mut().enumerate() {
             lyt.1.variants = Variants::Single { index: i };
         }
@@ -295,7 +291,7 @@ fn enum_layout(mut lyts: Vec<(Arc<Repr>, Layout)>, triple: &Triple) -> Layout {
         let largest = &lyts.iter().max_by_key(|l| l.1.size).unwrap().1;
         let align = largest.align;
         let mut size = largest.size;
-        let mut no_niche = |mut variants: Vec<(Arc<Repr>, Layout)>| {
+        let mut no_niche = |mut variants: Vec<(Repr, Layout)>| {
             let tag_size = Size::from_bits(variants.len()).align_to(align);
             let tag = Scalar {
                 value: Primitive::Int(
@@ -327,7 +323,8 @@ fn enum_layout(mut lyts: Vec<(Arc<Repr>, Layout)>, triple: &Triple) -> Layout {
                 .map(|(repr, mut layout)| {
                     layout.size = size;
                     layout.stride = size.align_to(align);
-                    Arc::new(ReprAndLayout { repr, layout })
+                    let layout = Arc::new(layout);
+                    ReprAndLayout { repr, layout }
                 })
                 .collect::<Vec<_>>();
 
@@ -368,7 +365,7 @@ fn enum_layout(mut lyts: Vec<(Arc<Repr>, Layout)>, triple: &Triple) -> Layout {
         let stride = size.align_to(align);
 
         if primitive_size(tag.value, triple) == size {
-            Layout {
+            Arc::new(Layout {
                 size,
                 align,
                 stride,
@@ -376,9 +373,9 @@ fn enum_layout(mut lyts: Vec<(Arc<Repr>, Layout)>, triple: &Triple) -> Layout {
                 fields,
                 variants,
                 largest_niche: None,
-            }
+            })
         } else {
-            Layout {
+            Arc::new(Layout {
                 size,
                 align,
                 stride,
@@ -386,25 +383,25 @@ fn enum_layout(mut lyts: Vec<(Arc<Repr>, Layout)>, triple: &Triple) -> Layout {
                 fields,
                 variants,
                 largest_niche: None,
-            }
+            })
         }
     }
 }
 
 impl ReprAndLayout {
-    pub fn unit() -> Arc<Self> {
-        Arc::new(Self {
-            layout: Layout::UNIT,
-            repr: Arc::new(Repr::unit()),
-        })
+    pub fn unit(db: &dyn Db) -> Self {
+        Self {
+            layout: Arc::new(Layout::UNIT),
+            repr: Repr::unit(db),
+        }
     }
 
-    pub fn elem(&self, db: &dyn Db) -> Option<Arc<ReprAndLayout>> {
-        let el = match &*self.repr {
-            | Repr::Ptr(el, _, _) | Repr::Array(_, el) => el.clone(),
-            | Repr::Box(el) => {
-                let usize = Arc::new(Repr::usize());
-                Arc::new(Repr::Struct(Box::new([usize, el.clone()])))
+    pub fn elem(&self, db: &dyn Db) -> Option<ReprAndLayout> {
+        let el = match self.repr.kind(db) {
+            | ReprKind::Ptr(el, _, _) | ReprKind::Array(_, el) => *el,
+            | ReprKind::Box(el) => {
+                let usize = Repr::usize(db);
+                Repr::new(db, ReprKind::Struct(Box::new([usize, *el])))
             },
             | _ => return None,
         };
@@ -412,45 +409,45 @@ impl ReprAndLayout {
         Some(repr_and_layout(db, el))
     }
 
-    pub fn field(&self, db: &dyn Db, field: usize) -> Option<Arc<ReprAndLayout>> {
+    pub fn field(&self, db: &dyn Db, field: usize) -> Option<ReprAndLayout> {
         assert!(field < self.fields.count());
 
-        match &*self.repr {
-            | Repr::Array(_, el) => Some(repr_and_layout(db, el.clone())),
-            | Repr::Struct(reprs) => Some(repr_and_layout(db, reprs[field].clone())),
-            | Repr::Ptr(el, true, nn) => match field {
-                | 0 => Some(repr_and_layout(db, Arc::new(Repr::Ptr(el.clone(), false, *nn)))),
-                | 1 => Some(repr_and_layout(db, Arc::new(Repr::usize()))),
+        match self.repr.kind(db) {
+            | ReprKind::Array(_, el) => Some(repr_and_layout(db, *el)),
+            | ReprKind::Struct(reprs) => Some(repr_and_layout(db, reprs[field])),
+            | ReprKind::Ptr(el, true, nn) => match field {
+                | 0 => Some(repr_and_layout(db, Repr::new(db, ReprKind::Ptr(*el, false, *nn)))),
+                | 1 => Some(repr_and_layout(db, Repr::usize(db))),
                 | _ => unreachable!(),
             },
-            | Repr::Func(sig, Some(env)) => match field {
+            | ReprKind::Func(sig, Some(env)) => match field {
                 | 0 => {
                     let mut sig = sig.clone();
-                    sig.params = once(Arc::new(Repr::Box(env.clone())))
+                    sig.params = once(Repr::new(db, ReprKind::Box(*env)))
                         .chain(sig.params.into_vec())
                         .collect();
-                    Some(repr_and_layout(db, Arc::new(Repr::Func(sig, None))))
+                    Some(repr_and_layout(db, Repr::new(db, ReprKind::Func(sig, None))))
                 },
-                | 1 => Some(repr_and_layout(db, Arc::new(Repr::Box(env.clone())))),
+                | 1 => Some(repr_and_layout(db, Repr::new(db, ReprKind::Box(*env)))),
                 | _ => unreachable!(),
             },
-            | Repr::Enum(reprs) => match self.variants {
-                | Variants::Single { index } => repr_and_layout(db, reprs[index].clone()).field(db, field),
+            | ReprKind::Enum(reprs) => match self.variants {
+                | Variants::Single { index } => repr_and_layout(db, reprs[index]).field(db, field),
                 | Variants::Multiple { ref tag, .. } => {
                     assert_eq!(field, 0);
-                    Some(Arc::new(ReprAndLayout {
-                        repr: Arc::new(Repr::Scalar(tag.clone())),
-                        layout: Layout::scalar(tag.clone(), &db.target().triple),
-                    }))
+                    Some(ReprAndLayout {
+                        repr: Repr::new(db, ReprKind::Scalar(tag.clone())),
+                        layout: Arc::new(Layout::scalar(tag.clone(), &db.target().triple)),
+                    })
                 },
             },
             | _ => None,
         }
     }
 
-    pub fn variant(this: &Arc<ReprAndLayout>, variant: usize) -> Arc<ReprAndLayout> {
-        match this.variants {
-            | Variants::Single { index } if variant == index && this.fields != Fields::Primitive => this.clone(),
+    pub fn variant(&self, variant: usize) -> ReprAndLayout {
+        match self.variants {
+            | Variants::Single { index } if variant == index && self.fields != Fields::Primitive => self.clone(),
             | Variants::Single { .. } => unreachable!(),
             // | Variants::Single { index } => Arc::new(Layout {
             //     size: Size::ZERO,

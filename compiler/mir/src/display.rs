@@ -8,7 +8,7 @@ use crate::ir::{
     BinOp, Block, BlockData, Body, Const, JumpTarget, Linkage, Local, LocalData, LocalKind, MirValueId, NullOp,
     Operand, Place, Projection, RValue, Statement, Terminator, ValueDef,
 };
-use crate::repr::{ArrayLen, Integer, Primitive, Repr, Scalar, Signature};
+use crate::repr::{ArrayLen, Integer, Primitive, Repr, ReprKind, Scalar, Signature};
 use crate::Db;
 
 impl HirDisplay for Instance {
@@ -413,26 +413,26 @@ impl HirDisplay for Repr {
     type Db<'a> = dyn Db + 'a;
 
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
-        match self {
-            | Self::Uninhabited => f.write_str("{uninhabited}"),
-            | Self::Opaque => f.write_str("{opaque}"),
-            | Self::TypeVar(v) => write!(f, "{}", v.display(f.db)),
-            | Self::ReprOf(t) => write!(f, "repr_of({})", t.display(f.db)),
-            | Self::Scalar(scalar) => write!(f, "{scalar}"),
-            | Self::Array(len, el) => write!(f, "{} * {}", len.display(f.db), el.display(f.db)),
-            | Self::Ptr(el, true, _) => write!(f, "*fat {}", el.display(f.db)),
-            | Self::Ptr(el, false, _) => write!(f, "*{}", el.display(f.db)),
-            | Self::Box(el) => write!(f, "box({})", el.display(f.db)),
-            | Self::Func(sig, None) => write!(f, "fn {}", sig.display(f.db)),
-            | Self::Func(sig, Some(env)) => write!(f, "lambda [{}] {}", env.display(f.db), sig.display(f.db)),
-            | Self::Discr(repr) => write!(f, "discriminant({})", repr.display(f.db)),
-            | Self::Struct(fields) if fields.is_empty() => write!(f, "()"),
-            | Self::Struct(fields) => {
+        match self.kind(f.db) {
+            | ReprKind::Uninhabited => f.write_str("{uninhabited}"),
+            | ReprKind::Opaque => f.write_str("{opaque}"),
+            | ReprKind::TypeVar(v) => write!(f, "{}", v.display(f.db)),
+            | ReprKind::ReprOf(t) => write!(f, "repr_of({})", t.display(f.db)),
+            | ReprKind::Scalar(scalar) => write!(f, "{scalar}"),
+            | ReprKind::Array(len, el) => write!(f, "{} * {}", len.display(f.db), el.display(f.db)),
+            | ReprKind::Ptr(el, true, _) => write!(f, "*fat {}", el.display(f.db)),
+            | ReprKind::Ptr(el, false, _) => write!(f, "*{}", el.display(f.db)),
+            | ReprKind::Box(el) => write!(f, "box({})", el.display(f.db)),
+            | ReprKind::Func(sig, None) => write!(f, "fn {}", sig.display(f.db)),
+            | ReprKind::Func(sig, Some(env)) => write!(f, "lambda [{}] {}", env.display(f.db), sig.display(f.db)),
+            | ReprKind::Discr(repr) => write!(f, "discriminant({})", repr.display(f.db)),
+            | ReprKind::Struct(fields) if fields.is_empty() => write!(f, "()"),
+            | ReprKind::Struct(fields) => {
                 write!(f, "struct {{ ")?;
                 f.write_joined(fields.iter(), ", ")?;
                 write!(f, " }}")
             },
-            | Self::Enum(variants) => {
+            | ReprKind::Enum(variants) => {
                 write!(f, "enum {{ ")?;
                 f.write_joined(variants.iter(), ", ")?;
                 write!(f, " }}")

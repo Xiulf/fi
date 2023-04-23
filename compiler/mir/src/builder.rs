@@ -1,13 +1,12 @@
 use arena::Arena;
 use hir_def::id::CtorId;
 use hir_ty::ty::Constraint;
-use triomphe::Arc;
 
 use crate::ir::{
     BasicBlocks, BinOp, Block, BlockData, Body, CastKind, Const, JumpTarget, Local, LocalData, LocalKind, MirValueId,
     NullOp, Operand, Place, Projection, RValue, Statement, Terminator,
 };
-use crate::repr::Repr;
+use crate::repr::{Repr, ReprKind};
 use crate::Db;
 
 mod copying;
@@ -27,9 +26,8 @@ pub struct SwitchBuilder {
 }
 
 impl Builder {
-    pub fn build(mut self, db: &dyn Db, id: MirValueId, repr: Arc<Repr>) -> Body {
-        copying::run_copy_analyzer(&mut self);
-
+    pub fn build(mut self, db: &dyn Db, id: MirValueId, repr: Repr) -> Body {
+        copying::run_copy_analyzer(&mut self, db);
         Body::new(db, id, repr, self.constraints, self.locals, self.blocks)
     }
 
@@ -61,7 +59,7 @@ impl Builder {
         self.blocks.arena[block.0].params.push(param);
     }
 
-    pub fn add_local(&mut self, kind: LocalKind, repr: Arc<Repr>) -> Local {
+    pub fn add_local(&mut self, kind: LocalKind, repr: Repr) -> Local {
         Local(self.locals.alloc(LocalData { kind, repr }))
     }
 
@@ -140,7 +138,7 @@ impl Builder {
         self.stmt(Statement::Assign(res, RValue::BinOp(op, lhs.into(), rhs.into())));
     }
 
-    pub fn nullop(&mut self, res: Place, op: NullOp, repr: Arc<Repr>) {
+    pub fn nullop(&mut self, res: Place, op: NullOp, repr: Repr) {
         self.stmt(Statement::Assign(res, RValue::NullOp(op, repr)));
     }
 
@@ -150,34 +148,36 @@ impl Builder {
 }
 
 impl Builder {
-    pub fn place_repr(&self, db: &dyn Db, place: &Place) -> Arc<Repr> {
+    pub fn place_repr(&self, db: &dyn Db, place: &Place) -> Repr {
         let mut repr = self.locals[place.local.0].repr.clone();
 
         for proj in &place.projection {
-            if let Repr::ReprOf(ty) = &*repr {
+            if let ReprKind::ReprOf(ty) = repr.kind(db) {
                 repr = crate::repr::repr_of(db, *ty);
             }
 
             match proj {
-                | Projection::Deref => match &*repr {
-                    | Repr::Ptr(pointee, _, _) => repr = pointee.clone(),
+                | Projection::Deref => match repr.kind(db) {
+                    | ReprKind::Ptr(pointee, _, _) => repr = *pointee,
                     | _ => unreachable!(),
                 },
-                | Projection::Field(field) => match &*repr {
-                    | Repr::Struct(fields) => repr = fields[*field].clone(),
+                | Projection::Field(field) => match repr.kind(db) {
+                    | ReprKind::Struct(fields) => repr = fields[*field],
                     | _ => unreachable!(),
                 },
-                | Projection::Index(_) => match &*repr {
-                    | Repr::Array(_, elem) => repr = elem.clone(),
+                | Projection::Index(_) => match repr.kind(db) {
+                    | ReprKind::Array(_, elem) => repr = *elem,
                     | _ => unreachable!(),
                 },
-                | Projection::Slice(_, _) => match &*repr {
-                    | Repr::Array(_, elem) => repr = Arc::new(Repr::Ptr(elem.clone(), true, true)),
-                    | Repr::Ptr(_, true, _) => {},
+                | Projection::Slice(_, _) => match repr.kind(db) {
+                    | ReprKind::Array(_, elem) => repr = Repr::new(db, ReprKind::Ptr(*elem, true, true)),
+                    | ReprKind::Ptr(_, true, _) => {},
                     | _ => unreachable!(),
                 },
-                | Projection::Downcast(ctor) => match &*repr {
-                    | Repr::Enum(variants) => repr = variants[u32::from(ctor.local_id(db).into_raw()) as usize].clone(),
+                | Projection::Downcast(ctor) => match repr.kind(db) {
+                    | ReprKind::Enum(variants) => {
+                        repr = variants[u32::from(ctor.local_id(db).into_raw()) as usize];
+                    },
                     | _ => unreachable!(),
                 },
             }
@@ -186,7 +186,7 @@ impl Builder {
         repr
     }
 
-    pub fn operand_repr(&self, db: &dyn Db, operand: &Operand) -> Arc<Repr> {
+    pub fn operand_repr(&self, db: &dyn Db, operand: &Operand) -> Repr {
         match operand {
             | Operand::Copy(place) | Operand::Move(place) => self.place_repr(db, place),
             | Operand::Const(_, repr) => repr.clone(),
@@ -250,8 +250,8 @@ impl From<Place> for Operand {
     }
 }
 
-impl From<(Const, Arc<Repr>)> for Operand {
-    fn from(value: (Const, Arc<Repr>)) -> Self {
+impl From<(Const, Repr)> for Operand {
+    fn from(value: (Const, Repr)) -> Self {
         Self::Const(value.0, value.1)
     }
 }

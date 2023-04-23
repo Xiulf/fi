@@ -1,6 +1,5 @@
 use inkwell::types;
-use mir::repr::{Repr, Signature};
-use triomphe::Arc;
+use mir::repr::{Repr, ReprKind, Signature};
 
 use crate::ctx::CodegenCtx;
 use crate::layout::{primitive_size, repr_and_layout, Abi, ReprAndLayout, Size};
@@ -29,7 +28,7 @@ pub struct FnAbi<'ctx> {
 
 #[derive(Debug, Clone)]
 pub struct ArgAbi<'ctx> {
-    pub layout: Arc<ReprAndLayout>,
+    pub layout: ReprAndLayout,
     pub mode: PassMode<'ctx>,
 }
 
@@ -55,12 +54,12 @@ impl<T> Iterator for EmptySinglePair<T> {
 }
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
-    pub fn compute_fn_abi(&self, sig: &Signature, env: Option<&Arc<Repr>>) -> FnAbi<'ctx> {
+    pub fn compute_fn_abi(&self, sig: &Signature, env: Option<Repr>) -> FnAbi<'ctx> {
         let ret_layout = repr_and_layout(self.db, sig.ret.clone());
         let is_varargs = sig.is_varargs;
         let ret = self.compute_layout_abi(ret_layout);
         let env = env.map(|e| {
-            let repr = Arc::new(Repr::Box(e.clone()));
+            let repr = Repr::new(self.db, ReprKind::Box(e));
             let layout = repr_and_layout(self.db, repr);
             self.compute_layout_abi(layout)
         });
@@ -76,7 +75,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         FnAbi { args, ret, is_varargs }
     }
 
-    pub fn compute_layout_abi(&self, layout: Arc<ReprAndLayout>) -> ArgAbi<'ctx> {
+    pub fn compute_layout_abi(&self, layout: ReprAndLayout) -> ArgAbi<'ctx> {
         let pass_mode = self.pass_mode(&layout);
 
         ArgAbi {
@@ -85,7 +84,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
-    pub fn pass_mode(&self, layout: &Arc<ReprAndLayout>) -> PassMode<'ctx> {
+    pub fn pass_mode(&self, layout: &ReprAndLayout) -> PassMode<'ctx> {
         if layout.is_zst() {
             PassMode::NoPass
         } else {
