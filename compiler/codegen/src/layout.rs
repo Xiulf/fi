@@ -97,6 +97,7 @@ pub fn repr_and_layout(db: &dyn Db, repr: Repr) -> ReprAndLayout {
 
 #[salsa::tracked]
 pub fn layout_of(db: &dyn Db, repr: Repr) -> Arc<Layout> {
+    tracing::trace!("layout_of({})", hir::display::HirDisplay::display(&repr, db));
     let triple = &db.target().triple;
 
     match repr.kind(db) {

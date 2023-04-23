@@ -5,6 +5,7 @@ use hir_def::display::HirDisplay;
 use hir_def::id::{CtorId, TypeCtorId, TypeVarId};
 use hir_def::{item_tree, lang_item};
 use hir_ty::ty::{FloatKind, IntegerKind, PrimitiveType, Ty, TyKind};
+use rustc_hash::FxHashSet;
 
 use crate::Db;
 
@@ -103,13 +104,22 @@ impl Repr {
     }
 }
 
-#[salsa::tracked(recovery_fn = repr_of_cycle)]
+#[salsa::tracked]
 pub fn repr_of(db: &dyn Db, ty: Ty) -> Repr {
     tracing::trace!("{}", ty.display(db));
+
+    // if hir_ty::ty::is_recursive(db, ty) {
+    _repr_of_rec(db, ty, &mut FxHashSet::default())
+    // } else {
+    //     _repr_of(db, ty)
+    // }
+}
+
+fn _repr_of(db: &dyn Db, ty: Ty) -> Repr {
     match ty.kind(db) {
         | TyKind::Error => unreachable!(),
         | TyKind::Var(var) => Repr::new(db, ReprKind::TypeVar(*var)),
-        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[]),
+        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], repr_of),
         | TyKind::Primitive(prim) => match prim {
             | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
             | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
@@ -122,7 +132,7 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Repr {
             }
 
             match base.kind(db) {
-                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args),
+                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, repr_of),
                 | _ => unreachable!("{}", base.display(db)),
             }
         },
@@ -144,16 +154,58 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Repr {
     }
 }
 
-pub fn repr_of_cycle(db: &dyn Db, _cycle: &salsa::Cycle, ty: Ty) -> Repr {
-    Repr::new(db, ReprKind::ReprOf(ty))
+fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
+    if !seen.insert(ty) {
+        return Repr::new(db, ReprKind::ReprOf(ty));
+    }
+
+    let repr = match ty.kind(db) {
+        | TyKind::Error => unreachable!(),
+        | TyKind::Var(var) => Repr::new(db, ReprKind::TypeVar(*var)),
+        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], |db, ty| _repr_of_rec(db, ty, seen)),
+        | TyKind::Primitive(prim) => match prim {
+            | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
+            | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
+        },
+        | TyKind::App(mut base, args) => {
+            let mut args = args.to_vec();
+            while let TyKind::App(b, a) = base.kind(db) {
+                args = [a.to_vec(), args].concat();
+                base = *b;
+            }
+
+            match base.kind(db) {
+                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, |db, ty| _repr_of_rec(db, ty, seen)),
+                | _ => unreachable!("{}", base.display(db)),
+            }
+        },
+        | TyKind::Func(func) => {
+            let params = func.params.iter().map(|&p| _repr_of_rec(db, p, seen)).collect();
+            let ret = _repr_of_rec(db, func.ret, seen);
+            let signature = Signature {
+                params,
+                ret,
+                is_varargs: func.is_varargs,
+            };
+
+            let env = _repr_of_rec(db, func.env, seen);
+            let env = if env == Repr::unit(db) { None } else { Some(env) };
+
+            Repr::new(db, ReprKind::Func(signature, env))
+        },
+        | k => todo!("{k:?}"),
+    };
+
+    seen.remove(&ty);
+    repr
 }
 
-fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty]) -> Repr {
+fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty], mut repr_of: impl FnMut(&dyn Db, Ty) -> Repr) -> Repr {
     let lib = id.module(db).lib(db);
     let attrs = attrs::query(db, id.into());
 
     if let Some(attr) = attrs.by_key("repr").groups().next() {
-        return repr_from_attrs(db, attr, args);
+        return repr_from_attrs(db, attr, args, &mut repr_of);
     }
 
     if let Some(kind) = db.type_cache().ctor_int_kind(db, id) {
@@ -182,12 +234,12 @@ fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty]) -> Repr {
     } else if data.ctors.len() == 1 {
         let &local_id = data.ctors.iter().next().unwrap();
         let ctor = CtorId::new(db, id, local_id);
-        repr_of_variant(db, ctor, args)
+        repr_of_variant(db, ctor, args, repr_of)
     } else {
         let variants = data
             .ctors
             .iter()
-            .map(|&local_id| repr_of_variant(db, CtorId::new(db, id, local_id), args))
+            .map(|&local_id| repr_of_variant(db, CtorId::new(db, id, local_id), args, &mut repr_of))
             .collect();
 
         Repr::new(db, ReprKind::Enum(variants))
@@ -200,7 +252,7 @@ fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty]) -> Repr {
     repr
 }
 
-fn repr_of_variant(db: &dyn Db, ctor: CtorId, args: &[Ty]) -> Repr {
+fn repr_of_variant(db: &dyn Db, ctor: CtorId, args: &[Ty], mut repr_of: impl FnMut(&dyn Db, Ty) -> Repr) -> Repr {
     let ty = hir_ty::ctor_ty(db, ctor);
     let ty = ty.replace_vars(db, args);
     let fields = match ty.kind(db) {
@@ -269,7 +321,12 @@ fn repr_from_float(db: &dyn Db, args: &[Ty]) -> Repr {
     }
 }
 
-fn repr_from_attrs(db: &dyn Db, group: &AttrInputGroup, args: &[Ty]) -> Repr {
+fn repr_from_attrs(
+    db: &dyn Db,
+    group: &AttrInputGroup,
+    args: &[Ty],
+    repr_of: &mut dyn FnMut(&dyn Db, Ty) -> Repr,
+) -> Repr {
     let mut repr = ReprKind::Opaque;
 
     if group.ident("uninhabited") {
@@ -302,7 +359,7 @@ fn repr_from_attrs(db: &dyn Db, group: &AttrInputGroup, args: &[Ty]) -> Repr {
             let elem = if let Some(idx) = elem.int() {
                 repr_of(db, args[idx as usize])
             } else {
-                repr_from_attrs(db, elem.group().unwrap(), args)
+                repr_from_attrs(db, elem.group().unwrap(), args, repr_of)
             };
 
             repr = ReprKind::Ptr(elem, false, nonnull);
@@ -316,7 +373,7 @@ fn repr_from_attrs(db: &dyn Db, group: &AttrInputGroup, args: &[Ty]) -> Repr {
             let elem = if let Some(idx) = elem.int() {
                 repr_of(db, args[idx as usize])
             } else {
-                repr_from_attrs(db, elem.group().unwrap(), args)
+                repr_from_attrs(db, elem.group().unwrap(), args, repr_of)
             };
 
             repr = ReprKind::Ptr(elem, true, nonnull);
@@ -328,7 +385,7 @@ fn repr_from_attrs(db: &dyn Db, group: &AttrInputGroup, args: &[Ty]) -> Repr {
             let elem = if let Some(idx) = elem.int() {
                 repr_of(db, args[idx as usize])
             } else {
-                repr_from_attrs(db, elem.group().unwrap(), args)
+                repr_from_attrs(db, elem.group().unwrap(), args, repr_of)
             };
 
             let len = if let Some(idx) = len.int() {
@@ -352,7 +409,7 @@ fn repr_from_attrs(db: &dyn Db, group: &AttrInputGroup, args: &[Ty]) -> Repr {
             let name = format!("f{i}");
 
             if let Some(group) = group.field(&name).and_then(AttrInput::group) {
-                fields.push(repr_from_attrs(db, group, args));
+                fields.push(repr_from_attrs(db, group, args, repr_of));
             }
         }
 

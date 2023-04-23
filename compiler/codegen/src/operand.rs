@@ -91,6 +91,7 @@ impl<'ctx> OperandRef<'ctx> {
         }
     }
 
+    #[track_caller]
     pub fn load(&self, ctx: &mut CodegenCtx<'_, 'ctx>) -> values::BasicValueEnum<'ctx> {
         match self.val {
             | OperandValue::Ref(ptr, _) => ctx.builder.build_load(ptr, ""),

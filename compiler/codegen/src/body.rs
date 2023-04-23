@@ -253,9 +253,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             let layout = repr_and_layout(self.db, repr);
             let inner_layout = layout.elem(self.db).unwrap();
             let ty = self.basic_type_for_ral(&inner_layout);
-            // let ptr = self.builder.build_malloc(ty, "").unwrap();
-            let ptr = self.builder.build_alloca(ty, "");
+            let ptr = self.builder.build_malloc(ty, "").unwrap();
+            // let ptr = self.builder.build_alloca(ty, "");
             let op = OperandRef::new_imm(layout, ptr.as_basic_value_enum());
+
+            let count = self.builder.build_struct_gep(ptr, 0, "").unwrap();
+            let one = self.usize_type().const_int(1, false);
+            self.builder.build_store(count, one);
 
             match &self.locals[local.0] {
                 | LocalRef::Place(place) => op.store(self.cx, place),
@@ -271,9 +275,24 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         if let ReprKind::Box(_) = layout.repr.kind(self.db) {
             assert!(place.projection.is_empty());
 
-            // if let LocalRef::Operand(Some(op)) = &self.locals[place.local.0] {
-            //     self.builder.build_free(op.load(self.cx).into_pointer_value());
-            // }
+            if let LocalRef::Operand(Some(op)) = &self.locals[place.local.0] {
+                let ptr = op.load(self.cx).into_pointer_value();
+                let one = self.usize_type().const_int(1, false);
+                let zero = self.usize_type().const_zero();
+                let count_ptr = self.builder.build_struct_gep(ptr, 0, "").unwrap();
+                let count = self.builder.build_load(count_ptr, "").into_int_value();
+                let count = self.builder.build_int_sub(count, one, "");
+                let nz = self.builder.build_int_compare(IntPredicate::EQ, count, zero, "");
+                let then_block = self.context.append_basic_block(self.func, "");
+                let exit_block = self.context.append_basic_block(self.func, "");
+
+                self.builder.build_store(count_ptr, count);
+                self.builder.build_conditional_branch(nz, exit_block, then_block);
+                self.builder.position_at_end(then_block);
+                self.builder.build_free(op.load(self.cx).into_pointer_value());
+                self.builder.build_unconditional_branch(exit_block);
+                self.builder.position_at_end(exit_block);
+            }
         }
     }
 
@@ -666,10 +685,10 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
         if let ReprKind::Box(_) = place.layout.repr.kind(self.db) {
             let ptr = place.field(self.cx, 0).ptr;
-            let old = self.builder.build_load(ptr, "").into_int_value();
-            let one = old.get_type().const_int(1, false);
-            let new = self.builder.build_int_add(old, one, "");
-            self.builder.build_store(ptr, new);
+            let one = self.usize_type().const_int(1, false);
+            let count = self.builder.build_load(ptr, "").into_int_value();
+            let count = self.builder.build_int_add(count, one, "");
+            self.builder.build_store(ptr, count);
         }
 
         place.load_operand(self.cx)
@@ -784,6 +803,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 }
 
 // https://llvm.org/docs/LangRef.html#variable-argument-handling-intrinsics
+#[allow(dead_code)]
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     fn va_list(&self) -> types::StructType<'ctx> {
         if let Some(ty) = self.context.get_struct_type("va_list") {

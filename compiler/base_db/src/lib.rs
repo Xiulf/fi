@@ -79,12 +79,14 @@ pub fn setup_panic_hook(
             return;
         }
 
-        let msg = match info.payload().downcast_ref::<&'static str>() {
-            | Some(s) => (*s).into(),
-            | None => match info.payload().downcast_ref::<String>() {
-                | Some(s) => s.clone().into(),
-                | None => "...".into(),
-            },
+        let msg = if let Some(s) = info.payload().downcast_ref::<salsa::Cycle>() {
+            format!("{:?}", s).into()
+        } else if let Some(s) = info.payload().downcast_ref::<&'static str>() {
+            (*s).into()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone().into()
+        } else {
+            "...".into()
         };
 
         let ice = ICE(msg);

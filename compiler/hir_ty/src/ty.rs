@@ -6,6 +6,7 @@ use hir_def::id::{ImplId, TraitId, TypeCtorId, TypeVarId, TypedItemId};
 use hir_def::name::Name;
 use hir_def::pat::PatId;
 use ra_ap_stdx::hash::NoHashHashMap;
+use rustc_hash::FxHashSet;
 
 use crate::Db;
 
@@ -105,6 +106,26 @@ pub struct Instance {
 pub enum InstanceImpl {
     ImplId(ImplId),
     Param(usize),
+}
+
+#[salsa::tracked]
+pub fn is_recursive(db: &dyn Db, ty: Ty) -> bool {
+    let mut types = FxHashSet::default();
+    return rec(db, ty, &mut types);
+
+    fn rec(db: &dyn Db, ty: Ty, types: &mut FxHashSet<Ty>) -> bool {
+        if !types.insert(ty) {
+            return true;
+        }
+
+        match ty.kind(db) {
+            | TyKind::App(base, args) => rec(db, *base, types) || args.iter().any(|&a| rec(db, a, types)),
+            | TyKind::Func(func) => {
+                rec(db, func.env, types) || rec(db, func.ret, types) || func.params.iter().any(|&a| rec(db, a, types))
+            },
+            | _ => false,
+        }
+    }
 }
 
 impl Ty {

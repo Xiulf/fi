@@ -101,12 +101,23 @@ impl Ctx<'_> {
         let body = self.body.clone();
         match body[pat] {
             | Pat::Missing => unreachable!(),
+            | Pat::Ctor { ctor: None, .. } => unreachable!(),
             | Pat::Wildcard | Pat::Bind { subpat: None, .. } | Pat::Lit { .. } => {},
             | Pat::Typed { pat, .. } => self.bind_pat(pat, place.clone()),
             | Pat::Bind {
                 subpat: Some(subpat), ..
             } => self.bind_pat(subpat, place.clone()),
-            | Pat::Ctor { ref args, .. } => {
+            | Pat::Ctor {
+                ctor: Some(ctor),
+                ref args,
+                ..
+            } => {
+                let place = if Ctor::from(ctor).type_ctor(self.db).is_boxed(self.db) {
+                    place.clone().deref().field(1)
+                } else {
+                    place.clone()
+                };
+
                 for (i, &arg) in args.iter().enumerate() {
                     self.bind_pat(arg, place.clone().field(i));
                 }
@@ -155,7 +166,16 @@ impl Ctx<'_> {
             },
             | ValueDefId::CtorId(id) => {
                 if Ctor::from(id).types(self.db).is_empty() {
-                    return (Const::Ctor(id), repr).into();
+                    if !Ctor::from(id).type_ctor(self.db).is_boxed(self.db) {
+                        return (Const::Ctor(id), repr).into();
+                    }
+
+                    let res = self.builder.add_local(LocalKind::Tmp, repr);
+
+                    self.builder.init(res);
+                    self.builder.set_discriminant(Place::new(res).deref().field(1), id);
+
+                    return Place::new(res).into();
                 }
 
                 (MirValueId::CtorId(id).into(), self.infer.instances[expr].clone())
@@ -494,10 +514,17 @@ impl Ctx<'_> {
                             | _ => todo!(),
                         },
                         | VariantTag::Ctor(id) => {
-                            let downcast = if Ctor::from(*id).type_ctor(self.db).ctors(self.db).len() == 1 {
+                            let type_ctor = Ctor::from(*id).type_ctor(self.db);
+                            let deref = if type_ctor.is_boxed(self.db) {
                                 pred.clone()
                             } else {
-                                pred.clone().downcast(*id)
+                                pred.clone().deref().field(1)
+                            };
+
+                            let downcast = if type_ctor.ctors(self.db).len() == 1 {
+                                deref
+                            } else {
+                                deref.downcast(*id)
                             };
 
                             for (i, pats) in case.fields.iter().enumerate() {

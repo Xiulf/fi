@@ -64,6 +64,10 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | Abi::Uninhabited => return self.context.i8_type().as_basic_type_enum(),
             | Abi::Scalar(ref scalar) => {
                 return match layout.repr.kind(self.db) {
+                    | ReprKind::ReprOf(ty) => self.basic_type_for_ral(&ReprAndLayout {
+                        repr: mir::repr::repr_of(self.db, *ty),
+                        layout: layout.layout.clone(),
+                    }),
                     | ReprKind::Ptr(_, _, _) | ReprKind::Box(_) => self
                         .basic_type_for_ral(&layout.elem(self.db).unwrap())
                         .ptr_type(AddressSpace::default())
@@ -132,7 +136,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let int = match align.bytes() {
             | 1 => Integer::I8,
             | 2 => Integer::I16,
-            | 3..=4 => Integer::I32,
+            | 3 | 4 => Integer::I32,
             | _ => Integer::I64,
         };
 
@@ -169,6 +173,10 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | Integer::I128 => self.context.i128_type(),
             | Integer::Int => self.context.ptr_sized_int_type(&self.target_data, None),
         }
+    }
+
+    pub fn usize_type(&self) -> types::IntType<'ctx> {
+        self.context.ptr_sized_int_type(&self.target_data, None)
     }
 }
 

@@ -31,6 +31,7 @@ pub trait Db: hir_def::Db + salsa::DbWithJar<Jar> {
 #[salsa::jar(db = Db)]
 pub struct Jar(
     ty::Ty,
+    ty::is_recursive,
     infer,
     type_ctor_ty,
     ctor_ty,
