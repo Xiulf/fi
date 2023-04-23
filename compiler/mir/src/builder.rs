@@ -159,6 +159,7 @@ impl Builder {
             match proj {
                 | Projection::Deref => match repr.kind(db) {
                     | ReprKind::Ptr(pointee, _, _) => repr = *pointee,
+                    | ReprKind::Box(elem) => repr = Repr::new(db, ReprKind::Struct(Box::new([Repr::usize(db), *elem]))),
                     | _ => unreachable!(),
                 },
                 | Projection::Field(field) => match repr.kind(db) {

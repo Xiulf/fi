@@ -198,7 +198,11 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                     let repr = Repr::new(self.db, ReprKind::Ptr(base.elem(self.db).unwrap().repr, true, false));
                     repr_and_layout(self.db, repr)
                 },
-                | Projection::Downcast(_) => todo!(),
+                | Projection::Downcast(ctor) => {
+                    let ctors = hir::Ctor::from(ctor).type_ctor(self.db).ctors(self.db);
+                    let index = ctors.iter().position(|c| c.id() == ctor).unwrap();
+                    base.variant(index)
+                },
             };
         }
 

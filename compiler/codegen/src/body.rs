@@ -441,6 +441,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         place.set_discr(self.cx, index);
     }
 
+    pub fn codegen_get_discriminant(&mut self, layout: ReprAndLayout, place: &ir::Place) -> OperandRef<'ctx> {
+        let place = self.codegen_place(place);
+        let discr = place.get_discr(self.cx, &layout).as_basic_value_enum();
+
+        OperandRef::new_imm(layout, discr)
+    }
+
     pub fn rvalue_creates_operand(&self, place: &ir::Place, rvalue: &ir::RValue) -> bool {
         match rvalue {
             | ir::RValue::Cast(ir::CastKind::Bitcast, op) => {
@@ -489,7 +496,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | ir::RValue::Cast(kind, op) => self.codegen_cast(layout, *kind, op),
             | ir::RValue::BinOp(op, lhs, rhs) => self.codegen_binop(layout, *op, lhs, rhs),
             | ir::RValue::NullOp(op, repr) => self.codegen_nullop(layout, *op, *repr),
-            | _ => todo!("{rvalue:?}"),
+            | ir::RValue::Discriminant(place) => self.codegen_get_discriminant(layout, place),
         }
     }
 
@@ -677,7 +684,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_copy(&mut self, place: &ir::Place) -> OperandRef<'ctx> {
         if let Some(o) = self.maybe_codegen_consume(place) {
-            assert!(!matches!(o.layout.repr.kind(self.db), ReprKind::Box(_)));
+            // assert!(!matches!(o.layout.repr.kind(self.db), ReprKind::Box(_)));
             return o;
         }
 

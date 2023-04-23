@@ -27,26 +27,27 @@ type List t =
 
 infixr 6 (:) = Cons
 
+len list =
+    match list with
+    | Nil -> 0
+    | Cons x xs -> 1 + (len xs)
+
 
 @main
 main () =
-    _ = 4:5:Nil
-    println "test"
-    println "other"
-    print   "two"
-    println "three"
-    0
+    list = 4:5:6:Nil
+    len list
 
 
-print f = Stdout .fmt f
-println f =
-    Stdout .fmt f
-    Stdout .fmt '\n'
+// print f = Stdout .fmt f
+// println f =
+//     Stdout .fmt f
+//     Stdout .fmt '\n'
 
-eprint f = Stderr .fmt f
-eprintln f =
-    Stderr .fmt f
-    Stderr .fmt '\n'
+// eprint f = Stderr .fmt f
+// eprintln f =
+//     Stderr .fmt f
+//     Stderr .fmt '\n'
 
 
 // printf (s :: Str) :: r where PrintfType r =
@@ -63,32 +64,32 @@ eprintln f =
 //         printf' fmt args
 
 
-trait Format f =
-    fmt :: w, f -> () where Write w
+// trait Format f =
+//     fmt :: w, f -> () where Write w
 
-impl Format Str =
-    fmt w s =
-        _ = s.transmute |> write w
+// impl Format Str =
+//     fmt w s =
+//         _ = s.transmute |> write w
 
-impl Format Char =
-    fmt w c =
-        ptr = addr_of c .transmute :: Ptr Int8
-        slice = (ptr, (1 :: Uptr)) .transmute
-        _ = write w slice
+// impl Format Char =
+//     fmt w c =
+//         ptr = addr_of c .transmute :: Ptr Int8
+//         slice = (ptr, (1 :: Uptr)) .transmute
+//         _ = write w slice
 
 
-trait Write w =
-    write :: w, Slice Int8 -> Int32
+// trait Write w =
+//     write :: w, Slice Int8 -> Int32
 
-type Stdout = | Stdout
-type Stderr = | Stderr
+// type Stdout = | Stdout
+// type Stderr = | Stderr
 
-impl Write Stdout =
-    write _ slice =
-        ptr, len = slice.transmute
-        C.write 1 ptr len
+// impl Write Stdout =
+//     write _ slice =
+//         ptr, len = slice.transmute
+//         C.write 1 ptr len
 
-impl Write Stderr =
-    write _ slice =
-        ptr, len = slice.transmute
-        C.write 2 ptr len
+// impl Write Stderr =
+//     write _ slice =
+//         ptr, len = slice.transmute
+//         C.write 2 ptr len

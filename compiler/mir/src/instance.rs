@@ -197,7 +197,7 @@ impl InstanceData {
                 | Some(ty) => return repr_of(db, ty),
                 | None => return repr,
             },
-            // | ReprKind::ReprOf(ty) => return self.subst_repr(db, repr_of(db, *ty)),
+            | ReprKind::ReprOf(ty) => ReprKind::ReprOf(ty.replace_vars(db, &self.types)),
             | ReprKind::Discr(repr) => ReprKind::Discr(self.subst_repr(db, *repr)),
             | ReprKind::Ptr(to, fat, nn) => ReprKind::Ptr(self.subst_repr(db, *to), *fat, *nn),
             | ReprKind::Box(of) => ReprKind::Box(self.subst_repr(db, *of)),

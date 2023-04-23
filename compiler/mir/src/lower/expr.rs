@@ -2,7 +2,6 @@ use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::{ContainerId, ValueDefId};
 use hir_def::pat::{DecisionTree, Pat, PatId, VariantTag};
 use hir_ty::ty::InstanceImpl;
-use salsa::AsId;
 
 use super::*;
 use crate::instance::{ImplInstance, ImplSource, Instance, InstanceId, Subst};
@@ -275,8 +274,9 @@ impl Ctx<'_> {
                     deref.clone().downcast(id)
                 };
 
+                let args = args.into_iter().map(|a| self.lower_arg(a)).collect::<Vec<_>>();
+
                 for (i, arg) in args.into_iter().enumerate() {
-                    let arg = self.lower_arg(arg);
                     self.builder.assign(downcast.clone().field(i), arg);
                 }
 
@@ -493,7 +493,26 @@ impl Ctx<'_> {
                 let mut default_branch = None;
                 let mut switch = self.builder.switch();
                 let block = self.builder.current_block();
-                let discr = pred.clone();
+                let mut discr = pred.clone();
+
+                if !cases.is_empty() && let Some(VariantTag::Ctor(id)) = cases[0].tag {
+                    let type_ctor = Ctor::from(id).type_ctor(self.db);
+                    let mut discr_repr = self.builder.place_repr(self.db, &discr);
+
+                    if type_ctor.is_boxed(self.db) {
+                        discr = discr.deref().field(1);
+                        discr_repr = match discr_repr.kind(self.db) {
+                            ReprKind::Box(repr) => *repr,
+                            _ => unreachable!(),
+                        };
+                    }
+
+                    let discr_repr = Repr::new(self.db, ReprKind::Discr(discr_repr));
+                    let discr_local = self.builder.add_local(LocalKind::Tmp, discr_repr);
+
+                    self.builder.get_discriminant(Place::new(discr_local), discr);
+                    discr = Place::new(discr_local);
+                }
 
                 for case in cases {
                     let Some(tag) = &case.tag else {
@@ -516,9 +535,9 @@ impl Ctx<'_> {
                         | VariantTag::Ctor(id) => {
                             let type_ctor = Ctor::from(*id).type_ctor(self.db);
                             let deref = if type_ctor.is_boxed(self.db) {
-                                pred.clone()
-                            } else {
                                 pred.clone().deref().field(1)
+                            } else {
+                                pred.clone()
                             };
 
                             let downcast = if type_ctor.ctors(self.db).len() == 1 {
@@ -533,7 +552,7 @@ impl Ctx<'_> {
                                 }
                             }
 
-                            id.as_id().as_u32() as i128
+                            type_ctor.ctors(self.db).iter().position(|c| c.id() == *id).unwrap() as i128
                         },
                     };
 
