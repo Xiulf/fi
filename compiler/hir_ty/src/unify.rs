@@ -80,6 +80,13 @@ impl Ctx<'_> {
                 self.result.constraints.append(&mut constraints);
                 GeneralizedType::Mono(*t1)
             },
+            | (GeneralizedType::Poly(v1, t1), GeneralizedType::Poly(v2, t2)) if v1.len() < v2.len() => {
+                let t2 = GeneralizedType::Poly(v2, t2);
+                let (t2, mut constraints) = self.instantiate(t2, constraints, None, true);
+                self.unify_types(*t1, t2, origin);
+                self.result.constraints.append(&mut constraints);
+                GeneralizedType::Poly(v1.clone(), *t1)
+            },
             | (GeneralizedType::Poly(v1, t1), GeneralizedType::Poly(v2, t2)) if v1.len() == v2.len() => {
                 // TODO: check vars
                 self.unify_types(*t1, t2, origin);
@@ -139,22 +146,10 @@ impl Ctx<'_> {
             | (TyKind::Primitive(p1), TyKind::Primitive(p2)) if p1 == p2 => UnifyResult::Ok,
             | (TyKind::Var(v1), TyKind::Var(v2)) if v1 == v2 => UnifyResult::Ok,
             | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => UnifyResult::Ok,
+            | (TyKind::Unknown(_, true), TyKind::Var(_)) => UnifyResult::Ok,
+            | (TyKind::Var(_), TyKind::Unknown(_, true)) => UnifyResult::Ok,
             | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2, bindings),
             | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1, bindings),
-            // | (TyKind::Ctor(c), _) => {
-            //     use PrimitiveType::*;
-            //     let (base, kind) = if let Some(kind) = self.ctor_int_kind(*c) {
-            //         (self.int_type(), Ty::new(self.db, TyKind::Primitive(Integer(kind))))
-            //     } else if let Some(kind) = self.ctor_float_kind(*c) {
-            //         (self.float_type(), Ty::new(self.db, TyKind::Primitive(Float(kind))))
-            //     } else {
-            //         return UnifyResult::Fail;
-            //     };
-
-            //     let app = Ty::new(self.db, TyKind::App(base, Box::new([kind])));
-            //     self.unify_into(app, t2, bindings)
-            // },
-            // | (_, TyKind::Ctor(_)) => self.unify_into(t2, t1, bindings),
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
                 .unify_into(*a_base, *b_base, bindings)
                 .and(self.unify_all(a_args.iter(), b_args.iter(), bindings)),

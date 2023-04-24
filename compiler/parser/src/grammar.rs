@@ -627,7 +627,8 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
             if p.at(LYT_START) {
                 block(p, PIPE, match_arm);
             } else {
-                while !p.eof() && p.eat(LYT_SEP) {
+                while !p.eof() && p.at(LYT_SEP) && p.nth_at(1, PIPE) {
+                    p.bump(LYT_SEP);
                     match_arm(p);
                 }
             }

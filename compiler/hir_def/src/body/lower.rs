@@ -253,7 +253,7 @@ impl<'db> Ctx<'db> {
                     exprs,
                     ops,
                     |ctx| ctx.missing_expr(),
-                    |ctx, def, path, path_src, lhs, rhs| {
+                    |ctx, def, _, path, path_src, lhs, rhs| {
                         let base = ctx.make_expr(Expr::Path { path, def }, ExprSrc::Operator(AstPtr::new(&path_src)));
                         let args = Box::new([lhs, rhs]);
                         let lhs_ptr = ctx.src_map.expr_to_src[lhs].as_expr_ptr(true);
@@ -583,14 +583,50 @@ impl<'db> Ctx<'db> {
                 let args = fields.iter().rev().map(|f| f.1).collect();
                 let id = self.alloc_pat(Pat::Ctor { path, ctor, args }, syntax_ptr);
 
-                if let None = ctor {
+                let Some(ctor) = ctor else {
                     return Some(PatternStack(vec![(Constructor::MatchAll, id)]));
-                }
+                };
 
                 PatternStack(vec![(
-                    Constructor::Variant(VariantTag::Ctor(ctor.unwrap()), PatternStack(fields)),
+                    Constructor::Variant(VariantTag::Ctor(ctor), PatternStack(fields)),
                     id,
                 )])
+            },
+            | ast::Pat::Infix(p) => {
+                let pats = p.pats().map(|e| self.lower_pattern_stack(e)).collect::<Vec<_>>();
+                let ops = p
+                    .ops()
+                    .map(|p| (Path::from_ast(self.db, p.clone()), p))
+                    .collect::<Vec<_>>();
+
+                self.lower_infix(
+                    pats,
+                    ops,
+                    |_| PatternStack(Vec::new()),
+                    |ctx, _, def, path, _, lhs, rhs| {
+                        let lhs_ptr = ctx.src_map.pat_to_src[lhs.0[0].1].as_pat_ptr(true);
+                        let rhs_ptr = ctx.src_map.pat_to_src[rhs.0[0].1].as_pat_ptr(true);
+                        let fields = [lhs, rhs].into_iter().flatten().rev().collect::<Vec<_>>();
+                        let args = fields.iter().rev().map(|f| f.1).collect();
+                        let ctor = ctx.lower_pat_ctor(def);
+                        let src = if let (Some(lhs_ptr), Some(rhs_ptr)) = (lhs_ptr, rhs_ptr) {
+                            PatSrc::Infix(lhs_ptr, rhs_ptr)
+                        } else {
+                            PatSrc::Single(syntax_ptr)
+                        };
+
+                        let id = ctx.make_pat(Pat::Ctor { path, ctor, args }, src);
+
+                        let Some(ctor) = ctor else {
+                            return PatternStack(vec![(Constructor::MatchAll, id)]);
+                        };
+
+                        PatternStack(vec![(
+                            Constructor::Variant(VariantTag::Ctor(ctor), PatternStack(fields)),
+                            id,
+                        )])
+                    },
+                )
             },
             | p => todo!("{p:?}"),
         })
@@ -691,7 +727,7 @@ impl<'db> Ctx<'db> {
                     pats,
                     ops,
                     |ctx| ctx.missing_pat(),
-                    |ctx, def, path, _, lhs, rhs| {
+                    |ctx, _, def, path, _, lhs, rhs| {
                         let lhs_ptr = ctx.src_map.pat_to_src[lhs].as_pat_ptr(true);
                         let rhs_ptr = ctx.src_map.pat_to_src[rhs].as_pat_ptr(false);
                         let args = Box::new([lhs, rhs]);
@@ -724,17 +760,18 @@ impl<'db> Ctx<'db> {
         items: Vec<T>,
         ops: Vec<(Path, ast::Path)>,
         mut missing: impl FnMut(&mut Self) -> T,
-        mut mk_app: impl FnMut(&mut Self, Option<ValueDefId>, Path, ast::Path, T, T) -> T,
+        mut mk_app: impl FnMut(&mut Self, Option<ValueDefId>, Option<ValueDefId>, Path, ast::Path, T, T) -> T,
     ) -> T {
         let fixities = ops
             .iter()
             .map(|(op, src)| {
                 let resolved = self.resolve_path(op, src).map(|(a, _)| a);
+                let mut infix_def = None;
                 let (prec, assoc) = resolved
                     .map(|def| match def {
                         | ValueDefId::FixityId(id) => {
                             let data = crate::data::fixity_data(self.db, id);
-                            // resolved = data.def(self.db).and_then(|d| d.left());
+                            infix_def = data.def(self.db).and_then(|d| d.left());
                             match data.kind(self.db) {
                                 | FixityKind::Infix(assoc, prec) => (prec, assoc),
                                 | _ => (Prec::ZERO, Assoc::Left), // TODO: report error
@@ -744,7 +781,7 @@ impl<'db> Ctx<'db> {
                     })
                     .unwrap_or((Prec::ZERO, Assoc::Left));
 
-                (resolved, prec, assoc)
+                (resolved, infix_def, prec, assoc)
             })
             .collect::<Vec<_>>();
 
@@ -762,15 +799,15 @@ impl<'db> Ctx<'db> {
         fn go<'a, T>(
             ctx: &mut Ctx<'a>,
             mut ops: impl Iterator<Item = (Path, ast::Path)>,
-            mut fixities: Peekable<impl Iterator<Item = (Option<ValueDefId>, Prec, Assoc)>>,
+            mut fixities: Peekable<impl Iterator<Item = (Option<ValueDefId>, Option<ValueDefId>, Prec, Assoc)>>,
             mut items: impl Iterator<Item = T>,
             missing: &mut dyn FnMut(&mut Ctx<'a>) -> T,
-            mk_app: &mut dyn FnMut(&mut Ctx<'a>, Option<ValueDefId>, Path, ast::Path, T, T) -> T,
+            mk_app: &mut dyn FnMut(&mut Ctx<'a>, Option<ValueDefId>, Option<ValueDefId>, Path, ast::Path, T, T) -> T,
         ) -> T {
             if let Some((op, op_src)) = ops.next() {
-                let (id, prec, assoc) = fixities.next().unwrap();
-                let left = if let Some(&(id2, prec2, _)) = fixities.peek() {
-                    if id == id2 {
+                let (id, id2, prec, assoc) = fixities.next().unwrap();
+                let left = if let Some(&(id3, _, prec2, _)) = fixities.peek() {
+                    if id == id3 {
                         match assoc {
                             | Assoc::Left => true,
                             | Assoc::Right => false,
@@ -785,13 +822,13 @@ impl<'db> Ctx<'db> {
                     let lhs = items.next().unwrap_or_else(|| missing(ctx));
                     let rhs = items.next().unwrap_or_else(|| missing(ctx));
 
-                    return mk_app(ctx, id, op, op_src, lhs, rhs);
+                    return mk_app(ctx, id, id2, op, op_src, lhs, rhs);
                 };
 
                 if left {
                     let lhs = items.next().unwrap_or_else(|| missing(ctx));
                     let rhs = items.next().unwrap_or_else(|| missing(ctx));
-                    let item = mk_app(ctx, id, op, op_src, lhs, rhs);
+                    let item = mk_app(ctx, id, id2, op, op_src, lhs, rhs);
                     let items = once(item).chain(items).collect::<Vec<_>>();
 
                     go(ctx, ops, fixities, items.into_iter(), missing, mk_app)
@@ -799,7 +836,7 @@ impl<'db> Ctx<'db> {
                     let lhs = items.next().unwrap_or_else(|| missing(ctx));
                     let rhs = go(ctx, ops, fixities, items, missing, mk_app);
 
-                    mk_app(ctx, id, op, op_src, lhs, rhs)
+                    mk_app(ctx, id, id2, op, op_src, lhs, rhs)
                 }
             } else {
                 items.next().unwrap_or_else(|| missing(ctx))

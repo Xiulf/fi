@@ -754,6 +754,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | ir::Const::Char(c) => ty.into_int_type().const_int(c as u64, false).as_basic_value_enum(),
             | ir::Const::String(ref s) => return self.codegen_string(s, layout),
             | ir::Const::Instance(i) => self.codegen_instance(i),
+            | ir::Const::Ctor(_) if layout.is_zst() => return OperandRef::new_zst(self.cx, layout),
             | ir::Const::Ctor(ctor) => {
                 let type_ctor = hir::Ctor::from(ctor).type_ctor(self.db);
                 let ctors = type_ctor.ctors(self.db);

@@ -32,11 +32,35 @@ len list =
     | Nil -> 0
     | Cons x xs -> 1 + (len xs)
 
+trait Iterable t =
+    for_each :: t a, (a -> ()) -> ()
+
+trait Foldable t =
+    fold :: t a, acc, (acc, a -> acc) -> acc
+
+impl Iterable List =
+    for_each list f =
+        match list with
+        | x:xs ->
+            f x
+            for_each xs f
+        | _ -> ()
+
+impl Foldable List =
+    fold list init f =
+        match list with
+        | x:xs ->
+            acc = f init x
+            fold xs acc f
+        | _ -> init
+
 
 @main
 main () =
     list = 4:5:6:Nil
-    len list
+    fold list 0 fn a b -> a + b
+    // iter list fn x -> ()
+    // len list
 
 
 // print f = Stdout .fmt f

@@ -414,6 +414,10 @@ impl Value {
             tracing::debug!("method #{:0>3} -> {:?}", u32::from(e.into_raw()), meth);
         }
 
+        for (e, inst) in result.instances.iter() {
+            tracing::debug!("instance #{:0>3} -> {:?}", u32::from(e.into_raw()), inst);
+        }
+
         for (p, ty) in result.type_of_pat.iter() {
             tracing::debug!("${:0>2} :: {}", u32::from(p.into_raw()), ty.display(db));
         }
