@@ -1,7 +1,7 @@
 use base_db::libs::LibId;
 use diagnostics::Diagnostics;
 use hir_def::display::HirDisplay;
-use hir_def::id::{HasModule, ImplId, TraitId, TypeVarId, TypedItemId};
+use hir_def::id::{ContainerId, HasModule, ImplId, TraitId, TypeVarId, TypedItemId};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
@@ -254,6 +254,15 @@ impl<'db> Ctx<'db> {
     }
 
     fn should_propagate(&self, constraint: &Constraint, type_vars: &[TypeVarId], unknowns: &[Unknown]) -> bool {
+        if let TypedItemId::ValueId(id) = self.owner {
+            if let ContainerId::ImplId(id) = id.container(self.db) {
+                let (impl_types, _) = crate::impl_types(self.db, id);
+                if constraint.args == *impl_types {
+                    return false;
+                }
+            }
+        }
+
         let db = self.db;
         let check = move |t: Ty| match t.kind(db) {
             | TyKind::Var(v) => type_vars.contains(v),

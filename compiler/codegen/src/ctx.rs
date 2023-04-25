@@ -138,7 +138,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                 | MirValueId::Lambda(_, _) => unreachable!(),
             },
             | InstanceId::Body(body) => body,
-            | InstanceId::VtableMethod(_, _, _) => unreachable!(),
+            | InstanceId::VtableMethod(..) => unreachable!(),
         };
 
         if instance.is_func(self.db) {

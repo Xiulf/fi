@@ -62,8 +62,8 @@ impl<'ctx> PlaceRef<'ctx> {
         }
     }
 
-    pub fn deref(self, ctx: &mut CodegenCtx<'_, 'ctx>) -> Self {
-        self.load_operand(ctx).deref(ctx)
+    pub fn deref(&self, ctx: &mut CodegenCtx<'_, 'ctx>) -> Self {
+        self.clone().load_operand(ctx).deref(ctx)
     }
 
     pub fn field(&self, ctx: &mut CodegenCtx<'_, 'ctx>, index: usize) -> Self {

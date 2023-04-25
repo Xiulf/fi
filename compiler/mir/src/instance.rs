@@ -123,7 +123,20 @@ impl Instance {
                 // | MirValueId::FieldId(id) => hir::Field::from(id).is_exported(db),
                 | _ => todo!(),
             },
-            | InstanceId::VtableMethod(_, _, _) => todo!(),
+            | InstanceId::VtableMethod(owner, table, method) => {
+                let def = match owner {
+                    | MirValueId::ValueId(id) => crate::lower::value_mir(db, id),
+                    | MirValueId::Lambda(id, _) => crate::lower::value_mir(db, id),
+                    | MirValueId::CtorId(id) => crate::lower::ctor_mir(db, id),
+                    | _ => todo!(),
+                };
+
+                let body = def.body(db).unwrap();
+                let trait_id = body.constraints(db)[table].trait_id;
+                let method = hir::Trait::from(trait_id).items(db)[method];
+
+                method.ty(db).ty()
+            },
             | InstanceId::Body(body) => return body.repr(db),
         };
 

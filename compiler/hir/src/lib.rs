@@ -332,8 +332,12 @@ impl Value {
         }
 
         let name = self.path(db).display(db).to_string();
-        // mangling::mangle(name.bytes())
-        name
+
+        if cfg!(debug_assertions) {
+            name
+        } else {
+            mangling::mangle(name.bytes())
+        }
     }
 
     pub fn ty(self, db: &dyn Db) -> GeneralizedType {
@@ -456,8 +460,12 @@ impl Ctor {
 
     pub fn link_name(self, db: &dyn Db) -> String {
         let name = self.path(db).display(db).to_string();
-        // mangling::mangle(name.bytes())
-        name
+
+        if cfg!(debug_assertions) {
+            name
+        } else {
+            mangling::mangle(name.bytes())
+        }
     }
 
     pub fn type_ctor(self, db: &dyn Db) -> TypeCtor {
@@ -533,8 +541,12 @@ impl Field {
 
     pub fn link_name(self, db: &dyn Db) -> String {
         let name = self.path(db).display(db).to_string();
-        // mangling::mangle(name.bytes())
-        name
+
+        if cfg!(debug_assertions) {
+            name
+        } else {
+            mangling::mangle(name.bytes())
+        }
     }
 
     pub fn type_ctor(self, db: &dyn Db) -> TypeCtor {
@@ -760,8 +772,11 @@ impl Impl {
             ),
         };
 
-        // mangling::mangle(name.bytes())
-        name
+        if cfg!(debug_assertions) {
+            name
+        } else {
+            mangling::mangle(name.bytes())
+        }
     }
 
     pub fn types(self, db: &dyn Db) -> &[Ty] {

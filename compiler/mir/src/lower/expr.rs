@@ -1,7 +1,7 @@
 use hir_def::expr::{Expr, ExprId, Literal, Stmt};
 use hir_def::id::{ContainerId, ValueDefId};
 use hir_def::pat::{DecisionTree, Pat, PatId, VariantTag};
-use hir_ty::ty::InstanceImpl;
+use hir_ty::ty::{InstanceImpl, Ty, TyKind};
 
 use super::*;
 use crate::instance::{ImplInstance, ImplSource, Instance, InstanceId, Subst};
@@ -232,7 +232,7 @@ impl Ctx<'_> {
         }
 
         let func = self.lower_expr(base, &mut None);
-        self.make_app(id, func, args, store_in)
+        self.make_app(id, base, func, args, store_in)
     }
 
     fn lower_path_app(
@@ -246,7 +246,7 @@ impl Ctx<'_> {
         match def {
             | ValueDefId::PatId(pat) => {
                 let place = self.locals[pat].clone();
-                self.make_app(expr, place.into(), args, store_in)
+                self.make_app(expr, base_expr, place.into(), args, store_in)
             },
             | ValueDefId::ValueId(id) => {
                 if Value::from(id).is_intrinsic(self.db) {
@@ -254,7 +254,7 @@ impl Ctx<'_> {
                 }
 
                 let func = self.lower_path(base_expr, def, store_in);
-                self.make_app(expr, func, args, store_in)
+                self.make_app(expr, base_expr, func, args, store_in)
             },
             | ValueDefId::CtorId(id) => {
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
@@ -299,13 +299,36 @@ impl Ctx<'_> {
         }
     }
 
-    fn make_app(&mut self, id: ExprId, func: Operand, args: Vec<Arg>, store_in: &mut Option<Place>) -> Operand {
-        let args = args.into_iter().map(|a| self.lower_arg(a)).collect::<Vec<_>>();
-        let ret_repr = repr_of(self.db, self.infer.type_of_expr[id]);
-        let ret = self.store_in(store_in, ret_repr);
+    fn make_app(
+        &mut self,
+        _id: ExprId,
+        base_expr: ExprId,
+        mut func: Operand,
+        mut args: Vec<Arg>,
+        store_in: &mut Option<Place>,
+    ) -> Operand {
+        let mut ty = self.infer.type_of_expr[base_expr];
+        let mut calls = Vec::new();
 
-        self.builder.call(ret.clone(), func, args);
-        ret.into()
+        while let TyKind::Func(func) = ty.kind(self.db) {
+            calls.push((func.params.len(), func.ret));
+            ty = func.ret;
+        }
+
+        for (arg_count, ret_ty) in calls {
+            let args2 = args.drain(..arg_count).map(|a| self.lower_arg(a)).collect::<Vec<_>>();
+            let ret_repr = repr_of(self.db, ret_ty);
+            let ret = if args.is_empty() {
+                self.store_in(store_in, ret_repr)
+            } else {
+                self.store_in(&mut None, ret_repr)
+            };
+
+            self.builder.call(ret.clone(), func, args2);
+            func = ret.into();
+        }
+
+        func
     }
 
     fn lower_lambda(
@@ -320,9 +343,19 @@ impl Ctx<'_> {
         ctx.lower_lambda_body(expr, env, params, body);
         let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
         let body = ctx.builder.build(self.db, ctx.id, ret_repr.clone());
+
         self.lambdas.push((expr, body));
         self.lambdas.append(&mut ctx.lambdas);
-        let instance = Instance::new(self.db, InstanceId::Body(body), None);
+
+        let types = match &self.infer.ty {
+            | hir_ty::ty::Generalized::Mono(_) => &[],
+            | hir_ty::ty::Generalized::Poly(vars, _) => &**vars,
+        };
+
+        let types = types.iter().map(|&v| Ty::new(self.db, TyKind::Var(v))).collect();
+        let impls = (0..self.builder.constraints().len()).map(ImplSource::Param).collect();
+        let subst = Subst { types, impls };
+        let instance = Instance::new(self.db, InstanceId::Body(body), Some(subst).filter(|s| !s.is_empty()));
         let (func_repr, env_repr) = match ret_repr.kind(self.db) {
             | ReprKind::Func(_, None) => return (Const::Instance(instance), ret_repr).into(),
             | ReprKind::Func(sig, Some(env)) => (Repr::new(self.db, ReprKind::Func(sig.clone(), None)), *env),

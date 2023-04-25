@@ -97,7 +97,7 @@ impl<'ctx> OperandRef<'ctx> {
             | OperandValue::Ref(ptr, _) => ctx.builder.build_load(ptr, ""),
             | OperandValue::Phi(phi) => phi.as_basic_value(),
             | OperandValue::Imm(imm) => imm,
-            | OperandValue::Pair(_, _) => todo!(),
+            | OperandValue::Pair(_, _) => todo!("{:?}", self.val),
         }
     }
 

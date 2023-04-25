@@ -344,17 +344,18 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             None
         };
 
+        let e = env.is_some() as usize;
         let args = ret_ptr
             .into_iter()
             .chain(env.map(Into::into))
             .chain(
                 args.iter()
-                    .zip(func_abi.args.iter())
+                    .zip(func_abi.args[e..].iter())
                     .flat_map(|(arg, abi)| self.pass_arg(arg, abi))
                     .collect::<Vec<_>>(),
             )
             .chain(
-                args[func_abi.args.len()..]
+                args[func_abi.args.len() - e..]
                     .iter()
                     .flat_map(|arg| self.pass_extra_arg(arg)),
             )
@@ -691,7 +692,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         let place = self.codegen_place(place);
 
         if let ReprKind::Box(_) = place.layout.repr.kind(self.db) {
-            let ptr = place.field(self.cx, 0).ptr;
+            let ptr = place.deref(self.cx).field(self.cx, 0).ptr;
             let one = self.usize_type().const_int(1, false);
             let count = self.builder.build_load(ptr, "").into_int_value();
             let count = self.builder.build_int_add(count, one, "");

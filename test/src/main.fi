@@ -32,13 +32,13 @@ len list =
     | Nil -> 0
     | Cons x xs -> 1 + (len xs)
 
-trait Iterable t =
-    for_each :: t a, (a -> ()) -> ()
+trait Iterable t a =
+    for_each :: t, (a -> ()) -> ()
 
-trait Foldable t =
-    fold :: t a, acc, (acc, a -> acc) -> acc
+trait Foldable t a =
+    fold :: t, acc, (acc, a -> acc) -> acc
 
-impl Iterable List =
+impl Iterable (List a) a =
     for_each list f =
         match list with
         | x:xs ->
@@ -46,7 +46,7 @@ impl Iterable List =
             for_each xs f
         | _ -> ()
 
-impl Foldable List =
+impl Foldable (List a) a =
     fold list init f =
         match list with
         | x:xs ->
@@ -57,11 +57,24 @@ impl Foldable List =
 
 @main
 main () =
+    // printf "test\n" "abc" :: ()
     list = 4:5:6:Nil
     fold list 0 fn a b -> a + b
-    // iter list fn x -> ()
-    // len list
 
+
+printf (s :: Str) :: r where PrintfType r =
+    printf' s Nil
+
+trait PrintfType t =
+    printf' :: Str, List Str -> t
+
+impl PrintfType () =
+    printf' f args =
+        Stdout .fmt f
+
+impl PrintfType ({Pair Str (List Str)} Str -> r) where PrintfType r =
+    printf' f args = fn x ->
+        printf' f (x:args)
 
 // print f = Stdout .fmt f
 // println f =
@@ -88,32 +101,32 @@ main () =
 //         printf' fmt args
 
 
-// trait Format f =
-//     fmt :: w, f -> () where Write w
+trait Format f =
+    fmt :: w, f -> () where Write w
 
-// impl Format Str =
-//     fmt w s =
-//         _ = s.transmute |> write w
+impl Format Str =
+    fmt w s =
+        _ = s.transmute |> write w
 
-// impl Format Char =
-//     fmt w c =
-//         ptr = addr_of c .transmute :: Ptr Int8
-//         slice = (ptr, (1 :: Uptr)) .transmute
-//         _ = write w slice
+impl Format Char =
+    fmt w c =
+        ptr = addr_of c .transmute :: Ptr Int8
+        slice = (ptr, (1 :: Uptr)) .transmute
+        _ = write w slice
 
 
-// trait Write w =
-//     write :: w, Slice Int8 -> Int32
+trait Write w =
+    write :: w, Slice Int8 -> Int32
 
-// type Stdout = | Stdout
-// type Stderr = | Stderr
+type Stdout = | Stdout
+type Stderr = | Stderr
 
-// impl Write Stdout =
-//     write _ slice =
-//         ptr, len = slice.transmute
-//         C.write 1 ptr len
+impl Write Stdout =
+    write _ slice =
+        ptr, len = slice.transmute
+        C.write 1 ptr len
 
-// impl Write Stderr =
-//     write _ slice =
-//         ptr, len = slice.transmute
-//         C.write 2 ptr len
+impl Write Stderr =
+    write _ slice =
+        ptr, len = slice.transmute
+        C.write 2 ptr len
