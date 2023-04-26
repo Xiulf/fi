@@ -12,7 +12,8 @@ module C =
 
     foreign printf :: Ptr Int8, .. -> Int32
 
-    @link_name = "_write"
+    @link_name = "write"
+    @cfg(windows)
     foreign write :: Int32, Ptr Int8, Uptr -> Int32
 
 
@@ -57,7 +58,7 @@ impl Foldable (List a) a =
 
 @main
 main () =
-    // printf "test\n" "abc" :: ()
+    printf "test\n" "abc" :: ()
     list = 4:5:6:Nil
     fold list 0 fn a b -> a + b
 

@@ -123,7 +123,7 @@ impl<'db> Ctx<'db> {
 
                 self.result.instances[expr].impls.push(InstanceImpl::ImplId(impl_id));
             }
-            // tracing::debug!("{impl_id:?}, {o:?}");
+            tracing::debug!("{impl_id:?}, {o:?}");
         }
 
         None
@@ -185,8 +185,8 @@ impl<'db> Ctx<'db> {
     ) -> Option<(Vec<(ImplId, Constraint, ConstraintOrigin)>, UnifyBindings)> {
         let mut impls = vec![(impl_id, constraint.clone(), origin)];
 
-        for (i, constraint) in constraints.iter().enumerate() {
-            let origin = ConstraintOrigin::Impl(impl_id, i);
+        for (_i, constraint) in constraints.iter().enumerate() {
+            // let origin = ConstraintOrigin::Impl(impl_id, i);
             let mut matching = self.find_impls(constraint, origin, n - 1);
 
             if matching.len() != 1 {

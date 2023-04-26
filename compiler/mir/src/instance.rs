@@ -35,7 +35,7 @@ pub struct Subst {
     pub impls: Vec<ImplSource>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ImplSource {
     Instance(ImplInstance),
     Param(usize),
@@ -182,6 +182,11 @@ impl Instance {
 
 impl InstanceData {
     pub fn subst_instance(&self, db: &dyn Db, inst: Instance) -> Instance {
+        tracing::info!(
+            "subst_instance({}, {:?})",
+            inst.display(db),
+            self.impls.iter().map(|i| i.display(db).to_string()).collect::<Vec<_>>()
+        );
         let id = match inst.id(db) {
             | InstanceId::VtableMethod(owner, vtable, method) => match self.impls[vtable] {
                 | ImplSource::Instance(id) => {
@@ -193,15 +198,32 @@ impl InstanceData {
             | id => id,
         };
 
-        let replacements = self.types.iter().map(|(k, v)| (*k, *v)).collect();
         let subst = inst.subst(db).as_ref().map(|s| {
-            let types = s.types.iter().map(|t| t.replace_vars(db, &replacements)).collect();
-            let impls = s.impls.clone();
+            let types = s.types.iter().map(|t| t.replace_vars(db, &self.types)).collect();
+            let impls = s.impls.iter().map(|&s| self.subst_impl_source(db, s)).collect();
 
             Subst { types, impls }
         });
 
         Instance::new(db, id, subst)
+    }
+
+    pub fn subst_impl_instance(&self, db: &dyn Db, inst: ImplInstance) -> ImplInstance {
+        let subst = inst.subst(db).as_ref().map(|s| {
+            let types = s.types.iter().map(|t| t.replace_vars(db, &self.types)).collect();
+            let impls = s.impls.iter().map(|&s| self.subst_impl_source(db, s)).collect();
+
+            Subst { types, impls }
+        });
+
+        ImplInstance::new(db, inst.id(db), subst)
+    }
+
+    pub fn subst_impl_source(&self, db: &dyn Db, src: ImplSource) -> ImplSource {
+        match src {
+            | ImplSource::Instance(i) => ImplSource::Instance(self.subst_impl_instance(db, i)),
+            | ImplSource::Param(i) => self.impls[i],
+        }
     }
 
     pub fn subst_repr(&self, db: &dyn Db, repr: Repr) -> Repr {

@@ -250,8 +250,22 @@ pub fn impl_types(db: &dyn Db, impl_id: ImplId) -> (Box<[Ty]>, Box<[Constraint]>
     let mut ctx = ctx::Ctx::new(db, impl_id.into());
     let mut lcx = lower::LowerCtx::new(&mut ctx, type_map);
     let types = data.types(db).iter().map(|t| lcx.lower_type_ref(*t, false)).collect();
+    let constraints = data
+        .where_clause(db)
+        .map(|wc| {
+            wc.constraints
+                .iter()
+                .filter_map(|c| {
+                    Some(Constraint {
+                        trait_id: c.trait_id?,
+                        args: c.args.iter().map(|t| lcx.lower_type_ref(*t, false)).collect(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
-    (types, Box::new([]))
+    (types, constraints)
 }
 
 fn all_type_vars(db: &dyn Db, id: ValueId) -> Box<[TypeVarId]> {
