@@ -18,6 +18,9 @@ impl<'db> Ctx<'db> {
             self.sort_constraints()
         } else {
             std::mem::replace(&mut self.constraints, Vec::new())
+                .into_iter()
+                .map(|(c, o)| (self.resolve_constraint_fully(c), o))
+                .collect()
         };
 
         let mut failing = self.try_solve_constraints(constraints.iter(), false);
@@ -129,12 +132,14 @@ impl<'db> Ctx<'db> {
         None
     }
 
+    #[tracing::instrument(skip_all)]
     fn find_impls(
         &mut self,
         constraint: &Constraint,
         origin: ConstraintOrigin,
         n: u32,
     ) -> Vec<(Vec<(ImplId, Constraint, ConstraintOrigin)>, UnifyBindings)> {
+        tracing::debug!("find_impls({})", constraint.display(self.db));
         if n == 0 {
             tracing::warn!(
                 "Recursion limit reached when searching for impls for {}",
@@ -160,14 +165,15 @@ impl<'db> Ctx<'db> {
                     .map(|t| t.replace_vars(self.db, &replacements))
                     .collect::<Box<[_]>>();
 
-                let constraints = constraints
-                    .iter()
-                    .map(|c| c.replace_vars(self.db, &replacements))
-                    .collect();
-
                 if self.unify_all(types.iter(), constraint.args.iter(), &mut bindings) != UnifyResult::Ok {
                     return None;
                 }
+
+                let constraints = constraints
+                    .iter()
+                    .map(|c| c.replace_vars(self.db, &replacements))
+                    .map(|c| bindings.resolve_constraint_fully(self.db, c))
+                    .collect();
 
                 self.check_impl_constraints(constraint, origin, impl_id, constraints, bindings, n)
             })

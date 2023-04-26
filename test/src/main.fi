@@ -58,7 +58,7 @@ impl Foldable (List a) a =
 
 @main
 main () =
-    printf "test\n" "abc\n" :: ()
+    printf "test\n" "abc\n" "def\n" "ghi\n" :: ()
     list = 4:5:6:Nil
     fold list 0 fn a b -> a + b
 
