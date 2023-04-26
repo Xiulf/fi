@@ -91,7 +91,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         match layout.fields {
             | Fields::Primitive | Fields::Union(_) => {
                 let fill = self.llvm_padding(layout.size, layout.align);
-                self.context.struct_type(&[fill], false).as_basic_type_enum()
+                fill.as_basic_type_enum()
             },
             | Fields::Array { count, .. } => {
                 let elem = self.basic_type_for_ral(&layout.elem(self.db).unwrap());
@@ -127,7 +127,12 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                     }
                 }
 
-                self.context.struct_type(&fields, false).as_basic_type_enum()
+                let ty = self
+                    .context
+                    .opaque_struct_type(&format!("struct.{}", self.types.borrow().len()));
+
+                ty.set_body(&fields, false);
+                ty.as_basic_type_enum()
             },
         }
     }
