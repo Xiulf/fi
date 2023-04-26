@@ -400,6 +400,7 @@ impl Value {
 
         use hir_def::display::HirDisplay;
         let result = hir_ty::infer(db, self.id);
+        tracing::debug!("{}", self.link_name(db));
         tracing::debug!("{}", result.ty.display(db));
 
         if !result.constraints.is_empty() {
@@ -815,6 +816,16 @@ impl Impl {
 impl TypeVar {
     pub fn id(self) -> TypeVarId {
         self.id
+    }
+
+    pub fn name(&self, db: &dyn Db) -> Name {
+        let owner = self.id.owner(db);
+        let type_map = owner.type_map(db).0;
+
+        match self.id.local_id(db) {
+            | either::Either::Left(local_id) => type_map[local_id].name,
+            | either::Either::Right(name) => name,
+        }
     }
 }
 

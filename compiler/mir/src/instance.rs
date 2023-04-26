@@ -164,6 +164,13 @@ impl Instance {
         let (types, impls) = match self.subst(db) {
             | Some(subst) => {
                 let vars = id.type_vars(db);
+                tracing::info!(
+                    "{}: {:?}",
+                    id.display(db),
+                    vars.iter()
+                        .map(|v| v.name(db).display(db).to_string())
+                        .collect::<Vec<_>>()
+                );
                 let types = subst
                     .types
                     .iter()

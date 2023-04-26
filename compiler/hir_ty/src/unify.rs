@@ -146,8 +146,8 @@ impl Ctx<'_> {
             | (TyKind::Primitive(p1), TyKind::Primitive(p2)) if p1 == p2 => UnifyResult::Ok,
             | (TyKind::Var(v1), TyKind::Var(v2)) if v1 == v2 => UnifyResult::Ok,
             | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => UnifyResult::Ok,
-            | (TyKind::Unknown(_, true), TyKind::Var(_)) => UnifyResult::Ok,
-            | (TyKind::Var(_), TyKind::Unknown(_, true)) => UnifyResult::Ok,
+            // | (TyKind::Unknown(_, true), TyKind::Var(_)) => UnifyResult::Ok,
+            // | (TyKind::Var(_), TyKind::Unknown(_, true)) => UnifyResult::Ok,
             | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2, bindings),
             | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1, bindings),
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self

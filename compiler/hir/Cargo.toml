@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 base_db = { version = "0.1.0", path = "../base_db" }
 diagnostics = { version = "0.1.0", path = "../diagnostics" }
+either = "1.8.1"
 hir_def = { version = "0.1.0", path = "../hir_def" }
 hir_ty = { version = "0.1.0", path = "../hir_ty" }
 mangling = "0.2.3"
