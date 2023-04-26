@@ -183,14 +183,22 @@ impl Instance {
 impl InstanceData {
     pub fn subst_instance(&self, db: &dyn Db, inst: Instance) -> Instance {
         tracing::info!(
-            "subst_instance({}, {:?})",
+            "subst_instance({}, {:?}, {:?})",
             inst.display(db),
+            self.types
+                .iter()
+                .map(|(_, t)| t.display(db).to_string())
+                .collect::<Vec<_>>(),
             self.impls.iter().map(|i| i.display(db).to_string()).collect::<Vec<_>>()
         );
+        let mut extra_impls = Vec::new();
         let id = match inst.id(db) {
             | InstanceId::VtableMethod(owner, vtable, method) => match self.impls[vtable] {
                 | ImplSource::Instance(id) => {
                     let value = hir::Impl::from(id.id(db)).items(db)[method].id();
+                    if let Some(subst) = id.subst(db) {
+                        extra_impls = subst.impls.clone();
+                    }
                     InstanceId::MirValueId(MirValueId::ValueId(value))
                 },
                 | ImplSource::Param(idx) => InstanceId::VtableMethod(owner, idx, method),
@@ -198,12 +206,27 @@ impl InstanceData {
             | id => id,
         };
 
-        let subst = inst.subst(db).as_ref().map(|s| {
-            let types = s.types.iter().map(|t| t.replace_vars(db, &self.types)).collect();
-            let impls = s.impls.iter().map(|&s| self.subst_impl_source(db, s)).collect();
+        let subst = inst
+            .subst(db)
+            .as_ref()
+            .map(|s| {
+                let types = s.types.iter().map(|t| t.replace_vars(db, &self.types)).collect();
+                let impls = s
+                    .impls
+                    .iter()
+                    .map(|&s| self.subst_impl_source(db, s))
+                    .chain(extra_impls.clone())
+                    .collect();
 
-            Subst { types, impls }
-        });
+                Subst { types, impls }
+            })
+            .or_else(|| {
+                Some(Subst {
+                    types: Vec::new(),
+                    impls: extra_impls,
+                })
+                .filter(|s| !s.is_empty())
+            });
 
         Instance::new(db, id, subst)
     }

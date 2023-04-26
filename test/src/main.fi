@@ -58,7 +58,7 @@ impl Foldable (List a) a =
 
 @main
 main () =
-    printf "test\n" "abc" :: ()
+    printf "test\n" "abc\n" :: ()
     list = 4:5:6:Nil
     fold list 0 fn a b -> a + b
 
@@ -71,7 +71,16 @@ trait PrintfType t =
 
 impl PrintfType () =
     printf' f args =
-        Stdout .fmt f
+        match args with
+        | x:xs ->
+            Stdout .fmt x
+            printf' f xs
+        | _ -> Stdout .fmt f
+
+// impl PrintfType () =
+//     printf' f args =
+//         for_each args fn a -> Stdout .fmt a
+//         Stdout .fmt f
 
 impl PrintfType ({Pair Str (List Str)} Str -> r) where PrintfType r =
     printf' f args = fn x ->
