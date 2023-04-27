@@ -198,20 +198,25 @@ impl InstanceData {
                 .collect::<Vec<_>>(),
             self.impls.iter().map(|i| i.display(db).to_string()).collect::<Vec<_>>()
         );
+
+        if let InstanceId::VtableMethod(_, vtable, method) = inst.id(db)
+        && let ImplSource::Instance(id) = self.impls[vtable] {
+            let value = hir::Impl::from(id.id(db)).items(db)[method].id();
+            let subst = id.subst(db).clone();
+            let id = InstanceId::MirValueId(MirValueId::ValueId(value));
+
+            return Instance::new(db, id, subst);
+        }
+
         let mut extra_impls = Vec::new();
         let id = match inst.id(db) {
             | InstanceId::VtableMethod(owner, vtable, method) => match self.impls[vtable] {
-                | ImplSource::Instance(id) => {
-                    let value = hir::Impl::from(id.id(db)).items(db)[method].id();
-                    if let Some(subst) = id.subst(db) {
-                        extra_impls = subst.impls.clone();
-                    }
-                    InstanceId::MirValueId(MirValueId::ValueId(value))
-                },
+                | ImplSource::Instance(_) => unreachable!(),
                 | ImplSource::Param(idx) => InstanceId::VtableMethod(owner, idx, method),
             },
             | id => id,
         };
+        tracing::warn!("{}", id.display(db));
 
         let subst = inst
             .subst(db)
@@ -229,6 +234,7 @@ impl InstanceData {
             })
             .or_else(|| {
                 Some(Subst {
+                    // types: self.types.values().copied().collect(),
                     types: Vec::new(),
                     impls: extra_impls,
                 })
