@@ -202,13 +202,18 @@ impl InstanceData {
         if let InstanceId::VtableMethod(_, vtable, method) = inst.id(db)
         && let ImplSource::Instance(id) = self.impls[vtable] {
             let value = hir::Impl::from(id.id(db)).items(db)[method].id();
-            let subst = id.subst(db).clone();
+            let subst = id.subst(db).clone().map(|s| {
+                let types = s.types.into_iter().map(|t| t.replace_vars(db, &self.types)).collect();
+                let impls = s.impls;
+
+                Subst { types, impls }
+            });
+
             let id = InstanceId::MirValueId(MirValueId::ValueId(value));
 
             return Instance::new(db, id, subst);
         }
 
-        let mut extra_impls = Vec::new();
         let id = match inst.id(db) {
             | InstanceId::VtableMethod(owner, vtable, method) => match self.impls[vtable] {
                 | ImplSource::Instance(_) => unreachable!(),
@@ -218,28 +223,12 @@ impl InstanceData {
         };
         tracing::warn!("{}", id.display(db));
 
-        let subst = inst
-            .subst(db)
-            .as_ref()
-            .map(|s| {
-                let types = s.types.iter().map(|t| t.replace_vars(db, &self.types)).collect();
-                let impls = s
-                    .impls
-                    .iter()
-                    .map(|&s| self.subst_impl_source(db, s))
-                    .chain(extra_impls.clone())
-                    .collect();
+        let subst = inst.subst(db).as_ref().map(|s| {
+            let types = s.types.iter().map(|t| t.replace_vars(db, &self.types)).collect();
+            let impls = s.impls.iter().map(|&s| self.subst_impl_source(db, s)).collect();
 
-                Subst { types, impls }
-            })
-            .or_else(|| {
-                Some(Subst {
-                    // types: self.types.values().copied().collect(),
-                    types: Vec::new(),
-                    impls: extra_impls,
-                })
-                .filter(|s| !s.is_empty())
-            });
+            Subst { types, impls }
+        });
 
         Instance::new(db, id, subst)
     }

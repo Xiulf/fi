@@ -150,7 +150,7 @@ where
         self.fmt.write_str(s)
     }
 
-    fn write_fmt(mut self: &mut Self, args: fmt::Arguments<'_>) -> fmt::Result {
+    fn write_fmt(self: &mut Self, args: fmt::Arguments<'_>) -> fmt::Result {
         self.buf.clear();
         fmt::write(&mut self.buf, args)?;
         self.curr_size += self.buf.len();

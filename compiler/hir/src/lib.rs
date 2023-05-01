@@ -14,6 +14,7 @@ use hir_def::name::{AsName, Name};
 use hir_def::path::Path;
 pub use hir_def::{body, display, expr, id, pat, source};
 use hir_ty::ty::{Constraint, Generalized, GeneralizedType, Ty};
+use ra_ap_stdx::hash::NoHashHashMap;
 use salsa::AsId;
 use triomphe::Arc;
 
@@ -798,6 +799,33 @@ impl Impl {
 
     pub fn attrs(self, db: &dyn Db) -> &Attrs {
         self.data(db).attrs(db)
+    }
+
+    pub fn bind_vars(self, db: &dyn Db, types: &[Ty]) -> NoHashHashMap<TypeVarId, Ty> {
+        let mut ctx = hir_ty::ctx::Ctx::new(db, self.id.into());
+        let mut bindings = hir_ty::unify::UnifyBindings::default();
+        let mut map = NoHashHashMap::default();
+
+        for var in self.type_vars(db) {
+            let ty = ctx.fresh_type(Default::default(), false);
+            map.insert(var.id(), ty);
+        }
+
+        let impl_types = self
+            .types(db)
+            .iter()
+            .map(|t| t.replace_vars(db, &map))
+            .collect::<Vec<_>>();
+
+        assert_eq!(types.len(), impl_types.len());
+        let res = ctx.unify_all(types.iter(), impl_types.iter(), &mut bindings);
+        assert_eq!(res, hir_ty::unify::UnifyResult::Ok);
+
+        for ty in map.values_mut() {
+            *ty = bindings.resolve_type_fully(db, *ty);
+        }
+
+        map
     }
 
     fn data(self, db: &dyn Db) -> data::ImplData {

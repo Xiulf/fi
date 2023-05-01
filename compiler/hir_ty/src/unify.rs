@@ -19,7 +19,7 @@ pub struct Substitution {
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct UnifyBindings(pub NoHashHashMap<Unknown, Ty>);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnkLevel(pub(crate) u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +138,7 @@ impl Ctx<'_> {
         self.unify_into(t1, t2, bindings)
     }
 
-    pub(crate) fn unify_into(&self, t1: Ty, t2: Ty, bindings: &mut UnifyBindings) -> UnifyResult {
+    pub fn unify_into(&self, t1: Ty, t2: Ty, bindings: &mut UnifyBindings) -> UnifyResult {
         tracing::trace!("unify_into({}, {})", t1.display(self.db), t2.display(self.db));
         match (t1.kind(self.db), t2.kind(self.db)) {
             | (TyKind::Error, _) | (_, TyKind::Error) => UnifyResult::Ok,
@@ -170,7 +170,7 @@ impl Ctx<'_> {
         }
     }
 
-    pub(crate) fn unify_all<'a, 'b>(
+    pub fn unify_all<'a, 'b>(
         &self,
         mut a: impl Iterator<Item = &'a Ty>,
         mut b: impl Iterator<Item = &'b Ty>,

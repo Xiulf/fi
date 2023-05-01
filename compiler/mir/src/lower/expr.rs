@@ -184,16 +184,13 @@ impl Ctx<'_> {
 
         let mut impls_iter = ty_inst.impls.into_iter();
         let mut impls = Vec::new();
+        let types = ty_inst.types;
 
         while let Some(src) = impls_iter.next() {
-            impls.push(self.lower_impl_source(src, &mut impls_iter));
+            impls.push(self.lower_impl_source(src, &mut impls_iter, &types));
         }
 
-        let subst = Subst {
-            types: ty_inst.types,
-            impls,
-        };
-
+        let subst = Subst { types, impls };
         let instance = Instance::new(self.db, mir_id, Some(subst).filter(|s| !s.is_empty()));
 
         (Const::Instance(instance), repr).into()
@@ -203,19 +200,27 @@ impl Ctx<'_> {
         &mut self,
         imp: InstanceImpl,
         impls_iter: &mut impl Iterator<Item = InstanceImpl>,
+        types: &[Ty],
     ) -> ImplSource {
         match imp {
             | InstanceImpl::ImplId(id) => {
                 let imp = hir::Impl::from(id);
-                let mut impls = Vec::new();
-
-                for _ in 0..imp.constraints(self.db).len() {
-                    let imp = impls_iter.next().unwrap();
-                    impls.push(self.lower_impl_source(imp, impls_iter));
-                }
+                let vars = imp.bind_vars(self.db, types);
+                let impls = imp
+                    .constraints(self.db)
+                    .iter()
+                    .map(|c| {
+                        let types = c
+                            .args
+                            .iter()
+                            .map(|t| t.replace_vars(self.db, &vars))
+                            .collect::<Vec<_>>();
+                        self.lower_impl_source(impls_iter.next().unwrap(), impls_iter, &types)
+                    })
+                    .collect();
 
                 let subst = Subst {
-                    types: Vec::new(),
+                    types: imp.type_vars(self.db).into_iter().map(|v| vars[&v.id()]).collect(),
                     impls,
                 };
 
