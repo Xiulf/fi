@@ -94,10 +94,7 @@ impl<'ctx> OperandRef<'ctx> {
     #[track_caller]
     pub fn load(&self, ctx: &mut CodegenCtx<'_, 'ctx>) -> values::BasicValueEnum<'ctx> {
         match self.val {
-            | OperandValue::Ref(ptr, _) => {
-                let ty = ctx.basic_type_for_ral(&self.layout);
-                ctx.builder.build_load(ty, ptr, "")
-            },
+            | OperandValue::Ref(ptr, _) => ctx.builder.build_load(ptr, ""),
             | OperandValue::Phi(phi) => phi.as_basic_value(),
             | OperandValue::Imm(imm) => imm,
             | OperandValue::Pair(_, _) => todo!("{:?}", self.val),
@@ -160,15 +157,13 @@ impl<'ctx> OperandRef<'ctx> {
         let val = match self.val {
             | OperandValue::Imm(val) => OperandValue::Imm(ctx.builder.build_bitcast(val, ty, "")),
             | OperandValue::Ref(ptr, None) if matches!(layout.abi, Abi::ScalarPair(_, _)) => {
-                let ty = ctx.basic_type_for_ral(&self.layout);
-                let val = ctx.builder.build_load(ty, ptr, "").into_struct_value();
+                let val = ctx.builder.build_load(ptr, "").into_struct_value();
                 let a = ctx.builder.build_extract_value(val, 0, "").unwrap();
                 let b = ctx.builder.build_extract_value(val, 1, "").unwrap();
                 OperandValue::Pair(a, b)
             },
             | OperandValue::Ref(ptr, Some(extra)) if matches!(layout.abi, Abi::ScalarPair(_, _)) => {
-                let ty = ctx.basic_type_for_ral(&self.layout);
-                let val = ctx.builder.build_load(ty, ptr, "");
+                let val = ctx.builder.build_load(ptr, "");
                 OperandValue::Pair(val, extra)
             },
             | OperandValue::Ref(ptr, extra) => {
@@ -217,10 +212,9 @@ impl<'ctx> OperandValue<'ctx> {
                 ctx.builder.build_store(dest.ptr, val.as_basic_value());
             },
             | OperandValue::Pair(a, b) => {
-                let ty = ctx.basic_type_for_ral(&dest.layout);
-                let ptr = ctx.builder.build_struct_gep(ty, dest.ptr, 0, "").unwrap();
+                let ptr = ctx.builder.build_struct_gep(dest.ptr, 0, "").unwrap();
                 ctx.builder.build_store(ptr, a);
-                let ptr = ctx.builder.build_struct_gep(ty, dest.ptr, 1, "").unwrap();
+                let ptr = ctx.builder.build_struct_gep(dest.ptr, 1, "").unwrap();
                 ctx.builder.build_store(ptr, b);
             },
         }
