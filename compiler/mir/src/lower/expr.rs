@@ -390,6 +390,10 @@ impl Ctx<'_> {
     }
 
     fn lower_lambda_body(&mut self, expr: ExprId, env: &[PatId], params: &[PatId], body: ExprId) {
+        for &v in self.infer.ty.type_vars() {
+            self.builder.add_type_var(v.into());
+        }
+
         for c in self.infer.constraints.iter() {
             self.builder.add_constraint(c.clone());
         }

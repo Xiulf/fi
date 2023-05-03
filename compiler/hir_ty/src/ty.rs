@@ -214,6 +214,13 @@ impl<T> Generalized<T> {
             Self::Poly(vars.clone(), ty)
         }
     }
+
+    pub fn type_vars(&self) -> &[TypeVarId] {
+        match self {
+            | Self::Mono(_) => &[],
+            | Self::Poly(vars, _) => vars,
+        }
+    }
 }
 
 impl GeneralizedType {

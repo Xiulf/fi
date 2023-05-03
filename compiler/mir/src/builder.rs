@@ -1,4 +1,5 @@
 use arena::Arena;
+use hir::TypeVar;
 use hir_def::id::CtorId;
 use hir_ty::ty::Constraint;
 
@@ -13,6 +14,7 @@ mod copying;
 
 #[derive(Default)]
 pub struct Builder {
+    type_vars: Vec<TypeVar>,
     constraints: Vec<Constraint>,
     locals: Arena<LocalData>,
     blocks: BasicBlocks,
@@ -28,15 +30,27 @@ pub struct SwitchBuilder {
 impl Builder {
     pub fn build(mut self, db: &dyn Db, id: MirValueId, repr: Repr) -> Body {
         copying::run_copy_analyzer(&mut self, db);
-        Body::new(db, id, repr, self.constraints, self.locals, self.blocks)
+        Body::new(db, id, repr, self.type_vars, self.constraints, self.locals, self.blocks)
     }
 
     pub fn current_block(&self) -> Block {
         self.block.unwrap()
     }
 
+    pub fn type_vars(&self) -> &[TypeVar] {
+        &self.type_vars
+    }
+
     pub fn constraints(&self) -> &[Constraint] {
         &self.constraints
+    }
+
+    pub fn set_type_vars(&mut self, type_vars: Vec<TypeVar>) {
+        self.type_vars = type_vars;
+    }
+
+    pub fn add_type_var(&mut self, type_var: TypeVar) {
+        self.type_vars.push(type_var);
     }
 
     pub fn add_constraint(&mut self, constraint: Constraint) {

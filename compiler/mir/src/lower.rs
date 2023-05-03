@@ -152,6 +152,10 @@ impl<'db> Ctx<'db> {
     }
 
     pub fn lower(mut self, repr: Repr) -> Body {
+        for &v in self.infer.ty.type_vars() {
+            self.builder.add_type_var(v.into());
+        }
+
         for c in self.infer.constraints.iter() {
             self.builder.add_constraint(c.clone());
         }

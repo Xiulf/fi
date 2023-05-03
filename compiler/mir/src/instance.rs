@@ -56,6 +56,7 @@ impl InstanceId {
                 | MirValueId::CtorId(id) => hir::Ctor::from(id).type_ctor(db).type_vars(db),
                 | _ => todo!(),
             },
+            | Self::Body(body) => body.type_vars(db).clone(),
             | _ => Vec::new(),
         }
     }
@@ -137,7 +138,7 @@ impl Instance {
 
                 method.ty(db).ty()
             },
-            | InstanceId::Body(body) => return body.repr(db),
+            | InstanceId::Body(body) => return self.data(db).subst_repr(db, body.repr(db)),
         };
 
         self.data(db).subst_repr(db, repr_of(db, ty))

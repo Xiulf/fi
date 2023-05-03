@@ -1,4 +1,5 @@
 use arena::{Arena, Idx};
+use hir::TypeVar;
 use hir_def::id::CtorId;
 use hir_ty::ty::Constraint;
 
@@ -33,6 +34,8 @@ pub enum Linkage {
 pub struct Body {
     pub id: MirValueId,
     pub repr: Repr,
+    #[return_ref]
+    pub type_vars: Vec<TypeVar>,
     #[return_ref]
     pub constraints: Vec<Constraint>,
     #[return_ref]
