@@ -305,6 +305,14 @@ fn item_trait(p: &mut Parser, m: Marker) {
     type_name(p);
     type_vars(p);
 
+    if p.eat(PIPE) {
+        func_dep(p);
+
+        while !p.eof() && p.eat(COMMA) {
+            func_dep(p);
+        }
+    }
+
     if p.at(WHERE_KW) {
         where_clause(p);
     }
@@ -314,6 +322,22 @@ fn item_trait(p: &mut Parser, m: Marker) {
     }
 
     m.complete(p, ITEM_TRAIT);
+}
+
+fn func_dep(p: &mut Parser) {
+    let m = p.start();
+
+    while !p.eof() && p.at(IDENT) {
+        ident_ref(p);
+    }
+
+    p.expect(ARROW);
+
+    while !p.eof() && p.at(IDENT) {
+        ident_ref(p);
+    }
+
+    m.complete(p, FUNC_DEP);
 }
 
 fn item_impl(p: &mut Parser, m: Marker) {

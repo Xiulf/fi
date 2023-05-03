@@ -33,6 +33,7 @@ ast_node!(ImportItems, IMPORT_ITEMS);
 ast_node!(ImportItem, IMPORT_ITEM);
 ast_node!(ImportHiding, IMPORT_HIDING);
 
+ast_node!(FuncDep, FUNC_DEP);
 ast_node!(TypeVars, TYPE_VARS);
 
 ast_node!(Ctor, CTOR);

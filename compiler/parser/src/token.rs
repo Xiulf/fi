@@ -104,6 +104,7 @@ pub enum SyntaxKind {
     IMPORT_ITEM,
     IMPORT_HIDING,
 
+    FUNC_DEP,
     TYPE_VARS,
 
     CTOR,

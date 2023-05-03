@@ -222,7 +222,6 @@ impl InstanceData {
             },
             | id => id,
         };
-        tracing::warn!("{}", id.display(db));
 
         let subst = inst.subst(db).as_ref().map(|s| {
             let types = s.types.iter().map(|t| t.replace_vars(db, &self.types)).collect();
