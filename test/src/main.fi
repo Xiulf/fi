@@ -73,8 +73,8 @@ impl PrintfType () =
     printf' f args =
         match args with
         | x:xs ->
+            printf' f xs :: ()
             Stdout .fmt x
-            printf' f xs
         | _ -> Stdout .fmt f
 
 // impl PrintfType () =
