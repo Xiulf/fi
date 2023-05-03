@@ -29,28 +29,13 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
             | TypeRef::Missing => Ty::new(self.db, TyKind::Error),
             | TypeRef::Hole => self.ctx.fresh_type(self.level, false),
             | TypeRef::Path { def: None, .. } => Ty::new(self.db, TyKind::Error),
-            | TypeRef::Path { def: Some(def), .. } => match def {
-                | TypeDefId::TypeVarId(id) => Ty::new(self.db, TyKind::Var(id)),
-                | TypeDefId::TypeCtorId(id) => {
-                    if let Some(kind) = self.ctor_int_kind(id) {
-                        let int = self.int_type();
-                        let tag = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Integer(kind)));
-                        return Ty::new(self.db, TyKind::App(int, Box::new([tag])));
-                    }
+            | TypeRef::Path { def: Some(def), .. } => {
+                let (ty, ret) = self.lower_type_def_id(def);
+                if ret {
+                    return ty;
+                }
 
-                    if let Some(kind) = self.ctor_float_kind(id) {
-                        let float = self.float_type();
-                        let tag = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Float(kind)));
-                        return Ty::new(self.db, TyKind::App(float, Box::new([tag])));
-                    }
-
-                    Ty::new(self.db, TyKind::Ctor(id))
-                },
-                | TypeDefId::TypeAliasId(id) => match crate::alias_ty(self.db, id) {
-                    | GeneralizedType::Mono(ty) => ty,
-                    | GeneralizedType::Poly(_, ty) => ty, // @TODO: report error
-                },
-                | _ => todo!(),
+                ty
             },
             | TypeRef::App { base, ref args } => match type_map[base] {
                 | TypeRef::Path {
@@ -99,6 +84,40 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
                     }),
                 )
             },
+        }
+    }
+
+    fn lower_type_def_id(&mut self, def: TypeDefId) -> (Ty, bool) {
+        match def {
+            | TypeDefId::TypeVarId(id) => (Ty::new(self.db, TyKind::Var(id)), false),
+            | TypeDefId::TypeCtorId(id) => {
+                if let Some(kind) = self.ctor_int_kind(id) {
+                    let int = self.int_type();
+                    let tag = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Integer(kind)));
+                    return (Ty::new(self.db, TyKind::App(int, Box::new([tag]))), true);
+                }
+
+                if let Some(kind) = self.ctor_float_kind(id) {
+                    let float = self.float_type();
+                    let tag = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Float(kind)));
+                    return (Ty::new(self.db, TyKind::App(float, Box::new([tag]))), true);
+                }
+
+                (Ty::new(self.db, TyKind::Ctor(id)), false)
+            },
+            | TypeDefId::TypeAliasId(id) => match crate::alias_ty(self.db, id) {
+                | GeneralizedType::Mono(ty) => (ty, false),
+                | GeneralizedType::Poly(_, ty) => (ty, false), // @TODO: report error
+            },
+            | TypeDefId::FixityId(id) => {
+                let data = hir_def::data::fixity_data(self.db, id);
+
+                match data.def(self.db) {
+                    | Some(def) => self.lower_type_def_id(def.unwrap_right()),
+                    | None => (self.error(), false),
+                }
+            },
+            | _ => todo!(),
         }
     }
 

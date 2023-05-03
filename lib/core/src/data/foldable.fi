@@ -1,0 +1,4 @@
+module Data.Foldable =
+
+trait Foldable f a =
+    fold :: f, acc, (acc, a -> acc) -> acc

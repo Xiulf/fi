@@ -1,6 +1,8 @@
 module Main (main) =
 
 import Core
+import Data.List
+import Data.Foldable
 import Intrinsics
 
 
@@ -19,41 +21,6 @@ module C =
 
 malloc () :: Ptr a = size_of (Proxy :: Proxy a) |> C.malloc |> transmute
 free p = C.free <| transmute p
-
-
-@boxed
-type List t =
-    | Nil
-    | Cons t (List t)
-
-infixr 6 (:) = Cons
-
-len list =
-    match list with
-    | Nil -> 0
-    | Cons x xs -> 1 + (len xs)
-
-trait Iterable t a =
-    for_each :: t, (a -> ()) -> ()
-
-trait Foldable t a =
-    fold :: t, acc, (acc, a -> acc) -> acc
-
-impl Iterable (List a) a =
-    for_each list f =
-        match list with
-        | x:xs ->
-            f x
-            for_each xs f
-        | _ -> ()
-
-impl Foldable (List a) a =
-    fold list init f =
-        match list with
-        | x:xs ->
-            acc = f init x
-            fold xs acc f
-        | _ -> init
 
 
 @main
@@ -85,30 +52,6 @@ impl PrintfType () =
 impl PrintfType ({Pair Str (List Str)} Str -> r) where PrintfType r =
     printf' f args = fn x ->
         printf' f (x:args)
-
-// print f = Stdout .fmt f
-// println f =
-//     Stdout .fmt f
-//     Stdout .fmt '\n'
-
-// eprint f = Stderr .fmt f
-// eprintln f =
-//     Stderr .fmt f
-//     Stderr .fmt '\n'
-
-
-// printf (s :: Str) :: r where PrintfType r =
-//     printf' s ()
-
-// trait PrintfType t =
-//     printf' :: Str, Slice Str -> t
-
-// impl PrintfType () =
-//     printf' fmt args = ()
-
-// impl PrintfType ({Pair Str (Slice Str)} a -> r) where Format a, PrintfType r =
-//     printf' fmt args = fn x ->
-//         printf' fmt args
 
 
 trait Format f =

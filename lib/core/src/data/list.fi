@@ -1,0 +1,24 @@
+module Data.List =
+
+import Core
+import Data.Foldable
+
+@boxed
+type List t =
+    | Nil
+    | Cons t (List t)
+
+infixr 6 (:) = Cons
+
+len list =
+    match list with
+    | Nil -> 0
+    | Cons x xs -> 1 + (len xs)
+
+impl Foldable (List t) t =
+    fold list init f =
+        match list with
+        | x:xs ->
+            acc = f init x
+            fold xs acc f
+        | _ -> init
