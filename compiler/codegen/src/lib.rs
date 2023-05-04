@@ -7,6 +7,7 @@ pub mod abi;
 pub mod assembly;
 pub mod body;
 pub mod ctx;
+pub mod intrinsics;
 // pub mod dropping;
 pub mod layout;
 pub mod linker;

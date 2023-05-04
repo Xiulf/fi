@@ -121,10 +121,23 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         match terminator {
             | ir::Terminator::None => unreachable!(),
             | ir::Terminator::Unreachable => {
+                // let msg = self.alloc_string("unreachable code reached");
+                // self.build_puts(msg.as_pointer_value());
                 self.builder.build_unreachable();
             },
             | ir::Terminator::Abort => {
-                todo!();
+                let exit = match self.module.get_function("exit") {
+                    | Some(func) => func,
+                    | None => {
+                        let i32t = self.context.i32_type().into();
+                        let ty = self.context.void_type().fn_type(&[i32t], false);
+                        self.module.add_function("exit", ty, None)
+                    },
+                };
+
+                let one = self.context.i32_type().const_int(1, true);
+                self.builder.build_call(exit, &[one.into()], "");
+                self.builder.build_unreachable();
             },
             | ir::Terminator::Return(op) => self.codegen_return(op),
             | ir::Terminator::Jump(target) => {
@@ -241,8 +254,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | ir::Statement::Drop(place) => self.codegen_drop(place),
             | ir::Statement::Assign(place, rvalue) => self.codegen_assign(place, rvalue),
             | ir::Statement::Call { place, func, args } => self.codegen_call(place, func, args),
+            | ir::Statement::Intrinsic { place, name, args } => self.codegen_intrinsic(place, name, args),
             | ir::Statement::SetDiscriminant(place, ctor) => self.codegen_set_discriminant(place, *ctor),
-            | _ => todo!("{stmt:?}"),
         }
     }
 
@@ -788,6 +801,18 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         OperandRef::new_pair(layout, ptr.as_basic_value_enum(), len)
     }
 
+    pub fn alloc_string(&mut self, string: &str) -> values::GlobalValue<'ctx> {
+        if let Some(value) = self.strings.get(string) {
+            value.clone()
+        } else {
+            let name = format!("string.{}", self.strings.len());
+            let value = self.builder.build_global_string_ptr(string, &name);
+
+            self.strings.insert(String::from(string), value);
+            value
+        }
+    }
+
     pub fn codegen_instance(&mut self, inst: Instance) -> values::BasicValueEnum<'ctx> {
         let inst = self.instance.subst_instance(self.db, inst);
 
@@ -814,6 +839,18 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 // https://llvm.org/docs/LangRef.html#variable-argument-handling-intrinsics
 #[allow(dead_code)]
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {
+    pub fn build_puts(&mut self, msg: values::PointerValue<'ctx>) {
+        let puts = if let Some(func) = self.module.get_function("puts") {
+            func
+        } else {
+            let ptr = self.context.i8_type().ptr_type(Default::default());
+            let ty = self.context.i32_type().fn_type(&[ptr.into()], false);
+            self.module.add_function("puts", ty, None)
+        };
+
+        self.builder.build_call(puts, &[msg.into()], "");
+    }
+
     fn va_list(&self) -> types::StructType<'ctx> {
         if let Some(ty) = self.context.get_struct_type("va_list") {
             return ty;

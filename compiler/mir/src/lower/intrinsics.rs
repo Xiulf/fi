@@ -52,7 +52,12 @@ impl Ctx<'_> {
                 Operand::Const(Const::Unit, Repr::unit(self.db))
             },
             | "panic" => {
-                self.builder.unreachable();
+                let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();
+                let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let ret = self.store_in(store_in, ret_repr);
+
+                self.builder.intrinsic(ret, "panic".to_string(), args);
+                self.builder.abort();
                 Operand::Const(Const::Undefined, Repr::uninhabited(self.db))
             },
             | s => {

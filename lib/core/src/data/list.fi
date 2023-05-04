@@ -19,7 +19,7 @@ len list =
 impl Index (List t) (Int i) t =
     index list idx =
         match list, idx with
-        | Nil, _ -> panic ""
+        | Nil, _ -> panic "index out of bounds"
         | x:xs, 0 -> x
         | _:xs, _ -> index xs (idx - 1)
 
