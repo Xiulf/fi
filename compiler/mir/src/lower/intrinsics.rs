@@ -51,6 +51,10 @@ impl Ctx<'_> {
                 self.builder.assign(place.deref(), op);
                 Operand::Const(Const::Unit, Repr::unit(self.db))
             },
+            | "panic" => {
+                self.builder.unreachable();
+                Operand::Const(Const::Undefined, Repr::uninhabited(self.db))
+            },
             | s => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);

@@ -42,6 +42,9 @@ foreign type Slice :: Type -> Type
 foreign type Array :: TypeInt -> Type -> Type
 infixr type 1 (*) = Array
 
+@lang = "never-type"
+foreign type Never :: Type
+
 @lang = "unit-type"
 type Unit = | Unit
 

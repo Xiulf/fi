@@ -1,5 +1,6 @@
 module Core (module C) =
 
 import Prim as C
-import Core.Ops ((+), (-), (*), (/), (%)) as C
+import Prim.Intrinsics (panic) as C
+import Core.Ops ((+), (-), (*), (/), (%), (#)) as C
 import Data.Option (Option, Some, None) as C

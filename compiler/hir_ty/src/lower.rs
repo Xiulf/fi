@@ -1,4 +1,5 @@
 use hir_def::id::TypeDefId;
+use hir_def::lang_item;
 use hir_def::type_ref::{TypeMap, TypeRef, TypeRefId};
 use triomphe::Arc;
 
@@ -91,6 +92,10 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
         match def {
             | TypeDefId::TypeVarId(id) => (Ty::new(self.db, TyKind::Var(id)), false),
             | TypeDefId::TypeCtorId(id) => {
+                if self.lang_ctor(lang_item::NEVER_TYPE) == Some(id) {
+                    return (Ty::new(self.db, TyKind::Never), false);
+                }
+
                 if let Some(kind) = self.ctor_int_kind(id) {
                     let int = self.int_type();
                     let tag = Ty::new(self.db, TyKind::Primitive(PrimitiveType::Integer(kind)));

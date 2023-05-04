@@ -506,7 +506,10 @@ impl Ctx<'_> {
         let pred = self.lower_expr(value, &mut None);
         let pred = self.place_op(pred);
         let blocks = branches.iter().map(|_| self.builder.create_block()).collect::<Vec<_>>();
-        self.lower_decision_tree(pred, &blocks, tree);
+        if let DecisionTree::Switch(pat, _) = tree {
+            self.bind_pat(*pat, pred);
+        }
+        self.lower_decision_tree(&blocks, tree);
         let exit_block = self.builder.create_block();
 
         for (&(_, branch), block) in branches.iter().zip(blocks) {
@@ -522,7 +525,7 @@ impl Ctx<'_> {
         Place::new(ret).into()
     }
 
-    fn lower_decision_tree(&mut self, pred: Place, blocks: &[Block], tree: &DecisionTree) {
+    fn lower_decision_tree(&mut self, blocks: &[Block], tree: &DecisionTree) {
         match tree {
             | DecisionTree::Fail => {
                 self.builder.abort();
@@ -531,10 +534,11 @@ impl Ctx<'_> {
                 self.builder.jump(blocks[*i]);
             },
             | DecisionTree::Guard(_, _) => todo!(),
-            | DecisionTree::Switch(_pat, cases) => {
+            | DecisionTree::Switch(pat, cases) => {
                 let mut default_branch = None;
                 let mut switch = self.builder.switch();
                 let block = self.builder.current_block();
+                let pred = self.locals[*pat].clone();
                 let mut discr = pred.clone();
 
                 if !cases.is_empty() && let Some(VariantTag::Ctor(id)) = cases[0].tag {
@@ -549,6 +553,20 @@ impl Ctx<'_> {
                         };
                     }
 
+                    if type_ctor.ctors(self.db).len() == 1 {
+                        for (i, pats) in cases[0].fields.iter().enumerate() {
+                            let field = discr.clone().field(i);
+                            for &pat in pats {
+                                self.bind_pat(pat, field.clone());
+                            }
+                        }
+
+                        let branch = self.lower_case_branch(blocks, &cases[0].branch);
+                        self.builder.switch_block(block);
+                        self.builder.jump(branch);
+                        return;
+                    }
+
                     let discr_repr = Repr::new(self.db, ReprKind::Discr(discr_repr));
                     let discr_local = self.builder.add_local(LocalKind::Tmp, discr_repr);
 
@@ -556,7 +574,7 @@ impl Ctx<'_> {
                     discr = Place::new(discr_local);
                 }
 
-                for case in cases {
+                for (i, case) in cases.iter().enumerate() {
                     let Some(tag) = &case.tag else {
                         assert!(case.fields.len() <= 1);
                         for pats in case.fields.iter() {
@@ -589,8 +607,9 @@ impl Ctx<'_> {
                             };
 
                             for (i, pats) in case.fields.iter().enumerate() {
+                                let field = downcast.clone().field(i);
                                 for &pat in pats {
-                                    self.bind_pat(pat, downcast.clone().field(i));
+                                    self.bind_pat(pat, field.clone());
                                 }
                             }
 
@@ -600,7 +619,11 @@ impl Ctx<'_> {
 
                     let branch = self.lower_case_branch(blocks, &case.branch);
 
-                    switch.branch(value, branch);
+                    if i == cases.len() - 1 {
+                        default_branch = Some(branch);
+                    } else {
+                        switch.branch(value, branch);
+                    }
                 }
 
                 let default_branch = default_branch.unwrap_or_else(|| {
@@ -623,6 +646,7 @@ impl Ctx<'_> {
             | _ => {
                 let block = self.builder.create_block();
                 self.builder.switch_block(block);
+                self.lower_decision_tree(blocks, tree);
                 block
             },
         }

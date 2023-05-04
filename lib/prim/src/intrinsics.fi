@@ -27,3 +27,5 @@ import Prim
 @intrinsic foreign addr_of :: a -> Ptr a
 @intrinsic foreign ptr_read :: Ptr a -> a
 @intrinsic foreign ptr_write :: Ptr a, a -> ()
+
+@intrinsic foreign panic :: Str -> Never

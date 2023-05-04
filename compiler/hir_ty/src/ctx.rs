@@ -200,7 +200,7 @@ impl<'db> Ctx<'db> {
         lang_item::query(self.db, lib, name)
     }
 
-    fn lang_ctor(&self, name: &'static str) -> Option<TypeCtorId> {
+    pub fn lang_ctor(&self, name: &'static str) -> Option<TypeCtorId> {
         self.lang_item(name).and_then(LangItem::as_type_ctor)
     }
 

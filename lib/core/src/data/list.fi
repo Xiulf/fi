@@ -1,6 +1,7 @@
 module Data.List =
 
 import Core
+import Core.Ops (Index, index)
 import Data.Foldable
 
 @boxed
@@ -14,6 +15,13 @@ len list =
     match list with
     | Nil -> 0
     | Cons x xs -> 1 + (len xs)
+
+impl Index (List t) (Int i) t =
+    index list idx =
+        match list, idx with
+        | Nil, _ -> panic ""
+        | x:xs, 0 -> x
+        | _:xs, _ -> index xs (idx - 1)
 
 impl Foldable (List t) t =
     fold list init f =

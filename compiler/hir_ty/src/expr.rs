@@ -74,7 +74,7 @@ impl BodyCtx<'_, '_> {
                 for &(pat, branch) in branches.iter() {
                     self.infer_pat(pat, Expectation::HasType(pred));
                     let ty = self.infer_expr_inner(branch, expected);
-                    self.unify_types(ty, res, branch.into());
+                    self.coerce(ty, res, branch.into());
                 }
 
                 res
@@ -154,9 +154,9 @@ impl BodyCtx<'_, '_> {
     }
 
     fn infer_app(&mut self, id: ExprId, base: ExprId, args: &[ExprId]) -> Ty {
-        let func = self.infer_expr_inner(base, Expectation::None);
+        let func_ty = self.infer_expr_inner(base, Expectation::None);
 
-        if let TyKind::Func(func) = func.kind(self.db) {
+        if let TyKind::Func(func) = func_ty.kind(self.db) {
             for (&arg, &ty) in args.iter().zip(func.params.iter()) {
                 self.infer_expr(arg, Expectation::HasType(ty));
             }
@@ -212,7 +212,7 @@ impl BodyCtx<'_, '_> {
             }),
         );
 
-        self.unify_types(func, new_func, base.into());
+        self.unify_types(func_ty, new_func, base.into());
         ret
     }
 

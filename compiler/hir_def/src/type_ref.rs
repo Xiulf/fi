@@ -121,7 +121,14 @@ pub fn query(db: &dyn Db, item: ITypedItemId) -> (Arc<TypeMap>, Arc<TypeSourceMa
         | TypedItemId::ImplId(_) => type_map_for_impl(&mut ctx, src.value),
     }
 
-    (Arc::new(ctx.map), Arc::new(ctx.src), ctx.vars.into_values().collect())
+    let type_vars = ctx
+        .map
+        .type_vars
+        .iter()
+        .map(|x| TypeVarId::new(ctx.db, item, Either::Left(x.0)))
+        .collect();
+
+    (Arc::new(ctx.map), Arc::new(ctx.src), type_vars)
 }
 
 fn recurse(ctx: &mut Ctx, node: &syntax::SyntaxNode) {

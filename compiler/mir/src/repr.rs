@@ -73,6 +73,10 @@ impl Repr {
         Self::new(db, ReprKind::Struct(Box::new([])))
     }
 
+    pub fn uninhabited(db: &dyn Db) -> Self {
+        Self::new(db, ReprKind::Uninhabited)
+    }
+
     pub fn usize(db: &dyn Db) -> Self {
         Self::new(
             db,
@@ -161,6 +165,7 @@ fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
 
     let repr = match ty.kind(db) {
         | TyKind::Error => unreachable!(),
+        | TyKind::Never => Repr::new(db, ReprKind::Uninhabited),
         | TyKind::Var(var) => Repr::new(db, ReprKind::TypeVar(*var)),
         | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], |db, ty| _repr_of_rec(db, ty, seen)),
         | TyKind::Primitive(prim) => match prim {

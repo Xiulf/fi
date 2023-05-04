@@ -12,6 +12,7 @@ pub const TYPE_KIND: &'static str = "type-kind";
 pub const INT_TAG_KIND: &'static str = "int-tag-kind";
 pub const FLOAT_TAG_KIND: &'static str = "float-tag-kind";
 
+pub const NEVER_TYPE: &'static str = "never-type";
 pub const UNIT_TYPE: &'static str = "unit-type";
 pub const BOOL_TYPE: &'static str = "bool-type";
 pub const PAIR_TYPE: &'static str = "pair-type";

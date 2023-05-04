@@ -58,7 +58,6 @@ impl Ctx<'_> {
 
     pub fn coerce(&mut self, ty: Ty, expected: Ty, origin: TyOrigin) {
         let ty = self.resolve_type_shallow(ty);
-        let expected = self.resolve_type_shallow(expected);
 
         if let TyKind::Never = ty.kind(self.db) {
             return;
