@@ -334,7 +334,7 @@ impl<'input> Lexer<'input> {
             | ('/', '/') => self.token(WHITESPACE),
             | _ if new_indent > self.current_indent => self.indent(new_indent),
             | _ if new_indent < self.current_indent => self.dedent(new_indent),
-            | _ if self.newlines_ignored() => self.next(),
+            | _ if self.newlines_ignored() => self.token(WHITESPACE),
             | _ => self.token(LYT_SEP),
         }
     }

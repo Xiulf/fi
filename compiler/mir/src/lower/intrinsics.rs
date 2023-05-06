@@ -59,11 +59,19 @@ impl Ctx<'_> {
                 self.builder.assign(place.deref(), op);
                 Operand::Const(Const::Unit, Repr::unit(self.db))
             },
+            | "ptr_offset" => self.lower_intrinsic_binop(expr, BinOp::Offset, args, store_in),
             | "array_index" => {
                 let arr = self.lower_arg(args.next().unwrap());
                 let arr = self.place_op(arr);
                 let idx = self.lower_arg(args.next().unwrap());
                 arr.index(idx).into()
+            },
+            | "array_slice" => {
+                let arr = self.lower_arg(args.next().unwrap());
+                let arr = self.place_op(arr);
+                let lo = self.lower_arg(args.next().unwrap());
+                let hi = self.lower_arg(args.next().unwrap());
+                arr.slice(lo, hi).into()
             },
             | "panic" => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();

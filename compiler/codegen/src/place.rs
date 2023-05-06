@@ -45,7 +45,6 @@ impl<'ctx> PlaceRef<'ctx> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn cast(&self, ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         if self.layout == layout {
             return self.clone();
@@ -126,7 +125,9 @@ impl<'ctx> PlaceRef<'ctx> {
         let mut slice = self.index(ctx, lo);
         let lo = lo.into_int_value();
         let hi = hi.into_int_value();
+        let usz = ctx.usize_type();
         let len = ctx.builder.build_int_sub(hi, lo, "");
+        let len = ctx.builder.build_int_cast(len, usz, "");
 
         slice.layout = layout;
         slice.extra = Some(len.as_basic_value_enum());

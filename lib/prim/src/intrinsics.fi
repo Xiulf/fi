@@ -37,5 +37,6 @@ import Prim
 @intrinsic foreign ptr_store_volatile :: Ptr a, a -> ()
 
 @intrinsic foreign array_index :: Array len t, Int i -> t
+@intrinsic foreign array_slice :: Array len t, Int i, Int i -> Slice t
 
 @intrinsic foreign panic :: Str -> Never

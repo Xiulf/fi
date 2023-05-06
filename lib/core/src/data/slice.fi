@@ -8,4 +8,4 @@ impl Index (Slice t) (Int i) t =
     index slice idx =
         ptr, len = transmute slice :: Ptr t, Uptr
         ptr = ptr_offset ptr idx
-        transmute ptr
+        cast ptr

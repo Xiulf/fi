@@ -1,0 +1,27 @@
+module Casting =
+
+import Core
+
+trait Cast a b =
+    cast :: a -> b
+
+impl Cast a a =
+    cast x = x
+
+impl Cast (Int a) (Int b) =
+    cast x = Intrinsics.iconvert x
+
+impl Cast (Int a) (Float b) =
+    cast x = Intrinsics.ifconvert x
+
+impl Cast (Float a) (Int b) =
+    cast x = Intrinsics.ficonvert x
+
+impl Cast (Float a) (Float b) =
+    cast x = Intrinsics.fconvert x
+
+impl Cast (ref a) (Ptr a) =
+    cast x = Intrinsics.transmute x
+
+impl Cast (Ptr a) (ref a) =
+    cast x = Intrinsics.transmute x

@@ -28,6 +28,14 @@ impl BodyCtx<'_, '_> {
         let body = self.body.clone();
         let ty = match &body[id] {
             | Pat::Missing => self.error(),
+            | Pat::Typed { pat, ty } => {
+                let (type_map, _, _) = self.owner.type_map(self.db);
+                let mut lcx = LowerCtx::new(self, type_map);
+                let ty = lcx.lower_type_ref(*ty, false);
+
+                self.infer_pat(*pat, Expectation::HasType(ty));
+                ty
+            },
             | Pat::Wildcard => self.ctx.fresh_type(self.level, false),
             | Pat::Bind { subpat: None, .. } => self.ctx.fresh_type(self.level, false),
             | Pat::Bind {
@@ -84,13 +92,6 @@ impl BodyCtx<'_, '_> {
                     Ty::new(self.db, TyKind::App(float, Box::new([var])))
                 },
                 | l => todo!("{l:?}"),
-            },
-            | Pat::Typed { pat, ty } => {
-                let (type_map, _, _) = self.owner.type_map(self.db);
-                let mut lcx = LowerCtx::new(self, type_map);
-                let ty = lcx.lower_type_ref(*ty, false);
-
-                self.infer_pat(*pat, Expectation::HasType(ty))
             },
         };
 

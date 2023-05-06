@@ -2,8 +2,10 @@ module Data.Array =
 
 import Core
 import Core.Ops (Index, index)
-import Intrinsics (transmute, addr_of, array_index)
+import Intrinsics (addr_of, array_index)
 
 impl Index (Array len t) (Int i) t =
     index arr idx =
-        (addr_of <| array_index arr idx) |> transmute
+        array_index arr idx
+            |> addr_of
+            |> cast
