@@ -5,9 +5,14 @@ module Prim =
 @lang = "int-kind"       foreign type TypeInt  :: Kind
 @lang = "int-tag-kind"   foreign type IntTag   :: Kind
 @lang = "float-tag-kind" foreign type FloatTag :: Kind
+@lang = "lifetime-kind"  foreign type Lifetime :: Kind
 
 @lang = "int-type"   foreign type Int   :: IntTag -> Type
 @lang = "float-type" foreign type Float :: FloatTag -> Type
+
+@lang = "ref-type"
+@repr(ptr(elem = 1))
+foreign type Ref :: Lifetime, Type -> Type
 
 @lang = "char-type" 
 @repr(scalar = "u32")
@@ -36,9 +41,12 @@ foreign type Str :: Type
 @repr(ptr(elem = 0))
 foreign type Ptr :: Type -> Type
 
+@lang = "slice-type"
 @repr(fatptr(elem = 0), valid_range_start = 1)
 foreign type Slice :: Type -> Type
 
+@lang = "array-type"
+@repr(array(len = 0, elem = 1))
 foreign type Array :: TypeInt -> Type -> Type
 infixr type 1 (*) = Array
 

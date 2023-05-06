@@ -1,0 +1,11 @@
+module Data.Slice =
+
+import Core
+import Core.Ops (Index, index)
+import Intrinsics (transmute, ptr_load, ptr_offset)
+
+impl Index (Slice t) (Int i) t =
+    index slice idx =
+        ptr, len = transmute slice :: Ptr t, Uptr
+        ptr = ptr_offset ptr idx
+        transmute ptr

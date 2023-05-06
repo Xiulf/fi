@@ -24,8 +24,18 @@ import Prim
 @intrinsic foreign align_of :: Proxy a -> Int b
 @intrinsic foreign stride_of :: Proxy a -> Int b
 
+@intrinsic foreign undefined :: t
+@intrinsic foreign zeroed :: t
+
+@intrinsic foreign deref :: ref a -> a
+
 @intrinsic foreign addr_of :: a -> Ptr a
-@intrinsic foreign ptr_read :: Ptr a -> a
-@intrinsic foreign ptr_write :: Ptr a, a -> ()
+@intrinsic foreign ptr_load :: Ptr a -> a
+@intrinsic foreign ptr_store :: Ptr a, a -> ()
+@intrinsic foreign ptr_offset :: Ptr a, Int b -> Ptr a
+@intrinsic foreign ptr_load_volatile :: Ptr a -> a
+@intrinsic foreign ptr_store_volatile :: Ptr a, a -> ()
+
+@intrinsic foreign array_index :: Array len t, Int i -> t
 
 @intrinsic foreign panic :: Str -> Never

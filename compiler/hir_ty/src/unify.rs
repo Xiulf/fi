@@ -39,7 +39,7 @@ impl UnifyResult {
 }
 
 impl Ctx<'_> {
-    fn fresh_unknown(&mut self) -> Unknown {
+    pub fn fresh_unknown(&mut self) -> Unknown {
         let u = Unknown(self.subst.next_unknown);
         self.subst.next_unknown += 1;
         u
@@ -54,6 +54,13 @@ impl Ctx<'_> {
     pub fn fresh_type(&mut self, level: UnkLevel, skolem: bool) -> Ty {
         let kind = self.type_kind();
         self.fresh_type_with_kind(level, kind, skolem)
+    }
+
+    pub fn fresh_lifetime(&mut self, level: UnkLevel) -> Unknown {
+        let u = self.fresh_unknown();
+        let kind = self.lifetime_kind();
+        self.subst.unsolved.insert(u, (level, kind));
+        u
     }
 
     pub fn coerce(&mut self, ty: Ty, expected: Ty, origin: TyOrigin) {
@@ -142,6 +149,7 @@ impl Ctx<'_> {
         match (t1.kind(self.db), t2.kind(self.db)) {
             | (TyKind::Error, _) | (_, TyKind::Error) => UnifyResult::Ok,
             | (TyKind::Unknown(u1, _), TyKind::Unknown(u2, _)) if u1 == u2 => UnifyResult::Ok,
+            | (TyKind::Literal(l1), TyKind::Literal(l2)) if l1 == l2 => UnifyResult::Ok,
             | (TyKind::Primitive(p1), TyKind::Primitive(p2)) if p1 == p2 => UnifyResult::Ok,
             | (TyKind::Var(v1), TyKind::Var(v2)) if v1 == v2 => UnifyResult::Ok,
             | (TyKind::Ctor(c1), TyKind::Ctor(c2)) if c1 == c2 => UnifyResult::Ok,
@@ -149,6 +157,13 @@ impl Ctx<'_> {
             // | (TyKind::Var(_), TyKind::Unknown(_, true)) => UnifyResult::Ok,
             | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2, bindings),
             | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1, bindings),
+            | (TyKind::Ref(u1, t1), TyKind::Ref(u2, t2)) if u1 == u2 => self.unify_into(*t1, *t2, bindings),
+            | (TyKind::Ref(u1, t1), TyKind::Ref(u2, t2)) => {
+                let ut1 = Ty::new(self.db, TyKind::Unknown(*u1, false));
+                let ut2 = Ty::new(self.db, TyKind::Unknown(*u2, false));
+                self.unify_unknown(*u1, ut1, ut2, bindings)
+                    .and(self.unify_into(*t1, *t2, bindings))
+            },
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
                 .unify_into(*a_base, *b_base, bindings)
                 .and(self.unify_all(a_args.iter(), b_args.iter(), bindings)),
@@ -175,14 +190,13 @@ impl Ctx<'_> {
         mut b: impl Iterator<Item = &'b Ty>,
         bindings: &mut UnifyBindings,
     ) -> UnifyResult {
+        let mut res = UnifyResult::Ok;
+
         while let (Some(&a), Some(&b)) = (a.next(), b.next()) {
-            let res = self.unify_into(a, b, bindings);
-            if res != UnifyResult::Ok {
-                return res;
-            }
+            res = res.and(self.unify_into(a, b, bindings));
         }
 
-        UnifyResult::Ok
+        res
     }
 
     fn unify_unknown(&self, u: Unknown, t1: Ty, t2: Ty, bindings: &mut UnifyBindings) -> UnifyResult {

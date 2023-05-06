@@ -32,8 +32,9 @@ impl Ctx<'_> {
             | Expr::Path { def: None, .. } => unreachable!(),
             | Expr::Typed { expr, ty: _ } => self.lower_expr(expr, store_in),
             | Expr::Unit => (Const::Unit, Repr::unit(self.db)).into(),
-            | Expr::Lit { ref lit } => self.lower_lit(id, lit),
             | Expr::Path { def: Some(def), .. } => self.lower_path(id, def, store_in),
+            | Expr::Lit { ref lit } => self.lower_lit(id, lit),
+            | Expr::Array { ref exprs } => self.lower_array(id, exprs, store_in),
             | Expr::App { base, ref args } => self.lower_app(id, base, args, store_in),
             | Expr::Block { ref stmts, expr } => self.lower_block(stmts, expr, store_in),
             | Expr::Lambda {
@@ -71,6 +72,20 @@ impl Ctx<'_> {
         }
     }
 
+    fn lower_array(&mut self, id: ExprId, exprs: &[ExprId], store_in: &mut Option<Place>) -> Operand {
+        let repr = repr_of(self.db, self.infer.type_of_expr[id]);
+        let place = self.store_in(store_in, repr);
+        let usize = Repr::usize(self.db);
+
+        for (i, &expr) in exprs.iter().enumerate() {
+            let index = Operand::Const(Const::Int(i as i128), usize);
+            let place = place.clone().index(index);
+            self.lower_expr(expr, &mut Some(place));
+        }
+
+        place.into()
+    }
+
     fn lower_block(&mut self, stmts: &[Stmt], expr: Option<ExprId>, store_in: &mut Option<Place>) -> Operand {
         for &stmt in stmts {
             self.lower_stmt(stmt);
@@ -85,10 +100,9 @@ impl Ctx<'_> {
     fn lower_stmt(&mut self, stmt: Stmt) {
         match stmt {
             | Stmt::Let(pat, expr) => {
-                let repr = repr_of(self.db, self.infer.type_of_pat[pat]);
-                let local = self.builder.add_local(LocalKind::Var, repr);
-                self.lower_expr(expr, &mut Some(Place::new(local)));
-                self.bind_pat(pat, Place::new(local));
+                let op = self.lower_expr(expr, &mut None);
+                let place = self.place_op(op);
+                self.bind_pat(pat, place);
             },
             | Stmt::Expr(expr) => {
                 self.lower_expr_inner(expr, &mut None);
@@ -126,7 +140,7 @@ impl Ctx<'_> {
         self.locals.insert(pat, place);
     }
 
-    fn lower_path(&mut self, expr: ExprId, def: ValueDefId, _store_in: &mut Option<Place>) -> Operand {
+    fn lower_path(&mut self, expr: ExprId, def: ValueDefId, store_in: &mut Option<Place>) -> Operand {
         let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
         let (mir_id, ty_inst) = match def {
             | ValueDefId::PatId(id) => return self.locals[id].clone().into(),
@@ -156,6 +170,9 @@ impl Ctx<'_> {
                     },
                     | _ => match id.container(self.db) {
                         | ContainerId::TraitId(_) => panic!("cannot create instance of a trait method"),
+                        | _ if hir::Value::from(id).is_intrinsic(self.db) => {
+                            return self.lower_intrinsic(expr, Value::from(id).name(self.db), Vec::new(), store_in);
+                        },
                         | _ => (
                             MirValueId::ValueId(id).into(),
                             self.infer.instances.get(expr).cloned().unwrap_or_default(),
@@ -259,7 +276,14 @@ impl Ctx<'_> {
                 }
 
                 let func = self.lower_path(base_expr, def, store_in);
-                self.make_app(expr, base_expr, func, args, store_in)
+                let ret = self.make_app(expr, base_expr, func, args, store_in);
+
+                if Value::from(id).attrs(self.db).by_key("deref").exists() {
+                    let place = self.place_op(ret);
+                    place.deref().into()
+                } else {
+                    ret
+                }
             },
             | ValueDefId::CtorId(id) => {
                 let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);

@@ -754,7 +754,14 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         let layout = repr_and_layout(self.db, repr);
         let ty = self.basic_type_for_ral(&layout);
         let value = match *const_ {
-            | ir::Const::Undefined => unreachable!(),
+            | ir::Const::Undefined => match ty {
+                | types::BasicTypeEnum::IntType(t) => t.get_undef().as_basic_value_enum(),
+                | types::BasicTypeEnum::FloatType(t) => t.get_undef().as_basic_value_enum(),
+                | types::BasicTypeEnum::PointerType(t) => t.get_undef().as_basic_value_enum(),
+                | types::BasicTypeEnum::VectorType(t) => t.get_undef().as_basic_value_enum(),
+                | types::BasicTypeEnum::ArrayType(t) => t.get_undef().as_basic_value_enum(),
+                | types::BasicTypeEnum::StructType(t) => t.get_undef().as_basic_value_enum(),
+            },
             | ir::Const::Zeroed => ty.const_zero(),
             | ir::Const::Unit => return OperandRef::new_zst(self.cx, layout),
             | ir::Const::Int(i) => ty

@@ -27,4 +27,5 @@ trait Rem t =
     rem :: t, t -> t
 
 trait Index t i o | t i -> o =
-    index :: t, i -> o
+    @deref
+    index :: t, i -> ref o

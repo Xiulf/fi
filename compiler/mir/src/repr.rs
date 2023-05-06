@@ -2,6 +2,7 @@ use std::ops::RangeInclusive;
 
 use hir_def::attrs::{self, AttrInput, AttrInputGroup};
 use hir_def::display::HirDisplay;
+use hir_def::expr::Literal;
 use hir_def::id::{CtorId, TypeCtorId, TypeVarId};
 use hir_def::{item_tree, lang_item};
 use hir_ty::ty::{FloatKind, IntegerKind, PrimitiveType, Ty, TyKind};
@@ -171,6 +172,10 @@ fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
         | TyKind::Primitive(prim) => match prim {
             | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
             | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
+        },
+        | TyKind::Ref(_, to) => {
+            let to = _repr_of_rec(db, *to, seen);
+            Repr::new(db, ReprKind::Ptr(to, false, true))
         },
         | TyKind::App(mut base, args) => {
             let mut args = args.to_vec();
@@ -395,7 +400,7 @@ fn repr_from_attrs(
 
             let len = if let Some(idx) = len.int() {
                 match args[idx as usize].kind(db) {
-                    // | TyKind::Figure(l) => ArrayLen::Const(l as usize),
+                    | TyKind::Literal(Literal::Int(l)) => ArrayLen::Const(*l as usize),
                     | TyKind::Var(v) => ArrayLen::TypeVar(*v),
                     | _ => unreachable!(),
                 }

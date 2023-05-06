@@ -149,13 +149,8 @@ impl<'db> Ctx<'db> {
             | ast::Expr::Parens(e) => self.lower_expr_opt(e.expr()),
             | ast::Expr::Typed(e) => {
                 let expr = self.lower_expr_opt(e.expr());
-                let ty = e.ty().and_then(|t| self.typ_map.typ_for_src(AstPtr::new(&t)));
-
-                if let Some(ty) = ty {
-                    self.alloc_expr(Expr::Typed { expr, ty }, syntax_ptr)
-                } else {
-                    expr
-                }
+                let ty = e.ty().and_then(|t| self.typ_map.typ_for_src(AstPtr::new(&t)))?;
+                self.alloc_expr(Expr::Typed { expr, ty }, syntax_ptr)
             },
             | ast::Expr::Unit(_) => {
                 let lib = self.value.container(self.db).module(self.db).lib(self.db);
@@ -201,6 +196,11 @@ impl<'db> Ctx<'db> {
                 };
 
                 self.alloc_expr(Expr::Path { path, def }, syntax_ptr)
+            },
+            | ast::Expr::Array(e) => {
+                let exprs = e.exprs().map(|e| self.lower_expr(e)).collect();
+
+                self.alloc_expr(Expr::Array { exprs }, syntax_ptr)
             },
             | ast::Expr::Lambda(e) => {
                 let (params, env, body) = self.lower_lambda(e);

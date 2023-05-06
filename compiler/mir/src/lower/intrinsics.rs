@@ -31,6 +31,14 @@ impl Ctx<'_> {
             | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
             | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
             | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
+            | "undefined" => {
+                let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                Operand::Const(Const::Undefined, repr)
+            },
+            | "zeroed" => {
+                let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                Operand::Const(Const::Zeroed, repr)
+            },
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap());
                 let place = self.place_op(place);
@@ -39,7 +47,7 @@ impl Ctx<'_> {
                 self.builder.addrof(Place::new(res), place);
                 Place::new(res).into()
             },
-            | "ptr_read" => {
+            | "ptr_read" | "deref" => {
                 let arg = self.lower_arg(args.next().unwrap());
                 self.place_op(arg).deref().into()
             },
@@ -50,6 +58,12 @@ impl Ctx<'_> {
 
                 self.builder.assign(place.deref(), op);
                 Operand::Const(Const::Unit, Repr::unit(self.db))
+            },
+            | "array_index" => {
+                let arr = self.lower_arg(args.next().unwrap());
+                let arr = self.place_op(arr);
+                let idx = self.lower_arg(args.next().unwrap());
+                arr.index(idx).into()
             },
             | "panic" => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();

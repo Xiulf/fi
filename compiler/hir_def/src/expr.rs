@@ -20,6 +20,9 @@ pub enum Expr {
     Lit {
         lit: Literal,
     },
+    Array {
+        exprs: Box<[ExprId]>,
+    },
     Lambda {
         env: Box<[PatId]>,
         params: Box<[PatId]>,

@@ -1,7 +1,8 @@
 use hir::id::TypeVarId;
 use hir_def::display::HirDisplay;
+use hir_def::expr::Literal;
 use hir_def::id::ImplId;
-use hir_ty::ty::Ty;
+use hir_ty::ty::{Ty, TyKind};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ir::{Body, MirValueId};
@@ -276,10 +277,14 @@ impl InstanceData {
         Repr::new(db, kind)
     }
 
-    pub fn subst_array_len(&self, _db: &dyn Db, len: &ArrayLen) -> ArrayLen {
+    pub fn subst_array_len(&self, db: &dyn Db, len: &ArrayLen) -> ArrayLen {
         match len {
             | ArrayLen::TypeVar(tv) => match self.find_var(tv) {
-                | Some(_ty) => todo!(),
+                | Some(ty) => match ty.kind(db) {
+                    | TyKind::Var(v) => ArrayLen::TypeVar(*v),
+                    | TyKind::Literal(Literal::Int(i)) => ArrayLen::Const(*i as usize),
+                    | _ => unreachable!(),
+                },
                 | None => len.clone(),
             },
             | _ => len.clone(),

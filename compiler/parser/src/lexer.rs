@@ -231,6 +231,7 @@ impl<'input> Lexer<'input> {
             | "module" => self.token(MODULE_KW),
             | "postfix" => self.token(POSTFIX_KW),
             | "prefix" => self.token(PREFIX_KW),
+            | "ref" => self.token(REF_KW),
             | "recur" => self.token(RECUR_KW),
             | "return" => self.token(RETURN_KW),
             | "static" => self.token(STATIC_KW),

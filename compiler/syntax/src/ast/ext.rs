@@ -475,6 +475,12 @@ impl TypeParens {
     }
 }
 
+impl TypeLiteral {
+    pub fn literal(&self) -> Option<Literal> {
+        child(self.syntax())
+    }
+}
+
 impl TypeVar {
     pub fn name(&self) -> Option<Name> {
         child(self.syntax())
@@ -483,6 +489,12 @@ impl TypeVar {
 
 impl TypePath {
     pub fn path(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+}
+
+impl TypeRef {
+    pub fn ty(&self) -> Option<Type> {
         child(self.syntax())
     }
 }
@@ -613,15 +625,21 @@ impl ExprTyped {
     }
 }
 
+impl ExprPath {
+    pub fn path(&self) -> Option<Path> {
+        child(self.syntax())
+    }
+}
+
 impl ExprLiteral {
     pub fn literal(&self) -> Option<Literal> {
         child(self.syntax())
     }
 }
 
-impl ExprPath {
-    pub fn path(&self) -> Option<Path> {
-        child(self.syntax())
+impl ExprArray {
+    pub fn exprs(&self) -> impl Iterator<Item = Expr> + '_ {
+        children(self.syntax())
     }
 }
 

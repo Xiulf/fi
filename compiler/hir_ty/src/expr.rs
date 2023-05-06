@@ -59,6 +59,7 @@ impl BodyCtx<'_, '_> {
             | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),
             | Expr::Path { def: Some(def), path } => self.infer_value_def_id(id, *def, path.segments().last().copied()),
+            | Expr::Array { exprs } => self.infer_array(id, exprs, expected),
             | Expr::Lambda { env, params, body } => self.infer_lambda(id, env, params, *body, expected),
             | Expr::App { base, args } => self.infer_app(id, *base, args),
             | Expr::If { cond, then, else_ } => self.infer_if(id, *cond, *then, *else_, expected),
@@ -90,28 +91,38 @@ impl BodyCtx<'_, '_> {
         ty
     }
 
-    fn infer_value_def_id(&mut self, expr: ExprId, def: ValueDefId, name: Option<Name>) -> Ty {
-        let (ty, constraints) = match def {
-            | ValueDefId::ValueId(id) if self.owner == id.into() => {
-                self.recursive_calls.push(expr);
-                (self.result.ty.clone(), Vec::new())
-            },
-            | ValueDefId::ValueId(id) => {
-                let infer = crate::infer(self.db, id);
-                (infer.ty.clone(), infer.constraints.clone())
-            },
+    fn resolve_value_def_id(&mut self, def: ValueDefId, name: Option<Name>) -> Option<(ValueDefId, Option<Name>)> {
+        match def {
             | ValueDefId::FixityId(id) => {
                 let data = hir_def::data::fixity_data(self.db, id);
                 let name = data.def_path(self.db).segments().last().copied();
 
                 match data.def(self.db) {
-                    | Some(def) => return self.infer_value_def_id(expr, def.unwrap_left(), name),
-                    | None => return self.error(),
+                    | Some(def) => self.resolve_value_def_id(def.unwrap_left(), name),
+                    | None => None,
                 }
             },
-            | ValueDefId::CtorId(id) => (crate::ctor_ty(self.db, id), Vec::new()),
-            | ValueDefId::PatId(id) => return self.result.type_of_pat[id],
-            | d => todo!("{d:?}"),
+            | _ => Some((def, name)),
+        }
+    }
+
+    fn infer_value_def_id(&mut self, expr: ExprId, def: ValueDefId, name: Option<Name>) -> Ty {
+        let (ty, name, constraints) = match self.resolve_value_def_id(def, name) {
+            | Some((def, name)) => match def {
+                | ValueDefId::ValueId(id) if self.owner == id.into() => {
+                    self.recursive_calls.push(expr);
+                    (self.result.ty.clone(), name, Vec::new())
+                },
+                | ValueDefId::ValueId(id) => {
+                    let infer = crate::infer(self.db, id);
+                    (infer.ty.clone(), name, infer.constraints.clone())
+                },
+                | ValueDefId::FixityId(_) => unreachable!(),
+                | ValueDefId::CtorId(id) => (crate::ctor_ty(self.db, id), name, Vec::new()),
+                | ValueDefId::PatId(id) => return self.result.type_of_pat[id],
+                | d => todo!("{d:?}"),
+            },
+            | None => return self.error(),
         };
 
         let (ty, constraints) = self.instantiate(ty, constraints, Some(expr), false);
@@ -121,6 +132,37 @@ impl BodyCtx<'_, '_> {
         }
 
         ty
+    }
+
+    fn infer_array(&mut self, id: ExprId, exprs: &[ExprId], expected: Expectation) -> Ty {
+        let len = Ty::new(self.db, TyKind::Literal(Literal::Int(exprs.len() as i128)));
+        let array = self.array_type();
+
+        if let Expectation::HasType(ty) = expected {
+            if let &TyKind::App(base, ref args) = ty.kind(self.db) {
+                if base == array {
+                    self.unify_types(len, args[0], id.into());
+                    for &expr in exprs {
+                        self.infer_expr(expr, Expectation::HasType(args[1]));
+                    }
+                    return ty;
+                } else if base == self.slice_type() {
+                    for &expr in exprs {
+                        self.infer_expr(expr, Expectation::HasType(args[0]));
+                    }
+                    return ty;
+                }
+            }
+        }
+
+        let elem = self.ctx.fresh_type(self.ctx.level, false);
+        let args = Box::new([len, elem]);
+
+        for &expr in exprs {
+            self.infer_expr(expr, Expectation::HasType(elem));
+        }
+
+        Ty::new(self.db, TyKind::App(array, args))
     }
 
     fn infer_lambda(&mut self, id: ExprId, env: &[PatId], params: &[PatId], body: ExprId, expected: Expectation) -> Ty {
@@ -157,44 +199,7 @@ impl BodyCtx<'_, '_> {
         let func_ty = self.infer_expr_inner(base, Expectation::None);
 
         if let TyKind::Func(func) = func_ty.kind(self.db) {
-            for (&arg, &ty) in args.iter().zip(func.params.iter()) {
-                self.infer_expr(arg, Expectation::HasType(ty));
-            }
-
-            if args.len() <= func.params.len() {
-                return func.ret;
-            }
-
-            if func.is_varargs {
-                args[func.params.len()..]
-                    .iter()
-                    .map(|&e| self.infer_expr(e, Expectation::None))
-                    .count();
-
-                return func.ret;
-            }
-
-            let ret = self.ctx.fresh_type(self.ctx.level, false);
-            let params = args[func.params.len()..]
-                .iter()
-                .map(|&e| self.infer_expr(e, Expectation::None))
-                .collect::<Vec<_>>();
-            let func2 = params.into_iter().rfold(ret, |ret, param| {
-                let env = self.ctx.fresh_type(self.ctx.level, false);
-
-                Ty::new(
-                    self.db,
-                    TyKind::Func(FuncType {
-                        env,
-                        ret,
-                        params: Box::new([param]),
-                        is_varargs: false,
-                    }),
-                )
-            });
-
-            self.unify_types(func.ret, func2, id.into());
-            return ret;
+            return self.infer_call(id, base, func, args);
         }
 
         let params = args
@@ -214,6 +219,77 @@ impl BodyCtx<'_, '_> {
 
         self.unify_types(func_ty, new_func, base.into());
         ret
+    }
+
+    fn infer_call(&mut self, id: ExprId, base: ExprId, func: &FuncType, args: &[ExprId]) -> Ty {
+        let value = match self.body[base] {
+            | Expr::Path { def: Some(def), .. } => match self.resolve_value_def_id(def, None) {
+                | Some((ValueDefId::ValueId(id), _)) => Some(id),
+                | _ => None,
+            },
+            | _ => None,
+        };
+
+        let attrs = value.map(|id| hir_def::attrs::query(self.db, id.into()));
+        let deref = attrs.map(|a| a.by_key("deref").exists()).unwrap_or_default();
+
+        for (&arg, &ty) in args.iter().zip(func.params.iter()) {
+            self.infer_expr(arg, Expectation::HasType(ty));
+        }
+
+        if args.len() <= func.params.len() {
+            return self.infer_ret(id, deref, func.ret);
+        }
+
+        if func.is_varargs {
+            args[func.params.len()..]
+                .iter()
+                .map(|&e| self.infer_expr(e, Expectation::None))
+                .count();
+
+            return self.infer_ret(id, deref, func.ret);
+        }
+
+        let ret = self.ctx.fresh_type(self.ctx.level, false);
+        let params = args[func.params.len()..]
+            .iter()
+            .map(|&e| self.infer_expr(e, Expectation::None))
+            .collect::<Vec<_>>();
+        let func2 = params.into_iter().rfold(ret, |ret, param| {
+            let env = self.ctx.fresh_type(self.ctx.level, false);
+
+            Ty::new(
+                self.db,
+                TyKind::Func(FuncType {
+                    env,
+                    ret,
+                    params: Box::new([param]),
+                    is_varargs: false,
+                }),
+            )
+        });
+
+        self.unify_types(func.ret, func2, id.into());
+        ret
+    }
+
+    fn infer_ret(&mut self, id: ExprId, deref: bool, ty: Ty) -> Ty {
+        if deref {
+            use hir_def::display::HirDisplay;
+            tracing::warn!("{}", ty.display(self.db));
+        }
+
+        match ty.kind(self.db) {
+            | TyKind::Ref(_, to) if deref => *to,
+            | _ if deref => {
+                let var = self.ctx.fresh_type(self.ctx.level, false);
+                let lt = self.ctx.fresh_lifetime(self.ctx.level);
+                let ref_ty = Ty::new(self.db, TyKind::Ref(lt, var));
+                self.unify_types(ty, ref_ty, id.into());
+                var
+            },
+            | _ => ty,
+        }
     }
 
     fn infer_if(&mut self, id: ExprId, cond: ExprId, then: ExprId, else_: Option<ExprId>, expected: Expectation) -> Ty {

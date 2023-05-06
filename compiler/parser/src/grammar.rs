@@ -400,7 +400,7 @@ fn constraint(p: &mut Parser) {
     m.complete(p, WHERE_CLAUSE_CONSTRAINT);
 }
 
-const TYP_TOKENS: [SyntaxKind; 3] = [IDENT, TYPE, L_PAREN];
+const TYP_TOKENS: [SyntaxKind; 8] = [IDENT, TYPE, L_PAREN, INT, FLOAT, CHAR, STRING, REF_KW];
 const PEEK_TYP: TokenSet = TokenSet::new(&TYP_TOKENS);
 
 fn typ_atom(p: &mut Parser) -> Option<CompletedMarker> {
@@ -414,6 +414,15 @@ fn typ_atom(p: &mut Parser) -> Option<CompletedMarker> {
         | Some(TYPE) => {
             type_path(p);
             m.complete(p, TYPE_PATH)
+        },
+        | Some(INT | FLOAT | CHAR | STRING) => {
+            literal(p);
+            m.complete(p, TYPE_LITERAL)
+        },
+        | Some(REF_KW) => {
+            p.bump(REF_KW);
+            typ_app(p);
+            m.complete(p, TYPE_REF)
         },
         | Some(L_PAREN) => {
             p.bump(L_PAREN);
@@ -588,8 +597,9 @@ fn pat_typed(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-const EXPR_TOKENS: [SyntaxKind; 14] = [
-    TYPE, IDENT, CONST, INT, FLOAT, CHAR, STRING, L_PAREN, LYT_START, FN_KW, DO_KW, MATCH_KW, IF_KW, RETURN_KW,
+const EXPR_TOKENS: [SyntaxKind; 15] = [
+    TYPE, IDENT, CONST, INT, FLOAT, CHAR, STRING, L_PAREN, L_BRACKET, LYT_START, FN_KW, DO_KW, MATCH_KW, IF_KW,
+    RETURN_KW,
 ];
 const PEEK_EXPR: TokenSet = TokenSet::new(&EXPR_TOKENS);
 
@@ -614,6 +624,17 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
                 p.expect(R_PAREN);
                 m.complete(p, EXPR_PARENS)
             }
+        },
+        | Some(L_BRACKET) => {
+            p.bump(L_BRACKET);
+            while !p.eof() && !p.at(R_BRACKET) {
+                expr_infix(p, TokenSet::EMPTY);
+                while !p.eof() && p.at(COMMA) {
+                    p.bump(COMMA);
+                }
+            }
+            p.expect(R_BRACKET);
+            m.complete(p, EXPR_ARRAY)
         },
         | Some(LYT_START) => {
             block(p, PEEK_PAT | PEEK_EXPR, stmt(false));
@@ -689,12 +710,12 @@ fn expr_app(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-fn expr_infix(p: &mut Parser) -> Option<CompletedMarker> {
+fn expr_infix(p: &mut Parser, comma: TokenSet) -> Option<CompletedMarker> {
     let mut m = expr_app(p)?;
 
     if p.at_ts(SYMBOL | COMMA | AT | PIPE | TICK) {
         let n = m.precede(p);
-        while !p.eof() && p.at_ts(SYMBOL | COMMA | AT | PIPE | TICK) {
+        while !p.eof() && p.at_ts(SYMBOL | AT | PIPE | TICK | comma) {
             operator(p);
             expr_app(p);
         }
@@ -704,12 +725,12 @@ fn expr_infix(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-fn expr_pipe(p: &mut Parser) -> Option<CompletedMarker> {
-    let mut m = expr_infix(p)?;
+fn expr_pipe(p: &mut Parser, comma: TokenSet) -> Option<CompletedMarker> {
+    let mut m = expr_infix(p, comma)?;
 
     if p.eat(PIPE_LEFT) {
         let n = m.precede(p);
-        expr_pipe(p);
+        expr_pipe(p, comma);
         m = n.complete(p, EXPR_PIPE);
     } else {
         while !p.eof() && p.eat_ts(PIPE_RIGHT | DOT) {
@@ -728,7 +749,7 @@ fn expr_pipe(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn expr_typed(p: &mut Parser) -> Option<CompletedMarker> {
-    let mut m = expr_pipe(p)?;
+    let mut m = expr_pipe(p, COMMA.into())?;
 
     if p.eat(DBL_COLON) {
         let n = m.precede(p);

@@ -11,6 +11,7 @@ use vfs::File;
 
 use crate::def_map::DefMap;
 use crate::diagnostics::UnresolvedPath;
+use crate::expr::Literal;
 use crate::id::{ContainerId, HasModule, ITypedItemId, ItemId, TraitId, TypeDefId, TypeVarId, TypedItemId, ValueId};
 use crate::item_tree::FixityKind;
 use crate::name::{AsName, Name};
@@ -26,9 +27,15 @@ pub type LocalTypeVarId = Idx<TypeVar>;
 pub enum TypeRef {
     Missing,
     Hole,
+    Lit {
+        lit: Literal,
+    },
     Path {
         path: Path,
         def: Option<TypeDefId>,
+    },
+    Ref {
+        ty: TypeRefId,
     },
     App {
         base: TypeRefId,
@@ -373,6 +380,17 @@ impl<'a> Ctx<'a> {
                     syntax_ptr,
                 )
             },
+            | ast::Type::Literal(t) => {
+                let resolver = self.db.syntax_interner().read();
+                let lit = match t.literal()? {
+                    | ast::Literal::Int(l) => Literal::Int(l.value(&*resolver)?),
+                    | ast::Literal::Float(l) => Literal::Float(l.value(&*resolver)?),
+                    | ast::Literal::Char(l) => Literal::Char(l.value(&*resolver)?),
+                    | ast::Literal::String(l) => Literal::String(l.value(&*resolver)?),
+                };
+
+                self.alloc_type(TypeRef::Lit { lit }, syntax_ptr)
+            },
             | ast::Type::Var(t) => {
                 let name_ref = t.name()?;
                 let name = name_ref.as_name(self.db);
@@ -401,6 +419,11 @@ impl<'a> Ctx<'a> {
 
                 self.alloc_type(TypeRef::Path { path, def }, syntax_ptr)
             },
+            | ast::Type::Ref(t) => {
+                let ty = self.lower_type_opt(t.ty());
+
+                self.alloc_type(TypeRef::Ref { ty }, syntax_ptr)
+            },
             | ast::Type::App(t) => {
                 let base = self.lower_type_opt(t.base());
                 let args = t.args().map(|t| self.lower_type(t)).collect();
@@ -411,7 +434,7 @@ impl<'a> Ctx<'a> {
                 let types = t.types().map(|t| self.lower_type(t)).collect();
                 let ops = t.ops().map(|p| (Path::from_ast(self.db, p.clone()), p)).collect();
 
-                self.lower_infix(types, ops)
+                self.lower_infix(types, ops, syntax_ptr)
             },
             | ast::Type::Func(t) => {
                 let env = t.env().map(|t| self.lower_type_opt(t.ty()));
@@ -489,6 +512,7 @@ impl<'a> Ctx<'a> {
         path_src: ast::Path,
         lhs: TypeRefId,
         rhs: TypeRefId,
+        syntax_ptr: &mut Option<AstPtr<ast::Type>>,
     ) -> TypeRefId {
         let base = self.make_type(
             TypeRef::Path { path, def },
@@ -497,11 +521,21 @@ impl<'a> Ctx<'a> {
         let args = Box::new([lhs, rhs]);
         let lhs_ptr = self.src.typ_to_src[lhs].as_typ_ptr(true);
         let rhs_ptr = self.src.typ_to_src[rhs].as_typ_ptr(false);
+        let id = self.make_type(TypeRef::App { base, args }, TypeRefSrc::Infix(lhs_ptr, rhs_ptr));
 
-        self.make_type(TypeRef::App { base, args }, TypeRefSrc::Infix(lhs_ptr, rhs_ptr))
+        if let Some(ptr) = syntax_ptr.take() {
+            self.src.src_to_typ.insert(ptr, id);
+        }
+
+        id
     }
 
-    fn lower_infix(&mut self, items: Vec<TypeRefId>, ops: Vec<(Path, ast::Path)>) -> TypeRefId {
+    fn lower_infix(
+        &mut self,
+        items: Vec<TypeRefId>,
+        ops: Vec<(Path, ast::Path)>,
+        syntax_ptr: AstPtr<ast::Type>,
+    ) -> TypeRefId {
         let fixities = ops
             .iter()
             .map(|(op, src)| {
@@ -528,6 +562,7 @@ impl<'a> Ctx<'a> {
             ops.into_iter(),
             fixities.into_iter().peekable(),
             items.into_iter(),
+            &mut Some(syntax_ptr),
         );
 
         use std::iter::{once, Peekable};
@@ -537,6 +572,7 @@ impl<'a> Ctx<'a> {
             mut ops: impl Iterator<Item = (Path, ast::Path)>,
             mut fixities: Peekable<impl Iterator<Item = (Option<TypeDefId>, Prec, Assoc)>>,
             mut items: impl Iterator<Item = TypeRefId>,
+            syntax_ptr: &mut Option<AstPtr<ast::Type>>,
         ) -> TypeRefId {
             if let Some((op, op_src)) = ops.next() {
                 let (id, prec, assoc) = fixities.next().unwrap();
@@ -556,21 +592,21 @@ impl<'a> Ctx<'a> {
                     let lhs = items.next().unwrap_or_else(|| ctx.missing_type());
                     let rhs = items.next().unwrap_or_else(|| ctx.missing_type());
 
-                    return ctx.make_infix_app(id, op, op_src, lhs, rhs);
+                    return ctx.make_infix_app(id, op, op_src, lhs, rhs, syntax_ptr);
                 };
 
                 if left {
                     let lhs = items.next().unwrap_or_else(|| ctx.missing_type());
                     let rhs = items.next().unwrap_or_else(|| ctx.missing_type());
-                    let item = ctx.make_infix_app(id, op, op_src, lhs, rhs);
+                    let item = ctx.make_infix_app(id, op, op_src, lhs, rhs, syntax_ptr);
                     let items = once(item).chain(items).collect::<Vec<_>>();
 
-                    go(ctx, ops, fixities, items.into_iter())
+                    go(ctx, ops, fixities, items.into_iter(), syntax_ptr)
                 } else {
                     let lhs = items.next().unwrap_or_else(|| ctx.missing_type());
-                    let rhs = go(ctx, ops, fixities, items);
+                    let rhs = go(ctx, ops, fixities, items, &mut None);
 
-                    ctx.make_infix_app(id, op, op_src, lhs, rhs)
+                    ctx.make_infix_app(id, op, op_src, lhs, rhs, syntax_ptr)
                 }
             } else {
                 items.next().unwrap_or_else(|| ctx.missing_type())

@@ -1,7 +1,7 @@
 use std::fmt;
 
 use hir_def::display::HirDisplay;
-use hir_def::expr::ExprId;
+use hir_def::expr::{ExprId, Literal};
 use hir_def::id::{ImplId, TraitId, TypeCtorId, TypeVarId, TypedItemId};
 use hir_def::name::Name;
 use hir_def::pat::PatId;
@@ -24,7 +24,9 @@ pub enum TyKind {
     Error,
     Never,
     Primitive(PrimitiveType),
+    Literal(Literal),
     Unknown(Unknown, bool),
+    Ref(Unknown, Ty),
     Var(TypeVarId),
     Ctor(TypeCtorId),
     App(Ty, Box<[Ty]>),
@@ -131,6 +133,10 @@ pub fn is_recursive(db: &dyn Db, ty: Ty) -> bool {
 impl Ty {
     pub fn fold(self, db: &dyn Db, f: &mut dyn FnMut(Ty) -> Ty) -> Ty {
         match self.kind(db) {
+            | TyKind::Ref(u, ty) => {
+                let ty = ty.fold(db, f);
+                f(Ty::new(db, TyKind::Ref(*u, ty)))
+            },
             | TyKind::App(base, args) => {
                 let base = base.fold(db, f);
                 let args = args.iter().map(|a| a.fold(db, f)).collect();
@@ -158,6 +164,9 @@ impl Ty {
 
     pub fn traverse(self, db: &dyn Db, f: &mut dyn FnMut(Ty)) {
         match self.kind(db) {
+            | TyKind::Ref(_, ty) => {
+                ty.traverse(db, f);
+            },
             | TyKind::App(base, args) => {
                 base.traverse(db, f);
                 args.iter().for_each(|a| a.traverse(db, f));
@@ -308,8 +317,10 @@ impl HirDisplay for Ty {
             | TyKind::Error => write!(f, "{{error}}"),
             | TyKind::Never => write!(f, "!"),
             | TyKind::Primitive(p) => write!(f, "{p}"),
+            | TyKind::Literal(l) => write!(f, "{l}"),
             | TyKind::Unknown(u, false) => write!(f, "?{}", u.0),
             | TyKind::Unknown(u, true) => write!(f, "'{}", u.0),
+            | TyKind::Ref(_, to) => write!(f, "ref {}", to.display(f.db)),
             | TyKind::Var(var) => f.with_upcast::<_, dyn hir_def::Db>(|d| d, |f| var.hir_fmt(f)),
             | TyKind::Ctor(ctor) => {
                 let it = ctor.it(f.db);

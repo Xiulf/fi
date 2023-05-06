@@ -1,3 +1,5 @@
+use hir_def::expr::Literal;
+
 use crate::ctx::Ctx;
 use crate::ty::{PrimitiveType, Ty, TyKind};
 use crate::unify::{UnifyBindings, UnifyResult};
@@ -20,6 +22,11 @@ impl Ctx<'_> {
                 | PrimitiveType::Integer(_) => self.int_tag_kind(),
                 | PrimitiveType::Float(_) => self.float_tag_kind(),
             },
+            | TyKind::Literal(lit) => match lit {
+                | Literal::Int(_) => self.int_kind(),
+                | _ => todo!(),
+            },
+            | TyKind::Ref(_, _) => self.type_kind(),
             | TyKind::App(base, args) => {
                 let base = self.infer_kind_inner(*base);
                 self.infer_app_kind(base, args)

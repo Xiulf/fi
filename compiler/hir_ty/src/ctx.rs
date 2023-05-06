@@ -159,12 +159,20 @@ impl<'db> Ctx<'db> {
         self.lang_ty(lang_item::TYPE_KIND)
     }
 
+    pub fn int_kind(&self) -> Ty {
+        self.lang_ty(lang_item::INT_KIND)
+    }
+
     pub fn int_tag_kind(&self) -> Ty {
         self.lang_ty(lang_item::INT_TAG_KIND)
     }
 
     pub fn float_tag_kind(&self) -> Ty {
         self.lang_ty(lang_item::FLOAT_TAG_KIND)
+    }
+
+    pub fn lifetime_kind(&self) -> Ty {
+        self.lang_ty(lang_item::LIFETIME_KIND)
     }
 
     pub fn never_type(&self) -> Ty {
@@ -193,6 +201,14 @@ impl<'db> Ctx<'db> {
 
     pub fn str_type(&self) -> Ty {
         self.lang_ty(lang_item::STR_TYPE)
+    }
+
+    pub fn slice_type(&self) -> Ty {
+        self.lang_ty(lang_item::SLICE_TYPE)
+    }
+
+    pub fn array_type(&self) -> Ty {
+        self.lang_ty(lang_item::ARRAY_TYPE)
     }
 
     fn lang_item(&self, name: &'static str) -> Option<LangItem> {

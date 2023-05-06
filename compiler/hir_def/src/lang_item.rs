@@ -9,8 +9,10 @@ use crate::Db;
 
 pub const KIND_KIND: &'static str = "kind-kind";
 pub const TYPE_KIND: &'static str = "type-kind";
+pub const INT_KIND: &'static str = "int-kind";
 pub const INT_TAG_KIND: &'static str = "int-tag-kind";
 pub const FLOAT_TAG_KIND: &'static str = "float-tag-kind";
+pub const LIFETIME_KIND: &'static str = "lifetime-kind";
 
 pub const NEVER_TYPE: &'static str = "never-type";
 pub const UNIT_TYPE: &'static str = "unit-type";
@@ -20,6 +22,8 @@ pub const INT_TYPE: &'static str = "int-type";
 pub const FLOAT_TYPE: &'static str = "float-type";
 pub const CHAR_TYPE: &'static str = "char-type";
 pub const STR_TYPE: &'static str = "str-type";
+pub const SLICE_TYPE: &'static str = "slice-type";
+pub const ARRAY_TYPE: &'static str = "array-type";
 pub const PROXY_TYPE: &'static str = "proxy-type";
 
 pub const BIND_FN: &'static str = "bind-fn";

@@ -29,6 +29,7 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
         match type_map[id] {
             | TypeRef::Missing => Ty::new(self.db, TyKind::Error),
             | TypeRef::Hole => self.ctx.fresh_type(self.level, false),
+            | TypeRef::Lit { ref lit } => Ty::new(self.db, TyKind::Literal(lit.clone())),
             | TypeRef::Path { def: None, .. } => Ty::new(self.db, TyKind::Error),
             | TypeRef::Path { def: Some(def), .. } => {
                 let (ty, ret) = self.lower_type_def_id(def);
@@ -37,6 +38,11 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
                 }
 
                 ty
+            },
+            | TypeRef::Ref { ty } => {
+                let lifetime = self.fresh_unknown();
+                let ty = self.lower_type_ref(ty, false);
+                Ty::new(self.db, TyKind::Ref(lifetime, ty))
             },
             | TypeRef::App { base, ref args } => match type_map[base] {
                 | TypeRef::Path {
