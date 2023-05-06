@@ -658,8 +658,14 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
         | Some(IF_KW) => {
             p.bump(IF_KW);
             expr(p);
+            if p.at(LYT_SEP) && p.nth_at(1, THEN_KW) {
+                p.bump(LYT_SEP);
+            }
             p.expect(THEN_KW);
             expr(p);
+            if p.at(LYT_SEP) && p.nth_at(1, ELSE_KW) {
+                p.bump(LYT_SEP);
+            }
             if p.eat(ELSE_KW) {
                 expr(p);
             }
