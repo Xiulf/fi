@@ -4,6 +4,7 @@ use crate::ctx::Ctx;
 use crate::ty::{PrimitiveType, Ty, TyKind};
 use crate::unify::{UnifyBindings, UnifyResult};
 
+#[allow(dead_code)]
 impl Ctx<'_> {
     pub(crate) fn check_kind(&self, ty: Ty, kind: Ty, bindings: &mut UnifyBindings) -> UnifyResult {
         let infer = self.infer_kind_inner(ty);

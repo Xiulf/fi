@@ -56,6 +56,16 @@ impl BodyCtx<'_, '_> {
                 | Literal::Char(_) => self.char_type(),
                 | Literal::String(_) => self.str_type(),
             },
+            | Expr::Recur => {
+                self.recursive_calls.push(id);
+                match self.lambdas.last() {
+                    | Some(ty) => *ty,
+                    | None => {
+                        let ty = self.result.ty.clone();
+                        self.instantiate(ty, Vec::new(), Some(id), false).0
+                    },
+                }
+            },
             | Expr::Block { stmts, expr } => self.infer_block(stmts, *expr, expected),
             | Expr::Path { def: None, .. } => self.error(),
             | Expr::Path { def: Some(def), path } => self.infer_value_def_id(id, *def, path.segments().last().copied()),
@@ -81,7 +91,8 @@ impl BodyCtx<'_, '_> {
                 res
             },
             | Expr::Return { expr } => {
-                self.infer_expr(*expr, Expectation::HasType(self.ret_ty));
+                let ret_ty = *self.ret_ty.last().unwrap();
+                self.infer_expr(*expr, Expectation::HasType(ret_ty));
                 self.never_type()
             },
             | e => todo!("{e:?}"),
@@ -176,15 +187,18 @@ impl BodyCtx<'_, '_> {
                 }
 
                 self.unify_types(env, func.env, id.into());
+                self.ret_ty.push(func.ret);
+                self.lambdas.push(ty);
                 self.infer_expr(body, Expectation::HasType(func.ret));
+                self.ret_ty.pop().unwrap();
+                self.lambdas.pop().unwrap();
                 return ty;
             }
         }
 
         let params = params.iter().map(|&p| self.infer_pat(p, Expectation::None)).collect();
-        let ret = self.infer_expr_inner(body, Expectation::None);
-
-        Ty::new(
+        let ret = self.ctx.fresh_type(self.ctx.level, false);
+        let ty = Ty::new(
             self.db,
             TyKind::Func(FuncType {
                 is_varargs: false,
@@ -192,7 +206,14 @@ impl BodyCtx<'_, '_> {
                 params,
                 ret,
             }),
-        )
+        );
+
+        self.ret_ty.push(ret);
+        self.lambdas.push(ty);
+        self.infer_expr_inner(body, Expectation::HasType(ret));
+        self.ret_ty.pop().unwrap();
+        self.lambdas.pop().unwrap();
+        ty
     }
 
     fn infer_app(&mut self, id: ExprId, base: ExprId, args: &[ExprId]) -> Ty {
@@ -274,11 +295,6 @@ impl BodyCtx<'_, '_> {
     }
 
     fn infer_ret(&mut self, id: ExprId, deref: bool, ty: Ty) -> Ty {
-        if deref {
-            use hir_def::display::HirDisplay;
-            tracing::warn!("{}", ty.display(self.db));
-        }
-
         match ty.kind(self.db) {
             | TyKind::Ref(_, to) if deref => *to,
             | _ if deref => {

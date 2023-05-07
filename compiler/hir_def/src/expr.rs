@@ -13,6 +13,7 @@ pub enum Expr {
     Missing,
     Hole(Name),
     Unit,
+    Recur,
     Path {
         path: Path,
         def: Option<ValueDefId>,

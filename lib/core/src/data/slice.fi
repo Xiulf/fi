@@ -22,6 +22,6 @@ impl Foldable (Slice t) t =
 _fold i slice init f =
     if i `ilt` len slice then
         acc = f init (slice#i)
-        _fold (i + 1) slice acc f
+        recur (i + 1) slice acc f
     else
         init

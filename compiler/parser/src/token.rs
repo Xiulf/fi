@@ -144,6 +144,7 @@ pub enum SyntaxKind {
     EXPR_HOLE,
     EXPR_UNIT,
     EXPR_PATH,
+    EXPR_RECUR,
     EXPR_LITERAL,
     EXPR_ARRAY,
     EXPR_LAMBDA,

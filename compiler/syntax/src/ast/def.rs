@@ -80,6 +80,7 @@ ast_node!(Expr {
     Hole(ExprHole, EXPR_HOLE),
     Unit(ExprUnit, EXPR_UNIT),
     Path(ExprPath, EXPR_PATH),
+    Recur(ExprRecur, EXPR_RECUR),
     Literal(ExprLiteral, EXPR_LITERAL),
     Array(ExprArray, EXPR_ARRAY),
     Lambda(ExprLambda, EXPR_LAMBDA),

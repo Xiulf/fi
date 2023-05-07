@@ -152,6 +152,7 @@ impl<'db> Ctx<'db> {
                 let ty = e.ty().and_then(|t| self.typ_map.typ_for_src(AstPtr::new(&t)))?;
                 self.alloc_expr(Expr::Typed { expr, ty }, syntax_ptr)
             },
+            | ast::Expr::Recur(_) => self.alloc_expr(Expr::Recur, syntax_ptr),
             | ast::Expr::Unit(_) => {
                 let lib = self.value.container(self.db).module(self.db).lib(self.db);
                 let unit = lang_item::query(self.db, lib, lang_item::UNIT_TYPE)?;

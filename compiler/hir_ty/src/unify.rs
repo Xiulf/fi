@@ -94,10 +94,10 @@ impl Ctx<'_> {
                 GeneralizedType::Poly(v1.clone(), *t1)
             },
             | (GeneralizedType::Poly(v1, t1), GeneralizedType::Poly(v2, t2)) if v1.len() == v2.len() => {
-                // TODO: check vars
-                self.unify_types(*t1, t2, origin);
+                let (t1, t2, mut constraints) = self.instantiate_two(*t1, v1, t2, &v2, constraints, None, true);
+                self.unify_types(t1, t2, origin);
                 self.result.constraints.append(&mut constraints);
-                GeneralizedType::Poly(v1.clone(), *t1)
+                GeneralizedType::Poly(v1.clone(), t1)
             },
             | (GeneralizedType::Mono(t1), t2) => {
                 let (t2, mut constraints) = self.instantiate(t2, constraints, None, true);
@@ -202,7 +202,7 @@ impl Ctx<'_> {
     fn unify_unknown(&self, u: Unknown, t1: Ty, t2: Ty, bindings: &mut UnifyBindings) -> UnifyResult {
         match self.find_binding(u, bindings) {
             | Ok(t) => self.unify_into(t, t2, bindings),
-            | Err((level, kind)) => {
+            | Err((level, _kind)) => {
                 let b = bindings.resolve_type_shallow(self.db, t2);
                 let b = self.resolve_type_shallow(b);
 
@@ -214,11 +214,11 @@ impl Ctx<'_> {
                     return UnifyResult::RecursiveType(b);
                 }
 
-                let kind_result = self.check_kind(b, kind, &mut UnifyBindings::default());
+                // let kind_result = self.check_kind(b, kind, &mut UnifyBindings::default());
 
-                if kind_result != UnifyResult::Ok {
-                    // return kind_result;
-                }
+                // if kind_result != UnifyResult::Ok {
+                //     // return kind_result;
+                // }
 
                 bindings.0.insert(u, b);
                 UnifyResult::Ok

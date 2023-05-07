@@ -120,6 +120,7 @@ impl Body {
             match expr {
                 | Expr::Missing => format_to!(out, "Missing"),
                 | Expr::Hole(_) => format_to!(out, "Hole"),
+                | Expr::Recur => format_to!(out, "Recur"),
                 | Expr::Lit { lit } => format_to!(out, "Lit {lit}"),
                 | Expr::Path { path, def } => format_to!(out, "Path {}, {def:?}", path.display(db)),
                 | Expr::Array { exprs } => {

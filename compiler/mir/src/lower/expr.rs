@@ -30,6 +30,7 @@ impl Ctx<'_> {
             | Expr::Missing => unreachable!(),
             | Expr::Hole(_) => unreachable!(),
             | Expr::Path { def: None, .. } => unreachable!(),
+            | Expr::Recur => self.lower_recur(id, store_in),
             | Expr::Typed { expr, ty: _ } => self.lower_expr(expr, store_in),
             | Expr::Unit => (Const::Unit, Repr::unit(self.db)).into(),
             | Expr::Path { def: Some(def), .. } => self.lower_path(id, def, store_in),
@@ -70,6 +71,24 @@ impl Ctx<'_> {
             | Literal::Char(l) => (Const::Char(l), repr).into(),
             | Literal::String(ref l) => (Const::String(l.clone()), repr).into(),
         }
+    }
+
+    fn lower_recur(&mut self, id: ExprId, _store_in: &mut Option<Place>) -> Operand {
+        let repr = repr_of(self.db, self.infer.type_of_expr[id]);
+        let ty_inst = self.infer.instances.get(id).cloned().unwrap_or_default();
+        let mir_id = InstanceId::MirValueId(self.id);
+        let mut impls_iter = ty_inst.impls.into_iter();
+        let mut impls = Vec::new();
+        let types = ty_inst.types;
+
+        while let Some(src) = impls_iter.next() {
+            impls.push(self.lower_impl_source(src, &mut impls_iter, &types));
+        }
+
+        let subst = Subst { types, impls };
+        let instance = Instance::new(self.db, mir_id, Some(subst).filter(|s| !s.is_empty()));
+
+        (Const::Instance(instance), repr).into()
     }
 
     fn lower_array(&mut self, id: ExprId, exprs: &[ExprId], store_in: &mut Option<Place>) -> Operand {

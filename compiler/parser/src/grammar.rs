@@ -597,9 +597,9 @@ fn pat_typed(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-const EXPR_TOKENS: [SyntaxKind; 15] = [
+const EXPR_TOKENS: [SyntaxKind; 16] = [
     TYPE, IDENT, CONST, INT, FLOAT, CHAR, STRING, L_PAREN, L_BRACKET, LYT_START, FN_KW, DO_KW, MATCH_KW, IF_KW,
-    RETURN_KW,
+    RETURN_KW, RECUR_KW,
 ];
 const PEEK_EXPR: TokenSet = TokenSet::new(&EXPR_TOKENS);
 
@@ -614,6 +614,10 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
         | Some(INT | FLOAT | CHAR | STRING) => {
             literal(p);
             m.complete(p, EXPR_LITERAL)
+        },
+        | Some(RECUR_KW) => {
+            p.bump(RECUR_KW);
+            m.complete(p, EXPR_RECUR)
         },
         | Some(L_PAREN) => {
             p.bump(L_PAREN);

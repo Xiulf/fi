@@ -27,7 +27,7 @@ pub struct Ctx<'db> {
     pub(crate) subst: Substitution,
     pub(crate) owner: TypedItemId,
     pub(crate) level: UnkLevel,
-    pub(crate) ret_ty: Ty,
+    pub(crate) ret_ty: Vec<Ty>,
     pub(crate) constraints: Vec<(Constraint, ConstraintOrigin)>,
     pub(crate) recursive_calls: Vec<ExprId>,
 }
@@ -35,6 +35,7 @@ pub struct Ctx<'db> {
 pub struct BodyCtx<'db, 'ctx> {
     pub(crate) ctx: &'ctx mut Ctx<'db>,
     pub(crate) body: Arc<Body>,
+    pub(crate) lambdas: Vec<Ty>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -96,14 +97,18 @@ impl<'db> Ctx<'db> {
             result: InferResult::default(db),
             subst: Substitution::default(),
             level: UnkLevel(1),
-            ret_ty: ty,
+            ret_ty: vec![ty],
             constraints: Vec::new(),
             recursive_calls: Vec::new(),
         }
     }
 
     pub fn with_body(&mut self, body: Arc<Body>) -> BodyCtx<'db, '_> {
-        BodyCtx { ctx: self, body }
+        BodyCtx {
+            ctx: self,
+            body,
+            lambdas: Vec::new(),
+        }
     }
 
     pub fn finish(mut self) -> Arc<InferResult> {
@@ -304,6 +309,53 @@ impl<'db> Ctx<'db> {
                 (ty.replace_vars(self.db, &replacements), constraints)
             },
         }
+    }
+
+    pub fn instantiate_two(
+        &mut self,
+        t1: Ty,
+        v1: &[TypeVarId],
+        t2: Ty,
+        v2: &[TypeVarId],
+        constraints: Vec<Constraint>,
+        expr: Option<ExprId>,
+        skolem: bool,
+    ) -> (Ty, Ty, Vec<Constraint>) {
+        assert_eq!(v1.len(), v2.len());
+        let mut replacements1 = HashMap::default();
+        let mut replacements2 = HashMap::default();
+        let mut types = Vec::new();
+
+        for &var in v1.iter() {
+            let ty = self.fresh_type(self.level, skolem);
+            replacements1.insert(var, ty);
+            types.push(ty);
+        }
+
+        for (&var, &ty) in v2.iter().zip(types.iter()) {
+            replacements2.insert(var, ty);
+        }
+
+        let constraints = constraints
+            .into_iter()
+            .map(|c| Constraint {
+                trait_id: c.trait_id,
+                args: c.args.iter().map(|a| a.replace_vars(self.db, &replacements2)).collect(),
+            })
+            .collect();
+
+        if let Some(expr) = expr {
+            self.result.instances.insert(expr, Instance {
+                types,
+                impls: Vec::new(),
+            });
+        }
+
+        (
+            t1.replace_vars(self.db, &replacements1),
+            t2.replace_vars(self.db, &replacements2),
+            constraints,
+        )
     }
 
     pub fn generalize(&mut self, ty: Ty, type_vars: &[TypeVarId]) -> GeneralizedType {
