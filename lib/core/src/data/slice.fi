@@ -3,7 +3,7 @@ module Data.Slice (len) =
 import Core
 import Core.Ops (Index, index)
 import Data.Foldable
-import Intrinsics (ige, transmute, ptr_load, ptr_offset)
+import Intrinsics (ilt, transmute, ptr_load, ptr_offset)
 
 len (slice :: Slice t) :: Int i =
     _, len = transmute slice :: Ptr t, Uptr
@@ -19,9 +19,9 @@ impl Foldable (Slice t) t =
     fold slice init f =
         _fold 0 slice init f
 
-_fold i (slice :: Slice t) (init :: s) (f :: s, t -> s) :: s =
-    if i `ige` len slice then
+_fold i slice init f =
+    if i `ilt` len slice then
         acc = f init (slice#i)
-        _fold (i - 1) slice acc f
+        _fold (i + 1) slice acc f
     else
         init

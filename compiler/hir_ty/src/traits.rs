@@ -14,14 +14,15 @@ const RECURSION_LIMIT: u32 = 32;
 
 impl<'db> Ctx<'db> {
     pub fn solve_constraints(&mut self, allow_propagation: bool) {
-        let constraints = if allow_propagation {
-            self.sort_constraints()
-        } else {
-            std::mem::replace(&mut self.constraints, Vec::new())
-                .into_iter()
-                .map(|(c, o)| (self.resolve_constraint_fully(c), o))
-                .collect()
-        };
+        let constraints = std::mem::replace(&mut self.constraints, Vec::new());
+        // let constraints = if allow_propagation {
+        //     self.sort_constraints()
+        // } else {
+        //     std::mem::replace(&mut self.constraints, Vec::new())
+        //         .into_iter()
+        //         .map(|(c, o)| (self.resolve_constraint_fully(c), o))
+        //         .collect()
+        // };
 
         let mut failing = self.try_solve_constraints(constraints.iter(), false);
         let mut prev_len = failing.len();
@@ -37,6 +38,10 @@ impl<'db> Ctx<'db> {
         }
 
         failing = self.try_solve_constraints(failing, true);
+
+        if allow_propagation {
+            failing = self.sort_constraints(failing);
+        }
 
         for (c, o) in failing {
             Diagnostics::emit(self.db, UnsolvedConstraint {
@@ -214,12 +219,10 @@ impl<'db> Ctx<'db> {
         trait_impls(self.db, lib, trait_id).iter()
     }
 
-    fn sort_constraints(&mut self) -> Vec<(Constraint, ConstraintOrigin)> {
-        let constraints = std::mem::take(&mut self.constraints);
-        let constraints = constraints
-            .into_iter()
-            .map(|(c, o)| (self.resolve_constraint_fully(c), o))
-            .collect::<Vec<_>>();
+    fn sort_constraints<'a>(
+        &mut self,
+        constraints: Vec<&'a (Constraint, ConstraintOrigin)>,
+    ) -> Vec<&'a (Constraint, ConstraintOrigin)> {
         let mut res = Vec::with_capacity(constraints.len());
         let mut type_vars = Box::new([]) as Box<[_]>;
         let mut unknowns = Vec::new();
@@ -238,21 +241,23 @@ impl<'db> Ctx<'db> {
             | _ => {},
         });
 
-        for (constraint, origin) in constraints {
+        for c @ (constraint, origin) in constraints {
+            let constraint = self.resolve_constraint_fully(constraint.clone());
+
             if self.should_propagate(&constraint, &type_vars, &unknowns) {
                 if let Some(i) = self.result.constraints.iter().position(|c| c == &constraint) {
-                    if let ConstraintOrigin::ExprId(expr, _) = origin {
+                    if let ConstraintOrigin::ExprId(expr, _) = *origin {
                         self.result.instances[expr].impls.push(InstanceImpl::Param(i));
                     }
                 } else {
                     let i = self.result.constraints.len();
-                    if let ConstraintOrigin::ExprId(expr, _) = origin {
+                    if let ConstraintOrigin::ExprId(expr, _) = *origin {
                         self.result.instances[expr].impls.push(InstanceImpl::Param(i));
                     }
                     self.result.constraints.push(constraint);
                 }
             } else {
-                res.push((constraint, origin));
+                res.push(c);
             }
         }
 
