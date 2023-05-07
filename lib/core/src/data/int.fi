@@ -1,8 +1,11 @@
 module Data.Int =
 
-import Core.Ops
 import Prim
+import Core.Ops
+import Data.Default
 
+impl Default (Int a) =
+    default () = 0
 
 impl Add (Int a) =
     add a b = Intrinsics.iadd a b

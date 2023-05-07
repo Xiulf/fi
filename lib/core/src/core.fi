@@ -4,4 +4,5 @@ import Prim as C
 import Prim.Intrinsics (panic) as C
 import Core.Ops ((+), (-), (*), (/), (%), (#)) as C
 import Data.Option (Option, Some, None) as C
+import Data.Default as C
 import Casting (Cast, cast) as C

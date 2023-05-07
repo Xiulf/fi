@@ -1,4 +1,10 @@
 module Data.Foldable =
 
+// import Core
+// import Core.Ops (Add)
+
 trait Foldable f a =
     fold :: f, acc, (acc, a -> acc) -> acc
+
+// sum (foldable :: f) where Foldable f t, Default t, Add t =
+//     fold foldable (default ()) fn a b -> a + b

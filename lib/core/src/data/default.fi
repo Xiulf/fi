@@ -1,0 +1,4 @@
+module Data.Default =
+
+trait Default t =
+    default :: () -> t
