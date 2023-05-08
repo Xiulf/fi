@@ -106,8 +106,6 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 
     fn codegen_value(&mut self, value: hir::Value) {
-        value.is_main(self.db);
-
         if value.is_intrinsic(self.db) {
             return;
         }
