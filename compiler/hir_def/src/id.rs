@@ -145,6 +145,12 @@ impl ModuleId {
     }
 }
 
+impl HasModule for ValueId {
+    fn module(self, db: &dyn Db) -> ModuleId {
+        self.container(db).module(db)
+    }
+}
+
 impl HasModule for ContainerId {
     fn module(self, db: &dyn Db) -> ModuleId {
         match self {

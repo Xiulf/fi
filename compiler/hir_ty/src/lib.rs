@@ -4,8 +4,8 @@ use arena::ArenaMap;
 use ctx::Expectation;
 use hir_def::expr::ExprId;
 use hir_def::id::{
-    ContainerId, CtorId, FieldId, ImplId, LocalCtorId, TraitId, TypeAliasId, TypeCtorId, TypeVarId, TypedItemId,
-    ValueId,
+    ContainerId, CtorId, FieldId, HasModule, ImplId, LocalCtorId, ModuleParentId, TraitId, TypeAliasId, TypeCtorId,
+    TypeVarId, TypedItemId, ValueId,
 };
 use hir_def::name::Name;
 use hir_def::pat::PatId;
@@ -100,7 +100,10 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
     }
 
     let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
-    let is_main = hir_def::attrs::query(db, value.into()).by_key("main").exists();
+    let is_main = hir_def::attrs::query(db, value.into()).by_key("main").exists() || {
+        let module = value.module(db);
+        matches!(module.parent(db), ModuleParentId::LibId(_)) && module.name(db).as_str(db) == "Main"
+    };
 
     if is_main {
         ctx.solve_constraints(false);

@@ -389,6 +389,13 @@ impl Value {
         self.module(db).is_item_exported(db, self.name(db)) || matches!(self.container(db), Container::Impl(_))
     }
 
+    pub fn is_main(self, db: &dyn Db) -> bool {
+        self.attrs(db).by_key("main").exists() || {
+            let module = self.module(db);
+            module.parent(db).is_none() && module.name(db).as_str(db) == "Main"
+        }
+    }
+
     fn data(self, db: &dyn Db) -> data::ValueData {
         data::value_data(db, self.id)
     }

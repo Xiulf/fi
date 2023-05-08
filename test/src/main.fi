@@ -23,7 +23,6 @@ import Intrinsics
 // free p = C.free <| transmute p
 
 
-@main
 main () =
     array = [4, 6, 8]
     slice = array_slice array 0 3

@@ -106,6 +106,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 
     fn codegen_value(&mut self, value: hir::Value) {
+        value.is_main(self.db);
+
         if value.is_intrinsic(self.db) {
             return;
         }
@@ -123,7 +125,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         self.codegen_instance(instance);
         self.queue.drain_filter(|i| *i == instance);
 
-        if value.attrs(self.db).by_key("main").exists() {
+        if value.is_main(self.db) {
             self.codegen_main_shim(instance);
         }
     }
