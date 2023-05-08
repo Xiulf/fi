@@ -99,10 +99,6 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         }
     }
 
-    let t = ctx.resolve_generalized_type_fully(ctx.result.ty.clone());
-    use hir_def::display::HirDisplay;
-    tracing::error!("{}", t.display(db));
-
     let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
     let is_main = hir_def::attrs::query(db, value.into()).by_key("main").exists();
 
