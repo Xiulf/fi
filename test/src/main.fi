@@ -1,89 +1,13 @@
 module Main (main) =
 
 import Core
-import Data.List hiding (len)
 import Data.Slice
 import Data.Foldable
-import Intrinsics
-
-
-// module C =
-//     import Core
-
-//     foreign malloc :: Uptr -> Ptr ()
-//     foreign free :: Ptr () -> ()
-
-//     foreign printf :: Ptr Int8, .. -> Int32
-
-//     @cfg_attr(windows, link_name = "_write")
-//     foreign write :: Int32, Ptr Int8, Uptr -> Int32
-
-
-// malloc () :: Ptr a = size_of (Proxy :: Proxy a) |> C.malloc |> transmute
-// free p = C.free <| transmute p
+import Intrinsics (array_slice)
 
 
 main () =
     array = [4, 6, 8]
     slice = array_slice array 0 3
 
-    // printf "test\n" "abc\n" "def\n" "ghi\n" :: ()
-    // list = 4:5:6:Nil
-    // list#1
-    // fold list 0 fn a b -> a + b
     fold slice 0 fn a b -> a + b
-
-
-// printf (s :: Str) :: r where PrintfType r =
-//     printf' s Nil
-
-// trait PrintfType t =
-//     printf' :: Str, List Str -> t
-
-// impl PrintfType () =
-//     printf' f args =
-//         match args with
-//         | x:xs ->
-//             printf' f xs :: ()
-//             Stdout .fmt x
-//         | _ -> Stdout .fmt f
-
-// // impl PrintfType () =
-// //     printf' f args =
-// //         for_each args fn a -> Stdout .fmt a
-// //         Stdout .fmt f
-
-// impl PrintfType ({Pair Str (List Str)} Str -> r) where PrintfType r =
-//     printf' f args = fn x ->
-//         printf' f (x:args)
-
-
-// trait Format f =
-//     fmt :: w, f -> () where Write w
-
-// impl Format Str =
-//     fmt w s =
-//         _ = s.transmute |> write w
-
-// impl Format Char =
-//     fmt w c =
-//         ptr = addr_of c .transmute :: Ptr Int8
-//         slice = (ptr, (1 :: Uptr)) .transmute
-//         _ = write w slice
-
-
-// trait Write w =
-//     write :: w, Slice Int8 -> Int32
-
-// type Stdout = | Stdout
-// type Stderr = | Stderr
-
-// impl Write Stdout =
-//     write _ slice =
-//         ptr, len = slice.transmute
-//         C.write 1 ptr len
-
-// impl Write Stderr =
-//     write _ slice =
-//         ptr, len = slice.transmute
-//         C.write 2 ptr len

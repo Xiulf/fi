@@ -1,8 +1,7 @@
 [project]
-name = "core"
+name = "libc"
 type = "dylib"
 version = "0.1.0"
 
 [dependencies]
 prim = { path = "../prim" }
-libc = { path = "../libc" }
