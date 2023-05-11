@@ -5,23 +5,24 @@ import Core.Ops (Index, index)
 import Data.Foldable
 import Intrinsics (ilt, transmute, ptr_load, ptr_offset)
 
-len (slice :: Slice t) :: Int i =
+len (slice :: ref Slice t) :: Int i =
     _, len = transmute slice :: Ptr t, Uptr
     cast len
 
-impl Index (Slice t) (Int i) t =
+impl Index (Slice t) (Int i) t a' =
     index slice idx =
         ptr, len = transmute slice :: Ptr t, Uptr
         ptr = ptr_offset ptr idx
-        cast ptr
+        transmute ptr
+        // cast ptr
 
-impl Foldable (Slice t) t =
-    fold slice init f =
-        _fold 0 slice init f
+// impl Foldable (Slice t) t =
+//     fold slice init f =
+//         _fold 0 slice init f
 
-_fold i slice init f =
-    if i `ilt` len slice then
-        acc = f init (slice#i)
-        recur (i + 1) slice acc f
-    else
-        init
+// _fold i slice init f =
+//     if i `ilt` len slice then
+//         acc = f init (slice#i)
+//         recur (i + 1) slice acc f
+//     else
+//         init

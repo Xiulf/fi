@@ -5,7 +5,7 @@ use hir_ty::ty::{InstanceImpl, Ty, TyKind};
 
 use super::*;
 use crate::instance::{ImplInstance, ImplSource, Instance, InstanceId, Subst};
-use crate::repr::{Repr, ReprKind};
+use crate::repr::{BoxKind, Repr, ReprKind};
 
 pub enum Arg {
     ExprId(ExprId),
@@ -38,6 +38,7 @@ impl Ctx<'_> {
             | Expr::Array { ref exprs } => self.lower_array(id, exprs, store_in),
             | Expr::App { base, ref args } => self.lower_app(id, base, args, store_in),
             | Expr::Block { ref stmts, expr } => self.lower_block(stmts, expr, store_in),
+            | Expr::Ref { expr } => self.lower_expr(expr, store_in),
             | Expr::Lambda {
                 ref env,
                 ref params,
@@ -350,22 +351,21 @@ impl Ctx<'_> {
     fn make_app(
         &mut self,
         _id: ExprId,
-        base_expr: ExprId,
+        _base_expr: ExprId,
         mut func: Operand,
         mut args: Vec<Arg>,
         store_in: &mut Option<Place>,
     ) -> Operand {
-        let mut ty = self.infer.type_of_expr[base_expr];
+        let mut ty = self.builder.operand_repr(self.db, &func);
         let mut calls = Vec::new();
 
-        while let TyKind::Func(func) = ty.kind(self.db) {
-            calls.push((func.params.len(), func.ret));
-            ty = func.ret;
+        while let ReprKind::Func(sig, _) = ty.kind(self.db) {
+            calls.push((sig.params.len(), sig.ret));
+            ty = sig.ret;
         }
 
-        for (arg_count, ret_ty) in calls {
+        for (arg_count, ret_repr) in calls {
             let args2 = args.drain(..arg_count).map(|a| self.lower_arg(a)).collect::<Vec<_>>();
-            let ret_repr = repr_of(self.db, ret_ty);
             let ret = if args.is_empty() {
                 self.store_in(store_in, ret_repr)
             } else {
@@ -412,7 +412,7 @@ impl Ctx<'_> {
 
         let var = self.store_in(store_in, ret_repr);
         let func = (Const::Instance(instance), func_repr);
-        let env_repr = Repr::new(self.db, ReprKind::Box(env_repr));
+        let env_repr = Repr::new(self.db, ReprKind::Box(BoxKind::Box, env_repr));
         let env_var = self.store_in(&mut None, env_repr);
         self.builder.init(env_var.local);
         let env_deref = env_var.clone().deref().field(1);
@@ -450,7 +450,7 @@ impl Ctx<'_> {
             };
 
             let env_repr = repr_of(self.db, env_ty);
-            let env_repr = Repr::new(self.db, ReprKind::Box(env_repr));
+            let env_repr = Repr::new(self.db, ReprKind::Box(BoxKind::Box, env_repr));
 
             Some(self.builder.add_local(LocalKind::Arg, env_repr.clone()))
         };
@@ -591,7 +591,7 @@ impl Ctx<'_> {
                     if type_ctor.is_boxed(self.db) {
                         discr = discr.deref().field(1);
                         discr_repr = match discr_repr.kind(self.db) {
-                            ReprKind::Box(repr) => *repr,
+                            ReprKind::Box(BoxKind::Box, repr) => *repr,
                             _ => unreachable!(),
                         };
                     }

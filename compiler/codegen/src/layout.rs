@@ -113,6 +113,15 @@ pub fn layout_of(db: &dyn Db, repr: Repr) -> Arc<Layout> {
         },
         | ReprKind::Scalar(scalar) => Arc::new(Layout::scalar(scalar.clone(), &triple)),
         | ReprKind::ReprOf(ty) => layout_of(db, repr_of(db, *ty)),
+        | ReprKind::Box(BoxKind::Ref | BoxKind::Ptr, to) => match to.kind(db) {
+            | ReprKind::Slice(_) => {
+                let mut ptr = scalar_new(Primitive::Pointer, triple);
+                ptr.valid_range = 1..=*ptr.valid_range.end();
+                let meta = scalar_new(Primitive::Int(Integer::Int, false), triple);
+                Arc::new(scalar_pair(ptr, meta, triple))
+            },
+            | _ => layout_of(db, *to),
+        },
         | ReprKind::Ptr(_, false, false) => Arc::new(Layout::scalar(scalar_new(Primitive::Pointer, triple), triple)),
         | ReprKind::Ptr(_, true, nonnull) => {
             let mut scalar = scalar_new(Primitive::Pointer, triple);
@@ -120,7 +129,7 @@ pub fn layout_of(db: &dyn Db, repr: Repr) -> Arc<Layout> {
             let meta = scalar_new(Primitive::Int(Integer::Int, false), triple);
             Arc::new(scalar_pair(scalar, meta, triple))
         },
-        | ReprKind::Ptr(_, false, true) | ReprKind::Box(_) | ReprKind::Func(_, None) => {
+        | ReprKind::Ptr(_, false, true) | ReprKind::Box(_, _) | ReprKind::Func(_, None) => {
             let mut scalar = scalar_new(Primitive::Pointer, triple);
             scalar.valid_range = 1..=*scalar.valid_range.end();
             Arc::new(Layout::scalar(scalar, triple))
@@ -147,7 +156,7 @@ pub fn layout_of(db: &dyn Db, repr: Repr) -> Arc<Layout> {
                 largest_niche: None,
             })
         },
-        | ReprKind::Array(ArrayLen::TypeVar(_), el) => {
+        | ReprKind::Array(ArrayLen::TypeVar(_), el) | ReprKind::Slice(el) => {
             let elem = layout_of(db, *el);
 
             Arc::new(Layout {
@@ -399,8 +408,8 @@ impl ReprAndLayout {
 
     pub fn elem(&self, db: &dyn Db) -> Option<ReprAndLayout> {
         let el = match self.repr.kind(db) {
-            | ReprKind::Ptr(el, _, _) | ReprKind::Array(_, el) => *el,
-            | ReprKind::Box(el) => {
+            | ReprKind::Ptr(el, _, _) | ReprKind::Box(BoxKind::Ref | BoxKind::Ptr, el) | ReprKind::Array(_, el) => *el,
+            | ReprKind::Box(BoxKind::Box, el) => {
                 let usize = Repr::usize(db);
                 Repr::new(db, ReprKind::Struct(Box::new([usize, *el])))
             },
@@ -416,21 +425,29 @@ impl ReprAndLayout {
         match self.repr.kind(db) {
             | ReprKind::Array(_, el) => Some(repr_and_layout(db, *el)),
             | ReprKind::Struct(reprs) => Some(repr_and_layout(db, reprs[field])),
+            | ReprKind::Box(_, el) => match el.kind(db) {
+                | ReprKind::Slice(el) => match field {
+                    | 0 => Some(repr_and_layout(db, Repr::new(db, ReprKind::Ptr(*el, false, true)))),
+                    | 1 => Some(repr_and_layout(db, Repr::usize(db))),
+                    | _ => None,
+                },
+                | _ => None,
+            },
             | ReprKind::Ptr(el, true, nn) => match field {
                 | 0 => Some(repr_and_layout(db, Repr::new(db, ReprKind::Ptr(*el, false, *nn)))),
                 | 1 => Some(repr_and_layout(db, Repr::usize(db))),
-                | _ => unreachable!(),
+                | _ => None,
             },
             | ReprKind::Func(sig, Some(env)) => match field {
                 | 0 => {
                     let mut sig = sig.clone();
-                    sig.params = once(Repr::new(db, ReprKind::Box(*env)))
+                    sig.params = once(Repr::new(db, ReprKind::Box(BoxKind::Box, *env)))
                         .chain(sig.params.into_vec())
                         .collect();
                     Some(repr_and_layout(db, Repr::new(db, ReprKind::Func(sig, None))))
                 },
-                | 1 => Some(repr_and_layout(db, Repr::new(db, ReprKind::Box(*env)))),
-                | _ => unreachable!(),
+                | 1 => Some(repr_and_layout(db, Repr::new(db, ReprKind::Box(BoxKind::Box, *env)))),
+                | _ => None,
             },
             | ReprKind::Enum(reprs) => match self.variants {
                 | Variants::Single { index } => repr_and_layout(db, reprs[index]).field(db, field),

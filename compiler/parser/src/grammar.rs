@@ -83,7 +83,7 @@ fn item(p: &mut Parser) {
         | Some(IDENT | CONST) => item_value(p, m),
         | Some(FOREIGN_KW) => match p.nth(1) {
             | Some(TYPE_KW) => item_type(p, m),
-            | Some(IDENT) => item_value(p, m),
+            | Some(IDENT | CONST) => item_value(p, m),
             | _ => p.error([TYPE_KW, IDENT]),
         },
         | _ => {
@@ -421,7 +421,11 @@ fn typ_atom(p: &mut Parser) -> Option<CompletedMarker> {
         },
         | Some(REF_KW) => {
             p.bump(REF_KW);
-            typ_app(p);
+            if p.eat(L_PAREN) {
+                typ_atom(p);
+                p.expect(R_PAREN);
+            }
+            typ_infix(p, TokenSet::EMPTY);
             m.complete(p, TYPE_REF)
         },
         | Some(L_PAREN) => {
@@ -597,8 +601,8 @@ fn pat_typed(p: &mut Parser) -> Option<CompletedMarker> {
     Some(m)
 }
 
-const EXPR_TOKENS: [SyntaxKind; 16] = [
-    TYPE, IDENT, CONST, INT, FLOAT, CHAR, STRING, L_PAREN, L_BRACKET, LYT_START, FN_KW, DO_KW, MATCH_KW, IF_KW,
+const EXPR_TOKENS: [SyntaxKind; 17] = [
+    TYPE, IDENT, CONST, INT, FLOAT, CHAR, STRING, L_PAREN, L_BRACKET, LYT_START, FN_KW, REF_KW, DO_KW, MATCH_KW, IF_KW,
     RETURN_KW, RECUR_KW,
 ];
 const PEEK_EXPR: TokenSet = TokenSet::new(&EXPR_TOKENS);
@@ -653,6 +657,11 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
             p.expect(ARROW);
             expr(p);
             m.complete(p, EXPR_LAMBDA)
+        },
+        | Some(REF_KW) => {
+            p.bump(REF_KW);
+            expr_infix(p, COMMA.into());
+            m.complete(p, EXPR_REF)
         },
         | Some(DO_KW) => {
             p.bump(DO_KW);

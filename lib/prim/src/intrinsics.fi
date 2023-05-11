@@ -28,8 +28,8 @@ import Prim
 @intrinsic foreign align_of :: Proxy a -> Int b
 @intrinsic foreign stride_of :: Proxy a -> Int b
 
-@intrinsic foreign undefined :: t
-@intrinsic foreign zeroed :: t
+@intrinsic foreign UNDEFINED :: t
+@intrinsic foreign ZEROED :: t
 
 @intrinsic foreign deref :: ref a -> a
 
@@ -41,6 +41,6 @@ import Prim
 @intrinsic foreign ptr_store_volatile :: Ptr a, a -> ()
 
 @intrinsic foreign array_index :: Array len t, Int i -> t
-@intrinsic foreign array_slice :: Array len t, Int i, Int i -> Slice t
+@intrinsic foreign array_slice :: ref Array len t, Int i, Int i -> ref Slice t
 
 @intrinsic foreign panic :: Str -> Never

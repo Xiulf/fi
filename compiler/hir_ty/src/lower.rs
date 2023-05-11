@@ -39,10 +39,14 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
 
                 ty
             },
-            | TypeRef::Ref { ty } => {
-                let lifetime = self.fresh_unknown();
+            | TypeRef::Ref { lifetime, ty } => {
+                let lt = match lifetime {
+                    | Some(lt) => self.lower_type_ref(lt, false),
+                    | None => self.ctx.fresh_lifetime(self.level),
+                };
                 let ty = self.lower_type_ref(ty, false);
-                Ty::new(self.db, TyKind::Ref(lifetime, ty))
+
+                Ty::new(self.db, TyKind::Ref(lt, ty))
             },
             | TypeRef::App { base, ref args } => match type_map[base] {
                 | TypeRef::Path {

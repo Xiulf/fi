@@ -26,7 +26,7 @@ pub enum TyKind {
     Primitive(PrimitiveType),
     Literal(Literal),
     Unknown(Unknown, bool),
-    Ref(Unknown, Ty),
+    Ref(Ty, Ty),
     Var(TypeVarId),
     Ctor(TypeCtorId),
     App(Ty, Box<[Ty]>),
@@ -133,9 +133,10 @@ pub fn is_recursive(db: &dyn Db, ty: Ty) -> bool {
 impl Ty {
     pub fn fold(self, db: &dyn Db, f: &mut dyn FnMut(Ty) -> Ty) -> Ty {
         match self.kind(db) {
-            | TyKind::Ref(u, ty) => {
+            | TyKind::Ref(lt, ty) => {
+                let lt = lt.fold(db, f);
                 let ty = ty.fold(db, f);
-                f(Ty::new(db, TyKind::Ref(*u, ty)))
+                f(Ty::new(db, TyKind::Ref(lt, ty)))
             },
             | TyKind::App(base, args) => {
                 let base = base.fold(db, f);
@@ -164,7 +165,8 @@ impl Ty {
 
     pub fn traverse(self, db: &dyn Db, f: &mut dyn FnMut(Ty)) {
         match self.kind(db) {
-            | TyKind::Ref(_, ty) => {
+            | TyKind::Ref(lt, ty) => {
+                lt.traverse(db, f);
                 ty.traverse(db, f);
             },
             | TyKind::App(base, args) => {
@@ -320,7 +322,7 @@ impl HirDisplay for Ty {
             | TyKind::Literal(l) => write!(f, "{l}"),
             | TyKind::Unknown(u, false) => write!(f, "?{}", u.0),
             | TyKind::Unknown(u, true) => write!(f, "'{}", u.0),
-            | TyKind::Ref(_, to) => write!(f, "ref {}", to.display(f.db)),
+            | TyKind::Ref(lt, to) => write!(f, "ref({}) {}", lt.display(f.db), to.display(f.db)),
             | TyKind::Var(var) => f.with_upcast::<_, dyn hir_def::Db>(|d| d, |f| var.hir_fmt(f)),
             | TyKind::Ctor(ctor) => {
                 let it = ctor.it(f.db);

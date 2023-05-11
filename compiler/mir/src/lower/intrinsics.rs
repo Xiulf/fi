@@ -35,11 +35,11 @@ impl Ctx<'_> {
             | "size_of" => self.lower_intrinsic_nullop(expr, NullOp::SizeOf, args, store_in),
             | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
             | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
-            | "undefined" => {
+            | "UNDEFINED" => {
                 let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
                 Operand::Const(Const::Undefined, repr)
             },
-            | "zeroed" => {
+            | "ZEROED" => {
                 let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
                 Operand::Const(Const::Zeroed, repr)
             },

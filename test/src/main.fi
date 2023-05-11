@@ -3,11 +3,13 @@ module Main (main) =
 import Core
 import Data.Slice
 import Data.Foldable
-import Intrinsics (array_slice)
+import Intrinsics (UNDEFINED, array_slice, deref)
 
 
 main () =
     array = [4, 6, 8]
-    slice = array_slice array 0 3
+    slice = array_slice (ref array) 0 3
 
-    fold slice 0 fn a b -> a + b
+    // fold slice 0 fn a b -> a + b
+    // len slice
+    slice#1

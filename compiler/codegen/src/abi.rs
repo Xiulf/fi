@@ -1,10 +1,11 @@
-use inkwell::types;
-use mir::repr::{Repr, ReprKind, Signature};
+use inkwell::types::{self, BasicType};
+use mir::repr::{BoxKind, Repr, ReprKind, Signature};
 
 use crate::ctx::CodegenCtx;
 use crate::layout::{primitive_size, repr_and_layout, Abi, ReprAndLayout, Size};
+use crate::Db;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum PassMode<'ctx> {
     NoPass,
     ByVal(types::BasicTypeEnum<'ctx>),
@@ -59,7 +60,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let is_varargs = sig.is_varargs;
         let ret = self.compute_layout_abi(ret_layout);
         let env = env.map(|e| {
-            let repr = Repr::new(self.db, ReprKind::Box(e));
+            let repr = Repr::new(self.db, ReprKind::Box(BoxKind::Box, e));
             let layout = repr_and_layout(self.db, repr);
             self.compute_layout_abi(layout)
         });
@@ -87,6 +88,22 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn pass_mode(&self, layout: &ReprAndLayout) -> PassMode<'ctx> {
         if layout.is_zst() {
             PassMode::NoPass
+        } else if let ReprKind::Box(k @ (BoxKind::Ref | BoxKind::Ptr), el) = layout.repr.kind(self.db) {
+            match el.kind(self.db) {
+                | ReprKind::Slice(_) => {
+                    let a_ty = self.basic_type_for_ral(&layout.field(self.db, 0).unwrap());
+                    let b_ty = self.basic_type_for_ral(&layout.field(self.db, 1).unwrap());
+                    PassMode::ByValPair(a_ty, b_ty)
+                },
+                | _ if *k == BoxKind::Ptr => {
+                    let ty = self.basic_type_for_ral(&layout.elem(self.db).unwrap());
+                    let ty = ty.ptr_type(Default::default()).as_basic_type_enum();
+                    PassMode::ByVal(ty)
+                },
+                | _ => PassMode::ByRef {
+                    size: Some(layout.size),
+                },
+            }
         } else {
             match &layout.abi {
                 | Abi::Uninhabited => PassMode::NoPass,
@@ -114,35 +131,33 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 }
 
-// impl<'ctx> CodegenCtx<'_, 'ctx> {
-//     pub fn value_for_arg(&mut self, arg: ValueRef) -> EmptySinglePair<types::BasicTypeEnum<'ctx>> {
-//         match self.pass_mode(&arg.layout) {
-//             | PassMode::NoPass => EmptySinglePair::Empty,
-//             | PassMode::ByVal(_) => EmptySinglePair::Single(arg.load_scalar(self)),
-//             | PassMode::ByValPair(_, _) => {
-//                 let (a, b) = arg.load_scalar_pair(self);
+impl hir::display::HirDisplay for FnAbi<'_> {
+    type Db<'a> = dyn Db + 'a;
 
-//                 EmptySinglePair::Pair(a, b)
-//             },
-//             | PassMode::ByRef { size: _ } => match arg.on_stack(self) {
-//                 | (ptr, None) => EmptySinglePair::Single(ptr.get_addr(self)),
-//                 | (ptr, Some(meta)) => EmptySinglePair::Pair(ptr.get_addr(self), meta),
-//             },
-//         }
-//     }
+    fn hir_fmt(&self, f: &mut hir::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        write!(f, "(")?;
+        f.write_joined(self.args.iter(), ", ")?;
+        write!(f, ") -> {}", self.ret.display(f.db))
+    }
+}
 
-//     pub fn value_for_ret(&mut self, ret: ir::LocalId) -> EmptySinglePair<clif::Value> {
-//         let place = self.locals[ret].clone();
+impl hir::display::HirDisplay for ArgAbi<'_> {
+    type Db<'a> = dyn Db + 'a;
 
-//         match self.pass_mode(&place.layout) {
-//             | PassMode::NoPass => EmptySinglePair::Empty,
-//             | PassMode::ByVal(_) => EmptySinglePair::Single(place.to_value(self).load_scalar(self)),
-//             | PassMode::ByValPair(_, _) => {
-//                 let (a, b) = place.to_value(self).load_scalar_pair(self);
+    fn hir_fmt(&self, f: &mut hir::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        write!(f, "{} :: {:?}", self.layout.repr.display(f.db), self.mode)
+    }
+}
 
-//                 EmptySinglePair::Pair(a, b)
-//             },
-//             | PassMode::ByRef { size: _ } => EmptySinglePair::Empty,
-//         }
-//     }
-// }
+impl std::fmt::Debug for PassMode<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            | Self::NoPass => write!(f, "NoPass"),
+            | Self::ByRef { size: _ } => write!(f, "ByRef"),
+            | Self::ByVal(ty) => write!(f, "ByVal({})", ty),
+            | Self::ByValPair(a, b) => write!(f, "ByValPair({}, {})", a, b),
+        }
+    }
+}

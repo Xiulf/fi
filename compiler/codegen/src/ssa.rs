@@ -1,6 +1,7 @@
 use arena::{ArenaMap, Idx};
 use mir::graph::Dominators;
 use mir::ir::{Local, LocalData, Location, Place, PlaceRef, Projection, RValue};
+use mir::repr::{BoxKind, ReprKind};
 use mir::traversal;
 use mir::visitor::{MutUseContext, PlaceContext, UseContext, Visitor};
 use rustc_hash::FxHashSet;
@@ -37,6 +38,8 @@ pub fn analyze(bcx: &BodyCtx<'_, '_, '_>) -> FxHashSet<Local> {
         let layout = repr_and_layout(bcx.db, repr);
         let kind = if layout.is_zst() {
             LocalKind::ZST
+        } else if let ReprKind::Box(BoxKind::Ref, _) = repr.kind(bcx.db) {
+            LocalKind::Memory
         } else if let Abi::Scalar(_) | Abi::ScalarPair(_, _) = layout.abi {
             LocalKind::Unused
         } else {

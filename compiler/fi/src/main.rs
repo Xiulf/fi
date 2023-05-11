@@ -111,14 +111,14 @@ enum OptLevel {
 
 fn main() -> anyhow::Result<ExitCode> {
     let cli = Cli::parse();
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::WARN.into())
+        .with_env_var("FI_LOG")
+        .with_regex(true)
+        .from_env_lossy();
 
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::WARN.into())
-                .with_env_var("FI_LOG")
-                .from_env_lossy(),
-        )
+        .with_env_filter(filter)
         .without_time()
         .with_line_number(true)
         .init();

@@ -1,7 +1,7 @@
 use inkwell::types::BasicType;
 use inkwell::values::BasicValue;
 use inkwell::{values, AddressSpace};
-use mir::repr::{Repr, ReprKind};
+use mir::repr::{BoxKind, Repr, ReprKind};
 
 use crate::ctx::CodegenCtx;
 use crate::layout::{primitive_align, primitive_size, repr_and_layout, Abi, ReprAndLayout, TagEncoding, Variants};
@@ -224,6 +224,8 @@ impl<'ctx> PlaceRef<'ctx> {
 
         let val = if let Some(extra) = self.extra {
             OperandValue::Pair(self.ptr.as_basic_value_enum(), extra)
+        } else if let ReprKind::Box(BoxKind::Ref, _) = self.layout.repr.kind(ctx.db) {
+            OperandValue::Ref(self.ptr, self.extra)
         } else {
             match &self.layout.abi {
                 | Abi::Scalar(_) => {

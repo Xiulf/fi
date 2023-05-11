@@ -102,7 +102,11 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
     let (GeneralizedType::Mono(ty) | GeneralizedType::Poly(_, ty)) = ctx.result.ty;
     let is_main = hir_def::attrs::query(db, value.into()).by_key("main").exists() || {
         let module = value.module(db);
-        matches!(module.parent(db), ModuleParentId::LibId(_)) && module.name(db).as_str(db) == "Main"
+        matches!(module.parent(db), ModuleParentId::LibId(_)) && module.name(db).as_str(db) == "Main" && {
+            let it = value.it(db);
+            let tree = hir_def::item_tree::query(db, it.file);
+            tree[it.value].name.as_str(db) == "main"
+        }
     };
 
     if is_main {

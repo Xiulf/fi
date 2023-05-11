@@ -29,6 +29,9 @@ pub enum Expr {
         params: Box<[PatId]>,
         body: ExprId,
     },
+    Ref {
+        expr: ExprId,
+    },
     App {
         base: ExprId,
         args: Box<[ExprId]>,

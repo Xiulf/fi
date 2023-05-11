@@ -84,6 +84,7 @@ ast_node!(Expr {
     Literal(ExprLiteral, EXPR_LITERAL),
     Array(ExprArray, EXPR_ARRAY),
     Lambda(ExprLambda, EXPR_LAMBDA),
+    Ref(ExprRef, EXPR_REF),
     Infix(ExprInfix, EXPR_INFIX),
     Prefix(ExprPrefix, EXPR_PREFIX),
     Postfix(ExprPostfix, EXPR_POSTFIX),

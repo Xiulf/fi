@@ -4,7 +4,7 @@ use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
 use inkwell::{types, IntPredicate};
 use mir::instance::Instance;
 use mir::ir::{self, Local, LocalKind};
-use mir::repr::{Repr, ReprKind};
+use mir::repr::{BoxKind, Repr, ReprKind};
 
 use crate::abi::{ArgAbi, EmptySinglePair, PassMode};
 use crate::ctx::BodyCtx;
@@ -33,7 +33,6 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         if self.fn_abi.ret.is_indirect() {
             let ptr = self.func.get_first_param().unwrap().into_pointer_value();
             let val = PlaceRef::new(self.fn_abi.ret.layout.clone(), ptr, None);
-
             self.ret_ptr = Some(val);
         }
 
@@ -262,7 +261,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_init(&mut self, local: Local) {
         let repr = self.instance.subst_repr(self.db, self.body.locals[local.0].repr);
 
-        if let ReprKind::Box(_) = repr.kind(self.db) {
+        if let ReprKind::Box(_, _) = repr.kind(self.db) {
             let layout = repr_and_layout(self.db, repr);
             let inner_layout = layout.elem(self.db).unwrap();
             let ty = self.basic_type_for_ral(&inner_layout);
@@ -285,7 +284,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_drop(&mut self, place: &ir::Place) {
         let layout = self.place_layout(place);
 
-        if let ReprKind::Box(_) = layout.repr.kind(self.db) {
+        if let ReprKind::Box(BoxKind::Box, _) = layout.repr.kind(self.db) {
             assert!(place.projection.is_empty());
 
             if let LocalRef::Operand(Some(op)) = &self.locals[place.local.0] {
@@ -660,10 +659,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_operand(&mut self, op: &ir::Operand) -> OperandRef<'ctx> {
         match op {
             | ir::Operand::Move(p) => self.codegen_consume(p),
-            | ir::Operand::Copy(p) => {
-                self.codegen_copy(p);
-                self.codegen_consume(p)
-            },
+            | ir::Operand::Copy(p) => self.codegen_copy(p),
             | ir::Operand::Const(c, r) => self.codegen_const(c, *r),
         }
     }
@@ -704,7 +700,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
         let place = self.codegen_place(place);
 
-        if let ReprKind::Box(_) = place.layout.repr.kind(self.db) {
+        if let ReprKind::Box(BoxKind::Box, _) = place.layout.repr.kind(self.db) {
             let ptr = place.deref(self.cx).field(self.cx, 0).ptr;
             let one = self.usize_type().const_int(1, false);
             let count = self.builder.build_load(ptr, "").into_int_value();

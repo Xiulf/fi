@@ -392,7 +392,7 @@ impl Value {
     pub fn is_main(self, db: &dyn Db) -> bool {
         self.attrs(db).by_key("main").exists() || {
             let module = self.module(db);
-            module.parent(db).is_none() && module.name(db).as_str(db) == "Main"
+            module.parent(db).is_none() && module.name(db).as_str(db) == "Main" && self.name(db).as_str(db) == "main"
         }
     }
 
@@ -401,6 +401,8 @@ impl Value {
     }
 
     fn run_all_queries(self, db: &dyn Db) {
+        let span = tracing::debug_span!("debug", name = self.path(db).display(db).to_string());
+        let _ent = span.enter();
         let item = hir_def::id::ITypedItemId::new(db, self.id.into());
 
         hir_def::body::query(db, self.id);
@@ -408,7 +410,6 @@ impl Value {
 
         use hir_def::display::HirDisplay;
         let result = hir_ty::infer(db, self.id);
-        tracing::debug!("{}", self.link_name(db));
         tracing::debug!("{}", result.ty.display(db));
 
         if !result.constraints.is_empty() {

@@ -1,7 +1,7 @@
 use inkwell::types::{self, BasicType};
 use inkwell::AddressSpace;
 use mir::ir::{Operand, Place, PlaceRef, Projection};
-use mir::repr::{Integer, Primitive, Repr, ReprKind, Scalar, Signature};
+use mir::repr::{BoxKind, Integer, Primitive, Repr, ReprKind, Scalar, Signature};
 
 use crate::abi::{FnAbi, PassMode};
 use crate::ctx::{BodyCtx, CodegenCtx};
@@ -68,7 +68,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                         repr: mir::repr::repr_of(self.db, *ty),
                         layout: layout.layout.clone(),
                     }),
-                    | ReprKind::Ptr(_, _, _) | ReprKind::Box(_) => self
+                    | ReprKind::Box(BoxKind::Ref, to) => self.basic_type_for_ral(&repr_and_layout(self.db, *to)),
+                    | ReprKind::Ptr(_, _, _) | ReprKind::Box(_, _) => self
                         .basic_type_for_ral(&layout.elem(self.db).unwrap())
                         .ptr_type(AddressSpace::default())
                         .as_basic_type_enum(),

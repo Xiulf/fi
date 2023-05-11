@@ -146,6 +146,9 @@ impl Body {
                     }
                     format_to!(out, "#{:0>3}", u32::from(body.into_raw()));
                 },
+                | Expr::Ref { expr } => {
+                    format_to!(out, "Ref #{:0>3}", u32::from(expr.into_raw()));
+                },
                 | Expr::App { base, args } => {
                     format_to!(out, "App #{:0>3}", u32::from(base.into_raw()));
                     for arg in args.iter() {

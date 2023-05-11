@@ -19,7 +19,7 @@ foreign type Ref :: Lifetime, Type -> Type
 foreign type Char  :: Type
 
 @lang = "str-type"
-@repr(fatptr(elem(scalar = "u8")), valid_range_start = 1)
+@repr(slice(elem(scalar = "u8")))
 foreign type Str :: Type
 
 @int_tag = "i8"    foreign type Int8    :: Type
@@ -42,7 +42,7 @@ foreign type Str :: Type
 foreign type Ptr :: Type -> Type
 
 @lang = "slice-type"
-@repr(fatptr(elem = 0), valid_range_start = 1)
+@repr(slice(elem = 0))
 foreign type Slice :: Type -> Type
 
 @lang = "array-type"

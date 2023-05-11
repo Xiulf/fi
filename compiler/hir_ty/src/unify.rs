@@ -56,20 +56,16 @@ impl Ctx<'_> {
         self.fresh_type_with_kind(level, kind, skolem)
     }
 
-    pub fn fresh_lifetime(&mut self, level: UnkLevel) -> Unknown {
-        let u = self.fresh_unknown();
+    pub fn fresh_lifetime(&mut self, level: UnkLevel) -> Ty {
         let kind = self.lifetime_kind();
-        self.subst.unsolved.insert(u, (level, kind));
-        u
+        self.fresh_type_with_kind(level, kind, false)
     }
 
     pub fn coerce(&mut self, ty: Ty, expected: Ty, origin: TyOrigin) {
         let ty = self.resolve_type_shallow(ty);
-
         if let TyKind::Never = ty.kind(self.db) {
             return;
         }
-
         self.unify_types(ty, expected, origin);
     }
 
@@ -157,13 +153,9 @@ impl Ctx<'_> {
             // | (TyKind::Var(_), TyKind::Unknown(_, true)) => UnifyResult::Ok,
             | (TyKind::Unknown(u, false), _) => self.unify_unknown(*u, t1, t2, bindings),
             | (_, TyKind::Unknown(u, false)) => self.unify_unknown(*u, t2, t1, bindings),
-            | (TyKind::Ref(u1, t1), TyKind::Ref(u2, t2)) if u1 == u2 => self.unify_into(*t1, *t2, bindings),
-            | (TyKind::Ref(u1, t1), TyKind::Ref(u2, t2)) => {
-                let ut1 = Ty::new(self.db, TyKind::Unknown(*u1, false));
-                let ut2 = Ty::new(self.db, TyKind::Unknown(*u2, false));
-                self.unify_unknown(*u1, ut1, ut2, bindings)
-                    .and(self.unify_into(*t1, *t2, bindings))
-            },
+            | (TyKind::Ref(u1, t1), TyKind::Ref(u2, t2)) => self
+                .unify_into(*u1, *u2, bindings)
+                .and(self.unify_into(*t1, *t2, bindings)),
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
                 .unify_into(*a_base, *b_base, bindings)
                 .and(self.unify_all(a_args.iter(), b_args.iter(), bindings)),
@@ -255,7 +247,10 @@ impl Ctx<'_> {
             | Some(t) => Ok(t),
             | None => match self.subst.solved.0.get(&u).copied() {
                 | Some(t) => Ok(t),
-                | None => Err(self.subst.unsolved[&u]),
+                | None => match self.subst.unsolved.get(&u) {
+                    | Some(u) => Err(*u),
+                    | None => Err((self.level, self.lifetime_kind())),
+                },
             },
         }
     }

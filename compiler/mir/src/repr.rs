@@ -5,7 +5,7 @@ use hir_def::display::HirDisplay;
 use hir_def::expr::Literal;
 use hir_def::id::{CtorId, TypeCtorId, TypeVarId};
 use hir_def::{item_tree, lang_item};
-use hir_ty::ty::{FloatKind, IntegerKind, PrimitiveType, Ty, TyKind};
+use hir_ty::ty::{FloatKind, IntegerKind, PrimitiveType, Ty, TyKind, Unknown};
 use rustc_hash::FxHashSet;
 
 use crate::Db;
@@ -25,8 +25,9 @@ pub enum ReprKind {
     Struct(Box<[Repr]>),
     Enum(Box<[Repr]>),
     Array(ArrayLen, Repr),
+    Slice(Repr),
     Ptr(Repr, bool, bool),
-    Box(Repr),
+    Box(BoxKind, Repr),
     Func(Signature, Option<Repr>),
     Discr(Repr),
     ReprOf(Ty),
@@ -36,6 +37,14 @@ pub enum ReprKind {
 pub enum ArrayLen {
     Const(usize),
     TypeVar(TypeVarId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum BoxKind {
+    Box,
+    Ref,
+    Ptr,
+    TypeVar(TypeVarId, bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -114,7 +123,7 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Repr {
     tracing::trace!("{}", ty.display(db));
 
     // if hir_ty::ty::is_recursive(db, ty) {
-    _repr_of_rec(db, ty, &mut FxHashSet::default())
+    _repr_of_rec(db, ty, false, &mut FxHashSet::default(), &mut FxHashSet::default())
     // } else {
     //     _repr_of(db, ty)
     // }
@@ -159,7 +168,13 @@ fn _repr_of(db: &dyn Db, ty: Ty) -> Repr {
     }
 }
 
-fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
+fn _repr_of_rec(
+    db: &dyn Db,
+    ty: Ty,
+    in_param: bool,
+    vars_in_params: &mut FxHashSet<Result<TypeVarId, Unknown>>,
+    seen: &mut FxHashSet<Ty>,
+) -> Repr {
     if !seen.insert(ty) {
         return Repr::new(db, ReprKind::ReprOf(ty));
     }
@@ -168,14 +183,30 @@ fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
         | TyKind::Error => unreachable!(),
         | TyKind::Never => Repr::new(db, ReprKind::Uninhabited),
         | TyKind::Var(var) => Repr::new(db, ReprKind::TypeVar(*var)),
-        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], |db, ty| _repr_of_rec(db, ty, seen)),
+        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], |db, ty| {
+            _repr_of_rec(db, ty, false, vars_in_params, seen)
+        }),
         | TyKind::Primitive(prim) => match prim {
             | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
             | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
         },
-        | TyKind::Ref(_, to) => {
-            let to = _repr_of_rec(db, *to, seen);
-            Repr::new(db, ReprKind::Ptr(to, false, true))
+        | TyKind::Ref(lt, to) => {
+            let to = _repr_of_rec(db, *to, false, vars_in_params, seen);
+            let kind = match lt.kind(db) {
+                | TyKind::Unknown(u, _) if !in_param && vars_in_params.contains(&Err(*u)) => BoxKind::Ptr,
+                | TyKind::Unknown(u, _) => {
+                    vars_in_params.insert(Err(*u));
+                    BoxKind::Ref
+                },
+                | TyKind::Var(v) if !in_param => BoxKind::TypeVar(*v, vars_in_params.contains(&Ok(*v))),
+                | TyKind::Var(v) => {
+                    vars_in_params.insert(Ok(*v));
+                    BoxKind::TypeVar(*v, false)
+                },
+                | _ => unreachable!("({}) ({})", lt.display(db), to.display(db)),
+            };
+
+            Repr::new(db, ReprKind::Box(kind, to))
         },
         | TyKind::App(mut base, args) => {
             let mut args = args.to_vec();
@@ -185,20 +216,27 @@ fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
             }
 
             match base.kind(db) {
-                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, |db, ty| _repr_of_rec(db, ty, seen)),
+                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, |db, ty| {
+                    _repr_of_rec(db, ty, false, vars_in_params, seen)
+                }),
                 | _ => unreachable!("{}", base.display(db)),
             }
         },
         | TyKind::Func(func) => {
-            let params = func.params.iter().map(|&p| _repr_of_rec(db, p, seen)).collect();
-            let ret = _repr_of_rec(db, func.ret, seen);
+            let mut vars = FxHashSet::default();
+            let params = func
+                .params
+                .iter()
+                .map(|&p| _repr_of_rec(db, p, true, &mut vars, seen))
+                .collect();
+            let ret = _repr_of_rec(db, func.ret, false, &mut vars, seen);
             let signature = Signature {
                 params,
                 ret,
                 is_varargs: func.is_varargs,
             };
 
-            let env = _repr_of_rec(db, func.env, seen);
+            let env = _repr_of_rec(db, func.env, false, vars_in_params, seen);
             let env = if env == Repr::unit(db) { None } else { Some(env) };
 
             Repr::new(db, ReprKind::Func(signature, env))
@@ -256,7 +294,7 @@ fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty], mut repr_of: impl FnMu
     };
 
     if attrs.by_key("boxed").exists() {
-        repr = Repr::new(db, ReprKind::Box(repr));
+        repr = Repr::new(db, ReprKind::Box(BoxKind::Box, repr));
     }
 
     repr
@@ -390,6 +428,18 @@ fn repr_from_attrs(
         }
     }
 
+    if let Some(slice) = group.field("slice").and_then(AttrInput::group) {
+        if let Some(elem) = slice.field("elem") {
+            let elem = if let Some(idx) = elem.int() {
+                repr_of(db, args[idx as usize])
+            } else {
+                repr_from_attrs(db, elem.group().unwrap(), args, repr_of)
+            };
+
+            repr = ReprKind::Slice(elem);
+        }
+    }
+
     if let Some(arr) = group.field("array").and_then(AttrInput::group) {
         if let (Some(elem), Some(len)) = (arr.field("elem"), arr.field("len")) {
             let elem = if let Some(idx) = elem.int() {
@@ -453,7 +503,7 @@ fn primitive_from_attr(attr: &str) -> Primitive {
 #[salsa::tracked]
 pub fn needs_drop(db: &dyn Db, repr: Repr) -> bool {
     match repr.kind(db) {
-        | ReprKind::Box(_) => true,
+        | ReprKind::Box(BoxKind::Box, _) => true,
         | _ => false,
     }
 }

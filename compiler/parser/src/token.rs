@@ -148,6 +148,7 @@ pub enum SyntaxKind {
     EXPR_LITERAL,
     EXPR_ARRAY,
     EXPR_LAMBDA,
+    EXPR_REF,
     EXPR_INFIX,
     EXPR_PREFIX,
     EXPR_POSTFIX,

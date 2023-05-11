@@ -16,9 +16,9 @@ len list =
     | Nil -> 0
     | Cons x xs -> 1 + (len xs)
 
-impl Index (List t) (Int i) t =
-    index list idx =
-        Intrinsics.undefined
+// impl Index (List t) (Int i) t =
+//     index list idx =
+//         Intrinsics.undefined
         // match list, idx with
         // | Nil, _ -> panic "index out of bounds"
         // | x:xs, 0 -> x

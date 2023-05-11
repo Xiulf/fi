@@ -35,6 +35,7 @@ pub enum TypeRef {
         def: Option<TypeDefId>,
     },
     Ref {
+        lifetime: Option<TypeRefId>,
         ty: TypeRefId,
     },
     App {
@@ -420,9 +421,10 @@ impl<'a> Ctx<'a> {
                 self.alloc_type(TypeRef::Path { path, def }, syntax_ptr)
             },
             | ast::Type::Ref(t) => {
+                let lifetime = t.lifetime().map(|t| self.lower_type(t));
                 let ty = self.lower_type_opt(t.ty());
 
-                self.alloc_type(TypeRef::Ref { ty }, syntax_ptr)
+                self.alloc_type(TypeRef::Ref { lifetime, ty }, syntax_ptr)
             },
             | ast::Type::App(t) => {
                 let base = self.lower_type_opt(t.base());

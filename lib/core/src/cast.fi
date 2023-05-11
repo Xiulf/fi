@@ -20,8 +20,8 @@ impl Cast (Float a) (Int b) =
 impl Cast (Float a) (Float b) =
     cast x = Intrinsics.fconvert x
 
-impl Cast (ref a) (Ptr a) =
-    cast x = Intrinsics.transmute x
+// impl Cast (ref a) (Ptr a) =
+//     cast x = Intrinsics.transmute x
 
-impl Cast (Ptr a) (ref a) =
-    cast x = Intrinsics.transmute x
+// impl Cast (Ptr a) (ref a) =
+//     cast x = Intrinsics.transmute x

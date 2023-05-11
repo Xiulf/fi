@@ -494,8 +494,16 @@ impl TypePath {
 }
 
 impl TypeRef {
-    pub fn ty(&self) -> Option<Type> {
+    pub fn lifetime(&self) -> Option<Type> {
+        if children::<Type>(self.syntax()).count() == 1 {
+            return None;
+        }
+
         child(self.syntax())
+    }
+
+    pub fn ty(&self) -> Option<Type> {
+        children(self.syntax()).last()
     }
 }
 
@@ -649,6 +657,12 @@ impl ExprLambda {
     }
 
     pub fn body(&self) -> Option<Expr> {
+        child(self.syntax())
+    }
+}
+
+impl ExprRef {
+    pub fn expr(&self) -> Option<Expr> {
         child(self.syntax())
     }
 }

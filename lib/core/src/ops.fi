@@ -26,6 +26,6 @@ trait Div t =
 trait Rem t =
     rem :: t, t -> t
 
-trait Index t i o | t i -> o =
+trait Index t i o a' | t i -> o =
     @deref
-    index :: t, i -> ref o
+    index :: ref(a') t, i -> ref(a') o

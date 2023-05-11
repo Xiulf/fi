@@ -71,6 +71,11 @@ impl BodyCtx<'_, '_> {
             | Expr::Path { def: Some(def), path } => self.infer_value_def_id(id, *def, path.segments().last().copied()),
             | Expr::Array { exprs } => self.infer_array(id, exprs, expected),
             | Expr::Lambda { env, params, body } => self.infer_lambda(id, env, params, *body, expected),
+            | Expr::Ref { expr } => {
+                let ty = self.infer_expr(*expr, Expectation::None);
+                let lt = self.ctx.fresh_lifetime(self.level);
+                Ty::new(self.db, TyKind::Ref(lt, ty))
+            },
             | Expr::App { base, args } => self.infer_app(id, *base, args),
             | Expr::If { cond, then, else_ } => self.infer_if(id, *cond, *then, *else_, expected),
             | Expr::Match {
@@ -298,8 +303,8 @@ impl BodyCtx<'_, '_> {
         match ty.kind(self.db) {
             | TyKind::Ref(_, to) if deref => *to,
             | _ if deref => {
-                let var = self.ctx.fresh_type(self.ctx.level, false);
-                let lt = self.ctx.fresh_lifetime(self.ctx.level);
+                let lt = self.ctx.fresh_lifetime(self.level);
+                let var = self.ctx.fresh_type(self.level, false);
                 let ref_ty = Ty::new(self.db, TyKind::Ref(lt, var));
                 self.unify_types(ty, ref_ty, id.into());
                 var

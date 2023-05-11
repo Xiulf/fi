@@ -200,13 +200,15 @@ impl<'db> Ctx<'db> {
             },
             | ast::Expr::Array(e) => {
                 let exprs = e.exprs().map(|e| self.lower_expr(e)).collect();
-
                 self.alloc_expr(Expr::Array { exprs }, syntax_ptr)
             },
             | ast::Expr::Lambda(e) => {
                 let (params, env, body) = self.lower_lambda(e);
-
                 self.alloc_expr(Expr::Lambda { params, env, body }, syntax_ptr)
+            },
+            | ast::Expr::Ref(e) => {
+                let expr = self.lower_expr_opt(e.expr());
+                self.alloc_expr(Expr::Ref { expr }, syntax_ptr)
             },
             | ast::Expr::App(e) => {
                 let base = self.lower_expr_opt(e.base());

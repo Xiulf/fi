@@ -6,7 +6,7 @@ use hir_ty::ty::{Ty, TyKind};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ir::{Body, MirValueId};
-use crate::repr::{repr_of, ArrayLen, Repr, ReprKind, Signature};
+use crate::repr::{repr_of, ArrayLen, BoxKind, Repr, ReprKind, Signature};
 use crate::Db;
 
 #[salsa::interned]
@@ -261,9 +261,10 @@ impl InstanceData {
             | ReprKind::ReprOf(ty) => ReprKind::ReprOf(ty.replace_vars(db, &self.types)),
             | ReprKind::Discr(repr) => ReprKind::Discr(self.subst_repr(db, *repr)),
             | ReprKind::Ptr(to, fat, nn) => ReprKind::Ptr(self.subst_repr(db, *to), *fat, *nn),
-            | ReprKind::Box(of) => ReprKind::Box(self.subst_repr(db, *of)),
+            | ReprKind::Box(k, of) => ReprKind::Box(self.subst_box_kind(db, k), self.subst_repr(db, *of)),
             | ReprKind::Struct(reprs) => ReprKind::Struct(reprs.iter().map(|&r| self.subst_repr(db, r)).collect()),
             | ReprKind::Enum(reprs) => ReprKind::Enum(reprs.iter().map(|&r| self.subst_repr(db, r)).collect()),
+            | ReprKind::Slice(of) => ReprKind::Slice(self.subst_repr(db, *of)),
             | ReprKind::Array(len, of) => ReprKind::Array(self.subst_array_len(db, len), self.subst_repr(db, *of)),
             | ReprKind::Func(sig, env) => ReprKind::Func(
                 self.subst_signature(db, sig),
@@ -288,6 +289,21 @@ impl InstanceData {
                 | None => len.clone(),
             },
             | _ => len.clone(),
+        }
+    }
+
+    pub fn subst_box_kind(&self, db: &dyn Db, kind: &BoxKind) -> BoxKind {
+        match kind {
+            | BoxKind::TypeVar(tv, in_param) => match self.find_var(tv) {
+                | Some(ty) => match ty.kind(db) {
+                    | TyKind::Var(v) => BoxKind::TypeVar(*v, false),
+                    | TyKind::Unknown(_, _) if *in_param => BoxKind::Ptr,
+                    | TyKind::Unknown(_, _) => BoxKind::Ref,
+                    | _ => unreachable!(),
+                },
+                | None => kind.clone(),
+            },
+            | _ => kind.clone(),
         }
     }
 

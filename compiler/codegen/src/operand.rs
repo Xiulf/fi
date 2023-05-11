@@ -106,6 +106,7 @@ impl<'ctx> OperandRef<'ctx> {
         let (ptr, extra) = match self.val {
             | OperandValue::Imm(ptr) => (ptr.into_pointer_value(), None),
             | OperandValue::Pair(ptr, extra) => (ptr.into_pointer_value(), Some(extra)),
+            | OperandValue::Ref(ptr, extra) => (ptr, extra),
             | _ => unreachable!(),
         };
 

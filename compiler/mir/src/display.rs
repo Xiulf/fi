@@ -8,7 +8,7 @@ use crate::ir::{
     BinOp, Block, BlockData, Body, Const, JumpTarget, Linkage, Local, LocalData, LocalKind, MirValueId, NullOp,
     Operand, Place, Projection, RValue, Statement, Terminator, ValueDef,
 };
-use crate::repr::{ArrayLen, Integer, Primitive, Repr, ReprKind, Scalar, Signature};
+use crate::repr::{ArrayLen, BoxKind, Integer, Primitive, Repr, ReprKind, Scalar, Signature};
 use crate::Db;
 
 impl HirDisplay for Instance {
@@ -419,10 +419,14 @@ impl HirDisplay for Repr {
             | ReprKind::TypeVar(v) => write!(f, "{}", v.display(f.db)),
             | ReprKind::ReprOf(t) => write!(f, "repr_of({})", t.display(f.db)),
             | ReprKind::Scalar(scalar) => write!(f, "{scalar}"),
-            | ReprKind::Array(len, el) => write!(f, "{} * {}", len.display(f.db), el.display(f.db)),
+            | ReprKind::Array(len, el) => write!(f, "[{} * {}]", len.display(f.db), el.display(f.db)),
+            | ReprKind::Slice(el) => write!(f, "[{}]", el.display(f.db)),
             | ReprKind::Ptr(el, true, _) => write!(f, "*fat {}", el.display(f.db)),
             | ReprKind::Ptr(el, false, _) => write!(f, "*{}", el.display(f.db)),
-            | ReprKind::Box(el) => write!(f, "box({})", el.display(f.db)),
+            | ReprKind::Box(BoxKind::Ptr, el) => write!(f, "*{}", el.display(f.db)),
+            | ReprKind::Box(BoxKind::Ref, el) => write!(f, "ref({})", el.display(f.db)),
+            | ReprKind::Box(BoxKind::Box, el) => write!(f, "box({})", el.display(f.db)),
+            | ReprKind::Box(BoxKind::TypeVar(v, _), el) => write!(f, "box({}, {})", v.display(f.db), el.display(f.db)),
             | ReprKind::Func(sig, None) => write!(f, "fn {}", sig.display(f.db)),
             | ReprKind::Func(sig, Some(env)) => write!(f, "lambda [{}] {}", env.display(f.db), sig.display(f.db)),
             | ReprKind::Discr(repr) => write!(f, "discriminant({})", repr.display(f.db)),
