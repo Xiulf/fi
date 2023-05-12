@@ -22,6 +22,7 @@ impl Ctx<'_> {
             | TyKind::Primitive(prim) => match prim {
                 | PrimitiveType::Integer(_) => self.int_tag_kind(),
                 | PrimitiveType::Float(_) => self.float_tag_kind(),
+                | PrimitiveType::Lifetime(_) => self.lifetime_kind(),
             },
             | TyKind::Literal(lit) => match lit {
                 | Literal::Int(_) => self.int_kind(),

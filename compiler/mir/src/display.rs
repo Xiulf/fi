@@ -426,7 +426,7 @@ impl HirDisplay for Repr {
             | ReprKind::Box(BoxKind::Ptr, el) => write!(f, "*{}", el.display(f.db)),
             | ReprKind::Box(BoxKind::Ref, el) => write!(f, "ref({})", el.display(f.db)),
             | ReprKind::Box(BoxKind::Box, el) => write!(f, "box({})", el.display(f.db)),
-            | ReprKind::Box(BoxKind::TypeVar(v, _), el) => write!(f, "box({}, {})", v.display(f.db), el.display(f.db)),
+            | ReprKind::Box(BoxKind::TypeVar(v), el) => write!(f, "box({}, {})", v.display(f.db), el.display(f.db)),
             | ReprKind::Func(sig, None) => write!(f, "fn {}", sig.display(f.db)),
             | ReprKind::Func(sig, Some(env)) => write!(f, "lambda [{}] {}", env.display(f.db), sig.display(f.db)),
             | ReprKind::Discr(repr) => write!(f, "discriminant({})", repr.display(f.db)),

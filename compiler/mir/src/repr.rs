@@ -5,7 +5,7 @@ use hir_def::display::HirDisplay;
 use hir_def::expr::Literal;
 use hir_def::id::{CtorId, TypeCtorId, TypeVarId};
 use hir_def::{item_tree, lang_item};
-use hir_ty::ty::{FloatKind, IntegerKind, PrimitiveType, Ty, TyKind, Unknown};
+use hir_ty::ty::{FloatKind, IntegerKind, PrimitiveType, Ty, TyKind};
 use rustc_hash::FxHashSet;
 
 use crate::Db;
@@ -44,7 +44,7 @@ pub enum BoxKind {
     Box,
     Ref,
     Ptr,
-    TypeVar(TypeVarId, bool),
+    TypeVar(TypeVarId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -123,7 +123,7 @@ pub fn repr_of(db: &dyn Db, ty: Ty) -> Repr {
     tracing::trace!("{}", ty.display(db));
 
     // if hir_ty::ty::is_recursive(db, ty) {
-    _repr_of_rec(db, ty, false, &mut FxHashSet::default(), &mut FxHashSet::default())
+    _repr_of_rec(db, ty, &mut FxHashSet::default())
     // } else {
     //     _repr_of(db, ty)
     // }
@@ -137,6 +137,7 @@ fn _repr_of(db: &dyn Db, ty: Ty) -> Repr {
         | TyKind::Primitive(prim) => match prim {
             | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
             | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
+            | PrimitiveType::Lifetime(_) => unreachable!(),
         },
         | TyKind::App(mut base, args) => {
             let mut args = args.to_vec();
@@ -168,13 +169,7 @@ fn _repr_of(db: &dyn Db, ty: Ty) -> Repr {
     }
 }
 
-fn _repr_of_rec(
-    db: &dyn Db,
-    ty: Ty,
-    in_param: bool,
-    vars_in_params: &mut FxHashSet<Result<TypeVarId, Unknown>>,
-    seen: &mut FxHashSet<Ty>,
-) -> Repr {
+fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
     if !seen.insert(ty) {
         return Repr::new(db, ReprKind::ReprOf(ty));
     }
@@ -183,26 +178,16 @@ fn _repr_of_rec(
         | TyKind::Error => unreachable!(),
         | TyKind::Never => Repr::new(db, ReprKind::Uninhabited),
         | TyKind::Var(var) => Repr::new(db, ReprKind::TypeVar(*var)),
-        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], |db, ty| {
-            _repr_of_rec(db, ty, false, vars_in_params, seen)
-        }),
+        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], |db, ty| _repr_of_rec(db, ty, seen)),
         | TyKind::Primitive(prim) => match prim {
             | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
             | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
+            | PrimitiveType::Lifetime(_) => unreachable!(),
         },
         | TyKind::Ref(lt, to) => {
-            let to = _repr_of_rec(db, *to, false, vars_in_params, seen);
+            let to = _repr_of_rec(db, *to, seen);
             let kind = match lt.kind(db) {
-                | TyKind::Unknown(u, _) if !in_param && vars_in_params.contains(&Err(*u)) => BoxKind::Ptr,
-                | TyKind::Unknown(u, _) => {
-                    vars_in_params.insert(Err(*u));
-                    BoxKind::Ref
-                },
-                | TyKind::Var(v) if !in_param => BoxKind::TypeVar(*v, vars_in_params.contains(&Ok(*v))),
-                | TyKind::Var(v) => {
-                    vars_in_params.insert(Ok(*v));
-                    BoxKind::TypeVar(*v, false)
-                },
+                | TyKind::Var(v) => BoxKind::TypeVar(*v),
                 | _ => unreachable!("({}) ({})", lt.display(db), to.display(db)),
             };
 
@@ -216,27 +201,20 @@ fn _repr_of_rec(
             }
 
             match base.kind(db) {
-                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, |db, ty| {
-                    _repr_of_rec(db, ty, false, vars_in_params, seen)
-                }),
+                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, |db, ty| _repr_of_rec(db, ty, seen)),
                 | _ => unreachable!("{}", base.display(db)),
             }
         },
         | TyKind::Func(func) => {
-            let mut vars = FxHashSet::default();
-            let params = func
-                .params
-                .iter()
-                .map(|&p| _repr_of_rec(db, p, true, &mut vars, seen))
-                .collect();
-            let ret = _repr_of_rec(db, func.ret, false, &mut vars, seen);
+            let params = func.params.iter().map(|&p| _repr_of_rec(db, p, seen)).collect();
+            let ret = _repr_of_rec(db, func.ret, seen);
             let signature = Signature {
                 params,
                 ret,
                 is_varargs: func.is_varargs,
             };
 
-            let env = _repr_of_rec(db, func.env, false, vars_in_params, seen);
+            let env = _repr_of_rec(db, func.env, seen);
             let env = if env == Repr::unit(db) { None } else { Some(env) };
 
             Repr::new(db, ReprKind::Func(signature, env))

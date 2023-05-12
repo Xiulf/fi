@@ -33,10 +33,18 @@ pub enum TyKind {
     Func(FuncType),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Lifetime {
+    Boxed,
+    ByRef,
+    ByVal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {
     Integer(IntegerKind),
     Float(FloatKind),
+    Lifetime(Lifetime),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -342,11 +350,22 @@ impl HirDisplay for Ty {
     }
 }
 
+impl fmt::Display for Lifetime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            | Self::Boxed => write!(f, "Boxed"),
+            | Self::ByRef => write!(f, "ByRef"),
+            | Self::ByVal => write!(f, "ByVal"),
+        }
+    }
+}
+
 impl fmt::Display for PrimitiveType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             | Self::Integer(p) => p.fmt(f),
             | Self::Float(p) => p.fmt(f),
+            | Self::Lifetime(p) => p.fmt(f),
         }
     }
 }

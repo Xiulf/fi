@@ -294,10 +294,9 @@ impl InstanceData {
 
     pub fn subst_box_kind(&self, db: &dyn Db, kind: &BoxKind) -> BoxKind {
         match kind {
-            | BoxKind::TypeVar(tv, in_param) => match self.find_var(tv) {
+            | BoxKind::TypeVar(tv) => match self.find_var(tv) {
                 | Some(ty) => match ty.kind(db) {
-                    | TyKind::Var(v) => BoxKind::TypeVar(*v, false),
-                    | TyKind::Unknown(_, _) if *in_param => BoxKind::Ptr,
+                    | TyKind::Var(v) => BoxKind::TypeVar(*v),
                     | TyKind::Unknown(_, _) => BoxKind::Ref,
                     | _ => unreachable!(),
                 },

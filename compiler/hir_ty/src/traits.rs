@@ -6,8 +6,10 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::UnsolvedConstraint;
-use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, InstanceImpl, Ty, TyKind, Unknown};
-use crate::unify::{UnifyBindings, UnifyResult};
+use crate::ty::{
+    Constraint, ConstraintOrigin, GeneralizedType, InstanceImpl, Lifetime, PrimitiveType, Ty, TyKind, Unknown,
+};
+use crate::unify::{UnifyBindings, UnifyResult, UnkLevel};
 use crate::Db;
 
 const RECURSION_LIMIT: u32 = 32;
@@ -72,30 +74,50 @@ impl<'db> Ctx<'db> {
     }
 
     pub(crate) fn default_literals(&mut self, ty: Ty) {
-        let int_type = self.int_type();
-        let float_type = self.float_type();
-        let default_int_type = self.db.type_cache().default_int_ty(self.db);
-        let default_float_type = self.db.type_cache().default_float_ty(self.db);
-        let env = (int_type, default_int_type, float_type, default_float_type);
-        type Env = (Ty, Ty, Ty, Ty);
+        let env = Env {
+            int_type: self.int_type(),
+            default_int_type: self.db.type_cache().default_int_ty(self.db),
+            float_type: self.float_type(),
+            default_float_type: self.db.type_cache().default_float_ty(self.db),
+            lifetime_kind: self.lifetime_kind(),
+            default_lifetime: Ty::new(self.db, TyKind::Primitive(PrimitiveType::Lifetime(Lifetime::ByVal))),
+        };
 
-        fn rec(db: &dyn Db, bindings: &mut UnifyBindings, env: Env, ty: Ty) {
+        struct Env {
+            int_type: Ty,
+            default_int_type: Ty,
+            float_type: Ty,
+            default_float_type: Ty,
+            lifetime_kind: Ty,
+            default_lifetime: Ty,
+        }
+
+        fn rec(
+            db: &dyn Db,
+            unsolved: &NoHashHashMap<Unknown, (UnkLevel, Ty)>,
+            bindings: &mut UnifyBindings,
+            env: &Env,
+            ty: Ty,
+        ) {
             match ty.kind(db) {
                 | TyKind::Unknown(u, _) => match bindings.0.get(u) {
-                    | Some(t) => rec(db, bindings, env, *t),
+                    | Some(t) => rec(db, unsolved, bindings, env, *t),
+                    | None if unsolved[u].1 == env.lifetime_kind => {
+                        bindings.0.insert(*u, env.default_lifetime);
+                    },
                     | None => {},
                 },
                 | TyKind::App(base, args) => {
                     let base = bindings.resolve_type_shallow(db, *base);
                     let arg = bindings.resolve_type_shallow(db, args[0]);
 
-                    if base == env.0 {
+                    if base == env.int_type {
                         if let TyKind::Unknown(u, false) = arg.kind(db) {
-                            bindings.0.insert(*u, env.1);
+                            bindings.0.insert(*u, env.default_int_type);
                         }
-                    } else if base == env.2 {
+                    } else if base == env.float_type {
                         if let TyKind::Unknown(u, false) = arg.kind(db) {
-                            bindings.0.insert(*u, env.3);
+                            bindings.0.insert(*u, env.default_float_type);
                         }
                     }
                 },
@@ -103,7 +125,9 @@ impl<'db> Ctx<'db> {
             }
         }
 
-        ty.traverse(self.db, &mut |t| rec(self.db, &mut self.subst.solved, env, t))
+        ty.traverse(self.db, &mut |t| {
+            rec(self.db, &self.subst.unsolved, &mut self.subst.solved, &env, t)
+        })
     }
 
     fn try_solve_constraint<'a>(
