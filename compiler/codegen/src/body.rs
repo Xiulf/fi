@@ -518,6 +518,15 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
         match kind {
             | ir::CastKind::Bitcast => {
+                use hir::display::HirDisplay;
+                tracing::info!(
+                    "{}, {} ({}, {})",
+                    value.layout.repr.display(self.db),
+                    layout.repr.display(self.db),
+                    value.layout.size.bytes(),
+                    layout.size.bytes(),
+                );
+
                 if value.layout.size != layout.size {
                     Error::throw("bitcast to type of different size");
                 }

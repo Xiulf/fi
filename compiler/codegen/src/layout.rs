@@ -113,12 +113,17 @@ pub fn layout_of(db: &dyn Db, repr: Repr) -> Arc<Layout> {
         },
         | ReprKind::Scalar(scalar) => Arc::new(Layout::scalar(scalar.clone(), &triple)),
         | ReprKind::ReprOf(ty) => layout_of(db, repr_of(db, *ty)),
-        | ReprKind::Box(BoxKind::Ref | BoxKind::Ptr, to) => match to.kind(db) {
+        | ReprKind::Box(k @ (BoxKind::Ref | BoxKind::Ptr), to) => match to.kind(db) {
             | ReprKind::Slice(_) => {
                 let mut ptr = scalar_new(Primitive::Pointer, triple);
                 ptr.valid_range = 1..=*ptr.valid_range.end();
                 let meta = scalar_new(Primitive::Int(Integer::Int, false), triple);
                 Arc::new(scalar_pair(ptr, meta, triple))
+            },
+            | _ if *k == BoxKind::Ptr => {
+                let mut ptr = scalar_new(Primitive::Pointer, triple);
+                ptr.valid_range = 1..=*ptr.valid_range.end();
+                Arc::new(Layout::scalar(ptr, triple))
             },
             | _ => layout_of(db, *to),
         },

@@ -6,10 +6,8 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::UnsolvedConstraint;
-use crate::ty::{
-    Constraint, ConstraintOrigin, GeneralizedType, InstanceImpl, Lifetime, PrimitiveType, Ty, TyKind, Unknown,
-};
-use crate::unify::{UnifyBindings, UnifyResult, UnkLevel};
+use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, InstanceImpl, Ty, TyKind, Unknown};
+use crate::unify::{UnifyBindings, UnifyResult};
 use crate::Db;
 
 const RECURSION_LIMIT: u32 = 32;
@@ -79,8 +77,6 @@ impl<'db> Ctx<'db> {
             default_int_type: self.db.type_cache().default_int_ty(self.db),
             float_type: self.float_type(),
             default_float_type: self.db.type_cache().default_float_ty(self.db),
-            lifetime_kind: self.lifetime_kind(),
-            default_lifetime: Ty::new(self.db, TyKind::Primitive(PrimitiveType::Lifetime(Lifetime::ByVal))),
         };
 
         struct Env {
@@ -88,23 +84,12 @@ impl<'db> Ctx<'db> {
             default_int_type: Ty,
             float_type: Ty,
             default_float_type: Ty,
-            lifetime_kind: Ty,
-            default_lifetime: Ty,
         }
 
-        fn rec(
-            db: &dyn Db,
-            unsolved: &NoHashHashMap<Unknown, (UnkLevel, Ty)>,
-            bindings: &mut UnifyBindings,
-            env: &Env,
-            ty: Ty,
-        ) {
+        fn rec(db: &dyn Db, bindings: &mut UnifyBindings, env: &Env, ty: Ty) {
             match ty.kind(db) {
                 | TyKind::Unknown(u, _) => match bindings.0.get(u) {
-                    | Some(t) => rec(db, unsolved, bindings, env, *t),
-                    | None if unsolved[u].1 == env.lifetime_kind => {
-                        bindings.0.insert(*u, env.default_lifetime);
-                    },
+                    | Some(t) => rec(db, bindings, env, *t),
                     | None => {},
                 },
                 | TyKind::App(base, args) => {
@@ -125,9 +110,7 @@ impl<'db> Ctx<'db> {
             }
         }
 
-        ty.traverse(self.db, &mut |t| {
-            rec(self.db, &self.subst.unsolved, &mut self.subst.solved, &env, t)
-        })
+        ty.traverse(self.db, &mut |t| rec(self.db, &mut self.subst.solved, &env, t))
     }
 
     fn try_solve_constraint<'a>(

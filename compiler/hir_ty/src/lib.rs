@@ -109,6 +109,8 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         }
     };
 
+    ctx.resolve_lifetimes();
+
     if is_main {
         ctx.solve_constraints(false);
     } else {

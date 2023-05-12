@@ -9,12 +9,11 @@ len (slice :: ref Slice t) :: Int i =
     _, len = transmute slice :: Ptr t, Uptr
     cast len
 
-impl Index (Slice t) (Int i) t a' =
+impl Index (Slice t) (Int i) t =
     index slice idx =
         ptr, len = transmute slice :: Ptr t, Uptr
         ptr = ptr_offset ptr idx
-        transmute ptr
-        // cast ptr
+        cast ptr
 
 // impl Foldable (Slice t) t =
 //     fold slice init f =

@@ -2,7 +2,7 @@ use hir::id::TypeVarId;
 use hir_def::display::HirDisplay;
 use hir_def::expr::Literal;
 use hir_def::id::ImplId;
-use hir_ty::ty::{Ty, TyKind};
+use hir_ty::ty::{Lifetime, PrimitiveType, Ty, TyKind};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ir::{Body, MirValueId};
@@ -297,7 +297,11 @@ impl InstanceData {
             | BoxKind::TypeVar(tv) => match self.find_var(tv) {
                 | Some(ty) => match ty.kind(db) {
                     | TyKind::Var(v) => BoxKind::TypeVar(*v),
-                    | TyKind::Unknown(_, _) => BoxKind::Ref,
+                    | TyKind::Primitive(PrimitiveType::Lifetime(lt)) => match lt {
+                        | Lifetime::Boxed => BoxKind::Box,
+                        | Lifetime::ByRef => BoxKind::Ref,
+                        | Lifetime::ByVal => BoxKind::Ptr,
+                    },
                     | _ => unreachable!(),
                 },
                 | None => kind.clone(),

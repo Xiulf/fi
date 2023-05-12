@@ -16,9 +16,9 @@ use triomphe::Arc;
 
 use crate::ty::{
     Constraint, ConstraintOrigin, FloatKind, Generalized, GeneralizedType, Instance, InstanceImpl, IntegerKind,
-    PrimitiveType, Ty, TyKind, Unknown,
+    Lifetime, PrimitiveType, Ty, TyKind, Unknown,
 };
-use crate::unify::{Substitution, UnkLevel};
+use crate::unify::{Substitution, UnifyBindings, UnkLevel};
 use crate::Db;
 
 pub struct Ctx<'db> {
@@ -356,6 +356,85 @@ impl<'db> Ctx<'db> {
             t2.replace_vars(self.db, &replacements2),
             constraints,
         )
+    }
+
+    pub fn resolve_lifetimes(&mut self) {
+        struct Env<'a> {
+            db: &'a dyn Db,
+            bindings: &'a mut UnifyBindings,
+            ref_lifetime: Ty,
+            ptr_lifetime: Ty,
+            in_params: NoHashHashSet<Unknown>,
+            by_val: NoHashHashSet<Unknown>,
+        }
+
+        fn rec(env: &mut Env, ty: Ty, param: bool, lifetime: bool) {
+            match ty.kind(env.db) {
+                | TyKind::Unknown(u, _) => match env.bindings.0.get(u) {
+                    | Some(t) => rec(env, *t, param, lifetime),
+                    | None if lifetime => {
+                        if param {
+                            env.in_params.insert(*u);
+                        } else if env.in_params.contains(u) {
+                            env.by_val.insert(*u);
+                            env.bindings.0.insert(*u, env.ptr_lifetime);
+                        } else if env.in_params.len() == 1 {
+                            env.by_val.insert(*u);
+                            env.bindings.0.insert(*u, env.ptr_lifetime);
+                            env.bindings.0.insert(*env.in_params.iter().next().unwrap(), ty);
+                        } else {
+                            env.bindings.0.insert(*u, env.ref_lifetime);
+                        }
+                    },
+                    | None => {},
+                },
+                | TyKind::Func(func) => {
+                    for &param in func.params.iter() {
+                        rec(env, param, true, false);
+                    }
+
+                    rec(env, func.ret, false, false);
+                    env.in_params.clear();
+                    rec(env, func.env, false, false);
+
+                    for &param in func.params.iter() {
+                        rec(env, param, false, false);
+                    }
+                },
+                | TyKind::App(base, args) => {
+                    rec(env, *base, param, false);
+                    for &arg in args.iter() {
+                        rec(env, arg, param, false);
+                    }
+                },
+                | TyKind::Ref(lt, to) => {
+                    rec(env, *lt, param, true);
+                    rec(env, *to, false, false);
+                },
+                | _ => {},
+            }
+        }
+
+        let mut env = Env {
+            db: self.db,
+            bindings: &mut self.subst.solved,
+            in_params: NoHashHashSet::default(),
+            by_val: NoHashHashSet::default(),
+            ref_lifetime: Ty::new(self.db, TyKind::Primitive(PrimitiveType::Lifetime(Lifetime::ByRef))),
+            ptr_lifetime: Ty::new(self.db, TyKind::Primitive(PrimitiveType::Lifetime(Lifetime::ByVal))),
+        };
+
+        let mut run = |t: Ty| rec(&mut env, t, false, false);
+
+        run(self.result.ty.ty());
+
+        for (_, &ty) in self.result.type_of_expr.iter() {
+            run(ty);
+        }
+
+        for (_, &ty) in self.result.type_of_pat.iter() {
+            run(ty);
+        }
     }
 
     pub fn generalize(&mut self, ty: Ty, type_vars: &[TypeVarId]) -> GeneralizedType {

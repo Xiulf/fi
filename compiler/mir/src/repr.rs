@@ -5,7 +5,7 @@ use hir_def::display::HirDisplay;
 use hir_def::expr::Literal;
 use hir_def::id::{CtorId, TypeCtorId, TypeVarId};
 use hir_def::{item_tree, lang_item};
-use hir_ty::ty::{FloatKind, IntegerKind, PrimitiveType, Ty, TyKind};
+use hir_ty::ty::{FloatKind, IntegerKind, Lifetime, PrimitiveType, Ty, TyKind};
 use rustc_hash::FxHashSet;
 
 use crate::Db;
@@ -188,6 +188,11 @@ fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
             let to = _repr_of_rec(db, *to, seen);
             let kind = match lt.kind(db) {
                 | TyKind::Var(v) => BoxKind::TypeVar(*v),
+                | TyKind::Primitive(PrimitiveType::Lifetime(lt)) => match lt {
+                    | Lifetime::Boxed => BoxKind::Box,
+                    | Lifetime::ByRef => BoxKind::Ref,
+                    | Lifetime::ByVal => BoxKind::Ptr,
+                },
                 | _ => unreachable!("({}) ({})", lt.display(db), to.display(db)),
             };
 

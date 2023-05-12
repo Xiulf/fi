@@ -13,3 +13,7 @@ main () =
     // fold slice 0 fn a b -> a + b
     // len slice
     slice#1
+
+
+test () :: ref Int32 =
+    ref 4
