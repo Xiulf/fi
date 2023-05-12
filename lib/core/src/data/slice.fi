@@ -15,13 +15,14 @@ impl Index (Slice t) (Int i) t =
         ptr = ptr_offset ptr idx
         cast ptr
 
-// impl Foldable (Slice t) t =
-//     fold slice init f =
-//         _fold 0 slice init f
+impl Foldable (ref(a') Slice t) t =
+    fold slice init f =
+        _fold 0 slice init f
 
-// _fold i slice init f =
-//     if i `ilt` len slice then
-//         acc = f init (slice#i)
-//         recur (i + 1) slice acc f
-//     else
-//         init
+_fold (i :: Int32) (slice :: ref(a') Slice t) init f =
+    if i `ilt` len slice then
+        slice2 = transmute slice
+        acc = f init (slice2#i)
+        recur (i + 1) slice acc f
+    else
+        init

@@ -10,8 +10,7 @@ main () =
     array = ref [4, 6, 8]
     slice = array_slice array 0 3
 
-    // fold slice 0 fn a b -> a + b
-    len slice
+    fold slice 0 fn a b -> a + b
 
 
 test () :: ref Int32 =

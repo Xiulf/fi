@@ -430,12 +430,18 @@ impl<'db> Ctx<'db> {
 
         run(self.result.ty.ty(), true);
 
+        let TypedItemId::ValueId(id) = self.owner else {
+            return;
+        };
+
+        let body = hir_def::body::query(self.db, id).0;
+
         for (_, &ty) in self.result.type_of_expr.iter() {
             run(ty, false);
         }
 
-        for (_, &ty) in self.result.type_of_pat.iter() {
-            run(ty, false);
+        for (pat, &ty) in self.result.type_of_pat.iter() {
+            run(ty, body.params().contains(&pat));
         }
     }
 
