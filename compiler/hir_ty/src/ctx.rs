@@ -362,17 +362,22 @@ impl<'db> Ctx<'db> {
         struct Env<'a> {
             db: &'a dyn Db,
             bindings: &'a mut UnifyBindings,
-            ref_lifetime: Ty,
-            ptr_lifetime: Ty,
+            in_sig: NoHashHashSet<Unknown>,
             in_params: NoHashHashSet<Unknown>,
             by_val: NoHashHashSet<Unknown>,
+            ref_lifetime: Ty,
+            ptr_lifetime: Ty,
         }
 
-        fn rec(env: &mut Env, ty: Ty, param: bool, lifetime: bool) {
+        fn rec(env: &mut Env, ty: Ty, param: bool, lifetime: bool, sig: bool) {
             match ty.kind(env.db) {
                 | TyKind::Unknown(u, _) => match env.bindings.0.get(u) {
-                    | Some(t) => rec(env, *t, param, lifetime),
+                    | Some(t) => rec(env, *t, param, lifetime, sig),
                     | None if lifetime => {
+                        if sig {
+                            env.in_sig.insert(*u);
+                        }
+
                         if param {
                             env.in_params.insert(*u);
                         } else if env.in_params.contains(u) {
@@ -382,7 +387,7 @@ impl<'db> Ctx<'db> {
                             env.by_val.insert(*u);
                             env.bindings.0.insert(*u, env.ptr_lifetime);
                             env.bindings.0.insert(*env.in_params.iter().next().unwrap(), ty);
-                        } else {
+                        } else if !env.in_sig.contains(u) {
                             env.bindings.0.insert(*u, env.ref_lifetime);
                         }
                     },
@@ -390,26 +395,22 @@ impl<'db> Ctx<'db> {
                 },
                 | TyKind::Func(func) => {
                     for &param in func.params.iter() {
-                        rec(env, param, true, false);
+                        rec(env, param, true, false, sig);
                     }
 
-                    rec(env, func.ret, false, false);
+                    rec(env, func.ret, false, false, sig);
                     env.in_params.clear();
-                    rec(env, func.env, false, false);
-
-                    for &param in func.params.iter() {
-                        rec(env, param, false, false);
-                    }
+                    rec(env, func.env, false, false, sig);
                 },
                 | TyKind::App(base, args) => {
-                    rec(env, *base, param, false);
+                    rec(env, *base, param, false, sig);
                     for &arg in args.iter() {
-                        rec(env, arg, param, false);
+                        rec(env, arg, param, false, sig);
                     }
                 },
                 | TyKind::Ref(lt, to) => {
-                    rec(env, *lt, param, true);
-                    rec(env, *to, false, false);
+                    rec(env, *lt, param, true, sig);
+                    rec(env, *to, false, false, sig);
                 },
                 | _ => {},
             }
@@ -418,22 +419,23 @@ impl<'db> Ctx<'db> {
         let mut env = Env {
             db: self.db,
             bindings: &mut self.subst.solved,
+            in_sig: NoHashHashSet::default(),
             in_params: NoHashHashSet::default(),
             by_val: NoHashHashSet::default(),
             ref_lifetime: Ty::new(self.db, TyKind::Primitive(PrimitiveType::Lifetime(Lifetime::ByRef))),
             ptr_lifetime: Ty::new(self.db, TyKind::Primitive(PrimitiveType::Lifetime(Lifetime::ByVal))),
         };
 
-        let mut run = |t: Ty| rec(&mut env, t, false, false);
+        let mut run = |t: Ty, s| rec(&mut env, t, false, false, s);
 
-        run(self.result.ty.ty());
+        run(self.result.ty.ty(), true);
 
         for (_, &ty) in self.result.type_of_expr.iter() {
-            run(ty);
+            run(ty, false);
         }
 
         for (_, &ty) in self.result.type_of_pat.iter() {
-            run(ty);
+            run(ty, false);
         }
     }
 
