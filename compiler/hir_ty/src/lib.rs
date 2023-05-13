@@ -184,11 +184,26 @@ pub fn type_ctor_ty(db: &dyn Db, type_ctor: TypeCtorId) -> Arc<TypeCtorResult> {
     for &ctor in item_tree[it.value].ctors.iter() {
         let ctor_id = CtorId::new(db, type_ctor, ctor);
         let data = hir_def::data::ctor_data(db, ctor_id);
+        let it_data = &item_tree[ctor];
+        let fields = it_data.fields.as_deref().unwrap_or(&[]);
         let types = data.types(db);
-        let ty = if types.is_empty() {
+        let ty = if types.is_empty() && fields.is_empty() {
             ty
         } else {
-            let params = types.iter().map(|&t| lcx.lower_type_ref(t, true)).collect();
+            let params = if it_data.fields.is_some() {
+                fields
+                    .iter()
+                    .map(|&f| {
+                        let field_id = FieldId::new(db, ctor_id, f);
+                        let data = hir_def::data::field_data(db, field_id);
+                        data.ty(db)
+                            .map(|t| lcx.lower_type_ref(t, true))
+                            .unwrap_or_else(|| lcx.error())
+                    })
+                    .collect()
+            } else {
+                types.iter().map(|&t| lcx.lower_type_ref(t, true)).collect()
+            };
 
             Ty::new(
                 db,
@@ -215,8 +230,30 @@ pub fn ctor_ty(db: &dyn Db, ctor: CtorId) -> GeneralizedType {
 }
 
 #[salsa::tracked]
-pub fn field_ty(_db: &dyn Db, _field: FieldId) -> GeneralizedType {
-    todo!()
+pub fn field_ty(db: &dyn Db, field: FieldId) -> GeneralizedType {
+    let ctor = field.ctor(db);
+    let type_ctor = ctor.type_ctor(db);
+    let it = type_ctor.it(db);
+    let item_tree = hir_def::item_tree::query(db, it.file);
+    let ctor_data = &item_tree[ctor.local_id(db)];
+    let local_id = field.local_id(db);
+    let idx = ctor_data
+        .fields
+        .as_ref()
+        .unwrap()
+        .iter()
+        .position(|&f| f == local_id)
+        .unwrap();
+
+    let ty = ctor_ty(db, ctor);
+    let TyKind::Func(func) = ty.ty().kind(db) else {
+        unreachable!()
+    };
+
+    let vars = ty.type_vars().to_vec().into_boxed_slice();
+    let ty = func.params[idx];
+
+    GeneralizedType::new(ty, &vars)
 }
 
 #[salsa::tracked]

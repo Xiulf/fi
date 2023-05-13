@@ -135,8 +135,8 @@ impl BodyCtx<'_, '_> {
                 },
                 | ValueDefId::FixityId(_) => unreachable!(),
                 | ValueDefId::CtorId(id) => (crate::ctor_ty(self.db, id), name, Vec::new()),
+                | ValueDefId::FieldId(id) => (crate::field_ty(self.db, id), name, Vec::new()),
                 | ValueDefId::PatId(id) => return self.result.type_of_pat[id],
-                | d => todo!("{d:?}"),
             },
             | None => return self.error(),
         };

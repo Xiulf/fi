@@ -13,5 +13,10 @@ main () =
     fold slice 0 fn a b -> a + b
 
 
-test () :: ref Int32 =
-    ref 4
+type Vec t = | Vec {
+    data :: Ptr t,
+    cap :: Uptr,
+    len :: Uptr,
+}
+
+remaining vec = cap vec

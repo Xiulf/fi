@@ -107,6 +107,10 @@ fn lib_diagnostics(db: &dyn Db, id: LibId) {
 }
 
 impl Lib {
+    pub fn id(self) -> LibId {
+        self.id
+    }
+
     pub fn name(self, db: &dyn Db) -> Name {
         self.id.name(db).as_name(db)
     }
@@ -510,6 +514,19 @@ impl Ctor {
         }
     }
 
+    pub fn fields(self, db: &dyn Db) -> Vec<Field> {
+        let it = self.id.type_ctor(db).it(db);
+        let item_tree = hir_def::item_tree::query(db, it.file);
+
+        item_tree[self.id.local_id(db)]
+            .fields
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(|&id| FieldId::new(db, self.id, id).into())
+            .collect()
+    }
+
     pub fn attrs(self, db: &dyn Db) -> &Attrs {
         self.data(db).attrs(db)
     }
@@ -891,6 +908,12 @@ impl From<ValueId> for Value {
 
 impl From<CtorId> for Ctor {
     fn from(id: CtorId) -> Self {
+        Self { id }
+    }
+}
+
+impl From<FieldId> for Field {
+    fn from(id: FieldId) -> Self {
         Self { id }
     }
 }

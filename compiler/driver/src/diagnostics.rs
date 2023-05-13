@@ -11,21 +11,14 @@ use crate::db::Database;
 struct Sink<'db>(DbCache<'db>, usize, usize);
 
 impl Driver {
-    pub fn report_diagnostics(&self, lib: LibId) -> io::Result<bool> {
+    pub fn report_diagnostics(&self, lib: hir::Lib) -> io::Result<bool> {
         let cache = DbCache {
             db: &self.db,
             files: Default::default(),
         };
 
         let mut sink = Sink(cache, 0, 0);
-
-        for lib in self.libs.toposort(&self.db, Some(lib)) {
-            hir::Lib::from(lib).diagnostics(&self.db, &mut sink);
-            if sink.1 != 0 {
-                return Ok(true);
-            }
-        }
-
+        lib.diagnostics(&self.db, &mut sink);
         Ok(sink.1 != 0)
     }
 }

@@ -11,6 +11,7 @@ base_db = { version = "0.1.0", path = "../base_db" }
 clap = { version = "4.1.2", features = ["derive"] }
 driver = { version = "0.1.0", path = "../driver" }
 glob = "0.3.1"
+hir = { version = "0.1.0", path = "../hir" }
 paths = { version = "0.1.0", path = "../paths" }
 project = { version = "0.1.0", path = "../project" }
 tracing = "0.1.37"

@@ -5,7 +5,6 @@ use std::fmt::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use base_db::libs::LibId;
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use driver::Driver;
@@ -242,7 +241,7 @@ fn basic(_cli: CliArgs, cmd: BasicCommand) -> anyhow::Result<ExitCode> {
     }
 }
 
-fn check(_args: CheckArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
+fn check(_args: CheckArgs, driver: Driver, lib: hir::Lib) -> anyhow::Result<ExitCode> {
     if driver.report_diagnostics(lib)? {
         return Ok(ExitCode::FAILURE);
     }
@@ -251,23 +250,21 @@ fn check(_args: CheckArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCod
     Ok(ExitCode::SUCCESS)
 }
 
-fn build(_args: BuildArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
-    if driver.report_diagnostics(lib)? {
+fn build(_args: BuildArgs, driver: Driver, lib: hir::Lib) -> anyhow::Result<ExitCode> {
+    if let None = driver.build(lib)? {
         return Ok(ExitCode::FAILURE);
     }
 
     driver.debug(lib);
-    driver.build(lib);
     Ok(ExitCode::SUCCESS)
 }
 
-fn run(args: RunArgs, driver: Driver, lib: LibId) -> anyhow::Result<ExitCode> {
-    if driver.report_diagnostics(lib)? {
+fn run(args: RunArgs, driver: Driver, lib: hir::Lib) -> anyhow::Result<ExitCode> {
+    let Some(asm) = driver.build(lib)? else {
         return Ok(ExitCode::FAILURE);
-    }
+    };
 
     driver.debug(lib);
-    let asm = driver.build(lib);
     let path = asm.path(driver.db());
     let mut command = std::process::Command::new(path);
     command.args(args.args);

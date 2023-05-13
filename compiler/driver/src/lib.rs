@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::io;
 
-use base_db::libs::LibId;
+use anyhow::Result;
 pub use opts::Options;
 use paths::AbsPathBuf;
 use project::Package;
@@ -31,7 +31,7 @@ impl Driver {
         }
     }
 
-    pub fn load_project(&mut self, path: AbsPathBuf) -> anyhow::Result<Package> {
+    pub fn load_project(&mut self, path: AbsPathBuf) -> Result<Package> {
         self.packages.load_project(&mut self.vfs, &mut self.db, path)
     }
 
@@ -42,7 +42,7 @@ impl Driver {
         type_: project::manifest::ProjectType,
         dependencies: Vec<String>,
         search_dir: AbsPathBuf,
-    ) -> anyhow::Result<Package> {
+    ) -> Result<Package> {
         self.packages.load_files(
             &mut self.vfs,
             &mut self.db,
@@ -54,7 +54,7 @@ impl Driver {
         )
     }
 
-    pub fn finish_loading(&mut self) -> anyhow::Result<()> {
+    pub fn finish_loading(&mut self) -> Result<()> {
         self.source_roots = self.packages.to_source_roots(&self.vfs, &self.db);
         self.libs = self.packages.to_lib_set(&mut self.db, &self.source_roots)?;
         Ok(())
@@ -64,56 +64,68 @@ impl Driver {
         &self.db
     }
 
-    pub fn package_for_lib(&self, lib: LibId) -> Option<Package> {
-        let source_root = lib.source_root(&self.db);
+    pub fn package_for_lib(&self, lib: hir::Lib) -> Option<Package> {
+        let source_root = lib.id().source_root(&self.db);
         let idx = self.source_roots.iter().position(|&s| s == source_root)?;
 
         Some(Package::new(idx))
     }
 
-    pub fn libs_for_package(&self, package: Package) -> Vec<LibId> {
+    pub fn libs_for_package(&self, package: Package) -> Vec<hir::Lib> {
         let db = &self.db as &dyn base_db::Db;
         let source_root = self.source_roots[package.index()];
 
         self.libs
             .iter()
             .filter(|lib| lib.source_root(db) == source_root)
+            .map(Into::into)
             .collect()
     }
 
-    pub fn build(&self, lib: LibId) -> Arc<codegen::assembly::Assembly> {
+    pub fn build(&self, lib: hir::Lib) -> Result<Option<Arc<codegen::assembly::Assembly>>> {
         let start = time::Instant::now();
-        let asm = self.build_rec(lib, &mut HashSet::default());
+        let asm = self.build_rec(lib, &mut HashSet::default())?;
         let duration = Self::print_duration(start.elapsed());
 
         eprintln!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {}", duration);
-        asm
+        Ok(asm)
     }
 
-    fn build_rec(&self, lib: LibId, done: &mut HashSet<LibId>) -> Arc<codegen::assembly::Assembly> {
+    fn build_rec(
+        &self,
+        lib: hir::Lib,
+        done: &mut HashSet<hir::Lib>,
+    ) -> Result<Option<Arc<codegen::assembly::Assembly>>> {
         if done.contains(&lib) {
-            return codegen::codegen_lib(&self.db, lib);
+            return Ok(Some(codegen::codegen_lib(&self.db, lib.id())));
         }
 
         let deps = lib
             .deps(&self.db)
             .iter()
             .map(|&l| self.build_rec(l, done))
-            .collect::<Vec<_>>();
+            .collect::<Result<Option<Vec<_>>>>()?;
+
+        let Some(deps) = deps else {
+            return Ok(None);
+        };
 
         let pkg = self.package_for_lib(lib).unwrap();
-        done.insert(lib);
         eprintln!(
             "  \x1B[1;32m\x1B[1mCompiling\x1B[0m {} v{} ({})",
-            lib.name(&self.db),
+            lib.name(&self.db).display(&self.db),
             self.packages[pkg].version,
             self.packages[pkg].root_dir.display(),
         );
 
-        let asm = codegen::codegen_lib(&self.db, lib);
+        if self.report_diagnostics(lib)? {
+            return Ok(None);
+        }
 
+        done.insert(lib);
+        let asm = codegen::codegen_lib(&self.db, lib.id());
         asm.link(&self.db, &deps);
-        asm
+        Ok(Some(asm))
     }
 
     fn print_duration(duration: time::Duration) -> String {
@@ -134,8 +146,8 @@ impl Driver {
         }
     }
 
-    pub fn debug(&self, lib: LibId) {
-        for &dep in lib.deps(&self.db) {
+    pub fn debug(&self, lib: hir::Lib) {
+        for dep in lib.deps(&self.db) {
             self.debug(dep);
         }
 

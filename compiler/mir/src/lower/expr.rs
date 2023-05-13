@@ -282,7 +282,7 @@ impl Ctx<'_> {
         expr: ExprId,
         base_expr: ExprId,
         def: ValueDefId,
-        args: Vec<Arg>,
+        mut args: Vec<Arg>,
         store_in: &mut Option<Place>,
     ) -> Operand {
         match def {
@@ -335,6 +335,14 @@ impl Ctx<'_> {
 
                 ret.into()
             },
+            | ValueDefId::FieldId(id) => {
+                let fields = hir::Field::from(id).ctor(self.db).fields(self.db);
+                let idx = fields.iter().position(|f| f.id() == id).unwrap();
+                let arg = self.lower_arg(args.remove(0));
+                let arg = self.place_op(arg);
+
+                arg.field(idx).into()
+            },
             | ValueDefId::FixityId(id) => {
                 let data = hir_def::data::fixity_data(self.db, id);
                 if let Some(def) = data.def(self.db).and_then(|d| d.left()) {
@@ -344,7 +352,6 @@ impl Ctx<'_> {
                     (Const::Undefined, ret_repr).into()
                 }
             },
-            | _ => todo!("{def:?}"),
         }
     }
 

@@ -70,7 +70,6 @@ const PEEK_ITEM: TokenSet = TokenSet::new(&ITEM_TOKENS);
 
 fn item(p: &mut Parser) {
     let m = p.start();
-
     attrs(p);
 
     match p.current() {
@@ -288,16 +287,46 @@ fn item_type(p: &mut Parser, m: Marker) {
 
 fn ctor(p: &mut Parser) {
     let m = p.start();
-
     attrs(p);
     p.expect(PIPE);
     type_name(p);
 
-    while !p.eof() && p.at_ts(PEEK_TYP) {
-        typ_atom(p);
+    if p.at(L_BRACE) {
+        ctor_record(p);
+    } else {
+        while !p.eof() && p.at_ts(PEEK_TYP) {
+            typ_atom(p);
+        }
     }
 
     m.complete(p, CTOR);
+}
+
+fn ctor_record(p: &mut Parser) {
+    let m = p.start();
+    p.expect(L_BRACE);
+
+    while !p.eof() && p.at(IDENT) {
+        field(p);
+        if !p.eof() && !p.at_ts(R_BRACE | LYT_SEP) {
+            p.expect(COMMA);
+        }
+    }
+
+    if p.at(LYT_SEP) && p.nth_at(1, R_BRACE) {
+        p.bump(LYT_SEP);
+    }
+
+    p.expect(R_BRACE);
+    m.complete(p, CTOR_RECORD);
+}
+
+fn field(p: &mut Parser) {
+    let m = p.start();
+    ident_name(p);
+    p.expect(DBL_COLON);
+    typ_infix(p, TokenSet::EMPTY);
+    m.complete(p, CTOR_FIELD);
 }
 
 fn item_trait(p: &mut Parser, m: Marker) {
@@ -637,8 +666,8 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
             p.bump(L_BRACKET);
             while !p.eof() && !p.at(R_BRACKET) {
                 expr_infix(p, TokenSet::EMPTY);
-                while !p.eof() && p.at(COMMA) {
-                    p.bump(COMMA);
+                if !p.eof() && !p.at(R_BRACKET) {
+                    p.expect(COMMA);
                 }
             }
             p.expect(R_BRACKET);
