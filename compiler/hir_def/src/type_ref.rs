@@ -216,6 +216,14 @@ fn type_map_for_type_ctor(ctx: &mut Ctx, src: SyntaxNode) {
         for ty in ctor.types() {
             ctx.lower_type(ty);
         }
+
+        if let Some(record) = ctor.record() {
+            for field in record.fields() {
+                if let Some(ty) = field.ty() {
+                    ctx.lower_type(ty);
+                }
+            }
+        }
     }
 }
 

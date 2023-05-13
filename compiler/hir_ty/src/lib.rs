@@ -251,7 +251,15 @@ pub fn field_ty(db: &dyn Db, field: FieldId) -> GeneralizedType {
     };
 
     let vars = ty.type_vars().to_vec().into_boxed_slice();
-    let ty = func.params[idx];
+    let ty = Ty::new(
+        db,
+        TyKind::Func(FuncType {
+            params: Box::new([func.ret]),
+            ret: func.params[idx],
+            env: func.env,
+            is_varargs: false,
+        }),
+    );
 
     GeneralizedType::new(ty, &vars)
 }

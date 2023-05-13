@@ -9,14 +9,15 @@ import Intrinsics (UNDEFINED, array_slice, deref)
 main () =
     array = ref [4, 6, 8]
     slice = array_slice array 0 3
+    x = Vec UNDEFINED 0 0 :: Vec Int32
 
     fold slice 0 fn a b -> a + b
 
 
 type Vec t = | Vec {
-    data :: Ptr t,
+    ptr :: Ptr t,
     cap :: Uptr,
     len :: Uptr,
 }
 
-remaining vec = cap vec
+remaining vec = cap vec - len vec
