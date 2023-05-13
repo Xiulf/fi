@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 
 use base_db::libs::LibId;
@@ -82,21 +83,26 @@ impl Driver {
 
     pub fn build(&self, lib: LibId) -> Arc<codegen::assembly::Assembly> {
         let start = time::Instant::now();
-        let asm = self.build_rec(lib);
+        let asm = self.build_rec(lib, &mut HashSet::default());
         let duration = Self::print_duration(start.elapsed());
 
         eprintln!("   \x1B[1;32m\x1B[1mFinished\x1B[0m in {}", duration);
         asm
     }
 
-    fn build_rec(&self, lib: LibId) -> Arc<codegen::assembly::Assembly> {
+    fn build_rec(&self, lib: LibId, done: &mut HashSet<LibId>) -> Arc<codegen::assembly::Assembly> {
+        if done.contains(&lib) {
+            return codegen::codegen_lib(&self.db, lib);
+        }
+
         let deps = lib
             .deps(&self.db)
             .iter()
-            .map(|&l| self.build_rec(l))
+            .map(|&l| self.build_rec(l, done))
             .collect::<Vec<_>>();
 
         let pkg = self.package_for_lib(lib).unwrap();
+        done.insert(lib);
         eprintln!(
             "  \x1B[1;32m\x1B[1mCompiling\x1B[0m {} v{} ({})",
             lib.name(&self.db),
