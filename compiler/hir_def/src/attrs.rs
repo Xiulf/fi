@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-// use cfg::{Cfg, CfgAtom, CfgValue};
+use cfg::{Cfg, CfgAtom, CfgValue};
 use either::Either;
 use smol_str::SmolStr;
 use syntax::ast;
@@ -12,7 +12,8 @@ use crate::id::ItemId;
 use crate::item_tree::{ItemTreeId, ItemTreeNode};
 use crate::Db;
 
-const _CFG_ATTR: &'static str = "cfg";
+const CFG_ATTR: &'static str = "cfg";
+const CFG_ATTR_ATTR: &'static str = "cfg_attr";
 const DOC_ATTR: &'static str = "doc";
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -62,9 +63,9 @@ impl Attrs {
         AttrQuery { attrs: self, key }
     }
 
-    // pub fn cfg(&self) -> Option<Cfg> {
-    //     cfg_parse(self)
-    // }
+    pub fn cfg(&self) -> Option<Cfg> {
+        cfg_parse(self)
+    }
 
     pub fn docs(&self) -> Option<Documentation> {
         let docs = self.by_key(DOC_ATTR).attrs().filter_map(|attr| attr.string_value());
@@ -121,7 +122,7 @@ impl RawAttrs {
     }
 }
 
-pub fn query(db: &dyn Db, item: ItemId) -> AttrsWithOwner {
+pub fn query(db: &dyn Db, item: ItemId) -> Attrs {
     let raw_attrs = match item {
         | ItemId::ModuleId(_id) => {
             // let def_map = crate::def_map::query(db, id.lib(db));
@@ -141,9 +142,55 @@ pub fn query(db: &dyn Db, item: ItemId) -> AttrsWithOwner {
         | ItemId::ImplId(id) => attrs_from_item_tree(id.it(db), db),
     };
 
-    let attrs = Attrs(raw_attrs);
+    Attrs(raw_attrs.filter(db))
+}
 
-    AttrsWithOwner { attrs, owner: item }
+impl RawAttrs {
+    fn filter(self, _db: &dyn Db) -> Self {
+        if !self.iter().any(|a| a.name == CFG_ATTR_ATTR) {
+            return self;
+        }
+
+        let attrs = self
+            .iter()
+            .filter_map(|attr| {
+                if attr.name != CFG_ATTR_ATTR {
+                    return Some(attr.clone());
+                }
+
+                let Some(group) = attr.group() else {
+                    return Some(attr.clone());
+                };
+
+                let Some(cfg) = group.0.get(0).and_then(cfg_parse_expr) else {
+                    return Some(attr.clone());
+                };
+
+                let Some(child) = group.0.get(1) else {
+                    return Some(attr.clone());
+                };
+
+                let child = match child.clone() {
+                    | AttrInput::Ident(name) => Attr { name, input: None },
+                    | AttrInput::Field(name, input) => Attr {
+                        name,
+                        input: Some((*input).clone()),
+                    },
+                    | _ => return Some(attr.clone()),
+                };
+
+                let mut options = cfg::CfgOptions::default();
+                options.enable("windows");
+                if !cfg.is_enabled(&options) {
+                    return None;
+                }
+
+                Some(child)
+            })
+            .collect::<Arc<[_]>>();
+
+        Self { entries: Some(attrs) }
+    }
 }
 
 impl<'a> AttrQuery<'a> {
@@ -363,44 +410,44 @@ fn collect_attrs(owner: &dyn ast::AttrsOwner) -> impl Iterator<Item = Either<ast
     attrs
 }
 
-// fn cfg_parse(attrs: &Attrs) -> Option<Cfg> {
-//     let mut cfgs = attrs.by_key(CFG_ATTR).groups().map(cfg_parse_attr);
-//     let a = cfgs.next()?;
+fn cfg_parse(attrs: &Attrs) -> Option<Cfg> {
+    let mut cfgs = attrs.by_key(CFG_ATTR).groups().map(cfg_parse_attr);
+    let a = cfgs.next()?;
 
-//     match cfgs.next() {
-//         | Some(b) => Some(Cfg::All([a, b].into_iter().chain(cfgs).collect())),
-//         | None => Some(a),
-//     }
-// }
+    match cfgs.next() {
+        | Some(b) => Some(Cfg::All([a, b].into_iter().chain(cfgs).collect())),
+        | None => Some(a),
+    }
+}
 
-// fn cfg_parse_attr(group: &AttrInputGroup) -> Cfg {
-//     group.iter().find_map(cfg_parse_expr).unwrap_or(Cfg::Invalid)
-// }
+fn cfg_parse_attr(group: &AttrInputGroup) -> Cfg {
+    group.iter().next().and_then(cfg_parse_expr).unwrap_or(Cfg::Invalid)
+}
 
-// fn cfg_parse_expr(input: &AttrInput) -> Option<Cfg> {
-//     match input {
-//         | AttrInput::Ident(name) => Some(Cfg::Atom(CfgAtom::Flag(name.into()))),
-//         | AttrInput::Field(name, value) => match &**value {
-//             | AttrInput::Group(g) => match name.as_ref() {
-//                 | "not" => Some(Cfg::Not(Box::new(cfg_parse_attr(g)))),
-//                 | "any" => Some(Cfg::Any(g.iter().filter_map(cfg_parse_expr).collect())),
-//                 | "all" => Some(Cfg::All(g.iter().filter_map(cfg_parse_expr).collect())),
-//                 | _ => None,
-//             },
-//             | AttrInput::Literal(l) => {
-//                 let value = match l {
-//                     | Literal::Int(i) => CfgValue::Int(*i),
-//                     | Literal::String(s) => CfgValue::String(s.into()),
-//                     | _ => return None,
-//                 };
+fn cfg_parse_expr(input: &AttrInput) -> Option<Cfg> {
+    match input {
+        | AttrInput::Ident(name) => Some(Cfg::Atom(CfgAtom::Flag(name.clone()))),
+        | AttrInput::Field(name, value) => match &**value {
+            | AttrInput::Group(g) => match name.as_ref() {
+                | "not" => Some(Cfg::Not(Box::new(cfg_parse_attr(g)))),
+                | "any" => Some(Cfg::Any(g.iter().filter_map(cfg_parse_expr).collect())),
+                | "all" => Some(Cfg::All(g.iter().filter_map(cfg_parse_expr).collect())),
+                | _ => None,
+            },
+            | AttrInput::Literal(l) => {
+                let value = match l {
+                    | Literal::Int(i) => CfgValue::Int(*i),
+                    | Literal::String(s) => CfgValue::String(s.into()),
+                    | _ => return None,
+                };
 
-//                 Some(Cfg::Atom(CfgAtom::Key(name.into(), value)))
-//             },
-//             | _ => None,
-//         },
-//         | _ => None,
-//     }
-// }
+                Some(Cfg::Atom(CfgAtom::Key(name.clone(), value)))
+            },
+            | _ => None,
+        },
+        | _ => None,
+    }
+}
 
 impl Deref for RawAttrs {
     type Target = [Attr];

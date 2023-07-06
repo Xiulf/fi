@@ -8,12 +8,13 @@ edition = "2021"
 [dependencies]
 arena = { git = "https://github.com/Xiulf/arena", version = "0.1.0" }
 base_db = { version = "0.1.0", path = "../base_db" }
+cfg = { version = "0.1.0", path = "../cfg" }
 diagnostics = { version = "0.1.0", path = "../diagnostics" }
 either = "1.8.1"
 ra_ap_stdx = "0.0.149"
 rustc-hash = "1.1.0"
 salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
-smol_str = { version = "0.1.23", features = ["serde"] }
+smol_str = { version = "0.2.0", features = ["serde"] }
 syntax = { version = "0.1.0", path = "../syntax" }
 tracing = "0.1.37"
 triomphe = "0.1.8"

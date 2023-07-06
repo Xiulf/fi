@@ -9,7 +9,7 @@ use crate::id::{
     self, CtorId, FieldId, FixityId, ImplId, ItemId, TraitId, TypeAliasId, TypeCtorId, TypeDefId, TypeVarId,
     TypedItemId, ValueDefId, ValueId,
 };
-use crate::item_tree::{AttrOwner, FixityKind};
+use crate::item_tree::FixityKind;
 use crate::name::Name;
 use crate::path::Path;
 use crate::source::HasSource;
@@ -126,7 +126,7 @@ pub fn fixity_data(db: &dyn Db, id: FixityId) -> FixityData {
     let item_tree = crate::item_tree::query(db, it.file);
     let data = &item_tree[it.value];
     let module = id.module(db);
-    let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let attrs = crate::attrs::query(db, id.into());
     let def_map = crate::def_map::query(db, module.lib(db));
     let def_path = data.value.clone();
     let def = def_map.resolve_path(db, &data.value, module);
@@ -150,7 +150,7 @@ pub fn value_data(db: &dyn Db, id: ValueId) -> ValueData {
     let data = &item_tree[it.value];
     let source = id.source(db).value;
     let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
-    let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let attrs = crate::attrs::query(db, id.into());
     let ty = source.ty().and_then(|t| src_map.typ_for_src(AstPtr::new(&t)));
     let where_clause = source
         .where_clause()
@@ -163,12 +163,9 @@ pub fn value_data(db: &dyn Db, id: ValueId) -> ValueData {
 
 #[salsa::tracked]
 pub fn type_ctor_data(db: &dyn Db, id: TypeCtorId) -> TypeCtorData {
-    let it = id.it(db);
-    let item_tree = crate::item_tree::query(db, it.file);
-    // let data = &item_tree[it.value];
     let source = id.source(db).value;
     let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
-    let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let attrs = crate::attrs::query(db, id.into());
     let kind = source.kind().and_then(|t| src_map.typ_for_src(AstPtr::new(&t)));
 
     TypeCtorData::new(db, id, attrs, type_vars, kind)
@@ -176,11 +173,9 @@ pub fn type_ctor_data(db: &dyn Db, id: TypeCtorId) -> TypeCtorData {
 
 #[salsa::tracked]
 pub fn type_alias_data(db: &dyn Db, id: TypeAliasId) -> TypeAliasData {
-    let it = id.it(db);
-    let item_tree = crate::item_tree::query(db, it.file);
     let source = id.source(db).value;
     let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
-    let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let attrs = crate::attrs::query(db, id.into());
     let ty = source.ty().and_then(|t| src_map.typ_for_src(AstPtr::new(&t)));
 
     TypeAliasData::new(db, id, attrs, type_vars, ty)
@@ -190,9 +185,8 @@ pub fn type_alias_data(db: &dyn Db, id: TypeAliasId) -> TypeAliasData {
 pub fn ctor_data(db: &dyn Db, id: CtorId) -> CtorData {
     let type_ctor = id.type_ctor(db);
     let source = id.source(db).value;
-    let item_tree = crate::item_tree::query(db, type_ctor.it(db).file);
     let (_, src_map, _) = TypedItemId::from(type_ctor).type_map(db);
-    let attrs = item_tree.attrs(AttrOwner::Ctor(id.local_id(db)));
+    let attrs = crate::attrs::query(db, id.into());
     let types = source
         .types()
         .filter_map(|t| src_map.typ_for_src(AstPtr::new(&t)))
@@ -206,9 +200,8 @@ pub fn field_data(db: &dyn Db, id: FieldId) -> FieldData {
     let ctor = id.ctor(db);
     let type_ctor = ctor.type_ctor(db);
     let source = id.source(db).value;
-    let item_tree = crate::item_tree::query(db, type_ctor.it(db).file);
     let (_, src_map, _) = TypedItemId::from(type_ctor).type_map(db);
-    let attrs = item_tree.attrs(AttrOwner::Field(id.local_id(db)));
+    let attrs = crate::attrs::query(db, id.into());
     let ty = source.ty().and_then(|t| src_map.typ_for_src(AstPtr::new(&t)));
 
     FieldData::new(db, id, attrs, ty)
@@ -221,7 +214,7 @@ pub fn trait_data(db: &dyn Db, id: TraitId) -> TraitData {
     let data = &item_tree[it.value];
     let source = id.source(db).value;
     let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
-    let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let attrs = crate::attrs::query(db, id.into());
     let where_clause = source
         .where_clause()
         .and_then(|wc| src_map.where_clause_for_src(AstPtr::new(&wc)));
@@ -246,7 +239,7 @@ pub fn impl_data(db: &dyn Db, id: ImplId) -> ImplData {
     let data = &item_tree[it.value];
     let source = id.source(db).value;
     let (_, src_map, type_vars) = TypedItemId::from(id).type_map(db);
-    let attrs = item_tree.attrs(AttrOwner::Item(it.value.into()));
+    let attrs = crate::attrs::query(db, id.into());
     let module = id.module(db);
     let def_map = crate::def_map::query(db, module.lib(db));
     let def = def_map.resolve_path(db, &data.trait_, module);

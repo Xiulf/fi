@@ -5,51 +5,57 @@ import Data.List (List, Nil, (:))
 import Intrinsics (transmute, addr_of)
 import LibC as C
 
-// printf (s :: Str) :: r where PrintfType r =
-//     printf' s Nil
+print (s :: Str) :: () =
+    printf' s Nil
 
-// trait PrintfType t =
-//     printf' :: Str, List Str -> t
+println (s :: Str) :: () =
+    printf s "\n"
 
-// impl PrintfType () =
-//     printf' f args =
-//         match args with
-//         | x:xs ->
-//             printf' f xs :: ()
-//             Stdout .fmt x
-//         | _ -> Stdout .fmt f
+printf (s :: Str) :: r where PrintfType r =
+    printf' s Nil
 
-// impl PrintfType ({Pair Str (List Str)} Str -> r) where PrintfType r =
-//     printf' f args = fn x ->
-//         printf' f (x:args)
+trait PrintfType t =
+    printf' :: Str, List Str -> t
 
+impl PrintfType () =
+    printf' f args =
+        match args with
+        | x:xs ->
+            printf' f xs :: ()
+            Stdout .fmt x
+        | _ -> Stdout .fmt f
 
-// trait Format f =
-//     fmt :: w, f -> () where Write w
-
-// impl Format Str =
-//     fmt w s =
-//         _ = s.transmute |> write w
-
-// impl Format Char =
-//     fmt w c =
-//         ptr = addr_of c .transmute :: Ptr Int8
-//         slice = (ptr, (1 :: Uptr)) .transmute
-//         _ = write w slice
+impl PrintfType ({Pair Str (List Str)} Str -> r) where PrintfType r =
+    printf' f args = fn x ->
+        printf' f (x:args)
 
 
-// trait Write w =
-//     write :: w, Slice Int8 -> Int32
+trait Format f =
+    fmt :: w, f -> () where Write w
 
-// type Stdout = | Stdout
-// type Stderr = | Stderr
+impl Format Str =
+    fmt w s =
+        _ = s.transmute |> write w
 
-// impl Write Stdout =
-//     write _ slice =
-//         ptr, len = slice.transmute
-//         C.write 1 ptr len
+impl Format Char =
+    fmt w c =
+        ptr = addr_of c .transmute :: Ptr Int8
+        slice = (ptr, (1 :: Uptr)) .transmute
+        _ = write w slice
 
-// impl Write Stderr =
-//     write _ slice =
-//         ptr, len = slice.transmute
-//         C.write 2 ptr len
+
+trait Write w =
+    write :: w, Slice Int8 -> Int32
+
+type Stdout = | Stdout
+type Stderr = | Stderr
+
+impl Write Stdout =
+    write _ slice =
+        ptr, len = slice.transmute
+        C.write 1 ptr len
+
+impl Write Stderr =
+    write _ slice =
+        ptr, len = slice.transmute
+        C.write 2 ptr len

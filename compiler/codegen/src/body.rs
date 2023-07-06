@@ -269,7 +269,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             let ptr = self.builder.build_malloc(ty, "").unwrap();
             // let ptr = self.builder.build_alloca(ty, "");
             let op = OperandRef::new_imm(layout, ptr.as_basic_value_enum());
-            let count = self.builder.build_struct_gep(self.usize_type(), ptr, 0, "").unwrap();
+            let count = self.builder.build_struct_gep(ty, ptr, 0, "").unwrap();
             let one = self.usize_type().const_int(1, false);
             self.builder.build_store(count, one);
 
