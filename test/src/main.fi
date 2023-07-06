@@ -13,3 +13,8 @@ main () =
 
     println "test"
     fold slice 0 fn a b -> a + b
+
+
+test () = do
+    <- 4
+    9

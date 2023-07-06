@@ -641,7 +641,7 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
             m.complete(p, EXPR_ARRAY)
         },
         | Some(LYT_START) => {
-            block(p, PEEK_PAT | PEEK_EXPR | LET_KW, stmt(false));
+            block(p, PEEK_EXPR | LET_KW, stmt(false));
             m.complete(p, EXPR_BLOCK)
         },
         | Some(FN_KW) => {
@@ -656,7 +656,7 @@ fn expr_atom(p: &mut Parser) -> Option<CompletedMarker> {
         },
         | Some(DO_KW) => {
             p.bump(DO_KW);
-            block(p, PEEK_PAT | PEEK_EXPR | LEFT_ARROW | LET_KW, stmt(true));
+            block(p, PEEK_EXPR | LET_KW | LEFT_ARROW, stmt(true));
             m.complete(p, EXPR_DO)
         },
         | Some(IF_KW) => {
@@ -774,30 +774,22 @@ fn expr_typed(p: &mut Parser) -> Option<CompletedMarker> {
 fn stmt(allow_bind: bool) -> impl FnMut(&mut Parser) {
     move |p: &mut Parser| {
         let m = p.start();
-        dbg!(p.current());
 
-        if allow_bind {
-            let start = p.checkpoint();
-
-            if p.eat(LEFT_ARROW) {
-                expr(p);
-                m.complete(p, STMT_BIND);
-                return;
-            }
-
-            pat(p);
-
-            if p.eat(LEFT_ARROW) {
-                expr(p);
-                m.complete(p, STMT_BIND);
-                return;
-            }
-
-            start.restore(p);
+        if allow_bind && p.eat(LEFT_ARROW) {
+            expr(p);
+            m.complete(p, STMT_BIND);
+            return;
         }
 
         if p.eat(LET_KW) {
             pat(p);
+
+            if allow_bind && p.eat(LEFT_ARROW) {
+                expr(p);
+                m.complete(p, STMT_BIND);
+                return;
+            }
+
             p.expect(EQUALS);
             expr(p);
             m.complete(p, STMT_LET);
