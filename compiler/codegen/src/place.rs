@@ -69,27 +69,28 @@ impl<'ctx> PlaceRef<'ctx> {
         let triple = &ctx.target.triple;
         let field = self.layout.field(ctx.db, index).unwrap();
         let offset = self.layout.fields.offset(index);
+        let ty = ctx.basic_type_for_ral(&self.layout);
 
         let ptr = match self.layout.abi {
             | _ if offset.bytes() == 0 => self.ptr,
             | Abi::ScalarPair(ref a, ref b)
                 if offset == primitive_size(a.value, triple).align_to(primitive_align(b.value, triple)) =>
             {
-                ctx.builder.build_struct_gep(self.ptr, 1, "").unwrap()
+                ctx.builder.build_struct_gep(ty, self.ptr, 1, "").unwrap()
             },
             | Abi::Scalar(_) | Abi::ScalarPair(..) if field.is_zst() => {
                 let ptr = ctx.context.i8_type().ptr_type(AddressSpace::default());
                 let ptr = ctx.builder.build_pointer_cast(self.ptr, ptr, "");
                 let usize = ctx.context.ptr_sized_int_type(&ctx.target_data, None);
                 let offset = usize.const_int(offset.bytes(), false);
-                unsafe { ctx.builder.build_gep(ptr, &[offset], "") }
+                unsafe { ctx.builder.build_gep(ty, ptr, &[offset], "") }
             },
             | Abi::Scalar(_) | Abi::ScalarPair(..) => unreachable!(),
             | _ => {
                 let min_offset = self.layout.fields.min_offset();
                 let index = if min_offset.bytes() != 0 { index + 1 } else { index };
 
-                ctx.builder.build_struct_gep(self.ptr, index as u32, "").unwrap()
+                ctx.builder.build_struct_gep(ty, self.ptr, index as u32, "").unwrap()
             },
         };
 
@@ -106,7 +107,8 @@ impl<'ctx> PlaceRef<'ctx> {
             .context
             .ptr_sized_int_type(&ctx.target_data, None)
             .const_int(0, false);
-        let ptr = unsafe { ctx.builder.build_in_bounds_gep(self.ptr, &[zero, index], "") };
+        let ty = ctx.basic_type_for_ral(&self.layout);
+        let ptr = unsafe { ctx.builder.build_in_bounds_gep(ty, self.ptr, &[zero, index], "") };
 
         Self::new(layout, ptr, None)
     }
@@ -226,18 +228,21 @@ impl<'ctx> PlaceRef<'ctx> {
             OperandValue::Pair(self.ptr.as_basic_value_enum(), extra)
         } else {
             match &self.layout.abi {
-                | Abi::Scalar(_) => {
-                    let load = ctx.builder.build_load(self.ptr, "");
+                | Abi::Scalar(scalar) => {
+                    let ty = ctx.basic_type_for_scalar(scalar);
+                    let load = ctx.builder.build_load(ty, self.ptr, "");
 
                     OperandValue::Imm(load)
                 },
-                | Abi::ScalarPair(_, _) => {
-                    let load = |i| {
-                        let ptr = ctx.builder.build_struct_gep(self.ptr, i, "").unwrap();
-                        ctx.builder.build_load(ptr, "")
+                | Abi::ScalarPair(a, b) => {
+                    let ty = ctx.basic_type_for_ral(&self.layout);
+                    let load = |i, s| {
+                        let ptr = ctx.builder.build_struct_gep(ty, self.ptr, i, "").unwrap();
+                        let ty = ctx.basic_type_for_scalar(s);
+                        ctx.builder.build_load(ty, ptr, "")
                     };
 
-                    OperandValue::Pair(load(0), load(1))
+                    OperandValue::Pair(load(0, a), load(1, b))
                 },
                 | _ => OperandValue::Ref(self.ptr, self.extra),
             }

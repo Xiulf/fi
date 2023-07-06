@@ -1,5 +1,5 @@
 use fst::{IntoStreamer, Streamer};
-use ra_ap_stdx::hash::NoHashHashMap;
+use nohash_hasher::IntMap;
 use rustc_hash::FxHashMap;
 
 use crate::vfs_path::VfsPath;
@@ -8,7 +8,7 @@ use crate::{Db, File, VirtualFileSystem};
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct FileSet {
     files: FxHashMap<VfsPath, File>,
-    paths: NoHashHashMap<File, VfsPath>,
+    paths: IntMap<File, VfsPath>,
 }
 
 #[derive(Debug)]

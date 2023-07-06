@@ -58,6 +58,7 @@ impl Assembly {
             linker.subsystem("console");
             linker.add_module(Path::new("kernel32.lib"));
             linker.add_module(Path::new("legacy_stdio_definitions.lib"));
+            linker.add_module(Path::new("vcruntime.lib"));
             linker.add_module(Path::new("msvcrt.lib"));
             linker.add_module(Path::new("ucrt.lib"));
         }

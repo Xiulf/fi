@@ -16,9 +16,10 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 self.build_puts(ptr);
             },
             | "ptr_load_volatile" => {
+                let ty = self.basic_type_for_ral(&layout.elem(self.db).unwrap());
                 let arg = self.codegen_operand(&args[0]);
                 let ptr = arg.load(self.cx).into_pointer_value();
-                let val = self.builder.build_load(ptr, "");
+                let val = self.builder.build_load(ty, ptr, "");
                 let op = OperandRef::new_imm(layout, val);
                 let load = val.as_instruction_value().unwrap();
 

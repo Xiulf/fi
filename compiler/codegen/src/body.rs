@@ -1,6 +1,6 @@
 use arena::Idx;
 use base_db::Error;
-use inkwell::values::{self, BasicValue, BasicValueEnum, CallableValue};
+use inkwell::values::{self, BasicValue};
 use inkwell::{types, IntPredicate};
 use mir::instance::Instance;
 use mir::ir::{self, Local, LocalKind};
@@ -269,8 +269,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             let ptr = self.builder.build_malloc(ty, "").unwrap();
             // let ptr = self.builder.build_alloca(ty, "");
             let op = OperandRef::new_imm(layout, ptr.as_basic_value_enum());
-
-            let count = self.builder.build_struct_gep(ptr, 0, "").unwrap();
+            let count = self.builder.build_struct_gep(self.usize_type(), ptr, 0, "").unwrap();
             let one = self.usize_type().const_int(1, false);
             self.builder.build_store(count, one);
 
@@ -292,8 +291,12 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 let ptr = op.load(self.cx).into_pointer_value();
                 let one = self.usize_type().const_int(1, false);
                 let zero = self.usize_type().const_zero();
-                let count_ptr = self.builder.build_struct_gep(ptr, 0, "").unwrap();
-                let count = self.builder.build_load(count_ptr, "").into_int_value();
+                let ty = self.basic_type_for_ral(&layout.elem(self.db).unwrap());
+                let count_ptr = self.builder.build_struct_gep(ty, ptr, 0, "").unwrap();
+                let count = self
+                    .builder
+                    .build_load(self.usize_type(), count_ptr, "")
+                    .into_int_value();
                 let count = self.builder.build_int_sub(count, one, "");
                 let nz = self.builder.build_int_compare(IntPredicate::EQ, count, zero, "");
                 let then_block = self.context.append_basic_block(self.func, "");
@@ -340,15 +343,14 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         };
 
         let func_abi = self.compute_fn_abi(func_sig, env);
+        let func_ty = self.fn_type_for_abi(&func_abi);
         let (func, env) = match func.val {
-            | OperandValue::Ref(ptr, None) => (self.builder.build_load(ptr, ""), None),
+            | OperandValue::Ref(ptr, None) => (
+                self.builder.build_load(func_ty.ptr_type(Default::default()), ptr, ""),
+                None,
+            ),
             | OperandValue::Pair(ptr, env) => (ptr, Some(env)),
             | _ => (func.immediate(), None),
-        };
-
-        let func = match func {
-            | BasicValueEnum::PointerValue(pv) => CallableValue::try_from(pv).unwrap(),
-            | v => unreachable!("{}", v.to_string()),
         };
 
         let ret_ptr = if func_abi.ret.is_indirect() {
@@ -374,7 +376,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             )
             .collect::<Vec<_>>();
 
-        let call = self.builder.build_call(func, &args, "");
+        let func = func.into_pointer_value();
+        let call = self.builder.build_indirect_call(func_ty, func, &args, "");
         let call = call.try_as_basic_value();
 
         match func_abi.ret.mode {
@@ -583,7 +586,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         if let ir::BinOp::Offset = op {
             let lhs = lhs.into_pointer_value();
             let rhs = rhs.into_int_value();
-            let value = unsafe { self.builder.build_gep(lhs, &[rhs], "") };
+            let ty = self.basic_type_for_ral(&layout.elem(self.db).unwrap());
+            let value = unsafe { self.builder.build_gep(ty, lhs, &[rhs], "") };
 
             OperandRef::new_imm(layout, value.as_basic_value_enum())
         } else if is_float {
@@ -707,7 +711,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         if let ReprKind::Box(_) = place.layout.repr.kind(self.db) {
             let ptr = place.deref(self.cx).field(self.cx, 0).ptr;
             let one = self.usize_type().const_int(1, false);
-            let count = self.builder.build_load(ptr, "").into_int_value();
+            let count = self.builder.build_load(self.usize_type(), ptr, "").into_int_value();
             let count = self.builder.build_int_add(count, one, "");
             self.builder.build_store(ptr, count);
         }

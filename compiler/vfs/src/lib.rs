@@ -102,5 +102,5 @@ impl VirtualFileSystem {
     }
 }
 
-impl ra_ap_stdx::hash::NoHashHashable for File {
+impl nohash_hasher::IsEnabled for File {
 }
