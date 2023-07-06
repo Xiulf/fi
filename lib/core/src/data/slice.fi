@@ -6,13 +6,13 @@ import Data.Foldable
 import Intrinsics (ilt, transmute, ptr_load, ptr_offset)
 
 len (slice :: Slice t) :: Int i =
-    _, len = transmute slice :: Ptr t, Uptr
+    let _, len = transmute slice :: Ptr t, Uptr
     cast len
 
 impl Index (Slice t) (Int i) t =
     index slice idx =
-        ptr, len = transmute slice :: Ptr t, Uptr
-        ptr = ptr_offset ptr idx
+        let ptr, len = transmute slice :: Ptr t, Uptr
+        let ptr = ptr_offset ptr idx
         ptr_load ptr
 
 impl Foldable (Slice t) t =
@@ -21,7 +21,7 @@ impl Foldable (Slice t) t =
 
 _fold i slice init f =
     if i `ilt` len slice then
-        acc = f init (slice#i)
+        let acc = f init (slice#i)
         recur (i + 1) slice acc f
     else
         init

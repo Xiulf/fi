@@ -28,6 +28,6 @@ impl Foldable (List t) t =
     fold list init f =
         match list with
         | x:xs ->
-            acc = f init x
+            let acc = f init x
             fold xs acc f
         | _ -> init

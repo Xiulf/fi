@@ -8,8 +8,8 @@ import Intrinsics (array_slice, copy)
 
 
 main () =
-    array = [4, 6, 8]
-    slice = array_slice array 0 3
+    let array = [4, 6, 8]
+    let slice = array_slice array 0 3
 
     println "test"
     fold slice 0 fn a b -> a + b

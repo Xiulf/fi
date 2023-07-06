@@ -35,13 +35,13 @@ trait Format f =
 
 impl Format Str =
     fmt w s =
-        _ = s.transmute |> write w
+        let _ = s.transmute |> write w
 
 impl Format Char =
     fmt w c =
-        ptr = addr_of c .transmute :: Ptr Int8
-        slice = (ptr, (1 :: Uptr)) .transmute
-        _ = write w slice
+        let ptr = addr_of c .transmute :: Ptr Int8
+        let slice = (ptr, (1 :: Uptr)) .transmute
+        let _ = write w slice
 
 
 trait Write w =
@@ -52,10 +52,10 @@ type Stderr = | Stderr
 
 impl Write Stdout =
     write _ slice =
-        ptr, len = slice.transmute
+        let ptr, len = slice.transmute
         C.write 1 ptr len
 
 impl Write Stderr =
     write _ slice =
-        ptr, len = slice.transmute
+        let ptr, len = slice.transmute
         C.write 2 ptr len
