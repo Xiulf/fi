@@ -5,7 +5,4 @@ import Core.Ops (Index, index)
 import Intrinsics (addr_of, array_index)
 
 impl Index (Array len t) (Int i) t =
-    index arr idx =
-        array_index arr idx
-            |> addr_of
-            |> cast
+    index arr idx = array_index arr idx

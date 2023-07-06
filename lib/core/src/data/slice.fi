@@ -13,7 +13,7 @@ impl Index (Slice t) (Int i) t =
     index slice idx =
         ptr, len = transmute slice :: Ptr t, Uptr
         ptr = ptr_offset ptr idx
-        cast ptr
+        ptr_load ptr
 
 impl Foldable (Slice t) t =
     fold slice init f =

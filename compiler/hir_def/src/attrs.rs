@@ -8,8 +8,8 @@ use syntax::ast;
 use vfs::InFile;
 
 use crate::expr::Literal;
-use crate::id::ItemId;
-use crate::item_tree::{ItemTreeId, ItemTreeNode};
+use crate::id::{CtorId, ItemId};
+use crate::item_tree::{AttrOwner, ItemTreeId, ItemTreeNode};
 use crate::Db;
 
 const CFG_ATTR: &'static str = "cfg";
@@ -136,7 +136,7 @@ pub fn query(db: &dyn Db, item: ItemId) -> Attrs {
         | ItemId::ValueId(id) => attrs_from_item_tree(id.it(db), db),
         | ItemId::TypeAliasId(id) => attrs_from_item_tree(id.it(db), db),
         | ItemId::TypeCtorId(id) => attrs_from_item_tree(id.it(db), db),
-        | ItemId::CtorId(_id) => todo!(),
+        | ItemId::CtorId(id) => attrs_from_item_tree_ctor(id, db),
         | ItemId::FieldId(_id) => todo!(),
         | ItemId::TraitId(id) => attrs_from_item_tree(id.it(db), db),
         | ItemId::ImplId(id) => attrs_from_item_tree(id.it(db), db),
@@ -396,8 +396,14 @@ impl From<Documentation> for String {
 fn attrs_from_item_tree<N: ItemTreeNode>(id: ItemTreeId<N>, db: &dyn Db) -> RawAttrs {
     let tree = crate::item_tree::query(db, id.file);
     let item = N::id_to_item(id.value);
-
     tree.raw_attrs(item.into()).clone()
+}
+
+fn attrs_from_item_tree_ctor(id: CtorId, db: &dyn Db) -> RawAttrs {
+    let it = id.type_ctor(db).it(db);
+    let tree = crate::item_tree::query(db, it.file);
+    let item = AttrOwner::Ctor(id.local_id(db));
+    tree.raw_attrs(item).clone()
 }
 
 fn collect_attrs(owner: &dyn ast::AttrsOwner) -> impl Iterator<Item = Either<ast::Attr, ast::Comment>> + '_ {

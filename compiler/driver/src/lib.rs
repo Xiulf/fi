@@ -134,14 +134,14 @@ impl Driver {
     }
 
     pub fn debug(&self, lib: LibId) {
-        for &dep in lib.deps(&self.db) {
-            self.debug(dep);
-        }
+        // for &dep in lib.deps(&self.db) {
+        //     self.debug(dep);
+        // }
 
-        // let def_map = hir_def::def_map::query(&self.db, lib);
+        let def_map = hir_def::def_map::query(&self.db, lib);
 
         // eprintln!("{:#?}", lib.debug_all(&self.db));
-        // tracing::debug!("\n{}", def_map.debug(&self.db));
+        tracing::debug!("\n{}", def_map.debug(&self.db));
         use hir_def::display::HirDisplay;
         let lib = hir::Lib::from(lib);
 

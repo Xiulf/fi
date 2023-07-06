@@ -30,6 +30,7 @@ import Prim
 
 @intrinsic foreign undefined :: t
 @intrinsic foreign zeroed :: t
+@intrinsic foreign copy :: t -> t
 
 @intrinsic foreign deref :: ref a -> a
 

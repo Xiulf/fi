@@ -43,6 +43,13 @@ impl Ctx<'_> {
                 let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
                 Operand::Const(Const::Zeroed, repr)
             },
+            | "copy" => {
+                let value = self.lower_arg(args.next().unwrap());
+                let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let res = self.builder.add_local(LocalKind::Tmp, repr);
+                self.builder.assign(Place::new(res), value);
+                Place::new(res).into()
+            },
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap());
                 let place = self.place_op(place);
@@ -51,11 +58,11 @@ impl Ctx<'_> {
                 self.builder.addrof(Place::new(res), place);
                 Place::new(res).into()
             },
-            | "ptr_read" | "deref" => {
+            | "ptr_load" | "deref" => {
                 let arg = self.lower_arg(args.next().unwrap());
                 self.place_op(arg).deref().into()
             },
-            | "ptr_write" => {
+            | "ptr_store" => {
                 let place = self.lower_arg(args.next().unwrap());
                 let place = self.place_op(place);
                 let op = self.lower_arg(args.next().unwrap());
