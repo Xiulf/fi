@@ -183,6 +183,10 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn usize_type(&self) -> types::IntType<'ctx> {
         self.context.ptr_sized_int_type(&self.target_data, None)
     }
+
+    pub fn ptr_type(&self) -> types::PointerType<'ctx> {
+        self.context.i8_type().ptr_type(AddressSpace::default())
+    }
 }
 
 impl<'ctx> BodyCtx<'_, '_, 'ctx> {

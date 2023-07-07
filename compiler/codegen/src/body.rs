@@ -265,13 +265,18 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         if let ReprKind::Box(_) = repr.kind(self.db) {
             let layout = repr_and_layout(self.db, repr);
             let inner_layout = layout.elem(self.db).unwrap();
-            let ty = self.basic_type_for_ral(&inner_layout);
-            let ptr = self.builder.build_malloc(ty, "").unwrap();
-            // let ptr = self.builder.build_alloca(ty, "");
-            let op = OperandRef::new_imm(layout, ptr.as_basic_value_enum());
-            let count = self.builder.build_struct_gep(ty, ptr, 0, "").unwrap();
-            let one = self.usize_type().const_int(1, false);
-            self.builder.build_store(count, one);
+            let box_alloc = if let Some(func) = self.module.get_function("box_alloc") {
+                func
+            } else {
+                let arg = self.usize_type().into();
+                let ty = self.ptr_type().fn_type(&[arg], false);
+                self.module.add_function("box_alloc", ty, None)
+            };
+
+            let size = self.usize_type().const_int(inner_layout.size.bytes(), false);
+            let call = self.builder.build_direct_call(box_alloc, &[size.into()], "");
+            let ptr = call.try_as_basic_value().unwrap_left();
+            let op = OperandRef::new_imm(layout, ptr);
 
             match &self.locals[local.0] {
                 | LocalRef::Place(place) => op.store(self.cx, place),
@@ -288,26 +293,36 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             assert!(place.projection.is_empty());
 
             if let LocalRef::Operand(Some(op)) = &self.locals[place.local.0] {
-                let ptr = op.load(self.cx).into_pointer_value();
-                let one = self.usize_type().const_int(1, false);
-                let zero = self.usize_type().const_zero();
-                let ty = self.basic_type_for_ral(&layout.elem(self.db).unwrap());
-                let count_ptr = self.builder.build_struct_gep(ty, ptr, 0, "").unwrap();
-                let count = self
-                    .builder
-                    .build_load(self.usize_type(), count_ptr, "")
-                    .into_int_value();
-                let count = self.builder.build_int_sub(count, one, "");
-                let nz = self.builder.build_int_compare(IntPredicate::EQ, count, zero, "");
-                let then_block = self.context.append_basic_block(self.func, "");
-                let exit_block = self.context.append_basic_block(self.func, "");
+                let ptr = op.load(self.cx);
+                let inner_layout = layout.elem(self.db).unwrap();
+                let box_free = if let Some(func) = self.module.get_function("box_free") {
+                    func
+                } else {
+                    let ptr = self.ptr_type().into();
+                    let arg = self.usize_type().into();
+                    let ty = self.context.void_type().fn_type(&[ptr, arg, ptr], false);
+                    self.module.add_function("box_free", ty, None)
+                };
 
-                self.builder.build_store(count_ptr, count);
-                self.builder.build_conditional_branch(nz, exit_block, then_block);
-                self.builder.position_at_end(then_block);
-                self.builder.build_free(op.load(self.cx).into_pointer_value());
-                self.builder.build_unconditional_branch(exit_block);
-                self.builder.position_at_end(exit_block);
+                let drop_nop = if let Some(func) = self.module.get_function("drop_nop") {
+                    func
+                } else {
+                    let ptr = self.ptr_type().into();
+                    let ty = self.context.void_type().fn_type(&[ptr], false);
+                    self.module.add_function("drop_nop", ty, None)
+                };
+
+                let size = self.usize_type().const_int(inner_layout.size.bytes(), false);
+
+                self.builder.build_direct_call(
+                    box_free,
+                    &[
+                        ptr.into(),
+                        size.into(),
+                        drop_nop.as_global_value().as_pointer_value().into(),
+                    ],
+                    "",
+                );
             }
         }
     }

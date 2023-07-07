@@ -50,12 +50,10 @@ impl Assembly {
             let kind = dep.lib.kind(db);
             let name = dep.lib.name(db);
             let path = dep.path(db);
-
             linker.add_lib(kind, name, &path);
         }
 
         if db.target().is_windows() {
-            linker.subsystem("console");
             linker.add_module(Path::new("kernel32.lib"));
             linker.add_module(Path::new("legacy_stdio_definitions.lib"));
             linker.add_module(Path::new("vcruntime.lib"));
@@ -63,9 +61,9 @@ impl Assembly {
             linker.add_module(Path::new("ucrt.lib"));
         }
 
+        linker.add_module(Path::new("runtime.dll.lib"));
         linker.out_kind(self.lib.kind(db), &out);
         linker.build(&out);
-
         tracing::debug!("{:?}", linker);
 
         if let Err(e) = linker.run() {
