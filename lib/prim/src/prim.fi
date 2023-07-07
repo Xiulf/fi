@@ -68,6 +68,10 @@ infixr type 0 (,) = Pair
 @lang = "proxy-type"
 type Proxy t = | Proxy
 
+trait Monad m =
+    @lang = "bind-fn"
+    bind :: m a, (a -> m b) -> m b
+
 trait Termination t =
     report :: t -> ExitCode
 

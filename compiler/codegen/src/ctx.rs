@@ -195,6 +195,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 
     pub fn codegen_main_shim(&mut self, main: Instance) {
+        tracing::debug!("main_shim: {}", main.display(self.db));
         let i32t = self.context.i32_type();
         let i8t = self.context.i8_type();
         let i8ppt = i8t.ptr_type(AddressSpace::default()).ptr_type(AddressSpace::default());

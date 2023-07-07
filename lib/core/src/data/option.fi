@@ -1,5 +1,13 @@
 module Data.Option =
 
+import Core
+
 type Option t =
     | None
     | Some t
+
+impl Monad Option =
+    bind self f =
+        match self with
+        | Some x -> f x
+        | None -> None

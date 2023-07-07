@@ -303,6 +303,10 @@ impl<'db> Ctx<'db> {
                     }
                 }
 
+                if bounds.is_empty() {
+                    return expr.map(|e| self.lower_expr(e));
+                }
+
                 let last = bounds.len() - 1;
                 let mut end_expr = None;
                 let bounds = bounds
@@ -347,7 +351,7 @@ impl<'db> Ctx<'db> {
                 let mk_bind = move |this: &mut Ctx, expr: ExprId, lam: ExprId, s: ast::StmtBind| {
                     let bind = this.make_expr(
                         Expr::Path {
-                            path: Path::default(),
+                            path: Path::from("bind".as_name(this.db)),
                             def: bind,
                         },
                         ExprSrc::Bind(AstPtr::new(&s)),

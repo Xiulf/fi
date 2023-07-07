@@ -1,15 +1,13 @@
 module Main (main) =
 
 import Core
-import Core.Formatting
-import Data.Slice
-import Data.Foldable
-import Intrinsics (array_slice, copy)
-
 
 main () =
-    let array = [4, 6, 8]
-    let slice = array_slice array 0 3
+    match test () with
+    | Some x -> x
+    | None -> 0
 
-    println "test"
-    fold slice 0 fn a b -> a + b
+test () = do
+    let x <- Some 2
+    let y <- Some 6
+    Some (x + y)

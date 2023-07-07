@@ -359,7 +359,7 @@ impl<'db> Ctx<'db> {
     }
 
     pub fn generalize(&mut self, ty: Ty, type_vars: &[TypeVarId]) -> GeneralizedType {
-        let mut vars = NoHashHashSet::default();
+        let mut vars = Vec::default();
         self.find_all_unknowns(ty, &mut vars);
         let vars = self.new_type_vars(vars);
 
@@ -391,13 +391,15 @@ impl<'db> Ctx<'db> {
         });
     }
 
-    pub fn find_all_unknowns(&self, ty: Ty, res: &mut NoHashHashSet<Unknown>) {
+    pub fn find_all_unknowns(&self, ty: Ty, res: &mut Vec<Unknown>) {
         ty.traverse(self.db, &mut |t| match t.kind(self.db) {
             | TyKind::Unknown(u, _) => match self.find_binding(*u, &self.subst.solved) {
                 | Ok(t) => self.find_all_unknowns(t, res),
                 | Err((level, _)) => {
                     if level >= self.level {
-                        res.insert(*u);
+                        if !res.contains(u) {
+                            res.push(*u);
+                        }
                     }
                 },
             },
@@ -405,8 +407,8 @@ impl<'db> Ctx<'db> {
         });
     }
 
-    fn new_type_vars(&self, unknowns: NoHashHashSet<Unknown>) -> NoHashHashMap<Unknown, TypeVarId> {
-        let mut res = NoHashHashMap::default();
+    fn new_type_vars(&self, unknowns: Vec<Unknown>) -> Vec<(Unknown, TypeVarId)> {
+        let mut res = Vec::with_capacity(unknowns.len());
 
         for (i, u) in unknowns.into_iter().enumerate() {
             let mut name = String::with_capacity(2);
@@ -424,7 +426,7 @@ impl<'db> Ctx<'db> {
             let name = name.as_name(self.db);
             let var = TypeVarId::new(self.db, self.owner, Either::Right(name));
 
-            res.insert(u, var);
+            res.push((u, var));
         }
 
         res

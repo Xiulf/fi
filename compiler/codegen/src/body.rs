@@ -783,7 +783,11 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 let ctors = type_ctor.ctors(self.db);
                 let idx = ctors.iter().position(|c| c.id() == ctor).unwrap();
 
-                ty.into_int_type().const_int(idx as u64, false).as_basic_value_enum()
+                if idx == 0 {
+                    ty.const_zero()
+                } else {
+                    ty.into_int_type().const_int(idx as u64, false).as_basic_value_enum()
+                }
             },
         };
 

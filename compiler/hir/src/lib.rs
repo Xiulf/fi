@@ -392,7 +392,7 @@ impl Value {
     pub fn is_main(self, db: &dyn Db) -> bool {
         self.attrs(db).by_key("main").exists() || {
             let module = self.module(db);
-            module.parent(db).is_none() && module.name(db).as_str(db) == "Main"
+            module.parent(db).is_none() && module.name(db).as_str(db) == "Main" && self.name(db).as_str(db) == "main"
         }
     }
 
