@@ -32,7 +32,7 @@ pub enum ReprKind {
     ReprOf(Ty),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArrayLen {
     Const(usize),
     TypeVar(TypeVarId),
@@ -453,6 +453,11 @@ fn primitive_from_attr(attr: &str) -> Primitive {
 #[salsa::tracked]
 pub fn needs_drop(db: &dyn Db, repr: Repr) -> bool {
     match repr.kind(db) {
+        | ReprKind::ReprOf(ty) => needs_drop(db, repr_of(db, *ty)),
+        | ReprKind::Struct(reprs) => reprs.iter().any(|r| needs_drop(db, *r)),
+        | ReprKind::Enum(reprs) => reprs.iter().any(|r| needs_drop(db, *r)),
+        | ReprKind::Func(sig, None) => needs_drop(db, sig.ret) || sig.params.iter().any(|r| needs_drop(db, *r)),
+        | ReprKind::Array(_, elem) => needs_drop(db, *elem),
         | ReprKind::Box(_) => true,
         | _ => false,
     }

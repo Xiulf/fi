@@ -262,9 +262,9 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_init(&mut self, local: Local) {
         let repr = self.instance.subst_repr(self.db, self.body.locals[local.0].repr);
 
-        if let ReprKind::Box(_) = repr.kind(self.db) {
+        if let ReprKind::Box(inner) = repr.kind(self.db) {
             let layout = repr_and_layout(self.db, repr);
-            let inner_layout = layout.elem(self.db).unwrap();
+            let inner_layout = repr_and_layout(self.db, *inner);
             let box_alloc = if let Some(func) = self.module.get_function("box_alloc") {
                 func
             } else {
@@ -289,40 +289,12 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_drop(&mut self, place: &ir::Place) {
         let layout = self.place_layout(place);
 
-        if let ReprKind::Box(_) = layout.repr.kind(self.db) {
+        if let ReprKind::Box(repr) = layout.repr.kind(self.db) {
             assert!(place.projection.is_empty());
 
             if let LocalRef::Operand(Some(op)) = &self.locals[place.local.0] {
-                let ptr = op.load(self.cx);
-                let inner_layout = layout.elem(self.db).unwrap();
-                let box_free = if let Some(func) = self.module.get_function("box_free") {
-                    func
-                } else {
-                    let ptr = self.ptr_type().into();
-                    let arg = self.usize_type().into();
-                    let ty = self.context.void_type().fn_type(&[ptr, arg, ptr], false);
-                    self.module.add_function("box_free", ty, None)
-                };
-
-                let drop_nop = if let Some(func) = self.module.get_function("drop_nop") {
-                    func
-                } else {
-                    let ptr = self.ptr_type().into();
-                    let ty = self.context.void_type().fn_type(&[ptr], false);
-                    self.module.add_function("drop_nop", ty, None)
-                };
-
-                let size = self.usize_type().const_int(inner_layout.size.bytes(), false);
-
-                self.builder.build_direct_call(
-                    box_free,
-                    &[
-                        ptr.into(),
-                        size.into(),
-                        drop_nop.as_global_value().as_pointer_value().into(),
-                    ],
-                    "",
-                );
+                let ptr = op.load(self.cx).into_pointer_value();
+                self.gen_drop_box(ptr, false, *repr);
             }
         }
     }
@@ -724,11 +696,22 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         let place = self.codegen_place(place);
 
         if let ReprKind::Box(_) = place.layout.repr.kind(self.db) {
-            let ptr = place.deref(self.cx).field(self.cx, 0).ptr;
-            let one = self.usize_type().const_int(1, false);
-            let count = self.builder.build_load(self.usize_type(), ptr, "").into_int_value();
-            let count = self.builder.build_int_add(count, one, "");
-            self.builder.build_store(ptr, count);
+            let ptr = place.deref(self.cx).ptr;
+            // let ptr = place.deref(self.cx).field(self.cx, 0).ptr;
+            // let one = self.usize_type().const_int(1, false);
+            // let count = self.builder.build_load(self.usize_type(), ptr, "").into_int_value();
+            // let count = self.builder.build_int_add(count, one, "");
+            // self.builder.build_store(ptr, count);
+
+            let box_copy = if let Some(func) = self.module.get_function("box_copy") {
+                func
+            } else {
+                let arg = self.ptr_type().into();
+                let ty = self.context.void_type().fn_type(&[arg], false);
+                self.module.add_function("box_copy", ty, None)
+            };
+
+            self.builder.build_direct_call(box_copy, &[ptr.into()], "");
         }
 
         place.load_operand(self.cx)

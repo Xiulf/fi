@@ -23,5 +23,10 @@ pub unsafe extern "C" fn box_free(ptr: *mut u8, size: usize, drop: extern "C" fn
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn box_copy(ptr: *mut u8) {
+    *(ptr as *mut usize) = *(ptr as *const usize) + 1;
+}
+
+#[no_mangle]
 pub extern "C" fn drop_nop(_: *mut u8) {
 }
