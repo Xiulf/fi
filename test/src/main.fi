@@ -11,3 +11,11 @@ test () = do
     let x <- Some 2
     let y <- Some 6
     Some (x + y)
+
+// type State s a = | State (s -> (a, s))
+
+// impl Monad (State s) =
+//     bind (State f) (g :: a -> State s b) = State <| fn (s :: s) ->
+//         let x, s' = f s :: a, s
+//         let (State run) = g x
+//         run s'
