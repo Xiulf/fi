@@ -4,7 +4,7 @@ use arena::{ArenaMap, Idx};
 
 use super::Builder;
 use crate::ir::{Block, BlockData, Local, LocalData, Location, Operand, Place, RValue, Statement, Terminator};
-use crate::repr::needs_drop;
+use crate::repr::{needs_drop, ReprPos};
 use crate::visitor::{PlaceContext, UseContext, Visitor};
 use crate::{traversal, Db};
 
@@ -115,7 +115,7 @@ impl CopyRewriter {
         }
 
         for (block, local) in to_drop {
-            if needs_drop(db, builder.locals[local.0].repr) {
+            if needs_drop(db, builder.locals[local.0].repr, ReprPos::Argument) {
                 let block = &mut builder.blocks[block.0];
                 block.statements.push(Statement::Drop(Place::new(local)));
             }

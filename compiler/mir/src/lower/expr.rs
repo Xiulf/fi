@@ -63,7 +63,7 @@ impl Ctx<'_> {
     }
 
     fn lower_lit(&mut self, id: ExprId, lit: &Literal) -> Operand {
-        let repr = repr_of(self.db, self.infer.type_of_expr[id]);
+        let repr = repr_of(self.db, self.infer.type_of_expr[id], ReprPos::Argument);
 
         match *lit {
             | Literal::Int(l) => (Const::Int(l), repr).into(),
@@ -74,7 +74,7 @@ impl Ctx<'_> {
     }
 
     fn lower_recur(&mut self, id: ExprId, _store_in: &mut Option<Place>) -> Operand {
-        let repr = repr_of(self.db, self.infer.type_of_expr[id]);
+        let repr = repr_of(self.db, self.infer.type_of_expr[id], ReprPos::Argument);
         let ty_inst = self.infer.instances.get(id).cloned().unwrap_or_default();
         let mir_id = InstanceId::MirValueId(self.id);
         let mut impls_iter = ty_inst.impls.into_iter();
@@ -92,7 +92,7 @@ impl Ctx<'_> {
     }
 
     fn lower_array(&mut self, id: ExprId, exprs: &[ExprId], store_in: &mut Option<Place>) -> Operand {
-        let repr = repr_of(self.db, self.infer.type_of_expr[id]);
+        let repr = repr_of(self.db, self.infer.type_of_expr[id], ReprPos::Argument);
         let place = self.store_in(store_in, repr);
         let usize = Repr::usize(self.db);
 
@@ -160,7 +160,11 @@ impl Ctx<'_> {
     }
 
     fn lower_path(&mut self, expr: ExprId, def: ValueDefId, store_in: &mut Option<Place>) -> Operand {
-        let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let pos = match def {
+            | ValueDefId::PatId(_) => ReprPos::Argument,
+            | _ => ReprPos::TopLevel,
+        };
+        let repr = repr_of(self.db, self.infer.type_of_expr[expr], pos);
         let (mir_id, ty_inst) = match def {
             | ValueDefId::PatId(id) => return self.locals[id].clone().into(),
             | ValueDefId::ValueId(id) => match self.infer.methods.get(expr) {
@@ -305,7 +309,7 @@ impl Ctx<'_> {
                 }
             },
             | ValueDefId::CtorId(id) => {
-                let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
                 let ret = self.store_in(store_in, ret_repr);
                 let single_variant = Ctor::from(id).type_ctor(self.db).ctors(self.db).len() == 1;
                 let is_boxed = Ctor::from(id).type_ctor(self.db).is_boxed(self.db);
@@ -339,7 +343,7 @@ impl Ctx<'_> {
                 if let Some(def) = data.def(self.db).and_then(|d| d.left()) {
                     self.lower_path_app(expr, base_expr, def, args, store_in)
                 } else {
-                    let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                    let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
                     (Const::Undefined, ret_repr).into()
                 }
             },
@@ -365,7 +369,7 @@ impl Ctx<'_> {
 
         for (arg_count, ret_ty) in calls {
             let args2 = args.drain(..arg_count).map(|a| self.lower_arg(a)).collect::<Vec<_>>();
-            let ret_repr = repr_of(self.db, ret_ty);
+            let ret_repr = repr_of(self.db, ret_ty, ReprPos::Argument);
             let ret = if args.is_empty() {
                 self.store_in(store_in, ret_repr)
             } else {
@@ -389,7 +393,7 @@ impl Ctx<'_> {
     ) -> Operand {
         let mut ctx = self.for_lambda(expr);
         ctx.lower_lambda_body(expr, env, params, body);
-        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
         let body = ctx.builder.build(self.db, ctx.id, ret_repr.clone());
 
         self.lambdas.push((expr, body));
@@ -404,35 +408,41 @@ impl Ctx<'_> {
         let impls = (0..self.builder.constraints().len()).map(ImplSource::Param).collect();
         let subst = Subst { types, impls };
         let instance = Instance::new(self.db, InstanceId::Body(body), Some(subst).filter(|s| !s.is_empty()));
-        let (func_repr, env_repr) = match ret_repr.kind(self.db) {
-            | ReprKind::Func(_, None) => return (Const::Instance(instance), ret_repr).into(),
-            | ReprKind::Func(sig, Some(env)) => (Repr::new(self.db, ReprKind::Func(sig.clone(), None)), *env),
+        let func_repr = match ret_repr.kind(self.db) {
+            | ReprKind::Func(_, false) => return (Const::Instance(instance), ret_repr).into(),
+            | ReprKind::Func(sig, true) => Repr::new(self.db, ReprKind::Func(sig.clone(), false)),
             | _ => unreachable!(),
         };
 
         let var = self.store_in(store_in, ret_repr);
         let func = (Const::Instance(instance), func_repr);
+        let env_repr = env
+            .iter()
+            .map(|e| repr_of(self.db, self.infer.type_of_pat[*e], ReprPos::Argument))
+            .collect();
+        let env_repr = Repr::new(self.db, ReprKind::Struct(env_repr));
         let env_repr = Repr::new(self.db, ReprKind::Box(env_repr));
-        let env_var = self.store_in(&mut None, env_repr);
-        self.builder.init(env_var.local);
-        let env_deref = env_var.clone().deref().field(1);
-
-        if env.len() == 1 {
-            self.builder.assign(env_deref, self.locals[env[0]].clone());
+        let env_var = if env.is_empty() {
+            (Const::Zeroed, env_repr).into()
         } else {
+            let env_var = self.store_in(&mut None, env_repr);
+            self.builder.init(env_var.local);
+            let env_deref = env_var.clone().deref().field(1);
+
             for (i, &pat) in env.iter().enumerate() {
                 let val = self.locals[pat].clone();
                 self.builder.assign(env_deref.clone().field(i), val);
             }
-        }
+
+            Operand::Move(env_var)
+        };
 
         self.builder.assign(var.clone().field(0), func);
         self.builder.assign(var.clone().field(1), env_var);
-
         var.into()
     }
 
-    fn lower_lambda_body(&mut self, expr: ExprId, env: &[PatId], params: &[PatId], body: ExprId) {
+    fn lower_lambda_body(&mut self, _expr: ExprId, env: &[PatId], params: &[PatId], body: ExprId) {
         for &v in self.infer.ty.type_vars() {
             self.builder.add_type_var(v.into());
         }
@@ -441,44 +451,28 @@ impl Ctx<'_> {
             self.builder.add_constraint(c.clone());
         }
 
-        let env_param = if env.is_empty() {
-            None
-        } else {
-            let env_ty = match self.infer.type_of_expr[expr].kind(self.db) {
-                | hir_ty::ty::TyKind::Func(func) => func.env,
-                | _ => unreachable!(),
-            };
-
-            let env_repr = repr_of(self.db, env_ty);
-            let env_repr = Repr::new(self.db, ReprKind::Box(env_repr));
-
-            Some(self.builder.add_local(LocalKind::Arg, env_repr.clone()))
-        };
-
+        let env_repr = env
+            .iter()
+            .map(|e| repr_of(self.db, self.infer.type_of_pat[*e], ReprPos::Argument))
+            .collect();
+        let env_repr = Repr::new(self.db, ReprKind::Struct(env_repr));
+        let env_repr = Repr::new(self.db, ReprKind::Box(env_repr));
+        let env_param = self.builder.add_local(LocalKind::Arg, env_repr.clone());
         let entry = self.builder.create_block();
         self.builder.switch_block(entry);
-
-        if let Some(env_param) = env_param {
-            self.builder.add_block_param(entry, env_param);
-        }
+        self.builder.add_block_param(entry, env_param);
 
         for &param in params.iter() {
-            let param_repr = repr_of(self.db, self.infer.type_of_pat[param]);
+            let param_repr = repr_of(self.db, self.infer.type_of_pat[param], ReprPos::Argument);
             let local = self.builder.add_local(LocalKind::Arg, param_repr);
             self.builder.add_block_param(entry, local);
             self.bind_pat(param, Place::new(local));
         }
 
-        if let Some(env_param) = env_param {
-            let env_place = Place::new(env_param).deref().field(1);
+        let env_place = Place::new(env_param).deref().field(1);
 
-            if env.len() == 1 {
-                self.locals.insert(env[0], env_place);
-            } else {
-                for (i, &pat) in env.iter().enumerate() {
-                    self.locals.insert(pat, env_place.clone().field(i));
-                }
-            }
+        for (i, &pat) in env.iter().enumerate() {
+            self.locals.insert(pat, env_place.clone().field(i));
         }
 
         let res = self.lower_expr(body, &mut None);
@@ -530,7 +524,7 @@ impl Ctx<'_> {
             self.builder.switch_block(exit_block);
             place.into()
         } else {
-            let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+            let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
             let ret = self.builder.add_local(LocalKind::Arg, ret_repr);
             self.builder.add_block_param(exit_block, ret);
             self.builder.switch_block(exit_block);
@@ -561,7 +555,7 @@ impl Ctx<'_> {
             self.builder.jump((exit_block, [op]));
         }
 
-        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
         let ret = self.builder.add_local(LocalKind::Arg, ret_repr);
         self.builder.add_block_param(exit_block, ret);
         self.builder.switch_block(exit_block);

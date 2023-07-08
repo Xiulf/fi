@@ -75,7 +75,6 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
         let func = FuncType {
             ret,
             params,
-            env: bcx.unit_type(),
             is_varargs: false,
         };
 
@@ -189,7 +188,6 @@ pub fn type_ctor_ty(db: &dyn Db, type_ctor: TypeCtorId) -> Arc<TypeCtorResult> {
                 TyKind::Func(FuncType {
                     params,
                     ret: ty,
-                    env: lcx.unit_type(),
                     is_varargs: false,
                 }),
             )

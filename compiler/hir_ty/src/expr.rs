@@ -176,17 +176,20 @@ impl BodyCtx<'_, '_> {
         Ty::new(self.db, TyKind::App(array, args))
     }
 
-    fn infer_lambda(&mut self, id: ExprId, env: &[PatId], params: &[PatId], body: ExprId, expected: Expectation) -> Ty {
-        let env = env.iter().map(|&p| self.result.type_of_pat[p]).collect();
-        let env = self.tuple_type(env);
-
+    fn infer_lambda(
+        &mut self,
+        _id: ExprId,
+        _env: &[PatId],
+        params: &[PatId],
+        body: ExprId,
+        expected: Expectation,
+    ) -> Ty {
         if let Expectation::HasType(ty) = expected {
             if let TyKind::Func(func) = ty.kind(self.db) {
                 for (&param, &ty) in params.iter().zip(func.params.iter()) {
                     self.infer_pat(param, Expectation::HasType(ty));
                 }
 
-                self.unify_types(env, func.env, id.into());
                 self.ret_ty.push(func.ret);
                 self.lambdas.push(ty);
                 self.infer_expr(body, Expectation::HasType(func.ret));
@@ -202,7 +205,6 @@ impl BodyCtx<'_, '_> {
             self.db,
             TyKind::Func(FuncType {
                 is_varargs: false,
-                env,
                 params,
                 ret,
             }),
@@ -233,7 +235,6 @@ impl BodyCtx<'_, '_> {
             TyKind::Func(FuncType {
                 params,
                 ret,
-                env: self.ctx.fresh_type(self.level, false),
                 is_varargs: false,
             }),
         );
@@ -277,12 +278,9 @@ impl BodyCtx<'_, '_> {
             .map(|&e| self.infer_expr(e, Expectation::None))
             .collect::<Vec<_>>();
         let func2 = params.into_iter().rfold(ret, |ret, param| {
-            let env = self.ctx.fresh_type(self.ctx.level, false);
-
             Ty::new(
                 self.db,
                 TyKind::Func(FuncType {
-                    env,
                     ret,
                     params: Box::new([param]),
                     is_varargs: false,

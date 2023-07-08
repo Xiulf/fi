@@ -112,7 +112,7 @@ pub fn layout_of(db: &dyn Db, repr: Repr) -> Arc<Layout> {
             Arc::new(layout)
         },
         | ReprKind::Scalar(scalar) => Arc::new(Layout::scalar(scalar.clone(), &triple)),
-        | ReprKind::ReprOf(ty) => layout_of(db, repr_of(db, *ty)),
+        | ReprKind::ReprOf(ty) => layout_of(db, repr_of(db, *ty, ReprPos::Argument)),
         | ReprKind::Ptr(_, false, false) => Arc::new(Layout::scalar(scalar_new(Primitive::Pointer, triple), triple)),
         | ReprKind::Ptr(_, true, nonnull) => {
             let mut scalar = scalar_new(Primitive::Pointer, triple);
@@ -120,12 +120,12 @@ pub fn layout_of(db: &dyn Db, repr: Repr) -> Arc<Layout> {
             let meta = scalar_new(Primitive::Int(Integer::Int, false), triple);
             Arc::new(scalar_pair(scalar, meta, triple))
         },
-        | ReprKind::Ptr(_, false, true) | ReprKind::Box(_) | ReprKind::Func(_, None) => {
+        | ReprKind::Ptr(_, false, true) | ReprKind::Box(_) | ReprKind::Func(_, false) => {
             let mut scalar = scalar_new(Primitive::Pointer, triple);
             scalar.valid_range = 1..=*scalar.valid_range.end();
             Arc::new(Layout::scalar(scalar, triple))
         },
-        | ReprKind::Func(_, Some(_)) => {
+        | ReprKind::Func(_, true) => {
             let mut ptr = scalar_new(Primitive::Pointer, triple);
             ptr.valid_range = 1..=*ptr.valid_range.end();
             Arc::new(scalar_pair(ptr.clone(), ptr, triple))
@@ -410,9 +410,9 @@ impl ReprAndLayout {
         Some(repr_and_layout(db, el))
     }
 
+    #[track_caller]
     pub fn field(&self, db: &dyn Db, field: usize) -> Option<ReprAndLayout> {
         assert!(field < self.fields.count());
-
         match self.repr.kind(db) {
             | ReprKind::Array(_, el) => Some(repr_and_layout(db, *el)),
             | ReprKind::Struct(reprs) => Some(repr_and_layout(db, reprs[field])),
@@ -421,15 +421,15 @@ impl ReprAndLayout {
                 | 1 => Some(repr_and_layout(db, Repr::usize(db))),
                 | _ => unreachable!(),
             },
-            | ReprKind::Func(sig, Some(env)) => match field {
+            | ReprKind::Func(sig, true) => match field {
                 | 0 => {
                     let mut sig = sig.clone();
-                    sig.params = once(Repr::new(db, ReprKind::Box(*env)))
+                    sig.params = once(Repr::new(db, ReprKind::Box(Repr::unit(db))))
                         .chain(sig.params.into_vec())
                         .collect();
-                    Some(repr_and_layout(db, Repr::new(db, ReprKind::Func(sig, None))))
+                    Some(repr_and_layout(db, Repr::new(db, ReprKind::Func(sig, false))))
                 },
-                | 1 => Some(repr_and_layout(db, Repr::new(db, ReprKind::Box(*env)))),
+                | 1 => Some(repr_and_layout(db, Repr::new(db, ReprKind::Box(Repr::unit(db))))),
                 | _ => unreachable!(),
             },
             | ReprKind::Enum(reprs) => match self.variants {

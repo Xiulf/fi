@@ -23,7 +23,7 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
         ty
     }
 
-    fn lower_type_ref_inner(&mut self, id: TypeRefId, top_level: bool) -> Ty {
+    fn lower_type_ref_inner(&mut self, id: TypeRefId, _top_level: bool) -> Ty {
         let type_map = self.type_map.clone();
 
         match type_map[id] {
@@ -66,27 +66,19 @@ impl<'db, 'ctx> LowerCtx<'db, 'ctx> {
                 },
             },
             | TypeRef::Func {
-                env,
+                env: _,
                 ref args,
                 ret,
                 is_varargs,
             } => {
                 let params = args.iter().map(|&t| self.lower_type_ref(t, false)).collect();
                 let ret = self.lower_type_ref(ret, false);
-                let env = if let Some(env) = env {
-                    self.lower_type_ref(env, false)
-                } else if top_level {
-                    self.unit_type()
-                } else {
-                    self.ctx.fresh_type(self.level, false)
-                };
 
                 Ty::new(
                     self.db,
                     TyKind::Func(FuncType {
                         params,
                         ret,
-                        env,
                         is_varargs,
                     }),
                 )

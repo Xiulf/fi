@@ -65,7 +65,6 @@ pub enum FloatKind {
 pub struct FuncType {
     pub params: Box<[Ty]>,
     pub ret: Ty,
-    pub env: Ty,
     pub is_varargs: bool,
 }
 
@@ -122,9 +121,7 @@ pub fn is_recursive(db: &dyn Db, ty: Ty) -> bool {
 
         match ty.kind(db) {
             | TyKind::App(base, args) => rec(db, *base, types) || args.iter().any(|&a| rec(db, a, types)),
-            | TyKind::Func(func) => {
-                rec(db, func.env, types) || rec(db, func.ret, types) || func.params.iter().any(|&a| rec(db, a, types))
-            },
+            | TyKind::Func(func) => rec(db, func.ret, types) || func.params.iter().any(|&a| rec(db, a, types)),
             | _ => false,
         }
     }
@@ -146,14 +143,12 @@ impl Ty {
             | TyKind::Func(func) => {
                 let params = func.params.iter().map(|p| p.fold(db, f)).collect();
                 let ret = func.ret.fold(db, f);
-                let env = func.env.fold(db, f);
 
                 f(Ty::new(
                     db,
                     TyKind::Func(FuncType {
                         params,
                         ret,
-                        env,
                         is_varargs: func.is_varargs,
                     }),
                 ))
@@ -174,7 +169,6 @@ impl Ty {
             | TyKind::Func(func) => {
                 func.params.iter().for_each(|p| p.traverse(db, f));
                 func.ret.traverse(db, f);
-                func.env.traverse(db, f);
             },
             | _ => {},
         }
@@ -382,9 +376,6 @@ impl HirDisplay for FuncType {
 
     fn hir_fmt(&self, f: &mut hir_def::display::HirFormatter<Self::Db<'_>>) -> std::fmt::Result {
         use std::fmt::Write as _;
-        f.write_char('{')?;
-        self.env.hir_fmt(f)?;
-        f.write_str("} ")?;
         f.write_joined(self.params.iter().map(|p| Parens(ParenMode::Arg, *p)), ", ")?;
         if self.is_varargs {
             f.write_str(", ..")?;

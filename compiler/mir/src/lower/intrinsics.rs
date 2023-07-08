@@ -36,16 +36,16 @@ impl Ctx<'_> {
             | "align_of" => self.lower_intrinsic_nullop(expr, NullOp::AlignOf, args, store_in),
             | "stride_of" => self.lower_intrinsic_nullop(expr, NullOp::StrideOf, args, store_in),
             | "undefined" => {
-                let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
                 Operand::Const(Const::Undefined, repr)
             },
             | "zeroed" => {
-                let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
                 Operand::Const(Const::Zeroed, repr)
             },
             | "copy" => {
                 let value = self.lower_arg(args.next().unwrap());
-                let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
                 let res = self.builder.add_local(LocalKind::Tmp, repr);
                 self.builder.assign(Place::new(res), value);
                 Place::new(res).into()
@@ -53,7 +53,7 @@ impl Ctx<'_> {
             | "addr_of" => {
                 let place = self.lower_arg(args.next().unwrap());
                 let place = self.place_op(place);
-                let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
                 let res = self.builder.add_local(LocalKind::Tmp, repr);
                 self.builder.addrof(Place::new(res), place);
                 Place::new(res).into()
@@ -86,7 +86,7 @@ impl Ctx<'_> {
             },
             | "panic" => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();
-                let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
                 let ret = self.store_in(store_in, ret_repr);
 
                 self.builder.intrinsic(ret, "panic".to_string(), args);
@@ -95,7 +95,7 @@ impl Ctx<'_> {
             },
             | s => {
                 let args = args.map(|a| self.lower_arg(a)).collect::<Vec<_>>();
-                let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+                let ret_repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
                 let ret = self.store_in(store_in, ret_repr);
 
                 self.builder.intrinsic(ret.clone(), s.to_string(), args);
@@ -113,7 +113,7 @@ impl Ctx<'_> {
     ) -> Operand {
         let lhs = self.lower_arg(args.next().unwrap());
         let rhs = self.lower_arg(args.next().unwrap());
-        let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
         let res = self.store_in(store_in, repr);
 
         self.builder.binop(res.clone(), op, lhs, rhs);
@@ -133,8 +133,8 @@ impl Ctx<'_> {
         };
 
         let proxy = self.get_proxy_type(proxy);
-        let proxy_repr = repr_of(self.db, proxy);
-        let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let proxy_repr = repr_of(self.db, proxy, ReprPos::Argument);
+        let repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
         let res = self.store_in(store_in, repr);
 
         self.builder.nullop(res.clone(), op, proxy_repr);
@@ -149,7 +149,7 @@ impl Ctx<'_> {
         store_in: &mut Option<Place>,
     ) -> Operand {
         let arg = self.lower_arg(args.next().unwrap());
-        let repr = repr_of(self.db, self.infer.type_of_expr[expr]);
+        let repr = repr_of(self.db, self.infer.type_of_expr[expr], ReprPos::Argument);
         let res = self.store_in(store_in, repr);
 
         self.builder.cast(res.clone(), kind, arg);

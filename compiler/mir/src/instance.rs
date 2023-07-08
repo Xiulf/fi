@@ -6,7 +6,7 @@ use hir_ty::ty::{Ty, TyKind};
 use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ir::{Body, MirValueId};
-use crate::repr::{repr_of, ArrayLen, Repr, ReprKind, Signature};
+use crate::repr::{repr_of, ArrayLen, Repr, ReprKind, ReprPos, Signature};
 use crate::Db;
 
 #[salsa::interned]
@@ -142,7 +142,7 @@ impl Instance {
             | InstanceId::Body(body) => return self.data(db).subst_repr(db, body.repr(db)),
         };
 
-        self.data(db).subst_repr(db, repr_of(db, ty))
+        self.data(db).subst_repr(db, repr_of(db, ty, ReprPos::TopLevel))
     }
 
     pub fn link_name(self, db: &dyn Db) -> String {
@@ -255,7 +255,7 @@ impl InstanceData {
     pub fn subst_repr(&self, db: &dyn Db, repr: Repr) -> Repr {
         let kind = match repr.kind(db) {
             | ReprKind::TypeVar(tv) => match self.find_var(tv) {
-                | Some(ty) => return repr_of(db, ty),
+                | Some(ty) => return repr_of(db, ty, ReprPos::Argument),
                 | None => return repr,
             },
             | ReprKind::ReprOf(ty) => ReprKind::ReprOf(ty.replace_vars(db, &self.types)),
@@ -265,12 +265,7 @@ impl InstanceData {
             | ReprKind::Struct(reprs) => ReprKind::Struct(reprs.iter().map(|&r| self.subst_repr(db, r)).collect()),
             | ReprKind::Enum(reprs) => ReprKind::Enum(reprs.iter().map(|&r| self.subst_repr(db, r)).collect()),
             | ReprKind::Array(len, of) => ReprKind::Array(self.subst_array_len(db, len), self.subst_repr(db, *of)),
-            | ReprKind::Func(sig, env) => ReprKind::Func(
-                self.subst_signature(db, sig),
-                env.as_ref()
-                    .map(|&e| self.subst_repr(db, e))
-                    .filter(|e| !matches!(e.kind(db), ReprKind::Struct(f) if f.is_empty())),
-            ),
+            | ReprKind::Func(sig, thick) => ReprKind::Func(self.subst_signature(db, sig), *thick),
             | _ => return repr,
         };
 

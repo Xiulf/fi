@@ -1,5 +1,6 @@
 use arena::Idx;
 use base_db::Error;
+use hir::display::HirDisplay;
 use inkwell::values::{self, BasicValue};
 use inkwell::{types, IntPredicate};
 use mir::instance::Instance;
@@ -329,6 +330,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             | _ => unreachable!(),
         };
 
+        tracing::debug!("{}, {env}", func_sig.display(self.db));
         let func_abi = self.compute_fn_abi(func_sig, env);
         let func_ty = self.fn_type_for_abi(&func_abi);
         let (func, env) = match func.val {
@@ -388,6 +390,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         arg: &ir::Operand,
         abi: &ArgAbi<'ctx>,
     ) -> EmptySinglePair<values::BasicMetadataValueEnum<'ctx>> {
+        tracing::debug!("{}: {:?}", abi.layout.repr.display(self.db), abi.mode);
         match abi.mode {
             | PassMode::NoPass => EmptySinglePair::Empty,
             | PassMode::ByVal(_) => EmptySinglePair::Single(self.codegen_operand(arg).load(self.cx).into()),

@@ -1,13 +1,13 @@
 use hir::display::HirDisplay;
 use inkwell::values;
-use mir::repr::{needs_drop, repr_of, ArrayLen, Repr, ReprKind};
+use mir::repr::{needs_drop, repr_of, ArrayLen, Repr, ReprKind, ReprPos};
 
 use crate::ctx::CodegenCtx;
 use crate::layout::repr_and_layout;
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn get_drop_fn(&mut self, repr: Repr) -> values::FunctionValue<'ctx> {
-        if !needs_drop(self.db, repr) {
+        if !needs_drop(self.db, repr, ReprPos::Argument) {
             return self.get_drop_nop();
         }
 
@@ -43,7 +43,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
 
     fn gen_drop_rec(&mut self, func: values::FunctionValue<'ctx>, ptr: values::PointerValue<'ctx>, repr: Repr) {
         match repr.kind(self.db) {
-            | ReprKind::ReprOf(ty) => self.gen_drop_rec(func, ptr, repr_of(self.db, *ty)),
+            | ReprKind::ReprOf(ty) => self.gen_drop_rec(func, ptr, repr_of(self.db, *ty, ReprPos::Argument)),
             | ReprKind::Uninhabited
             | ReprKind::Opaque
             | ReprKind::TypeVar(_)
@@ -109,7 +109,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let ty = self.basic_type_for_ral(&layout);
 
         for (i, &repr) in reprs.iter().enumerate() {
-            if !needs_drop(self.db, repr) {
+            if !needs_drop(self.db, repr, ReprPos::Argument) {
                 continue;
             }
 
@@ -134,7 +134,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let mut cases = Vec::with_capacity(reprs.len());
 
         for (i, &repr) in reprs.iter().enumerate() {
-            if !needs_drop(self.db, repr) {
+            if !needs_drop(self.db, repr, ReprPos::Argument) {
                 continue;
             }
 

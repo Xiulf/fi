@@ -7,7 +7,7 @@ use crate::ir::{
     BasicBlocks, BinOp, Block, BlockData, Body, CastKind, Const, JumpTarget, Local, LocalData, LocalKind, MirValueId,
     NullOp, Operand, Place, Projection, RValue, Statement, Terminator,
 };
-use crate::repr::{Repr, ReprKind};
+use crate::repr::{Repr, ReprKind, ReprPos};
 use crate::Db;
 
 mod copying;
@@ -167,7 +167,7 @@ impl Builder {
 
         for proj in &place.projection {
             if let ReprKind::ReprOf(ty) = repr.kind(db) {
-                repr = crate::repr::repr_of(db, *ty);
+                repr = crate::repr::repr_of(db, *ty, ReprPos::Argument);
             }
 
             match proj {

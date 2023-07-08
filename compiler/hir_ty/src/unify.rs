@@ -178,7 +178,6 @@ impl Ctx<'_> {
 
                 self.unify_all(a.params.iter(), b.params.iter(), bindings)
                     .and(self.unify_into(a.ret, b.ret, bindings))
-                    .and(self.unify_into(a.env, b.env, bindings))
             },
             | (_, _) => UnifyResult::Fail,
         }
@@ -244,7 +243,6 @@ impl Ctx<'_> {
             | TyKind::Func(func) => {
                 func.params.iter().any(|&a| self.occurs(u, level, a, n, bindings))
                     || self.occurs(u, level, func.ret, n, bindings)
-                    || self.occurs(u, level, func.env, n, bindings)
             },
             | _ => false,
         }

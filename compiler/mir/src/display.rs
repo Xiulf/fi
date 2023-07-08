@@ -423,8 +423,8 @@ impl HirDisplay for Repr {
             | ReprKind::Ptr(el, true, _) => write!(f, "*fat {}", el.display(f.db)),
             | ReprKind::Ptr(el, false, _) => write!(f, "*{}", el.display(f.db)),
             | ReprKind::Box(el) => write!(f, "box({})", el.display(f.db)),
-            | ReprKind::Func(sig, None) => write!(f, "fn {}", sig.display(f.db)),
-            | ReprKind::Func(sig, Some(env)) => write!(f, "lambda [{}] {}", env.display(f.db), sig.display(f.db)),
+            | ReprKind::Func(sig, false) => write!(f, "fn {}", sig.display(f.db)),
+            | ReprKind::Func(sig, true) => write!(f, "lambda {}", sig.display(f.db)),
             | ReprKind::Discr(repr) => write!(f, "discriminant({})", repr.display(f.db)),
             | ReprKind::Struct(fields) if fields.is_empty() => write!(f, "()"),
             | ReprKind::Struct(fields) => {

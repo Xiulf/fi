@@ -67,7 +67,6 @@ impl BodyCtx<'_, '_> {
                         TyKind::Func(FuncType {
                             params,
                             ret,
-                            env: self.unit_type(),
                             is_varargs: false,
                         }),
                     );

@@ -2,13 +2,14 @@ mod expr;
 mod intrinsics;
 
 use arena::ArenaMap;
+use hir::display::HirDisplay;
 use hir::{Ctor, Value};
 use hir_def::id::{CtorId, ValueDefId, ValueId};
 use triomphe::Arc;
 
 use crate::builder::Builder;
 use crate::ir::*;
-use crate::repr::{repr_of, Repr};
+use crate::repr::{repr_of, Repr, ReprPos};
 use crate::Db;
 
 #[salsa::tracked]
@@ -28,8 +29,10 @@ pub fn value_mir(db: &dyn Db, id: ValueId) -> ValueDef {
             }
         }
 
-        let repr = repr_of(db, value.ty(db).ty());
-        Some(Ctx::new(db, value).lower(repr))
+        let repr = repr_of(db, value.ty(db).ty(), ReprPos::TopLevel);
+        let mir = Ctx::new(db, value).lower(repr);
+        // tracing::debug!("{}", mir.display(db));
+        Some(mir)
     };
 
     ValueDef::new(db, Linkage::Export, name, body)
@@ -48,14 +51,14 @@ pub fn ctor_mir(db: &dyn Db, id: CtorId) -> ValueDef {
         .types(db)
         .iter()
         .map(|&ty| {
-            let repr = repr_of(db, ty);
+            let repr = repr_of(db, ty, ReprPos::Argument);
             let local = builder.add_local(LocalKind::Arg, repr);
             builder.add_block_param(entry, local);
             local
         })
         .collect::<Vec<_>>();
 
-    let ret_repr = repr_of(db, ctor.ret(db));
+    let ret_repr = repr_of(db, ctor.ret(db), ReprPos::Argument);
 
     if params.is_empty() {
         builder.ret((Const::Ctor(id), ret_repr));
@@ -87,7 +90,7 @@ pub fn ctor_mir(db: &dyn Db, id: CtorId) -> ValueDef {
         builder.ret(Place::new(ret));
     }
 
-    let repr = repr_of(db, ctor.ty(db).ty());
+    let repr = repr_of(db, ctor.ty(db).ty(), ReprPos::TopLevel);
     let body = builder.build(db, MirValueId::CtorId(id), repr);
     let name = ctor.link_name(db);
 
@@ -165,7 +168,7 @@ impl<'db> Ctx<'db> {
         self.builder.switch_block(entry);
 
         for &param in body.params() {
-            let repr = repr_of(self.db, self.infer.type_of_pat[param]);
+            let repr = repr_of(self.db, self.infer.type_of_pat[param], ReprPos::Argument);
             let local = self.builder.add_local(LocalKind::Arg, repr);
             self.bind_pat(param, Place::new(local));
             self.builder.add_block_param(entry, local);
@@ -174,7 +177,6 @@ impl<'db> Ctx<'db> {
         let res = self.lower_expr(body.body_expr(), &mut None);
 
         for (_, body) in self.lambdas {
-            use hir_def::display::HirDisplay;
             tracing::debug!("\n{}", body.display(self.db));
         }
 

@@ -25,7 +25,7 @@ impl PrintfType () =
             Stdout .fmt x
         | _ -> Stdout .fmt f
 
-impl PrintfType ({Pair Str (List Str)} Str -> r) where PrintfType r =
+impl PrintfType (Str -> r) where PrintfType r =
     printf' f args = fn x ->
         printf' f (x:args)
 

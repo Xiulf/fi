@@ -27,7 +27,7 @@ pub enum ReprKind {
     Array(ArrayLen, Repr),
     Ptr(Repr, bool, bool),
     Box(Repr),
-    Func(Signature, Option<Repr>),
+    Func(Signature, bool),
     Discr(Repr),
     ReprOf(Ty),
 }
@@ -109,57 +109,60 @@ impl Repr {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReprPos {
+    TopLevel,
+    Argument,
+}
+
 #[salsa::tracked]
-pub fn repr_of(db: &dyn Db, ty: Ty) -> Repr {
+pub fn repr_of(db: &dyn Db, ty: Ty, pos: ReprPos) -> Repr {
     tracing::trace!("{}", ty.display(db));
 
     // if hir_ty::ty::is_recursive(db, ty) {
-    _repr_of_rec(db, ty, &mut FxHashSet::default())
+    _repr_of_rec(db, ty, pos, &mut FxHashSet::default())
     // } else {
     //     _repr_of(db, ty)
     // }
 }
 
-fn _repr_of(db: &dyn Db, ty: Ty) -> Repr {
-    match ty.kind(db) {
-        | TyKind::Error => unreachable!(),
-        | TyKind::Var(var) => Repr::new(db, ReprKind::TypeVar(*var)),
-        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], repr_of),
-        | TyKind::Primitive(prim) => match prim {
-            | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
-            | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
-        },
-        | TyKind::App(mut base, args) => {
-            let mut args = args.to_vec();
-            while let TyKind::App(b, a) = base.kind(db) {
-                args = [a.to_vec(), args].concat();
-                base = *b;
-            }
+// fn _repr_of(db: &dyn Db, ty: Ty) -> Repr {
+//     match ty.kind(db) {
+//         | TyKind::Error => unreachable!(),
+//         | TyKind::Var(var) => Repr::new(db, ReprKind::TypeVar(*var)),
+//         | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], repr_of),
+//         | TyKind::Primitive(prim) => match prim {
+//             | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
+//             | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
+//         },
+//         | TyKind::App(mut base, args) => {
+//             let mut args = args.to_vec();
+//             while let TyKind::App(b, a) = base.kind(db) {
+//                 args = [a.to_vec(), args].concat();
+//                 base = *b;
+//             }
 
-            match base.kind(db) {
-                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, repr_of),
-                | _ => unreachable!("{}", base.display(db)),
-            }
-        },
-        | TyKind::Func(func) => {
-            let params = func.params.iter().map(|&p| repr_of(db, p)).collect();
-            let ret = repr_of(db, func.ret);
-            let signature = Signature {
-                params,
-                ret,
-                is_varargs: func.is_varargs,
-            };
+//             match base.kind(db) {
+//                 | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, repr_of),
+//                 | _ => unreachable!("{}", base.display(db)),
+//             }
+//         },
+//         | TyKind::Func(func) => {
+//             let params = func.params.iter().map(|&p| repr_of(db, p)).collect();
+//             let ret = repr_of(db, func.ret);
+//             let signature = Signature {
+//                 params,
+//                 ret,
+//                 is_varargs: func.is_varargs,
+//             };
 
-            let env = repr_of(db, func.env);
-            let env = if env == Repr::unit(db) { None } else { Some(env) };
+//             Repr::new(db, ReprKind::Func(signature, true))
+//         },
+//         | k => todo!("{k:?}"),
+//     }
+// }
 
-            Repr::new(db, ReprKind::Func(signature, env))
-        },
-        | k => todo!("{k:?}"),
-    }
-}
-
-fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
+fn _repr_of_rec(db: &dyn Db, ty: Ty, pos: ReprPos, seen: &mut FxHashSet<Ty>) -> Repr {
     if !seen.insert(ty) {
         return Repr::new(db, ReprKind::ReprOf(ty));
     }
@@ -168,13 +171,13 @@ fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
         | TyKind::Error => unreachable!(),
         | TyKind::Never => Repr::new(db, ReprKind::Uninhabited),
         | TyKind::Var(var) => Repr::new(db, ReprKind::TypeVar(*var)),
-        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], |db, ty| _repr_of_rec(db, ty, seen)),
+        | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &[], |db, ty, pos| _repr_of_rec(db, ty, pos, seen)),
         | TyKind::Primitive(prim) => match prim {
             | PrimitiveType::Integer(kind) => repr_from_int_kind(db, *kind),
             | PrimitiveType::Float(kind) => repr_from_float_kind(db, *kind),
         },
         | TyKind::Ref(_, to) => {
-            let to = _repr_of_rec(db, *to, seen);
+            let to = _repr_of_rec(db, *to, ReprPos::Argument, seen);
             Repr::new(db, ReprKind::Ptr(to, false, true))
         },
         | TyKind::App(mut base, args) => {
@@ -185,23 +188,24 @@ fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
             }
 
             match base.kind(db) {
-                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, |db, ty| _repr_of_rec(db, ty, seen)),
+                | TyKind::Ctor(ctor) => repr_of_ctor(db, *ctor, &args, |db, ty, pos| _repr_of_rec(db, ty, pos, seen)),
                 | _ => unreachable!("{}", base.display(db)),
             }
         },
         | TyKind::Func(func) => {
-            let params = func.params.iter().map(|&p| _repr_of_rec(db, p, seen)).collect();
-            let ret = _repr_of_rec(db, func.ret, seen);
+            let params = func
+                .params
+                .iter()
+                .map(|&p| _repr_of_rec(db, p, ReprPos::Argument, seen))
+                .collect();
+            let ret = _repr_of_rec(db, func.ret, ReprPos::Argument, seen);
             let signature = Signature {
                 params,
                 ret,
                 is_varargs: func.is_varargs,
             };
 
-            let env = _repr_of_rec(db, func.env, seen);
-            let env = if env == Repr::unit(db) { None } else { Some(env) };
-
-            Repr::new(db, ReprKind::Func(signature, env))
+            Repr::new(db, ReprKind::Func(signature, pos == ReprPos::Argument))
         },
         | k => todo!("{k:?}"),
     };
@@ -210,7 +214,12 @@ fn _repr_of_rec(db: &dyn Db, ty: Ty, seen: &mut FxHashSet<Ty>) -> Repr {
     repr
 }
 
-fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty], mut repr_of: impl FnMut(&dyn Db, Ty) -> Repr) -> Repr {
+fn repr_of_ctor(
+    db: &dyn Db,
+    id: TypeCtorId,
+    args: &[Ty],
+    mut repr_of: impl FnMut(&dyn Db, Ty, ReprPos) -> Repr,
+) -> Repr {
     let lib = id.module(db).lib(db);
     let attrs = attrs::query(db, id.into());
 
@@ -262,7 +271,12 @@ fn repr_of_ctor(db: &dyn Db, id: TypeCtorId, args: &[Ty], mut repr_of: impl FnMu
     repr
 }
 
-fn repr_of_variant(db: &dyn Db, ctor: CtorId, args: &[Ty], mut repr_of: impl FnMut(&dyn Db, Ty) -> Repr) -> Repr {
+fn repr_of_variant(
+    db: &dyn Db,
+    ctor: CtorId,
+    args: &[Ty],
+    mut repr_of: impl FnMut(&dyn Db, Ty, ReprPos) -> Repr,
+) -> Repr {
     let ty = hir_ty::ctor_ty(db, ctor);
     let ty = ty.replace_vars(db, args);
     let fields = match ty.kind(db) {
@@ -270,7 +284,7 @@ fn repr_of_variant(db: &dyn Db, ctor: CtorId, args: &[Ty], mut repr_of: impl FnM
         | _ => &[],
     };
 
-    let fields = fields.iter().map(|&f| repr_of(db, f)).collect();
+    let fields = fields.iter().map(|&f| repr_of(db, f, ReprPos::Argument)).collect();
 
     Repr::new(db, ReprKind::Struct(fields))
 }
@@ -335,7 +349,7 @@ fn repr_from_attrs(
     db: &dyn Db,
     group: &AttrInputGroup,
     args: &[Ty],
-    repr_of: &mut dyn FnMut(&dyn Db, Ty) -> Repr,
+    repr_of: &mut dyn FnMut(&dyn Db, Ty, ReprPos) -> Repr,
 ) -> Repr {
     let mut repr = ReprKind::Opaque;
 
@@ -367,7 +381,7 @@ fn repr_from_attrs(
 
         if let Some(elem) = ptr.field("elem") {
             let elem = if let Some(idx) = elem.int() {
-                repr_of(db, args[idx as usize])
+                repr_of(db, args[idx as usize], ReprPos::Argument)
             } else {
                 repr_from_attrs(db, elem.group().unwrap(), args, repr_of)
             };
@@ -381,7 +395,7 @@ fn repr_from_attrs(
 
         if let Some(elem) = ptr.field("elem") {
             let elem = if let Some(idx) = elem.int() {
-                repr_of(db, args[idx as usize])
+                repr_of(db, args[idx as usize], ReprPos::Argument)
             } else {
                 repr_from_attrs(db, elem.group().unwrap(), args, repr_of)
             };
@@ -393,7 +407,7 @@ fn repr_from_attrs(
     if let Some(arr) = group.field("array").and_then(AttrInput::group) {
         if let (Some(elem), Some(len)) = (arr.field("elem"), arr.field("len")) {
             let elem = if let Some(idx) = elem.int() {
-                repr_of(db, args[idx as usize])
+                repr_of(db, args[idx as usize], ReprPos::Argument)
             } else {
                 repr_from_attrs(db, elem.group().unwrap(), args, repr_of)
             };
@@ -451,13 +465,13 @@ fn primitive_from_attr(attr: &str) -> Primitive {
 }
 
 #[salsa::tracked]
-pub fn needs_drop(db: &dyn Db, repr: Repr) -> bool {
+pub fn needs_drop(db: &dyn Db, repr: Repr, pos: ReprPos) -> bool {
     match repr.kind(db) {
-        | ReprKind::ReprOf(ty) => needs_drop(db, repr_of(db, *ty)),
-        | ReprKind::Struct(reprs) => reprs.iter().any(|r| needs_drop(db, *r)),
-        | ReprKind::Enum(reprs) => reprs.iter().any(|r| needs_drop(db, *r)),
-        | ReprKind::Func(sig, None) => needs_drop(db, sig.ret) || sig.params.iter().any(|r| needs_drop(db, *r)),
-        | ReprKind::Array(_, elem) => needs_drop(db, *elem),
+        | ReprKind::ReprOf(ty) => needs_drop(db, repr_of(db, *ty, pos), pos),
+        | ReprKind::Struct(reprs) => reprs.iter().any(|r| needs_drop(db, *r, ReprPos::Argument)),
+        | ReprKind::Enum(reprs) => reprs.iter().any(|r| needs_drop(db, *r, ReprPos::Argument)),
+        | ReprKind::Array(_, elem) => needs_drop(db, *elem, ReprPos::Argument),
+        | ReprKind::Func(_, thick) => *thick,
         | ReprKind::Box(_) => true,
         | _ => false,
     }

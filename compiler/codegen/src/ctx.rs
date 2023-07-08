@@ -141,6 +141,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | InstanceId::VtableMethod(..) => unreachable!(),
         };
 
+        tracing::debug!("\n{}", body.display(self.db));
+
         if instance.is_func(self.db) {
             let (func, fn_abi) = self.declare_func(instance);
             let mut bcx = BodyCtx {
