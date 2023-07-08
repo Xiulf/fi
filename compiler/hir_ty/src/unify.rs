@@ -167,6 +167,20 @@ impl Ctx<'_> {
             | (TyKind::App(a_base, a_args), TyKind::App(b_base, b_args)) if a_args.len() == b_args.len() => self
                 .unify_into(*a_base, *b_base, bindings)
                 .and(self.unify_all(a_args.iter(), b_args.iter(), bindings)),
+            | (TyKind::App(_, a_args), TyKind::App(b_base, b_args)) if a_args.len() < b_args.len() => {
+                let excess = b_args.len() - a_args.len();
+                let (fst, snd) = b_args.split_at(excess);
+                let b_base = Ty::new(self.db, TyKind::App(*b_base, fst.into()));
+                let b = Ty::new(self.db, TyKind::App(b_base, snd.into()));
+                self.unify_into(t1, b, bindings)
+            },
+            | (TyKind::App(a_base, a_args), TyKind::App(_, b_args)) if a_args.len() > b_args.len() => {
+                let excess = a_args.len() - b_args.len();
+                let (fst, snd) = a_args.split_at(excess);
+                let a_base = Ty::new(self.db, TyKind::App(*a_base, fst.into()));
+                let a = Ty::new(self.db, TyKind::App(a_base, snd.into()));
+                self.unify_into(a, t2, bindings)
+            },
             | (TyKind::Func(a), TyKind::Func(b)) => {
                 if a.params.len() != b.params.len() {
                     if !(a.is_varargs && b.params.len() >= a.params.len())

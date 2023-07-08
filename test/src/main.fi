@@ -3,19 +3,24 @@ module Main (main) =
 import Core
 
 main () =
-    match test () with
-    | Some x -> x
-    | None -> 0
+    eval_state (increment ()) 0
+    0
 
-test () = do
-    let x <- Some 2
-    let y <- Some 6
-    Some (x + y)
+increment () = do
+    let state <- get ()
+    put (state + 1)
 
-// type State s a = | State (s -> (a, s))
+type State s a = | State (s -> (a, s))
 
-// impl Monad (State s) =
-//     bind (State f) (g :: a -> State s b) = State <| fn (s :: s) ->
-//         let x, s' = f s :: a, s
-//         let (State run) = g x
-//         run s'
+impl Monad (State s) =
+    bind (State f) g = State <| fn s ->
+        let x, s' = f s
+        let (State run) = g x
+        run s'
+
+eval_state (State f) s =
+    let result, _ = f s
+    result
+
+put s = State fn _ -> (), s
+get () = State fn s -> s, s
