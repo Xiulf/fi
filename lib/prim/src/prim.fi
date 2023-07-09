@@ -71,6 +71,7 @@ type Proxy t = | Proxy
 trait Monad m =
     @lang = "bind-fn"
     bind :: m a, (a -> m b) -> m b
+    pure :: a -> m a
 
 trait Termination t =
     report :: t -> ExitCode

@@ -166,7 +166,13 @@ impl Ctx<'_> {
         };
         let repr = repr_of(self.db, self.infer.type_of_expr[expr], pos);
         let (mir_id, ty_inst) = match def {
-            | ValueDefId::PatId(id) => return self.locals[id].clone().into(),
+            | ValueDefId::PatId(id) => match self.locals.get(id) {
+                | Some(place) => return place.clone().into(),
+                | None => {
+                    tracing::error!("${:0>2}, {}", u32::from(id.into_raw()), self.id.display(self.db));
+                    unreachable!();
+                },
+            },
             | ValueDefId::ValueId(id) => match self.infer.methods.get(expr) {
                 | Some(&method) => {
                     let impl_id = match method.container(self.db) {

@@ -188,7 +188,9 @@ impl<'db> Ctx<'db> {
                     | Some((def, boundaries)) => {
                         if let Some(boundaries) = boundaries && let ValueDefId::PatId(pat) = def {
                             let idx = self.lambdas.len() - boundaries;
-                            self.lambdas[idx].push(pat);
+                            for lam in &mut self.lambdas[idx..] {
+                                lam.push(pat);
+                            }
                         }
 
                         Some(def)
