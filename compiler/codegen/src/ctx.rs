@@ -88,6 +88,38 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         pmb.populate_module_pass_manager(&mpm);
         mpm.add_always_inliner_pass();
         mpm.run_on(self.module);
+
+        // remove box_free(null, ..) calls
+        if let Some(box_free) = self.module.get_function("box_free") {
+            use values::BasicValue;
+            let box_free = box_free.as_global_value().as_basic_value_enum();
+            let null = self.ptr_type().const_null().as_basic_value_enum();
+
+            for func in self.module.get_functions() {
+                for bb in func.get_basic_blocks() {
+                    let mut instr = bb.get_first_instruction();
+                    while let Some(i) = instr {
+                        if i.get_opcode() == inkwell::values::InstructionOpcode::Call {
+                            if let Some(callee) = i
+                                .get_operand_use(i.get_num_operands() - 1)
+                                .unwrap()
+                                .get_used_value()
+                                .left()
+                            {
+                                if let Some(arg) = i.get_operand_use(0).and_then(|o| o.get_used_value().left()) {
+                                    if callee == box_free && arg == null {
+                                        instr = i.get_next_instruction();
+                                        i.remove_from_basic_block();
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        instr = i.get_next_instruction();
+                    }
+                }
+            }
+        }
     }
 
     pub fn codegen_module(&mut self, module: hir::Module) {

@@ -1,4 +1,5 @@
 use hir::display::HirDisplay;
+use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::values;
 use mir::repr::{needs_drop, repr_of, ArrayLen, Repr, ReprKind, ReprPos};
 
@@ -66,7 +67,16 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             let ptr = self.ptr_type().into();
             let arg = self.usize_type().into();
             let ty = self.context.void_type().fn_type(&[ptr, arg, ptr], false);
-            self.module.add_function("box_free", ty, None)
+            let func = self.module.add_function("box_free", ty, None);
+
+            let memory_attr = Attribute::get_named_enum_kind_id("memory");
+            let memory_attr = self.context.create_enum_attribute(memory_attr, 3);
+            let allockind_attr = Attribute::get_named_enum_kind_id("allockind");
+            let allockind_attr = self.context.create_enum_attribute(allockind_attr, 4);
+            func.add_attribute(AttributeLoc::Function, memory_attr);
+            func.add_attribute(AttributeLoc::Function, allockind_attr);
+
+            func
         };
 
         let drop_fn = self.get_drop_fn(repr);
