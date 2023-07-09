@@ -192,6 +192,17 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         tracing::debug!("declare_func({}, {}, {})", name, signature.display(self.db), ty);
         let value = self.module.add_function(&name, ty, Some(linkage));
 
+        if let Some(inline) = instance.inline(self.db) {
+            let attr = match inline {
+                | hir::attrs::InlineAttr::Always => "alwaysinline",
+                | hir::attrs::InlineAttr::Never => "noinline",
+                | hir::attrs::InlineAttr::Hint => "inlinehint",
+            };
+            let attr = inkwell::attributes::Attribute::get_named_enum_kind_id(attr);
+            let attr = self.context.create_enum_attribute(attr, 0);
+            value.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
+        }
+
         self.funcs.insert(instance, (value, abi.clone()));
         (value, abi)
     }
@@ -204,7 +215,6 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let ty = i32t.fn_type(&[i32t.into(), i8ppt.into()], false);
         let value = self.module.add_function("main", ty, None);
         let (main_value, ref _main_abi) = self.funcs[&main];
-
         let entry = self.context.append_basic_block(value, "entry");
         self.builder.position_at_end(entry);
         let res = self.builder.build_call(main_value, &[], "");

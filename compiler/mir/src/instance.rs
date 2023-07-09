@@ -1,4 +1,5 @@
 use hir::id::TypeVarId;
+use hir_def::attrs::InlineAttr;
 use hir_def::display::HirDisplay;
 use hir_def::expr::Literal;
 use hir_def::id::ImplId;
@@ -114,6 +115,18 @@ impl Instance {
                 | ReprKind::Func(_, _) => true,
                 | _ => false,
             },
+        }
+    }
+
+    pub fn inline(self, db: &dyn Db) -> Option<InlineAttr> {
+        match self.id(db) {
+            | InstanceId::MirValueId(id) => match id {
+                | MirValueId::ValueId(id) => hir::Value::from(id).attrs(db).inline(),
+                | MirValueId::CtorId(_) => Some(InlineAttr::Hint),
+                | MirValueId::FieldId(_) => Some(InlineAttr::Hint),
+                | _ => None,
+            },
+            | _ => None,
         }
     }
 

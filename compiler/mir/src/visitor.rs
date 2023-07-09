@@ -229,3 +229,82 @@ pub enum UseContext {
     AddrOf,
     Projection,
 }
+
+impl Operand {
+    pub fn get_operand(&mut self, idx: usize) -> Option<&mut Operand> {
+        if idx == 0 {
+            return Some(self);
+        }
+
+        match self {
+            | Operand::Copy(place) | Operand::Move(place) => place.get_operand(idx - 1),
+            | Operand::Const(_, _) => None,
+        }
+    }
+}
+
+impl Place {
+    pub fn get_operand(&mut self, mut idx: usize) -> Option<&mut Operand> {
+        for proj in &mut self.projection {
+            match proj {
+                | Projection::Index(op) if idx < op.op_count() => unsafe {
+                    return std::mem::transmute(op.get_operand(idx));
+                },
+                | Projection::Index(op) => idx -= op.op_count(),
+                | Projection::Slice(lo, _) if idx < lo.op_count() => unsafe {
+                    return std::mem::transmute(lo.get_operand(idx));
+                },
+                | Projection::Slice(lo, hi) if idx < lo.op_count() + hi.op_count() => unsafe {
+                    return std::mem::transmute(hi.get_operand(idx - lo.op_count()));
+                },
+                | Projection::Slice(lo, hi) => idx -= lo.op_count() + hi.op_count(),
+                | _ => {},
+            }
+        }
+
+        None
+    }
+}
+
+impl Statement {
+    pub fn get_operand(&mut self, idx: usize) -> Option<&mut Operand> {
+        match self {
+            | Statement::Assign(place, _) if idx < place.op_count() => unsafe {
+                return std::mem::transmute(place.get_operand(idx));
+            },
+            | Statement::Assign(place, rvalue) => {
+                let idx = idx - place.op_count();
+                match rvalue {
+                    | RValue::Use(op) => op.get_operand(idx),
+                    | RValue::Cast(_, op) => op.get_operand(idx),
+                    | RValue::BinOp(_, op, _) if idx < op.op_count() => unsafe {
+                        return std::mem::transmute(op.get_operand(idx));
+                    },
+                    | RValue::BinOp(_, lhs, rhs) => rhs.get_operand(idx - lhs.op_count()),
+                    | _ => None,
+                }
+            },
+            | Statement::Call { place, .. } if idx < place.op_count() => unsafe {
+                return std::mem::transmute(place.get_operand(idx));
+            },
+            | Statement::Call { place, func, .. } if idx - place.op_count() < func.op_count() => unsafe {
+                return std::mem::transmute(func.get_operand(idx - place.op_count()));
+            },
+            | Statement::Call { place, func, args, .. } => {
+                let func_op_count = place.op_count() + func.op_count();
+                let mut idx2 = func_op_count;
+                let mut arg_idx = 0;
+                while idx - idx2 >= args[arg_idx].op_count() {
+                    idx2 += args[arg_idx].op_count();
+                    arg_idx += 1;
+                }
+                args[arg_idx].get_operand(idx - idx2)
+            },
+            | Statement::Intrinsic { place, .. } if idx < place.op_count() => unsafe {
+                return std::mem::transmute(place.get_operand(idx));
+            },
+            | Statement::Intrinsic { args, .. } => Some(&mut args[idx]),
+            | _ => None,
+        }
+    }
+}

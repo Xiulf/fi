@@ -325,13 +325,13 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
 
     pub fn codegen_call(&mut self, place: &ir::Place, func: &ir::Operand, args: &[ir::Operand]) {
         let func = self.codegen_operand(func);
-        let (func_sig, env) = match func.layout.repr.kind(self.db) {
-            | ReprKind::Func(sig, env) => (sig, *env),
+        let (func_sig, thick) = match func.layout.repr.kind(self.db) {
+            | ReprKind::Func(sig, thick) => (sig, *thick),
             | _ => unreachable!(),
         };
 
-        tracing::debug!("{}, {env}", func_sig.display(self.db));
-        let func_abi = self.compute_fn_abi(func_sig, env);
+        tracing::debug!("{}, {thick}", func_sig.display(self.db));
+        let func_abi = self.compute_fn_abi(func_sig, thick);
         let func_ty = self.fn_type_for_abi(&func_abi);
         let (func, env) = match func.val {
             | OperandValue::Ref(ptr, None) => (
@@ -348,7 +348,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
             None
         };
 
-        let e = env.is_some() as usize;
+        let e = thick as usize;
         let args = ret_ptr
             .into_iter()
             .chain(env.map(Into::into))

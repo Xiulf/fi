@@ -240,12 +240,32 @@ impl BlockData {
     }
 }
 
+impl Operand {
+    pub fn op_count(&self) -> usize {
+        match self {
+            | Operand::Copy(place) | Operand::Move(place) => place.op_count() + 1,
+            | Operand::Const(_, _) => 1,
+        }
+    }
+}
+
 impl Place {
     pub fn as_ref(&self) -> PlaceRef {
         PlaceRef {
             local: self.local,
             projection: &self.projection,
         }
+    }
+
+    pub fn op_count(&self) -> usize {
+        self.projection
+            .iter()
+            .map(|proj| match proj {
+                | Projection::Index(op) => op.op_count(),
+                | Projection::Slice(lo, hi) => lo.op_count() + hi.op_count(),
+                | _ => 0,
+            })
+            .sum()
     }
 }
 

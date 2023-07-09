@@ -74,7 +74,11 @@ impl Ctx<'_> {
     }
 
     fn lower_recur(&mut self, id: ExprId, _store_in: &mut Option<Place>) -> Operand {
-        let repr = repr_of(self.db, self.infer.type_of_expr[id], ReprPos::Argument);
+        let pos = match self.id {
+            | MirValueId::Lambda(_, _) => ReprPos::Argument,
+            | _ => ReprPos::TopLevel,
+        };
+        let repr = repr_of(self.db, self.infer.type_of_expr[id], pos);
         let ty_inst = self.infer.instances.get(id).cloned().unwrap_or_default();
         let mir_id = InstanceId::MirValueId(self.id);
         let mut impls_iter = ty_inst.impls.into_iter();

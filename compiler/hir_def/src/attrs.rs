@@ -15,6 +15,7 @@ use crate::Db;
 const CFG_ATTR: &'static str = "cfg";
 const CFG_ATTR_ATTR: &'static str = "cfg_attr";
 const DOC_ATTR: &'static str = "doc";
+const INLINE_ATTR: &'static str = "inline";
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Attrs(pub(crate) RawAttrs);
@@ -56,6 +57,13 @@ pub struct AttrQuery<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Documentation(String);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InlineAttr {
+    Hint,
+    Always,
+    Never,
+}
+
 impl Attrs {
     pub const EMPTY: Self = Self(RawAttrs::EMPTY);
 
@@ -93,6 +101,18 @@ impl Attrs {
             None
         } else {
             Some(Documentation::new(buf))
+        }
+    }
+
+    pub fn inline(&self) -> Option<InlineAttr> {
+        let attr = self.by_key(INLINE_ATTR).attrs().next()?;
+
+        match attr.string_value() {
+            | Some("always") => Some(InlineAttr::Always),
+            | Some("never") => Some(InlineAttr::Never),
+            | Some("hint") => Some(InlineAttr::Hint),
+            | Some(_) => None,
+            | None => Some(InlineAttr::Hint),
         }
     }
 }

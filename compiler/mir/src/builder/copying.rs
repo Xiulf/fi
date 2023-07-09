@@ -3,7 +3,7 @@ use std::cell::OnceCell;
 use arena::{ArenaMap, Idx};
 
 use super::Builder;
-use crate::ir::{Block, BlockData, Local, LocalData, Location, Operand, Place, RValue, Statement, Terminator};
+use crate::ir::{Block, BlockData, Local, LocalData, Location, Operand, Place, Statement, Terminator};
 use crate::repr::{needs_drop, ReprPos};
 use crate::visitor::{PlaceContext, UseContext, Visitor};
 use crate::{traversal, Db};
@@ -159,18 +159,7 @@ impl CopyRewriter {
     }
 
     fn to_move_stmt(stmt: &mut Statement, idx: usize) {
-        match stmt {
-            | Statement::Assign(_, rvalue) => match rvalue {
-                | RValue::Use(op) => Self::to_move_op(op),
-                | RValue::Cast(_, op) => Self::to_move_op(op),
-                | RValue::BinOp(_, op, _) if idx == 0 => Self::to_move_op(op),
-                | RValue::BinOp(_, _, op) => Self::to_move_op(op),
-                | _ => {},
-            },
-            | Statement::Call { func, .. } if idx == 0 => Self::to_move_op(func),
-            | Statement::Call { args, .. } => Self::to_move_op(&mut args[idx - 1]),
-            | Statement::Intrinsic { args, .. } => Self::to_move_op(&mut args[idx]),
-            | _ => {},
-        }
+        let op = stmt.get_operand(idx).unwrap();
+        Self::to_move_op(op);
     }
 }
