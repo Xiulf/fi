@@ -1,0 +1,19 @@
+module Core.IO (IO, getchar, putchar) =
+
+import Core
+import LibC as C
+
+type IO t = | Io t
+
+impl Monad IO =
+    bind (Io x) f = f x
+    pure x = Io x
+
+getchar () :: IO Char =
+    let ch = C.getchar ()
+    Io <| Intrinsics.transmute ch
+
+putchar (ch :: Char) :: IO () =
+    let code = Intrinsics.transmute ch
+    C.putchar code
+    Io ()

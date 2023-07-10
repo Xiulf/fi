@@ -1,31 +1,11 @@
 module Main (main) =
 
 import Core
-import Data.Foldable
-import Intrinsics (array_slice)
-
+import Core.IO
 
 main () =
-    eval_state (increment ()) 5
-
-increment () = do
-    let state <- get ()
-    <- put (state + 1)
-    pure state
-
-type State s a = | State (s -> a, s)
-
-impl Monad (State s) =
-    bind (State f) g = State fn s ->
-        let x, s' = f s
-        let (State run) = g x
-        run s'
-
-    pure x = State fn s -> x, s
-
-eval_state (State f) s =
-    let result, _ = f s
-    result
-
-put s = State fn _ -> (), s
-get () = State fn s -> s, s
+    do
+        let ch <- getchar ()
+        <- putchar ch
+        putchar '\n'
+    0

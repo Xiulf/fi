@@ -1,0 +1,20 @@
+module Core.State =
+
+import Core
+
+type State s a = | State (s -> a, s)
+
+impl Monad (State s) =
+    bind (State f) g = State fn s ->
+        let x, s' = f s
+        let (State run) = g x
+        run s'
+
+    pure x = State fn s -> x, s
+
+eval_state (State f) s =
+    let result, _ = f s
+    result
+
+put s = State fn _ -> (), s
+get () = State fn s -> s, s

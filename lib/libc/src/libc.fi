@@ -6,6 +6,8 @@ foreign malloc :: Uptr -> Ptr ()
 foreign free :: Ptr () -> ()
 
 foreign printf :: Ptr Int8, .. -> Int32
+foreign getchar :: () -> Int32
+foreign putchar :: Int32 -> Int32
 
 @cfg_attr(windows, link_name = "_write")
 foreign write :: Int32, Ptr Int8, Uptr -> Int32
