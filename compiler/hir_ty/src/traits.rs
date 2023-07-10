@@ -45,7 +45,7 @@ impl<'db> Ctx<'db> {
 
         for (c, o) in failing {
             Diagnostics::emit(self.db, UnsolvedConstraint {
-                constraint: c,
+                constraint: self.resolve_constraint_fully(c),
                 origin: *o,
                 owner: self.owner,
             });
@@ -121,7 +121,7 @@ impl<'db> Ctx<'db> {
 
         for (impl_id, _, o) in impls {
             if let ConstraintOrigin::ExprId(expr, name) = o {
-                if let Some(name) = name {
+                if self.result.methods.get(expr).is_none() && let Some(name) = name {
                     let data = hir_def::data::impl_data(self.db, impl_id);
 
                     if let Some(&method) = data.items(self.db).get(&name) {
@@ -177,7 +177,7 @@ impl<'db> Ctx<'db> {
                 let constraints = constraints
                     .iter()
                     .map(|c| c.replace_vars(self.db, &replacements))
-                    .map(|c| bindings.resolve_constraint_fully(self.db, c))
+                    .map(|c| bindings.resolve_constraint_fully(self.db, &c))
                     .collect();
 
                 self.check_impl_constraints(constraint, origin, impl_id, constraints, bindings, n)
@@ -242,7 +242,7 @@ impl<'db> Ctx<'db> {
         });
 
         for c @ (constraint, origin) in constraints {
-            let constraint = self.resolve_constraint_fully(constraint.clone());
+            let constraint = self.resolve_constraint_fully(constraint);
 
             if self.should_propagate(&constraint, &type_vars, &unknowns) {
                 if let Some(i) = self.result.constraints.iter().position(|c| c == &constraint) {

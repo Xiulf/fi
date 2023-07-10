@@ -178,6 +178,7 @@ impl HirDisplay for LocalData {
 impl std::fmt::Display for LocalKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            | Self::Ret => f.write_str("ret"),
             | Self::Arg => f.write_str("arg"),
             | Self::Var => f.write_str("var"),
             | Self::Tmp => f.write_str("tmp"),

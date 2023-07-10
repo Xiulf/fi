@@ -512,6 +512,7 @@ impl<'db> Ctx<'db> {
         let syntax_ptr = AstPtr::new(&pat);
 
         Some(match pat {
+            | ast::Pat::Parens(p) => return self.maybe_lower_pattern_stack(p.pat()?),
             | ast::Pat::Typed(p) => {
                 let ty = p.ty().and_then(|t| self.typ_map.typ_for_src(AstPtr::new(&t)));
                 let mut stack = self.lower_pattern_stack_opt(p.pat());

@@ -5,13 +5,13 @@ use hir_def::id::TypedItemId;
 use crate::ty::{Constraint, ConstraintOrigin};
 use crate::Db;
 
-pub struct UnsolvedConstraint<'c> {
-    pub constraint: &'c Constraint,
+pub struct UnsolvedConstraint {
+    pub constraint: Constraint,
     pub origin: ConstraintOrigin,
     pub owner: TypedItemId,
 }
 
-impl ToDiagnostic for UnsolvedConstraint<'_> {
+impl ToDiagnostic for UnsolvedConstraint {
     type Db<'t> = dyn Db + 't;
 
     fn to_diagnostic(self, db: &Self::Db<'_>) -> Diagnostic {

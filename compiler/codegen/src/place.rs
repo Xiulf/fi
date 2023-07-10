@@ -89,7 +89,6 @@ impl<'ctx> PlaceRef<'ctx> {
             | _ => {
                 let min_offset = self.layout.fields.min_offset();
                 let index = if min_offset.bytes() != 0 { index + 1 } else { index };
-
                 ctx.builder.build_struct_gep(ty, self.ptr, index as u32, "").unwrap()
             },
         };

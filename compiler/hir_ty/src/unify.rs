@@ -284,7 +284,7 @@ impl Ctx<'_> {
         self.subst.solved.resolve_generalized_type_fully(self.db, t)
     }
 
-    pub fn resolve_constraint_fully(&self, c: Constraint) -> Constraint {
+    pub fn resolve_constraint_fully(&self, c: &Constraint) -> Constraint {
         self.subst.solved.resolve_constraint_fully(self.db, c)
     }
 }
@@ -331,7 +331,7 @@ impl UnifyBindings {
         }
     }
 
-    pub fn resolve_constraint_fully(&self, db: &dyn Db, c: Constraint) -> Constraint {
+    pub fn resolve_constraint_fully(&self, db: &dyn Db, c: &Constraint) -> Constraint {
         Constraint {
             trait_id: c.trait_id,
             args: c.args.iter().map(|&t| self.resolve_type_fully(db, t)).collect(),

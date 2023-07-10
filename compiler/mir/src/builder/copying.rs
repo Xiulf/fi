@@ -3,7 +3,7 @@ use std::cell::OnceCell;
 use arena::{ArenaMap, Idx};
 
 use super::Builder;
-use crate::ir::{Block, BlockData, Local, LocalData, Location, Operand, Place, Statement, Terminator};
+use crate::ir::{Block, BlockData, Local, LocalData, LocalKind, Location, Operand, Place, Statement, Terminator};
 use crate::repr::{needs_drop, ReprPos};
 use crate::visitor::{PlaceContext, UseContext, Visitor};
 use crate::{traversal, Db};
@@ -100,6 +100,14 @@ impl CopyRewriter {
             let mut moved = None;
 
             while let Some(usage) = usages.pop() {
+                if builder.blocks[usage.loc.block.0].statements.len() == usage.loc.statement {
+                    if let Terminator::Return(Operand::Copy(place) | Operand::Move(place)) =
+                        &builder.blocks[usage.loc.block.0].terminator && place.local.0 == local
+                    {
+                        builder.locals[local].kind = LocalKind::Ret;
+                    }
+                }
+
                 if builder.blocks[usage.loc.block.0].is_terminator() && moved != Some(usage.loc.block) {
                     moved = None;
                 }

@@ -51,8 +51,9 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | ReprKind::Scalar(_)
             | ReprKind::Discr(_)
             | ReprKind::Ptr(..)
-            | ReprKind::Func(..) => {},
+            | ReprKind::Func(_, false) => {},
             | ReprKind::Box(repr) => self.gen_drop_box(ptr, true, *repr),
+            | ReprKind::Func(_, true) => {},
             | ReprKind::Array(len, repr) => self.gen_drop_array(func, ptr, *len, *repr),
             | ReprKind::Struct(reprs) => self.gen_drop_struct(func, ptr, repr, reprs),
             | ReprKind::Enum(reprs) => self.gen_drop_enum(func, ptr, repr, reprs),

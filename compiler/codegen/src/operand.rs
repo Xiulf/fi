@@ -200,6 +200,10 @@ impl<'ctx> OperandValue<'ctx> {
 
         match self {
             | OperandValue::Ref(ptr, None) => {
+                if ptr == dest.ptr {
+                    return;
+                }
+
                 let dst_align = dest.layout.align.bytes() as u32;
                 let size = ctx.context.i32_type().const_int(dest.layout.size.bytes(), false);
 

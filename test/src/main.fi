@@ -4,45 +4,28 @@ import Core
 import Data.Foldable
 import Intrinsics (array_slice)
 
+
 main () =
-    let arr = [4, 6, 8]
-    let slice = array_slice arr 0 3
-    fold slice 0 fn a b -> a + b
+    eval_state (increment ()) 5
 
+increment () = do
+    let state <- get ()
+    <- put (state + 1)
+    pure state
 
-// trait Iterator it el =
-//     next :: it -> it, Option el
+type State s a = | State (s -> a, s)
 
-// impl Iterator (Option t) t =
-//     next self =
-//         match self with
-//         | Some x -> None, Some x
-//         | None -> None, None
+impl Monad (State s) =
+    bind (State f) g = State fn s ->
+        let x, s' = f s
+        let (State run) = g x
+        run s'
 
-// type Filter it el f = | Filter 
+    pure x = State fn s -> x, s
 
+eval_state (State f) s =
+    let result, _ = f s
+    result
 
-// main () =
-//     eval_state (increment ()) 5
-
-// increment () = do
-//     let state <- get ()
-//     <- put (state + 1)
-//     pure state
-
-// type State s a = | State (s -> a, s)
-
-// impl Monad (State s) =
-//     bind (State f) g = State fn s ->
-//         let x, s' = f s
-//         let (State run) = g x
-//         run s'
-
-//     pure x = State fn s -> x, s
-
-// eval_state (State f) s =
-//     let result, _ = f s
-//     result
-
-// put s = State fn _ -> (), s
-// get () = State fn s -> s, s
+put s = State fn _ -> (), s
+get () = State fn s -> s, s

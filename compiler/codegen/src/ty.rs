@@ -5,7 +5,7 @@ use mir::repr::{Integer, Primitive, Repr, ReprKind, Scalar, Signature};
 
 use crate::abi::{FnAbi, PassMode};
 use crate::ctx::{BodyCtx, CodegenCtx};
-use crate::layout::{repr_and_layout, Abi, Align, Fields, ReprAndLayout, Size};
+use crate::layout::{integer_size, repr_and_layout, Abi, Align, Fields, ReprAndLayout, Size};
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn fn_type_for_abi(&self, fn_abi: &FnAbi<'ctx>) -> types::FunctionType<'ctx> {
@@ -138,20 +138,20 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 
     pub fn llvm_padding(&self, size: Size, _align: Align) -> types::BasicTypeEnum<'ctx> {
-        // let int = match align.bytes() {
-        //     | 1 => Integer::I8,
-        //     | 2 => Integer::I16,
-        //     | 3 | 4 => Integer::I32,
-        //     | _ => Integer::I64,
-        // };
+        let align = Align::from_bytes(size.bytes());
+        let int = match align.bytes() {
+            | 1 => Integer::I8,
+            | 2 => Integer::I16,
+            | 3 | 4 => Integer::I32,
+            | _ => Integer::I64,
+        };
 
-        // let size = size.bytes();
-        // let int_size = integer_size(int, &self.target.triple).bytes();
-        // assert_eq!(size % int_size, 0);
-        // self.basic_type_for_integer(int)
-        //     .array_type((size / int_size) as u32)
-        //     .as_basic_type_enum()
-        self.context.i8_type().array_type(size.bytes() as u32).into()
+        let size = size.bytes();
+        let int_size = integer_size(int, &self.target.triple).bytes();
+        assert_eq!(size % int_size, 0);
+        self.basic_type_for_integer(int)
+            .array_type((size / int_size) as u32)
+            .as_basic_type_enum()
     }
 
     pub fn basic_type_for_scalar(&self, scalar: &Scalar) -> types::BasicTypeEnum<'ctx> {

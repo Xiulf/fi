@@ -34,7 +34,6 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
         if self.fn_abi.ret.is_indirect() {
             let ptr = self.func.get_first_param().unwrap().into_pointer_value();
             let val = PlaceRef::new(self.fn_abi.ret.layout.clone(), ptr, None);
-
             self.ret_ptr = Some(val);
         }
 
@@ -45,6 +44,8 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
                 let value = if by_ref_locals.contains(&ir::Local(local)) {
                     if layout.abi.is_unsized() {
                         todo!();
+                    } else if data.kind == LocalKind::Ret && let Some(ret_ptr) = self.ret_ptr.clone() {
+                        LocalRef::Place(ret_ptr)
                     } else {
                         LocalRef::Place(PlaceRef::new_alloca(self.cx, layout))
                     }
@@ -654,10 +655,7 @@ impl<'ctx> BodyCtx<'_, '_, 'ctx> {
     pub fn codegen_operand(&mut self, op: &ir::Operand) -> OperandRef<'ctx> {
         match op {
             | ir::Operand::Move(p) => self.codegen_consume(p),
-            | ir::Operand::Copy(p) => {
-                self.codegen_copy(p);
-                self.codegen_consume(p)
-            },
+            | ir::Operand::Copy(p) => self.codegen_copy(p),
             | ir::Operand::Const(c, r) => self.codegen_const(c, *r),
         }
     }

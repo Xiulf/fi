@@ -61,6 +61,7 @@ pub struct LocalData {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LocalKind {
+    Ret,
     Arg,
     Var,
     Tmp,
