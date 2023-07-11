@@ -81,3 +81,6 @@ type ExitCode = | ExitCode Int32
 
 impl Termination Unit =
     report () = ExitCode 0
+
+impl Termination ExitCode =
+    report code = code

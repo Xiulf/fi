@@ -249,6 +249,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let value = self.module.add_function("main", ty, None);
         let (main_value, ref main_abi) = self.funcs[&main];
         let entry = self.context.append_basic_block(value, "entry");
+        self.builder.position_at_end(entry);
         let ret_ptr = if main_abi.ret.is_indirect() {
             let ty = self.basic_type_for_ral(&main_abi.ret.layout);
             Some(self.builder.build_alloca(ty, ""))
@@ -256,7 +257,6 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             None
         };
 
-        self.builder.position_at_end(entry);
         let args = ret_ptr.into_iter().map(|a| a.into()).collect::<Vec<_>>();
         let res = self.builder.build_call(main_value, &args, "");
         let res = match main_abi.ret.mode {
