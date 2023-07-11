@@ -13,6 +13,7 @@ use hir_def::item_tree::FixityKind;
 use hir_def::name::{AsName, Name};
 use hir_def::path::Path;
 pub use hir_def::{attrs, body, display, expr, id, pat, source};
+use hir_ty::ctx::InferResult;
 use hir_ty::ty::{Constraint, Generalized, GeneralizedType, Ty};
 use ra_ap_stdx::hash::NoHashHashMap;
 use salsa::AsId;
@@ -342,27 +343,24 @@ impl Value {
     }
 
     pub fn ty(self, db: &dyn Db) -> GeneralizedType {
-        hir_ty::infer(db, self.id).ty.clone()
+        self.infer(db).ty.clone()
     }
 
     pub fn type_vars(self, db: &dyn Db) -> Vec<TypeVar> {
-        match hir_ty::infer(db, self.id).ty {
-            | Generalized::Mono(_) => Vec::new(),
-            | Generalized::Poly(ref vars, _) => vars.iter().map(|&v| v.into()).collect(),
-        }
+        self.infer(db).ty.type_vars().iter().map(|&v| v.into()).collect()
     }
 
     pub fn is_func(self, db: &dyn Db) -> bool {
         if self.has_body(db) {
             !self.body(db).params().is_empty()
         } else {
-            let ty = match hir_ty::infer(db, self.id).ty {
-                | Generalized::Mono(t) => t,
-                | Generalized::Poly(_, t) => t,
-            };
-
+            let ty = hir_ty::infer(db, self.id).ty.ty();
             matches!(ty.kind(db), hir_ty::ty::TyKind::Func(_))
         }
+    }
+
+    pub fn infer(self, db: &dyn Db) -> Arc<InferResult> {
+        hir_ty::infer(db, self.id)
     }
 
     pub fn body(self, db: &dyn Db) -> Arc<Body> {

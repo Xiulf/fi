@@ -6,7 +6,7 @@ use ra_ap_stdx::hash::NoHashHashMap;
 
 use crate::ctx::Ctx;
 use crate::diagnostics::UnsolvedConstraint;
-use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, InstanceImpl, Ty, TyKind, Unknown};
+use crate::ty::{Constraint, ConstraintOrigin, GeneralizedType, Instance, InstanceImpl, Ty, TyKind, Unknown};
 use crate::unify::{UnifyBindings, UnifyResult};
 use crate::Db;
 
@@ -129,6 +129,10 @@ impl<'db> Ctx<'db> {
                     }
                 }
 
+                if self.result.instances.get(expr).is_none() {
+                    self.result.instances.insert(expr, Instance::default());
+                }
+
                 self.result.instances[expr].impls.push(InstanceImpl::ImplId(impl_id));
             }
             tracing::debug!("{impl_id:?}, {o:?}");
@@ -215,7 +219,6 @@ impl<'db> Ctx<'db> {
     fn all_impls(&self, trait_id: TraitId) -> impl Iterator<Item = &'db ImplId> {
         let module = self.owner.module(self.db);
         let lib = module.lib(self.db);
-
         trait_impls(self.db, lib, trait_id).iter()
     }
 
@@ -296,9 +299,12 @@ pub fn trait_impls(db: &dyn Db, lib: LibId, trait_id: TraitId) -> Vec<ImplId> {
 
 #[salsa::tracked(return_ref)]
 pub(crate) fn lib_impls(db: &dyn Db, lib: LibId) -> Vec<ImplId> {
-    hir_def::def_map::query(db, lib)
-        .modules()
-        .flat_map(|(_, data)| data.scope(db).impls())
-        .chain(lib.deps(db).iter().flat_map(|&dep| lib_impls(db, dep).iter().copied()))
+    LibId::all_deps(db, lib)
+        .into_iter()
+        .flat_map(|lib| {
+            hir_def::def_map::query(db, lib)
+                .modules()
+                .flat_map(|(_, data)| data.scope(db).impls())
+        })
         .collect()
 }

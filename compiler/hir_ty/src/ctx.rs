@@ -4,7 +4,7 @@ use arena::ArenaMap;
 use either::Either;
 use hir_def::body::Body;
 use hir_def::expr::ExprId;
-use hir_def::id::{HasModule, TypeCtorId, TypeVarId, TypedItemId, ValueId};
+use hir_def::id::{HasModule, TraitId, TypeCtorId, TypeVarId, TypedItemId, ValueId};
 use hir_def::lang_item::{self, LangItem};
 use hir_def::name::AsName;
 use hir_def::pat::PatId;
@@ -225,7 +225,7 @@ impl<'db> Ctx<'db> {
         self.lang_item(name).and_then(LangItem::as_type_ctor)
     }
 
-    fn lang_ty(&self, name: &'static str) -> Ty {
+    pub fn lang_ty(&self, name: &'static str) -> Ty {
         if let Some(ty) = self.db.type_cache().lang_type(name) {
             return ty;
         }
@@ -242,9 +242,13 @@ impl<'db> Ctx<'db> {
         ty
     }
 
-    // fn lang_trait(&self, name: &'static str) -> Option<TraitId> {
-    //     self.lang_item(name).and_then(LangItem::as_trait)
-    // }
+    pub fn lang_trait(&self, name: &'static str) -> Option<TraitId> {
+        let trait_id = self.lang_item(name).and_then(LangItem::as_trait);
+        if trait_id.is_none() {
+            tracing::error!("unknown language item '{}'", name);
+        }
+        trait_id
+    }
 
     pub fn constrain(&mut self, constraint: Constraint, origin: ConstraintOrigin) {
         self.constraints.push((constraint, origin));

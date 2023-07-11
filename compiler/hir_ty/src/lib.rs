@@ -7,7 +7,8 @@ use hir_def::id::{
     ContainerId, CtorId, FieldId, HasModule, ImplId, LocalCtorId, ModuleParentId, TraitId, TypeAliasId, TypeCtorId,
     TypeVarId, TypedItemId, ValueId,
 };
-use hir_def::name::Name;
+use hir_def::lang_item;
+use hir_def::name::{AsName, Name};
 use hir_def::pat::PatId;
 use syntax::TextRange;
 use triomphe::Arc;
@@ -110,6 +111,17 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
     };
 
     if is_main {
+        if let Some(termination) = ctx.lang_trait(lang_item::TERMINATION_TRAIT) {
+            let ret_ty = ctx.ret_ty[0];
+            let constraint = Constraint {
+                trait_id: termination,
+                args: Box::new([ret_ty]),
+            };
+            let report = "report".as_name(db);
+
+            ctx.constrain(constraint, ConstraintOrigin::ExprId(body.body_expr(), Some(report)));
+        }
+
         ctx.solve_constraints(false);
     } else {
         ctx.solve_constraints(true);

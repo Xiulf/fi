@@ -51,7 +51,7 @@ struct Scope {
 impl<'db> Ctx<'db> {
     fn new(db: &'db dyn Db, value: ValueId, file: File) -> Self {
         let lib = value.container(db).module(db).lib(db);
-        let def_map = crate::def_map::query(db, lib);
+        let def_map = crate::def_map::query(db, lib).clone();
         let (_, typ_map, _) = TypedItemId::from(value).type_map(db);
 
         Self {

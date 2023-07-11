@@ -315,7 +315,7 @@ impl TypeRefSrc {
 impl<'a> Ctx<'a> {
     fn new(db: &'a dyn Db, owner: TypedItemId, file: File) -> Self {
         let lib = owner.module(db).lib(db);
-        let def_map = crate::def_map::query(db, lib);
+        let def_map = crate::def_map::query(db, lib).clone();
 
         Self {
             db,

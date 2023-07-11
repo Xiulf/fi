@@ -8,4 +8,4 @@ main () =
         let ch <- getchar ()
         <- putchar ch
         putchar '\n'
-    0
+    ()

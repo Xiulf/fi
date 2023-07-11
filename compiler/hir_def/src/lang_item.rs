@@ -28,6 +28,8 @@ pub const PROXY_TYPE: &'static str = "proxy-type";
 
 pub const BIND_FN: &'static str = "bind-fn";
 
+pub const TERMINATION_TRAIT: &'static str = "termination-trait";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LangItem {
     ValueId(ValueId),

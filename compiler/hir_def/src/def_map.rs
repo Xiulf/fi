@@ -111,7 +111,7 @@ impl ModuleScope {
     }
 }
 
-#[salsa::tracked]
+#[salsa::tracked(return_ref)]
 pub fn query(db: &dyn Db, lib: LibId) -> Arc<DefMap> {
     let mut external_modules = NoHashHashMap::default();
 

@@ -73,6 +73,7 @@ trait Monad m =
     bind :: m a, (a -> m b) -> m b
     pure :: a -> m a
 
+@lang = "termination-trait"
 trait Termination t =
     report :: t -> ExitCode
 

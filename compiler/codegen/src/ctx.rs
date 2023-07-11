@@ -17,9 +17,10 @@ use mir::ir::{self, BasicBlocks, MirValueId};
 use rustc_hash::FxHashMap;
 use target_lexicon::Architecture;
 
-use crate::abi::FnAbi;
+use crate::abi::{FnAbi, PassMode};
 use crate::layout::ReprAndLayout;
 use crate::local::LocalRef;
+use crate::operand::OperandRef;
 use crate::place::PlaceRef;
 use crate::Db;
 
@@ -246,12 +247,65 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let i8ppt = i8t.ptr_type(AddressSpace::default()).ptr_type(AddressSpace::default());
         let ty = i32t.fn_type(&[i32t.into(), i8ppt.into()], false);
         let value = self.module.add_function("main", ty, None);
-        let (main_value, ref _main_abi) = self.funcs[&main];
+        let (main_value, ref main_abi) = self.funcs[&main];
         let entry = self.context.append_basic_block(value, "entry");
-        self.builder.position_at_end(entry);
-        let res = self.builder.build_call(main_value, &[], "");
-        let res = res.try_as_basic_value().left().unwrap();
+        let ret_ptr = if main_abi.ret.is_indirect() {
+            let ty = self.basic_type_for_ral(&main_abi.ret.layout);
+            Some(self.builder.build_alloca(ty, ""))
+        } else {
+            None
+        };
 
+        self.builder.position_at_end(entry);
+        let args = ret_ptr.into_iter().map(|a| a.into()).collect::<Vec<_>>();
+        let res = self.builder.build_call(main_value, &args, "");
+        let res = match main_abi.ret.mode {
+            | PassMode::NoPass => LocalRef::Operand(Some(OperandRef::new_zst(self, main_abi.ret.layout.clone()))),
+            | PassMode::ByRef { .. } => {
+                LocalRef::Place(PlaceRef::new(main_abi.ret.layout.clone(), ret_ptr.unwrap(), None))
+            },
+            | PassMode::ByVal(_) => LocalRef::Operand(Some(OperandRef::new_imm(
+                main_abi.ret.layout.clone(),
+                res.try_as_basic_value().unwrap_left(),
+            ))),
+            | PassMode::ByValPair(_, _) => {
+                let val = res.try_as_basic_value().unwrap_left().into_struct_value();
+                let a = self.builder.build_extract_value(val, 0, "").unwrap();
+                let b = self.builder.build_extract_value(val, 1, "").unwrap();
+                LocalRef::Operand(Some(OperandRef::new_pair(main_abi.ret.layout.clone(), a, b)))
+            },
+        };
+
+        let (body, infer) = match main.id(self.db) {
+            | InstanceId::MirValueId(MirValueId::ValueId(id)) => {
+                (hir::Value::from(id).body(self.db), hir::Value::from(id).infer(self.db))
+            },
+            | _ => unreachable!(),
+        };
+
+        let report = infer.methods[body.body_expr()];
+        let report = Instance::new(self.db, InstanceId::MirValueId(MirValueId::ValueId(report)), None);
+        let (report_value, report_abi) = self.declare_func(report);
+        let ret_ptr = self.builder.build_alloca(i32t, "");
+        let mut args = vec![ret_ptr.into()];
+
+        match res {
+            | LocalRef::Place(place) => args.push(place.ptr.into()),
+            | LocalRef::Operand(Some(op)) => match report_abi.args[0].mode {
+                | PassMode::NoPass => {},
+                | PassMode::ByRef { .. } => {},
+                | PassMode::ByVal(_) => args.push(op.immediate().into()),
+                | PassMode::ByValPair(_, _) => {
+                    let (a, b) = op.pair();
+                    args.push(a.into());
+                    args.push(b.into());
+                },
+            },
+            | LocalRef::Operand(None) => {},
+        }
+
+        self.builder.build_direct_call(report_value, &args, "");
+        let res = self.builder.build_load(i32t, ret_ptr, "");
         self.builder.build_return(Some(&res));
         value.verify(true);
     }
