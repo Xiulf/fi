@@ -52,6 +52,7 @@ pub enum TyOrigin {
 
 #[salsa::tracked]
 pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
+    let _p = profile::span("infer");
     let data = hir_def::data::value_data(db, value);
     let body = hir_def::body::query(db, value).0;
     let type_map = TypedItemId::from(value).type_map(db).0;

@@ -113,6 +113,7 @@ impl ModuleScope {
 
 #[salsa::tracked(return_ref)]
 pub fn query(db: &dyn Db, lib: LibId) -> Arc<DefMap> {
+    let _p = profile::span("def_map");
     let mut external_modules = NoHashHashMap::default();
 
     for &dep in lib.deps(db) {

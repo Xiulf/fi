@@ -22,6 +22,7 @@ use crate::{lang_item, Db};
 
 #[salsa::tracked]
 pub fn query(db: &dyn Db, id: ValueId) -> (Arc<Body>, Arc<BodySourceMap>) {
+    let _p = profile::span("body");
     let src = id.source(db);
     let mut ctx = Ctx::new(db, id, src.file);
 

@@ -71,6 +71,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 
     pub fn codegen(&mut self, module: hir::Module) {
+        let _p = profile::span("codegen");
         self.codegen_module(module);
 
         while let Some(inst) = self.queue.pop() {

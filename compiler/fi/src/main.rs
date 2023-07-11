@@ -123,6 +123,10 @@ fn main() -> anyhow::Result<ExitCode> {
         .with_line_number(true)
         .init();
 
+    if let Ok(profile) = std::env::var("FI_PROFILE") {
+        profile::init_from(&profile);
+    }
+
     base_db::setup_panic_hook(|_| true, |_| true);
 
     match cli.command {

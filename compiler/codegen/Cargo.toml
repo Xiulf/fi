@@ -13,6 +13,7 @@ hir = { version = "0.1.0", path = "../hir" }
 inkwell = { version = "0.2.0", features = ["llvm16-0"] }
 mangling = "0.2.3"
 mir = { version = "0.1.0", path = "../mir" }
+profile = { package = "ra_ap_profile", version = "0.0.163" }
 rustc-hash = "1.1.0"
 salsa = { package = "salsa-2022", git = "https://github.com/salsa-rs/salsa.git", version = "0.1.0" }
 target-lexicon = "0.12.6"

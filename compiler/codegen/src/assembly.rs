@@ -43,8 +43,12 @@ impl Assembly {
         }
 
         add_exports(db, &mut *linker, self.lib.into());
-        linker.runtime_path(db.target_dir());
+        // linker.runtime_path(db.target_dir());
         linker.add_path(db.target_dir());
+
+        let compiler_dir = std::env::current_exe().unwrap();
+        let compiler_dir = compiler_dir.parent().unwrap();
+        linker.add_path(compiler_dir);
 
         for dep in deps {
             let kind = dep.lib.kind(db);
