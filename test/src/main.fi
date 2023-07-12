@@ -3,9 +3,7 @@ module Main (main) =
 import Core
 import Core.IO
 
-main () =
-    do
-        let ch <- getchar ()
-        <- putchar ch
-        putchar '\n'
-    ExitCode 2
+main () = do
+    let ch <- getchar ()
+    <- putchar ch
+    putchar '\n'

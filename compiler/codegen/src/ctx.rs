@@ -12,7 +12,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
 };
 use inkwell::{types, values, AddressSpace, OptimizationLevel};
-use mir::instance::{Instance, InstanceData, InstanceId};
+use mir::instance::{Instance, InstanceData, InstanceId, Subst};
 use mir::ir::{self, BasicBlocks, MirValueId};
 use rustc_hash::FxHashMap;
 use target_lexicon::Architecture;
@@ -285,7 +285,15 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         };
 
         let report = infer.methods[body.body_expr()];
-        let report = Instance::new(self.db, InstanceId::MirValueId(MirValueId::ValueId(report)), None);
+        let impl_id = match hir::Value::from(report).container(self.db) {
+            | hir::Container::Impl(impl_) => impl_.id(),
+            | _ => unreachable!(),
+        };
+        let ty_inst = &infer.instances[body.body_expr()];
+        let ty_inst = ty_inst.adjust_for_impl(self.db, impl_id);
+        let subst = Subst::from_ty_instance(self.db, ty_inst);
+        let subst = Some(subst).filter(|s| !s.is_empty());
+        let report = Instance::new(self.db, InstanceId::MirValueId(MirValueId::ValueId(report)), subst);
         let (report_value, report_abi) = self.declare_func(report);
         let ret_ptr = self.builder.build_alloca(i32t, "");
         let mut args = vec![ret_ptr.into()];

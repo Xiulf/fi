@@ -316,6 +316,48 @@ impl Subst {
     pub fn is_empty(&self) -> bool {
         self.types.is_empty() && self.impls.is_empty()
     }
+
+    pub fn from_ty_instance(db: &dyn Db, ty_inst: hir_ty::ty::Instance) -> Self {
+        let mut impls_iter = ty_inst.impls.into_iter();
+        let mut impls = vec![];
+        let types = ty_inst.types;
+
+        while let Some(src) = impls_iter.next() {
+            impls.push(Self::lower_impl_source(db, src, &mut impls_iter, &types));
+        }
+
+        Self { types, impls }
+    }
+
+    fn lower_impl_source(
+        db: &dyn Db,
+        imp: hir_ty::ty::InstanceImpl,
+        impls_iter: &mut impl Iterator<Item = hir_ty::ty::InstanceImpl>,
+        types: &[Ty],
+    ) -> ImplSource {
+        match imp {
+            | hir_ty::ty::InstanceImpl::ImplId(id) => {
+                let imp = hir::Impl::from(id);
+                let vars = imp.bind_vars(db, types);
+                let impls = imp
+                    .constraints(db)
+                    .iter()
+                    .map(|c| {
+                        let types = c.args.iter().map(|t| t.replace_vars(db, &vars)).collect::<Vec<_>>();
+                        Self::lower_impl_source(db, impls_iter.next().unwrap(), impls_iter, &types)
+                    })
+                    .collect();
+
+                let subst = Subst {
+                    types: imp.type_vars(db).into_iter().map(|v| vars[&v.id()]).collect(),
+                    impls,
+                };
+
+                ImplSource::Instance(ImplInstance::new(db, id, Some(subst).filter(|s| !s.is_empty())))
+            },
+            | hir_ty::ty::InstanceImpl::Param(idx) => ImplSource::Param(idx),
+        }
+    }
 }
 
 ra_ap_stdx::impl_from!(MirValueId, Body for InstanceId);

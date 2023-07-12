@@ -120,6 +120,10 @@ pub fn infer(db: &dyn Db, value: ValueId) -> Arc<ctx::InferResult> {
             };
             let report = "report".as_name(db);
 
+            ctx.result.instances.insert(body.body_expr(), ty::Instance {
+                types: vec![ret_ty],
+                impls: vec![],
+            });
             ctx.constrain(constraint, ConstraintOrigin::ExprId(body.body_expr(), Some(report)));
         }
 

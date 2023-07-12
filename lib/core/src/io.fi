@@ -5,6 +5,9 @@ import LibC as C
 
 type IO t = | Io t
 
+impl Termination (IO t) where Termination t =
+    report (Io x) = report x
+
 impl Monad IO =
     bind (Io x) f = f x
     pure x = Io x

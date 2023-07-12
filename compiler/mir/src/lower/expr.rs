@@ -232,15 +232,7 @@ impl Ctx<'_> {
             | _ => todo!("{def:?}"),
         };
 
-        let mut impls_iter = ty_inst.impls.into_iter();
-        let mut impls = Vec::new();
-        let types = ty_inst.types;
-
-        while let Some(src) = impls_iter.next() {
-            impls.push(self.lower_impl_source(src, &mut impls_iter, &types));
-        }
-
-        let subst = Subst { types, impls };
+        let subst = Subst::from_ty_instance(self.db, ty_inst);
         let instance = Instance::new(self.db, mir_id, Some(subst).filter(|s| !s.is_empty()));
 
         (Const::Instance(instance), repr).into()
