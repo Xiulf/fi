@@ -91,6 +91,20 @@ impl Instance {
         }
     }
 
+    pub fn should_codegen(self, db: &dyn Db, current_module: hir::Module) -> bool {
+        let same_module = match self.id(db) {
+            | InstanceId::MirValueId(id) => match id {
+                | MirValueId::ValueId(id) => hir::Value::from(id).module(db) == current_module,
+                | MirValueId::CtorId(id) => hir::Ctor::from(id).module(db) == current_module,
+                | MirValueId::FieldId(id) => hir::Field::from(id).module(db) == current_module,
+                | MirValueId::Lambda(_, _) => true,
+            },
+            | _ => true,
+        };
+
+        self.has_body(db) && (same_module || self.subst(db).is_some())
+    }
+
     pub fn has_body(self, db: &dyn Db) -> bool {
         match self.id(db) {
             | InstanceId::MirValueId(id) => match id {

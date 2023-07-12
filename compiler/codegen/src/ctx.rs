@@ -33,6 +33,7 @@ pub struct CodegenCtx<'a, 'ctx> {
     pub module: &'a Module<'ctx>,
     pub builder: &'a Builder<'ctx>,
     pub fpm: &'a PassManager<values::FunctionValue<'ctx>>,
+    pub current_module: hir::Module,
     data: CodegenCtxData<'ctx>,
 }
 
@@ -125,6 +126,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
     }
 
     pub fn codegen_module(&mut self, module: hir::Module) {
+        let old_module = std::mem::replace(&mut self.current_module, module);
+
         for item in module.items(self.db) {
             match item {
                 | hir::Item::Value(id) => self.codegen_value(id),
@@ -137,6 +140,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
                 self.codegen_value(item);
             }
         }
+
+        self.current_module = old_module;
     }
 
     fn codegen_value(&mut self, value: hir::Value) {
@@ -204,7 +209,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             return value.clone();
         }
 
-        if instance.has_body(self.db) {
+        if instance.should_codegen(self.db, self.current_module) {
             self.queue.push(instance);
         }
 
@@ -295,8 +300,7 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let subst = Some(subst).filter(|s| !s.is_empty());
         let report = Instance::new(self.db, InstanceId::MirValueId(MirValueId::ValueId(report)), subst);
         let (report_value, report_abi) = self.declare_func(report);
-        let ret_ptr = self.builder.build_alloca(i32t, "");
-        let mut args = vec![ret_ptr.into()];
+        let mut args = vec![];
 
         match res {
             | LocalRef::Place(place) => args.push(place.ptr.into()),
@@ -313,8 +317,8 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
             | LocalRef::Operand(None) => {},
         }
 
-        self.builder.build_direct_call(report_value, &args, "");
-        let res = self.builder.build_load(i32t, ret_ptr, "");
+        let res = self.builder.build_direct_call(report_value, &args, "");
+        let res = res.try_as_basic_value().unwrap_left();
         self.builder.build_return(Some(&res));
         value.verify(true);
     }
@@ -349,6 +353,10 @@ pub fn with_codegen_ctx<T>(db: &dyn Db, module_name: &str, f: impl FnOnce(Codege
     pmb.populate_function_pass_manager(&fpm);
     fpm.initialize();
 
+    use salsa::AsId;
+    let current_module = hir::id::ModuleId::from_id(salsa::Id::from_u32(0));
+    let current_module = hir::Module::from(current_module);
+
     let ctx = CodegenCtx {
         db,
         target: db.target(),
@@ -358,6 +366,7 @@ pub fn with_codegen_ctx<T>(db: &dyn Db, module_name: &str, f: impl FnOnce(Codege
         module: &module,
         builder: &builder,
         fpm: &fpm,
+        current_module,
         data: CodegenCtxData::default(),
     };
 

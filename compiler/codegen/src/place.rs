@@ -15,7 +15,14 @@ pub struct PlaceRef<'ctx> {
 }
 
 impl<'ctx> PlaceRef<'ctx> {
-    #[allow(dead_code)]
+    pub fn new(
+        layout: ReprAndLayout,
+        ptr: values::PointerValue<'ctx>,
+        extra: Option<values::BasicValueEnum<'ctx>>,
+    ) -> Self {
+        Self { layout, ptr, extra }
+    }
+
     pub fn new_uninit(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
         let ty = ctx.basic_type_for_ral(&layout).ptr_type(AddressSpace::default());
 
@@ -26,15 +33,11 @@ impl<'ctx> PlaceRef<'ctx> {
         }
     }
 
-    pub fn new(
-        layout: ReprAndLayout,
-        ptr: values::PointerValue<'ctx>,
-        extra: Option<values::BasicValueEnum<'ctx>>,
-    ) -> Self {
-        Self { layout, ptr, extra }
-    }
-
     pub fn new_alloca(ctx: &mut CodegenCtx<'_, 'ctx>, layout: ReprAndLayout) -> Self {
+        if layout.is_zst() {
+            return Self::new_uninit(ctx, layout);
+        }
+
         let ty = ctx.basic_type_for_ral(&layout);
         let ptr = ctx.builder.build_alloca(ty, "");
 

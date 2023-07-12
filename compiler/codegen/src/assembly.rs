@@ -54,7 +54,8 @@ impl Assembly {
             let kind = dep.lib.kind(db);
             let name = dep.lib.name(db);
             let path = dep.path(db);
-            linker.add_lib(kind, name, &path);
+            let path = path.parent().unwrap();
+            linker.add_lib(kind, name, path);
         }
 
         if db.target().is_windows() {

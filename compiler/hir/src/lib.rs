@@ -892,6 +892,12 @@ impl From<CtorId> for Ctor {
     }
 }
 
+impl From<FieldId> for Field {
+    fn from(id: FieldId) -> Self {
+        Self { id }
+    }
+}
+
 impl From<TypeCtorId> for TypeCtor {
     fn from(id: TypeCtorId) -> Self {
         Self { id }

@@ -220,25 +220,24 @@ fn scalar_pair(a: Scalar, b: Scalar, triple: &Triple) -> Layout {
 }
 
 fn struct_layout(lyts: Vec<ReprAndLayout>, triple: &Triple) -> Arc<Layout> {
-    let abi = Abi::Aggregate { sized: true };
+    let mut abi = Abi::Aggregate { sized: true };
 
-    // match (lyts.get(0), lyts.get(1), lyts.get(2)) {
-    //     | (Some(a), Some(b), None) => match (&a.abi, &b.abi) {
-    //         | (Abi::Scalar(a), Abi::Scalar(b)) => {
-    //             let pair = scalar_pair(a.clone(), b.clone(), triple);
-
-    //             abi = pair.abi;
-    //         },
-    //         | (_, _) => {},
-    //     },
-    //     | (Some(s), None, None) => match &s.abi {
-    //         | Abi::Scalar(_) | Abi::ScalarPair(_, _) => {
-    //             abi = s.abi.clone();
-    //         },
-    //         | _ => {},
-    //     },
-    //     | (_, _, _) => {},
-    // }
+    match (lyts.get(0), lyts.get(1), lyts.get(2)) {
+        | (Some(a), Some(b), None) => match (&a.abi, &b.abi) {
+            | (Abi::Scalar(a), Abi::Scalar(b)) => {
+                let pair = scalar_pair(a.clone(), b.clone(), triple);
+                abi = pair.abi;
+            },
+            | (_, _) => {},
+        },
+        | (Some(s), None, None) => match &s.abi {
+            | Abi::Scalar(_) | Abi::ScalarPair(_, _) => {
+                abi = s.abi.clone();
+            },
+            | _ => {},
+        },
+        | (_, _, _) => {},
+    }
 
     let mut align = Align::ONE;
     let mut fields = lyts.iter().map(|lyt| (Size::ZERO, lyt.clone())).collect::<Vec<_>>();
