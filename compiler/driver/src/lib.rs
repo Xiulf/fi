@@ -95,10 +95,12 @@ impl Driver {
             return codegen::codegen_lib(&self.db, lib);
         }
 
-        let deps = lib
-            .deps(&self.db)
-            .iter()
-            .map(|&l| self.build_rec(l, done))
+        let deps = LibId::all_deps(&self.db, lib);
+        let dep_count = deps.len();
+        let deps = deps
+            .into_iter()
+            .take(dep_count - 1)
+            .map(|l| self.build_rec(l, done))
             .collect::<Vec<_>>();
 
         let pkg = self.package_for_lib(lib).unwrap();
