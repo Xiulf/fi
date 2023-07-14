@@ -4,7 +4,7 @@ use inkwell::values;
 use mir::repr::{needs_drop, repr_of, ArrayLen, Repr, ReprKind, ReprPos};
 
 use crate::ctx::CodegenCtx;
-use crate::layout::repr_and_layout;
+use crate::layout::{repr_and_layout, Abi};
 
 impl<'ctx> CodegenCtx<'_, 'ctx> {
     pub fn get_drop_fn(&mut self, repr: Repr) -> values::FunctionValue<'ctx> {
@@ -119,6 +119,11 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let layout = repr_and_layout(self.db, repr);
         let ty = self.basic_type_for_ral(&layout);
 
+        if let Abi::Scalar(_) = layout.abi {
+            self.gen_drop_rec(func, ptr, reprs[0]);
+            return;
+        }
+
         for (i, &repr) in reprs.iter().enumerate() {
             if !needs_drop(self.db, repr, ReprPos::Argument) {
                 continue;
@@ -163,5 +168,20 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         let discr = self.builder.build_load(discr_ty, discr, "").into_int_value();
         self.builder.build_switch(discr, exit_block, &cases);
         self.builder.position_at_end(exit_block);
+    }
+
+    #[allow(dead_code)]
+    fn call_printf(&mut self, ptr: values::PointerValue<'ctx>) {
+        let printf = if let Some(printf) = self.module.get_function("printf") {
+            printf
+        } else {
+            let i8ptr = self.context.i8_type().ptr_type(Default::default());
+            let ty = self.context.void_type().fn_type(&[i8ptr.into()], true);
+            self.module.add_function("printf", ty, None)
+        };
+
+        let fmt = self.builder.build_global_string_ptr("%p\n", "");
+        let fmt = fmt.as_pointer_value();
+        self.builder.build_direct_call(printf, &[fmt.into(), ptr.into()], "");
     }
 }

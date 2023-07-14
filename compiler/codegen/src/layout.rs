@@ -285,6 +285,7 @@ fn enum_layout(mut lyts: Vec<(Repr, Arc<Layout>)>, triple: &Triple) -> Arc<Layou
         let mut lyts = lyts.into_iter().map(|(r, l)| (r, (*l).clone())).collect::<Vec<_>>();
 
         for (i, lyt) in lyts.iter_mut().enumerate() {
+            lyt.1.abi = Abi::Aggregate { sized: true };
             lyt.1.variants = Variants::Single { index: i };
         }
 
@@ -672,7 +673,6 @@ impl Fields {
             | Fields::Primitive => unreachable!(),
             | Fields::Array { stride, .. } => {
                 let i = idx as u64;
-
                 *stride * i
             },
             | Fields::Union { .. } => Size::ZERO,

@@ -181,6 +181,33 @@ impl<'ctx> CodegenCtx<'_, 'ctx> {
         }
     }
 
+    pub fn field_index_to_llvm_index(&self, layout: &ReprAndLayout, index: usize) -> usize {
+        match layout.abi {
+            | Abi::Aggregate { .. } => match &layout.fields {
+                | Fields::Arbitrary { offsets } => {
+                    let mut current = Size::ZERO;
+                    let mut idx = 0;
+
+                    for (i, &offset) in offsets.iter().take(index + 1).enumerate() {
+                        if offset > current {
+                            idx += 1;
+                        }
+
+                        if i != index {
+                            idx += 1;
+                        }
+
+                        current = offset + layout.field(self.db, i).unwrap().size;
+                    }
+
+                    idx
+                },
+                | _ => index,
+            },
+            | _ => index,
+        }
+    }
+
     pub fn usize_type(&self) -> types::IntType<'ctx> {
         self.context.ptr_sized_int_type(&self.target_data, None)
     }

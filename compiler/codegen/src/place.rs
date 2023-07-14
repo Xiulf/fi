@@ -86,12 +86,13 @@ impl<'ctx> PlaceRef<'ctx> {
                 let ptr = ctx.builder.build_pointer_cast(self.ptr, ptr, "");
                 let usize = ctx.context.ptr_sized_int_type(&ctx.target_data, None);
                 let offset = usize.const_int(offset.bytes(), false);
-                unsafe { ctx.builder.build_gep(ty, ptr, &[offset], "") }
+                unsafe { ctx.builder.build_gep(ctx.context.i8_type(), ptr, &[offset], "") }
             },
-            | Abi::Scalar(_) | Abi::ScalarPair(..) => unreachable!(),
+            | Abi::Scalar(_) | Abi::ScalarPair(..) => {
+                unreachable!("{:?}", self.layout.abi)
+            },
             | _ => {
-                let min_offset = self.layout.fields.min_offset();
-                let index = if min_offset.bytes() != 0 { index + 1 } else { index };
+                let index = ctx.field_index_to_llvm_index(&self.layout, index);
                 ctx.builder.build_struct_gep(ty, self.ptr, index as u32, "").unwrap()
             },
         };

@@ -2,8 +2,8 @@ module Main (main) =
 
 import Core
 import Core.IO
+import Data.List
 
-main () = do
-    let ch <- getchar ()
-    <- putchar ch
-    putchar '\n'
+main () =
+    let list = 1:2:3:4:Nil
+    ()
